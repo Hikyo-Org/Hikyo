@@ -27,6 +27,17 @@ prereleases; source builds are available for local evaluation and development.
 | Upgrade an existing instance | [Upgrades](/docs/upgrades/) | Pre-migration export and verified rollout |
 | Enroll a new container deployment for unattended updates | [Container upgrades](/docs/container-upgrades/) | Explicit opt-in, persistent encrypted custody and verified scratch restore |
 
+For a consolidated artifact/topology inventory, use the
+[deployment support matrix](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/deployment-support.md).
+To evaluate a new singleton Kubernetes/PostgreSQL installation from a signed
+nightly chart, follow the
+[complete first-install runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/kubernetes-singleton.md).
+It distinguishes chart publication from source availability and keeps existing
+manual installations on their separate upgrade path.
+For controller ownership of a signed chart, use
+[Kubernetes GitOps](/docs/kubernetes-gitops/) for Flux and Argo CD configurations
+with exact chart pins and explicit activation. These recipes refuse stable 1.0.0.
+
 ## Stable downloads
 
 Download the complete [v1.0.0 release bundle](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0)

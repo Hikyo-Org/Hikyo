@@ -1,4 +1,4 @@
-# Migration policy, draft v0.6
+# Migration policy, draft v0.7
 
 Status: **owner decided and security approved, not operative**.
 Policy and requirements for DEC-11 to
@@ -22,7 +22,7 @@ That limit is registered (E-17).
 | --- | --- | --- | --- |
 | 0 Decide | Owner and security decisions recorded; ADR amendment landed | Receipts; no HOLD on the surface | Nothing deployed |
 | 1 Keys | Generate and escrow new keys ([below](#key-generation-and-escrow)) | Escrow drill restores a fixture | Destroy only never-used test keys |
-| 2 Readers first | Release first-party readers, verifiers and offline tools that can parse and verify the new format while still writing the old one | Frozen legacy fixtures pass on first-party nodes and tools; unknown versions refused; operator attests the readers it does not control | Revert binary |
+| 2 Readers first | Release first-party readers, verifiers and offline tools that can parse and verify the new format while still writing the old one | Frozen legacy fixtures pass on first-party nodes and tools; unknown versions refused; operator attests the readers it does not control | Revert binary. A reader build carrying a moved floor (runtimeconfig migration 6, migration 83) restores the pre-upgrade backup instead, because whether an old binary refuses that floor is NOTRUN |
 | 3 Authenticated trust | Distribute public keys through an authenticated path (receiver pin, operator-installed rollout enrollment); release-trust bootstrap is an open gap ([below](#release-trust-and-install-paths)) | Independent check recorded outside the datastore | Writers stay disabled |
 | 4 Writers, compatibility | Writers emit the new format as configured; old readers keep working | Mixed-version matrix on first-party nodes | Switch writers back |
 | 5 Strict and floor | Operator selects strict; old writers refused; the rollback floor is raised when the first strict writer is enabled | Enforcement evidence ([profiles](profiles.md#configuration-downgrade-rollout-exceptions-dec-10)); downgrade attempt refused | Lower the profile; the floor is not lowered |
@@ -179,7 +179,7 @@ KEM + SRP composition (forbidden by the issue) or ML-DSA JWS now (no library pat
 Source facts: P-256 primary and recovery keys; the recovery key signs root,
 policy, bridges and the legacy-track metadata and catalog; the Sigstore keyless
 workflow identity signs stable metadata and catalog (`snapshot.go:139,180`);
-nightly and the manifest are keyless (`.github/workflows/nightly.yml`), while the
+nightly, its manifest and its Helm chart are keyless (`.github/workflows/nightly.yml`), while the
 installer checks nightly metadata and catalog with `openssl` against the P-256
 recovery key (`install/upgrade-nightly.sh:115`) and the manifest with cosign
 (`:382`); the pinned-key parser rejects ML-DSA; pinned trust carries no floor input
@@ -196,7 +196,7 @@ integrity of the downloaded bytes and nothing against a quantum adversary.
 | Document or artifact | Signer today | PQ signer (DEC-14) |
 | --- | --- | --- |
 | Root, stable policy, bridges, legacy-track metadata and catalog | Recovery key (P-256) | ML-DSA recovery key, all-required with the classical key |
-| Stable metadata, catalog, manifests; packaged chart image policy (keyless mode, `.github/workflows/release.yml:622`) | Keyless workflow identity | Keyless unchanged (E-03) plus a maintainer-held ML-DSA signature at the local publish step ([stable workflow signing ADR](../../adr/stable-workflow-signing.md)) |
+| Stable metadata, catalog, manifests; packaged chart image policy (keyless mode, `.github/workflows/release.yml:633`) | Keyless workflow identity | Keyless unchanged (E-03) plus a maintainer-held ML-DSA signature at the local publish step ([stable workflow signing ADR](../../adr/stable-workflow-signing.md)) |
 | Releases signed with the primary key before keyless; the in-tree chart `primary.pub` (keyed mode) | Primary key (P-256) | None: historical verification only (E-12) |
 | Nightly track and image-replacement paths | Keyless; own stamped trust | None (E-15) |
 
@@ -236,6 +236,16 @@ signing algorithms are RSA and ECDSA, controlled by the IdP (E-04). The WebAuthn
 library verifies ML-DSA keys on go1.27; authenticator support is unchecked (E-05).
 GitHub requires libsodium sealed boxes: no replacement, no second wrapper (E-06).
 
+Update 2026-11-03 (#1134, [external compatibility](external-compatibility.md#facts-that-differ-from-the-register)):
+OpenSSH 10.6 (2026-10-06) enables a composite PQ signature `ssh-mldsa44-ed25519`,
+so "no PQ signatures" above is stale. E-02 stands: the scheme is ML-DSA-44
+(excluded by DEC-02) and `x/crypto/ssh` v0.58.0 cannot produce it. RFC 9964
+registers the JOSE and COSE ML-DSA identifiers; `go-jose` v4.1.6 still lacks
+them. The decision text is the owner's and is not edited here. On 2026-11-04 the owner
+decided not to adopt `ssh-mldsa44-ed25519` (F-04): DEC-02 excludes ML-DSA-44 and DEC-03
+did not select composites. Recheck if OpenSSH ships a composite without ML-DSA-44 or
+`x/crypto` adds one.
+
 ### Rollout authority (I23) and PKI root (I24)
 
 #1131 says to bootstrap PQ trust "through the existing authenticated authority".
@@ -267,12 +277,12 @@ requires. Owner: Marc Went. Expiry and renewal: [profiles](profiles.md#configura
 
 | ID | Surface (IDs) | Limitation | Child | Decision |
 | --- | --- | --- | --- | --- |
-| E-01 | Pairing, DPoP, SRP, pins (I20) | Classical authenticity; active forger captures transcript; pins from a classical chain | #1130 | DEC-13 |
+| E-01 | Pairing, DPoP, SRP, pins (I20). Peer: any remote Hikyo instance reached by pairing (`/api/v1/auth/pairing/*`) or by a paired directory fetch (`/api/v1/instance/directory`). Version: invitation bundle version 1, SRP version 4 (`go-srp` v0.0.7) and the Ed25519 DPoP profile, in every release to date. Expiry: 180 days from the owner's decision on 2026-11-04, so 2027-05-03, or the next trigger. Recheck trigger: the [recheck triggers](pairing-feasibility.md#recheck-triggers) in the pairing note | Classical authenticity only. Active forger: a forged classical pinned leaf captures the transcript and the bearer credential. Recorder: an adversary who later breaks the classical key exchange of a recorded pairing or directory exchange obtains the bearer credential and public key, and with a quantum computer the DPoP signing key, and can authenticate the connection until the credential expires or is revoked (at most 365 days). A guessable phrase in a recorded pairing is recoverable offline. Pins come from a classical chain. No PQ authenticity, pin or password-exchange claim for pairing, and no confidentiality claim for the pairing hop at compat (E-08) | #1130 | DEC-13 (accepted 2026-11-04, [pairing note](pairing-feasibility.md#e-01-as-registered-and-the-accepted-row)) |
 | E-02 | SSH CA (I25) | Classical signatures | #1134 | DEC-16 |
 | E-03 | Sigstore, platform, Kyverno, chart policy, commit signing, Go checksum database (I26, I27, I31, I32) | Classical | #1134 | DEC-15 |
 | E-04 | OIDC, SAML IdPs (I17, I18) | IdP-controlled | #1134 | DEC-16 |
-| E-05 | WebAuthn (I19) | Authenticator-controlled | #1134 | DEC-16 |
-| E-06 | GitHub secret delivery (I15) | Provider-required sealed box | #1134 | DEC-16 |
+| E-05 | WebAuthn (I19) | Authenticator-controlled. The relying party offers classical credentials only; it offers no ML-DSA parameters (decided 2026-11-04, F-05) | #1134 | DEC-16 |
+| E-06 | GitHub secret delivery (I15). Peer: GitHub Actions secrets API. Version: libsodium sealed box as GitHub documented it on 2026-11-03, API version `2022-11-28`. Expiry: 180 days from the owner's decision on 2026-11-04, so 2027-05-03, or the next trigger. Recheck trigger: GitHub documents a PQ option or a different algorithm | Provider-required sealed box; no PQ alternative, no second wrapper. Strict does not disable the route, because strict does not govern external routes (DEC-06) | #1134 (F-01, #1175) | DEC-16, DEC-06 (decided 2026-11-04) |
 | E-07 | Adapters, mail, rotated credentials re-crossing them (I14, I16) | Provider and relay hops | #1134 | DEC-06 |
 | E-08 | Hops marked compat in the [hop table](profiles.md#hop-starting-profiles) (I10, I11 pairing and update paths, I12, I13, I30) | Peer group not controlled by Hikyo | #1127 | DEC-06 |
 | E-09 | Combined local upgrade custody (I08) | One failure domain by prior approval | #1126 | DEC-12 |
@@ -285,6 +295,21 @@ requires. Owner: Marc Went. Expiry and renewal: [profiles](profiles.md#configura
 | E-16 | Operator pin rotation and break-glass (I08) | P-256 authenticated | #1126 | DEC-12 |
 | E-17 | Unobservable readers, verifiers and local floors (I07, I26) | Third-party installs cannot be measured; floor is a local claim | #1126, #1132 | DEC-11 |
 | E-18 | Single listener certificate pair (`internal/app/tls.go:31`): a strict ML-DSA leaf may be rejected by browsers and compat clients; sole ML-DSA recovery key (I09, I26) | Availability and recovery | #1127, #1132 | DEC-06, DEC-14 |
-| E-19 | Archive provenance without a signed receipt (I07, I08) | No provenance claim for such a restore; receipts are unsigned and only upgrade exports write one today | #1126 | DEC-11 |
+| E-19 | Archive provenance without a signed receipt (I07, I08) | No provenance claim for such a restore; receipts are unsigned and only upgrade exports write one today, so `backup-receipt/v2` (the signed upgrade compatibility banner) does not meet "every export path emits a receipt" | #1126 | DEC-11 |
 | E-20 | Pin-based owned clients on strict hops (`internal/cli/client.go:151`; I11) | The pin replaces chain verification, so strict gives confidentiality with no authenticity claim | #1127 | DEC-06 |
 | E-21 | Host-authority recovery of configuration (`internal/service/self_config_recovery.go:55`, repair boot in `internal/app/app.go:369`; every strict surface, starting with I09, I11) | Can select a published revision below strict without the MFA-bound plan, and a repair boot runs the previous policy; host access is already operator-equivalent | #1127 | DEC-10 |
+| E-22 | Stale-node fencing under strict (every strict surface; starts with I09, I11). Peer: any node of a multi-node instance whose active generation is below the desired one. Version: from the first release that can select strict (#1127) until a fence ships. Expiry: 180 days from the owner's decision on 2026-11-04, so 2027-05-03, or the next trigger. Recheck trigger: #1127 designing the fence, or a stale node observed serving after strict was selected | Strict is per process. A stale node keeps serving after strict is selected and is not reported as not enforcing; no fence is built | #1127 | DEC-10 (amended 2026-11-04) |
+
+### Exception terms (#1134)
+
+The terms for E-02 to E-07 and E-13 (known peer and version, expiry,
+recheck trigger) are in
+[external compatibility](external-compatibility.md#exception-terms-proposed-only-e-06-is-effective).
+**E-06 is effective** (its row above carries the four fields, decided 2026-11-04).
+**The others are not**: DEC-10 needs an exact peer and version, and the peers are
+unnamed, so these rows stay accepted in principle only until the owner names
+them. The same document adds E-03 (X16, which includes I31, Kyverno and chart policy) and records that no external hop is
+refused or protected by `HIKYO_TLS_PROFILE=strict` today. On 2026-11-04 the owner
+narrowed per-route strict selection (F-09) under DEC-06: strict stays on the
+listener and owned clients, with no strict claim on any external route and no
+per-route selector built.

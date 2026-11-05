@@ -328,7 +328,7 @@ func machineEntry(st *State, resolved Resolved, cfg *machineConfig) (TrustEntry,
 	if err != nil {
 		return TrustEntry{}, err
 	}
-	if cfgOrigin != "" && entry.Origin != cfgOrigin {
+	if cfgOrigin != "" && !sameOrigin(entry.Origin, cfgOrigin) {
 		return TrustEntry{}, failf(ExitUsage,
 			"instance %q resolves to origin %s but %s names %s — refusing rather than picking one",
 			instance, entry.Origin, cfg.Name, cfgOrigin)
@@ -341,10 +341,41 @@ func lookupByOrigin(st *State, origin, cfgName string) (TrustEntry, error) {
 	if err != nil {
 		return TrustEntry{}, err
 	}
+	// Map order is random, so more than one entry for an origin would make the
+	// verification policy (mode, pin, TLS profile) a coin flip. Entries that
+	// differ in policy are ambiguous and refused; identical-policy duplicates are
+	// harmless.
+	var found []TrustEntry
 	for _, e := range entries {
-		if e.Origin == origin {
-			return e, nil
+		if sameOrigin(e.Origin, origin) {
+			found = append(found, e)
 		}
+	}
+	// Same-policy spellings of one origin must still resolve the same way every
+	// time: prefer the exact spelling asked for, then the lowest name.
+	slices.SortFunc(found, func(a, b TrustEntry) int {
+		if exactA, exactB := a.Origin == origin, b.Origin == origin; exactA != exactB {
+			if exactA {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
+	for _, e := range found[min(1, len(found)):] {
+		if !samePolicy(found[0], e) {
+			names := make([]string, 0, len(found))
+			for _, f := range found {
+				names = append(names, f.Name)
+			}
+			slices.Sort(names)
+			return TrustEntry{}, failf(ExitRefused,
+				"%s names instance %s, which matches trust entries %s with different verification policies; name one of them with --instance rather than picking by origin",
+				cfgName, origin, strings.Join(names, ", "))
+		}
+	}
+	if len(found) > 0 {
+		return found[0], nil
 	}
 	return TrustEntry{}, failf(ExitRefused,
 		"%s names instance %s, which is not in the local trust store; provision it with `hikyo context create --instance %s` or --trust-file (the machine path never establishes trust interactively)",
@@ -383,9 +414,9 @@ func renderAcknowledged(cfg *compose.Config) []string {
 	return out
 }
 
-func fetchDelivery(ctx context.Context, client *Client, org, project, env string, configOnly bool, acknowledged []string, cursor string) (apigen.DeliveryResponse, error) {
+func (s *composeStack) fetchDelivery(ctx context.Context, acknowledged []string, cursor string) (apigen.DeliveryResponse, error) {
 	q := url.Values{}
-	if configOnly {
+	if s.configOnly {
 		// The wire term is `projection=config-only` (#64's server param); the CLI
 		// flag stays `--config-only`. `full` is the default and is left implicit.
 		q.Set("projection", "config-only")
@@ -400,19 +431,15 @@ func fetchDelivery(ctx context.Context, client *Client, org, project, env string
 	if cursor != "" {
 		q.Set("cursor", cursor)
 	}
-	path := deliveryPath(org, project, env)
+	path := deliveryPath(s.org, s.project, s.env)
 	if len(q) > 0 {
 		path += "?" + q.Encode()
 	}
 	var resp apigen.DeliveryResponse
-	if err := client.Do(ctx, http.MethodGet, path, nil, &resp); err != nil {
+	if err := s.client.Do(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return apigen.DeliveryResponse{}, err
 	}
 	return resp, nil
-}
-
-func (s *composeStack) fetchDelivery(ctx context.Context, acknowledged []string, cursor string) (apigen.DeliveryResponse, error) {
-	return fetchDelivery(ctx, s.client, s.org, s.project, s.env, s.configOnly, acknowledged, cursor)
 }
 
 // flushOffline reconciles buffered offline records before a fetch (ops-spec § 6

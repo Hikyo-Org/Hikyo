@@ -183,6 +183,23 @@ const sessionChromelessSurfaces = SURFACES.filter(
 );
 
 /**
+ * Paths that moved. `/remotes` became `/instance/remotes` when Remotes moved to
+ * the instance section; old bookmarks and links land on the catch-all, which
+ * redirects them keeping query and hash (a `#connection-credentials` anchor,
+ * `?remote=`). Not surfaces: no section, no flow, no route of their own, so the
+ * route table stays the only place a path is declared.
+ */
+const MOVED_PATHS: Readonly<Record<string, SurfaceId>> = { '/remotes': 'remotes' };
+
+export function NotFoundOrMoved() {
+  const { pathname, search, hash } = useLocation();
+  // Lowercased because the router's own path matching is case-insensitive.
+  const moved = MOVED_PATHS[pathname.replace(/\/+$/, '').toLowerCase()];
+  if (moved === undefined) return <NotFound />;
+  return <Navigate to={{ pathname: surfaceById(moved).path, search, hash }} replace />;
+}
+
+/**
  * The application root.
  *
  * AuthProvider resolves and revalidates the one root identity. Checking and
@@ -255,7 +272,7 @@ export function AppRoutes() {
             {shellSurfaces.map((surface) => (
               <Route key={surface.id} path={surface.path} element={surfaceElement(surface.id)} />
             ))}
-            <Route path="*" element={<NotFound />} />
+            <Route path="*" element={<NotFoundOrMoved />} />
           </Route>
         </Routes>
       )}

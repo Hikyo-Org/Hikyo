@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
-	"crypto/x509"
-	"encoding/pem"
 	"errors"
 	"flag"
 	"fmt"
@@ -23,12 +21,16 @@ func runConfigRollout(ctx context.Context, args []string, stderr io.Writer) int 
 	fs := flag.NewFlagSet("config-rollout", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	enrollmentPath := fs.String("enrollment-file", "/run/hikyo/rollout/enrollment/enrollment.json", "operator-installed rollout enrollment")
-	publicPath := fs.String("authority-public-key", "/run/hikyo/rollout/enrollment/authority.pub", "operator-installed Ed25519 deployment authority public key")
+	publicPath := fs.String("authority-public-key", "/run/hikyo/rollout/enrollment/authority.pub", "operator-installed deployment authority public keys: Ed25519, or Ed25519 and ML-DSA-65 as consecutive PUBLIC KEY blocks")
+	printIDs := fs.Bool("print-authority-ids", false, "print the algorithm and key id of each key in --authority-public-key and exit; contacts no cluster")
 	if err := fs.Parse(args); err != nil || fs.NArg() != 0 {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
 		}
 		return 2
+	}
+	if *printIDs {
+		return printAuthorityIDs(*publicPath, stderr)
 	}
 	enrollmentRaw, err := readRolloutInstalled(*enrollmentPath)
 	if err != nil {
@@ -45,15 +47,15 @@ func runConfigRollout(ctx context.Context, args []string, stderr io.Writer) int 
 		fmt.Fprintln(stderr, "hikyo config-rollout: authority public key unavailable")
 		return 1
 	}
-	block, trailing := pem.Decode(publicRaw)
-	if block == nil || block.Type != "PUBLIC KEY" || len(trailing) != 0 {
+	keys, err := configrollout.ParsePublicKeys(publicRaw)
+	if err != nil {
 		fmt.Fprintln(stderr, "hikyo config-rollout: invalid authority public key")
 		return 1
 	}
-	parsed, err := x509.ParsePKIXPublicKey(block.Bytes)
-	public, ok := parsed.(ed25519.PublicKey)
-	if err != nil || !ok {
-		fmt.Fprintln(stderr, "hikyo config-rollout: authority must use Ed25519")
+	// The held keys must be exactly the enrolled ones: a stale or swapped key
+	// file never becomes the trust anchor.
+	if err := configrollout.CheckKeys(enrollment, keys); err != nil {
+		fmt.Fprintln(stderr, "hikyo config-rollout: authority public key does not match the enrollment")
 		return 1
 	}
 	cluster, err := rest.InClusterConfig()
@@ -68,14 +70,38 @@ func runConfigRollout(ctx context.Context, args []string, stderr io.Writer) int 
 		fmt.Fprintln(stderr, "hikyo config-rollout: cluster client unavailable")
 		return 1
 	}
-	controller, err := configrollout.NewController(client, enrollment, public)
+	controller, err := configrollout.NewControllerKeys(client, enrollment, keys)
 	if err != nil {
 		fmt.Fprintln(stderr, "hikyo config-rollout: invalid installed target")
 		return 1
 	}
 	if err = controller.Run(ctx, types.UID(os.Getenv("POD_UID"))); err != nil && !errors.Is(err, context.Canceled) {
+		if errors.Is(err, configrollout.ErrTrust) {
+			fmt.Fprintln(stderr, "hikyo config-rollout: authority trust state refused; see the enrollment runbook")
+			return 1
+		}
 		fmt.Fprintln(stderr, "hikyo config-rollout: executor custody unavailable")
 		return 1
+	}
+	return 0
+}
+
+func printAuthorityIDs(path string, stderr io.Writer) int {
+	raw, err := readRolloutInstalled(path)
+	if err != nil {
+		fmt.Fprintln(stderr, "hikyo config-rollout: authority public key unavailable")
+		return 1
+	}
+	keys, err := configrollout.ParsePublicKeys(raw)
+	if err != nil {
+		fmt.Fprintln(stderr, "hikyo config-rollout: invalid authority public key")
+		return 1
+	}
+	ids := keys.KeyIDs()
+	for _, algorithm := range []string{configrollout.AlgEd25519, configrollout.AlgMLDSA65} {
+		if id, ok := ids[algorithm]; ok {
+			fmt.Println(algorithm, id)
+		}
 	}
 	return 0
 }
@@ -113,19 +139,16 @@ func stageRolloutAuthority(source, destination string) error {
 		return err
 	}
 	defer clear(raw)
-	block, trailing := pem.Decode(raw)
-	if block == nil || block.Type != "PRIVATE KEY" || len(trailing) != 0 {
+	// One Ed25519 key (compatibility) or an Ed25519 and a seed-only ML-DSA-65
+	// key (strict); anything else is refused before it reaches the volume the
+	// server reads.
+	signers, err := configrollout.ParseSigners(raw)
+	if err != nil || signers.Ed25519 == nil && signers.MLDSA65 == nil {
 		return errors.New("invalid authority encoding")
 	}
-	defer clear(block.Bytes)
-	parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-	if err != nil {
-		return errors.New("invalid authority encoding")
+	// Validation only: this process keeps nothing, so clear the parsed key.
+	if key, ok := signers.Ed25519.(ed25519.PrivateKey); ok {
+		defer clear(key)
 	}
-	private, ok := parsed.(ed25519.PrivateKey)
-	if !ok {
-		return errors.New("invalid authority algorithm")
-	}
-	defer clear(private)
 	return securefile.WriteAtomic(destination, raw, 0400)
 }

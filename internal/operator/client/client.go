@@ -26,6 +26,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/delivery"
 	"github.com/Hikyo-Org/hikyo/internal/freetext"
 	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
+	"github.com/Hikyo-Org/hikyo/internal/tlspolicy"
 )
 
 // pathPrefix mirrors api.PathPrefix ("/api/v1"). Duplicated as a const so the
@@ -99,11 +100,27 @@ type Client struct {
 	userAgent string
 }
 
+// Option adjusts how NewClient builds the transport.
+type Option func(*clientOptions)
+
+type clientOptions struct{ profile tlspolicy.Profile }
+
+// WithTLSProfile selects the key-exchange policy (#1127). Strict requires TLS 1.3
+// and the hybrid X25519MLKEM768 group and refuses a classical-only instance
+// before the bearer is sent. It is handshake confidentiality only: certificate
+// authentication is still the instance's CA bundle or system roots, classical.
+func WithTLSProfile(profile tlspolicy.Profile) Option {
+	return func(o *clientOptions) { o.profile = profile }
+}
+
 // NewClient builds a client for an instance. rawURL must be https (CEL enforces
 // it on the CRD; this refuses http defensively at the mechanism boundary too).
 // caBundlePEM is the instance's trust anchors, or nil for the host's system
 // roots. userAgent is `hikyo-operator/<version>`.
-func NewClient(rawURL string, caBundlePEM []byte, userAgent string) (*Client, error) {
+//
+// Options only add policy. WithTLSProfile selects the key-exchange profile and
+// never touches roots, server name or redirect handling.
+func NewClient(rawURL string, caBundlePEM []byte, userAgent string, options ...Option) (*Client, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, fmt.Errorf("operator client: parse instance url: %w", err)
@@ -134,6 +151,12 @@ func NewClient(rawURL string, caBundlePEM []byte, userAgent string) (*Client, er
 		// RootCAs falls back to the system roots — the ADR's stated default.
 		tlsCfg.RootCAs = pool
 	}
+
+	var settings clientOptions
+	for _, option := range options {
+		option(&settings)
+	}
+	settings.profile.Apply(tlsCfg)
 
 	return &Client{
 		origin:    origin,

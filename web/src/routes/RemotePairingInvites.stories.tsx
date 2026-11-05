@@ -36,7 +36,7 @@ export const InteractivePreview: Story = {
     return () => interactiveFixture.reset();
   },
   parameters: {
-    app: { auth: true, identity: pairingIdentity, path: '/remotes', routeTree: true, responses: interactiveFixture.responses },
+    app: { auth: true, identity: pairingIdentity, path: '/instance/remotes', routeTree: true, responses: interactiveFixture.responses },
     docs: { description: { story: 'The real Remotes route and approval panel with sample API data. Enter a sample phrase and label. The instance supplies its configured HTTPS address and certificate fingerprint. Creation displays a sample invitation and its QR code. The preview performs no cryptography and makes no real remote connection. Workspace popup authentication is excluded.' } },
   },
   play: async ({ canvas }) => {

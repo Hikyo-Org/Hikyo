@@ -34,6 +34,11 @@ func partialDeploymentFixture(t *testing.T, engine store.Engine) (*SelfConfig, A
 
 func committedDeploymentFixture(t *testing.T, engine store.Engine, reconcile bool) (*SelfConfig, Actor, Actor, string, *deploymentProbe, SelfConfigDeploymentRestoreRequest) {
 	t.Helper()
+	return committedDeploymentFixtureSigned(t, engine, reconcile, nil)
+}
+
+func committedDeploymentFixtureSigned(t *testing.T, engine store.Engine, reconcile bool, sign func(configrollout.Command) (configrollout.SignedCommand, error)) (*SelfConfig, Actor, Actor, string, *deploymentProbe, SelfConfigDeploymentRestoreRequest) {
+	t.Helper()
 	s, local, _ := installerFixture(t, engine)
 	if err := s.LoadRuntime(t.Context()); err != nil {
 		t.Fatal(err)
@@ -47,7 +52,7 @@ func committedDeploymentFixture(t *testing.T, engine store.Engine, reconcile boo
 	if err != nil {
 		t.Fatal(err)
 	}
-	deployment := &deploymentProbe{identity: DeploymentIdentity{EnrollmentID: "enrolled", OwnerInstanceID: owner, Incarnation: inc, DeploymentUID: "deployment-uid", TemplateStamp: "original-template"}, sent: make(map[uint64]bool)}
+	deployment := &deploymentProbe{identity: DeploymentIdentity{EnrollmentID: "enrolled", OwnerInstanceID: owner, Incarnation: inc, DeploymentUID: "deployment-uid", TemplateStamp: "original-template"}, sent: make(map[uint64]bool), sign: sign}
 	s.Deployment = deployment
 	scope := domain.Scope{Org: domain.OrgID(status.Binding.OrgID), Project: domain.ProjectID(status.Binding.ProjectID), Env: domain.EnvID(status.Binding.EnvironmentID)}
 	draft, err := (&Values{DB: s.DB, Keyring: s.Keyring, Auth: s.Auth}).Set(t.Context(), local, scope, config.ManagedBootstrapSourcesKey, `{"version":1,"database_source":"replacement"}`, nil)

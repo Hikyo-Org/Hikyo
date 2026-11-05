@@ -1,6 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { ApiError } from '../api/client.ts';
 import { makeQueryClient, retireQueryClient } from './queryClient.ts';
 
 const sensitive = vi.hoisted(() => ({
@@ -35,4 +36,23 @@ it('retires sensitive work, cancels queries, then clears, in that order', () => 
   const clearedAt = clear.mock.invocationCallOrder[0];
   expect(retiredAt).toBeLessThan(cancelledAt ?? Number.NaN);
   expect(cancelledAt).toBeLessThan(clearedAt ?? Number.NaN);
+});
+
+describe('query retries', () => {
+  const { retry, retryDelay } = makeQueryClient().getDefaultOptions().queries ?? {};
+  if (typeof retry !== 'function' || typeof retryDelay !== 'function') throw new Error('expected retry policies');
+
+  it('retries only a throttled read, boundedly', () => {
+    const throttled = new ApiError(429, 'throttled');
+    expect(retry(0, throttled)).toBe(true);
+    expect(retry(1, throttled)).toBe(true);
+    expect(retry(2, throttled)).toBe(false);
+    expect(retry(0, new ApiError(403, 'denied'))).toBe(false);
+    expect(retry(0, new Error('offline'))).toBe(false);
+  });
+
+  it('waits as long as the refusal says', () => {
+    expect(retryDelay(0, new ApiError(429, 'throttled', undefined, 12_000))).toBe(12_000);
+    expect(retryDelay(0, new ApiError(429, 'throttled'))).toBe(5_000);
+  });
 });

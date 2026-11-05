@@ -19,7 +19,8 @@ import (
 )
 
 // ExportUpgrade publishes exact ciphertext first and its public receipt last.
-// It accepts only public X25519 recipients and never loads private custody.
+// It accepts only public recipients, all X25519 or all hybrid, and never loads
+// private custody.
 func (s *Backup) ExportUpgrade(ctx context.Context, dir string, plan upgradecompat.Plan, proposal *backupreceipt.LegacyProposal) (ExportResult, error) {
 	if s.DB == nil || !plan.Valid() {
 		return ExportResult{}, errors.New("upgrade export requires database and authenticated route")

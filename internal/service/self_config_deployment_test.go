@@ -24,6 +24,18 @@ type deploymentProbe struct {
 	installed   bool
 	sent        map[uint64]bool
 	submissions int
+	// sign, when set, makes the probe emit real signed commands, as the
+	// production provider does, instead of fixed placeholder signatures.
+	sign func(configrollout.Command) (configrollout.SignedCommand, error)
+}
+
+func (p *deploymentProbe) signed(command configrollout.Command) (configrollout.SignedCommand, error) {
+	if p.sign == nil {
+		return configrollout.SignedCommand{Command: command, Signature: make([]byte, 64)}, nil
+	}
+	command.IssuedAt = time.Now().UTC()
+	command.ExpiresAt = command.IssuedAt.Add(5 * time.Minute)
+	return p.sign(command)
 }
 
 func (p *deploymentProbe) RootPreparation(context.Context, configrollout.SignedCommand) (*crypto.WrappedKey, error) {
@@ -38,12 +50,17 @@ func (p *deploymentProbe) Identity() DeploymentIdentity {
 	return p.identity
 }
 func (p *deploymentProbe) PrepareCommand(_ context.Context, intent configrollout.Intent, _ *runtimeconfig.Bundle, sequence uint64) (configrollout.SignedCommand, error) {
-	return configrollout.SignedCommand{Command: configrollout.Command{EnrollmentID: p.Identity().EnrollmentID, Sequence: sequence, Action: configrollout.ActionPrepare, Intent: intent}, Signature: make([]byte, 64)}, nil
+	return p.signed(configrollout.Command{EnrollmentID: p.Identity().EnrollmentID, Sequence: sequence, Action: configrollout.ActionPrepare, Intent: intent})
 }
 func (p *deploymentProbe) DecisionCommand(_ context.Context, prepared configrollout.SignedCommand, action configrollout.Action, sequence uint64, digest string, ack *configrollout.ApplicationAcknowledgement) (configrollout.SignedCommand, error) {
-	return configrollout.SignedCommand{Command: configrollout.Command{EnrollmentID: p.Identity().EnrollmentID, Sequence: sequence, Action: action, Intent: prepared.Command.Intent, PlanDigest: digest, Acknowledgement: ack}, Signature: make([]byte, 64)}, nil
+	return p.signed(configrollout.Command{EnrollmentID: p.Identity().EnrollmentID, Sequence: sequence, Action: action, Intent: prepared.Command.Intent, PlanDigest: digest, Acknowledgement: ack})
 }
 func (p *deploymentProbe) RenewCommand(_ context.Context, committed configrollout.SignedCommand, sequence uint64) (configrollout.SignedCommand, error) {
+	if p.sign != nil {
+		command := committed.Command
+		command.Sequence = sequence
+		return p.signed(command)
+	}
 	committed.Command.Sequence = sequence
 	committed.Command.IssuedAt = time.Now().UTC()
 	committed.Command.ExpiresAt = committed.Command.IssuedAt.Add(5 * time.Minute)

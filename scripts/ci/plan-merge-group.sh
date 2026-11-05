@@ -60,6 +60,7 @@ if ! jq -e --argjson number "$pr" --arg repo "$GITHUB_REPOSITORY" --arg head "$p
 	.number == $number and .state == "open" and
 	.base.ref == "main" and .base.repo.full_name == $repo and
 	.head.sha == $head and (.head.repo.id | type == "number" and . > 0) and
+	(.head.ref | type == "string" and length > 0 and (startswith("release/") | not)) and
 	(.user.id | type == "number" and . > 0) and .user.type == "User" and
 	(.user.login | type == "string" and length > 0) and .user.login != "dependabot[bot]" and
 	(.labels | type == "array") and

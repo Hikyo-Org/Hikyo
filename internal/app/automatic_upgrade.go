@@ -283,6 +283,16 @@ func RunAutomaticUpgrade(ctx context.Context, args []string, out io.Writer, read
 			return err
 		}
 		defer vault.Close()
+		// Before the journal, the public evidence and the service stop.
+		root, err := crypto.ReadRootKey(c.RootKeyFile, "")
+		if err != nil {
+			return err
+		}
+		err = requireAutomaticCustodyMatchesPolicy(ctx, cfg, database, root, vault.Recipient())
+		crypto.Zero(root)
+		if err != nil {
+			return err
+		}
 		publicKey, err := host.PublishPublicEvidence("operator.pub", vault.PublicKey())
 		if err != nil {
 			return err

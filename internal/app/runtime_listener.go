@@ -195,7 +195,7 @@ func (o *ownerRuntime) prepareEndpoints(cfg *config.Config, certificate *managed
 	}
 	if o.current != nil {
 		old := o.current.graph.cfg
-		p.resetPublic = old.TLSCertPEM != cfg.TLSCertPEM || old.TLSKeyPEM != cfg.TLSKeyPEM
+		p.resetPublic = listenerTransportChanged(old, cfg)
 	}
 	return p, nil
 }
@@ -238,4 +238,11 @@ func (p *preparedEndpoints) activate(o *ownerRuntime) {
 		}
 	}
 	p.created = nil
+}
+
+// listenerTransportChanged reports whether the public listener must replace its
+// transport and close existing connections. A profile change counts even when
+// the certificate is identical, so a classical keep-alive cannot outlive strict.
+func listenerTransportChanged(old, next *config.Config) bool {
+	return old.TLSCertPEM != next.TLSCertPEM || old.TLSKeyPEM != next.TLSKeyPEM || old.TLSProfile != next.TLSProfile
 }

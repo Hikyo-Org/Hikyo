@@ -15,11 +15,13 @@
 type CeremonySessionPolicy = 'establish-or-reuse' | 'required';
 
 /**
- * The four sidebar sections. `project` and `instance` are CONTEXT blocks: they
- * render only while the route is so scoped and sit above the organisation
- * block. `organisation` is always present once an organisation is active.
- * `account` never renders in the desktop sidebar (the rail-foot menu and the
- * header link are canonical); the mobile drawer lists it under "You".
+ * The four sidebar sections, narrow to wide. `project` is the CONTEXT block: it
+ * renders only while the route is project-scoped and sits above the
+ * organisation block. `organisation` is present once an organisation is
+ * active. `instance` is the persistent tier at the sidebar's foot, filtered per
+ * principal and collapsed to its entry rows off the instance routes. `account`
+ * never renders in the desktop sidebar (the rail-foot menu and the header link
+ * are canonical); the mobile drawer lists it under "You".
  */
 export type SectionId = 'project' | 'instance' | 'organisation' | 'account';
 
@@ -138,14 +140,6 @@ export const SURFACES = defineSurfaceRegistry([
     mode: 'authenticated',
     chrome: 'shell',
   },
-  {
-    id: 'remotes',
-    path: '/remotes',
-    label: 'Remotes',
-    section: 'organisation',
-    mode: 'authenticated',
-    chrome: 'shell',
-  },
   // The two org-scoped chrome surfaces (#60). Their org is ROUTE DATA, not
   // chrome state: a members page and a settings page each administer ONE
   // organisation, and a path that did not name it would make a deep link, a
@@ -198,10 +192,22 @@ export const SURFACES = defineSurfaceRegistry([
     mode: 'authenticated',
     chrome: 'shell',
   },
+  // Remote instances are instance-wide (`/api/v1/instance/remotes`, the
+  // `instance-directory` capability), so they live in the instance section,
+  // first so the tier's rows do not jump when it expands. The legacy
+  // `/remotes` path redirects here (App.tsx); it is not a surface.
+  {
+    id: 'remotes',
+    path: '/instance/remotes',
+    label: 'Remotes',
+    section: 'instance',
+    mode: 'authenticated',
+    chrome: 'shell',
+  },
   // The instance pair (#567): every scope is a {Members, Settings} pair, and
   // the instance is no exception. Both are operator-only; the sidebar's
-  // instance context block lists them while the route is instance-scoped and
-  // the desktop rail's cog is their entry point.
+  // instance tier at the foot lists them, expanded while the route is
+  // instance-scoped and collapsed to its entry rows elsewhere.
   {
     id: 'instance-admin',
     path: '/instance',

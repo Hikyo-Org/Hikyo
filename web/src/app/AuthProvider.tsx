@@ -28,7 +28,7 @@ import {
   type ExpectedSessionRotation,
 } from '../api/sessionEpoch.ts';
 
-import { ApiError, parsed, readCsrfToken } from '../api/client.ts';
+import { ApiError, isThrottled, parsed, readCsrfToken } from '../api/client.ts';
 import { transitionWorkspaceOwner } from '../api/workspace.ts';
 import { makeQueryClient, retireQueryClient } from './queryClient.ts';
 import { RuntimeMaintenanceBoundary } from './RuntimeMaintenanceBoundary.tsx';
@@ -89,6 +89,8 @@ type Snapshot = {
   readonly identity: WhoAmI | null;
   readonly failure: Error | null;
   readonly degraded: Error | null;
+  /** The current `degraded` is a throttled background check, not lost contact. */
+  readonly paced: boolean;
   readonly queries: ReturnType<typeof makeQueryClient>;
 };
 
@@ -155,6 +157,8 @@ function identityVersion(identity: WhoAmI | null): string | null {
     // treat a mid-session grant/revoke as no-op and leave the operator chrome
     // (all gated on this) stale until a blocking revalidate.
     String(identity.capabilities.instance_operator),
+    String(identity.capabilities.instance_audit_read === true),
+    String(identity.capabilities.instance_directory === true),
     // The report-delivery-status grant reach gates the machine-access grant
     // dialog, so a grant or revoke of org/instance manage-members must settle.
     String(identity.capabilities.delivery_report_grant.instance),
@@ -185,6 +189,7 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
     identity: null,
     failure: null,
     degraded: null,
+    paced: false,
     queries: makeQueryClient(),
   }));
   const snapshotRef = useRef(snapshot);
@@ -347,6 +352,10 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
             state: stateFor(latest.identity),
             failure: null,
             degraded: problem,
+            // A check that gates the UI still fences, because its answer is
+            // what the UI is waiting on. Behind a background refresh a 429 is
+            // only pacing: the fence's recovery reload would add to the traffic.
+            paced: !blocking && isThrottled(problem),
           });
         } else {
           // No usable session in hand, either genuinely session-less (initial
@@ -392,9 +401,10 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
       // Operation completion must stale the affected session answers now, not
       // one identity round-trip later. The root still owns that broad
       // invalidation and the subsequent whoami check remains the only place an
-      // operation-adjacent 401 can end the browser session.
+      // operation-adjacent 401 can end the browser session. Mark only: settling
+      // that check refetches, so refetching here too would load everything twice.
       if (signal === undefined) {
-        void snapshotRef.current.queries.invalidateQueries();
+        void snapshotRef.current.queries.invalidateQueries({ refetchType: 'none' });
         return checkSession('refresh-and-publish');
       }
       // Recovery must verify the owner before refetching its active cache and
@@ -405,10 +415,14 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
       const request = requestRef.current;
       await new Promise<void>((resolve, reject) => {
         const abort = () => {
+          // A query still waiting out a 429 is why the deadline passed, so the
+          // caller's next attempt should honor that wait.
+          const throttled = queries.getQueryCache().findAll({ type: 'active' })
+            .map((query) => query.state.fetchFailureReason).find(isThrottled);
           if (snapshotRef.current.queries === queries && requestRef.current === request) {
             void queries.cancelQueries();
           }
-          reject(signal.reason);
+          reject(throttled ?? signal.reason);
         };
         signal.addEventListener('abort', abort, { once: true });
         void queries.invalidateQueries({}, { throwOnError: true }).then(resolve, reject)
@@ -645,7 +659,8 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
       return;
     }
     const attempt = Math.max(0, degradedRetriesRef.current - 1);
-    const delay = Math.min(DEGRADED_RETRY_MAX_MS, DEGRADED_RETRY_BASE_MS * 2 ** Math.min(attempt, 5));
+    const backoff = Math.min(DEGRADED_RETRY_MAX_MS, DEGRADED_RETRY_BASE_MS * 2 ** Math.min(attempt, 5));
+    const delay = isThrottled(snapshot.degraded) ? Math.max(backoff, snapshot.degraded.retryAfterMs ?? 0) : backoff;
     const timer = setTimeout(() => void checkSession('refresh-and-publish'), delay);
     return () => clearTimeout(timer);
   }, [checkSession, snapshot.degraded]);
@@ -693,7 +708,7 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
     </div>
   );
   return monitorRuntime
-    ? <RuntimeMaintenanceBoundary failure={snapshot.failure ?? snapshot.degraded} refreshSession={refreshSession} queries={snapshot.queries}>{content}</RuntimeMaintenanceBoundary>
+    ? <RuntimeMaintenanceBoundary failure={snapshot.failure ?? (snapshot.paced ? null : snapshot.degraded)} refreshSession={refreshSession} queries={snapshot.queries}>{content}</RuntimeMaintenanceBoundary>
     : content;
 }
 

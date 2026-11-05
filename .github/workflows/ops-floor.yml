@@ -1,4 +1,4 @@
-name: ops-floor
+name: release-ops-floor
 
 on:
   workflow_dispatch:

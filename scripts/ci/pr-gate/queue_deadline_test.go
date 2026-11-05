@@ -37,6 +37,7 @@ func targetedFixtureEvent(f *queueFixture) event {
 }
 
 func TestTargetedAdmissionDeadlinePublishesFailureWithinReserve(t *testing.T) {
+	t.Setenv("GITHUB_RUN_ATTEMPT", "3") // The last attempt; a hosted runner sets 1.
 	f := newQueueFixture(t)
 	f.c.verify = func(ctx context.Context, _ int, _ string) (policyDecision, error) {
 		<-ctx.Done()
@@ -153,7 +154,7 @@ func (a deadlineAPI) read(ctx context.Context, path string, out any) error {
 
 func TestAdmissionReserveNeverExtendsItsContextOrPublishesAfterIt(t *testing.T) {
 	f := newQueueFixture(t)
-	if err := f.q.init(context.Background()); err != nil {
+	if err := f.q.initRepository(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	policy, err := f.q.policy(context.Background())
@@ -174,6 +175,7 @@ func TestAdmissionReserveNeverExtendsItsContextOrPublishesAfterIt(t *testing.T) 
 }
 
 func TestAdmissionDeadlineCannotTurnIncompleteFeedbackIntoSuccess(t *testing.T) {
+	t.Setenv("GITHUB_RUN_ATTEMPT", "3") // The last attempt; a hosted runner sets 1.
 	for _, status := range []string{"queued", "in_progress"} {
 		t.Run(status, func(t *testing.T) {
 			f := newQueueFixture(t)
@@ -231,5 +233,82 @@ func TestAdmissionFailurePublicationRejectsForeignCheckAndLostWrite(t *testing.T
 				t.Fatalf("lost write was retried: %d writes", len(f.api.writes))
 			}
 		})
+	}
+}
+
+// A pass whose write outlasted the work clock replaced itself with a barrier one second
+// after GitHub applied it, which kept #1187 out of the merge queue.
+func TestVerdictWriteOutlivesTheWorkClock(t *testing.T) {
+	t.Setenv("GITHUB_RUN_ATTEMPT", "1")
+	const work = 300 * time.Millisecond
+	f := newQueueFixture(t)
+	f.api.writeHook = func(ctx context.Context, w map[string]any) error {
+		if w["conclusion"] != "success" {
+			return nil
+		}
+		time.Sleep(work + 100*time.Millisecond)
+		return ctx.Err()
+	}
+	b := admissionBudget{Started: time.Now().Add(-45 * time.Second), Deadline: time.Now().Add(admissionReserve + work)}
+	if err := f.q.executeTargeted(context.Background(), "pull_request_target", targetedFixtureEvent(f), b); err != nil {
+		t.Fatalf("a published pass failed the job: %v", err)
+	}
+	if latest := newestQueueCheck(f.api.checks); latest == nil || latest.Conclusion != "success" {
+		t.Fatalf("the pass was replaced: %+v", latest)
+	}
+}
+
+func TestVerdictWriteGraceIsBounded(t *testing.T) {
+	deadline := time.Now().Add(time.Minute)
+	live, cancel := context.WithDeadline(context.Background(), deadline.Add(-admissionReserve))
+	defer cancel()
+	expired, cancelExpired := context.WithCancel(context.Background())
+	cancelExpired()
+	q := &queueController{controller: &controller{queueDeadline: deadline}, targeted: true}
+
+	write, stop := q.verdictWriteContext(live)
+	defer stop()
+	if got, ok := write.Deadline(); !ok || !got.Equal(deadline.Add(-12*time.Second)) {
+		t.Fatalf("the write must stop twelve seconds before the limit: %v, %v", got, ok)
+	}
+	// A pass that reached publication after the clock must not get a new deadline.
+	if got, stop := q.verdictWriteContext(expired); got != expired {
+		stop()
+		t.Fatal("an expired pass gained a new write deadline")
+	}
+	// Only a budgeted run has a reserve to spend.
+	q.targeted = false
+	if got, stop := q.verdictWriteContext(live); got != live {
+		stop()
+		t.Fatal("an unbudgeted run was detached from its context")
+	}
+	q.targeted, q.queueDeadline = true, time.Time{}
+	if got, stop := q.verdictWriteContext(live); got != live {
+		stop()
+		t.Fatal("a run with no deadline was given an expired write context")
+	}
+}
+
+func TestStuckVerdictWriteLeavesRoomForTheRefusal(t *testing.T) {
+	t.Setenv("GITHUB_RUN_ATTEMPT", "3")
+	f := newQueueFixture(t)
+	f.api.writeHook = func(ctx context.Context, w map[string]any) error {
+		if w["conclusion"] != "success" {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(admissionWriteGrace + 2*time.Second):
+			t.Error("the write outlived its grace")
+			return errors.New("write ran past its deadline")
+		}
+	}
+	b := admissionBudget{Started: time.Now().Add(-45 * time.Second), Deadline: time.Now().Add(admissionReserve + 100*time.Millisecond)}
+	if err := f.q.executeTargeted(context.Background(), "pull_request_target", targetedFixtureEvent(f), b); err == nil {
+		t.Fatal("a stuck write passed")
+	}
+	if latest := newestQueueCheck(f.api.checks); latest == nil || latest.Conclusion != "failure" {
+		t.Fatalf("the refusal did not land: %+v", latest)
 	}
 }

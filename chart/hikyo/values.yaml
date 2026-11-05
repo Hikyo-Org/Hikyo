@@ -257,10 +257,23 @@ rollout:
   responseSecretUID: ""
   journalSecretUID: ""
   leaseUID: ""
+  # One Ed25519 PUBLIC KEY block (compatibility profile), or the Ed25519 and
+  # ML-DSA-65 blocks the strict profile enrolls (see `authority` below).
   authorityPublicKey: ""
-  # Existing separate Ed25519 PKCS#8 signer key; never use the Hikyo root key.
+  # Existing separate PKCS#8 signer Secret; never use the Hikyo root key. The
+  # key holds one Ed25519 block, or the Ed25519 and seed-only ML-DSA-65 blocks.
   authorityExistingSecret: ""
   authorityKey: authority.key
+  # Strict post-quantum authority profile. Leave generation 0 for the unchanged
+  # Ed25519 compatibility profile. Otherwise generation is a number above every
+  # earlier one (the controller keeps it as a floor and refuses lower ones),
+  # required is [ed25519, mldsa65] or [mldsa65], and keyIDs lists the id of each
+  # required key in that order, from `hikyo config-rollout --print-authority-ids`.
+  # See docs/operations/config-rollout-authority.md before changing it.
+  authority:
+    generation: 0
+    required: []
+    keyIDs: []
   # All source Secrets must be immutable. Alias -> {name: Secret name, key: key}.
   initialDatabaseSource: ""
   initialRootSource: ""

@@ -276,6 +276,125 @@ func runPKICLI(t *testing.T, engine store.Engine) {
 	if !listed {
 		t.Fatalf("the worker-published CRL does not list the revoked serial %s", issued.Serial)
 	}
+
+	// --- ML-DSA-65 is HOLD on the public surface (#1133) ---------------------------
+	// The mechanism exists below the API. The 2026-11-04 api-cli-surface
+	// amendment lets the contract name mldsa65, so the request now passes
+	// validation and the refusal is the service: the MLDSAEnabled gate (false in
+	// production), or checkRotationAlgorithm for a rotation, which would hold with
+	// the gate open. A contract refusal would name its field in parentheses, so
+	// the loop below asserts that none does. The server must keep refusing mldsa65
+	// and create nothing. The import path takes its algorithm
+	// from the key rather than from an enum, so it is exercised with a real
+	// ML-DSA key.
+	// writeCA writes an intermediate CA key, its certificate and its chain (the
+	// root) for `pki issuer import ... --key-file --cert-file --chain-file`, so the
+	// refused and the control request use the identical flags.
+	writeCA := func(prefix string, algorithm pki.KeyAlgorithm) (keyFile, certFile, chainFile string) {
+		t.Helper()
+		rootKey, err := pki.GenerateKey(algorithm)
+		if err != nil {
+			t.Fatal(err)
+		}
+		now := time.Now().UTC()
+		rootDER, err := pki.CreateRoot(rootKey, pki.Subject{CommonName: prefix + " Root"}, now, 24*time.Hour*30)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rootCert, err := x509.ParseCertificate(rootDER)
+		if err != nil {
+			t.Fatal(err)
+		}
+		issuerKey, err := pki.GenerateKey(algorithm)
+		if err != nil {
+			t.Fatal(err)
+		}
+		issuerDER, err := pki.SignIntermediate(pki.Parent{Certificate: rootCert, Signer: rootKey}, issuerKey.Public(), pki.Subject{CommonName: prefix + " Issuing"}, now, 24*time.Hour*10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pkcs8, err := pki.MarshalPrivateKey(issuerKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		keyFile, certFile, chainFile = filepath.Join(workDir, prefix+".key"), filepath.Join(workDir, prefix+".pem"), filepath.Join(workDir, prefix+"-chain.pem")
+		for path, content := range map[string][]byte{keyFile: pki.PrivateKeyPEM(pkcs8), certFile: []byte(pki.CertificatePEM(issuerDER)), chainFile: []byte(pki.CertificatePEM(rootDER))} {
+			if err := os.WriteFile(path, content, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return keyFile, certFile, chainFile
+	}
+	holdKeyFile, holdCertFile, holdChainFile := writeCA("hold", pki.MLDSA65)
+	holdPolicy := filepath.Join(workDir, "hold-policy.json")
+	if err := os.WriteFile(holdPolicy, []byte(strings.Replace(policy, `"ecdsa-p256","ed25519"`, `"mldsa65"`, 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Positive control: the identical import request shape (key, certificate and
+	// chain files) with a classical CA succeeds, so the ML-DSA refusal below is
+	// about the algorithm and not the shape.
+	controlKeyFile, controlCertFile, controlChainFile := writeCA("control", pki.ECDSAP256)
+	runCLI(cli.ExitOK, "pki", "issuer", "import", "classic-import", "--key-file", controlKeyFile, "--cert-file", controlCertFile, "--chain-file", controlChainFile)
+	// refusedCLI runs a command that must be refused with the contract exit
+	// code and returns its stderr, so each case can also assert WHY.
+	refusedCLI := func(args ...string) string {
+		t.Helper()
+		stdout, stderr := &strings.Builder{}, &strings.Builder{}
+		invocation := ios()
+		invocation.Stdout, invocation.Stderr = stdout, stderr
+		if got := cli.Run(t.Context(), invocation, args); got != cli.ExitRefused {
+			t.Fatalf("hikyo %s exited %d, want the refusal %d\nstdout: %s\nstderr: %s", strings.Join(args, " "), got, cli.ExitRefused, stdout, stderr)
+		}
+		return stderr.String()
+	}
+	// The generated-key case runs as the workload principal: the human session
+	// is stopped earlier by the browser mint ceremony, before any algorithm
+	// check, so it would pass for an ECDSA request too. The workload reached key
+	// generation above with ed25519 (workerCert), so the request shape is valid
+	// and the refusal is the algorithm gate.
+	heldKeyOut := filepath.Join(workDir, "held-worker.key")
+	const contractRefusal = "the request does not satisfy the API contract"
+	for _, c := range []struct {
+		name    string
+		args    []string
+		machine bool
+		reason  string
+	}{
+		{"create-root", []string{"pki", "issuer", "create-root", "hold-root", "--common-name", "Held", "--key-algorithm", "mldsa65"}, false, contractRefusal},
+		{"rotate", []string{"pki", "issuer", "rotate", "e2e-issuing", "--key-algorithm", "mldsa65"}, false, contractRefusal},
+		// The import algorithm comes from the key, so the refusal is the service
+		// gate; the wire hides its reason. The positive control above proves the
+		// same request shape with a classical key is accepted.
+		{"import", []string{"pki", "issuer", "import", "hold-import", "--key-file", holdKeyFile, "--cert-file", holdCertFile, "--chain-file", holdChainFile}, false, contractRefusal},
+		{"profile create", []string{"pki", "profile", "create", "hold-profile", "--policy-file", holdPolicy}, false, contractRefusal},
+		{"cert issue (generated key, workload)", append([]string{"cert", "issue", "--profile", "e2e-web", "--generate-key",
+			"--key-algorithm", "mldsa65", "--uri", "spiffe://e2e.test/ns/prod/sa/held", "--output-file", heldKeyOut, "-o", "json"}, workload...), true, contractRefusal},
+	} {
+		if c.machine {
+			stateDir = machineState
+		}
+		stderr := refusedCLI(c.args...)
+		stateDir = humanState
+		t.Logf("%s refused: %.160s", c.name, strings.TrimSpace(stderr))
+		if !strings.Contains(stderr, c.reason) || strings.Contains(stderr, c.reason+" (") {
+			t.Errorf("%s: refusal reason = %q, want the service's %q with no contract field", c.name, strings.TrimSpace(stderr), c.reason)
+		}
+		if strings.Contains(stderr, "mint ceremony") || strings.Contains(stderr, "PRIVATE KEY") {
+			t.Errorf("%s: refused for the wrong reason or leaked key text: %s", c.name, stderr)
+		}
+	}
+	if _, err := os.Stat(heldKeyOut); err == nil {
+		t.Fatal("a refused generated-key request wrote a key file")
+	}
+	if n := queryInt(t, db, `SELECT COUNT(*) FROM pki_issuers WHERE key_algorithm <> 'ecdsa-p256' AND key_algorithm <> 'ecdsa-p384' AND key_algorithm <> 'rsa-3072' AND key_algorithm <> 'rsa-4096'`); n != 0 {
+		t.Fatalf("the public surface created %d issuers outside the classical set", n)
+	}
+	if n := queryInt(t, db, `SELECT COUNT(*) FROM pki_issuers WHERE name IN ('hold-root','hold-import')`) + queryInt(t, db, `SELECT COUNT(*) FROM pki_profiles WHERE name='hold-profile'`) + queryInt(t, db, `SELECT COUNT(*) FROM pki_certificates WHERE key_algorithm='mldsa65'`); n != 0 {
+		t.Fatalf("a refused ML-DSA request left %d rows", n)
+	}
+	if n := queryInt(t, db, `SELECT COUNT(*) FROM pki_issuers WHERE name='e2e-issuing' AND version > 1`); n != 0 {
+		t.Fatal("a refused rotation created a version")
+	}
 	stopFirst()
 
 	// --- Restart: inventory and custody survive ------------------------------------
@@ -299,8 +418,8 @@ func runPKICLI(t *testing.T, engine store.Engine) {
 	if err := json.Unmarshal([]byte(runCLI(cli.ExitOK, "pki", "issuer", "list", "-o", "json")), &issuers); err != nil {
 		t.Fatal(err)
 	}
-	if len(issuers.Issuers) != 3 {
-		t.Fatalf("issuers after restart = %d, want 3", len(issuers.Issuers))
+	if len(issuers.Issuers) != 4 {
+		t.Fatalf("issuers after restart = %d, want 4", len(issuers.Issuers))
 	}
 	if got := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type='pki.certificate_key_disclosed' AND actor_class='machine'"); got != 1 {
 		t.Fatalf("machine key disclosure events = %d, want 1", got)

@@ -2,82 +2,54 @@
 set -eu
 
 script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
+repo_root=$(CDPATH='' cd -- "$script_dir/../.." && pwd)
 fixture_dir=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-green-main.XXXXXX")
 trap 'rm -rf "$fixture_dir"' EXIT HUP INT TERM
 commit=176e6e67379d0675e6211f0491dc965cee4f1c5c
-cat >"$fixture_dir/gh" <<EOF_GH
+# The API proof itself lives in the stdlib verifier's adversarial tests. This
+# fixture checks the portable wrapper's exact inputs and error propagation.
+cat >"$fixture_dir/go" <<'GO'
 #!/bin/sh
-case "\$2" in
-  repos/Hikyo-Org/hikyo/actions/workflows/ci-main.yml/runs\?*per_page=1) cat '$fixture_dir/manual.json' ;;
-  repos/Hikyo-Org/hikyo/actions/workflows/ci.yml/runs\?*per_page=1) cat '$fixture_dir/legacy.json' ;;
-  *) echo 'unexpected workflow proof query' >&2; exit 2 ;;
-esac
-EOF_GH
-chmod +x "$fixture_dir/gh"
-jq -nc --arg commit "$commit" '{total_count:1,workflow_runs:[{id:20,head_sha:$commit,head_branch:"main",event:"workflow_dispatch",path:".github/workflows/ci-main.yml",status:"completed",conclusion:"success"}]}' >"$fixture_dir/valid-manual.json"
-printf '{"total_count":0,"workflow_runs":[]}\n' >"$fixture_dir/empty.json"
-reset_fixture() {
- cp "$fixture_dir/valid-manual.json" "$fixture_dir/manual.json"
- cp "$fixture_dir/empty.json" "$fixture_dir/legacy.json"
-}
-proof() {
- GH_BIN="$fixture_dir/gh" "$script_dir/require-green-main.sh" Hikyo-Org/hikyo "$commit"
-}
-reset_fixture
-proof >/dev/null
-for mutation in \
- '.workflow_runs[0].head_sha = ("a"*40)' \
- '.workflow_runs[0].head_branch = "feature"' \
- '.workflow_runs[0].event = "pull_request"' \
- '.workflow_runs[0].event = "push"' \
- '.workflow_runs[0].event = "schedule"' \
- '.workflow_runs[0].path = ".github/workflows/cache-warm.yml"' \
- '.workflow_runs[0].id = 0' \
- '.workflow_runs[0].status = "in_progress"' \
- '.workflow_runs[0].conclusion = "failure"' \
- '.workflow_runs[0].conclusion = "cancelled"' \
- '.workflow_runs = []' \
- '.workflow_runs = null' \
- '.total_count = -1' \
- '.total_count = 0' \
- '.total_count = 1.5' \
- '.workflow_runs += .workflow_runs'; do
- reset_fixture
- jq "$mutation" "$fixture_dir/valid-manual.json" >"$fixture_dir/manual.json"
- if proof >/dev/null 2>&1; then
-  printf 'green main fixture failed: invalid provenance accepted: %s\n' "$mutation" >&2
+set -eu
+[ "$#" -eq 14 ]
+[ "$1" = -C ] && [ "$2" = "$EXPECTED_ROOT" ]
+[ "$3" = run ] && [ "$4" = -p ] && [ "$5" = 2 ]
+[ "$6" = ./scripts/ci/source-proof ]
+[ "$7" = --repository ] && [ "$8" = Hikyo-Org/hikyo ]
+[ "$9" = --mode ] && [ "${10}" = main ]
+[ "${11}" = --commit ] && [ "${12}" = "$EXPECTED_COMMIT" ]
+[ "${13}" = --authority-commit ] && [ "${14}" = "$EXPECTED_COMMIT" ]
+printf 'called\n' >>"$CALLS"
+exit "$PROOF_STATUS"
+GO
+chmod +x "$fixture_dir/go"
+export EXPECTED_ROOT="$repo_root" EXPECTED_COMMIT="$commit"
+export CALLS="$fixture_dir/calls" PROOF_STATUS=0
+GO_BIN="$fixture_dir/go" "$script_dir/require-green-main.sh" Hikyo-Org/hikyo "$commit" >/dev/null
+[ "$(wc -l <"$CALLS" | tr -d ' ')" = 1 ]
+for status in 1 2 17; do
+ PROOF_STATUS=$status
+ export PROOF_STATUS
+ if GO_BIN="$fixture_dir/go" "$script_dir/require-green-main.sh" Hikyo-Org/hikyo "$commit" >"$fixture_dir/out" 2>&1; then
+  printf 'green main fixture: verifier failure %s was ignored\n' "$status" >&2
+  exit 1
+ fi
+ grep -F 'needs complete authenticated source proof' "$fixture_dir/out" >/dev/null
+done
+before=$(wc -l <"$CALLS" | tr -d ' ')
+for bad in main abc ABCDEF0000000000000000000000000000000000; do
+ if GO_BIN="$fixture_dir/go" "$script_dir/require-green-main.sh" Hikyo-Org/hikyo "$bad" >/dev/null 2>&1; then
+  printf 'green main fixture: mutable/invalid source accepted\n' >&2
   exit 1
  fi
 done
-# The latest-only queries are independent of large workflow histories or any
-# number of unrelated observer/benchmark callbacks on the same main commit.
-reset_fixture
-jq '.total_count = 101' "$fixture_dir/valid-manual.json" >"$fixture_dir/manual.json"
-proof >/dev/null
-# Historical push/manual main CI remains a valid source before a wrapper run.
-for event in push workflow_dispatch; do
- reset_fixture
- cp "$fixture_dir/empty.json" "$fixture_dir/manual.json"
- jq --arg event "$event" '.workflow_runs[0].path = ".github/workflows/ci.yml" | .workflow_runs[0].event = $event' "$fixture_dir/valid-manual.json" >"$fixture_dir/legacy.json"
- proof >/dev/null
-done
-# A newer failed/queued latest run in either definition blocks the older pass.
-for newer in manual legacy; do
- for result in failure in_progress; do
-  reset_fixture
-  jq '.workflow_runs[0].id = 10 | .workflow_runs[0].path = ".github/workflows/ci.yml" | .workflow_runs[0].event = "push"' "$fixture_dir/valid-manual.json" >"$fixture_dir/legacy.json"
-  jq --arg result "$result" '.workflow_runs[0].id = 30 | if $result == "in_progress" then .workflow_runs[0].status = $result | .workflow_runs[0].conclusion = null else .workflow_runs[0].conclusion = $result end' "$fixture_dir/$newer.json" >"$fixture_dir/newer.json"
-  mv "$fixture_dir/newer.json" "$fixture_dir/$newer.json"
-  if proof >/dev/null 2>&1; then
-   printf 'green main fixture failed: newer %s %s hid behind older pass\n' "$newer" "$result" >&2
-   exit 1
-  fi
- done
-done
-reset_fixture
-printf '{"total_count":1,"workflow_runs":[]}\n' >"$fixture_dir/legacy.json"
-if proof >/dev/null 2>&1; then
- echo 'green main fixture failed: incomplete legacy response accepted' >&2
+if GO_BIN="$fixture_dir/go" "$script_dir/require-green-main.sh" '../foreign' "$commit" >/dev/null 2>&1; then
+ printf 'green main fixture: invalid repository accepted\n' >&2
  exit 1
 fi
-printf 'green main fixture: exact immutable source, latest cross-workflow proof, large histories and provenance refusals passed\n'
+if GO_BIN="$fixture_dir/go" "$script_dir/require-green-main.sh" Hikyo-Org/hikyo "$commit" extra >/dev/null 2>&1; then
+ printf 'green main fixture: extra arguments accepted\n' >&2
+ exit 1
+fi
+[ "$(wc -l <"$CALLS" | tr -d ' ')" = "$before" ]
+printf 'green main fixture: exact source forwarding, bounded compile workers and verifier failure propagation passed\n'

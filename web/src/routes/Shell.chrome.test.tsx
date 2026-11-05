@@ -11,6 +11,7 @@ const base = {
   activeOrgName: 'acme',
   routeProjectId: '',
   activeProjectName: '',
+  remote: '',
 };
 
 const orgCrumb = { label: 'acme', to: '/projects' };
@@ -37,6 +38,18 @@ describe('breadcrumbs', () => {
       orgCrumb,
       { label: 'Projects' },
     ]);
+  });
+
+  it('keeps the project crumb inside a remote workspace', () => {
+    expect(
+      breadcrumbs({
+        ...base,
+        surface: surfaceById('transit-keys'),
+        routeProjectId: 'prj_1',
+        activeProjectName: 'demo',
+        remote: 'ew',
+      })[2],
+    ).toEqual({ label: 'demo', to: '/orgs/org_1/projects/prj_1/matrix?remote=ew' });
   });
 
   it('appends the surface after the project on project-scoped routes, the project linking to its matrix', () => {
@@ -77,16 +90,12 @@ describe('breadcrumbs', () => {
 });
 
 describe('ProjectContext', () => {
-  const render = (orgRole: string | null) => {
+  const render = (qualifiers: readonly string[]) => {
     const container = document.createElement('div');
     container.innerHTML = renderToStaticMarkup(
       <MemoryRouter>
         <ProjectContext
-          org="org_1"
-          orgName="acme"
-          projectName="demo"
-          orgRole={orgRole}
-          links={[]}
+          block={{ kind: 'project', title: 'Project', qualifiers, links: [] }}
           state={{
             groups: [
               { id: 'g1', name: 'db', keyCount: 3, problemCount: 0, hidden: false },
@@ -104,16 +113,15 @@ describe('ProjectContext', () => {
     return container;
   };
 
-  it('states no organisation role outside prototype mode, and the prototype one when given', () => {
-    expect(render(null).querySelector('.context-sidebar__org small')).toBeNull();
-    expect(render('org admin').querySelector('.context-sidebar__org small')?.textContent).toBe(
-      'org admin',
-    );
-    expect(render(null).querySelector('.context-sidebar__org strong')?.textContent).toBe('acme');
+  it('heads the block with the project, and the remote boundary in a workspace, with no organisation row', () => {
+    const local = render(['demo']);
+    expect(local.querySelector('h2')?.textContent).toBe('Project · demo');
+    expect(local.querySelector('h2')?.getAttribute('title')).toBe('Project · demo');
+    expect(render(['on edge', 'prj_1']).querySelector('h2')?.textContent).toBe('Project · on edge · prj_1');
   });
 
   it('marks a problem count with a glyph so the pill is never colour alone', () => {
-    const container = render(null);
+    const container = render(['demo']);
     const [keys, problems] = [...container.querySelectorAll('.context-sidebar__group')];
     expect(keys?.querySelector('.context-sidebar__group-count')?.textContent).toBe('3');
     expect(keys?.querySelector('.count__glyph')).toBeNull();

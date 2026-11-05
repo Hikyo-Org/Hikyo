@@ -396,6 +396,7 @@ func (a *API) Whoami(ctx context.Context, _ apigen.WhoamiRequestObject) (apigen.
 		},
 		Capabilities: apigen.PrincipalCapabilities{
 			InstanceAuditRead:   &id.InstanceAuditRead,
+			InstanceDirectory:   &id.InstanceDirectory,
 			InstanceOperator:    id.InstanceOperator,
 			DeliveryReportGrant: unheldGrantReachOf(id.DeliveryReportGrant),
 		},
@@ -674,6 +675,7 @@ func (a *API) withRequestAdmission(ctx context.Context, sourceIP string) context
 	ctx = operation.WithRequestAdmission(ctx, a.RequestBudget.AdmitAuthenticatedAPI)
 	if a.Admission != nil {
 		ctx = operation.WithPreauthenticationAdmission(ctx, func() error { return a.Admission.AdmitDiscovery(sourceIP) })
+		ctx = operation.WithLiveSessions(ctx, a.Admission)
 	}
 	return ctx
 }

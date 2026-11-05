@@ -10,7 +10,12 @@ import (
 )
 
 func TestEvidencePreflightReadsExactArtifactWithoutCopyOrAuthority(t *testing.T) {
-	f := newSignedEvidenceFixture(t, false)
+	t.Run("x25519", func(t *testing.T) { evidencePreflightReadsExactArtifact(t, false) })
+	t.Run("hybrid", func(t *testing.T) { evidencePreflightReadsExactArtifact(t, true) })
+}
+
+func evidencePreflightReadsExactArtifact(t *testing.T, hybrid bool) {
+	f := newSignedEvidenceFixtureFor(t, false, hybrid)
 	directory := t.TempDir()
 	path := filepath.Join(directory, "backup.age")
 	raw, err := os.ReadFile(f.ciphertext.path)

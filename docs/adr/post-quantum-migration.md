@@ -2,13 +2,13 @@
 
 > **Status: Proposed. Not operative. Nothing here is locked or authorized.** The
 > owner accepted the register as recommended and gave maintainer security approval
-> on 2026-11-02. It is not operative until each ADR amendment lands. This file
+> on 2026-11-02. It is not operative until each ADR amendment is recorded and its implementation merges. This file
 > records the
 > decisions that
 > [#1124](https://github.com/Hikyo-Org/Hikyo/issues/1124) needs from the owner
 > and, for each affected locked ADR, the amendment text that would land through the
-> governance route. No locked ADR body or banner is edited by this
-> file. Locking follows the [governance route](#governance-route).
+> governance route. This file itself edits no locked ADR; four banners, labelled not owner-locked, were
+> added to the ADRs they name (see the register notes). Locking follows the [governance route](#governance-route).
 
 ## Context
 
@@ -34,9 +34,10 @@ Recorded as made; no others are implied.
 | Decision | Effect |
 | --- | --- |
 | The PQ program runs no cross-provider review. The owner said "No cross provider review" on 2026-11-02; signed commit `13068ab2460c44d226111322a99ca65b20a3d02e` on PR #1148 records the decision in its own words ("the PQ program runs no cross-provider review") | Each amendment banner records cross-provider review as **SKIPPED by explicit owner instruction**. It is not CLEAN. Independent adversarial review (Standards, Spec and security) remains required |
-| PR #1148 stays a draft | The program draft is not merge-ready; this contract is stacked on it |
+| PR #1148 stays a draft | The program draft is not merge-ready; this contract is stacked on it. **Superseded on 2026-11-04** (historical row kept): the owner authorized merge to `dev` once required checks are green, bottom-up, and accepted publication in the next nightly. That instruction is the maintainer security approval for each PR's final head that is independently reviewed and green at merge, except #1172, which is held until the `/api/v1` freeze is decided. Merging this contract makes nothing operative; each ADR amendment takes effect on its own trigger. Not decided and still open: the `/api/v1` freeze, Transit signed bytes, ML-DSA recovery custody, #1183 and the F-nn decisions, DEC-17 thresholds, the #1126 profile selector and vault path, #1132 signing granularity, the #1127 proxy leg and #1133's five choices |
 | DEC-01 to DEC-20 are accepted as recommended. The owner replied "As recommended" on 2026-11-02 to the register at `383290434d2cf614cd8aa31600c1f79d1e53f4d7`, after being told its final repairs were not re-reviewed | The Decision column below is the owner decision. This commit is the record |
 | Maintainer security approval of this contract at `27a16c276c1834b4edb059d10414b13cd4e90729`. The owner replied "Continue as recommended" on 2026-11-02 to approving that text, after being told what the final pass changed and that its last repairs had no independent review | Covers the policy text only. Each implementation PR needs its own maintainer security approval. Owner and maintainer are one person, so this is not independent human review |
+| **The `/api/v1` freeze: option A (2026-11-04).** The owner, Marc Went, chose to amend [api-cli-surface](./api-cli-surface.md) (#25) so the closed Transit and PKI enums grow once, for `mldsa65` only | A banner on the API and CLI surface ADR records it, not owner-locked wording. `api/freeze.go` gains a closed exception list of exactly the permitted findings; `*-enum-value-added` stays off the allowlist. The skew break (a consumer validating with the `v1.0.0` Zod schemas fails a whole list holding one `mldsa65` value) is accepted and stated there. Cross-provider review is SKIPPED by explicit owner instruction, not CLEAN. Operative when the implementing pull request merges. The same day the owner also accepted the Transit signed-bytes departure described in the #1129 handoff and confirmed the #1126 profile selector and vault path, the #1127 proxy leg and #1132 signing granularity as built. This row supersedes those items in the "Not decided and still open" list of the PR #1148 row above, and ends that row's hold on #1172, which stays as history. #1172 still needs its public surface and its own review |
 
 This is a **waiver of part of the amendment procedure, not a match with it**
 (see below). It is also broader than its precedent: the
@@ -82,16 +83,16 @@ linked documents.
 | DEC-01 | Allowed KEM sets ([profiles](../security/pqc/profiles.md#candidate-parameter-sets)) | (a) hybrid X25519 + ML-KEM-768 only; (b) also ML-KEM-1024 hybrids for TLS; (c) pure ML-KEM | (a) | NIST's default ML-KEM-768 (category 3) and existing library paths; (c) drops the classical hedge and has no age path |
 | DEC-02 | Allowed signature sets | (a) ML-DSA-65 only; (b) 65 default, 87 for roots; (c) include ML-DSA-44; (d) SLH-DSA | (a); revisit (b) at DEC-14 | ML-DSA-44 is category 2; SLH-DSA is not in the Go standard library. Pure ML-DSA with context, no pre-hash |
 | DEC-03 | Composition and stripping ([profiles](../security/pqc/profiles.md#signature-composition-and-stripping-resistance-dec-03)) | (a) all required signatures verify, required set from verifier trust state, suite-bound bytes; (b) PQ-only for new surfaces; (c) either signature suffices; (d) composite | (a) in the dual window, (b) as end state; (c) rejected | (c) gives no PQ forgery resistance; (d) has no stdlib support |
-| DEC-04 | Symmetric hierarchy and category-1 floor ([profiles](../security/pqc/profiles.md#symmetric-floor-and-assumptions)) | (a) retain it and declare a category-1 floor on the named objects (age file keys, `operator.age`, TLS 1.3 records); (b) patch or fork age; (c) add a 256-bit layer around archives | (a) | Archive payload and metadata, webhook payloads, the custody record holding root escrow and TLS records are 128-bit strength; fields keep 256-bit only while no `operator.age` copy holds a root that opens them, because a `root_escrow` opens the whole hierarchy. (b) is a custom primitive change excluded by #1123 |
+| DEC-04 | Symmetric hierarchy and category-1 floor ([profiles](../security/pqc/profiles.md#symmetric-floor-and-assumptions)) | (a) retain it and declare a category-1 floor on the named objects (age file keys, `operator.age`, TLS 1.3 records); (b) patch or fork age; (c) add a 256-bit layer around archives | (a) | Archive payload and metadata, webhook payloads, the custody record holding root escrow and TLS records are 128-bit strength; fields keep 256-bit only while no `operator.age` copy holds a root that opens them, because a `root_escrow` opens the whole hierarchy. (b) is a custom primitive change excluded by #1123. This Consequence text was reworded in review and is not the owner's text |
 | DEC-05 | Profile structure and default | (a) two opt-in modes, existing behavior unchanged; (b) hybrid writes by default once qualified; (c) strict default | (a) now; reconsider (b) after #1135 | No silent change for existing installs |
 | DEC-06 | Strict TLS profile and hop scope | (a) TLS 1.3, explicit `[X25519MLKEM768]`, tickets off, `VerifyConnection` for authenticity; (b) also other Go hybrids; (c) Go defaults. Scope: the single [hop table](../security/pqc/profiles.md#hop-starting-profiles); strict first only on the listener and owned clients; pin-based hops excluded from authenticity | (a) with that table | (c) rejected: `GODEBUG` can remove defaults. Go has no signature-scheme setting. Every hop has one starting profile. The listener presents a chain and verifies no client chain. A strict ML-DSA listener certificate may exclude clients (E-18); pin-based owned clients get no authenticity claim (E-20) |
 | DEC-07 | Encodings, fingerprints, domain separation, identifiers | (a) new algorithm-bearing namespaces and labels; (b) reuse existing; (c) per child | (a) | (b) would reinterpret `age-x25519-sha256:`; (c) lets each child invent policy |
 | DEC-08 | Size and work bounds ([profiles](../security/pqc/profiles.md#size-and-work-bounds-per-consumer)) | (a) smallest fit, no global raise: at most 32 hybrid recipients (managed value cap 65536 bytes), webhook v2 field bounds; (b) raise global caps; (c) keep 256 or 64 | (a) | 33 recipients fit a managed value, 64 do not; deterministic refusal before output |
 | DEC-09 | Vectors, errors, maintenance, errata | (a) pinned Wycheproof plus age/HPKE vectors, closed error classes, errata review per Go minor and NIST publication; (b) library tests only | (a) | (b) misses #1135's reference-vector requirement; FIPS 203/204 carry open errata notes |
-| DEC-10 | Precedence, downgrade, stale-node fencing, exceptions | (a) managed > bootstrap > default, with host-authority recovery registered (E-21); stale nodes fenced; expiry 180 days, two renewals then an ADR-recorded decision; (b) environment overrides managed; (c) longer or no expiry | (a) | Single approver is a residual risk |
+| DEC-10 | Precedence, downgrade, stale-node fencing, exceptions | (a) managed > bootstrap > default, with host-authority recovery registered (E-21); stale nodes fenced (amended 2026-11-04, see the Decision cell); expiry 180 days, two renewals then an ADR-recorded decision; (b) environment overrides managed; (c) longer or no expiry | (a), **amended by the owner on 2026-11-04**: strict is per process, stale-node fencing is not built and the fence stays #1127 work (E-22) | Single approver is a residual risk. A stale node keeps serving after strict is selected and is not reported as not enforcing (E-22) |
 | DEC-11 | Rollout, retirement, floor, historical access ([migration](../security/pqc/migration.md)) | (a) the ladder with observable gates; floor persistence stated as a child requirement; where strict is selected, archive restore needs receipt-bound provenance or quarantine, for hybrid and classical alike, never for default compat restores; re-encrypted copies; classical evidence read-only after a quantum break, countersigning an option for the owning child; (b) same without any countersigning | (a) | Floor is one-way. Provenance mechanism, receipt signer, pin and hold release are not designed here, and today only upgrade exports write a receipt, so strict backups stay HOLD (E-19). Audit exports are forgeable today; #1135 records the non-claim (E-12). Unobservable readers and local floors are registered (E-17); classical archive copies E-10 |
 | DEC-12 | Key generation, escrow, custody, `operator.age` ([migration](../security/pqc/migration.md#operator-custody-vault-operatorage-i08)) | Vault: (a) keep age-scrypt sealing and `Rewrap`; (b) seal with the existing 256-bit envelope keyed from the root. Consequences are in migration; the design is left to #1126. Custody: software only vs a named external provider first | (a) now, (b) as target; software custody | Old passphrase copies hold a live `root_escrow`, so retiring them needs root rotation; old identities still open history; `Rewrap` keeps stale escrow that drills use; removing the prompt strands interrupted hosts; under either option root rotation does not re-seal, so a root-sealed vault fails to unlock afterwards until #1126 re-seals it. The vault is outside "fields keep 256-bit". E-09, E-16 |
-| DEC-13 | Pairing SRP and DPoP | (a) HOLD with E-01; (b) invent a composition; (c) redesign pairing | (a) | (b) excluded by the issue; `go-jose` lacks ML-DSA; ML-DSA-65 DPoP exceeds its 8192-byte cap. **#1135 is blocked by #1130, so (a) deadlocks #1135 unless the owner also narrows scope with linked residual work, which #1123 permits: decided, with #1130 as the linked residual work** |
+| DEC-13 | Pairing SRP and DPoP | (a) HOLD with E-01; (b) invent a composition; (c) redesign pairing | (a) | (b) excluded by the issue; no standardized PQ PAKE found (see [pairing feasibility](../security/pqc/pairing-feasibility.md)); `go-jose` v4.1.8 (2026-11-02) supports ML-DSA on Go 1.27, so the library is not the DPoP blocker, but ML-DSA-65 DPoP is 8252 bytes against the 8192 cap and the 2048-byte JWK and header bounds, and enrollment would stay classical. **#1135 was blocked by #1130, so (a) would have deadlocked it. The owner narrowed #1135's scope with #1130 as the linked residual work, which #1123 permits, so #1130 no longer blocks #1135** |
 | DEC-14 | Release trust and artifact signing ([migration](../security/pqc/migration.md#release-trust-and-install-paths)) | (a) requirements on #1132: PQ-capable trust documents, sequence-only progression, claim only after persisted all-required verification, every binary-replacement path closed or registered, anchor feasibility examined; maintainer-held stable signer; ML-DSA recovery key custody HOLD until the owner names it before #1132; (b) offline root ceremony; (c) defer | (a) | The PQ trust-anchor bootstrap is an unsolved gap and the release-authenticity claim stays HOLD until #1132 closes every replacement path (E-11, E-15). Nightly has no PQ signer. Losing the sole ML-DSA recovery key leaves no PQ-signed reinstall (E-18) |
 | DEC-15 | Sigstore and classical supply chain | (a) exceptions (E-03, including source supply chain I32) plus first-party PQ signature in addition; (b) no artifact PQ claim yet; (c) drop Sigstore | (a) | No claim these ecosystems migrated |
 | DEC-16 | SSH CA, federation, authenticators, imports | (a) exceptions E-02, E-04 to E-06 and E-13; no `@golang.org` certificate names; (b) ship those names; (c) hold the profile | (a) | OpenSSH has no PQ signatures |
@@ -100,12 +101,19 @@ linked documents.
 | DEC-19 | Private PKI root (#1133) | (a) offline ML-DSA root, operator-held, signs intermediates; (b) online evaluation root only; (c) classical root over PQ intermediate | (a) | (c) is not a PQ-authenticated chain; no HSM assumed |
 | DEC-20 | Rollout authority (#1131) | (a) in-band transition "through the existing authenticated authority", as #1131 words it; (b) mailbox announcement; (c) operator re-enrollment out of band | (c), **a departure from #1131's wording, accepted by the owner** | (a): the only algorithm required today is Ed25519, so a forger installs its own ML-DSA key, and the controller cannot check MFA. (c): enrollment is an immutable ConfigMap; a new key or id fails the existing journal check and emptying the journal loses the plan Restore needs; these are #1131 requirements (E-14) |
 
+### Register notes (not owner text)
+
+- **Package v0.7, 2026-11-04.** DEC-10 amended, E-22 added and E-19 widened, reviewed by `claude-opus-5-5` (not human review). The approver is the owner and sole maintainer; the immutable record is signed ledger commit `e26ff8e388537bd34c9194fff8fc51806122b253` on PR #1148.
+- **DEC-10 amended 2026-11-04.** The owner decided that strict is per process, that stale-node fencing is not built, and that the fence stays #1127 work. The 2026-11-02 acceptance of DEC-10 (a) stands with that change. The limit is registered as E-22 in the [migration policy](../security/pqc/migration.md#exception-register).
+- **Consequence column.** The Decision column is the owner's. The Consequence column is explanatory text written for review. DEC-04's Consequence was reworded in review (the 256-bit field statement holds only while no `operator.age` copy holds a root that opens the fields; the profiles and migration documents use the same wording) and is not the owner's text.
+- **Amendment banners.** The banners on the API and CLI surface, encryption model, threat model and signed upgrade compatibility ADRs derive from these decisions and were narrowed in review. The owner chose to label them not owner-locked (2026-11-04). Each has a separate note stating its relation to the body of its ADR. Independent adversarial review of them is recorded on the amendment PR; cross-provider review is SKIPPED by explicit owner instruction, not CLEAN.
+
 ## Proposed amendments to locked ADRs
 
 Proposed text only, copied into the named ADR when its ticket is reopened. Backups and
 TLS come first: the encryption model, the confidentiality part of the threat model and
 the backup custody sentence of signed upgrade compatibility and the trust-store field in
-the API and CLI surface are recorded in those ADRs. Common review sentence: "Independent adversarial review is
+the API and CLI surface are recorded in those ADRs as banners that are not owner-locked. Common review sentence: "Independent adversarial review is
 required; cross-provider review is SKIPPED by explicit owner instruction
 (2026-11-02) and is not CLEAN."
 
@@ -116,16 +124,17 @@ required; cross-provider review is SKIPPED by explicit owner instruction
 | [transit](./transit.md) (#156, named in its decision text) | D2, D3, D4, D5, D9, D10 | DEC-02, 03, 07, 08 |
 | [remote-instance-pairing](./remote-instance-pairing.md) (its record names #8 and #71 as reopened) | Cryptographic profile; Limits of the guarantee | DEC-13 |
 | [pki](./pki.md) (#154) | D2, D3, D5, D7, D9 | DEC-02, 03, 06, 08, 19 |
-| [signed-upgrade-compatibility](./signed-upgrade-compatibility.md) (#638, its lock record) | Release identity and trust; Backup and restore custody | DEC-03, 11, 14, 15 |
-| [stable-workflow-signing](./stable-workflow-signing.md) (PR #714 and the owner's 2026-09-08 decision; it has no grilling issue) | Decision (keyless stable signing, recovery-signed policy) | DEC-14 |
-| [system-architecture](./system-architecture.md) (#22; "Packaging & release artifacts" trust model, already superseded in part by stable-workflow-signing) | Signing trust model wording | DEC-14 |
-| [oss-mechanics](./oss-mechanics.md) (#33; "Signing" custody, ceremony, rotation, compromise) | Same | DEC-14 |
+| [signed-upgrade-compatibility](./signed-upgrade-compatibility.md) (#638, its lock record) | Release identity and trust; Backup and restore custody | DEC-03, 07, 11, 14, 15 |
+| [stable-workflow-signing](./stable-workflow-signing.md) (PR #714 and the owner's 2026-09-08 decision; it has no grilling issue) | Decision (keyless stable signing, recovery-signed policy) | DEC-14, 15 |
+| [system-architecture](./system-architecture.md) (#22; "Packaging & release artifacts" trust model, already superseded in part by stable-workflow-signing) | Signing trust model wording | DEC-14, 15 |
+| [oss-mechanics](./oss-mechanics.md) (#33; "Signing" custody, ceremony, rotation, compromise) | Same | DEC-14, 15 |
 | [api-cli-surface](./api-cli-surface.md) (#25; found while implementing #1127) | The closed trust-store and bundle field set, and the sticky-entry rule, from the #966 amendment | DEC-05, 06 |
+| [api-cli-surface](./api-cli-surface.md) (#25; found while implementing #1129 and #1133) | The version promise (closed enums never grow, old clients keep working) and the freeze guard: a one-time growth of the Transit and PKI enums for `mldsa65` only, with the skew break stated | Owner decision of 2026-11-04 (option A) |
 | [ops-spec](./ops-spec.md) (#32; recipient hygiene "exactly one age identity per retention class") | Listed because DEC-08 and DEC-12 touch recipients; no change proposed | DEC-08 |
 
 Non-ADR owners: `docs/spec/sealed-webhook.md` (#1128) and the self-configuration
-specs (#1131); DEC-18 does not state their revision route, so the owning child
-proposes it: HOLD.
+specs (#1131); DEC-18 does not state their revision route. The owner chose the declared-amendment
+banner on 2026-11-04.
 
 ### Encryption model
 
@@ -133,7 +142,7 @@ Landed as the 2026-11-02 banner on [encryption-model](./encryption-model.md), wh
 
 ### Threat model
 
-The recording-adversary class landed as the 2026-11-02 banner on [threat-model](./threat-model.md). Still proposed: a future quantum forger class for the surfaces of the authenticity profile, added with the authenticity children.
+The recording-adversary class landed as the 2026-11-02 banner on [threat-model](./threat-model.md). Still proposed: a future quantum forger class for the surfaces of the authenticity profile, added with the authenticity children. Neither claim extends to peers or authenticators in the exception register.
 
 ### Transit
 
@@ -141,38 +150,15 @@ Landed as the 2026-11-02 banner on [transit](./transit.md), which is the only co
 
 ### Remote-instance pairing
 
-> **Proposed amendment (not operative; #1124, 2026-11-02).** The cryptographic
-> profile is unchanged. A recorded exception states that SRP-2048 and Ed25519
-> DPoP give classical authenticity only, that no PQ PAKE composition is
-> authorized, and that the transcript is protected only by the TLS pin. Pairing
-> starts at compatibility, so no hybrid group is required of it.
+Landed as the 2026-11-02 banner on [remote-instance-pairing](./remote-instance-pairing.md), which is the only copy.
 
 ### Private PKI
 
-> **Proposed amendment (not operative; #1124, 2026-11-02).** D5's closed key set
-> gains `mldsa65` for issuers and leaves only if the #1133 relying-party
-> matrix passes; adding an algorithm is widening and uses a new bound
-> profile. D2: issuer keys stay sealed seed-only PKCS#8. D3: a PQ chain needs an
-> offline PQ root (DEC-19); a classical root over an ML-DSA intermediate is not a
-> PQ-authenticated chain. D7: CRLs signed by the issuer algorithm. D9
-> (Surfaces): the closed API enum gains the algorithm; PEM and request caps are
-> OpenAPI and server constants outside the ADR and suffice at ML-DSA-65 sizes
-> [estimate].
+Carried word for word (checked against the proposal at `e5539c280`) as the locked-amendment banner on [pki](./pki.md), which is the only copy and is operative only when the #1133 implementation merges. What the implementation added is in a second banner there, not locked, with five choices awaiting the owner's confirmation.
 
 ### Signed upgrade compatibility and stable workflow signing
 
-> **Proposed amendment (not operative; #1124, 2026-11-02).** Trust documents
-> (root, metadata, catalog, stable policy, nightly policies, bridges) gain a
-> PQ-capable form valid only when the pinned required signature set verifies;
-> progression is sequence-only; a PQ authenticity claim is made only after a
-> persisted verification that required every algorithm. How PQ keys first reach
-> existing installs is unsolved and is a #1132 feasibility question: the claim
-> stays HOLD until #1132 closes or registers every binary-replacement path, and
-> the nightly track and image replacement have no PQ signer. Stable ML-DSA
-> signatures would come from a maintainer-held key at the local publish step,
-> not from keyless CI; keyless signing is unchanged and stays a classical
-> exception. Backup custody landed as the 2026-11-02 banner on that ADR's custody
-> section.
+Landed as the 2026-11-02 banners on [signed-upgrade-compatibility](./signed-upgrade-compatibility.md#release-identity-and-trust), [stable-workflow-signing](./stable-workflow-signing.md), [system-architecture](./system-architecture.md) and [oss-mechanics](./oss-mechanics.md), with the proposal text verbatim and operative only when #1132 merges. The proposal block as it stood is in this file at commit `4bad16b59`.
 
 ## Locked constraints preserved
 

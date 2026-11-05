@@ -16,8 +16,20 @@ import (
 )
 
 func TestAuthenticatedArchiveRequiresActualCompleteContainer(t *testing.T) {
+	t.Run("x25519", func(t *testing.T) {
+		authenticatedArchiveCases(t, backup.GenerateIdentity, backup.GenerateHybridIdentity)
+	})
+	t.Run("hybrid", func(t *testing.T) {
+		authenticatedArchiveCases(t, backup.GenerateHybridIdentity, backup.GenerateIdentity)
+	})
+}
+
+// authenticatedArchiveCases runs the archive-proof cases for one key class.
+// foreign mints an identity of the other class: a held key of the wrong
+// algorithm is absent from the inventory just as a wrong key of the right one.
+func authenticatedArchiveCases(t *testing.T, generate, foreign func() (string, string, error)) {
 	f := newSignedEvidenceFixture(t, true)
-	identity, recipient, err := backup.GenerateIdentity()
+	identity, recipient, err := generate()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +67,12 @@ func TestAuthenticatedArchiveRequiresActualCompleteContainer(t *testing.T) {
 		t.Fatal(err)
 	}
 	receipt.ManifestSHA256 = releaseidentity.Hash(manifest)
-	for _, name := range []string{"complete", "truncated", "corrupt", "wrong receipt manifest", "wrong snapshot", "wrong identity"} {
+	algorithm, err := receipt.Snapshot.RecipientAlgorithm()
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt.Format = FormatFor(algorithm)
+	for _, name := range []string{"complete", "truncated", "corrupt", "wrong receipt manifest", "wrong snapshot", "wrong identity", "other algorithm identity"} {
 		t.Run(name, func(t *testing.T) {
 			ciphertext := bytes.Clone(encrypted.Bytes())
 			claimed := receipt
@@ -70,7 +87,13 @@ func TestAuthenticatedArchiveRequiresActualCompleteContainer(t *testing.T) {
 			case "wrong snapshot":
 				claimed.Snapshot.RestoreEpoch++
 			case "wrong identity":
-				other, _, err := backup.GenerateIdentity()
+				other, _, err := generate()
+				if err != nil {
+					t.Fatal(err)
+				}
+				held.Identity = other
+			case "other algorithm identity":
+				other, _, err := foreign()
 				if err != nil {
 					t.Fatal(err)
 				}

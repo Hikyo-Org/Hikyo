@@ -14,7 +14,7 @@ import (
 func TestBootstrapDeploymentRenewalPreservesCommittedAuthorityAfterRestart(t *testing.T) {
 	d, _, client := deploymentAdapterFixture(t, false)
 	intent := deploymentIntent(d)
-	prepare, err := configrollout.SignCommand(t.Context(), d.signer, configrollout.Command{EnrollmentID: d.enrollment.ID, Sequence: 1, Action: configrollout.ActionPrepare, Intent: intent, Changes: []configrollout.Change{{Variable: configrollout.AdmissionBudget, Value: "384"}}, IssuedAt: time.Now().Add(-time.Hour), ExpiresAt: time.Now().Add(-55 * time.Minute)})
+	prepare, err := configrollout.SignCommand(t.Context(), d.signers.Ed25519, configrollout.Command{EnrollmentID: d.enrollment.ID, Sequence: 1, Action: configrollout.ActionPrepare, Intent: intent, Changes: []configrollout.Change{{Variable: configrollout.AdmissionBudget, Value: "384"}}, IssuedAt: time.Now().Add(-time.Hour), ExpiresAt: time.Now().Add(-55 * time.Minute)})
 	if err != nil || !d.validSigned(prepare) {
 		t.Fatalf("prepare fixture: %v", err)
 	}
@@ -27,7 +27,7 @@ func TestBootstrapDeploymentRenewalPreservesCommittedAuthorityAfterRestart(t *te
 			if action == configrollout.ActionObserve {
 				command.Acknowledgement = &configrollout.ApplicationAcknowledgement{Intent: intent, PlanDigest: command.PlanDigest, DeploymentUID: types.UID(d.identity.DeploymentUID), ReadyReplicas: 1}
 			}
-			committed, err := configrollout.SignCommand(t.Context(), d.signer, command)
+			committed, err := configrollout.SignCommand(t.Context(), d.signers.Ed25519, command)
 			if err != nil {
 				t.Fatal(err)
 			}
