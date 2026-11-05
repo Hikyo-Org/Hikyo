@@ -41,6 +41,12 @@ Migration 00083 (both dialects) adds `identity_hue` (default 195, 0..359 check),
 - `chrome-image.ts`: SVG validation (DOMParser, viewBox size), rasterisation and the client-side size refusals. `chrome-mark.ts`: the 2-grapheme limit via `Intl.Segmenter`.
 - Raw upload goes through the generated operation, so the CSRF interceptor in `web/src/api/client.ts` applies.
 
+## Evidence
+
+- Go on PostgreSQL 18 (`api`, `authz`, `audit`, `lint`, `server`, `service`, `store`, `isolation`, `app`, `buildcompat`), web typecheck, lint, `design:check`, unit (2290 tests) and the settings flow on mobile and desktop passed on merge `6aa6ec048`.
+- Later commits are registry, budget and documentation changes, covered by the focused checks listed in the pull request.
+- Independent review did not cover `a5790f579` and `218eae2ec`.
+
 ## Remaining and follow-ups
 
 - Migration 00083 is the next free number on `dev`; renumber it, and regenerate `internal/buildcompat/development.json`, if another change claims it first.
