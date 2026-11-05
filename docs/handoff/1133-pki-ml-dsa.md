@@ -294,7 +294,7 @@ versioned re-sealer and is algorithm-blind); `HoldRestoredPKIIssuers`;
 and the generated Go and TypeScript clients (follow the freeze amendment, #1212); `internal/cli/pki.go`
 help at line 175 and the `--key-algorithm` flag for `cert issue` (unchanged);
 `web/src/api/pki.ts`, `PkiIssuersPanel.tsx`, `CertificatesTab.tsx` algorithm lists
-(unchanged, mirror OpenAPI); the published `private-pki.mdx` (unchanged, no PQ
+(unchanged, HOLD); the published `private-pki.mdx` (unchanged, no PQ
 claim).
 
 ## Key retention and rollback
