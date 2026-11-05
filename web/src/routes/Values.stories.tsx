@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { zEnvironmentList, zRevealWindow, zValueList } from '@hikyo/zod';
-import { expect, userEvent, waitFor } from 'storybook/test';
+import { expect, spyOn, userEvent, waitFor } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
@@ -125,6 +125,74 @@ export const PhoneKeepsActionsInReach: Story = {
       await expect(button.getBoundingClientRect().right).toBeLessThanOrEqual(edge);
     }
     await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(document.documentElement.clientWidth);
+  },
+};
+
+// A live reveal on the narrowest phone: the value is the text with its
+// countdown, and the value column is what the key and Actions columns leave.
+// The text breaks anywhere and keeps the room, and the countdown wraps under
+// it instead of holding its own width: in a row it kept its width and the text
+// shrank to a glyph a line, then the table outgrew the wrapper and pushed
+// Copy out of reach. One secret revealed, then every secret.
+const longSecret = 'postgresql://demo-only:fixture@database.example.test:5432/hikyo_staging?sslmode=require';
+const liveWindow: RevealWindow = { ...locked, live: true, expires_at: '2099-01-01T00:00:00Z' };
+const revealed = (n: number, name: string, value: string): ValueList['items'][number] => ({ ...cell(n, name, 'secret', value), revealed: true, value });
+
+export const PhoneRevealedValueStaysReadable: Story = {
+  globals: { viewport: { value: 'phoneNarrow', isRotated: false } },
+  beforeEach: () => {
+    // The reveal acts only on a focused window, which a headless run may lack.
+    const focus = spyOn(document, 'hasFocus').mockReturnValue(true);
+    return () => focus.mockRestore();
+  },
+  parameters: {
+    app: {
+      ...rows({ url: VALUES_URL, body: populated }, { url: WINDOW_URL, body: liveWindow }).app,
+      responses: [
+        { url: VALUES_URL, body: populated },
+        { url: WINDOW_URL, body: liveWindow },
+        { url: ENVIRONMENTS_URL, body: environments },
+        { url: `${VALUES_URL}/DATABASE_URL/reveal`, method: 'POST', body: revealed(1, 'DATABASE_URL', longSecret) },
+        {
+          url: `${VALUES_URL}/reveal`,
+          method: 'POST',
+          body: {
+            count: 3,
+            items: [revealed(1, 'DATABASE_URL', longSecret), revealed(2, 'STRIPE_SECRET_KEY', `sk_live_${'0123456789'.repeat(4)}`), revealed(8, 'OIDC_CLIENT_SECRET', 'oidc-client-secret-fixture-value')],
+          },
+        },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    const wrapper = (await canvas.findByRole('table')).parentElement!;
+    const edge = wrapper.getBoundingClientRect().right;
+    const expectReadable = async (count: number) => {
+      const values = await waitFor(() => {
+        const found = [...wrapper.querySelectorAll<HTMLElement>('.values__plain')].filter((value) => value.querySelector('.values__countdown') !== null);
+        if (found.length !== count) throw new Error(`${String(found.length)} live values, want ${String(count)}`);
+        return found;
+      });
+      for (const value of values) {
+        const box = value.getBoundingClientRect();
+        // Text, not a column of glyphs: at least six characters a line (a mono
+        // glyph is 0.6em).
+        await expect(box.width).toBeGreaterThanOrEqual(4 * Number.parseFloat(getComputedStyle(value).fontSize));
+        const countdown = value.querySelector<HTMLElement>('.values__countdown')!;
+        // The countdown sits under the text inside the value's own width.
+        await expect(countdown.getBoundingClientRect().right).toBeLessThanOrEqual(box.right + 0.5);
+        await expect(countdown.scrollWidth).toBeLessThanOrEqual(countdown.clientWidth);
+      }
+      await expect(wrapper.scrollWidth).toBeLessThanOrEqual(wrapper.clientWidth);
+      for (const button of canvas.getAllByRole('button', { name: /^(Reveal|Copy) / })) {
+        await expect(button.getBoundingClientRect().right).toBeLessThanOrEqual(edge);
+      }
+      await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(document.documentElement.clientWidth);
+    };
+    await userEvent.click(await canvas.findByRole('button', { name: 'Reveal DATABASE_URL' }));
+    await expectReadable(1);
+    await userEvent.click(canvas.getByRole('button', { name: 'Reveal every secret' }));
+    await expectReadable(3);
   },
 };
 

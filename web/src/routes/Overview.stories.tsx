@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
 
-import { phone } from '../../.storybook/layout.ts';
+import { phone, safeArea, safeAreaIsWiredToEnv } from '../../.storybook/layout.ts';
 import { isManualDocsFrame } from '../../.storybook/manualDocsFrame.ts';
 import { appearancePass, interactionOnce } from '../../.storybook/interactionCoverage.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -152,12 +152,26 @@ export const SingleProject: Story = {
   },
 };
 
-// A phone with a long organisation and project name: the trail shares one row, so
-// the scope crumbs give up room. They stop at their separator, gap and `--control`
-// hit floor; below that the link spilled out of its item over the next crumb.
+// The control floor of a touch screen. A story's browser has a fine pointer
+// (`--control` 36px, tokens.css), and the crumb floor is the 44px a finger needs:
+// at 36px the trail has room the bug never lacked, so the story runs at touch size.
+const touchControl = () => {
+  const root = document.documentElement;
+  const saved = root.style.getPropertyValue('--control');
+  root.style.setProperty('--control', 'var(--touch)');
+  return () => root.style.setProperty('--control', saved);
+};
+
+// A phone: the trail shares one row, so the scope crumbs give up room. They stop
+// at their separator, gap and `--control` hit floor; below that the link spilled
+// out of its item over the next crumb. The root crumb is hidden, so the first
+// crumb left carries no separator and no room kept for one.
 export const PhoneCrumbsStayClear: Story = {
-  globals: { viewport: { value: 'phone', isRotated: false } },
-  beforeEach: () => fixture.reset([overviewProject]),
+  globals: { viewport: { value: 'phoneNarrow', isRotated: false } },
+  beforeEach: () => {
+    fixture.reset([overviewProject]);
+    return touchControl();
+  },
   play: async ({ canvas }) => {
     const crumbs = await canvas.findByRole('list', { name: 'Breadcrumb' }, { timeout: 5000 });
     await expect(await canvas.findByText('Environment matrix', { selector: '.header__crumbs span' })).toBeVisible();
@@ -172,56 +186,105 @@ export const PhoneCrumbsStayClear: Story = {
       await expect(box.right).toBeLessThanOrEqual(row.right + 0.5);
       if (index > 0) await expect(box.left).toBeGreaterThanOrEqual(items[index - 1]!.getBoundingClientRect().right - 0.5);
     }
+    // No leading slash: the first crumb left is where the trail starts.
+    await expect(getComputedStyle(items[0]!.querySelector('.header__crumb-separator')!).display).toBe('none');
+    // The current page keeps room to be read, not just a separator.
+    await expect(items.at(-1)!.lastElementChild!.getBoundingClientRect().width).toBeGreaterThanOrEqual(48);
   },
 };
 
 // `viewport-fit=cover` lets the page draw under a notch and the home indicator.
-// A browser tab here has no insets, so the story sets the four `--safe-*`
-// properties (app.css `:root`, which read `env(safe-area-inset-*)`) to a notched
-// phone's and asserts the shell surfaces that touch a viewport edge move clear.
+// A browser tab here has no insets, so the story gives a notched phone's to the
+// `--safe-*` properties and asserts every shell surface that touches a viewport
+// edge moves clear: the header, the account avatar and menu, the drawer, the
+// skip link, a toast, and the strips left empty.
+const NOTCH = { top: 47, right: 20, bottom: 34, left: 30 };
+
 export const PhoneClearsSafeArea: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   beforeEach: () => {
     fixture.reset([overviewProject]);
-    const root = document.documentElement;
-    const source = ['top', 'right', 'bottom', 'left'].map((edge) => root.style.getPropertyValue(`--safe-${edge}`));
-    return () => ['top', 'right', 'bottom', 'left'].forEach((edge, index) => root.style.setProperty(`--safe-${edge}`, source[index] ?? ''));
+    return safeArea(NOTCH);
   },
   play: async ({ canvas }) => {
-    const root = document.documentElement;
-    // Chromium resolves `env()` inside a custom property before reporting it,
-    // so the mapping is read from the stylesheet's own `:root` rule.
-    const rulesOf = (sheet: CSSStyleSheet) => {
-      try { return [...sheet.cssRules]; } catch { return []; } // a cross-origin sheet is unreadable
-    };
-    const declared = [...document.styleSheets]
-      .flatMap(rulesOf)
-      .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule && rule.selectorText === ':root')
-      .map((rule) => ['top', 'right', 'bottom', 'left'].map((edge) => rule.style.getPropertyValue(`--safe-${edge}`)));
-    await expect(declared.some((values) => values.every((value, index) => value.includes(`env(safe-area-inset-${['top', 'right', 'bottom', 'left'][index]}`)))).toBe(true);
+    await expect(safeAreaIsWiredToEnv()).toBe(true);
+    // A single project opens its matrix: wait for the redirect, which closes a menu opened before it.
     await canvas.findByRole('list', { name: 'Breadcrumb' }, { timeout: 5000 });
+    await canvas.findByText('Environment matrix', { selector: '.header__crumbs span' });
+    const px = (element: Element, property: 'paddingTop' | 'paddingBottom' | 'paddingLeft') => Number.parseFloat(getComputedStyle(element)[property]);
+    // The skip link is the first tab stop and shows under the notch otherwise.
+    await userEvent.tab();
+    const skip = canvas.getByRole('link', { name: 'Skip to content' });
+    await expect(skip).toHaveFocus();
+    await expect(skip.getBoundingClientRect().top).toBeGreaterThanOrEqual(NOTCH.top);
+    await expect(skip.getBoundingClientRect().left).toBeGreaterThanOrEqual(NOTCH.left);
+    // The header covers the top strip itself: its content sits below the notch.
     const header = document.querySelector<HTMLElement>('.header')!;
-    const before = header.getBoundingClientRect().height;
-    const avatarTop = document.querySelector<HTMLElement>('.chrome__account')!.getBoundingClientRect().top;
-    root.style.setProperty('--safe-top', '47px');
-    root.style.setProperty('--safe-bottom', '34px');
-    root.style.setProperty('--safe-left', '20px');
-    root.style.setProperty('--safe-right', '20px');
-    // The header grows by the notch's height and its controls sit below it.
-    await expect(header.getBoundingClientRect().height).toBe(before + 47);
-    await expect(canvas.getByRole('button', { name: 'Menu' }).getBoundingClientRect().top).toBeGreaterThanOrEqual(47);
-    await expect(document.querySelector<HTMLElement>('.chrome__account')!.getBoundingClientRect().top).toBe(avatarTop + 47);
-    // The shell keeps clear of the side strips and the home indicator.
-    const chrome = document.querySelector<HTMLElement>('.chrome')!.getBoundingClientRect();
+    await expect(px(header, 'paddingTop')).toBe(8 + NOTCH.top);
+    await expect(canvas.getByRole('button', { name: 'Menu' }).getBoundingClientRect().top).toBeGreaterThanOrEqual(NOTCH.top);
+    const avatar = document.querySelector<HTMLElement>('.chrome__account')!;
+    await expect(avatar.getBoundingClientRect().top).toBeGreaterThanOrEqual(NOTCH.top);
+    // The shell keeps clear of the side strips and the home indicator, and the
+    // strips are painted as chrome, the side and bottom ones only.
+    const chrome = document.querySelector<HTMLElement>('.chrome')!;
     const main = document.querySelector<HTMLElement>('.main')!.getBoundingClientRect();
-    await expect(main.left).toBe(chrome.left + 20);
-    await expect(main.right).toBe(chrome.right - 20);
-    await expect(main.bottom).toBe(chrome.bottom - 34);
-    // The drawer's content starts below the notch.
+    const box = chrome.getBoundingClientRect();
+    await expect(main.left).toBe(box.left + NOTCH.left);
+    await expect(main.right).toBe(box.right - NOTCH.right);
+    await expect(main.bottom).toBe(box.bottom - NOTCH.bottom);
+    const strips = getComputedStyle(chrome, '::after');
+    await expect([strips.borderTopWidth, strips.borderRightWidth, strips.borderBottomWidth, strips.borderLeftWidth]).toEqual(['0px', `${String(NOTCH.right)}px`, `${String(NOTCH.bottom)}px`, `${String(NOTCH.left)}px`]);
+    // The account menu opens below the notch and inside the right inset.
+    await userEvent.click(canvas.getByRole('button', { name: /^Account/ }));
+    const menu = await canvas.findByRole('menu', { name: 'Account' });
+    // It opens under the avatar that opened it, which is itself below the notch.
+    await expect(menu.getBoundingClientRect().top).toBeGreaterThanOrEqual(avatar.getBoundingClientRect().bottom);
+    await expect(window.innerWidth - menu.getBoundingClientRect().right).toBeGreaterThanOrEqual(NOTCH.right);
+    await userEvent.keyboard('{Escape}');
+    // The drawer's content starts below the notch and clear of the left strip.
     await userEvent.click(canvas.getByRole('button', { name: 'Menu' }));
     const drawer = document.querySelector<HTMLElement>('.sidebar')!;
-    await expect(Number.parseFloat(getComputedStyle(drawer).paddingTop)).toBe(6 + 47);
-    await expect(Number.parseFloat(getComputedStyle(drawer).paddingBottom)).toBe(20 + 34);
+    await expect(px(drawer, 'paddingTop')).toBe(6 + NOTCH.top);
+    await expect(px(drawer, 'paddingBottom')).toBe(20 + NOTCH.bottom);
+    await expect(px(drawer, 'paddingLeft')).toBe(NOTCH.left);
+  },
+};
+
+// Beside the side menu the strip above the whole chrome is empty, painted as
+// chrome, and the rail, the sidebar and the header start below it; the menu
+// stops short of the left strip, and the account avatar clears the corner.
+export const DesktopClearsSafeArea: Story = {
+  parameters: { viewport: { options: { desktop1024: { name: 'Desktop 1024', styles: { width: '1024px', height: '768px' } } } } },
+  globals: { viewport: { value: 'desktop1024', isRotated: false } },
+  beforeEach: () => {
+    fixture.reset([overviewProject]);
+    return safeArea(NOTCH);
+  },
+  play: async ({ canvas }) => {
+    // A single project opens its matrix: wait for the redirect, which closes a menu opened before it.
+    await canvas.findByRole('list', { name: 'Breadcrumb' }, { timeout: 5000 });
+    await canvas.findByText('Environment matrix', { selector: '.header__crumbs span' });
+    const top = (selector: string) => document.querySelector<HTMLElement>(selector)!.getBoundingClientRect().top;
+    await expect(top('.rail')).toBe(NOTCH.top);
+    await expect(top('.sidebar')).toBe(NOTCH.top);
+    await expect(top('.header')).toBe(NOTCH.top);
+    // The header is its usual height: the strip is not counted twice.
+    await expect(Number.parseFloat(getComputedStyle(document.querySelector('.header')!).paddingTop)).toBe(8);
+    const chrome = document.querySelector<HTMLElement>('.chrome')!;
+    await expect(document.querySelector<HTMLElement>('.rail')!.getBoundingClientRect().left).toBe(NOTCH.left);
+    const strips = getComputedStyle(chrome, '::after');
+    await expect([strips.borderTopWidth, strips.borderRightWidth, strips.borderBottomWidth, strips.borderLeftWidth]).toEqual([`${String(NOTCH.top)}px`, `${String(NOTCH.right)}px`, `${String(NOTCH.bottom)}px`, `${String(NOTCH.left)}px`]);
+    // `--chrome-menu` is where the side menu ends, left strip included: a side
+    // panel opens beside it.
+    const probe = document.createElement('div');
+    probe.style.width = 'var(--chrome-menu)';
+    chrome.append(probe);
+    await expect(probe.getBoundingClientRect().width).toBe(document.querySelector<HTMLElement>('.sidebar')!.getBoundingClientRect().right);
+    probe.remove();
+    // The avatar in the rail's foot clears the home indicator and the left strip.
+    const avatar = document.querySelector<HTMLElement>('.chrome__account')!.getBoundingClientRect();
+    await expect(avatar.left).toBeGreaterThanOrEqual(NOTCH.left);
+    await expect(window.innerHeight - avatar.bottom).toBeGreaterThanOrEqual(NOTCH.bottom);
   },
 };
 

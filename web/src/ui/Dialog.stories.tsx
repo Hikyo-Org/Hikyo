@@ -3,6 +3,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import type { SyntheticEvent } from 'react';
 import { expect, fn, userEvent } from 'storybook/test';
 
+import { safeArea } from '../../.storybook/layout.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 import { Alert } from './Alert.tsx';
 import { Button } from './Button.tsx';
@@ -85,6 +86,36 @@ export const Wide: Story = {
       </>
     ),
   },
+};
+
+// A notched phone: a dialog centres between the strips the browser keeps, not
+// between the screen's edges, so none of it sits under a notch or a corner. The
+// wide dialog's phone inset counts the strips too.
+const NOTCH = { top: 47, right: 20, bottom: 34, left: 30 };
+const clearsNotch = async (canvasElement: HTMLElement) => {
+  const dialog = canvasElement.ownerDocument.querySelector('dialog.dialog');
+  if (dialog === null) throw new Error('dialog missing');
+  const box = dialog.getBoundingClientRect();
+  await expect(box.left).toBeGreaterThanOrEqual(NOTCH.left);
+  await expect(window.innerWidth - box.right).toBeGreaterThanOrEqual(NOTCH.right);
+  await expect(box.top).toBeGreaterThanOrEqual(NOTCH.top);
+  await expect(window.innerHeight - box.bottom).toBeGreaterThanOrEqual(NOTCH.bottom);
+  // Centred in what is left, so an asymmetric inset does not tilt it.
+  await expect(Math.abs((box.left + box.right) / 2 - (NOTCH.left + window.innerWidth - NOTCH.right) / 2)).toBeLessThanOrEqual(0.5);
+  await expect(Math.abs((box.top + box.bottom) / 2 - (NOTCH.top + window.innerHeight - NOTCH.bottom) / 2)).toBeLessThanOrEqual(0.5);
+};
+
+export const PhoneClearsSafeArea: Story = {
+  globals: { viewport: { value: 'phoneNarrow', isRotated: false } },
+  beforeEach: () => safeArea(NOTCH),
+  play: async ({ canvasElement }) => clearsNotch(canvasElement),
+};
+
+export const PhoneWideClearsSafeArea: Story = {
+  ...Wide,
+  globals: { viewport: { value: 'phoneNarrow', isRotated: false } },
+  beforeEach: () => safeArea(NOTCH),
+  play: async ({ canvasElement }) => clearsNotch(canvasElement),
 };
 
 export const MustAcknowledge: Story = {

@@ -605,8 +605,24 @@ fieldset.field > legend {
   grid-template-rows: minmax(0, 1fr);
   height: 100vh;
   height: 100dvh;
-  /* The top strip is the header's own (it carries the header's background). */
-  padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
+  /* The strip the browser keeps for itself on each edge is left empty and
+     painted as chrome (below), so nothing sits under a notch. On a phone the
+     header takes the top strip into its own padding instead, which keeps the
+     header's background behind the status bar (`--strip-top` is zero there). */
+  --strip-top: var(--safe-top);
+  /* What of the top strip the header covers: all of it on a phone, none beside
+     the side menu, where the strip above the whole chrome is painted instead. */
+  --header-top: calc(var(--safe-top) - var(--strip-top));
+  padding: var(--strip-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+
+.chrome::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  border: solid var(--bg-panel);
+  border-width: var(--strip-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
 }
 
 /* DESIGN.md's `--bg-panel` is the persistent-chrome surface (the prototype's
@@ -1102,8 +1118,8 @@ fieldset.field > legend {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  min-height: calc(61px + var(--safe-top));
-  padding: calc(var(--space-2) + var(--safe-top)) var(--space-4) var(--space-2);
+  min-height: calc(61px + var(--header-top));
+  padding: calc(var(--space-2) + var(--header-top)) var(--space-4) var(--space-2);
   /* The same structural rule the rail and the sidebar draw. Reaching for
      `--line` here made the header seam brighter than the rail seam in dark and
      darker in light, an inconsistency the prototype does not have, because it
@@ -1429,7 +1445,7 @@ fieldset.field > legend {
 .skip {
   position: absolute;
   left: -9999px;
-  top: 8px;
+  top: calc(8px + var(--safe-top));
   z-index: var(--z-sticky);
   /* It is a control like any other once it is visible, so it carries the same
      control token, found by the pinned set's sweep over every interactive
@@ -1445,7 +1461,7 @@ fieldset.field > legend {
 }
 
 .skip:focus {
-  left: 8px;
+  left: calc(8px + var(--safe-left));
 }
 
 /* --- Mobile first, matching the locked chrome's 700px drawer breakpoint --- */
@@ -1454,6 +1470,7 @@ fieldset.field > legend {
   .chrome {
     --chrome-menu: 0px;
     --side-panel-gutter: 0px;
+    --strip-top: 0px;
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 1fr);
   }
@@ -1486,7 +1503,7 @@ fieldset.field > legend {
 
   .header {
     gap: var(--space-2);
-    padding: calc(var(--space-2) + var(--safe-top)) var(--space-3) var(--space-2);
+    padding: calc(var(--space-2) + var(--header-top)) var(--space-3) var(--space-2);
   }
 
   /* The drawer slides in from the left and back out. Hidden by visibility,
@@ -1590,13 +1607,14 @@ fieldset.field > legend {
     min-width: calc(1em + var(--space-1) + var(--control));
   }
 
-  /* Narrower than any phone the design targets (390px), the floors alone would
-     leave the current page no room: the organisation crumb gives way first,
-     and the drawer still reaches it. */
-  @media (max-width: 359px) {
-    .header__crumbs li[data-crumb='scope']:nth-child(2) {
-      display: none;
-    }
+  /* The first crumb left (the root is hidden on a phone) has no separator
+     before it, and with it gone no room is kept for one either. */
+  .header__crumbs li[data-crumb='root'] + li > .header__crumb-separator {
+    display: none;
+  }
+
+  .header__crumbs li[data-crumb='root'] + li[data-crumb='scope'] {
+    min-width: var(--control);
   }
 
   .header__crumb-separator {
@@ -3066,7 +3084,7 @@ fieldset.field > legend {
   /* The wide dialog's phone inset. Doubled to `.dialog.dialog--wide` because
      this block sits above the base `.dialog` rules. */
   .dialog.dialog--wide {
-    width: calc(100% - 20px);
+    width: calc(100% - 20px - var(--safe-left) - var(--safe-right));
     max-width: 760px;
     max-height: 88vh;
     margin: auto;
@@ -3336,21 +3354,37 @@ fieldset.field > legend {
      the point of the row, sat past the edge of the scrolling wrapper. The
      value breaks anywhere and gives up the room; a key stays whole up to 18
      characters (the common names) and wraps beyond that. Reveal and Copy
-     stack in one column, so the Actions column is one button wide. */
-  .values__plain,
-  .values__masked {
+     stack in one column, so the Actions column is one button wide. These are
+     the Values table's alone (`machine__table` shares its cell classes and
+     has other rows to protect: SSH certificates keep four buttons per row).
+
+     A revealed value is the text with its countdown. In a row the countdown
+     kept its own width while `anywhere` shrank the text to a glyph a line; in
+     a column the text takes the width and the countdown wraps below it. */
+  .values__table:not(.machine__table) .values__plain {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
+
+  .values__table:not(.machine__table) :is(.values__plain, .values__masked) {
     overflow-wrap: anywhere;
   }
 
-  .values__table td .actions:has(> .btn ~ .btn) {
+  /* The countdown takes the width the text leaves and wraps inside it, at the
+     smallest type token. It breaks anywhere as the text does (inherited), so
+     its words set no column minimum. */
+  .values__table:not(.machine__table) .values__countdown {
+    align-self: stretch;
+    padding-inline: var(--space-1);
+    font-size: var(--fs-xs);
+  }
+
+  .values__table:not(.machine__table) td .actions:has(> .btn ~ .btn) {
     grid-template-columns: 1fr;
   }
 
-  .values__countdown {
-    overflow-wrap: normal;
-  }
-
-  .values__keyname {
+  .values__table:not(.machine__table) .values__keyname {
     /* 18 characters of name plus room for the border-box button's own padding and borders. */
     max-width: calc(18ch + 3 * var(--space-2));
     /* `break-word`, not `anywhere`: the column keeps the width of the name (to
@@ -3497,8 +3531,11 @@ fieldset.field > legend {
  *
  * One modal anatomy (ui/Dialog.tsx) for every route dialog. */
 .dialog {
-  width: min(var(--width-dialog), calc(100% - var(--space-6)));
+  width: min(var(--width-dialog), calc(100% - var(--space-6) - var(--safe-left) - var(--safe-right)));
   max-height: min(90vh, var(--width-dialog-wide));
+  /* Centred between the edges the browser keeps (a notch, the home indicator),
+     not between the screen's. */
+  inset: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
   margin: auto;
   display: flex;
   flex-direction: column;
@@ -3512,7 +3549,7 @@ fieldset.field > legend {
 }
 
 .dialog--wide {
-  width: min(var(--width-dialog-wide), calc(100% - var(--space-6)));
+  width: min(var(--width-dialog-wide), calc(100% - var(--space-6) - var(--safe-left) - var(--safe-right)));
 }
 
 .dialog {
