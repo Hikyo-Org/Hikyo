@@ -260,15 +260,15 @@ there are no Custom Tabs and no passkeys.
 | Question | Result | Evidence |
 |---|---|---|
 | Stock host with the proxy | **Fails on the first redirect** | `GET /index.html -> 301`, then `asset server error: status 301` |
-| Patched host renders the SPA | **Pass for small responses only** | On `https://conn-0.wails.localhost`, secure context. See the `Content-Length` finding |
+| Patched host renders the SPA | **Pass** (2026-11-05, after the fixes below) | On `https://conn-0.wails.localhost`, secure context. Environment matrix and Values screens list 57 keys |
 | Request bodies through the script and bridge | **Pass** | SHA-256 matched for PUT 3 B, PATCH 1 KB, DELETE 16 B, POST 256 KB, PUT 3 MB and POST 20 MB (839 ms). Multipart, urlencoded, Blob and XHR PUT arrived with the right length and type |
 | Query and headers | **Pass** | `?q=a%20b&x=%E2%9C%93` and custom headers arrived intact. The bearer was added, no cookie was sent |
 | Status codes | **Pass, except redirects** | 200, 400, 401, 404 and 429 reached the page. `WebResourceResponse` rejects 3xx, so the bridge returns 502 with `X-Spike-Redirect` (from code) |
-| Response length | **Fails on large responses** | The Values screen failed until the header was corrected. See below |
-| Streaming | **Fails without a fix** | See below |
+| Response length | **Pass after the 2026-11-05 fix** | The page sees one integer, or `0` only for a chunked body over 8 MiB. Before it, large responses read `0` and the Values screen failed. See the follow-up section |
+| Streaming | **Pass with 2 KB padding per event** (2026-11-05) | Without it, five events 800 ms apart all arrived at stream end. See the follow-up section |
 | Real sign-in, the app's half | **Pass** | Callback to redeemed session took 59 ms with the app in the background. `whoami` then returned 200, artifact `cli`, factors password and TOTP |
 | Enrolment gate in the UI | **Fails, same as iOS** | See [the finding below](#a-finding-that-also-affects-macos). Cleared through the API to go further |
-| SPA at phone width, past the gate | **Observed, needs layout work** | 412 CSS px, no page-level horizontal overflow. The header runs under the status bar, the breadcrumb overlaps itself, the Values table's action column is cut off at the right, and content runs under the navigation bar |
+| SPA at phone width, past the gate | **Observed, needs layout work** | 412 CSS px, no page-level horizontal overflow. The breadcrumb overlaps itself and the Values table's action column is cut off at the right (web, left alone). The header under the status bar and content under the navigation bar are fixed in the host (2026-11-05) |
 | Per-connection origin | **Pass for storage, gap for requests** | `localStorage` is separate on `conn-0` and `conn-1`. See the isolation finding |
 | `Android.SecureSet` | **Pass** | Set, read, wrong value, relaunch and delete. `EncryptedSharedPreferences`, per Wails' source |
 | Downloads | **Pass, with limits** | Correct bytes saved and the page stayed put. The file goes to the app's own folder, not the user's Downloads. One click produced two GETs in the log |
@@ -298,7 +298,7 @@ run waited 65 s first, made 13 API requests and got no 429s:
 The wrapper also kept streaming working, and returned a complete 8 MB body. It is not built
 into the shim. It covers `fetch` only and loses `response.url`. Buffering non-streaming bodies
 in the bridge is the other option, and is untested. Either way, **the host needs this before
-the UI is usable on Android.**
+the UI is usable on Android.** (Done on 2026-11-05: see the follow-up section.)
 
 **Streaming.** The WebView holds small chunks back, although the bridge returns each one as
 it arrives (from code). Five events, 800 ms apart, read through `fetch`:
@@ -311,7 +311,7 @@ it arrives (from code). Five events, 800 ms apart, read through `fetch`:
 
 So a live event can wait indefinitely on a quiet stream. Padding each event with an SSE
 comment of about 4 KB fixes the timing, and the cost stays inside the app. The proxy would
-have to add it at event boundaries, which isn't built. The route was a test one, because the
+have to add it at event boundaries. (Built on 2026-11-05, with 2 KB.) The route was a test one, because the
 real `/events` returned 404 from v1.0.0 to this newer SPA.
 
 **Connection isolation.** Android requests carry no window identity, so the macOS window
@@ -339,7 +339,7 @@ that was accepted at once. One sent while frozen waited for the user to come bac
 | Frozen | 10:18:59 | 10:19:23, on returning to the app |
 
 This is the same class of problem as Safari on iOS, with a longer grace period. Foreground
-services and Custom Tabs are untested. Reading `dumpsys` appears to thaw the app, so these
+services were untested here and are measured in the follow-up section. Custom Tabs are untested. Reading `dumpsys` appears to thaw the app, so these
 timings may be disturbed.
 
 **What the test setup could not show:**
@@ -350,9 +350,9 @@ timings may be disturbed.
   browser. A consent screen over HTTPS, Custom Tabs and passkeys are untested.
 - **The environment matrix error in the UI.** `/projects/{id}/matrix` returned 404 and other
   calls 429. The first is this newer SPA against v1.0.0, and the second is the rate limit
-  below. Neither points at the host, but the matrix screen itself was never seen working.
-- **The test routes** for echo, streaming and download live in a scratch front, not on this
-  branch.
+  below. Neither points at the host. The matrix screen was seen working on 2026-11-05.
+- **The test routes** for echo, streaming and download were in a scratch front. Since 2026-11-05
+  they are in `spike/wails-shell/probes/front`.
 - **The probe's `/nav`** answered but did not navigate on the sign-in page. I navigated through
   devtools instead and did not look into why.
 
@@ -368,6 +368,106 @@ From source only, in Wails' stock host:
   `sendBeacon`, native form POSTs and WebSocket. `FormData` through `fetch` passed above. A search of
   `web/src` found no `sendBeacon` or `new WebSocket`, and its one `<form method="post">` has a script
   submit handler (`TransitOperations.tsx`).
+
+### Android follow-up, 2026-11-05
+
+**Answer: the large-response blocker is fixed in the Java host, live events work with 2 KB of
+padding, the system bars are fixed in the host, and a short foreground service does hold off the
+freeze for up to three minutes.** Everything ran on the same emulator (`Pixel_9_API_36`,
+Android 16, WebView 133, no Chrome), against a disposable instance whose server and SPA were
+built from `origin/dev` at `d96cd9459`, not v1.0.0. The screens named below were observed on
+the device. Real devices, Chrome, Custom Tabs and passkeys are still untested.
+
+**1. Large responses.** The hypothesis holds: Chromium's WebView derives the page's
+`Content-Length` from `InputStream.available()`, and `GoStream` returns 0. Evidence is the
+pattern, not a one-line toggle. A response whose stream reports `available()` equal to its length
+reads exactly that length. A chunked body over the cap, where `available()` is 0, reads `0`.
+
+`SpikeBridge.java` now drops Go's `Content-Length` and `Transfer-Encoding` and buffers
+non-streaming bodies up to 8 MiB (the SDK's own data ceiling), then serves them from a
+`ByteArrayInputStream`, so the length is exact. Above the cap it streams the rest. A declared
+length still reaches `available()`. With no declared length the header reads `0` and the body
+is complete. `text/event-stream` is never buffered. Downloads take their own path.
+A non-event streaming body (NDJSON, long polling) now waits for the whole body or 8 MiB before
+the page sees anything. I did not check whether `web/` has one.
+
+| Case (through `fetch`, nothing injected) | Header seen | Body |
+|---|---|---|
+| Declared or chunked, 100 B to 8 MiB (10 sizes, either side of 2 KB) | the exact length | complete |
+| Declared, 8 MiB + 92 B and 20 MiB | the exact length | complete |
+| Chunked, 8 MiB + 92 B and 20 MiB | `0` | complete (20 MiB in about 4 s) |
+| Real `values` response, 7,718 B | `7718`, `response.url` kept | Values screen lists its keys |
+
+The only case that still reads `0` is a chunked data response over 8 MiB, which the SDK rejects
+anyway, since its ceiling is the same 8 MiB. I left it, rather than refuse the response, so a
+large chunked download through `fetch` still works. The SDK check is unchanged. Regression matrix
+re-run: POST bodies of 0 B, 1 B, 3 KB and 300 KB arrive with the right length and SHA-256,
+statuses 200, 204, 404 and 500 pass, and a 302 still becomes 502 with `X-Spike-Redirect`. A
+20 MiB download with a declared length took 628 ms. I did not call `whoami` on its own: the app
+reached its signed-in screens on every launch, which needs it.
+
+**2. Live events.** The `available()` work did not change the holdback, so padding was needed.
+The WebView releases a stream in 2048-byte units:
+
+| Padding per event | Five events 800 ms apart arrived at (ms) |
+|---|---|
+| None | 3216, all in one chunk |
+| 256 B | 3211, one chunk |
+| 1 KB | 806, 2410, 3211 |
+| 1.5 KB and 1.9 KB | each event about 800 ms late |
+| 2 KB and above | 4, 806, 1607, 2409, 3211 (on time) |
+
+`native_android.go` now adds a 2 KB SSE comment after each blank line of a `text/event-stream`
+response, on Android only. `/sse-pad?n=` in the probe changes it. On the real `/events` of the
+demo project (the bootstrap project returns 404, a server property) the first padded chunk
+arrived at 30 ms. That stream stayed quiet for 6 s, so I did not see a later live event on the
+real route, only on the test route. The SDK's `/events` path wraps the response in
+`boundedWorkspaceEvents` and never reads `Content-Length`, so the `0` the header shows on a
+stream is harmless there.
+
+**3. The freeze and a foreground service.** All times are from the Go tick log and the callback
+accept line, with no `dumpsys` polling.
+
+| Run | Result |
+|---|---|
+| No service | Ticks stopped 72 s after the hop. A callback typed into the browser at +169 s hung. It was accepted 3 s after I brought the app to the front, after a 166 s gap |
+| Service, callback at +117 s | Ticks never stopped. Accepted within about 1 s, and the service stopped on the callback |
+| Service, no callback for 260 s | The system's `onTimeout` fired 180.003 s after start, both overloads. The service stopped itself. Ticks continued for another 70 s, then stopped the same way. A callback sent after that hung until the app came to the front, then was accepted at once |
+
+The service is Wails' own, switched to `shortService` and started just before the hop while the
+app was visible, which the system allowed. What the user sees: with notification permission
+granted, a silent "Signing in / Waiting for the browser" notification. With it denied, the
+service still ran and held off the freeze, and the shade showed nothing. The host never
+asked for the permission, and no prompt appeared in the screenshots I took.
+Not measured: what the system does if `onTimeout` does not stop the service.
+
+Verdict on the service: it covers a hop of up to three minutes with no server change. Past that,
+or without it, the user returning to the app is the only trigger, and the callback is then
+accepted at once. It adds a native capability and a visible notification, which D10's "no
+native capability beyond D9" would have to list. That ADR point is flagged, not changed.
+
+Verdict on an intent-delivered callback, read from source only: it needs a server change.
+`validCLILoopbackRedirect` accepts only `http://127.0.0.1` or `[::1]` with a port and the path
+`/callback`, in both `cli_login.go` and `cli_reauth.go`, and the stored redirect is checked
+again before it is used (`cli_reauth.go:339` and `:407`). An App Link needs a verified
+`assetlinks.json` on every instance origin, which a shipped app cannot assume for instances it
+does not know, so it is not realistic. A custom scheme is possible with the existing PKCE, but
+any app can claim it, and the server would have to accept it as a new redirect form. The
+`device` transport of `cli-login` needs no callback at all, but `cli-reauth` has no such
+transport. I did not test an intent itself. Bringing the app to the front by hand (which an
+intent would do) accepted the waiting callback in 3 s.
+
+**4. System bars.** The generated host already targets SDK 36, so Android 15's edge-to-edge
+applies. `env(safe-area-inset-*)` read `0` on all four sides with `viewport-fit=cover` already
+set, so the page cannot use it on this WebView. The host now applies the system bars, display
+cutout and keyboard as padding on `main_container` (`MainActivity.patch`). On the environment
+matrix the header sits below the status bar and the last row above the navigation bar. Not
+verified: the keyboard (no soft keyboard appeared on the emulator when a field was tapped, and I
+did not find out why) and a display cutout (the emulator image has none).
+
+**Still untested:** a real device, Chrome and Custom Tabs, passkeys, the browser half of
+sign-in over HTTPS, and a live event on the real `/events` route. The breadcrumb overlap and
+the cut-off Values table belong to `web/`.
 
 ### A finding that also affects macOS
 
@@ -387,10 +487,10 @@ showing the new ones. App mode must handle this, on every platform.
 
 - **iOS** looks feasible with `ASWebAuthenticationSession`, but the `http` deprecation makes
   the loopback handoff a dated choice there.
-- **Android** needs its own Java host, a body bridge, a response-header fix, an SSE
-  workaround and a way to confine a window to its connection. It is not "the same shell". The
-  screens that load large lists fail until the header fix is in. The rest of the core path
-  works on an emulator, but no real device, Chrome or passkey has been tried.
+- **Android** needs its own Java host, a body bridge, a response-length fix, an SSE
+  workaround, system-bar handling and a way to confine a window to its connection. It is not "the
+  same shell". With the first four in (2026-11-05) the large-list screens work on an emulator.
+  No real device, Chrome or passkey has been tried.
 - **Neither** should change the desktop plan yet. The ADR's D15 already requires a separate
   spike per platform.
 - **Not tested, worth comparing:** the instance's own web app in the phone's browser already

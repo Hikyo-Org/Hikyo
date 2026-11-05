@@ -1,9 +1,12 @@
 --- a/MainActivity.java
 +++ b/MainActivity.java
-@@ -35,7 +35,11 @@
+@@ -35,7 +35,14 @@
  import androidx.annotation.Nullable;
  import androidx.appcompat.app.AppCompatActivity;
  import androidx.core.content.FileProvider;
++import androidx.core.graphics.Insets;
++import androidx.core.view.ViewCompat;
++import androidx.core.view.WindowInsetsCompat;
 +import androidx.activity.OnBackPressedCallback;
 +import androidx.webkit.WebMessageCompat;
  import androidx.webkit.WebViewAssetLoader;
@@ -12,7 +15,21 @@
  
  import org.json.JSONObject;
  
-@@ -142,7 +146,7 @@
+@@ -94,6 +101,13 @@
+     protected void onCreate(Bundle savedInstanceState) {
+         super.onCreate(savedInstanceState);
+         setContentView(R.layout.activity_main);
++        // Android 15+ draws the app edge to edge, and the WebView does not report the bars (env(safe-area-inset-*) is 0), so pad the container.
++        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main_container), (v, windowInsets) -> {
++            Insets bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars()
++                    | WindowInsetsCompat.Type.displayCutout() | WindowInsetsCompat.Type.ime());
++            v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
++            return WindowInsetsCompat.CONSUMED;
++        });
+ 
+         String devURL = WailsBridge.devServerURL(this);
+         if (devURL != null) devServer = Uri.parse(devURL);
+@@ -142,7 +156,7 @@
              public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                  // Handle wails.localhost requests
                  if (request.getUrl().getHost() != null &&
@@ -21,7 +38,7 @@
                           (devServer != null && request.getUrl().getScheme().equals(devServer.getScheme()) &&
                            request.getUrl().getAuthority().equals(devServer.getAuthority())))) {
  
-@@ -211,14 +215,22 @@
+@@ -211,14 +225,22 @@
                          return super.shouldInterceptRequest(view, request);
                      }
  
@@ -46,7 +63,7 @@
              public void onPageFinished(WebView view, String url) {
                  super.onPageFinished(view, url);
                  if (DEBUG) Log.d(TAG, "Page loaded: " + url);
-@@ -231,6 +243,20 @@
+@@ -231,6 +253,20 @@
  
          // Add JavaScript interface for Go communication
          webView.addJavascriptInterface(new WailsJSBridge(bridge, webView), "wails");
@@ -67,7 +84,7 @@
  
          // A WebChromeClient is required for HTML <input type="file"> elements to
          // work; without onShowFileChooser the WebView silently ignores clicks on
-@@ -250,6 +276,23 @@
+@@ -250,6 +286,23 @@
              }
  
              @Override
@@ -91,7 +108,7 @@
              public boolean onShowFileChooser(WebView view,
                                               ValueCallback<Uri[]> filePathCallback,
                                               FileChooserParams fileChooserParams) {
-@@ -272,8 +315,64 @@
+@@ -272,8 +325,64 @@
          });
      }
  
