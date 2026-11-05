@@ -788,6 +788,7 @@ const (
 	StoreProjectsGetCapacity StoreOp = "projects.GetCapacity"
 	StoreProjectsSetCapacity StoreOp = "projects.SetCapacity"
 	StoreProjectsList        StoreOp = "projects.List"
+	StoreProjectsListIDs     StoreOp = "projects.ListIDs"
 	// StoreProjectsListAll is the cross-org enumeration the multi-instance
 	// directory serves (#71). It belongs to instance-scope operations only.
 	StoreProjectsListAll StoreOp = "projects.ListAll"
@@ -1407,6 +1408,7 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreProjectsGetIdentityImage: true,
 	StoreProjectsGetCapacity:      true,
 	StoreProjectsList:             true,
+	StoreProjectsListIDs:          true,
 	StoreProjectsListAll:          true,
 	// Private PKI (#154) public reads. Sealed CA key reads remain excluded:
 	// in-process signing still requires an audited operation.
@@ -2149,7 +2151,7 @@ var operationTable = map[Operation]opSpec{
 		class:       ClassTenant,
 		level:       domain.LevelOrg,
 		formula:     Formula{{Cap: domain.CapRead, At: domain.LevelOrg}},
-		storeOps:    map[StoreOp]bool{StoreProjectsList: true},
+		storeOps:    map[StoreOp]bool{StoreProjectsList: true, StoreProjectsListIDs: true},
 		auditedNone: true,
 	},
 	OpProjectRename: {
@@ -5745,6 +5747,7 @@ var scimDirectoryOps = map[StoreOp]bool{
 	// The mapping surface's ancestry check (§1): a row naming a project outside
 	// the binding's org is refused at authoring AND at every sync.
 	StoreProjectsList:           true,
+	StoreProjectsListIDs:        true,
 	StoreSCIMUser:               true,
 	StoreSCIMUsers:              true,
 	StoreSCIMUserByUserName:     true,

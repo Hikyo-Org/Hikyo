@@ -73825,20 +73825,6 @@ func (response SetProjectIdentity401JSONResponse) VisitSetProjectIdentityRespons
 	return err
 }
 
-type SetProjectIdentity403JSONResponse struct{ ForbiddenJSONResponse }
-
-func (response SetProjectIdentity403JSONResponse) VisitSetProjectIdentityResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type SetProjectIdentity404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response SetProjectIdentity404JSONResponse) VisitSetProjectIdentityResponse(w http.ResponseWriter) error {

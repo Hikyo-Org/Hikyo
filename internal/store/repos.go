@@ -487,7 +487,7 @@ func (r sqliteProjects) List(ctx context.Context, p authz.Proof) ([]Project, err
 }
 
 func (r sqliteProjects) ListIDs(ctx context.Context, p authz.Proof) ([]string, error) {
-	chain, err := authz.Verify(p, authz.StoreProjectsList, r.tok)
+	chain, err := authz.Verify(p, authz.StoreProjectsListIDs, r.tok)
 	if err != nil {
 		return nil, err
 	}
@@ -1246,7 +1246,7 @@ func (r pgProjects) List(ctx context.Context, p authz.Proof) ([]Project, error) 
 }
 
 func (r pgProjects) ListIDs(ctx context.Context, p authz.Proof) ([]string, error) {
-	chain, err := authz.Verify(p, authz.StoreProjectsList, r.tok)
+	chain, err := authz.Verify(p, authz.StoreProjectsListIDs, r.tok)
 	if err != nil {
 		return nil, err
 	}

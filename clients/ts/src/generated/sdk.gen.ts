@@ -687,12 +687,11 @@ export const clearOrgIdentityImage = <ThrowOnError extends boolean = false>(opti
  * Read the organisation's uploaded image.
  *
  * Returns the stored bytes with the exact validated content type and
- * `X-Content-Type-Options: nosniff`. Visible to exactly the callers
- * `listMyOrgs` shows the organisation to, which includes a member holding
- * only a project grant: the rail renders every organisation from that
- * route, so its avatar follows the same visibility rather than
- * `read@org`. Not listed, machine credential, or no image is the uniform
- * 404. `v` is the `identity.image_version` the caller is rendering and
+ * `X-Content-Type-Options: nosniff`. Visible to the callers `listMyOrgs`
+ * shows the organisation to, which includes a member holding only a
+ * project grant, and to any other caller holding `read@org`, such as an
+ * instance operator on the organisation's settings page. Anyone else,
+ * a machine credential, or no image is the uniform 404. `v` is the `identity.image_version` the caller is rendering and
  * only busts caches; it never selects a version.
  *
  */
@@ -707,7 +706,7 @@ export const getOrgIdentityImage = <ThrowOnError extends boolean = false>(option
  *
  * Raw body, `image/png`, `image/jpeg` or `image/webp` only, at most 256
  * KiB and 1024 by 1024 pixels. The magic bytes must match the declared
- * content type and the header must decode. SVG is never accepted: the
+ * content type and the pixels must decode. SVG is never accepted: the
  * browser converts it to PNG before upload. Replaces any previous image.
  * Refusal is the uniform 404.
  *
@@ -817,7 +816,7 @@ export const getProjectIdentityImage = <ThrowOnError extends boolean = false>(op
  *
  * Raw body, `image/png`, `image/jpeg` or `image/webp` only, at most 256
  * KiB and 1024 by 1024 pixels. The magic bytes must match the declared
- * content type and the header must decode. SVG is never accepted: the
+ * content type and the pixels must decode. SVG is never accepted: the
  * browser converts it to PNG before upload. Replaces any previous image.
  * Refusal is the uniform 404.
  *
