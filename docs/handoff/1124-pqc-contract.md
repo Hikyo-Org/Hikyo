@@ -35,7 +35,7 @@ the next nightly is accepted. That instruction is the security approval for each
 reviewed head, except #1172, which that authorization held back. Merging this PR makes nothing operative; a banner
 whose trigger is the #1126 or #1127 implementation becomes operative when #1158 or #1156
 merges, although those tickets stay open. Decisions still
-open are listed in the ADR row for #1148.
+open are listed in the #1123 ledger, `1123-post-quantum-program.md`.
 
 ## What the maintainer approval covered
 
