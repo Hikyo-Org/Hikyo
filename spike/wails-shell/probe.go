@@ -1,4 +1,4 @@
-//go:build ios
+//go:build (ios || android) && probe
 
 package main
 
@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -23,18 +24,33 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// A debug server on 127.0.0.1:18099 triggers the iOS experiments from the host, since the simulator shares the host's network.
-// shortcut: unauthenticated and always on in an ios build; a product has none of this.
+// Debug server for the device experiments, compiled only with the probe tag. Every request needs the per-launch secret that is written to the app log.
 func init() { go probeServer() }
 
 func stamp() string { return time.Now().Format("15:04:05.000") }
 
 var ticking atomic.Bool
 
+const probeAddr = "127.0.0.1:18099"
+
+// guard rejects any Host but the exact probe address (blocks browsers and DNS rebinding), non-POST for actions, and a wrong secret.
+func guard(secret string, post bool, h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Host != probeAddr || (post && r.Method != http.MethodPost) || subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Probe-Secret")), []byte(secret)) != 1 {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		h(w, r)
+	}
+}
+
 func probeServer() {
+	secret := proof()
+	log.Printf("PROBE-SECRET %s", secret)
 	mux := http.NewServeMux()
-	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) { fmt.Fprintln(w, "pong", stamp()) })
-	mux.HandleFunc("/tick", func(w http.ResponseWriter, r *http.Request) {
+	handle := func(path string, post bool, h http.HandlerFunc) { mux.HandleFunc(path, guard(secret, post, h)) }
+	handle("/ping", false, func(w http.ResponseWriter, r *http.Request) { fmt.Fprintln(w, "pong", stamp()) })
+	handle("/tick", true, func(w http.ResponseWriter, r *http.Request) {
 		if ticking.CompareAndSwap(false, true) {
 			go func() {
 				for range time.Tick(time.Second) {
@@ -44,60 +60,65 @@ func probeServer() {
 		}
 		fmt.Fprintln(w, "ticking")
 	})
-	mux.HandleFunc("/listen", func(w http.ResponseWriter, r *http.Request) {
+	// The hop listener is separate and answers only /cb, so the browser needs no secret and gets no controls.
+	handle("/listen", true, func(w http.ResponseWriter, r *http.Request) {
 		l, err := net.Listen("tcp4", "127.0.0.1:0")
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
 		go func() {
-			srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hop := http.NewServeMux()
+			hop.HandleFunc("/cb", func(w http.ResponseWriter, r *http.Request) {
 				log.Printf("HOP-ACCEPT %s %s %s ua=%q", stamp(), l.Addr(), r.URL.RequestURI(), r.UserAgent())
 				fmt.Fprintln(w, "accepted by the app at", stamp())
-			})}
+			})
+			srv := &http.Server{Handler: hop}
 			time.AfterFunc(10*time.Minute, func() { srv.Close() })
 			_ = srv.Serve(l)
 		}()
 		log.Printf("HOP-LISTEN %s %s", stamp(), l.Addr())
 		fmt.Fprintln(w, l.Addr().(*net.TCPAddr).Port)
 	})
-	mux.HandleFunc("/safari", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("OPEN-SAFARI %s %s", stamp(), r.URL.Query().Get("url"))
+	handle("/open", true, func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("OPEN %s %s", stamp(), r.URL.Query().Get("url"))
 		fmt.Fprintln(w, openURL(r.URL.Query().Get("url")))
 	})
-	mux.HandleFunc("/ases", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("OPEN-ASES %s %s", stamp(), r.URL.Query().Get("url"))
-		asesStart(r.URL.Query().Get("url"))
-		fmt.Fprintln(w, "started")
-	})
-	mux.HandleFunc("/ases/cancel", func(w http.ResponseWriter, r *http.Request) { asesCancel(); fmt.Fprintln(w, "cancelled") })
-	mux.HandleFunc("/policy", func(w http.ResponseWriter, r *http.Request) { replaceNavigationPolicy(); fmt.Fprintln(w, "replaced") })
-	mux.HandleFunc("/nav", func(w http.ResponseWriter, r *http.Request) {
-		application.Get().Window.GetAll()[0].SetURL("wails://conn-0" + r.URL.Query().Get("path"))
+	handle("/nav", true, func(w http.ResponseWriter, r *http.Request) {
+		host := r.URL.Query().Get("host")
+		if host == "" {
+			host = connHost(0)
+		}
+		// SetURL is a no-op on Android, so navigate from script.
+		target, _ := json.Marshal(pageScheme + "://" + host + r.URL.Query().Get("path"))
+		application.Get().Window.GetAll()[0].ExecJS("location.href=" + string(target))
 		fmt.Fprintln(w, "navigating")
 	})
-	mux.HandleFunc("/secure", func(w http.ResponseWriter, r *http.Request) {
+	// Reports success and whether a value exists or matches, never the value.
+	handle("/secure", true, func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		switch q.Get("op") {
 		case "set":
-			fmt.Fprintln(w, "set err =", application.IOS.SecureSet(q.Get("k"), q.Get("v")))
-		case "get":
-			v, found, err := application.IOS.SecureGet(q.Get("k"))
-			fmt.Fprintf(w, "get found=%v value=%q err=%v\n", found, v, err)
+			fmt.Fprintln(w, "set err =", secureSet(q.Get("k"), q.Get("v")))
+		case "has":
+			v, found, err := secureGet(q.Get("k"))
+			match := q.Has("v") && subtle.ConstantTimeCompare([]byte(v), []byte(q.Get("v"))) == 1
+			fmt.Fprintf(w, "has found=%v match=%v err=%v\n", found, match, err)
 		case "del":
-			fmt.Fprintln(w, "del err =", application.IOS.SecureDelete(q.Get("k")))
+			fmt.Fprintln(w, "del err =", secureDelete(q.Get("k")))
 		}
 	})
-	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+	handle("/login", true, func(w http.ResponseWriter, r *http.Request) {
 		mode := r.URL.Query().Get("mode")
 		go func() {
-			if err := cliLogin(connections["conn-0"], mode); err != nil {
+			if err := cliLogin(connections[connHost(0)], mode); err != nil {
 				log.Printf("LOGIN-FAILED %s %v", stamp(), err)
 			}
 		}()
 		fmt.Fprintln(w, "login started, mode", mode)
 	})
-	log.Fatal(http.ListenAndServe("127.0.0.1:18099", mux))
+	probeRoutes(handle)
+	log.Fatal(http.ListenAndServe(probeAddr, mux))
 }
 
 func proof() string {
@@ -157,19 +178,14 @@ func cliLogin(c *conn, mode string) error {
 		once.Do(func() { code <- r.URL.Query().Get("code") })
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		io.WriteString(w, "CLI login received. Return to the app.\n")
-		if mode == "ases" {
-			// Nothing tells the session the page it shows is done, so native code closes it.
-			go func() { time.Sleep(500 * time.Millisecond); asesCancel() }()
-		}
+		hopDone(mode)
 	})}
 	go srv.Serve(l)
 	defer srv.Close()
 	target := *c.origin
 	target.Path, target.RawQuery = "/login/cli", url.Values{"state": {state}}.Encode()
 	log.Printf("LOGIN-OPEN %s %s %s", stamp(), mode, strings.ReplaceAll(target.String(), state, "<state>"))
-	if mode == "ases" {
-		asesStart(target.String())
-	} else if err := openURL(target.String()); err != nil {
+	if err := hopOpen(mode, target.String()); err != nil {
 		return err
 	}
 	var got string

@@ -160,11 +160,11 @@ func shell(proxies map[string]*conn, windowHosts map[string]string, probing bool
 			case !known:
 				log.Printf("refused unknown host %q %s", r.Host, r.URL.Path)
 				http.NotFound(w, r)
-			case r.Header.Get("Origin") != "" && r.Header.Get("Origin") != "wails://"+r.Host:
+			case r.Header.Get("Origin") != "" && r.Header.Get("Origin") != pageScheme+"://"+r.Host:
 				// Without this, connection A could spend connection B's session on a blind request.
 				log.Printf("refused cross-connection %s -> %s %s %s", r.Header.Get("Origin"), r.Host, r.Method, r.URL.Path)
 				http.Error(w, "cross-connection request refused", http.StatusForbidden)
-			case windowHosts[r.Header.Get("x-wails-window-id")] != r.Host:
+			case windowHeaderSent && windowHosts[r.Header.Get("x-wails-window-id")] != r.Host:
 				// CSP cannot stop a top-level navigation, so a window stays on its own connection here.
 				log.Printf("refused window %q -> %s %s %s", r.Header.Get("x-wails-window-id"), r.Host, r.Method, r.URL.Path)
 				http.Error(w, "this window belongs to another connection", http.StatusForbidden)
@@ -189,6 +189,13 @@ func shell(proxies map[string]*conn, windowHosts map[string]string, probing bool
 	}
 }
 
+// nativeHandler and nativeWindows let a native transport (the Android Java host) call the shell directly instead of going through the Wails asset server.
+var (
+	nativeHandler http.Handler
+	nativeWindows map[string]string
+	nativeReady   = make(chan struct{}) // closed once the windows are registered
+)
+
 func main() {
 	var names instances
 	flag.Var(&names, "instance", "CLI instance name from `hikyo login --name`; repeat for more windows")
@@ -209,7 +216,7 @@ func main() {
 		if !ok {
 			log.Fatalf("no session named %q; run hikyo login first", name)
 		}
-		host := fmt.Sprintf("conn-%d", i)
+		host := connHost(i)
 		proxies[host] = newConn(host, s)
 		hosts[name] = host
 		log.Printf("%s = %s (%s)", host, name, s.Origin)
@@ -226,6 +233,7 @@ func main() {
 	}
 
 	windowHosts := map[string]string{}
+	nativeHandler, nativeWindows = shell(proxies, windowHosts, probe != "")(nil), windowHosts
 	app := application.New(application.Options{
 		Name:   "Hikyo Spike",
 		Assets: application.AssetOptions{Handler: http.NotFoundHandler(), Middleware: shell(proxies, windowHosts, probe != "")},
@@ -233,7 +241,7 @@ func main() {
 	})
 	for _, name := range names {
 		window := app.Window.NewWithOptions(application.WebviewWindowOptions{
-			Title: "Hikyo Spike: " + name, Width: 1280, Height: 860, URL: "wails://" + hosts[name] + "/",
+			Title: "Hikyo Spike: " + name, Width: 1280, Height: 860, URL: pageScheme + "://" + hosts[name] + "/",
 		})
 		windowHosts[strconv.FormatUint(uint64(window.ID()), 10)] = hosts[name]
 		if probe != "" {
@@ -245,6 +253,7 @@ func main() {
 			})
 		}
 	}
+	close(nativeReady)
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
 	}

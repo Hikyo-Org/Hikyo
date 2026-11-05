@@ -1,4 +1,4 @@
-//go:build ios
+//go:build ios || android
 
 package main
 
@@ -10,10 +10,10 @@ import (
 	"slices"
 )
 
-// ios-dev-config.json is gitignored and must exist to build: {"name": {"origin": "...", "token": "..."}}.
+// mobile-dev-config.json is gitignored and must exist to build: {"name": {"origin": "...", "token": "..."}}.
 // shortcut: the token is baked into the binary, so the .app is a secret; a real shell keeps it in the keychain (IOS.SecureSet) after an in-app sign-in.
 //
-//go:embed ios-dev-config.json
+//go:embed mobile-dev-config.json
 var devConfig []byte
 
 func defaultInstances() []string {
@@ -23,7 +23,7 @@ func defaultInstances() []string {
 func loadSessions() map[string]session {
 	out := map[string]session{}
 	if err := json.Unmarshal(devConfig, &out); err != nil {
-		log.Fatalf("ios-dev-config.json: %v", err)
+		log.Fatalf("mobile-dev-config.json: %v", err)
 	}
 	return out
 }
