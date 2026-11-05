@@ -718,7 +718,7 @@ function AccessRequestRow({
         <ul aria-label="Recorded votes">
           {request.votes.map((entry) => (
             <li key={entry.principal_id}>
-              <span title={entry.principal_id}>{entry.principal_name ?? entry.principal_id}</span>: {entry.decision}
+              <NamedId id={entry.principal_id} name={entry.principal_name} tail />: {entry.decision}
             </li>
           ))}
         </ul>

@@ -27,6 +27,7 @@ export const ShowsTheIdTailForConsent: Story = {
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByText('Ada Lovelace')).toHaveAttribute('title', ID);
     await expect(within(canvasElement).getByText('…000001')).toHaveClass('mono');
+    await expect(within(canvasElement).getByText('ID ending')).toHaveClass('visually-hidden');
   },
 };
 

@@ -47,6 +47,10 @@ kbd,
   font-size: var(--fs-mono);
 }
 
+.id-tail {
+  white-space: nowrap;
+}
+
 /* Focus is never invisible and never removed. A two-tone ring survives both
    themes and forced-colors, where `outline` is repainted by the OS. */
 :focus-visible {

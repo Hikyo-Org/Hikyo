@@ -315,7 +315,7 @@ export const KeyMoveConfirmation: Story = {
     onMoveConfirm.mockClear();
     const dialog = within(await canvas.findByRole('dialog', { name: 'This move gives people new access' }));
     const gains = within(dialog.getByRole('region', { name: 'Gains access' }));
-    await expect(gains.getByText('Dana Ruiz: Reveal (prod), Reveal history (prod)')).toBeVisible();
+    await expect(gains.getByText((_, el) => el?.tagName === 'LI' && el.textContent === 'Dana Ruiz: Reveal (prod), Reveal history (prod)')).toBeVisible();
     await userEvent.click(dialog.getByRole('button', { name: 'Move and give access' }));
     await expect(onMoveConfirm).toHaveBeenCalledWith([IDS.dana]);
   },

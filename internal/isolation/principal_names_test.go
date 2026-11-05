@@ -122,11 +122,15 @@ func TestSCIMRefusesDirectionControlInUserName(t *testing.T) {
 	})
 }
 
-func TestInviteRefusesDirectionControlInDisplayName(t *testing.T) {
+func TestInviteRefusesDirectionControlInNames(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
-		spec := service.InviteSpec{Username: "direction-invite", DisplayName: "ops‮admin", Delivery: "response"}
-		if _, err := (&service.Grants{DB: db}).InviteMember(t.Context(), service.LocalPrincipal(root), spec); !errors.Is(err, domain.ErrInvalid) {
-			t.Fatalf("invite = %v, want ErrInvalid", err)
+		for _, spec := range []service.InviteSpec{
+			{Username: "direction-invite", DisplayName: "ops\u202eadmin", Delivery: "response"},
+			{Username: "ops\u202eadmin", DisplayName: "Ops", Delivery: "response"},
+		} {
+			if _, err := (&service.Grants{DB: db}).InviteMember(t.Context(), service.LocalPrincipal(root), spec); !errors.Is(err, domain.ErrInvalid) {
+				t.Fatalf("invite %q = %v, want ErrInvalid", spec.Username, err)
+			}
 		}
 	})
 }
@@ -144,6 +148,14 @@ func TestSCIMDeactivatesAUserWithAStoredDirectionControl(t *testing.T) {
 		execRaw(t, db, "UPDATE scim_users SET user_name = 'ops\u202eadmin' WHERE id = '"+user.ID+"'")
 		if _, err := scimSvc(db).PatchUser(t.Context(), actor, orgA, binding, user.ID, []service.UserPatchCommand{service.UserPatchSetActive{Active: false}}); err != nil {
 			t.Fatalf("deactivate = %v", err)
+		}
+		same := service.DesiredUser{Active: true, UserName: "ops\u202eadmin", ExternalID: "stored", SubjectRaw: "stored"}
+		if _, err := scimSvc(db).ReplaceUser(t.Context(), actor, orgA, binding, user.ID, same); err != nil {
+			t.Fatalf("replace resending the stored name = %v", err)
+		}
+		same.UserName = "ops\u202eroot"
+		if _, err := scimSvc(db).ReplaceUser(t.Context(), actor, orgA, binding, user.ID, same); !errors.Is(err, service.ErrSCIMUserNameDirection) {
+			t.Fatalf("replace with a changed name = %v, want ErrSCIMUserNameDirection", err)
 		}
 	})
 }

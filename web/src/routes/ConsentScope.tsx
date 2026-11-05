@@ -2,6 +2,7 @@ import { useKeyCatalogue } from '../api/identities.ts';
 import { querySettled, useScopeNames } from '../api/scopeNames.ts';
 import { useProjectEnvironments } from '../api/adapters.ts';
 import { Glyph } from '../ui/Glyph.tsx';
+import { IdTail } from '../ui/NamedId.tsx';
 
 export type ConsentKey = { id: string; name: string; classification?: 'secret' | 'config' };
 
@@ -70,7 +71,7 @@ export function ConsentKeys({
               </>
             ) : null}
             {key.name}
-            {key.name === key.id ? null : <> <span>…{key.id.slice(-6)}</span></>}
+            {key.name === key.id ? null : <> <IdTail id={key.id} /></>}
           </li>
         ))}
       </ul>

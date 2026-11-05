@@ -23,6 +23,9 @@ func TestNameAndFolderPathGrammar(t *testing.T) {
 	if err := checkName("environment name", "\u05e4\u05e8\u05d5\u05d3\u200f"); err != nil {
 		t.Errorf("checkName with a right-to-left mark = %v, want it allowed", err)
 	}
+	if err := checkFolderPath("db\u202ex/creds"); err != nil {
+		t.Errorf("checkFolderPath with a stored direction control = %v, want it allowed", err)
+	}
 	if err := checkName("organisation name", "Acme Platform"); err != nil {
 		t.Errorf("a legitimate name was refused: %v", err)
 	}

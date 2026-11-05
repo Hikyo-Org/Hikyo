@@ -57,8 +57,28 @@ func (s *Auth) MyProfile(ctx context.Context, presented string) (AccountProfile,
 	return out, err
 }
 
-// validateAccountProfile rejects malformed or out-of-bounds editable names.
+// validateAccountProfile checks the names of a new account.
 func validateAccountProfile(profile ProfileUpdate) error {
+	if err := validateProfileText(profile); err != nil {
+		return err
+	}
+	return refuseDirectionControls(profile, AccountProfile{})
+}
+
+// refuseDirectionControls checks names that differ from the stored ones, so a
+// name stored before the rule existed does not block an unrelated edit.
+func refuseDirectionControls(profile ProfileUpdate, stored AccountProfile) error {
+	if profile.Username != stored.Username && hasDirectionControl(profile.Username) {
+		return fmt.Errorf("%w: username contains a text direction control", domain.ErrInvalid)
+	}
+	if profile.DisplayName != stored.DisplayName && hasDirectionControl(profile.DisplayName) {
+		return fmt.Errorf("%w: display name contains a text direction control", domain.ErrInvalid)
+	}
+	return nil
+}
+
+// validateProfileText rejects malformed or out-of-bounds editable names.
+func validateProfileText(profile ProfileUpdate) error {
 	for label, value := range map[string]string{"username": profile.Username, "display name": profile.DisplayName} {
 		if !utf8.ValidString(value) || strings.TrimSpace(value) != value || len(value) > 256 {
 			return fmt.Errorf("%w: %s must be valid text with no surrounding whitespace and at most 256 bytes", domain.ErrInvalid, label)
@@ -67,9 +87,6 @@ func validateAccountProfile(profile ProfileUpdate) error {
 			if unicode.IsControl(r) {
 				return fmt.Errorf("%w: %s contains a control character", domain.ErrInvalid, label)
 			}
-		}
-		if hasDirectionControl(value) {
-			return fmt.Errorf("%w: %s contains a text direction control", domain.ErrInvalid, label)
 		}
 	}
 	if strings.Contains(profile.Username, "@") {
@@ -85,12 +102,15 @@ func validateAccountProfile(profile ProfileUpdate) error {
 // assurance, immutable principal, or grant changes. Provider subject keys and
 // SCIM-owned names are never rewritten through this surface.
 func (s *Auth) UpdateMyProfile(ctx context.Context, presented string, profile ProfileUpdate, proof string) (AccountProfile, error) {
-	if err := validateAccountProfile(profile); err != nil {
+	if err := validateProfileText(profile); err != nil {
 		return AccountProfile{}, err
 	}
 	// Resolve self before the proof helper's host-local empty-bearer exemption.
 	before, err := s.MyProfile(ctx, presented)
 	if err != nil {
+		return AccountProfile{}, err
+	}
+	if err := refuseDirectionControls(profile, before); err != nil {
 		return AccountProfile{}, err
 	}
 	var evidence ReauthEvidence

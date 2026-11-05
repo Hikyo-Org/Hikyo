@@ -9,7 +9,17 @@ export function NamedId({ id, name, tail = false }: { id: string; name: string |
   return (
     <>
       <bdi title={id}>{name}</bdi>
-      {tail ? <> <span className="mono">…{id.slice(-6)}</span></> : null}
+      {tail ? <> <IdTail id={id} /></> : null}
+    </>
+  );
+}
+
+/** The last characters of an ID, printed beside a name someone approves against. */
+export function IdTail({ id }: { id: string }) {
+  return (
+    <>
+      <span className="visually-hidden">ID ending </span>
+      <span className="mono id-tail">…{id.slice(-6)}</span>
     </>
   );
 }

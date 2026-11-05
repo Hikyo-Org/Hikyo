@@ -10,7 +10,7 @@ import { label } from './model.ts';
 export type WideningRefusal = z.infer<typeof zWideningRefusal>;
 
 /** One line per person: "Dana Ruiz: Reveal (prod), Reveal history (prod)". */
-export function gainerLines(widening: WideningRefusal, envName: (id: string) => string): { id: string; text: string }[] {
+export function gainerLines(widening: WideningRefusal, envName: (id: string) => string): { id: string; name: string; detail: string }[] {
   const byPerson = new Map<string, { name: string; parts: string[] }>();
   for (const gain of widening.gainers ?? []) {
     const line = byPerson.get(gain.principal_id) ?? { name: gain.principal_name ?? gain.principal_id, parts: [] };
@@ -18,7 +18,7 @@ export function gainerLines(widening: WideningRefusal, envName: (id: string) => 
     line.parts.push(envs === '' ? label(gain.capability) : `${label(gain.capability)} (${envs})`);
     byPerson.set(gain.principal_id, line);
   }
-  return [...byPerson.entries()].map(([id, line]) => ({ id, text: `${line.name}: ${line.parts.join(', ')}` }));
+  return [...byPerson.entries()].map(([id, line]) => ({ id, name: line.name, detail: line.parts.join(', ') }));
 }
 
 /** The principal ids a confirmation must name: exactly the people the refusal named. */
@@ -87,7 +87,7 @@ export function KeyMoveConfirmDialog({
         {named ? (
           <ul>
             {lines.map((line) => (
-              <li key={line.id}>{line.text}</li>
+              <li key={line.id}><bdi>{line.name}</bdi>: {line.detail}</li>
             ))}
           </ul>
         ) : (

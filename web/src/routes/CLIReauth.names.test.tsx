@@ -77,13 +77,13 @@ describe('CLI authorization names', () => {
       const text = container.textContent ?? '';
       expect(text).toContain('Acme');
       expect(text).toContain('Billing');
-      expect(text).toContain('production …000001 (passkey required)');
+      expect(text).toContain('production ID ending …000001 (passkey required)');
       expect(text).not.toContain(consentIds.environment);
       expect(text).toContain('3 keys');
       const rows = [...container.querySelectorAll('.ceremony__keys li')];
       expect(rows.map((row) => row.getAttribute('title'))).toEqual(keyIds);
       expect(rows[0]?.textContent).toContain('secret DATABASE_URL');
-      expect(rows[1]?.textContent).toBe('LOG_LEVEL …000002');
+      expect(rows[1]?.textContent).toBe('LOG_LEVEL ID ending …000002');
       // Absent from the catalogue, so listed by its ID.
       expect(rows[2]?.textContent).toBe(consentIds.missingKey);
       expect(container.querySelector('.ceremony__keys')?.getAttribute('tabindex')).toBe('0');
@@ -125,7 +125,7 @@ describe('CLI authorization names', () => {
       expect(container.querySelectorAll('ul[aria-label="Environments this decision covers"] li')).toHaveLength(2);
       expect(container.querySelector('.ceremony__keys')).toBeNull();
       expect(requested().some((path) => path.endsWith('/keys'))).toBe(false);
-      expect(container.textContent).toContain('production …000001 (passkey required)');
+      expect(container.textContent).toContain('production ID ending …000001 (passkey required)');
       expect(authorize(container).disabled).toBe(false);
     } finally { await unmount(); }
   });
