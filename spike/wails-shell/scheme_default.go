@@ -8,5 +8,3 @@ import "fmt"
 const pageScheme = "wails"
 
 func connHost(i int) string { return fmt.Sprintf("conn-%d", i) }
-
-const windowHeaderSent = true

@@ -12,8 +12,19 @@
  
  import org.json.JSONObject;
  
-@@ -142,7 +146,7 @@
+@@ -112,6 +116,7 @@
+     @SuppressLint("SetJavaScriptEnabled")
+     private void setupWebView() {
+         webView = findViewById(R.id.webview);
++        IsoRig.start(this, webView);
+         bridge.setWebView(webView);
+ 
+         // Configure WebView settings
+@@ -140,9 +145,10 @@
+             @Nullable
+             @Override
              public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
++                IsoRig.signal(view, request, "view");
                  // Handle wails.localhost requests
                  if (request.getUrl().getHost() != null &&
 -                        (request.getUrl().getHost().equals(WAILS_HOST) ||
@@ -21,14 +32,14 @@
                           (devServer != null && request.getUrl().getScheme().equals(devServer.getScheme()) &&
                            request.getUrl().getAuthority().equals(devServer.getAuthority())))) {
  
-@@ -211,14 +215,22 @@
+@@ -211,18 +217,33 @@
                          return super.shouldInterceptRequest(view, request);
                      }
  
 -                    // For regular assets, use the asset loader
 -                    return assetLoader.shouldInterceptRequest(request.getUrl());
 +                    // Everything else goes to the Go proxy with its method, query, headers and body.
-+                    return SpikeBridge.fetch(request);
++                    return SpikeBridge.fetch(request, IsoRig.owner(view, request));
                  }
  
                  return super.shouldInterceptRequest(view, request);
@@ -37,27 +48,37 @@
              @Override
 +            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
 +                Uri u = request.getUrl();
-+                if ("https".equals(u.getScheme()) && isWailsHost(u.getHost())) return false;
-+                openExternal(u);
++                if ("https".equals(u.getScheme()) && isWailsHost(u.getHost())) return !IsoRig.allowNavigation(view, request);
++                // The rig never leaves the app: an external open is only logged.
++                Log.i(IsoRig.TAG, "EXTERNAL " + u + " main=" + request.isForMainFrame() + " gesture=" + request.hasGesture() + " redirect=" + request.isRedirect());
 +                return true;
++            }
++
++            @Override
++            public void onReceivedSslError(WebView view, android.webkit.SslErrorHandler handler, android.net.http.SslError error) {
++                if (IsoRig.tlsok && error.getUrl().startsWith("https://127.0.0.1:")) handler.proceed(); else handler.cancel();
 +            }
 +
 +            @Override
              public void onPageFinished(WebView view, String url) {
                  super.onPageFinished(view, url);
                  if (DEBUG) Log.d(TAG, "Page loaded: " + url);
-@@ -231,6 +243,20 @@
+                 bridge.onPageFinished(url);
++                IsoRig.pageFinished(view, url);
+                 // Now that JS listeners are mounted, push a snapshot of the
+                 // current battery / network / theme so the UI starts populated.
+                 emitSystemSnapshot();
+@@ -231,6 +252,19 @@
  
          // Add JavaScript interface for Go communication
          webView.addJavascriptInterface(new WailsJSBridge(bridge, webView), "wails");
-+        installBodyChannel();
-+        webView.setDownloadListener((url, ua, disposition, mime, length) -> saveDownload(url, disposition, mime));
++        installView(webView);
 +        settings.setSupportMultipleWindows(true);
 +        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
 +            @Override
 +            public void handleOnBackPressed() {
-+                if (webView.canGoBack()) {
-+                    webView.goBack();
++                if (IsoRig.activeView().canGoBack()) {
++                    IsoRig.activeView().goBack();
 +                } else {
 +                    setEnabled(false);
 +                    getOnBackPressedDispatcher().onBackPressed();
@@ -67,7 +88,7 @@
  
          // A WebChromeClient is required for HTML <input type="file"> elements to
          // work; without onShowFileChooser the WebView silently ignores clicks on
-@@ -250,6 +276,23 @@
+@@ -250,6 +284,23 @@
              }
  
              @Override
@@ -91,10 +112,18 @@
              public boolean onShowFileChooser(WebView view,
                                               ValueCallback<Uri[]> filePathCallback,
                                               FileChooserParams fileChooserParams) {
-@@ -272,8 +315,64 @@
+@@ -272,8 +323,74 @@
          });
      }
  
++    static boolean isWailsHostPublic(String host) { return isWailsHost(host); }
++
++    /** The parts every connection's WebView needs. A per-view mode restricts the body channel to that view's own origin. */
++    void installView(WebView v) {
++        installBodyChannel(v);
++        v.setDownloadListener((url, ua, disposition, mime, length) -> saveDownload(v, url, disposition, mime));
++    }
++
 +    private static boolean isWailsHost(String host) {
 +        return host != null && (host.equals(WAILS_HOST) || host.endsWith("." + WAILS_HOST));
 +    }
@@ -111,7 +140,7 @@
 +    }
 +
 +    /** A request body reaches the app over a WebMessageListener restricted to this app's origins; spike-shim.js sends it. */
-+    private void installBodyChannel() {
++    private void installBodyChannel(WebView webView) {
 +        if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
 +                || !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
 +                || !WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_ARRAY_BUFFER)) {
@@ -135,14 +164,15 @@
 +    }
 +
 +    /** The WebView cannot fetch a wails origin itself, so the file comes through the Go proxy into the app's download folder. */
-+    private void saveDownload(String url, String disposition, String mime) {
++    private void saveDownload(WebView source, String url, String disposition, String mime) {
++        final String owner = IsoRig.perView() ? IsoRig.ownerOfView(source) : IsoRig.pinned() ? IsoRig.current : Uri.parse(url).getHost();
 +        new Thread(() -> {
 +            String name = new File(android.webkit.URLUtil.guessFileName(url, disposition, mime)).getName().replaceAll("[^A-Za-z0-9._-]", "_");
 +            if (name.length() > 100) name = name.substring(0, 100);
 +            File dir = getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS);
 +            File out = new File(dir, name);
 +            try {
-+                long size = SpikeBridge.download(url, out);
++                long size = SpikeBridge.download(url, out, owner);
 +                Log.i(TAG, "download saved " + name + " " + size + " bytes");
 +                runOnUiThread(() -> android.widget.Toast.makeText(this, "Saved " + out.getName(), android.widget.Toast.LENGTH_LONG).show());
 +            } catch (Exception e) {
@@ -153,6 +183,7 @@
 +
      private void loadApplication() {
 -        String url = devServer != null ? devServer.toString() + "/" : WAILS_SCHEME + "://" + WAILS_HOST + "/";
++        IsoRig.ready();
 +        String url = devServer != null ? devServer.toString() + "/" : WAILS_SCHEME + "://" + "conn-0." + WAILS_HOST + "/";
          if (DEBUG) Log.d(TAG, "Loading URL: " + url);
          webView.loadUrl(url);

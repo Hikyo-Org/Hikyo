@@ -4,6 +4,7 @@ package main
 
 /*
 #cgo CFLAGS: -fobjc-arc
+#cgo isonopolicy CFLAGS: -DISO_NOPOLICY
 #cgo LDFLAGS: -framework UIKit -framework WebKit -framework AuthenticationServices
 #include <stdlib.h>
 void spikeReplacePolicy(void);

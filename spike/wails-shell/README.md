@@ -51,6 +51,40 @@ Results are in the spike report's third round. Both platforms need a local, giti
 - **Android:** run `android-host/build.sh`, or `android-host/build.sh stock` for the
   unmodified host. It needs `ANDROID_HOME` and the NDK. The patched host runs on the emulator.
 
+## Isolation rig
+
+Results are in [the isolation report](../../docs/reports/wails-connection-isolation-2026-11-05.md).
+Two scratch fronts play the instances, with fake tokens, and `conn-0`'s front attacks `conn-1`.
+The victim front's log is the result.
+
+```sh
+go build -o /tmp/front ./isolation/front
+/tmp/front -addr 127.0.0.1:18200 -name conn0-front -attack -victim https://conn-1.wails.localhost \
+  -rig '{"run":"r1","thennav":"1"}' -control 127.0.0.1:18202 -tls 127.0.0.1:18203 -log r1/attacker.jsonl &
+/tmp/front -addr 127.0.0.1:18201 -name conn1-front -log r1/victim.jsonl &
+python3 isolation/summarize.py r1 r1/attacker.jsonl r1/victim.jsonl r1/shell.log
+```
+
+`mobile-dev-config.json` points `conn-0` and `conn-1` at the two fronts. Use `-victim wails://conn-1`
+on macOS and iOS. Rig keys: `run`, `thennav`, `only`, `skip`, `phase` (`sub`, `nav`, `race`), `n`, `vh`, `direct`, `wait`.
+
+**macOS and iOS builds:** the `isocontrol` tag turns the Go window check off, and `isonopolicy` turns the
+native policy off on macOS. On iOS the policy stays off until `POST 127.0.0.1:18099/policy` with the `probe` tag.
+
+**Android:** build with `ISO_TAGS=isorig android-host/build.sh`, `adb reverse` ports 18200 to 18203, then set the
+mode before launching. URL-encode it, because `+` would decode to a space:
+
+```sh
+curl -G --data-urlencode 'set=perview-profile' http://127.0.0.1:18202/ctl/mode
+curl -G --data-urlencode 'cmd=switch conn-1.wails.localhost' http://127.0.0.1:18202/ctl/push
+adb logcat -v time IsoRig:I IsoGo:I AndroidRuntime:E '*:S' > r1/shell.log
+```
+
+Modes are `none`, `perview`, `perview-profile`, `pinned` and `pinned-drain`. Flags go after `+`: `sw`, `swdeny`, `blocknet`,
+`csp` and `tlsok`. Commands are `load <url>`, `switch <host>`, `back`, `mem <label>`, `gc` and `recreate delete|keep`.
+
+A refused top-level navigation replaces the attacker's page and stops the chain, so run later vectors with `phase=nav` and `n=K`.
+
 ## Tests and probes
 
 `go test -tags production .` covers the proxy's refusals and token rotation, the reauth

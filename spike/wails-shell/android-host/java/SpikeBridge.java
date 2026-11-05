@@ -27,7 +27,8 @@ final class SpikeBridge {
     private static final long MAX_STASHED = 128L << 20;
     private static final long TTL_MS = 60_000;
 
-    private static native long nativeBegin(String method, String url, String headersJson, byte[] body);
+    private static native long nativeBegin(String method, String url, String headersJson, byte[] body, String owner);
+    static native void nativeRig(String flags);
     private static native String nativeHead(long id);
     private static native int nativeRead(long id, byte[] buf);
     private static native void nativeClose(long id);
@@ -62,7 +63,8 @@ final class SpikeBridge {
         return s;
     }
 
-    static WebResourceResponse fetch(WebResourceRequest request) {
+    /** owner is the connection this request's page belongs to, as the host establishes it. Go refuses a request whose host differs. */
+    static WebResourceResponse fetch(WebResourceRequest request, String owner) {
         try {
             String method = request.getMethod();
             Map<String, String> in = request.getRequestHeaders();
@@ -78,7 +80,7 @@ final class SpikeBridge {
                 }
             }
             Uri u = request.getUrl();
-            long id = nativeBegin(method, u.toString(), headers.toString(), body);
+            long id = nativeBegin(method, u.toString(), headers.toString(), body, owner);
             JSONObject head = new JSONObject(nativeHead(id));
             int status = head.getInt("status");
             Map<String, String> out = new HashMap<>();
@@ -108,8 +110,8 @@ final class SpikeBridge {
     }
 
     /** Saves a GET of a wails URL to a file through the proxy and returns its size. */
-    static long download(String url, java.io.File out) throws Exception {
-        long id = nativeBegin("GET", url, "[]", null);
+    static long download(String url, java.io.File out, String owner) throws Exception {
+        long id = nativeBegin("GET", url, "[]", null, owner);
         try (InputStream in = new GoStream(id); java.io.FileOutputStream fos = new java.io.FileOutputStream(out)) {
             JSONObject head = new JSONObject(nativeHead(id));
             if (head.getInt("status") != 200) throw new IOException("status " + head.getInt("status"));

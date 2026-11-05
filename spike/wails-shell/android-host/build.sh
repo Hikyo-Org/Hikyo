@@ -3,7 +3,7 @@
 # build/android comes from `wails3 generate build-assets`; mobile-dev-config.json must exist (gitignored).
 # usage: android-host/build.sh [stock]   (stock = the unpatched Wails Java host, for the baseline)
 set -eu
-tags=production,android,probe
+tags=production,android,probe${ISO_TAGS:+,$ISO_TAGS}
 [ "${1:-}" = stock ] && tags=$tags,stockhost
 ndk=$(ls -d "$ANDROID_HOME"/ndk/* | sort -V | tail -1)
 cc=$ndk/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android24-clang
@@ -15,14 +15,14 @@ time CC=$cc CGO_ENABLED=1 GOOS=android GOARCH=arm64 go build -p 2 -buildmode=c-s
 app=build/android/app; java=$app/src/main/java/com/wails/app
 if [ "${1:-}" = stock ]; then
   [ -f $java/MainActivity.java.orig ] && cp $java/MainActivity.java.orig $java/MainActivity.java
-  rm -f $java/SpikeBridge.java $app/src/main/assets/spike-shim.js
+  rm -f $java/SpikeBridge.java $java/IsoRig.java $app/src/main/assets/spike-shim.js
 else
   app=build/android/app; java=$app/src/main/java/com/wails/app
   # idempotent: start from the generated MainActivity, then patch
   [ -f $java/MainActivity.java.orig ] || cp $java/MainActivity.java $java/MainActivity.java.orig
   cp $java/MainActivity.java.orig $java/MainActivity.java
   patch -s -p1 -d $java < android-host/MainActivity.patch
-  cp android-host/java/SpikeBridge.java $java/
+  cp android-host/java/SpikeBridge.java android-host/java/IsoRig.java $java/
   mkdir -p $app/src/main/assets && cp android-host/assets/spike-shim.js $app/src/main/assets/
   sed -i.bak 's/androidx.webkit:webkit:1.9.0/androidx.webkit:webkit:1.12.1/' $app/build.gradle
 fi

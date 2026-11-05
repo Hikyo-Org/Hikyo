@@ -27,6 +27,9 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
+// shellCSP confines a page's own loads to its connection and leaves everything else to the instance's policy.
+const shellCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; form-action 'self'"
+
 type instances []string
 
 func (i *instances) String() string     { return strings.Join(*i, ",") }
@@ -78,6 +81,10 @@ func newConn(host string, s session) *conn {
 		},
 		ModifyResponse: func(r *http.Response) error {
 			r.Header.Del("Set-Cookie")
+			// The shell's own CSP adds to the instance's: a browser enforces both, and the instance cannot remove this one.
+			if rigCSP {
+				r.Header.Add("Content-Security-Policy", shellCSP)
+			}
 			log.Printf("%s %s %s -> %d %s", host, r.Request.Method, r.Request.URL.Path, r.StatusCode, r.Header.Get("Content-Type"))
 			if r.Request.Method == http.MethodGet || !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 				return nil
@@ -155,6 +162,7 @@ func remarshal(raw []byte, body map[string]json.RawMessage) []byte {
 func shell(proxies map[string]*conn, windowHosts map[string]string, probing bool) application.Middleware {
 	return func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			logSignals(r)
 			c, known := proxies[r.Host]
 			switch {
 			case !known:

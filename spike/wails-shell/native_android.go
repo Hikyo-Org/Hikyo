@@ -66,13 +66,13 @@ func goString(env *C.JNIEnv, s C.jstring) string {
 }
 
 //export Java_com_wails_app_SpikeBridge_nativeBegin
-func Java_com_wails_app_SpikeBridge_nativeBegin(env *C.JNIEnv, cls C.jclass, jmethod, jurl, jheaders C.jstring, jbody C.jbyteArray) C.jlong {
+func Java_com_wails_app_SpikeBridge_nativeBegin(env *C.JNIEnv, cls C.jclass, jmethod, jurl, jheaders C.jstring, jbody C.jbyteArray, jowner C.jstring) C.jlong {
 	select {
 	case <-nativeReady:
 	case <-time.After(10 * time.Second):
 		log.Print("native: shell not ready, serving anyway")
 	}
-	method, rawURL, rawHeaders := goString(env, jmethod), goString(env, jurl), goString(env, jheaders)
+	method, rawURL, rawHeaders, owner := goString(env, jmethod), goString(env, jurl), goString(env, jheaders), goString(env, jowner)
 	var body []byte
 	if jbody != 0 {
 		if n := C.jlen(env, C.jarray(jbody)); n > 0 {
@@ -98,9 +98,11 @@ func Java_com_wails_app_SpikeBridge_nativeBegin(env *C.JNIEnv, cls C.jclass, jme
 	}
 	req.Header.Del("Accept-Encoding") // the proxy's transport asks for gzip itself and decodes it; a gzip body would reach the page undecoded
 	req.Host, req.RemoteAddr, req.RequestURI = u.Host, "127.0.0.1:0", u.RequestURI()
-	// shortcut: a WebView request carries no window identity, so the id is the one registered for this host and the shell's window check only proves the host is known; one WebView cannot be held to one connection here.
+	// The host names the connection that owns this request. With no match no id is set, and the shell's window check fails closed.
+	// A page can send this header itself, so it goes first.
+	req.Header.Del("x-wails-window-id")
 	for id, host := range nativeWindows {
-		if host == u.Host {
+		if host == owner {
 			req.Header.Set("x-wails-window-id", id)
 		}
 	}
@@ -174,4 +176,9 @@ func Java_com_wails_app_SpikeBridge_nativeClose(env *C.JNIEnv, cls C.jclass, id 
 		s.cancel()
 		s.pr.Close()
 	}
+}
+
+//export Java_com_wails_app_SpikeBridge_nativeRig
+func Java_com_wails_app_SpikeBridge_nativeRig(env *C.JNIEnv, cls C.jclass, jflags C.jstring) {
+	rigCSP = goString(env, jflags) == "csp"
 }
