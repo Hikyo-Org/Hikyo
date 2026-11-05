@@ -157,12 +157,19 @@ export function ChromeIdentityControls({
       // The page's feedback already reported it, and the image never changed.
     }
   };
-  // Preparation starts at once, but each upload waits for every earlier
-  // selection to settle: a slow SVG picked first must not commit after a PNG
-  // picked later. A failed preparation settles its turn.
+  // Every image change waits for each earlier one to settle, so the last
+  // selection or removal wins: a slow SVG picked first must not commit after a
+  // PNG picked later, or restore an image removed meanwhile.
+  const queueImage = (work: () => Promise<void>): Promise<void> => {
+    const turn = imageTurn.current.then(work);
+    imageTurn.current = turn.catch(() => undefined);
+    return turn;
+  };
+  // Preparation starts at once; only the upload waits its turn. A failed
+  // preparation settles its turn.
   const pickImage = (file: File): Promise<void> => {
     const prepared = prepareChromeImage(file).catch((): PreparedImage => ({ ok: false, message: 'That file could not be read.' }));
-    const turn = imageTurn.current.then(async () => {
+    return queueImage(async () => {
       const result = await prepared;
       if (!result.ok) {
         setRefusal(result.message);
@@ -171,8 +178,6 @@ export function ChromeIdentityControls({
       const { blob, contentType } = result;
       await changeImage((apply) => apply.setImage({ blob, contentType }));
     });
-    imageTurn.current = turn.catch(() => undefined);
-    return turn;
   };
 
   // A range's native `change` fires once when a drag or key press ends, on every
@@ -354,7 +359,7 @@ export function ChromeIdentityControls({
               aria-label="remove image"
                 onClick={() => {
                 if (prototypeMode) updateIdentity({ ...local, image: null });
-                else void changeImage((apply) => apply.clearImage());
+                else void queueImage(() => changeImage((apply) => apply.clearImage()));
               }}
             >
               <Glyph name="cross" />

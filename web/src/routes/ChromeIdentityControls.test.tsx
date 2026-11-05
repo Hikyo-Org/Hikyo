@@ -315,4 +315,48 @@ describe('ChromeIdentityControls image uploads', () => {
     act(() => root.unmount());
     host.remove();
   });
+
+  it('removes the image after an upload still being prepared', async () => {
+    let finishSvg: (image: PreparedImage) => void = () => {};
+    prepare.fn = () =>
+      new Promise<PreparedImage>((resolve) => {
+        finishSvg = resolve;
+      });
+    const calls: string[] = [];
+    const setImage = vi.fn(() => {
+      calls.push('set');
+      return Promise.resolve();
+    });
+    const clearImage = vi.fn(() => {
+      calls.push('clear');
+      return Promise.resolve();
+    });
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() =>
+      root.render(
+        <ChromeIdentityControls
+          identityId="x"
+          name="Payments"
+          kind="org"
+          identity={{ hue: 195, image_version: 'abc' }}
+          imageUrl={(version) => `/img?v=${version}`}
+          actions={{ ...actions, setImage, clearImage }}
+        />,
+      ),
+    );
+    const input = host.querySelector<HTMLInputElement>('input[type="file"]');
+    const remove = host.querySelector<HTMLButtonElement>('button[aria-label="remove image"]');
+    if (!input || !remove) throw new Error('no image controls');
+    Object.defineProperty(input, 'files', { configurable: true, value: [new File(['<svg/>'], 'slow.svg', { type: 'image/svg+xml' })] });
+    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })));
+    await act(async () => remove.click());
+    // The removal waits for the earlier selection, so it cannot be undone by it.
+    expect(clearImage).not.toHaveBeenCalled();
+    await act(async () => finishSvg({ ok: true, blob: new Blob(['png']), contentType: 'image/png' }));
+    expect(calls).toEqual(['set', 'clear']);
+    act(() => root.unmount());
+    host.remove();
+  });
 });
