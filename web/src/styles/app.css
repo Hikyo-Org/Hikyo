@@ -8077,9 +8077,12 @@ label.chk:has(input:disabled) {
 }
 
 /* The matrix's personal mark: words after the cell state in the same column,
-   never colour alone. Like the value, it ellipsises when a phone squeezes the
-   column below its sized width; the cell's accessible name keeps the words. */
+   never colour alone. When a phone squeezes the column the value gives way
+   first; the mark ellipsises only when it alone is wider than the cell, and
+   the cell's accessible name keeps the words. */
 .matrix-cell__personal {
+  flex-shrink: 0;
+  max-width: 100%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

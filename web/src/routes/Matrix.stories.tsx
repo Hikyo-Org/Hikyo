@@ -983,8 +983,10 @@ const expectPersonalMarks = async (canvas: ReturnType<typeof within>, canvasElem
   const mark = counted.querySelector('.matrix-cell__personal');
   if (!(mark instanceof HTMLElement)) throw new Error('mark missing');
   await expect(mark.getBoundingClientRect().right).toBeLessThanOrEqual(counted.getBoundingClientRect().right + 0.5);
-  // At desktop width the column is sized for it, so it shows in full; a phone
-  // squeezes the column and the mark ellipsises like the value beside it.
+  // At desktop width the column is sized for it, so it shows in full. A phone
+  // squeezes the column toward its header: the value gives way first, then the
+  // mark ellipsises (shortcut: a long mark is cut on a phone, the cell's name keeps
+  // the words; widen the phone column floor if the counts must always show).
   if (!phone) await expect(mark.scrollWidth).toBeLessThanOrEqual(mark.clientWidth);
 };
 

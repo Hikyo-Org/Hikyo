@@ -814,7 +814,7 @@ test.describe('personal values', () => {
     await panel.getByRole('button', { name: 'Save my value' }).click();
   }
 
-  test('sets, reveals and deletes your own value, and dismisses a notice', async () => {
+  test('sets, reveals and deletes your own value', async () => {
     await expect(page.getByText(STATEMENT)).toBeVisible();
     // No .env download anywhere: running a program is the CLI's job.
     await expect(page.getByRole('link', { name: /download|\.env/i })).toHaveCount(0);
