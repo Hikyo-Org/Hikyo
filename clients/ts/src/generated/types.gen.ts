@@ -3891,7 +3891,7 @@ export type DeliveredKey = {
      */
     personal?: 'value' | 'withheld' | 'notice' | 'missing';
     /**
-     * For `withheld`, one of consent, config_only, suspended. For `notice`, the cause.
+     * For `withheld`, one of consent, config_only, suspended. For `notice`, the cause. Absent for `missing`.
      */
     personal_reason?: string;
 };

@@ -7020,7 +7020,7 @@ type DeliveredKey struct {
 	// never carries the shared value, and `hikyo run` refuses it.
 	Personal *DeliveredKeyPersonal `json:"personal,omitempty"`
 
-	// PersonalReason For `withheld`, one of consent, config_only, suspended. For `notice`, the cause.
+	// PersonalReason For `withheld`, one of consent, config_only, suspended. For `notice`, the cause. Absent for `missing`.
 	PersonalReason *string `json:"personal_reason,omitempty"`
 
 	// Presence What the fetch reports about this key in the addressed

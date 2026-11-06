@@ -21888,7 +21888,7 @@ components:
         personal_reason:
           type: string
           maxLength: 64
-          description: For `withheld`, one of consent, config_only, suspended. For `notice`, the cause.
+          description: For `withheld`, one of consent, config_only, suspended. For `notice`, the cause. Absent for `missing`.
 
     DeliveryResponse:
       type: object

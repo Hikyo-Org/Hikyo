@@ -643,6 +643,9 @@ func refusePersonalKeys(ios IO, keys []apigen.DeliveredKey) error {
 			if k.PersonalReason != nil {
 				reason = *k.PersonalReason
 			}
+			if *k.Personal == apigen.DeliveredKeyPersonalMissing {
+				reason = "required"
+			}
 			refused = append(refused, fmt.Sprintf("%s (%s)", k.Name, personalRefusalCause(reason)))
 		}
 	}

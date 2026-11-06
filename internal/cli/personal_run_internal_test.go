@@ -29,6 +29,7 @@ func TestRunRefusesWithheldAndNoticedPersonalKeys(t *testing.T) {
 		{"withheld", "config_only", "--config-only"},
 		{"withheld", "suspended", "suspended"},
 		{"notice", "key_renamed", "removal notice: key_renamed"},
+		{"missing", "", "required here and you have none"},
 	} {
 		var stderr bytes.Buffer
 		err := refusePersonalKeys(IO{Stderr: &stderr}, []apigen.DeliveredKey{
