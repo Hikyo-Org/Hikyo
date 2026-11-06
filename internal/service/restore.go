@@ -134,6 +134,11 @@ func restoreReconcile(ctx context.Context, run func(context.Context, tx.RestoreF
 	return out, nil
 }
 
+// personalValuesSchemaVersion is the migration that creates the personal-value
+// tables (00086, pinned to the migration file by
+// TestPersonalValuesSchemaVersionMatchesTheMigration).
+const personalValuesSchemaVersion = 86
+
 // CompleteRestore is the closure the restore transaction runs against the
 // restored state, before it is committed or published. It advances the
 // credential epoch and retires pending human proofs, invalidates restored
@@ -177,12 +182,19 @@ func CompleteRestore(now time.Time, m store.Manifest) tx.RestoreFn {
 		if err != nil {
 			return err
 		}
-		// Personal values do not survive a restore (personal-values ADR): every
-		// principal is unreconciled once the epoch advances, so each owner's
-		// values are deleted here with a `restore` notice.
-		for _, principal := range pending {
-			if err := purgePersonalValues(ctx, az, principal.ID, PersonalCauseRestore, now); err != nil {
+		// Personal values do not survive a restore (personal-values ADR): each
+		// owner's values are deleted here with a `restore` notice. An archive
+		// older than the personal-values schema holds none, and its tables do
+		// not exist until the migrations run after this closure.
+		if m.SchemaVersion >= personalValuesSchemaVersion {
+			owners, err := az.PersonalValueOwners(ctx)
+			if err != nil {
 				return err
+			}
+			for _, owner := range owners {
+				if err := purgePersonalValues(ctx, az, owner, PersonalCauseRestore, now); err != nil {
+					return err
+				}
 			}
 		}
 		e, err := domainEvent(ctx, audit.EventRestoreCompleted, "",
