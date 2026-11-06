@@ -1,8 +1,9 @@
-# Hikyo personal values: one shared environment, one value per developer (ADR, proposed 2026-11-03)
+# Hikyo personal values: one shared environment, one value per developer (ADR, accepted 2026-11-06)
 
-> **Status: proposed. Operative when its implementation PR merges.** The owner took decisions O1 to O4 below on
-> 2026-11-03 and O5 to O8 on 2026-11-06. Everything else is a concrete proposal derived from them, and merging this ADR is
-> the owner's acceptance of those details. No code implements this yet.
+> **Status: accepted and operative.** The owner took decisions O1 to O4 below on 2026-11-03 and O5 to O8 on 2026-11-06,
+> and accepted the remaining details with the implementation in the same PR (#1167, issue #1235). The
+> [implementation handoff](../handoff/1235-personal-values-implementation.md) maps every
+> [Implementation acceptance](#implementation-acceptance) item to its test or records it as remaining work.
 >
 > **Review disposition:** the [amendment procedure](./oss-mechanics.md) asks for a reopened ticket and adversarial
 > cross-model review. Cross-provider review did not run and is not CLEAN. The owner waived it on 2026-11-06 (O8). The reopened

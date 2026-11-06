@@ -1,8 +1,8 @@
 package isolation
 
 import (
+	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -17,7 +17,10 @@ import (
 // fixture's human; a second, invited project administrator holds every
 // administrative capability and must never read the owner's value.
 
-const personalPlain = "personal-synthetic-owner-value"
+const (
+	personalPlain = "personal-synthetic-owner-value"
+	personalOnly  = "PERSONAL_ONLY"
+)
 
 type personalEnv struct {
 	ceremonyEnv
@@ -276,19 +279,21 @@ func TestPersonalValueKeyRenameAndDeleteCascade(t *testing.T) {
 		e := personalFixture(t, db, "personal-cascade")
 		ctx := t.Context()
 		e.setOwn(t, ceremonySecretA, e.keyA, personalPlain)
-		e.setOwn(t, ceremonySecretB, "key_"+ceremonySecretB, personalPlain)
-		keys := &service.Keys{DB: db}
+		// A key with no shared value, so deleting it is not refused for values.
+		execRaw(t, db, `INSERT INTO keys (id, org_id, project_id, name, folder_path, classification, description, deprecated, deprecation_note, declaration, required_mode, forbidden_mode, created_at) VALUES ('key_personal_only', 'org_a', 'prj_a1', '`+personalOnly+`', '', 'secret', '', FALSE, '', '{"rule":{"type":"string"}}', 'none', 'none', `+ts+`)`)
+		e.setOwn(t, personalOnly, "key_personal_only", personalPlain)
+		keys := &service.Keys{DB: db, Keyring: e.values.Keyring}
 		actor := service.LocalPrincipal(custodian)
 		if _, err := keys.Rename(ctx, actor, scopeProject(orgA, prjA1), e.keyA, "CEREMONY_SECRET_RENAMED", nil); err != nil {
 			t.Fatal(err)
 		}
-		if err := keys.Delete(ctx, actor, scopeProject(orgA, prjA1), "key_"+ceremonySecretB); err != nil {
+		if err := keys.Delete(ctx, actor, scopeProject(orgA, prjA1), "key_personal_only"); err != nil {
 			t.Fatal(err)
 		}
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM personal_values`); n != 0 {
 			t.Fatalf("cascade left %d personal values", n)
 		}
-		for name, cause := range map[string]string{ceremonySecretA: "key_renamed", ceremonySecretB: "key_deleted"} {
+		for name, cause := range map[string]string{ceremonySecretA: "key_renamed", personalOnly: "key_deleted"} {
 			if queryInt(t, db, `SELECT COUNT(*) FROM personal_value_notices WHERE key_name='`+name+`' AND cause='`+cause+`'`) != 1 {
 				t.Fatalf("no %s notice for %s", cause, name)
 			}
@@ -297,12 +302,122 @@ func TestPersonalValueKeyRenameAndDeleteCascade(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var causes []string
+		causes := map[string]string{}
 		for _, en := range entries {
-			causes = append(causes, en.Notice)
+			causes[en.Name] = en.Notice
 		}
-		if strings.Join(causes, ",") == "" {
-			t.Fatal("owner sees no notices after the cascade")
+		if causes[ceremonySecretA] != service.PersonalCauseKeyRenamed || causes[personalOnly] != service.PersonalCauseKeyDeleted {
+			t.Fatalf("owner notices = %v", causes)
+		}
+		// A key re-declared under the deleted name inherits the notice, so a
+		// shared value an administrator controls is refused, not served.
+		execRaw(t, db, `INSERT INTO keys (id, org_id, project_id, name, folder_path, classification, description, deprecated, deprecation_note, declaration, required_mode, forbidden_mode, created_at) VALUES ('key_redeclared', 'org_a', 'prj_a1', '`+personalOnly+`', '', 'secret', '', FALSE, '', '{"rule":{"type":"string"}}', 'none', 'none', `+ts+`)`)
+		publishValue(t, e.values, service.LocalPrincipal(custodian), envScope(envA1), personalOnly, "administrator-controlled")
+		minted, _ := mintDeveloper(t, db, &e.ceremonyEnv, time.Hour, true)
+		r, err := deliverySvc(t, db).Fetch(ctx, minted.Value, envScope(envA1), "", service.FetchOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if k := deliveredKey(t, r, personalOnly); k.Value != nil || k.Personal != service.PersonalNotice || k.PersonalReason != service.PersonalCauseKeyDeleted {
+			t.Fatalf("re-declared key: personal=%q reason=%q", k.Personal, k.PersonalReason)
+		}
+	})
+}
+
+// A planted recovery code can destroy personal values but never read them:
+// consuming it deletes them in the same transaction that retires the factors,
+// before any new factor can be enrolled.
+func TestPersonalValueRecoveryCodeConsumptionPurges(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		e := personalFixture(t, db, "personal-recovery")
+		ctx := t.Context()
+		e.setOwn(t, ceremonySecretA, e.keyA, personalPlain)
+		codes, _, err := e.admin.auth.GenerateRecoveryCodes(ctx, e.admin.token, ceremonyPassword)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.admin.auth.ConsumeRecoveryCode(ctx, "personal-recovery", codes[0]); err != nil {
+			t.Fatal(err)
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM personal_values`); n != 0 {
+			t.Fatalf("recovery consumption kept %d personal values", n)
+		}
+		if queryInt(t, db, `SELECT COUNT(*) FROM personal_value_notices WHERE cause='qualification_lost'`) != 1 {
+			t.Fatal("recovery consumption left no notice")
+		}
+	})
+}
+
+// The envelope binds the owner: ciphertext moved onto another person's row
+// does not open for them.
+func TestPersonalValueMovedToAnotherOwnerDoesNotOpen(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		e := personalFixture(t, db, "personal-moved")
+		ctx := t.Context()
+		e.setOwn(t, ceremonySecretA, e.keyA, personalPlain)
+		adminPrincipal := queryString(t, db, `SELECT principal_id FROM accounts WHERE username='personal-moved-admin'`)
+		execRaw(t, db, `UPDATE personal_values SET owner_principal_id='`+adminPrincipal+`'`)
+		e.adminTok = personalReauth(t, e.admin.auth, e.adminTok, e.adminDev, e.keyA)
+		got, err := e.pv.Reveal(ctx, service.Bearer(e.adminTok), envScope(envA1), ceremonySecretA)
+		if err == nil || got.Value == personalPlain {
+			t.Fatal("a moved personal value opened for another owner")
+		}
+	})
+}
+
+// DEK rotation and the reencrypt walk cover personal values, and the moved
+// row still opens for its owner afterwards.
+func TestPersonalValueReencryptAfterDEKRotation(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		e := personalFixture(t, db, "personal-reencrypt")
+		ctx := t.Context()
+		e.setOwn(t, ceremonySecretA, e.keyA, personalPlain)
+		kr := e.values.Keyring
+		rotation := &service.Rotation{DB: db, Keyring: kr, RootKey: probeRootSource{db: db}}
+		if _, err := rotation.RotateDEK(ctx, service.LocalPrincipal(root), service.DEKScope{OrgID: string(orgA), ProjectID: string(prjA1)}); err != nil {
+			t.Fatal(err)
+		}
+		walked := false
+		re := &service.Reencrypt{DB: db, Keyring: kr, AfterChunk: func(_ context.Context, table string) error {
+			walked = walked || table == "personal_value"
+			return nil
+		}}
+		if _, err := re.ReencryptProject(ctx, service.LocalPrincipal(root), string(orgA), string(prjA1)); err != nil {
+			t.Fatal(err)
+		}
+		if !walked {
+			t.Fatal("reencrypt walk skipped personal values")
+		}
+		minted, _ := mintDeveloper(t, db, &e.ceremonyEnv, time.Hour, true)
+		r, err := deliverySvc(t, db).Fetch(ctx, minted.Value, envScope(envA1), "", service.FetchOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !valueIs(deliveredKey(t, r, ceremonySecretA), personalPlain) {
+			t.Fatal("personal value did not open after reencrypt")
+		}
+	})
+}
+
+// exportValues serves the shared environment only; a personal value never
+// rides along, revealed or not.
+func TestPersonalValueStaysOutOfExport(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		e := personalFixture(t, db, "personal-export")
+		e.setOwn(t, ceremonySecretA, e.keyA, personalPlain)
+		values, _, err := revisionSvc(t, db).ExportWithParameters(t.Context(), service.LocalPrincipal(custodian), envScope(envA1), 0, true, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, v := range values {
+			if v.Value == personalPlain {
+				t.Fatalf("export carried the personal value of %s", v.Name)
+			}
+			found = found || (v.Name == ceremonySecretA && v.Value == "plaintext-"+ceremonySecretA)
+		}
+		if !found {
+			t.Fatal("export lost the shared value")
 		}
 	})
 }
