@@ -27,6 +27,8 @@ const ORG_URL = `/api/v1/orgs/${ORG}`;
 const GRANTS_URL = `/api/v1/orgs/${ORG}/grants`;
 const PROJECTS_URL = `/api/v1/orgs/${ORG}/projects`;
 const RULES_URL = `/api/v1/orgs/${ORG}/rules`;
+const EMAIL_INVITATIONS_URL = `/api/v1/orgs/${ORG}/email-invitations`;
+const noEmailInvitations = { count: 0, items: [] };
 
 const org = {
   id: ORG,
@@ -97,6 +99,7 @@ const meta = {
         { url: GRANTS_URL, body: grants },
         { url: PROJECTS_URL, body: noProjects },
         { url: RULES_URL, body: noRules },
+        { url: EMAIL_INVITATIONS_URL, body: noEmailInvitations },
       ],
     },
   },
@@ -149,6 +152,7 @@ export const LoadError: Story = {
         { url: ORG_URL, body: org },
         { url: GRANTS_URL, status: 500, body: { error: 'boom' } },
         { url: PROJECTS_URL, body: noProjects },
+        { url: EMAIL_INVITATIONS_URL, body: noEmailInvitations },
       ],
     },
   },
@@ -212,6 +216,7 @@ const ruleResponses = [
   { url: GRANTS_URL, body: { count: grantRows().length, items: grantRows() } satisfies z.input<typeof zGrantList> },
   { url: PROJECTS_URL, body: projects },
   { url: RULES_URL, body: { count: rules.length, items: rules } satisfies z.input<typeof zRuleList> },
+  { url: EMAIL_INVITATIONS_URL, body: noEmailInvitations },
   ...topologyRows,
 ];
 
@@ -472,5 +477,44 @@ export const ProjectWithAccessRules: Story = {
     const ask = within(canvas.getByRole('complementary', { name: 'Who can reach one key?' }));
     const project = await ask.findByRole('combobox', { name: 'Project' });
     await expect(within(project).getAllByRole('option')).toHaveLength(1);
+  },
+};
+
+// Email invitations (#1207): the pending list sits under the actions, and the
+// Invite by email action opens the dialog. The list shows what the
+// administrator typed, never whether an address matched.
+export const PendingEmailInvitations: Story = {
+  parameters: {
+    app: {
+      auth: true,
+      identity: authenticatedIdentity,
+      path: `/orgs/${ORG}/members`,
+      routePath: '/orgs/:org/members',
+      responses: [
+        {
+          url: EMAIL_INVITATIONS_URL,
+          body: {
+            count: 1,
+            items: [{
+              id: 'eiv_123e4567-e89b-12d3-a456-426614174090',
+              email: 'dana@example.com',
+              template: 'editor',
+              invited_by: DANA,
+              created_at: '2026-11-06T10:00:00Z',
+              expires_at: '2026-11-13T10:00:00Z',
+            }],
+          },
+        },
+        ...ruleResponses,
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('heading', { name: 'Pending email invitations' })).toBeVisible();
+    await expect(await canvas.findByText('dana@example.com')).toBeVisible();
+    await expect(canvas.getByRole('button', { name: 'Revoke the invitation for dana@example.com' })).toBeVisible();
+    await userEvent.click(await canvas.findByRole('button', { name: 'Invite by email' }));
+    await expect(within(document.body).getByRole('dialog')).toHaveTextContent('Invite by email');
+    await userEvent.click(within(within(document.body).getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
   },
 };

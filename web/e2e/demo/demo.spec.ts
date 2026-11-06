@@ -274,6 +274,7 @@ const surfaceChecks = {
   signup: { mode: 'excluded', result: 'matrix' },
   'signup-verify': { mode: 'excluded', result: 'unavailable' },
   'establish-credential': { mode: 'excluded', result: 'unavailable' },
+  'invitation-accept': { mode: 'excluded', result: 'unavailable' },
   overview: { mode: 'excluded', result: 'matrix' },
   projects: { mode: 'interactive', heading: 'Projects', level: 1, sample: 'Payments' },
   remotes: { mode: 'read-only', heading: 'Remotes', sample: 'European production (sample)' },

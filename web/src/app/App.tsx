@@ -29,6 +29,9 @@ const loadAuthRoutes = () => import('./route-groups/auth.ts');
 const loadWorkspaceRoutes = () => import('./route-groups/workspace.ts');
 
 const SignupVerify = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.SignupVerify })));
+const InvitationAccept = lazy(() =>
+  loadAuthRoutes().then((routes) => ({ default: routes.InvitationAccept })),
+);
 const Login = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.Login })));
 const EstablishCredential = lazy(() =>
   loadAuthRoutes().then((routes) => ({ default: routes.EstablishCredential })),
@@ -88,6 +91,7 @@ const ELEMENTS: Record<SurfaceId, ReactElement> = {
   signup: withRouteFallback(<Login intent="sign-up" />),
   'signup-verify': withRouteFallback(<SignupVerify />),
   'establish-credential': withRouteFallback(<EstablishCredential />),
+  'invitation-accept': withRouteFallback(<InvitationAccept />),
   overview: <Overview />,
   projects: withRouteFallback(<Projects />),
   remotes: withRouteFallback(<Remotes />),

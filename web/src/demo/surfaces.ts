@@ -11,6 +11,7 @@ export const DEMO_SURFACE_POLICIES = {
   signup: { mode: 'excluded', reason: 'Demo accounts are selected in the toolbar.', redirect: 'matrix' },
   'signup-verify': { mode: 'excluded', reason: 'Email verification requires a full Hikyo installation.' },
   'establish-credential': { mode: 'excluded', reason: 'Creating real account credentials requires a full Hikyo installation.' },
+  'invitation-accept': { mode: 'excluded', reason: 'Accepting an invitation requires a full Hikyo installation.' },
   overview: { mode: 'excluded', reason: 'The demo opens directly in the sample matrix.', redirect: 'matrix' },
   projects: { mode: 'interactive' },
   remotes: { mode: 'read-only' },

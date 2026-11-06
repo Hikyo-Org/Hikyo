@@ -124,6 +124,18 @@ export const SURFACES = defineSurfaceRegistry([
     mode: 'public',
     chrome: 'none',
   },
+  // Acceptance of an email invitation (#1207). Public and chromeless like
+  // sign-up verification: the token rides the URL fragment, and the page
+  // itself tells a signed-out person to sign in first, so it renders in both
+  // session states.
+  {
+    id: 'invitation-accept',
+    path: '/invitations/accept',
+    label: 'Accept an invitation',
+    section: null,
+    mode: 'public',
+    chrome: 'none',
+  },
   {
     id: 'overview',
     path: '/',
