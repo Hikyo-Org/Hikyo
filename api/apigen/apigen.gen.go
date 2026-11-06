@@ -6889,6 +6889,9 @@ type DefinitionsDiff struct {
 type DefinitionsEnvironmentDeletion struct {
 	Name        string `json:"name"`
 	Occurrences int64  `json:"occurrences"`
+
+	// PersonalValues Personal values the deletion removes. Absent from servers older than revision 15.
+	PersonalValues *int64 `json:"personal_values,omitempty"`
 }
 
 // DefinitionsKeyDeletion defines model for DefinitionsKeyDeletion.

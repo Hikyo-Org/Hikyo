@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { zEnvironmentList, zKeyList, zPersonalValueList, zRevealWindow, zTotpStatus } from '@hikyo/zod';
-import { expect, userEvent, within } from 'storybook/test';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
@@ -149,6 +149,18 @@ export const NeedsAFactor: Story = {
   play: async ({ canvas }) => {
     await expect(await canvas.findByRole('link', { name: 'Settings › Security' })).toBeVisible();
     await expect(await canvas.findByRole('button', { name: 'Set a value' })).toBeDisabled();
+  },
+};
+
+// A passwordless account that signs in only through its identity provider
+// qualifies through it: no remedy, and Set is on.
+export const FederatedQualified: Story = {
+  parameters: app({ totp: factors({ has_password: false, has_passkey: false, confirmed: false, can_reauth_oidc: true }) }),
+  play: async ({ canvas }) => {
+    // AuthProvider remounts the page when the session binds: wait for the loaded list first.
+    await expect(await canvas.findByRole('button', { name: 'Reveal DATABASE_URL' })).toBeEnabled();
+    await waitFor(() => expect(canvas.getByRole('button', { name: 'Set a value' })).toBeEnabled());
+    await expect(canvas.queryByRole('link', { name: 'Settings › Security' })).toBeNull();
   },
 };
 

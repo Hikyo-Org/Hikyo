@@ -353,7 +353,8 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
             ))}
             {plan.diff.env_deletions.map((env) => (
               <p key={env.name}>
-                Delete environment {env.name}; {env.occurrences} occurrences removed.
+                Delete environment {env.name}; {env.occurrences} occurrences removed
+                {env.personal_values ? `, with ${env.personal_values} personal values` : ""}.
               </p>
             ))}
             {plan.reveal_required.length === 0 ? null : (

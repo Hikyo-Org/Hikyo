@@ -21127,6 +21127,11 @@ components:
       properties:
         name: {type: string}
         occurrences: {type: integer, format: int64, minimum: 0}
+        personal_values:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Personal values the deletion removes. Absent from servers older than revision 15.
 
     DefinitionsPlanDiff:
       type: object

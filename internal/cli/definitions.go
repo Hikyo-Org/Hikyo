@@ -340,7 +340,11 @@ func planDiffRows(diff apigen.DefinitionsPlanDiff) [][]string {
 		rows = append(rows, []string{"delete_key_impact", deletion.Name + " (live in " + strings.Join(deletion.LiveIn, ",") + ")"})
 	}
 	for _, deletion := range diff.EnvDeletions {
-		rows = append(rows, []string{"delete_environment_impact", fmt.Sprintf("%s (%d live occurrences)", deletion.Name, deletion.Occurrences)})
+		impact := fmt.Sprintf("%s (%d live occurrences", deletion.Name, deletion.Occurrences)
+		if deletion.PersonalValues != nil && *deletion.PersonalValues > 0 {
+			impact += fmt.Sprintf(", %d personal values", *deletion.PersonalValues)
+		}
+		rows = append(rows, []string{"delete_environment_impact", impact + ")"})
 	}
 	return rows
 }

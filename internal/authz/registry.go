@@ -1246,10 +1246,13 @@ const (
 	StorePersonalValuesListOwn      StoreOp = "personalvalues.ListOwn"
 	StorePersonalValuesDeleteOwn    StoreOp = "personalvalues.DeleteOwn"
 	StorePersonalValuesCountProject StoreOp = "personalvalues.CountProject"
-	StorePersonalValuesHolders      StoreOp = "personalvalues.Holders"
-	StorePersonalValuesDeleteMember StoreOp = "personalvalues.DeleteMember"
-	StorePersonalValuesCellsForKey  StoreOp = "personalvalues.CellsForKey"
-	StorePersonalValuesDeleteForKey StoreOp = "personalvalues.DeleteForKey"
+	// The definitions plan reports how many personal values an environment
+	// deletion removes.
+	StorePersonalValuesCountEnvironment StoreOp = "personalvalues.CountForEnvironment"
+	StorePersonalValuesHolders          StoreOp = "personalvalues.Holders"
+	StorePersonalValuesDeleteMember     StoreOp = "personalvalues.DeleteMember"
+	StorePersonalValuesCellsForKey      StoreOp = "personalvalues.CellsForKey"
+	StorePersonalValuesDeleteForKey     StoreOp = "personalvalues.DeleteForKey"
 	// DeleteForEnvironment also clears that environment's notices.
 	StorePersonalValuesDeleteForEnv  StoreOp = "personalvalues.DeleteForEnvironment"
 	StorePersonalValuesReencryptList StoreOp = "personalvalues.ListForReencrypt"
@@ -1435,24 +1438,25 @@ const (
 // op it can invoke is in this set. A wrongly listed op is caught by review
 // of this pinned table, exactly like the formula pins.
 var readOnlyStoreOps = map[StoreOp]bool{
-	StorePersonalValuesGetOwn:          true,
-	StorePersonalValuesListOwn:         true,
-	StorePersonalValuesCountProject:    true,
-	StorePersonalValuesHolders:         true,
-	StorePersonalValuesCellsForKey:     true,
-	StorePersonalValuesReencryptList:   true,
-	StorePersonalValueNoticesListOwn:   true,
-	StorePersonalValueNoticesForKey:    true,
-	StoreOrgsGet:                       true,
-	StorePersonalReportCounts:          true,
-	StorePersonalReportReceipts:        true,
-	StorePersonalReportKeyChanges:      true,
-	StorePersonalReportEvidence:        true,
-	StorePersonalReportMemberSeen:      true,
-	StoreOrgsList:                      true,
-	StoreOrgsCount:                     true,
-	StorePersonalValuesRetentionList:   true,
-	StoreCataloguePersonalRequiredList: true,
+	StorePersonalValuesGetOwn:           true,
+	StorePersonalValuesListOwn:          true,
+	StorePersonalValuesCountProject:     true,
+	StorePersonalValuesCountEnvironment: true,
+	StorePersonalValuesHolders:          true,
+	StorePersonalValuesCellsForKey:      true,
+	StorePersonalValuesReencryptList:    true,
+	StorePersonalValueNoticesListOwn:    true,
+	StorePersonalValueNoticesForKey:     true,
+	StoreOrgsGet:                        true,
+	StorePersonalReportCounts:           true,
+	StorePersonalReportReceipts:         true,
+	StorePersonalReportKeyChanges:       true,
+	StorePersonalReportEvidence:         true,
+	StorePersonalReportMemberSeen:       true,
+	StoreOrgsList:                       true,
+	StoreOrgsCount:                      true,
+	StorePersonalValuesRetentionList:    true,
+	StoreCataloguePersonalRequiredList:  true,
 	// Lease inspect is a bare-read (`read@env`), so its two reads are pinned
 	// read-only for the auditedNone check (#147).
 	StoreDynamicLeasesGet:  true,
@@ -2764,10 +2768,11 @@ var operationTable = map[Operation]opSpec{
 			StoreCatalogueList: true, StoreCataloguePresenceList: true,
 			StoreCataloguePersonalRequiredList: true,
 			StoreCatalogueGroupList:            true, StoreCatalogueRevisionGet: true,
-			StoreSnapshotsProjectRevisions:   true,
-			StoreValuesCountEnvironment:      true,
-			StoreValuesEnvironmentsWithValue: true,
-			StoreDefinitionsPlanCountOpen:    true, StoreDefinitionsPlanCreate: true,
+			StoreSnapshotsProjectRevisions:      true,
+			StoreValuesCountEnvironment:         true,
+			StorePersonalValuesCountEnvironment: true,
+			StoreValuesEnvironmentsWithValue:    true,
+			StoreDefinitionsPlanCountOpen:       true, StoreDefinitionsPlanCreate: true,
 			StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{

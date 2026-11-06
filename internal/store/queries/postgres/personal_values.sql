@@ -46,6 +46,13 @@ ORDER BY owner_principal_id;
 SELECT COUNT(*) FROM personal_values
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id);
 
+-- CountPersonalValuesForEnvironment is the definitions plan's report of how
+-- many personal values an environment deletion removes.
+-- name: CountPersonalValuesForEnvironment :one
+SELECT COUNT(*) FROM personal_values
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
+  AND environment_id = sqlc.arg(environment_id);
+
 -- ListPersonalValueCellsForKey is the key cascade's read: which owners in
 -- which environments lose a value, metadata only, so each gets a notice.
 -- name: ListPersonalValueCellsForKey :many

@@ -3316,6 +3316,10 @@ export type DefinitionsKeyDeletion = {
 export type DefinitionsEnvironmentDeletion = {
     name: string;
     occurrences: number;
+    /**
+     * Personal values the deletion removes. Absent from servers older than revision 15.
+     */
+    personal_values?: number;
 };
 
 export type DefinitionsPlanDiff = {

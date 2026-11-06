@@ -93,9 +93,14 @@ function PersonalSurface({ env }: { env: EnvRef }) {
 
   const environmentName = environments.data?.items.find((item) => item.id === env.environment)?.name ?? env.environment;
   const protectedEnvironment = guard.data?.protected === true;
-  const hasFactor = factors.data === undefined || factors.data.has_passkey || factors.data.confirmed;
-  const federatedSession = auth.identity?.session.assurance.method.startsWith('oidc:') === true ||
-    auth.identity?.session.assurance.method.startsWith('saml:') === true;
+  // A passwordless account with no passkey or authenticator qualifies through its
+  // identity provider, so its provider approval opens set and reveal (the server
+  // still checks the provider's assurance policy).
+  const federatedQualified = factors.data !== undefined && !factors.data.has_password && !factors.data.has_passkey &&
+    !factors.data.confirmed && factors.data.can_reauth_oidc;
+  const hasFactor = factors.data === undefined || factors.data.has_passkey || factors.data.confirmed || federatedQualified;
+  const federatedSession = !federatedQualified && (auth.identity?.session.assurance.method.startsWith('oidc:') === true ||
+    auth.identity?.session.assurance.method.startsWith('saml:') === true);
   const entries = useMemo(() => sortEntries(list.data?.items ?? []), [list.data]);
   const keyIdOf = useCallback(
     (name: string) =>
@@ -150,9 +155,9 @@ function PersonalSurface({ env }: { env: EnvRef }) {
       environmentName,
       keys: [{ id: keyIdOf(key), name: key, classification: 'secret' }],
       window: state,
-      possessionOnly: true,
+      possessionOnly: !federatedQualified,
     }, () => void run());
-  }, [ceremony, env, environmentName, keyIdOf, transport.client]);
+  }, [ceremony, env, environmentName, federatedQualified, keyIdOf, transport.client]);
 
   const doReveal = (key: string, force = false) => {
     void withCeremony(key, 'reveal', async (task) => {
@@ -227,7 +232,8 @@ function PersonalSurface({ env }: { env: EnvRef }) {
       ) : null}
       {!hasFactor ? (
         <Alert tone="warn">
-          Setting or revealing a personal value needs an authenticator app or passkey on your account. Add one under{' '}
+          Setting or revealing a personal value needs an authenticator app or passkey on your account, or sign-in only
+          through an identity provider with no password. Add a factor under{' '}
           <Link to="/settings?tab=factors">Settings › Security</Link>.
         </Alert>
       ) : null}

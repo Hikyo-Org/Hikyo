@@ -267,7 +267,11 @@ func (s *Definitions) persistPlan(ctx context.Context, r store.Repos, az *authz.
 		if err != nil {
 			return PlanView{}, err
 		}
-		planDiff.EnvDeletions = append(planDiff.EnvDeletions, EnvDeletion{Name: del.Name, Occurrences: count})
+		personal, err := r.PersonalValues().CountForEnvironment(ctx, p, del.ID)
+		if err != nil {
+			return PlanView{}, err
+		}
+		planDiff.EnvDeletions = append(planDiff.EnvDeletions, EnvDeletion{Name: del.Name, Occurrences: count, PersonalValues: personal})
 	}
 
 	// Pins: the digest, per-environment value revisions over EVERY environment

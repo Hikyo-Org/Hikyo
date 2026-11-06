@@ -76,6 +76,9 @@ type PersonalValueRepo interface {
 	ListOwn(ctx context.Context, p authz.Proof) ([]PersonalValue, error)
 	DeleteOwn(ctx context.Context, p authz.Proof, keyID string) (int64, error)
 	CountProject(ctx context.Context, p authz.Proof) (int64, error)
+	// CountForEnvironment counts one environment's personal values in the
+	// proof's project, for a deletion plan. Metadata only.
+	CountForEnvironment(ctx context.Context, p authz.Proof, environmentID string) (int64, error)
 	Holders(ctx context.Context, p authz.Proof, keyID string) ([]PersonalValueHolder, error)
 	DeleteMember(ctx context.Context, p authz.Proof, keyID string, owner domain.PrincipalID) (int64, error)
 	CellsForKey(ctx context.Context, p authz.Proof, keyID string) ([]PersonalValueCell, error)
@@ -224,6 +227,16 @@ func (r sqlitePersonalValues) CountProject(ctx context.Context, p authz.Proof) (
 	}
 	return r.q.CountPersonalValuesForProject(ctx, sqlitegen.CountPersonalValuesForProjectParams{
 		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project),
+	})
+}
+
+func (r sqlitePersonalValues) CountForEnvironment(ctx context.Context, p authz.Proof, environmentID string) (int64, error) {
+	chain, err := authz.Verify(p, authz.StorePersonalValuesCountEnvironment, r.tok)
+	if err != nil {
+		return 0, err
+	}
+	return r.q.CountPersonalValuesForEnvironment(ctx, sqlitegen.CountPersonalValuesForEnvironmentParams{
+		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), EnvironmentID: environmentID,
 	})
 }
 
@@ -517,6 +530,16 @@ func (r pgPersonalValues) CountProject(ctx context.Context, p authz.Proof) (int6
 	}
 	return r.q.CountPersonalValuesForProject(ctx, pggen.CountPersonalValuesForProjectParams{
 		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project),
+	})
+}
+
+func (r pgPersonalValues) CountForEnvironment(ctx context.Context, p authz.Proof, environmentID string) (int64, error) {
+	chain, err := authz.Verify(p, authz.StorePersonalValuesCountEnvironment, r.tok)
+	if err != nil {
+		return 0, err
+	}
+	return r.q.CountPersonalValuesForEnvironment(ctx, pggen.CountPersonalValuesForEnvironmentParams{
+		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), EnvironmentID: environmentID,
 	})
 }
 

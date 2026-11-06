@@ -19,7 +19,7 @@ import (
 
 // personalApply exports prj_a1's bundle, lets edit change it, then plans and
 // applies it as the custodian, who holds publish on every environment.
-func personalApply(t *testing.T, db *store.DB, e personalEnv, edit func(*definitions.Bundle)) {
+func personalApply(t *testing.T, db *store.DB, e personalEnv, edit func(*definitions.Bundle)) service.PlanDiff {
 	t.Helper()
 	svc := &service.Definitions{DB: db, Keyring: e.values.Keyring, Advisory: service.NewAdvisory()}
 	actor := service.LocalPrincipal(custodian)
@@ -36,6 +36,7 @@ func personalApply(t *testing.T, db *store.DB, e personalEnv, edit func(*definit
 	if _, err := svc.Apply(t.Context(), actor, scopeProject(orgA, prjA1), plan.ID, service.ApplyOptions{AllowDelete: true}); err != nil {
 		t.Fatalf("apply: %v", err)
 	}
+	return plan.Diff
 }
 
 func TestPersonalValueProjectCap(t *testing.T) {
@@ -101,7 +102,7 @@ func TestPersonalValueApplyEnvironmentDeleteAuditsPerOwner(t *testing.T) {
 			t.Fatal(err)
 		}
 		execRaw(t, db, `DELETE FROM value_entries WHERE environment_id='env_a1'`)
-		personalApply(t, db, e, func(b *definitions.Bundle) {
+		diff := personalApply(t, db, e, func(b *definitions.Bundle) {
 			kept := b.Environments[:0]
 			for _, env := range b.Environments {
 				if env.ID != string(envA1) {
@@ -110,6 +111,10 @@ func TestPersonalValueApplyEnvironmentDeleteAuditsPerOwner(t *testing.T) {
 			}
 			b.Environments = kept
 		})
+		// The plan reports how many personal values the deletion removes.
+		if len(diff.EnvDeletions) != 1 || diff.EnvDeletions[0].PersonalValues != 3 {
+			t.Fatalf("plan environment deletions = %+v, want one removing 3 personal values", diff.EnvDeletions)
+		}
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM personal_values`); n != 0 {
 			t.Fatalf("environment apply left %d personal values", n)
 		}

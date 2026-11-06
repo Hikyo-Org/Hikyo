@@ -86,10 +86,12 @@ type KeyDeletion struct {
 	LiveIn []string `json:"live_in"`
 }
 
-// EnvDeletion is one deleted environment with its live-occurrence count.
+// EnvDeletion is one deleted environment with its live-occurrence count and
+// the number of personal values the deletion removes.
 type EnvDeletion struct {
-	Name        string `json:"name"`
-	Occurrences int64  `json:"occurrences"`
+	Name           string `json:"name"`
+	Occurrences    int64  `json:"occurrences"`
+	PersonalValues int64  `json:"personal_values"`
 }
 
 // PlanDiff is the rendered plan preview: the structural diff plus the concrete

@@ -2189,7 +2189,8 @@ export const zDefinitionsKeyDeletion = z.object({
 
 export const zDefinitionsEnvironmentDeletion = z.object({
     name: z.string(),
-    occurrences: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+    occurrences: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    personal_values: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional()
 });
 
 export const zDefinitionsPlanDiff = z.object({

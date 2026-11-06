@@ -37,10 +37,10 @@ const (
 	PersonalCauseEnvironmentGone   = "environment_deleted"
 )
 
-// ErrPersonalUnqualified refuses set and reveal for an account with no
-// standing possession factor. It is a 403: the caller can reach the
+// ErrPersonalUnqualified refuses set and reveal for an account that does not
+// qualify (personal_qualification.go). It is a 403: the caller can reach the
 // environment, and enrolling a factor is the remedy.
-var ErrPersonalUnqualified = fmt.Errorf("%w: personal values need an authenticator app or passkey on this account", domain.ErrUnauthorized)
+var ErrPersonalUnqualified = fmt.Errorf("%w: personal values need an authenticator app or passkey on this account, or a passwordless account that signs in through an identity provider with an assurance policy", domain.ErrUnauthorized)
 
 // ErrPersonalProtected refuses a personal value on a protected environment:
 // personal values are for unprotected environments only (ADR).

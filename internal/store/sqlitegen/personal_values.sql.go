@@ -10,6 +10,27 @@ import (
 	"database/sql"
 )
 
+const countPersonalValuesForEnvironment = `-- name: CountPersonalValuesForEnvironment :one
+SELECT COUNT(*) FROM personal_values
+WHERE org_id = ?1 AND project_id = ?2
+  AND environment_id = ?3
+`
+
+type CountPersonalValuesForEnvironmentParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+	EnvironmentID  string
+}
+
+// CountPersonalValuesForEnvironment is the definitions plan's report of how
+// many personal values an environment deletion removes.
+func (q *Queries) CountPersonalValuesForEnvironment(ctx context.Context, arg CountPersonalValuesForEnvironmentParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countPersonalValuesForEnvironment, arg.ChainOrgID, arg.ChainProjectID, arg.EnvironmentID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countPersonalValuesForProject = `-- name: CountPersonalValuesForProject :one
 SELECT COUNT(*) FROM personal_values
 WHERE org_id = ?1 AND project_id = ?2
