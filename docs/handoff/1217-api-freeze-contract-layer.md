@@ -11,7 +11,8 @@ third, independent source of violations next to the oasdiff allowlist and
 `freezeRemovals`: `freezeContract` in `api/freeze_contract.go`. It parses the
 raw base and revised documents (not kin-openapi's model, which would silently
 drop keywords it does not carry) with kin-openapi's own decoder, so YAML 1.2
-scalars such as `off` stay strings. It walks them with knowledge of each OpenAPI
+scalars such as `off` stay strings, and numbers stay exact (`json.Number`), so
+integers beyond float64 precision remain distinct. It walks them with knowledge of each OpenAPI
 object kind, and refuses every difference except a short list of permitted
 additions and prose edits. Its violation IDs are `hikyo-contract-removed`,
 `hikyo-contract-added` and `hikyo-contract-changed`. oasdiff, the allowlist and
@@ -42,13 +43,19 @@ additions and prose edits. Its violation IDs are `hikyo-contract-removed`,
   accepted only where no request reaches the schema and only for a property
   added in the same revision. Shrinking is accepted only where no response
   reaches it. Component schemas and headers take the union of how both
-  documents reach them, following `$ref` transitively. Within each document, a
-  component nothing reaches counts as both read and written, so referencing a
-  formerly unreferenced component from one side does not relax it.
+  documents reach them, following `$ref` transitively. A path item reached
+  through `$ref` keeps the directions of an inline one, and every component
+  (parameter, request body, response, header) reaches what it references in
+  its own direction even when nothing uses it. Within each document, a schema
+  or header nothing reaches counts as both read and written, so referencing a
+  formerly unreferenced component from one side does not relax it. Keys of
+  `properties`, `patternProperties`, `$defs`, `dependentSchemas`, `encoding`
+  and `headers` are names: a property called `not` freezes nothing.
 - A parameter's `required` may go from true to false. Path-level parameters are
   merged into each operation first, keyed by `in` and name, with header names
   compared case-insensitively, so moving a parameter between a path and its
-  operations is neutral in both directions.
+  operations is neutral in both directions. A parameter declared twice in one
+  list is an error.
 - `enum` never changes, except at the five `MLDSA65EnumLocations`, which may
   grow by exactly `mldsa65`. That list restates the api-cli-surface amendment
   of 2026-11-04 in document coordinates and does not widen it.
@@ -56,7 +63,9 @@ additions and prose edits. Its violation IDs are `hikyo-contract-removed`,
   either direction (kin-openapi validates `oneOf` as exactly one match), so
   `required`, open enums and element schemas are frozen there, and in every use
   of a component reached through them. Under `not` and `if`, whose meaning is
-  inverted, a new property is refused too.
+  inverted, a new property is refused too. `contains` is frozen the same way
+  when `maxContains` is present, since widening the predicate can push a valid
+  array over the limit.
 - `$ref` values are compared as strings, never followed during comparison. The
   target is compared once in the components walk, with the context of every
   reader; a deep ref such as `#/components/schemas/A/properties/b` gives that
@@ -71,7 +80,9 @@ additions and prose edits. Its violation IDs are `hikyo-contract-removed`,
 - Composition lists (`allOf`, `anyOf`, `oneOf`, `prefixItems`) are positional
   and must keep their length. `patternProperties`, `dependentSchemas`, `$defs`,
   encodings, server variables and OAuth scope names accept no additions.
-  Existing callbacks are compared strictly after parameter normalization.
+  Existing callbacks, inline or in `components.callbacks`, are compared
+  strictly after parameter normalization. The first `components` object in a
+  document without one is an addition like any other component.
 
 ## Disposition of every listed item
 
@@ -126,6 +137,15 @@ and the `oneOf` row, which it refuses deliberately.
 | New response header | oasdiff allowlist (`response-header-added`) | Allowlist policy, unchanged by this work |
 | Response property deprecated | oasdiff allowlist (`response-property-deprecated`) | Allowlist policy, unchanged by this work |
 
+## Known exposure, accepted
+
+A new optional property in a `oneOf` branch is accepted, though a property
+with a schema narrows its branch: a value that matched two branches can then
+match exactly one and become valid, which old clients reject.
+`TestFreezeStillPermitsPropertyAdditions/*/oneOf` on `dev` pins property
+additions under `oneOf` as permitted, so it stays accepted under owner
+decision 3.
+
 ## Owner decisions to confirm
 
 1. **Unreferenced components are frozen.** Removing a property from
@@ -138,7 +158,10 @@ and the `oneOf` row, which it refuses deliberately.
    until the allowlist is changed deliberately.
 3. **`oneOf` freezes requiredness in every component it reaches,** including
    the shared `Error` envelope. Relax it to permit new required response
-   properties there if the exactly-one exposure is judged theoretical.
+   properties there if the exactly-one exposure is judged theoretical. New
+   optional properties under `oneOf` carry the same exposure and stay
+   permitted, as the pre-existing `dev` test pins; tighten both together if
+   the exposure is judged real.
 
 ## Evidence and local verification
 
@@ -158,6 +181,21 @@ GOMAXPROCS=2 go test -p 2 ./api -count=1
 GOMAXPROCS=2 go test -race -p 2 ./api -count=1
 GOMAXPROCS=2 go vet -p 2 ./api ./scripts/ci/api-freeze-guard
 ```
+
+## PR #1232 review (CodeRabbit)
+
+Twelve of thirteen findings were fixed, each with a case in
+`TestFreezeContractReviewFollowUps` or `TestFreezeKnownFalseRefusals` that
+fails on the earlier layer (except the `operationId` case, a test gap only):
+first component addition, reusable callback normalization, path-item ref
+directions, property names in the reachability walk, unused wrapper
+directions, `contains` under `maxContains`, numeric precision, duplicate
+parameters, and three test fixes (an `operationId` on an existing operation,
+the `ID` description search bounded to its block, exact refusal sources
+asserted). Declined: refusing new properties under `oneOf`, see the known exposure
+above. The `mldsa65` reader finding needs no change: no header in
+v1.0.0 reaches the five amended enums, and making one reach them is a `$ref`
+change, which is refused.
 
 ## Remaining delivery gates
 

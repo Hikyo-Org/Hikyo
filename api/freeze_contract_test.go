@@ -488,12 +488,20 @@ func TestMLDSA65EnumLocations(t *testing.T) {
 // Known and accepted false refusals (#1217 comments). They pin which source
 // still refuses each, so a change in that is noticed rather than silent.
 func TestFreezeKnownFalseRefusals(t *testing.T) {
-	ids := func(vs []api.Violation) string {
-		var out []string
+	// refusedOnlyBy asserts that exactly the documented sources refuse it.
+	refusedOnlyBy := func(t *testing.T, vs []api.Violation, want ...string) {
+		t.Helper()
+		var got []string
 		for _, v := range vs {
-			out = append(out, v.ID)
+			if !slices.Contains(got, v.ID) {
+				got = append(got, v.ID)
+			}
 		}
-		return strings.Join(out, ",")
+		slices.Sort(got)
+		slices.Sort(want)
+		if !slices.Equal(got, want) {
+			t.Fatalf("refused by %v, want %v:\n%s", got, want, render(vs))
+		}
 	}
 	t.Run("prose edit to components.schemas.ID.description", func(t *testing.T) {
 		spec := string(api.SpecYAML)
@@ -501,27 +509,28 @@ func TestFreezeKnownFalseRefusals(t *testing.T) {
 		if i < 0 {
 			t.Fatal("components.schemas.ID is gone")
 		}
-		j := strings.Index(spec[i:], "description:")
+		// Search only the ID block, which ends at the next 4-space-indented key.
+		block := spec[i : i+len("\n    ID:\n")]
+		for _, line := range strings.SplitAfter(spec[i+len(block):], "\n") {
+			if strings.TrimSpace(line) != "" && !strings.HasPrefix(line, "      ") {
+				break
+			}
+			block += line
+		}
+		j := strings.Index(block, "\n      description:")
 		if j < 0 {
 			t.Skip("components.schemas.ID carries no description to edit")
 		}
+		j += len("\n      ")
 		edited := spec[:i+j] + "description: edited. " + spec[i+j+len("description:"):]
-		violations := contractViolations(t, spec, edited)
-		if hasContractViolation(violations) {
-			t.Fatalf("the document layer refused a prose edit:\n%s", render(violations))
-		}
-		t.Logf("refused by oasdiff only: %s", ids(violations))
+		refusedOnlyBy(t, contractViolations(t, spec, edited), "request-body-any-of-added", "request-body-any-of-removed")
 	})
 
 	oauth := func(scopes string) string {
 		return fmt.Sprintf(`{"openapi":"3.1.0","jsonSchemaDialect":"https://spec.openapis.org/oas/3.1/dialect/base","info":{"title":"f","version":"1"},"paths":{},"components":{"securitySchemes":{"o":{"type":"oauth2","flows":{"implicit":{"authorizationUrl":"https://a.example","scopes":%s}}}}}}`, scopes)
 	}
 	t.Run("OAuth scope reworded", func(t *testing.T) {
-		violations := contractViolations(t, oauth(`{"read":"Read"}`), oauth(`{"read":"Read it"}`))
-		if hasContractViolation(violations) {
-			t.Fatalf("the document layer refused a reworded scope:\n%s", render(violations))
-		}
-		t.Logf("refused by oasdiff only: %s", ids(violations))
+		refusedOnlyBy(t, contractViolations(t, oauth(`{"read":"Read"}`), oauth(`{"read":"Read it"}`)), "api-security-component-oauth-scope-changed")
 	})
 	t.Run("OAuth scope added", func(t *testing.T) {
 		violations := contractViolations(t, oauth(`{"read":"Read"}`), oauth(`{"read":"Read","write":"Write"}`))
@@ -540,11 +549,8 @@ func TestFreezeKnownFalseRefusals(t *testing.T) {
 		doc := func(pathLevel string) string {
 			return contractDoc(`{"/api/v1/thing":{` + pathLevel + `"post":{"parameters":[{"name":"x-a","in":"header","schema":{"type":"string"}}],` + contractOK + `}}}`)
 		}
-		violations := contractViolations(t, doc(`"parameters":[{"name":"X-A","in":"header","schema":{"type":"string"}}],`), doc(""))
-		if hasContractViolation(violations) {
-			t.Fatalf("the document layer refused a shadowed header:\n%s", render(violations))
-		}
-		t.Logf("refused by oasdiff/freezeRemovals only: %s", ids(violations))
+		refusedOnlyBy(t, contractViolations(t, doc(`"parameters":[{"name":"X-A","in":"header","schema":{"type":"string"}}],`), doc("")),
+			"hikyo-parameter-removed", "request-parameter-removed")
 	})
 }
 
@@ -635,6 +641,91 @@ func TestFreezeContractRefusesDirectionlessAndMisreadChanges(t *testing.T) {
 			`"components":{"schemas":{"A B":{"type":"string"}}}`)
 		if _, err := api.CheckFreeze([]byte(doc), []byte(doc)); err == nil || !strings.Contains(err.Error(), "unresolvable $ref") {
 			t.Fatalf("want an unresolvable $ref error, got %v", err)
+		}
+	})
+}
+
+// Findings of the PR #1232 review, each pinned in the direction it was fixed.
+func TestFreezeContractReviewFollowUps(t *testing.T) {
+	const reqS = `"requestBody":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/S"}}}}`
+	const respS = `"responses":{"200":{"description":"ok","content":{"application/json":{"schema":{"$ref":"#/components/schemas/S"}}}}}`
+	s := func(required string) string {
+		return `"S":{"type":"object",` + required + `"properties":{"a":{"type":"string"},"n":{"type":"string"}}}`
+	}
+	withComponents := func(paths, components string) string {
+		return strings.TrimSuffix(contractDoc(paths), "}") + `,"components":{` + components + `}}`
+	}
+	permitted := func(t *testing.T, base, revised string) {
+		t.Helper()
+		if v := contractViolations(t, base, revised); hasContractViolation(v) {
+			t.Fatalf("the document layer refused a permitted change:\n%s", render(v))
+		}
+	}
+	refused := func(t *testing.T, base, revised string) {
+		t.Helper()
+		if v := contractViolations(t, base, revised); !hasContractViolation(v) {
+			t.Fatalf("the document layer did not refuse it:\n%s", render(v))
+		}
+	}
+
+	t.Run("first component added to a document without components", func(t *testing.T) {
+		permitted(t, contractThing(contractOK), withComponents(`{"/api/v1/thing":{"post":{`+contractOK+`}}}`, `"schemas":{"Brand":{"type":"string"}}`))
+	})
+	t.Run("operationId added to an existing operation", func(t *testing.T) {
+		permitted(t, contractThing(contractOK), contractThing(`"operationId":"makeThing",`+contractOK))
+	})
+	t.Run("parameter moved within a reusable callback", func(t *testing.T) {
+		const p = `{"name":"p","in":"query","schema":{"type":"string"}}`
+		doc := func(item string) string {
+			return withComponents(`{"/api/v1/thing":{"post":{`+contractOK+`}}}`, `"callbacks":{"C":{"{$request.query.url}":`+item+`}}`)
+		}
+		permitted(t, doc(`{"parameters":[`+p+`],"post":{`+contractOK+`}}`), doc(`{"post":{"parameters":[`+p+`],`+contractOK+`}}`))
+		refused(t, doc(`{"post":{`+contractOK+`}}`), doc(`{"post":{"parameters":[`+p+`],`+contractOK+`}}`))
+	})
+	t.Run("path item reached through a ref keeps its directions", func(t *testing.T) {
+		doc := func(op, required string) string {
+			return withComponents(`{"/api/v1/thing":{"$ref":"#/components/pathItems/P"}}`,
+				`"pathItems":{"P":{"post":{`+op+`}}},"schemas":{`+s(required)+`}`)
+		}
+		permitted(t, doc(reqS+","+contractOK, `"required":["a"],`), doc(reqS+","+contractOK, ""))
+		permitted(t, strings.Replace(doc(respS, ""), `,"n":{"type":"string"}`, "", 1), doc(respS, `"required":["n"],`))
+		refused(t, doc(respS, `"required":["a"],`), doc(respS, ""))
+	})
+	t.Run("a property named not freezes nothing", func(t *testing.T) {
+		doc := func(required string) string {
+			return withComponents(`{"/api/v1/thing":{"post":{"requestBody":{"content":{"application/json":{"schema":{"type":"object","properties":{"not":{"$ref":"#/components/schemas/S"}}}}}},`+contractOK+`}}}`,
+				`"schemas":{`+s(required)+`}`)
+		}
+		permitted(t, doc(`"required":["a"],`), doc(""))
+	})
+	t.Run("an unused request body still writes its schema", func(t *testing.T) {
+		doc := func(required string) string {
+			return withComponents(`{"/api/v1/thing":{"post":{`+respS+`}}}`,
+				`"requestBodies":{"RB":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/S"}}}}},"schemas":{"S":{"type":"object",`+required+`"properties":{"a":{"type":"string"}}}}`)
+		}
+		withNew := strings.Replace(doc(`"required":["n"],`), `"properties":{"a":{"type":"string"}}`, `"properties":{"a":{"type":"string"},"n":{"type":"string"}}`, 1)
+		refused(t, doc(""), withNew)
+	})
+	t.Run("contains is frozen under maxContains", func(t *testing.T) {
+		body := func(extra, required string) string {
+			return inPosition("request", `{"type":"array",`+extra+`"contains":{"type":"object",`+required+`"properties":{"a":{"type":"string"}}}}`)
+		}
+		permitted(t, body("", `"required":["a"],`), body("", ""))
+		refused(t, body(`"maxContains":1,`, `"required":["a"],`), body(`"maxContains":1,`, ""))
+	})
+	t.Run("integers beyond float64 precision stay distinct", func(t *testing.T) {
+		refused(t, inPosition("header", `{"type":"integer","enum":[9007199254740992]}`), inPosition("header", `{"type":"integer","enum":[9007199254740993]}`))
+		yamlDoc := func(v string) string {
+			return "openapi: 3.1.0\njsonSchemaDialect: https://spec.openapis.org/oas/3.1/dialect/base\ninfo: {title: f, version: \"1\"}\n" +
+				"paths:\n  /api/v1/thing:\n    get:\n      responses:\n        \"200\":\n          description: ok\n" +
+				"          headers:\n            X-N: {schema: {type: integer, enum: [" + v + "]}}\n"
+		}
+		refused(t, yamlDoc("9007199254740992"), yamlDoc("9007199254740993"))
+	})
+	t.Run("a parameter declared twice in one list is an error", func(t *testing.T) {
+		doc := contractThing(`"parameters":[{"name":"p","in":"query","schema":{"type":"string"}},{"name":"p","in":"query","required":true,"schema":{"type":"string"}}],` + contractOK)
+		if _, err := api.CheckFreeze([]byte(doc), []byte(doc)); err == nil || !strings.Contains(err.Error(), "declared twice") {
+			t.Fatalf("want a duplicate parameter error, got %v", err)
 		}
 	})
 }

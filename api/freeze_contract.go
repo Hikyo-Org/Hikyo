@@ -1,8 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"reflect"
 	"slices"
@@ -58,6 +61,13 @@ const (
 
 // contractFrozen are the keywords whose subschemas are compared frozen.
 var contractFrozen = map[string]contractCtx{"not": ctxFrozen | ctxInverted, "if": ctxFrozen | ctxInverted, "oneOf": ctxFrozen}
+
+// contractNameMaps are keywords whose value maps names to subschemas or
+// objects, so the reachability walk does not read those names as keywords.
+var contractNameMaps = map[string]bool{
+	"properties": true, "patternProperties": true, "$defs": true, "dependentSchemas": true,
+	"encoding": true, "headers": true,
+}
 
 // contractProse are keywords whose edits change no wire behaviour.
 var contractProse = map[string]bool{
@@ -116,12 +126,21 @@ func freezeContract(base, revised []byte) ([]Violation, error) {
 
 // parseContractDocument decodes exactly as kin-openapi's loader does (JSON
 // first, then oasdiff/yaml), so `off` or `yes` stays the string every other
-// consumer of the spec reads, not a YAML 1.1 boolean.
+// consumer of the spec reads, not a YAML 1.1 boolean. Numbers stay
+// json.Number, so integers beyond float64 precision remain distinct.
 func parseContractDocument(raw []byte) (map[string]any, error) {
+	useNumber := func(d *json.Decoder) *json.Decoder { d.UseNumber(); return d }
 	var v any
-	if err := json.Unmarshal(raw, &v); err != nil {
+	dec := useNumber(json.NewDecoder(bytes.NewReader(raw)))
+	err := dec.Decode(&v)
+	if err == nil {
+		if _, end := dec.Token(); end != io.EOF {
+			err = errors.New("trailing data after the JSON document")
+		}
+	}
+	if err != nil {
 		v = nil
-		if _, err := yaml.Unmarshal(raw, &v, yaml.DecodeOpts{DisableTimestamps: true}); err != nil {
+		if _, err := yaml.Unmarshal(raw, &v, yaml.DecodeOpts{DisableTimestamps: true}, useNumber); err != nil {
 			return nil, err
 		}
 	}
@@ -327,11 +346,16 @@ func strs(v any, present bool) ([]string, bool) {
 
 func (w *contractWalker) document(l loc, b, r map[string]any) {
 	w.keywords(l, b, r, map[string]rule{
-		"info":       noop, // documentation metadata
-		"servers":    w.servers(),
-		"paths":      w.names(nameOpts{add: true, ext: true}, w.obj(func(l loc, b, r map[string]any) { w.pathItem(l, b, r) })),
-		"tags":       w.tags(),
-		"components": w.obj(w.components),
+		"info":    noop, // documentation metadata
+		"servers": w.servers(),
+		"paths":   w.names(nameOpts{add: true, ext: true}, w.obj(func(l loc, b, r map[string]any) { w.pathItem(l, b, r) })),
+		"tags":    w.tags(),
+		"components": func(l loc, b, r any, hb, hr bool) {
+			if !hb && hr {
+				b, hb = map[string]any{}, true // the first component is an addition
+			}
+			w.obj(w.components)(l, b, r, hb, hr)
+		},
 	}, nil)
 }
 
@@ -403,10 +427,8 @@ func (w *contractWalker) operation(l loc, b, r map[string]any, bp, rp any) {
 		"parameters":  noop,
 		"requestBody": w.obj(func(l loc, b, r map[string]any) { w.requestBody(l, b, r) }),
 		"responses":   w.names(nameOpts{add: true, ext: true}, w.obj(func(l loc, b, r map[string]any) { w.response(l, b, r) })),
-		"callbacks": w.names(nameOpts{add: true}, func(l loc, b, r any, _, _ bool) {
-			w.strict(l, w.normalizeCallback(w.base, b), w.normalizeCallback(w.revised, r), true, true)
-		}),
-		"servers": w.servers(),
+		"callbacks":   w.names(nameOpts{add: true}, w.callback),
+		"servers":     w.servers(),
 		"operationId": func(l loc, b, r any, hb, hr bool) {
 			if hb || !hr {
 				w.strict(l, b, r, hb, hr)
@@ -426,6 +448,11 @@ func (w *contractWalker) operation(l loc, b, r map[string]any, bp, rp any) {
 			}
 		},
 	}, nil)
+}
+
+// callback compares an existing callback strictly, after normalization.
+func (w *contractWalker) callback(l loc, b, r any, _, _ bool) {
+	w.strict(l, w.normalizeCallback(w.base, b), w.normalizeCallback(w.revised, r), true, true)
 }
 
 // normalizeCallback rewrites each path item of a callback to its effective
@@ -491,6 +518,7 @@ func (w *contractWalker) effective(root map[string]any, lists ...any) map[paramK
 			w.fail("parameters is not a list")
 			return out
 		}
+		inList := map[paramKey]bool{}
 		for _, p := range arr {
 			res, err := resolveContractRef(root, p)
 			m, isMap := res.(map[string]any)
@@ -503,8 +531,14 @@ func (w *contractWalker) effective(root map[string]any, lists ...any) map[paramK
 			if in == "header" {
 				name = strings.ToLower(name)
 			}
+			key := paramKey{in, name}
+			if inList[key] {
+				w.fail(fmt.Sprintf("parameter %s %q is declared twice in one list", in, name))
+				return out
+			}
+			inList[key] = true
 			required, _ := m["required"].(bool)
-			out[paramKey{in, name}] = effParam{p, required}
+			out[key] = effParam{p, required}
 		}
 	}
 	return out
@@ -638,7 +672,15 @@ func (w *contractWalker) schema(l loc, b, r map[string]any, c contractCtx) {
 		sch(l, b, r, hb, hr)
 	}
 	rules["items"], rules["additionalProperties"] = describes, describes
-	for _, k := range []string{"contains", "then", "else",
+	// With maxContains, widening the predicate can push a valid array over the
+	// limit, so neither direction is safe.
+	rules["contains"] = sch
+	_, maxB := b["maxContains"]
+	_, maxR := r["maxContains"]
+	if maxB || maxR {
+		rules["contains"] = w.schemaRule(c | ctxFrozen)
+	}
+	for _, k := range []string{"then", "else",
 		"propertyNames", "unevaluatedItems", "unevaluatedProperties", "contentSchema"} {
 		rules[k] = sch
 	}
@@ -729,7 +771,6 @@ func (w *contractWalker) ctx(section string, l loc) contractCtx {
 
 func (w *contractWalker) components(l loc, b, r map[string]any) {
 	section := func(each rule) rule { return w.names(nameOpts{add: true}, each) }
-	strictBoth := func(l loc, b, r any, _, _ bool) { w.strict(l, b, r, true, true) }
 	free := w.obj(func(l loc, b, r map[string]any) { w.keywords(l, b, r, nil, nil) })
 	w.keywords(l, b, r, map[string]rule{
 		"schemas": section(func(l loc, b, r any, hb, hr bool) {
@@ -740,7 +781,7 @@ func (w *contractWalker) components(l loc, b, r map[string]any) {
 		"requestBodies":   section(w.obj(func(l loc, b, r map[string]any) { w.requestBody(l, b, r) })),
 		"headers":         section(w.obj(func(l loc, b, r map[string]any) { w.header(l, b, r, w.ctx("headers", l)) })),
 		"links":           section(free),
-		"callbacks":       section(strictBoth),
+		"callbacks":       section(w.callback),
 		"pathItems":       section(w.obj(func(l loc, b, r map[string]any) { w.pathItem(l, b, r) })),
 		"securitySchemes": section(w.obj(w.securityScheme)),
 	}, nil)
@@ -803,8 +844,10 @@ func componentRef(ref string) (section, name string, ok bool) {
 // transitively; a deep ref marks the whole component. A component this
 // document does not reach counts as read and written, before the union with
 // the other document, so referencing a formerly unreferenced component from
-// one side cannot relax it. Subschemas of `not`, `if` and `oneOf` carry
-// ctxFrozen. Any other kind of $ref anywhere in the document is an error.
+// one side cannot relax it. A path item reached through `$ref` keeps the
+// directions of an inline one, and every component reaches what it references
+// in its own direction, used or not. Subschemas of `not`, `if` and `oneOf`
+// carry ctxFrozen. Any other kind of $ref anywhere in the document is an error.
 func (w *contractWalker) reach(root map[string]any) {
 	seen := map[string]bool{}
 	ctxs := map[string]contractCtx{}
@@ -850,6 +893,11 @@ func (w *contractWalker) reach(root map[string]any) {
 				x := v[k]
 				if s, ok := x.(string); ok && k == "$ref" {
 					follow(s, c)
+				} else if names, ok := x.(map[string]any); ok && contractNameMaps[k] {
+					// Keys here are names: a property called `not` freezes nothing.
+					for _, n := range slices.Sorted(maps.Keys(names)) {
+						visit(names[n], c)
+					}
 				} else if f, ok := contractFrozen[k]; ok {
 					visit(x, c|f)
 				} else {
@@ -861,6 +909,24 @@ func (w *contractWalker) reach(root map[string]any) {
 				visit(x, c)
 			}
 		}
+	}
+	var pathItem func(m map[string]any)
+	// pathItemRef walks a referenced path item with the same directions as an
+	// inline one.
+	pathItemRef := func(ref string) {
+		_, name, _ := componentRef(ref)
+		if seen["pathItems/"+name] {
+			return
+		}
+		seen["pathItems/"+name] = true
+		sec, _ := components["pathItems"].(map[string]any)
+		target, found := sec[name]
+		if !found {
+			w.fail(fmt.Sprintf("unresolvable $ref %q", ref))
+			return
+		}
+		m, _ := target.(map[string]any)
+		pathItem(m)
 	}
 	operation := func(op map[string]any) {
 		for _, k := range slices.Sorted(maps.Keys(op)) {
@@ -875,14 +941,15 @@ func (w *contractWalker) reach(root map[string]any) {
 			}
 		}
 	}
-	paths, _ := root["paths"].(map[string]any)
-	for _, path := range slices.Sorted(maps.Keys(paths)) {
-		m, _ := paths[path].(map[string]any)
+	pathItem = func(m map[string]any) {
 		for _, k := range slices.Sorted(maps.Keys(m)) {
 			v := m[k]
+			ref, isRef := v.(string)
 			switch {
 			case k == "parameters":
 				visit(v, ctxRequest)
+			case k == "$ref" && isRef && strings.HasPrefix(ref, "#/components/pathItems/"):
+				pathItemRef(ref)
 			case k == "$ref":
 				visit(map[string]any{"$ref": v}, ctxBoth)
 			case slices.Contains(contractMethods, k):
@@ -890,6 +957,11 @@ func (w *contractWalker) reach(root map[string]any) {
 				operation(op)
 			}
 		}
+	}
+	paths, _ := root["paths"].(map[string]any)
+	for _, path := range slices.Sorted(maps.Keys(paths)) {
+		m, _ := paths[path].(map[string]any)
+		pathItem(m)
 	}
 	for _, section := range []string{"schemas", "headers"} {
 		sec, _ := components[section].(map[string]any)
@@ -899,8 +971,19 @@ func (w *contractWalker) reach(root map[string]any) {
 			}
 		}
 	}
-	// Validate the refs in every other component too.
-	visit(components, 0)
+	// Every other component reaches its schemas in its own direction, used or
+	// not (an unreferenced component is frozen too); this also validates refs.
+	for _, section := range slices.Sorted(maps.Keys(components)) {
+		sec, _ := components[section].(map[string]any)
+		for _, name := range slices.Sorted(maps.Keys(sec)) {
+			ref := "#/components/" + section + "/" + strings.NewReplacer("~", "~0", "/", "~1").Replace(name)
+			if section == "pathItems" {
+				pathItemRef(ref)
+			} else {
+				follow(ref, 0)
+			}
+		}
+	}
 	for k, c := range ctxs {
 		w.ctxs[k] |= c
 	}
