@@ -63,6 +63,8 @@ vi.mock('../api/values.ts', async (importActual) => {
 
 vi.mock('../api/transport.tsx', () => ({
   useTransport: () => ({ client: undefined }),
+  useWorkspaceContext: () => null,
+  withRemote: (path: string) => path,
 }));
 
 vi.mock('./Ceremony.tsx', async (importActual) => {
