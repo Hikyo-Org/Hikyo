@@ -462,6 +462,12 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 			Name: "access_expiry_sweep",
 			Run:  accessSvc.DrainExpired,
 		}, {
+			// Personal-value retention (#1235, personal-values ADR): suspend
+			// values whose owner lost read, reveal or qualification, restore
+			// them when it returns, and delete them 14 days on with a notice.
+			Name: "personal_value_retention",
+			Run:  (&service.PersonalValues{DB: db, Keyring: kr, Auth: authSvc}).SweepRetention,
+		}, {
 			// Delivery-target condition reporting (#788, ADR D6): purge rows
 			// with no accepted report for 30 days, across all tenants, each
 			// with its tenant-trail purge event.

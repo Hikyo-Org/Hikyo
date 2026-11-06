@@ -25,15 +25,18 @@ type Ref struct {
 // by apply once the final topology exists) and the change flags the plan and
 // the reveal gate read.
 type KeyUpdate struct {
-	ID                 string
-	PrevName           string
-	Desired            Key
-	Renamed            bool
-	MetaChanged        bool
-	DeclChanged        bool
-	Reclassified       bool
-	GroupChanged       bool
-	PresenceChanged    bool
+	ID              string
+	PrevName        string
+	Desired         Key
+	Renamed         bool
+	MetaChanged     bool
+	DeclChanged     bool
+	Reclassified    bool
+	GroupChanged    bool
+	PresenceChanged bool
+	// PersonalChanged is a personal_required_in change. It alone moves
+	// nothing a shared consumer is delivered, so it needs no publish.
+	PersonalChanged    bool
 	PrevClassification string
 	PrevDeclaration    schema.Declaration
 }
@@ -158,6 +161,11 @@ func resolve(b Bundle, cur CurrentState, strict bool) (Resolution, error) {
 		}
 		before := curKeyByID[keyMatch.boundDBID[i]]
 		upd := diffKey(before, k, envIdentityByName, groupIdentityByName)
+		if additive {
+			// An additive bundle never carries personal_required_in for an
+			// existing key, so its absence is not a requested clear.
+			upd.PersonalChanged = false
+		}
 		if !upd.changed() {
 			continue
 		}
@@ -210,11 +218,30 @@ func diffKey(before CurrentKey, desired Key, envIdentity, groupIdentity map[stri
 
 	upd.PresenceChanged = presenceChanged(before.Required, desired.RequiredIn, envIdentity) ||
 		presenceChanged(before.Forbidden, desired.ForbiddenIn, envIdentity)
+	beforePersonal := before.PersonalRequired
+	if beforePersonal.Mode == "" {
+		beforePersonal.Mode = schema.PresenceNone
+	}
+	upd.PersonalChanged = presenceChanged(beforePersonal, desired.PersonalRequired(), envIdentity)
 	return upd
 }
 
 func (u KeyUpdate) changed() bool {
-	return u.Renamed || u.MetaChanged || u.DeclChanged || u.Reclassified || u.GroupChanged || u.PresenceChanged
+	return u.Renamed || u.MetaChanged || u.DeclChanged || u.Reclassified || u.GroupChanged || u.PresenceChanged || u.PersonalChanged
+}
+
+// PersonalOnly reports an update that changes personal_required_in and
+// nothing else.
+func (u KeyUpdate) PersonalOnly() bool {
+	return u.PersonalChanged && !(u.Renamed || u.MetaChanged || u.DeclChanged || u.Reclassified || u.GroupChanged || u.PresenceChanged)
+}
+
+// PersonalRequired is the key's personal_required_in with `none` spelled out.
+func (k Key) PersonalRequired() Presence {
+	if k.PersonalRequiredIn == nil {
+		return Presence{Mode: string(schema.PresenceNone), Environments: []string{}}
+	}
+	return *k.PersonalRequiredIn
 }
 
 // NeedsReveal mirrors the two locked reveal gates: a value-dependent rule change
@@ -265,7 +292,7 @@ func validateKeyReferences(k Key, envNames, groupNames map[string]struct{}) erro
 	for _, p := range []struct {
 		what string
 		rule Presence
-	}{{"required_in", k.RequiredIn}, {"forbidden_in", k.ForbiddenIn}} {
+	}{{"required_in", k.RequiredIn}, {"forbidden_in", k.ForbiddenIn}, {"personal_required_in", k.PersonalRequired()}} {
 		for _, name := range p.rule.Environments {
 			if _, ok := envNames[name]; !ok {
 				return invalidDetail(

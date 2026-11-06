@@ -75,6 +75,10 @@ type Key struct {
 	Declaration     schema.Declaration `json:"declaration"`
 	RequiredIn      Presence           `json:"required_in"`
 	ForbiddenIn     Presence           `json:"forbidden_in"`
+	// PersonalRequiredIn is where each developer must hold a personal value:
+	// `explicit` only once canonical. It is the one presence field omitted
+	// when `none`, so bundles and digests from before it existed are unchanged.
+	PersonalRequiredIn *Presence `json:"personal_required_in,omitempty"`
 }
 
 // Bundle is the mutable definitions wire/import DTO. Construct it only at an

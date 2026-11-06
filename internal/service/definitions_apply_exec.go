@@ -172,8 +172,13 @@ func (s *Definitions) Apply(ctx context.Context, actor Actor, scope domain.Scope
 			return err
 		}
 
-		if err := publisher.fanOut(ctx, r, az, caller, p, scope, "definitions-apply"); err != nil {
-			return err
+		// A plan that only changes personal_required_in delivers nothing new
+		// to a shared consumer, so like a key metadata edit it needs
+		// definitions-edit alone: no per-environment publish.
+		if !personalOnly(res) {
+			if err := publisher.fanOut(ctx, r, az, caller, p, scope, "definitions-apply"); err != nil {
+				return err
+			}
 		}
 		published, err := r.Environments().List(ctx, p)
 		if err != nil {
@@ -886,6 +891,16 @@ func (s *Definitions) createKey(ctx context.Context, r store.Repos, caller authz
 	if err := r.Catalogue().ReplacePresence(ctx, p, id, presenceRowsFor(id, presence)); err != nil {
 		return err
 	}
+	personal, err := resolvePresenceRule(k.PersonalRequired(), envIDByName)
+	if err != nil {
+		return err
+	}
+	if err := checkPersonalRequired(personal, presence, groupID != ""); err != nil {
+		return err
+	}
+	if err := r.Catalogue().ReplacePersonalRequired(ctx, p, id, personal.Environments); err != nil {
+		return err
+	}
 	return insertDefinitionEvent(ctx, r, p, caller, audit.EventKeyCreated, "key", id, audit.Payload{
 		"name": audit.SanitizeFreeText(k.Name), "classification": k.Classification,
 		"namespace": audit.SanitizeFreeText(k.FolderPath),
@@ -904,6 +919,13 @@ func (s *Definitions) updateKey(ctx context.Context, r store.Repos, caller authz
 		return err
 	}
 	if err := checkPresenceRules(presence); err != nil {
+		return err
+	}
+	personal, err := resolvePresenceRule(k.PersonalRequired(), envIDByName)
+	if err != nil {
+		return err
+	}
+	if err := checkPersonalRequired(personal, presence, k.Group != ""); err != nil {
 		return err
 	}
 	// Rename was already applied in the two-phase pass; metadata, declaration,
@@ -934,9 +956,23 @@ func (s *Definitions) updateKey(ctx context.Context, r store.Repos, caller authz
 		if err := r.Catalogue().ReplacePresence(ctx, p, upd.ID, presenceRowsFor(upd.ID, presence)); err != nil {
 			return err
 		}
+		// Values exist in a forbidden environment only if it became forbidden
+		// here: personal set refuses a forbidden key.
+		if upd.PresenceChanged {
+			if err := cascadePersonalForbidden(ctx, r, p, caller.Principal, before, presence.Forbidden); err != nil {
+				return err
+			}
+		}
+	}
+	if upd.PersonalChanged {
+		if err := r.Catalogue().ReplacePersonalRequired(ctx, p, upd.ID, personal.Environments); err != nil {
+			return err
+		}
+	}
+	if upd.DeclChanged || upd.PresenceChanged || upd.PersonalChanged {
 		if err := insertDefinitionEvent(ctx, r, p, caller, audit.EventKeyDeclarationChanged, "key", upd.ID, audit.Payload{
 			"name": audit.SanitizeFreeText(k.Name), "schema_revision": finalRevision,
-			"rules_changed": upd.DeclChanged, "presence_changed": upd.PresenceChanged,
+			"rules_changed": upd.DeclChanged, "presence_changed": upd.PresenceChanged || upd.PersonalChanged,
 		}); err != nil {
 			return err
 		}
@@ -1014,6 +1050,21 @@ func resolvePresenceRule(p definitions.Presence, envIDByName map[string]string) 
 		out.Environments = append(out.Environments, id)
 	}
 	return out, nil
+}
+
+// personalOnly reports a resolution whose only changes are key updates to
+// personal_required_in.
+func personalOnly(res definitions.Resolution) bool {
+	if len(res.KeyUpdates) == 0 || len(res.EnvCreates)+len(res.EnvRenames)+len(res.EnvDeletes)+
+		len(res.GroupCreates)+len(res.GroupRenames)+len(res.GroupDeletes)+len(res.KeyCreates)+len(res.KeyDeletes) > 0 {
+		return false
+	}
+	for _, u := range res.KeyUpdates {
+		if !u.PersonalOnly() {
+			return false
+		}
+	}
+	return true
 }
 
 // PruneExpiredPlans deletes expired, unapplied plans across the instance. The

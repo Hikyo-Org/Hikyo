@@ -29,6 +29,22 @@ type PersonalValue struct {
 	Ciphertext    []byte
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+	// SuspendedAt is when the retention sweep first saw the owner without the
+	// access predicate; zero when not suspended. Set by ListOwn only.
+	SuspendedAt time.Time
+}
+
+// PersonalRetentionRow is one value as the retention sweep sees it: the
+// tenant chain, the key name for a notice, and never ciphertext.
+type PersonalRetentionRow struct {
+	ID            string
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	KeyID         string
+	KeyName       string
+	Owner         domain.PrincipalID
+	SuspendedAt   time.Time
 }
 
 // PersonalValueHolder is who holds a value for a key, and when it changed.
@@ -64,8 +80,11 @@ type PersonalValueRepo interface {
 	DeleteMember(ctx context.Context, p authz.Proof, keyID string, owner domain.PrincipalID) (int64, error)
 	CellsForKey(ctx context.Context, p authz.Proof, keyID string) ([]PersonalValueCell, error)
 	DeleteForKey(ctx context.Context, p authz.Proof, keyID string) (int64, error)
-	// DeleteForEnvironment removes the proof environment's values and notices
-	// and returns the owner of each deleted value, so the caller can audit it.
+	// DeleteForKeyInEnvironment is DeleteForKey narrowed to one environment,
+	// for a key that becomes forbidden_in it.
+	DeleteForKeyInEnvironment(ctx context.Context, p authz.Proof, keyID, environmentID string) (int64, error)
+	// DeleteForEnvironment removes the proof environment's values, notices and
+	// personal_required_in rows, and returns the owner of each deleted value, so the caller can audit it.
 	DeleteForEnvironment(ctx context.Context, p authz.Proof) ([]domain.PrincipalID, error)
 	ListForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptFieldRow, error)
 	Reencrypt(ctx context.Context, p authz.Proof, id string, newCt, oldCt []byte) (bool, error)
@@ -74,6 +93,15 @@ type PersonalValueRepo interface {
 	NoticesForKeyName(ctx context.Context, p authz.Proof, keyName string) ([]PersonalValueNotice, error)
 	// RecordNotice leaves a notice in environmentID, replacing any earlier one.
 	RecordNotice(ctx context.Context, p authz.Proof, environmentID, keyName string, owner domain.PrincipalID, cause string, at time.Time) error
+
+	// RetentionPage is the sweep's installation-wide read, ordered by id past
+	// cursor. System authority only.
+	RetentionPage(ctx context.Context, p authz.Proof, cursor string, limit int) ([]PersonalRetentionRow, error)
+	// MarkSuspended records at as the value's first suspension; a zero at
+	// clears it. It reports whether the row changed.
+	MarkSuspended(ctx context.Context, p authz.Proof, id string, at time.Time) (bool, error)
+	// DeleteExpired deletes one value suspended at or before cutoff.
+	DeleteExpired(ctx context.Context, p authz.Proof, id string, cutoff time.Time) (bool, error)
 }
 
 func ownCell(p authz.Proof, op authz.StoreOp, tok *authz.TxToken) (domain.Scope, string, domain.PrincipalID, error) {
@@ -170,6 +198,9 @@ func (r sqlitePersonalValues) ListOwn(ctx context.Context, p authz.Proof) ([]Per
 		if err != nil {
 			return nil, err
 		}
+		if v.SuspendedAt, err = sqliteSuspendedAt(row.ID, row.SuspendedAt); err != nil {
+			return nil, err
+		}
 		out = append(out, v)
 	}
 	return out, nil
@@ -257,9 +288,24 @@ func (r sqlitePersonalValues) DeleteForKey(ctx context.Context, p authz.Proof, k
 	})
 }
 
+func (r sqlitePersonalValues) DeleteForKeyInEnvironment(ctx context.Context, p authz.Proof, keyID, environmentID string) (int64, error) {
+	chain, err := authz.Verify(p, authz.StorePersonalValuesDeleteForKeyInEnv, r.tok)
+	if err != nil {
+		return 0, err
+	}
+	return r.q.DeletePersonalValuesForKeyInEnvironment(ctx, sqlitegen.DeletePersonalValuesForKeyInEnvironmentParams{
+		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), KeyID: keyID, EnvironmentID: environmentID,
+	})
+}
+
 func (r sqlitePersonalValues) DeleteForEnvironment(ctx context.Context, p authz.Proof) ([]domain.PrincipalID, error) {
 	chain, env, err := envChain(p, authz.StorePersonalValuesDeleteForEnv, r.tok)
 	if err != nil {
+		return nil, err
+	}
+	if err := r.q.DeleteEnvironmentPersonalRequired(ctx, sqlitegen.DeleteEnvironmentPersonalRequiredParams{
+		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: env,
+	}); err != nil {
 		return nil, err
 	}
 	if _, err := r.q.DeletePersonalValueNoticesForEnvironment(ctx, sqlitegen.DeletePersonalValueNoticesForEnvironmentParams{
@@ -267,14 +313,22 @@ func (r sqlitePersonalValues) DeleteForEnvironment(ctx context.Context, p authz.
 	}); err != nil {
 		return nil, err
 	}
-	owners, err := r.q.DeletePersonalValuesForEnvironment(ctx, sqlitegen.DeletePersonalValuesForEnvironmentParams{
+	owners, err := r.q.ListPersonalValueOwnersForEnvironment(ctx, sqlitegen.ListPersonalValueOwnersForEnvironmentParams{
 		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: env,
 	})
+	if err != nil {
+		return nil, err
+	}
+	if err := r.q.DeletePersonalValuesForEnvironment(ctx, sqlitegen.DeletePersonalValuesForEnvironmentParams{
+		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: env,
+	}); err != nil {
+		return nil, err
+	}
 	out := make([]domain.PrincipalID, len(owners))
 	for i, o := range owners {
 		out[i] = domain.PrincipalID(o)
 	}
-	return out, err
+	return out, nil
 }
 
 func (r sqlitePersonalValues) ListForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptFieldRow, error) {
@@ -439,7 +493,8 @@ func (r pgPersonalValues) ListOwn(ctx context.Context, p authz.Proof) ([]Persona
 	out := make([]PersonalValue, len(rows))
 	for i, row := range rows {
 		out[i] = PersonalValue{ID: row.ID, EnvironmentID: env, KeyID: row.KeyID, Owner: domain.PrincipalID(row.OwnerPrincipalID),
-			Ciphertext: row.Ciphertext, CreatedAt: pgTimeToGo(row.CreatedAt), UpdatedAt: pgTimeToGo(row.UpdatedAt)}
+			Ciphertext: row.Ciphertext, CreatedAt: pgTimeToGo(row.CreatedAt), UpdatedAt: pgTimeToGo(row.UpdatedAt),
+			SuspendedAt: pgTimeToGo(row.SuspendedAt)}
 	}
 	return out, nil
 }
@@ -522,9 +577,24 @@ func (r pgPersonalValues) DeleteForKey(ctx context.Context, p authz.Proof, keyID
 	})
 }
 
+func (r pgPersonalValues) DeleteForKeyInEnvironment(ctx context.Context, p authz.Proof, keyID, environmentID string) (int64, error) {
+	chain, err := authz.Verify(p, authz.StorePersonalValuesDeleteForKeyInEnv, r.tok)
+	if err != nil {
+		return 0, err
+	}
+	return r.q.DeletePersonalValuesForKeyInEnvironment(ctx, pggen.DeletePersonalValuesForKeyInEnvironmentParams{
+		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), KeyID: keyID, EnvironmentID: environmentID,
+	})
+}
+
 func (r pgPersonalValues) DeleteForEnvironment(ctx context.Context, p authz.Proof) ([]domain.PrincipalID, error) {
 	chain, env, err := envChain(p, authz.StorePersonalValuesDeleteForEnv, r.tok)
 	if err != nil {
+		return nil, err
+	}
+	if err := r.q.DeleteEnvironmentPersonalRequired(ctx, pggen.DeleteEnvironmentPersonalRequiredParams{
+		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: env,
+	}); err != nil {
 		return nil, err
 	}
 	if _, err := r.q.DeletePersonalValueNoticesForEnvironment(ctx, pggen.DeletePersonalValueNoticesForEnvironmentParams{
@@ -532,14 +602,22 @@ func (r pgPersonalValues) DeleteForEnvironment(ctx context.Context, p authz.Proo
 	}); err != nil {
 		return nil, err
 	}
-	owners, err := r.q.DeletePersonalValuesForEnvironment(ctx, pggen.DeletePersonalValuesForEnvironmentParams{
+	owners, err := r.q.ListPersonalValueOwnersForEnvironment(ctx, pggen.ListPersonalValueOwnersForEnvironmentParams{
 		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: env,
 	})
+	if err != nil {
+		return nil, err
+	}
+	if err := r.q.DeletePersonalValuesForEnvironment(ctx, pggen.DeletePersonalValuesForEnvironmentParams{
+		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: env,
+	}); err != nil {
+		return nil, err
+	}
 	out := make([]domain.PrincipalID, len(owners))
 	for i, o := range owners {
 		out[i] = domain.PrincipalID(o)
 	}
-	return out, err
+	return out, nil
 }
 
 func (r pgPersonalValues) ListForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptFieldRow, error) {
@@ -633,4 +711,97 @@ func (r pgPersonalValues) RecordNotice(ctx context.Context, p authz.Proof, envir
 		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), EnvironmentID: environmentID,
 		KeyName: keyName, OwnerPrincipalID: string(owner), Cause: cause, CreatedAt: pgTimestamp(at),
 	}))
+}
+
+func sqliteSuspendedAt(id string, raw sql.NullString) (time.Time, error) {
+	if !raw.Valid {
+		return time.Time{}, nil
+	}
+	return parseTime("personal value suspension", id, raw.String)
+}
+
+func sqliteTimeArg(t time.Time) sql.NullString {
+	return sql.NullString{String: CanonTime(t).Format(timeFormat), Valid: true}
+}
+
+func (r sqlitePersonalValues) RetentionPage(ctx context.Context, p authz.Proof, cursor string, limit int) ([]PersonalRetentionRow, error) {
+	if _, err := authz.Verify(p, authz.StorePersonalValuesRetentionList, r.tok); err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListPersonalValuesForRetention(ctx, sqlitegen.ListPersonalValuesForRetentionParams{Cursor: cursor, PageLimit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PersonalRetentionRow, 0, len(rows))
+	for _, row := range rows {
+		at, err := sqliteSuspendedAt(row.ID, row.SuspendedAt)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, PersonalRetentionRow{ID: row.ID, OrgID: row.OrgID, ProjectID: row.ProjectID, EnvironmentID: row.EnvironmentID,
+			KeyID: row.KeyID, KeyName: row.KeyName, Owner: domain.PrincipalID(row.OwnerPrincipalID), SuspendedAt: at})
+	}
+	return out, nil
+}
+
+func (r sqlitePersonalValues) MarkSuspended(ctx context.Context, p authz.Proof, id string, at time.Time) (bool, error) {
+	chain, err := authz.Verify(p, authz.StorePersonalValuesRetentionMark, r.tok)
+	if err != nil {
+		return false, err
+	}
+	var n int64
+	if at.IsZero() {
+		n, err = r.q.ResumePersonalValue(ctx, sqlitegen.ResumePersonalValueParams{ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ID: id})
+	} else {
+		n, err = r.q.SuspendPersonalValue(ctx, sqlitegen.SuspendPersonalValueParams{SuspendedAt: sqliteTimeArg(at), ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ID: id})
+	}
+	return n == 1, err
+}
+
+func (r sqlitePersonalValues) DeleteExpired(ctx context.Context, p authz.Proof, id string, cutoff time.Time) (bool, error) {
+	chain, err := authz.Verify(p, authz.StorePersonalValuesRetentionDelete, r.tok)
+	if err != nil {
+		return false, err
+	}
+	n, err := r.q.DeleteExpiredPersonalValue(ctx, sqlitegen.DeleteExpiredPersonalValueParams{ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ID: id, CutoffTime: sqliteTimeArg(cutoff)})
+	return n == 1, err
+}
+
+func (r pgPersonalValues) RetentionPage(ctx context.Context, p authz.Proof, cursor string, limit int) ([]PersonalRetentionRow, error) {
+	if _, err := authz.Verify(p, authz.StorePersonalValuesRetentionList, r.tok); err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListPersonalValuesForRetention(ctx, pggen.ListPersonalValuesForRetentionParams{Cursor: cursor, PageLimit: int32(limit)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PersonalRetentionRow, len(rows))
+	for i, row := range rows {
+		out[i] = PersonalRetentionRow{ID: row.ID, OrgID: row.OrgID, ProjectID: row.ProjectID, EnvironmentID: row.EnvironmentID,
+			KeyID: row.KeyID, KeyName: row.KeyName, Owner: domain.PrincipalID(row.OwnerPrincipalID), SuspendedAt: pgTimeToGo(row.SuspendedAt)}
+	}
+	return out, nil
+}
+
+func (r pgPersonalValues) MarkSuspended(ctx context.Context, p authz.Proof, id string, at time.Time) (bool, error) {
+	chain, err := authz.Verify(p, authz.StorePersonalValuesRetentionMark, r.tok)
+	if err != nil {
+		return false, err
+	}
+	var n int64
+	if at.IsZero() {
+		n, err = r.q.ResumePersonalValue(ctx, pggen.ResumePersonalValueParams{ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ID: id})
+	} else {
+		n, err = r.q.SuspendPersonalValue(ctx, pggen.SuspendPersonalValueParams{SuspendedAt: pgNullTimestamp(at), ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ID: id})
+	}
+	return n == 1, err
+}
+
+func (r pgPersonalValues) DeleteExpired(ctx context.Context, p authz.Proof, id string, cutoff time.Time) (bool, error) {
+	chain, err := authz.Verify(p, authz.StorePersonalValuesRetentionDelete, r.tok)
+	if err != nil {
+		return false, err
+	}
+	n, err := r.q.DeleteExpiredPersonalValue(ctx, pggen.DeleteExpiredPersonalValueParams{ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ID: id, CutoffTime: pgNullTimestamp(cutoff)})
+	return n == 1, err
 }

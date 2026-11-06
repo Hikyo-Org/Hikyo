@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
@@ -20,8 +21,9 @@ import (
 // principal, so every method here acts on the caller's own value, except the
 // member methods, which see and remove metadata only.
 
-// MaxPersonalValuesPerProject matches the resolved-cell budget.
-const MaxPersonalValuesPerProject = 100_000
+// MaxPersonalValuesPerProject matches the resolved-cell budget. It is a var
+// only so a test can lower it; nothing in production writes it.
+var MaxPersonalValuesPerProject int64 = 100_000
 
 // Notice causes (personal-values ADR, Removal notices).
 const (
@@ -50,6 +52,15 @@ type PersonalValues struct {
 	Keyring *crypto.Keyring
 	// Auth supplies the reveal reauthentication gate and the factor check.
 	Auth *Auth
+	// Now is the retention sweep's clock; nil means time.Now. Tests inject it.
+	Now func() time.Time
+}
+
+func (s *PersonalValues) now() time.Time {
+	if s.Now != nil {
+		return s.Now().UTC()
+	}
+	return time.Now().UTC()
 }
 
 // PersonalEntry is one of the caller's own keys: a value, a notice, or both.
@@ -138,15 +149,26 @@ func (s *PersonalValues) List(ctx context.Context, actor Actor, scope domain.Sco
 		if err != nil {
 			return nil, err
 		}
-		return ownEntries(ctx, r, p)
+		return ownEntries(ctx, r, p, scope.Env)
 	})
 }
 
-// ownEntries merges the proof owner's values and notices, ordered by name.
-func ownEntries(ctx context.Context, r store.Repos, p authz.Proof) ([]PersonalEntry, error) {
+// ownEntries merges the proof owner's values and notices with the
+// environment's checklist of personally required keys, ordered by name.
+func ownEntries(ctx context.Context, r store.Repos, p authz.Proof, env domain.EnvID) ([]PersonalEntry, error) {
 	keys, err := r.Catalogue().List(ctx, p)
 	if err != nil {
 		return nil, err
+	}
+	required, err := r.Catalogue().PersonalRequired(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	requiredHere := map[string]bool{}
+	for _, row := range required {
+		if row.EnvironmentID == string(env) {
+			requiredHere[row.KeyID] = true
+		}
 	}
 	values, err := r.PersonalValues().ListOwn(ctx, p)
 	if err != nil {
@@ -169,10 +191,11 @@ func ownEntries(ctx context.Context, r store.Repos, p authz.Proof) ([]PersonalEn
 		v, set := byKey[k.ID]
 		cause := noticeByName[k.Name]
 		delete(noticeByName, k.Name)
-		if !set && cause == "" {
+		if !set && cause == "" && !requiredHere[k.ID] {
 			continue
 		}
-		out = append(out, PersonalEntry{KeyID: k.ID, Name: k.Name, Set: set, UpdatedAt: v.UpdatedAt, Notice: cause})
+		out = append(out, PersonalEntry{KeyID: k.ID, Name: k.Name, Set: set, UpdatedAt: v.UpdatedAt, Notice: cause,
+			Required: requiredHere[k.ID], Suspended: !v.SuspendedAt.IsZero(), SuspendedAt: v.SuspendedAt})
 	}
 	// A notice on a name no longer declared still makes `hikyo run` refuse a
 	// re-declared key, so it is listed too.
@@ -212,6 +235,9 @@ func (s *PersonalValues) Set(ctx context.Context, actor Actor, scope domain.Scop
 		}
 		key, err := keyByName(keys, keyName)
 		if err != nil {
+			return PersonalEntry{}, err
+		}
+		if err := refusePersonalForbidden(ctx, r, p, key, scope.Env); err != nil {
 			return PersonalEntry{}, err
 		}
 		settings, err := az.EnvironmentReauthSettings(ctx, string(scope.Env))
@@ -267,8 +293,48 @@ func (s *PersonalValues) Set(ctx context.Context, actor Actor, scope domain.Scop
 		if err := r.Audit().InsertTenant(ctx, p, ev); err != nil {
 			return PersonalEntry{}, err
 		}
-		return PersonalEntry{KeyID: key.ID, Name: key.Name, Set: true, UpdatedAt: at}, nil
+		// Warnings are computed after the audit event, so the event is the
+		// same whether or not the value breaks a rule.
+		warnings, err := personalWarnings(key, value)
+		if err != nil {
+			return PersonalEntry{}, err
+		}
+		return PersonalEntry{KeyID: key.ID, Name: key.Name, Set: true, UpdatedAt: at, Warnings: warnings}, nil
 	})
+}
+
+// refusePersonalForbidden refuses a personal value for a key forbidden_in
+// the environment: a forbidden key holds no value, personal or shared.
+func refusePersonalForbidden(ctx context.Context, r store.Repos, p authz.Proof, key store.CatalogueKey, env domain.EnvID) error {
+	presence, err := r.Catalogue().ListPresence(ctx, p)
+	if err != nil {
+		return err
+	}
+	if presenceOf(key.ID, key.RequiredMode, key.ForbiddenMode, presence).Forbidden.Covers(string(env)) {
+		return invalidDetail("key %q is forbidden in this environment", key.Name)
+	}
+	return nil
+}
+
+// personalWarnings names the schema rules value does not satisfy. It is the
+// owner's advice only: no schema rule ever refuses a personal value, the
+// warnings never reach an audit record, and they name rules, never the value.
+func personalWarnings(key store.CatalogueKey, value string) ([]string, error) {
+	decl, err := schema.ParseDeclaration([]byte(key.Declaration))
+	if err != nil {
+		return nil, fmt.Errorf("service: key %s: stored declaration unreadable: %w", key.ID, err)
+	}
+	compiled, err := schema.CompileClassified(schema.Classification(key.Classification), decl)
+	if err != nil {
+		return nil, fmt.Errorf("service: key %s: stored declaration does not compile: %w", key.ID, err)
+	}
+	var out []string
+	for _, f := range compiled.Validate(value).Errors {
+		if !slices.Contains(out, f.Keyword) {
+			out = append(out, f.Keyword)
+		}
+	}
+	return out, nil
 }
 
 // ErrPersonalFactorRequired refuses a window an identity provider opened: the
@@ -331,7 +397,11 @@ func (s *PersonalValues) Reveal(ctx context.Context, actor Actor, scope domain.S
 		if err != nil {
 			return PersonalEntry{}, fmt.Errorf("service: personal value %s: %w", row.ID, err)
 		}
-		return PersonalEntry{KeyID: key.ID, Name: key.Name, Set: true, UpdatedAt: row.UpdatedAt, Value: string(plain)}, nil
+		warnings, err := personalWarnings(key, string(plain))
+		if err != nil {
+			return PersonalEntry{}, err
+		}
+		return PersonalEntry{KeyID: key.ID, Name: key.Name, Set: true, UpdatedAt: row.UpdatedAt, Value: string(plain), Warnings: warnings}, nil
 	})
 }
 
@@ -532,6 +602,45 @@ func cascadePersonalForKey(ctx context.Context, r store.Repos, p authz.Proof, ac
 	return err
 }
 
+// cascadePersonalForbidden deletes the key's personal values in every
+// environment its forbidden_in rule now covers, leaving each owner a notice
+// with cause `forbidden`. A forbidden key can hold no value, personal or not.
+func cascadePersonalForbidden(ctx context.Context, r store.Repos, p authz.Proof, actor domain.PrincipalID, key store.CatalogueKey, forbidden schema.Presence) error {
+	if forbidden.Mode == schema.PresenceNone {
+		return nil
+	}
+	cells, err := r.PersonalValues().CellsForKey(ctx, p, key.ID)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	var envs []string
+	for _, c := range cells {
+		if !forbidden.Covers(c.EnvironmentID) {
+			continue
+		}
+		if !slices.Contains(envs, c.EnvironmentID) {
+			envs = append(envs, c.EnvironmentID)
+		}
+		if err := r.PersonalValues().RecordNotice(ctx, p, c.EnvironmentID, key.Name, c.Owner, PersonalCauseForbidden, now); err != nil {
+			return err
+		}
+		ev, err := personalEvent(ctx, audit.EventPersonalValueDeleted, actor, key, c.Owner, audit.Payload{"cause": PersonalCauseForbidden})
+		if err != nil {
+			return err
+		}
+		if err := r.Audit().InsertTenant(ctx, p, ev); err != nil {
+			return err
+		}
+	}
+	for _, env := range envs {
+		if _, err := r.PersonalValues().DeleteForKeyInEnvironment(ctx, p, key.ID, env); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // purgePersonalForEnvironment deletes an environment's personal values and
 // notices and audits one deletion per owner, with the count of values lost.
 func purgePersonalForEnvironment(ctx context.Context, r store.Repos, p authz.Proof, actor domain.PrincipalID, env domain.EnvID) error {
@@ -558,4 +667,111 @@ func purgePersonalForEnvironment(ctx context.Context, r store.Repos, p authz.Pro
 		}
 	}
 	return nil
+}
+
+// PersonalRetentionWindow is how long a personal value survives its owner
+// losing the access predicate before the retention sweep deletes it.
+const PersonalRetentionWindow = 14 * 24 * time.Hour
+
+const personalRetentionBatch = 100
+
+// SweepRetention is the scheduler's retention job (personal-values ADR,
+// Retention). It checks each value's owner predicate live: read and reveal on
+// the environment, and qualification. It records suspended_at when it first
+// sees the predicate missing, clears it when the predicate returns, and
+// deletes the value once it has been suspended for the retention window,
+// leaving the owner a `retention` notice. Delivery does not wait for it: the
+// developer fetch evaluates the same predicate on every request.
+func (s *PersonalValues) SweepRetention(ctx context.Context) error {
+	cursor := ""
+	for {
+		next, n, err := s.sweepRetentionBatch(ctx, cursor)
+		if err != nil || n < personalRetentionBatch {
+			return err
+		}
+		cursor = next
+	}
+}
+
+func (s *PersonalValues) sweepRetentionBatch(ctx context.Context, cursor string) (string, int, error) {
+	now := s.now()
+	cutoff := now.Add(-PersonalRetentionWindow)
+	var next string
+	var n int
+	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		p, err := authz.SystemAuthority(authz.SiteScheduler, az.Token())
+		if err != nil {
+			return err
+		}
+		rows, err := r.PersonalValues().RetentionPage(ctx, p, cursor, personalRetentionBatch)
+		if err != nil {
+			return err
+		}
+		n = len(rows)
+		holds := map[string]bool{}
+		for _, row := range rows {
+			next = row.ID
+			scope := domain.Scope{Org: domain.OrgID(row.OrgID), Project: domain.ProjectID(row.ProjectID), Env: domain.EnvID(row.EnvironmentID)}
+			memo := string(row.Owner) + "\x00" + row.EnvironmentID
+			ok, seen := holds[memo]
+			if !seen {
+				if ok, err = personalOwnerPredicate(ctx, az, row.Owner, scope); err != nil {
+					return err
+				}
+				holds[memo] = ok
+			}
+			scoped, err := az.ScopedSystemAuthority(ctx, authz.SiteScheduler, scope)
+			if err != nil {
+				return err
+			}
+			switch {
+			case ok && !row.SuspendedAt.IsZero():
+				_, err = r.PersonalValues().MarkSuspended(ctx, scoped, row.ID, time.Time{})
+			case !ok && row.SuspendedAt.IsZero():
+				_, err = r.PersonalValues().MarkSuspended(ctx, scoped, row.ID, now)
+			case !ok && !row.SuspendedAt.After(cutoff):
+				err = retainPersonalExpired(ctx, r, scoped, row, cutoff, now)
+			}
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return next, n, err
+}
+
+// personalOwnerPredicate is the retention predicate: read and reveal on the
+// environment, and a standing possession factor. An owner with no account is
+// not qualified.
+func personalOwnerPredicate(ctx context.Context, az *authz.TxAuthorizer, owner domain.PrincipalID, scope domain.Scope) (bool, error) {
+	ok, err := az.PersonalOwnerHolds(ctx, owner, scope)
+	if err != nil || !ok {
+		return false, err
+	}
+	ok, err = personalQualified(ctx, az, owner)
+	if errors.Is(err, domain.ErrNotFound) {
+		return false, nil
+	}
+	return ok, err
+}
+
+// retainPersonalExpired deletes one value suspended past the window, leaving
+// the owner a `retention` notice and a system-actor audit event.
+func retainPersonalExpired(ctx context.Context, r store.Repos, p authz.Proof, row store.PersonalRetentionRow, cutoff, now time.Time) error {
+	deleted, err := r.PersonalValues().DeleteExpired(ctx, p, row.ID, cutoff)
+	if err != nil || !deleted {
+		return err
+	}
+	if err := r.PersonalValues().RecordNotice(ctx, p, row.EnvironmentID, row.KeyName, row.Owner, PersonalCauseRetention, now); err != nil {
+		return err
+	}
+	ev, err := newAuditEvent(ctx, audit.EventPersonalValueDeleted, "", audit.Object{Type: "key", ID: row.KeyID}, audit.OutcomeSuccess, "",
+		audit.Payload{"key_id": row.KeyID, "name": audit.SanitizeFreeText(row.KeyName), "owner_principal_id": string(row.Owner), "cause": PersonalCauseRetention})
+	if err != nil {
+		return err
+	}
+	ev.Actor.Class = audit.ActorSystem
+	ev.OccurredAt = now
+	return r.Audit().InsertTenant(ctx, p, ev)
 }

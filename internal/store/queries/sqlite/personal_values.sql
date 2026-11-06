@@ -29,7 +29,7 @@ WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id
   AND owner_principal_id = sqlc.arg(owner_principal_id);
 
 -- name: ListPersonalValuesForOwner :many
-SELECT id, key_id, owner_principal_id, ciphertext, created_at, updated_at FROM personal_values
+SELECT id, key_id, owner_principal_id, ciphertext, created_at, updated_at, suspended_at FROM personal_values
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
   AND environment_id = sqlc.arg(chain_env_id) AND owner_principal_id = sqlc.arg(owner_principal_id)
 ORDER BY key_id;
@@ -59,11 +59,22 @@ DELETE FROM personal_values
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
   AND key_id = sqlc.arg(key_id);
 
--- name: DeletePersonalValuesForEnvironment :many
+-- DeletePersonalValuesForKeyInEnvironment is the forbidden_in cascade: a key
+-- newly forbidden in one environment loses its personal values there only.
+-- name: DeletePersonalValuesForKeyInEnvironment :execrows
 DELETE FROM personal_values
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
-  AND environment_id = sqlc.arg(chain_env_id)
-RETURNING owner_principal_id;
+  AND key_id = sqlc.arg(key_id) AND environment_id = sqlc.arg(environment_id);
+
+-- name: ListPersonalValueOwnersForEnvironment :many
+SELECT owner_principal_id FROM personal_values
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
+  AND environment_id = sqlc.arg(chain_env_id);
+
+-- name: DeletePersonalValuesForEnvironment :exec
+DELETE FROM personal_values
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
+  AND environment_id = sqlc.arg(chain_env_id);
 
 -- name: ListPersonalValuesForReencrypt :many
 SELECT id, environment_id, key_id, owner_principal_id, ciphertext FROM personal_values
@@ -128,3 +139,53 @@ DO UPDATE SET cause = excluded.cause, created_at = excluded.created_at;
 -- hikyo:authn-resolution
 -- name: DeletePersonalValuesForOwner :execrows
 DELETE FROM personal_values WHERE owner_principal_id = sqlc.arg(owner_principal_id);
+
+-- personal_required_in: a key's environments where each developer is expected
+-- to hold a personal value. No rows means `none`; rows mean `explicit`.
+-- name: ListKeyPersonalRequired :many
+SELECT key_id, environment_id FROM key_personal_required_environments
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
+ORDER BY key_id, environment_id;
+
+-- name: InsertKeyPersonalRequired :exec
+INSERT INTO key_personal_required_environments (org_id, project_id, key_id, environment_id)
+VALUES (sqlc.arg(chain_org_id), sqlc.arg(chain_project_id), sqlc.arg(key_id), sqlc.arg(environment_id));
+
+-- name: DeleteKeyPersonalRequired :exec
+DELETE FROM key_personal_required_environments
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
+  AND key_id = sqlc.arg(key_id);
+
+-- name: DeleteEnvironmentPersonalRequired :exec
+DELETE FROM key_personal_required_environments
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
+  AND environment_id = sqlc.arg(chain_env_id);
+
+-- hikyo:reason The personal-value retention sweep checks every value's owner against the live access predicate across all tenants (personal-values ADR, Retention); it reads metadata and the key name only, never ciphertext, and each row supplies the tenant chain its follow-up writes are scoped to.
+-- hikyo:instance-scoped
+-- name: ListPersonalValuesForRetention :many
+SELECT personal_values.id, personal_values.org_id, personal_values.project_id, personal_values.environment_id,
+    personal_values.key_id, keys.name AS key_name, personal_values.owner_principal_id, personal_values.suspended_at
+FROM personal_values JOIN keys ON keys.org_id = personal_values.org_id
+    AND keys.project_id = personal_values.project_id AND keys.id = personal_values.key_id
+WHERE personal_values.id > sqlc.arg(cursor)
+ORDER BY personal_values.id LIMIT sqlc.arg(page_limit);
+
+-- SuspendPersonalValue records when the sweep first saw the owner without
+-- the access predicate; a value already suspended keeps its first time.
+-- name: SuspendPersonalValue :execrows
+UPDATE personal_values SET suspended_at = sqlc.arg(suspended_at)
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
+  AND id = sqlc.arg(id) AND suspended_at IS NULL;
+
+-- name: ResumePersonalValue :execrows
+UPDATE personal_values SET suspended_at = NULL
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
+  AND id = sqlc.arg(id) AND suspended_at IS NOT NULL;
+
+-- DeleteExpiredPersonalValue deletes one value suspended since at least the
+-- cutoff, so a value whose owner regained access in between survives.
+-- name: DeleteExpiredPersonalValue :execrows
+DELETE FROM personal_values
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
+  AND id = sqlc.arg(id) AND suspended_at IS NOT NULL AND suspended_at <= sqlc.arg(cutoff_time);

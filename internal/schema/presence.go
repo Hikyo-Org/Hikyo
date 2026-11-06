@@ -159,3 +159,32 @@ func overlap(required, forbidden Presence) (bool, string) {
 	}
 	return true, "environments " + strings.Join(both, ", ")
 }
+
+// CheckPersonalRequired validates `personal_required_in`, the environments
+// where each developer is expected to hold a personal value (personal-values
+// ADR). Its mode is `none` or `explicit` only: `all` would bind environments
+// created later to a requirement no one can see coming. A key cannot be
+// personally required where it is also `required_in` (the shared value must
+// exist) or `forbidden_in` (no value may exist), and a key in a group cannot
+// carry it, because a group's presence is all-or-none.
+func CheckPersonalRequired(personal Presence, rules PresenceRules, grouped bool) error {
+	if personal.Mode == PresenceAll {
+		return declErr("`personal_required_in` mode `all` is not allowed; use `none` or `explicit`")
+	}
+	if err := checkPresenceShape("personal_required_in", personal); err != nil {
+		return err
+	}
+	if personal.Mode == PresenceNone {
+		return nil
+	}
+	if grouped {
+		return declErr("a key in a key group cannot carry `personal_required_in`")
+	}
+	if conflict, why := overlap(personal, rules.Required); conflict {
+		return declErr("a key cannot be both `personal_required_in` and `required_in` the same environment (%s)", why)
+	}
+	if conflict, why := overlap(personal, rules.Forbidden); conflict {
+		return declErr("a key cannot be both `personal_required_in` and `forbidden_in` the same environment (%s)", why)
+	}
+	return nil
+}
