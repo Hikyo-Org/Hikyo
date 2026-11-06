@@ -1,6 +1,6 @@
 # Hikyo source of truth & the role of Git (ADR, locked 2026-07-30)
 
-> **Proposed partial supersession by the [hosted-service ADR](./hosted-service.md) (2026-11-04; not operative until that ADR is locked and the matching implementation PR merges):** definitions apply needs keys for affected environments, in Sealed orgs. See its supersession register.
+> **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** definitions apply needs keys for affected environments, in Sealed orgs. See its supersession register.
 
 > **Amended by the flat-model ADR ([flat-model.md](./flat-model.md), 2026-08-06, [#40](https://github.com/Hikyo-Org/Hikyo/issues/40), per the [oss-mechanics.md](./oss-mechanics.md) amendment procedure):** the definitions bundle drops the per-environment `base` field (closed schema rejects it at parse); `apply` runs no cycle check; plans pin `(bundle digest, schema revision, per-environment value revisions)`; the database-authority sentence covers environment value entries; the reveal escalation reads per that ADR's re-delivery gate. Detail in its ripple register.
 

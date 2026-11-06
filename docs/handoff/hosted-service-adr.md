@@ -1,6 +1,6 @@
 # Handoff: hosted-service ADR
 
-ADR: [`docs/adr/hosted-service.md`](../adr/hosted-service.md), status proposed.
+ADR: [`docs/adr/hosted-service.md`](../adr/hosted-service.md), status locked on 2026-11-06.
 This PR changes documentation only. It writes no implementation.
 
 ## Result
@@ -10,7 +10,7 @@ Sealed orgs for the hosted service, server-side decryption and rolling upgrades.
 The owner then required adapter sync and Kubernetes workload identity on the hosted
 service, which added decision 11. The owner also asked for a new ADR that supersedes the old ones. The ADR records
 those decisions, a normative supersession register, and banners on each affected
-ADR. Banners are marked proposed, so no locked ADR changes yet.
+ADR. Banners say each superseded section stays in force until the matching implementation PR merges.
 
 ## Evidence
 
@@ -27,16 +27,18 @@ ADR. Banners are marked proposed, so no locked ADR changes yet.
   unverified.
 - Independent adversarial reviews on `claude-opus-5-5`. See the ADR's review record.
 
-## Remaining before the ADR can lock
+## Owner decisions on 2026-11-06
 
-1. The owner confirms resolution 9: unattended access per environment for adapter sync and workload identity. The other resolutions were confirmed on 2026-11-04. The owner confirmed on 2026-11-06 that decision 2's accepted trust covers capture from production.
-2. The status and banners change from proposed to locked. The owner waived ticket reopening and cross-provider review, and the ADR records that.
+- Resolution 9: unattended access per environment (decision 11), shipped after launch as phase 2.
+- Decision 2's accepted trust covers capture from production.
+- Decision 12 added: presented keys encrypted to the installation. Reviewed in rounds 7 and 8.
+- The owner waived ticket reopening and cross-provider review, and the ADR records that.
 
 ## Remaining before any paid launch
 
 The ADR's acceptance gates, including an independent cryptographic review and a
 real multi-node load test. A Sealed protocol specification must be written and
-reviewed before implementation. Implementation tickets are not yet filed.
+reviewed before implementation. Decision 12 is filed as #1240. Other implementation tickets are not yet filed.
 
 ## Next steps
 

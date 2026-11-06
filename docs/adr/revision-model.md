@@ -1,6 +1,6 @@
 # Hikyo revisions, drafts, publishing & rollback (ADR, locked 2026-07-29)
 
-> **Proposed partial supersession by the [hosted-service ADR](./hosted-service.md) (2026-11-04; not operative until that ADR is locked and the matching implementation PR merges):** the scope of the change-token key, for Sealed orgs. See its supersession register.
+> **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** the scope of the change-token key, for Sealed orgs. See its supersession register.
 
 > **Declared amendment (2026-09-06, user-approved Hikyo self-configuration):** The [approved self-configuration design](../spec/self-configuration-proposal.md) separates **draft, published revision and applied runtime generation**. Publishing a system-project revision does not activate it. Apply names an exact retained snapshot, current catalogue version, expected generation and idempotency key. A single durable job prepares fixed HA participants before compare-and-swap of the desired target. A pre-commit failure preserves the old target; a post-commit interruption reconciles the committed target and remains partial until every participant acknowledges it. Revision numbers remain local to the owning environment and instance.
 >

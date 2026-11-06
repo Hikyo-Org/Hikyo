@@ -1,6 +1,6 @@
 # Hikyo threat model (ADR, locked 2026-07-29)
 
-> **Proposed partial supersession by the [hosted-service ADR](./hosted-service.md) (2026-11-04; not operative until that ADR is locked and the matching implementation PR merges):** the operator-trust statement, narrowed for data at rest and application access in Sealed orgs. See its supersession register.
+> **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** the operator-trust statement, narrowed for data at rest and application access in Sealed orgs. See its supersession register.
 
 > **Declared amendment (2026-10-20, manual remote pairing, owner decision locked;
 > cross-provider review waived for PR #1014 only; operative when that PR merges):**

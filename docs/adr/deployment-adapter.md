@@ -1,6 +1,6 @@
 # Hikyo deployment-module seam & Forgejo reference adapter (ADR, locked 2026-08-03)
 
-> **Proposed partial supersession by the [hosted-service ADR](./hosted-service.md) (2026-11-04; not operative until that ADR is locked and the matching implementation PR merges):** in a Sealed org, a target needs unattended access, and the outbound credential's sealing key changes. See its supersession register.
+> **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** in a Sealed org, a target needs unattended access, and the outbound credential's sealing key changes. See its supersession register.
 
 > **AWS #969 merge disposition (owner-approved 2026-10-30):** the owner directed merge with remaining repairs and no further AWS runs. For this PR only, this supersedes the earlier successful real-AWS acceptance and separate human application-merge holds. Failed acceptance remains failed, issue #158 stays open, and required source review and current-base CI still apply. No AWS resource, spending, release or deployment authority follows. See the [current handoff](../handoff/158-aws-secrets-manager.md#current-merge-disposition-2026-10-30).
 >

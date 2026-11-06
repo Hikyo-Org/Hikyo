@@ -146,7 +146,7 @@ New subsystem; shape decided in its ticket. **Minimum bar fixed here so a no-op 
 
 ## 3. Hosted SaaS & billing — committed follow-on, not 1.0
 
-> **Advanced by the proposed [hosted-service ADR](./hosted-service.md) (2026-11-04):** topology, protection modes and upgrade rule are proposed there. The self-hoster test and the billing rule below stay binding.
+> **Advanced by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06):** topology, protection modes and upgrade rule are decided there. The self-hoster test and the billing rule below stay binding.
 
 **Decision: hosted SaaS (with billing for the hosted service only) is upgraded from "not precluded" ([#3](https://github.com/Hikyo-Org/Hikyo/issues/3)) to a named, committed follow-on effort — its own wayfinder map, started after 1.0 ships.** It is not 1.0 scope: it collides with locked no-self-registration ([human-auth](./human-auth.md)), the self-hosted trust boundary ([threat-model](./threat-model.md)), and this map's own destination.
 

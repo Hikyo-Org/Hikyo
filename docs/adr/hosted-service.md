@@ -1,6 +1,6 @@
 # Hikyo hosted service: shared installations and Sealed orgs (ADR)
 
-Status: **proposed. Direction decided by the owner on 2026-11-04, and the governance disposition is recorded in the [review record](#review-record). Not locked until the owner confirms resolution 9 in the [author resolutions](#author-resolutions).** Each decision becomes operative when its implementation PR merges. Nothing here describes shipped behavior.
+Status: **locked on 2026-11-06. Direction decided by the owner on 2026-11-04 and 2026-11-06, and the governance disposition is recorded in the [review record](#review-record).** Each decision becomes operative when its implementation PR merges. Nothing here describes shipped behavior.
 
 **Conflict of interest, disclosed under [GOVERNANCE.md](../../GOVERNANCE.md):** the maintainer intends to sell the hosted service this ADR enables.
 
@@ -38,7 +38,7 @@ Hosted code may only schedule and operate released artifacts through documented 
 |---|---|---|
 | Who can decrypt at rest | The server, with the root key | Only with a presented holder secret, except in an environment with unattended access |
 | Key for secret material | Project DEK, exactly as today | Environment key |
-| Features needing background decryption | Available | Refused, except adapter sync and federation in an environment with unattended access (decision 11) |
+| Features needing background decryption | Available | Refused, except adapter sync and federation in an environment with unattended access (decision 11, from phase 2) |
 | Instance grants reach the org | Yes, as today | Lifecycle only (decision 6) |
 
 An instance setting chooses what new orgs get:
@@ -53,7 +53,7 @@ The setting applies only when an org is created. Changing it never alters an exi
 
 **Sealed is enforced by keys, not by a flag.** An environment in a Sealed org has no server slot unless a holder adds one (decision 11). Without one, if it never had one or has rotated since, changing the setting, self-granting, using break-glass, reading the datastore or holding a backup and the root key together yields none of that environment's plaintext. The project sealer refuses a Sealed org, and the store refuses any update to the mode column, on both engines.
 
-**Sealed protects data at rest and against application-level access. It does not stop capture from production or tampering.** An operator cannot read a Sealed environment that has never had unattended access, or has rotated since, at rest, or through grants or application settings. Anyone with production access can still get in: capturing holder secrets in transit or in memory, by logging at TLS termination, a memory dump or a modified server, or writing to the live datastore to forge the mode or a holder's public key, and waiting for the customer's next write, grant or rotation. This is more work and a deliberate act, but this design does not prevent it. An operator able to ship a server can do this regardless, so a protocol defending only the datastore path would add much complexity for little gain against the operator. The owner accepted this on 2026-11-04: as with any hosted service that decrypts on the server, customers trust the operator not to capture or tamper. On 2026-11-06 the owner confirmed that this acceptance covers capture from production, not only tampering. Sealed raises what a breach of that trust takes, from a setting or a grant to deliberately capturing or changing something in production.
+**Sealed protects data at rest and against application-level access. It does not stop capture from production or tampering.** An operator cannot read a Sealed environment that has never had unattended access, or has rotated since, at rest, or through grants or application settings. Anyone with production access can still get in: capturing holder secrets in memory or with a modified server, capturing raw service-account tokens or replaying a logged request within its window (decision 12), logging plaintext values in responses at TLS termination, or writing to the live datastore to forge the mode or a holder's public key, and waiting for the customer's next write, grant or rotation. This is more work and a deliberate act, but this design does not prevent it. An operator able to ship a server can do this regardless, so a protocol defending only the datastore path would add much complexity for little gain against the operator. The owner accepted this on 2026-11-04: as with any hosted service that decrypts on the server, customers trust the operator not to capture or tamper. On 2026-11-06 the owner confirmed that this acceptance covers capture from production, not only tampering. Sealed raises what a breach of that trust takes, from a setting or a grant to deliberately capturing or changing something in production.
 
 **There is no conversion in either direction.** Retained backups hold the old server-wrapped keys, so sealing an existing org would promise something false, and unsealing would need a server slot. A customer who wants a different mode creates a new org and imports, which re-encrypts every value.
 
@@ -93,7 +93,7 @@ The environment key seals `value_entries`, `pending_changes`, `snapshot_entries`
 
 A credential presents its secret with each request needing plaintext. For a person or a recovery key, that secret is the holder's private key, unlocked on their device. The server authorizes first, opens the slot, does the work and discards the key. Nothing is cached across requests, shared between nodes or written to the datastore, so nodes stay stateless.
 
-Secrets arrive in a dedicated header over TLS, never in a URL. They use the redacting types, and the envelope package stays the only caller of a cryptographic primitive.
+Secrets arrive in a dedicated header over TLS, encrypted to the installation as decision 12 requires, never in a URL. They use the redacting types, and the envelope package stays the only caller of a cryptographic primitive.
 
 **A key is required in addition to a grant, never instead of one.** The grant table stays the only access policy. A caller with a grant and no key gets a locked result. A caller with a key and no grant gets the uniform nonexistent result. This narrows the tenant-isolation ADR's rejection of per-request key release: release never authorizes.
 
@@ -114,8 +114,8 @@ Client-side decryption was deferred, not rejected. See [Rejected alternatives](#
 | Schema publish, key delete, rename, reclassify, declassify, group change | **Need keys for every affected environment in one request, or are refused.** A recovery key or a member holding them all can do this. An automation token spanning all environments must be re-minted after a new environment is created |
 | Rotating or re-encrypting an environment key | Driven by a holder in batches, each carrying the key. The installation-wide `reencrypt` skips Sealed orgs |
 | Backup | Exports ciphertext. A restore drill must prove `sealedSlotKey` by opening a sampled slot's outer layer, and may not report "no secret" when Sealed orgs exist |
-| Adapter sync | **Needs unattended access on the target environment** (decision 11), and is refused without it |
-| OIDC-federated machine credentials, including Kubernetes ServiceAccount federation | **A fetch needs unattended access on the environment fetched** (decision 11). Fetching an environment without it is refused, and other environments are unaffected. For those, the Kubernetes operator uses a bootstrap Secret holding a token |
+| Adapter sync | **Needs unattended access on the target environment** (decision 11, from phase 2), and is refused without it. Refused entirely until phase 2 |
+| OIDC-federated machine credentials, including Kubernetes ServiceAccount federation | **A fetch needs unattended access on the environment fetched** (decision 11, from phase 2). Refused entirely until phase 2. Fetching an environment without it is refused, and other environments are unaffected. For those, the Kubernetes operator uses a bootstrap Secret holding a token |
 | Dynamic-secret providers | **Refused.** They are not a consumer of unattended access at launch |
 | Automatic transit key rotation | **Refused.** Rotation needs a holder |
 | PKI | **Not offered.** Issuer keys are instance-owned |
@@ -124,7 +124,7 @@ Client-side decryption was deferred, not rejected. See [Rejected alternatives](#
 
 Self-configuration, upgrade configuration and sign-in factors stay server-held, so taking over an account gains a login and not a key. Names, descriptions, schemas and audit metadata stay unencrypted, as the encryption-model ADR lists.
 
-**On `sealed-only`, adapter sync and Kubernetes workload identity stay available, per environment, through unattended access.** An environment without it delivers through the CLI, the compose integration and the Kubernetes operator with a bootstrap Secret. Keeping such an environment sealed while syncing it needs a customer-run path, which is open item 2.
+**On `sealed-only`, adapter sync and Kubernetes workload identity stay available from phase 2, per environment, through unattended access.** An environment without it delivers through the CLI, the compose integration and the Kubernetes operator with a bootstrap Secret. Keeping such an environment sealed while syncing it needs a customer-run path, which is open item 2.
 
 ### 6. The operator's reach into a Sealed org
 
@@ -189,6 +189,8 @@ Read replicas are not a goal. Every machine fetch writes audit rows, so replicas
 
 The owner requires adapter sync and Kubernetes workload identity on the hosted service. Both need plaintext when no customer is present, so the server must hold a way to open those environments. This decision makes that a visible choice per environment, instead of a silent exception or a whole-org downgrade.
 
+**It ships after launch, as phase 2.** The hosted service may launch without it. Until it ships, a Sealed org refuses adapter targets, federation bindings and issuers, every Sealed environment is sealed, and the public wording drops the exception, because no customer can have such an environment. Acceptance gate 10 must hold before this decision ships, not before launch.
+
 **This is Managed behavior for that environment, and the product says so.** A datastore dump plus the root key opens an environment with unattended access. The mode stays per org, because the operator's reach (decision 6), the keyring's refusal of project sealers and the per-environment digest keys all stay in force for it.
 
 - **Off by default.** Enabling or removing it needs `project-settings(project)`, `reveal(E)`, reauthentication and a presented key for that environment. Machines cannot do it, and a key alone never authorizes it. Enabling lists every adapter target and federated principal that becomes a consumer, and the person confirms them. It then adds an installation holder and records an event in the org's trail. The UI, `whoami` and the environment listing show the state.
@@ -224,6 +226,18 @@ The owner requires adapter sync and Kubernetes workload identity on the hosted s
 
 Dynamic-secret providers, automatic transit rotation and PKI stay out of scope. The owner did not ask for them, and each would need its own review as a consumer.
 
+### 12. Presented keys are encrypted to the installation
+
+The owner accepted that anyone with production access can capture holder secrets (decision 2), and asked for any easy mitigation. This one stops logging or tracing after TLS termination from capturing holder secrets presented by Hikyo's own clients, which needs no code change and can happen by accident.
+
+- **Every holder secret travels in an HPKE envelope (RFC 9180) inside TLS**, sealed to an installation transit key, using an established implementation. The holder-secret header accepts only that envelope. A proxy, CDN, ingress, tracing tool or error tracker that records the request sees only ciphertext.
+- **The transit key changes every hour, and nodes stay stateless.** Epochs are clock-based. Each epoch's key pair is derived by HKDF from a new tier-3 `holderTransitKey`, wrapped by the master key, with the epoch in the info. Every node derives the same pair, so any node can serve any request. A public route publishes the current and next public keys, and the server accepts the previous, current and, within a short clock skew, next epochs. `holderTransitKey` can be rotated at any time, and losing it costs nothing, because no stored data is under it.
+- **No forward secrecy.** Every epoch key can be derived again from `holderTransitKey`. Anyone who later obtains the root key can open every archived capture of these envelopes, recovery keys included, however old.
+- **The envelope is bound to its request.** Its AAD binds the method, path, canonical query, a digest of the body, the org, the session or credential presenting it, the epoch, a client nonce and a timestamp. The server refuses a timestamp outside a window of 30 seconds. Captured ciphertext cannot be moved to another request, body or session. Nodes keep no record of used nonces, so whoever logged both the request and its session cookie can replay that exact request within the window, and receive its response.
+- **Hikyo's own clients also send service-account token bodies this way**: the web app, CLI, Kubernetes operator and MCP server. A raw bearer token stays accepted, so that existing CI keeps working. It is exposed to such logging, and opens its environments until the token expires or is revoked.
+
+**What it does not stop:** a modified server, a memory dump, raw bearer tokens, replay within the window, someone holding both the captured traffic and the root key, or any component terminating TLS, including a CDN, that replaces the published public key. Plaintext values in responses are still visible to anything that records responses after TLS termination. This mitigation protects the long-lived keys, not the values in one response.
+
 ## The honest statement (documentation requirement)
 
 Hikyo's documentation and hosted marketing MUST state this, and may not imply more.
@@ -233,7 +247,7 @@ Hikyo's documentation and hosted marketing MUST state this, and may not imply mo
 **Not protected in a Sealed org:**
 
 - A modified server, which can capture holder secrets and plaintext from requests, and can retain a key it generated. One hostile release can leave a known key that survives redeploying a clean binary, until every affected environment key, holder key and digest key is replaced.
-- Capture of holder secrets or plaintext at TLS termination, by logging or tracing tools, or from server memory, none of which needs a code change. One captured recovery key opens everything it holds until it is replaced.
+- Capture of plaintext values in responses at TLS termination, by logging or tracing tools. Capture of holder secrets from server memory, by any TLS-terminating component replacing the transit public key, or from captured traffic together with the root key, at any later time (decision 12). Service-account tokens sent as a raw bearer, which logging at TLS termination exposes. Replay of a logged request together with its session within 30 seconds. None of these needs a code change. One captured recovery key opens everything it holds until it is replaced.
 - Direct write access to the live datastore. It can forge a mode, replace a holder's public key so that a later grant or rotation exposes the data, or roll slots back to an earlier state.
 - Metadata such as names and schemas, at the datastore level.
 - Anything already delivered to a workload, or synced to an adapter's destination.
@@ -249,7 +263,7 @@ Hikyo's documentation and hosted marketing MUST state this, and may not imply mo
 - **One unbounded global installation.** Every customer shares one failure, one write ceiling and one upgrade, with no first-installation canary.
 - **An instance setting that hides environments from the operator.** Whoever holds the setting can reverse it. Kept only as the creation default.
 - **Mode per environment.** The operator's reach and the refusal of project sealers should stay one rule for the whole org. Unattended access is narrower: one visible holder, with fixed consumers, in an otherwise Sealed org.
-- **Refusing adapter sync and workload identity on the hosted service.** Rejected by the owner, who requires both.
+- **Refusing adapter sync and workload identity on the hosted service.** Rejected by the owner, who requires both. It is the temporary launch state until decision 11 ships as phase 2.
 - **`sealed-default` on the hosted service, with Managed for customers needing sync.** No new protocol, but a trap: a customer who later needs one sync must re-create the org, because modes do not convert, and every environment and the operator's reach would be affected.
 - **A customer-run sync agent as the only path.** It keeps environments sealed, but outbox, ledger and fence logic live in the server, so this is a large refactor, and customers would have to run something. Kept as open item 2.
 - **Signed holder lists against datastore tampering.** Review found this needs delegated signing, request-level binding to a verified list and a design for clients that cannot verify. It would not stop a modified server, so it only makes sense alongside client-side decryption or attested hardware.
@@ -265,7 +279,7 @@ Hikyo's documentation and hosted marketing MUST state this, and may not imply mo
 | ADR (ticket) | Superseded | Scope | Unchanged |
 |---|---|---|---|
 | [threat-model](./threat-model.md) (#8) | "Trusted: the instance operator", narrowed for data at rest and application access. An operator who captures secrets from production or tampers stays operator-equivalent | Sealed | Everything for Managed orgs. A running-server compromise remains full compromise. The "revisit if SaaS" residual stays open (open item 1) |
-| [encryption-model](./encryption-model.md) (#14) | Key hierarchy gains environment keys, slots and `sealedSlotKey`. Closed envelope-kind set gains the slot kinds. Primitive set gains X25519 record wrapping. The per-environment DEK rejection. The claim that the server can always decrypt | Sealed | XChaCha20-Poly1305, format, existing kinds, Managed rotation, backups, "never zero knowledge" |
+| [encryption-model](./encryption-model.md) (#14) | Key hierarchy gains environment keys, slots and `sealedSlotKey`. Closed envelope-kind set gains the slot kinds. Primitive set gains X25519 record wrapping and HPKE for presented keys, with a tier-3 `holderTransitKey`, and the envelope-kind set gains the transit envelope. The per-environment DEK rejection. The claim that the server can always decrypt | Sealed | XChaCha20-Poly1305, format, existing kinds, Managed rotation, backups, "never zero knowledge" |
 | [tenant-isolation](./tenant-isolation.md) (#23) | Rejection of per-request key release, narrowed by decision 4. "No per-org backup" (all deployments). Documentation rule, per the honest statement | Sealed, except as marked | Proof-carrying authorization, filter-in-query, CI invariants. Row-level security stays rejected pending open item 1 |
 | [permission-model](./permission-model.md) (#15) | "Instance scope inherits downward", per decision 6. Instance-scope `org.create` remains, with a signup path per decision 7. Adds the formula to enable unattended access, the key requirements of decision 11, and an org-level issuer capability | Sealed | Grants are the only policy |
 | [audit-model](./audit-model.md) (#24) | The tenant commit order spanning orgs (`commit_seq`, from the export-ordering migration), which becomes per org. Instance actions reach the tenant trail | All PostgreSQL; Sealed for visibility; org-owned issuer events per decision 11 | Event shapes, durability, append-only stance, the absence of a cross-trail order |
@@ -281,7 +295,7 @@ Hikyo's documentation and hosted marketing MUST state this, and may not imply mo
 | [revision-model](./revision-model.md) (#11) | The change-token key is per environment | Sealed | Snapshot identity, token semantics |
 | [transit](./transit.md) (#156) | Automatic rotation refused; material under the environment key | Sealed | Everything else |
 | [human-auth](./human-auth.md) (#16) | The `fresh-org` landing gains the recovery-key proof of decision 7. Instance-scoped providers stay, pending open item 3 | `sealed-only` | Everything else |
-| [api-cli-surface](./api-cli-surface.md) (#25) | Adds the holder-secret header and the locked result. Adds routes for unattended access and org-owned issuers | Sealed | Everything else |
+| [api-cli-surface](./api-cli-surface.md) (#25) | Adds the holder-secret header, which accepts only the decision 12 envelope, its public-key route, and the locked result. Adds routes for unattended access and org-owned issuers | Sealed | Everything else |
 | [multi-instance](./multi-instance.md) | The remote directory omits Sealed org names | Sealed | Everything else |
 | [deployment-adapter](./deployment-adapter.md), [github-adapter](./github-adapter.md), [gitlab-adapter](./gitlab-adapter.md), [vault-kv-adapter](./vault-kv-adapter.md) | A target needs unattended access. The outbound credential is sealed under `sealedSlotKey`, per decision 11 | Sealed | Seam, converge, fences, egress bounds, provider behavior |
 | [pki](./pki.md) | Nothing in its design. It is unavailable in a Sealed org | None | All of it |
@@ -293,14 +307,15 @@ The owner's decisions left these open. The owner confirmed them on 2026-11-04, e
 | # | Question | ADR assumes |
 |---|---|---|
 | 1 | "Community" in the owner's note | Means org. The mode is per org, while keys remain per environment |
-| 2 | "For SaaS it should be sealed" | `sealed-only`. No Managed orgs on the hosted service. Corrected by the owner: adapter sync and workload identity must stay available, which resolution 9 covers |
+| 2 | "For SaaS it should be sealed" | `sealed-only`. No Managed orgs on the hosted service. Corrected by the owner: adapter sync and workload identity must stay available, which resolution 9 covers, from phase 2 |
 | 3 | "It should stay sealed" | No conversion in either direction. Managed to Sealed is by new org and import |
 | 4 | A required second holder | A hard gate before the first publish. A second recovery key counts |
 | 5 | Rolling upgrades | Default for all PostgreSQL HA, including self-hosters |
 | 6 | "Signup limits" | Per-org quotas set from the registration policy, then changed by the control plane through an instance API |
 | 7 | "No access to customer environments" | Includes metadata inside the application. Datastore-level metadata remains exposed |
 | 8 | Schema changes in a Sealed org | Need keys for every affected environment, or are refused. This keeps the schema-model rules, but limits who can edit schemas |
-| 9 | **Pending owner confirmation.** How adapter sync and workload identity work in a Sealed org | Unattended access per environment, as in decision 11 |
+| 9 | How adapter sync and workload identity work in a Sealed org | Unattended access per environment, as in decision 11, shipped after launch as phase 2. Confirmed on 2026-11-06 |
+| 10 | "Yes, unless there is an easy mitigation", on capture from production | Decision 12, encrypting presented keys to the installation. Added on 2026-11-06 at the owner's request |
 
 ## Open items, each needing its own owner decision
 
@@ -321,13 +336,15 @@ No hosted service may accept paying customers until all of these hold:
 6. Moving a slot, inner wrap or sealed ciphertext across orgs, projects, environments, key versions, holders or slots fails to decrypt, even for a root-key holder. An installation slot is outside the root-key part of this gate, because a root-key holder can open it.
 7. A multi-node load test on a real multi-org installation meets a declared target, with no cross-org audit failures at that load.
 8. A rolling upgrade across a declared pair completes under load, within a declared error budget.
-9. The Sealed protocol specification exists, an independent cryptographic review of it and of decisions 3 to 5 and 11 is complete, and its findings are resolved.
-10. An installation slot opens only for its listed consumers, every change listed in decision 11, including an issuer key source change, is refused without a presented key, a binding stops when its issuer's key source changes, and a restored slot stays inert until re-confirmed under the enabling formula. A token authenticates only into the org its request names, through that org's own binding. A binding in a Sealed org cannot name an instance-level issuer, and its audience must equal the required value. Enforced by test.
+9. The Sealed protocol specification exists, an independent cryptographic review of it and of decisions 3 to 5, 11 and 12 is complete, including the HPKE mode, the AAD layout, epoch derivation and the replay window, and its findings are resolved.
+10. Before decision 11 ships: an installation slot opens only for its listed consumers, every change listed in decision 11, including an issuer key source change, is refused without a presented key, a binding stops when its issuer's key source changes, and a restored slot stays inert until re-confirmed under the enabling formula. A token authenticates only into the org its request names, through that org's own binding. A binding in a Sealed org cannot name an instance-level issuer, and its audience must equal the required value. Enforced by test.
+11. A holder secret outside the decision 12 envelope is refused. An envelope with another request, body, session, an expired epoch or a timestamp outside the window fails. A capture at the service's own TLS termination, during a test run using only Hikyo's own clients, contains no holder secret or service-account token. Enforced by test.
+12. Until decision 11 ships, a Sealed org refuses creating, replacing or re-activating adapter targets, federation bindings and issuers, and no instance-level issuer can authenticate into a Sealed org. Enforced by test.
 
 ## Review record
 
 Independent adversarial reviews by `claude-opus-5-5` ran on 2026-11-04. Round 1 (Standards, Spec) found two critical errors: symmetric slots could not be added for an absent holder, and a datastore writer could forge the mode, defeating the claim in decision 2. Round 2 found one critical error: forged holder keys could make a later rotation expose existing data. It also found the deferred schema validation that was then removed. Round 3 found that a signed manifest added in response could not hold: it had no signer for routine changes, and the server was not bound to it. That revision withdrew the manifest and narrowed the security claim to passive access.
 
-The owner then required adapter sync and workload identity on the hosted service, which added decision 11. Round 4 reviewed that decision and the narrowed claim, and found three critical gaps: re-pointing an adapter and changing an issuer's keys needed no key, and an instance-level issuer could back a Sealed org. It also found that the claim was overstated, because holder secrets can be captured in transit with no code change. Round 5 re-checked the fixes and found that a keyless issuer change could still lead to a forged binding, and that shipping org-owned issuers to Managed orgs would add a forging path there. This revision pins bindings to the issuer's key source and limits org-owned issuers to Sealed orgs. Round 6 confirmed those fixes and found one remaining false claim: a backup from before a rotation still opens its values. This revision states that. The owner's confirmation of decision 11 remains open, as resolution 9.
+The owner then required adapter sync and workload identity on the hosted service, which added decision 11. Round 4 reviewed that decision and the narrowed claim, and found three critical gaps: re-pointing an adapter and changing an issuer's keys needed no key, and an instance-level issuer could back a Sealed org. It also found that the claim was overstated, because holder secrets can be captured in transit with no code change. Round 5 re-checked the fixes and found that a keyless issuer change could still lead to a forged binding, and that shipping org-owned issuers to Managed orgs would add a forging path there. This revision pins bindings to the issuer's key source and limits org-owned issuers to Sealed orgs. Round 6 confirmed those fixes and found one remaining false claim: a backup from before a rotation still opens its values. This revision states that. The owner confirmed decision 11 on 2026-11-06 as phase 2, and asked for an easy mitigation of capture in transit, which added decision 12. Round 7 reviewed decision 12 and phase 2, and found that the request binding did not stop replay with a logged session, that raw service-account tokens and the lack of forward secrecy were not stated, and that no launch gate tested the refusal phase 2 depends on. This revision fixes and states those. Round 8 confirmed the fixes and found two overstated sentences, about decision 2's list and decision 12's scope, which this revision corrects.
 
 **Owner waiver (2026-11-04):** the owner waived reopening the originating tickets and cross-provider review for this ADR. Cross-provider review has **not run**, and is not recorded as clean. [GOVERNANCE.md](../../GOVERNANCE.md) requires both and has no waiver clause, so this follows the owner waivers recorded in other ADRs, such as [machine-identities](./machine-identities.md). The owner is also the party with the conflict of interest disclosed above.

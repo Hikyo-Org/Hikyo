@@ -1,6 +1,6 @@
 # Hikyo v1 operational & deployment spec (ADR, locked 2026-08-05)
 
-> **Proposed partial supersession by the [hosted-service ADR](./hosted-service.md) (2026-11-04; not operative until that ADR is locked and the matching implementation PR merges):** node-local rate budgets, the fixed instance-wide values, and JWKS bounds and refresh, for all PostgreSQL deployments. See its supersession register.
+> **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** node-local rate budgets, the fixed instance-wide values, and JWKS bounds and refresh, for all PostgreSQL deployments. See its supersession register.
 
 > **Owner-approved declared amendment (2026-10-16, [#930](https://github.com/Hikyo-Org/Hikyo/issues/930), policy B; operative when its implementation PR merges):** Managed complete archives for the current datastore engine share one retention policy across scheduled, manual and pre-migration exports. An independent **180-day ceiling overrides retained-count protection**. Within that ceiling, the newest configured `HIKYO_BACKUP_RETAIN_COUNT` are protected from the earlier `HIKYO_BACKUP_RETAIN_DAYS` pruning threshold; count is not a maximum number of young archives. No unlimited setting exists.
 >

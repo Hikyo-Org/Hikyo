@@ -1,6 +1,6 @@
 # Hikyo tenant isolation — enforcement, layer by layer (ADR, locked 2026-08-02)
 
-> **Proposed partial supersession by the [hosted-service ADR](./hosted-service.md) (2026-11-04; not operative until that ADR is locked and the matching implementation PR merges):** the rejection of per-request key release and the key documentation rule, for Sealed orgs, and "no per-org backup" for all deployments. See its supersession register.
+> **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** the rejection of per-request key release and the key documentation rule, for Sealed orgs, and "no per-org backup" for all deployments. See its supersession register.
 
 > **Declared amendment (2026-09-26, [#156](https://github.com/Hikyo-Org/Hikyo/issues/156), normative contract [transit.md](./transit.md)):** the existing scheduler authority gains exactly the transit maintenance doors: the installation-wide read of transit keys due for automatic rotation or past their deletion delay, the guarded version append for automatic rotation, the guarded material erasure that moves a key to `destroyed`, and the tenant-trail events those two jobs emit under scoped system authority. No new system site is added, and no request path gains system authority.
 

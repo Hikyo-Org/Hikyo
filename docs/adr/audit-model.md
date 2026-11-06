@@ -1,6 +1,6 @@
 # Hikyo audit logging & event model (ADR, locked 2026-08-02)
 
-> **Proposed partial supersession by the [hosted-service ADR](./hosted-service.md) (2026-11-04; not operative until that ADR is locked and the matching implementation PR merges):** the tenant trail's commit order spanning orgs, for all PostgreSQL deployments, and the visibility of instance actions and placement of org-owned issuer events, for Sealed orgs. See its supersession register.
+> **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** the tenant trail's commit order spanning orgs, for all PostgreSQL deployments, and the visibility of instance actions and placement of org-owned issuer events, for Sealed orgs. See its supersession register.
 
 > **Owner-approved amendment (2026-10-28, #1034, operative when its implementation PR merges):** bounded `auth.request_refused` summaries replace generic invalid-artifact silence for the covered paths. The exact staging, sampling, attribution, sink-loss and health contract is [auth-refusal-signals.md](./auth-refusal-signals.md). The owner explicitly approved that contract and waived cross-provider review for #1034 only. Maintainer security review and the human merge gate remain. Earlier MCP silence is superseded only at this scope; dedicated refusals and `grant.denied` remain unchanged.
 

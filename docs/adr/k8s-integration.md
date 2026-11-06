@@ -1,6 +1,6 @@
 # Hikyo Kubernetes integration (ADR, locked 2026-07-31)
 
-> **Proposed partial supersession by the [hosted-service ADR](./hosted-service.md) (2026-11-04; not operative until that ADR is locked and the matching implementation PR merges):** in a Sealed org, ServiceAccount federation needs unattended access, and issuers are registered per org. See its supersession register.
+> **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** in a Sealed org, ServiceAccount federation needs unattended access, and issuers are registered per org. See its supersession register.
 
 > **Declared amendment (2026-10-16, owner-approved implementation scope; operative upon this change merging):** optional `spec.allKeys: true` delivers every authorized key to an Opaque target without maintaining a mapping. The [all-authorized-keys amendment](#amendment-all-authorized-keys) below defines selection, loader-control consent, cursor binding, and rollout behavior. Historical mapping-only text is preserved.
 

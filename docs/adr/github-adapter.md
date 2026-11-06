@@ -1,6 +1,6 @@
 # Hikyo GitHub Actions adapter — deltas over the deployment-module seam (ADR, locked 2026-08-06)
 
-> **Proposed partial supersession by the [hosted-service ADR](./hosted-service.md) (2026-11-04; not operative until that ADR is locked and the matching implementation PR merges):** in a Sealed org, a target needs unattended access, and the outbound credential's sealing key changes. See its supersession register.
+> **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** in a Sealed org, a target needs unattended access, and the outbound credential's sealing key changes. See its supersession register.
 
 Context: the MVP boundary ([mvp-boundary.md](./mvp-boundary.md) §2.1, [#26](https://github.com/Hikyo-Org/Hikyo/issues/26)) promotes a GitHub Actions deployment adapter into 1.0 as the second in-tree adapter over the seam fixed in [deployment-adapter.md](./deployment-adapter.md). That ADR's **constraints transfer wholesale**; its **mechanisms do not transfer by assumption** — each was re-derived here against GitHub's actual REST API, verified in [docs/research/github-actions-api.md](../research/github-actions-api.md) (facts cited below without repeating URLs; every endpoint/status claim traces to that file, ambiguities included). This is a sibling ADR: it composes with the seam, amends nothing. Where this ADR is silent, the Forgejo ADR's rule applies verbatim.
 

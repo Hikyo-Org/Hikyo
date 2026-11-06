@@ -1,6 +1,6 @@
 # Hikyo human authentication (ADR, locked 2026-07-31)
 
-> **Proposed partial supersession by the [hosted-service ADR](./hosted-service.md) (2026-11-04; not operative until that ADR is locked and the matching implementation PR merges):** the `fresh-org` landing, for `sealed-only` installations. See its supersession register.
+> **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** the `fresh-org` landing, for `sealed-only` installations. See its supersession register.
 
 > **Owner-locked declared amendment (2026-10-09, [#807](https://github.com/Hikyo-Org/Hikyo/issues/807), operative when its implementation PR merges; cross-provider review explicitly waived by the owner for this decision):** A separate bounded developer credential may support unattended development without replaying an ordinary human login session. Ordinary logout and idle expiry preserve the fixed delegation. Issuing-session security revocation, account/factor/epoch/generation invalidation, identity/provider invalidation, and scoped access/protection invalidation terminally revoke it. Fresh developer-specific reauthentication binds environment, current key set, fixed lifetime, and current/future-key consent; generic windows cannot authorize mint. The normative lifecycle and acceptance contract is [developer-credentials.md](./developer-credentials.md). Historical statements below are superseded only within this bounded scope.
 

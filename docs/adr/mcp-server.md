@@ -1,6 +1,6 @@
 # Hikyo MCP phase 1 (ADR, locked 2026-09-04)
 
-> **Proposed partial supersession by the [hosted-service ADR](./hosted-service.md) (2026-11-04; not operative until that ADR is locked and the matching implementation PR merges):** the need for a service-account token with a slot, for Sealed orgs. See its supersession register.
+> **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** the need for a service-account token with a slot, for Sealed orgs. See its supersession register.
 
 > **Owner-approved #1034 amendment (2026-10-28, operative on implementation merge):** missing/invalid/expired/revoked tool-call bearer refusals use the bounded instance summary contract in [auth-refusal-signals.md](./auth-refusal-signals.md), superseding the generic silence below only for those covered attempts. Discovery remains intentionally anonymous, successful pure reads remain `audited: none`, and dedicated refusal / `grant.denied` semantics are unchanged. The #1034-only cross-provider review waiver does not waive maintainer security review or merge approval.
 

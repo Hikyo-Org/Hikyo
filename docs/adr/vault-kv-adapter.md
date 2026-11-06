@@ -1,6 +1,6 @@
 # Hikyo Vault/OpenBao KV v2 adapter: a one-way destination over the deployment-module seam (ADR, proposed 2026-09-26)
 
-> **Proposed partial supersession by the [hosted-service ADR](./hosted-service.md) (2026-11-04; not operative until that ADR is locked and the matching implementation PR merges):** in a Sealed org, a target needs unattended access, and the outbound credential's sealing key changes. See its supersession register.
+> **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** in a Sealed org, a target needs unattended access, and the outbound credential's sealing key changes. See its supersession register.
 
 > **Owner membership decision (2026-10-29):** Marc selected inclusion in 1.0
 > after qualifying review and acceptance: "A, in separate t3code thread sol 6.1

@@ -1,6 +1,6 @@
 # Hikyo system architecture & stack (ADR, locked 2026-08-02)
 
-> **Proposed partial supersession by the [hosted-service ADR](./hosted-service.md) (2026-11-04; not operative until that ADR is locked and the matching implementation PR merges):** the 1 to 3 orgs, 25 users, 10,000 entries envelope, for hosted installations. See its supersession register.
+> **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** the 1 to 3 orgs, 25 users, 10,000 entries envelope, for hosted installations. See its supersession register.
 
 > **Declared stable-signing amendment (2026-09-08):** The owner selected online keyless stable signing with reviewed draft publication. [Stable workflow signing](stable-workflow-signing.md) supersedes the historical offline stable ceremony after implementation merge and explicit recovery-signed policy activation. The existing root remains; activation and 1.0 publication are pending.
 

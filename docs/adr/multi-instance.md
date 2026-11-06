@@ -1,6 +1,6 @@
 # Hikyo multi-instance management (ADR, locked 2026-08-06)
 
-> **Proposed partial supersession by the [hosted-service ADR](./hosted-service.md) (2026-11-04; not operative until that ADR is locked and the matching implementation PR merges):** the remote directory, which omits Sealed org names. See its supersession register.
+> **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** the remote directory, which omits Sealed org names. See its supersession register.
 
 Context: Hikyo installations multiply in practice — one on a k3s cluster, one on a VPS, one local — and the humans who run them hop between them. Raised during the app-chrome prototype ([#29](https://github.com/Hikyo-Org/Hikyo/issues/29), reacted to on the iteration-4 instance surface at `prototype/app-chrome/4/`): should one installation be able to see and manage others, Portainer-style? This ADR fixes what "manage" means, the credential and trust model that carries it, its tenant-isolation and audit consequences, the CLI/API surface it joins, and its v1 scope. The spectrum considered ran from a deep-link directory through an authenticated directory and a browser-federated workspace up to server-side API proxying and central state management.
 
