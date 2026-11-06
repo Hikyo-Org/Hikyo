@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { zGrantResult, zPublishResult, zReauthResult } from '@hikyo/zod';
+import { zGrantResult, zKeyList, zPublishResult, zReauthResult } from '@hikyo/zod';
 import { z } from 'zod';
 
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
@@ -766,6 +766,173 @@ test.describe('pinned assertion set', () => {
         ],
         hairlines: [well],
         density: [[revealAll, '--control']],
+      });
+    });
+  }
+});
+
+/**
+ * Flow: personal values in the browser, with no CLI (registry flow
+ * `personal-values`, personal-values ADR). One account plays both roles: the
+ * owner sets, reveals and deletes their own value and dismisses a notice, and,
+ * holding `manage-members`, deletes their own value from the key's members list,
+ * which the server answers exactly as for anyone else's: a notice.
+ *
+ * Set and reveal run the same purpose-bound ceremony as the values above, and
+ * only a passkey or authenticator app opens it.
+ */
+const PERSONAL_PATH = `/orgs/${seed.org}/projects/${seed.project}/environments/${seed.dev}/personal-values`;
+const MATRIX_PATH = `/orgs/${seed.org}/projects/${seed.project}/matrix`;
+const REPORT_PATH = `/orgs/${seed.org}/projects/${seed.project}/offboarding-report`;
+// A fixture, not a secret: what the owner types and then reads back.
+const PERSONAL_FIXTURE = 'personal-fixture-development';
+const STATEMENT = /^Hikyo does not show this to administrators\./;
+const SCHEMES: readonly ('dark' | 'light')[] = ['dark', 'light'];
+
+test.describe('personal values', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page: Page;
+  const key = seed.secrets[0] ?? '';
+
+  test.beforeEach(async ({ passkeyPage }) => {
+    page = passkeyPage;
+    await page.context().clearCookies();
+    await page.goto(PERSONAL_PATH);
+    await establishSession(page);
+    await page.goto(PERSONAL_PATH);
+    await expect(page.getByRole('heading', { name: 'My personal values', level: 1 })).toBeVisible();
+  });
+
+  async function setValue(): Promise<void> {
+    await page.getByRole('button', { name: 'Set a value' }).click();
+    const panel = page.getByRole('complementary', { name: 'Set a personal value' });
+    // The fixed statement stands where the value is entered.
+    await expect(panel.getByText(STATEMENT)).toBeVisible();
+    await panel.getByLabel('Key', { exact: true }).selectOption(key);
+    await panel.getByLabel(`Your value for ${key} in development`).fill(PERSONAL_FIXTURE);
+    await panel.getByRole('button', { name: 'Save my value' }).click();
+  }
+
+  test('sets, reveals and deletes your own value', async () => {
+    await expect(page.getByText(STATEMENT)).toBeVisible();
+    // No .env download anywhere: running a program is the CLI's job.
+    await expect(page.getByRole('link', { name: /download|\.env/i })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /download|\.env/i })).toHaveCount(0);
+
+    // Set: the reveal ceremony, possession only, over the one key.
+    await setValue();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('heading', { level: 2 })).toHaveText('set your personal value in · development');
+    await expect(dialog).toContainText('An identity provider approval cannot authorise them.');
+    await dialog.getByRole('button', { name: 'Use a passkey' }).click();
+    await expect(page.getByText(`Your personal value for ${key} is saved.`)).toBeVisible();
+    await expect(page.getByLabel(`${key} is masked`)).toBeVisible();
+
+    // Reveal inside the window the set just opened: no second prompt.
+    await page.getByRole('button', { name: `Reveal ${key}` }).click();
+    await expect(page.getByText(PERSONAL_FIXTURE)).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+
+    // Delete your own value after a confirmation.
+    await page.getByRole('button', { name: `Delete ${key}` }).click();
+    const confirm = page.getByRole('dialog', { name: `Delete your value for ${key}?` });
+    await confirm.getByRole('button', { name: 'Delete my value' }).click();
+    await expect(page.getByText(`Your personal value for ${key} is deleted.`)).toBeVisible();
+    await expect(page.getByLabel(`${key} is masked`)).toHaveCount(0);
+  });
+
+  test('a member manager deletes a value from the key panel, which leaves a notice to dismiss', async () => {
+    await setValue();
+    await page.getByRole('dialog').getByRole('button', { name: 'Use a passkey' }).click();
+    await expect(page.getByText(`Your personal value for ${key} is saved.`)).toBeVisible();
+
+    // The matrix marks the cell with your own state, in words.
+    await page.goto(MATRIX_PATH);
+    const cell = page.getByRole('button', { name: new RegExp(`^${key} in development:`) });
+    await expect(cell.locator('.matrix-cell__personal')).toHaveText(/personal/);
+
+    // The key's side panel lists who holds a value, and deletes one. Opened by
+    // its address: on a phone the key link previews on the first tap.
+    const keys = await browserApi(page, 'GET', `/api/v1/orgs/${seed.org}/projects/${seed.project}/keys`, zKeyList);
+    const keyID = keys.items.find((item) => item.name === key)?.id ?? '';
+    await page.goto(`${MATRIX_PATH}/keys/${keyID}`);
+    await page.getByRole('tab', { name: 'development' }).click();
+    const holders = page.getByRole('list', { name: `Personal values for ${key}` });
+    await expect(holders).toContainText('holds a value');
+    await holders.getByRole('button', { name: /^Delete the personal value of / }).click();
+    const confirm = page.getByRole('dialog', { name: /^Delete the personal value of / });
+    await expect(confirm).toContainText('leaves them a notice');
+    await confirm.getByRole('button', { name: 'Delete their value' }).click();
+    await expect(page.getByText(/is deleted\. They have a notice\.$/)).toBeVisible();
+
+    // The owner sees the notice with its cause, and dismisses it.
+    await page.goto(PERSONAL_PATH);
+    await expect(page.getByText('an administrator deleted it', { exact: false })).toBeVisible();
+    await page.getByRole('button', { name: `Dismiss the notice for ${key}` }).click();
+    await expect(page.getByText(`The notice for ${key} is dismissed.`)).toBeVisible();
+    await expect(page.getByRole('button', { name: `Dismiss the notice for ${key}` })).toHaveCount(0);
+  });
+
+  // Needs the integrated server: the report endpoint answers 500 until the service lands.
+  // The seeded person holds no project-scoped rule, so the project Members view lists no
+  // person to link from (the Members story covers that link); the report's own form is the door.
+  test('opens the offboarding report for a member', async () => {
+    await page.goto(REPORT_PATH);
+    await expect(page.getByRole('heading', { name: 'Offboarding report', level: 1 })).toBeVisible();
+    await page.getByLabel('Member', { exact: true }).fill(seed.principal);
+    await page.getByRole('button', { name: 'Show report' }).click();
+    await expect(page).toHaveURL(/\/offboarding-report\?member=/);
+    // Names only, with the evidence window and the limits stated.
+    await expect(page.getByText(/^Evidence from /)).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'What this report cannot show' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Print' })).toBeVisible();
+  });
+});
+
+test.describe('personal values pinned assertion set', () => {
+  test.use({ storageState: STORAGE_STATE });
+
+  for (const scheme of SCHEMES) {
+    test(`meets the pinned assertion set on My personal values (${scheme})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.goto(PERSONAL_PATH);
+      const heading = page.getByRole('heading', { name: 'My personal values', level: 1 });
+      await expect(heading).toBeVisible();
+      // Settled: the list has answered, so axe scans the page, not its loading state.
+      await expect(page.getByRole('status').filter({ hasText: 'Loading your personal values' })).toHaveCount(0);
+      const setValue = page.getByRole('button', { name: 'Set a value' });
+      await expect(setValue).toBeEnabled();
+      await expectPinnedAssertionSet(page, {
+        flow: 'personal-values',
+        surface: 'personal-values',
+        theme: scheme,
+        text: [heading, page.locator('.page__lede'), page.getByText(STATEMENT)],
+        radii: [[setValue, 'control']],
+        fonts: [[heading, 'ui']],
+        colours: [[heading, 'color', '--tx']],
+        hairlines: [],
+        density: [[setValue, '--control']],
+      });
+    });
+
+    test(`meets the pinned assertion set on the offboarding report (${scheme})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.goto(REPORT_PATH);
+      const heading = page.getByRole('heading', { name: 'Offboarding report', level: 1 });
+      await expect(heading).toBeVisible();
+      const member = page.getByLabel('Member', { exact: true });
+      const show = page.getByRole('button', { name: 'Show report' });
+      await expectPinnedAssertionSet(page, {
+        flow: 'personal-values',
+        surface: 'offboarding-report',
+        theme: scheme,
+        text: [heading, page.locator('.page__lede')],
+        radii: [[member, 'control'], [show, 'control']],
+        fonts: [[heading, 'ui'], [member, 'mono']],
+        colours: [[heading, 'color', '--tx']],
+        hairlines: [],
+        density: [[show, '--control']],
       });
     });
   }

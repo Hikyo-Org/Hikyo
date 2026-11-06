@@ -3308,6 +3308,7 @@ fieldset.field > legend {
 @media (max-width: 700px) {
   .visually-hidden-phone,
   .values .values__table thead th,
+  .table--cards thead th,
   .btn--icon-phone > .btn__label {
     position: absolute;
     width: 1px;
@@ -3399,28 +3400,30 @@ fieldset.field > legend {
      assistive technology and hidden from sight (it names columns that no
      longer exist), and a table role stays with the element. Scoped by the
      page's own root (`.values`): `machine__table` shares the cell classes and
-     keeps its columns. */
-  .values .values__table {
+     keeps its columns. Another key-per-row table with a row-header key and an
+     Actions cell takes the same card layout with `.table--cards`. */
+  :is(.values .values__table, .table--cards) {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     grid-auto-flow: row dense;
   }
 
-  .values .values__table :is(thead, tbody, tr) {
+  :is(.values .values__table, .table--cards) :is(thead, tbody, tr) {
     display: contents;
   }
 
-  .values .values__table tbody :is(th, td) {
+  :is(.values .values__table, .table--cards) tbody :is(th, td) {
     grid-column: 1 / -1;
   }
 
-  .values .values__table tbody th {
+  :is(.values .values__table, .table--cards) tbody th {
     grid-column: 1;
     border-bottom: 0;
+    text-align: start;
   }
 
   /* `dense` puts the Actions beside the key, in the line the key opened. */
-  .values .values__table tbody td:has(> .actions) {
+  :is(.values .values__table, .table--cards) tbody td:has(> .actions) {
     grid-column: 2;
     border-bottom: 0;
   }
@@ -3455,7 +3458,7 @@ fieldset.field > legend {
 
   /* Reveal and Copy stack, so the Actions track is one button wide and the
      key keeps the rest of the line; a lone Copy fills the same track. */
-  .values .values__table td .actions {
+  :is(.values .values__table, .table--cards) td .actions {
     display: grid;
     grid-template-columns: 1fr;
   }
@@ -5211,6 +5214,9 @@ label.chk:has(input:disabled) {
    (Remotes, the matrix): centred, it floated in the middle of a wide window. */
 .page--chrome {
   display: grid;
+  /* One track no wider than the page: a wide table scrolls inside its
+     `.table-scroll` instead of stretching the auto track past the viewport. */
+  grid-template-columns: minmax(0, 1fr);
   width: 100%;
   max-width: 860px;
 }
@@ -8012,5 +8018,96 @@ label.chk:has(input:disabled) {
   .access-table .grants :is(.mono, code, kbd),
   .access-table .grants th[scope='row'] {
     font-size: var(--fs-xs);
+  }
+}
+
+/* My personal values: the masked table, the states beside each value and the
+   plaintext countdown (personal-values ADR, O3). */
+.personal-values__states {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.personal-values__state {
+  color: var(--tx-dim);
+}
+
+.personal-values__absent {
+  color: var(--tx-faint);
+}
+
+.personal-values__plain {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  overflow-wrap: anywhere;
+}
+
+.personal-values__countdown {
+  color: var(--tx-faint);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+}
+
+.personal-values__cli {
+  color: var(--tx-dim);
+}
+
+/* Personal holders for one key, in the key declaration panel. */
+.personal-members__list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.personal-members__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.personal-members__when {
+  color: var(--tx-dim);
+  font-size: var(--fs-sm);
+}
+
+/* The matrix's personal mark: words after the cell state in the same column,
+   never colour alone. When a phone squeezes the column the value gives way
+   first; the mark ellipsises only when it alone is wider than the cell, and
+   the cell's accessible name keeps the words. */
+.matrix-cell__personal {
+  flex-shrink: 0;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--tx-dim);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+/* The offboarding report prints without the application chrome. */
+@media print {
+  .chrome {
+    display: block;
+    height: auto;
+  }
+
+  .rail,
+  .sidebar,
+  .chrome__account,
+  .nav-scrim,
+  .skip,
+  .no-print {
+    display: none;
+  }
+
+  .offboarding-report .table-scroll {
+    overflow: visible;
   }
 }
