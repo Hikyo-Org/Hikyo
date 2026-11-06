@@ -591,6 +591,37 @@ test.describe('login', () => {
     });
   }
 
+  // Email invitation acceptance (#1207, registry surface `invitation-accept`):
+  // signed out, the page asks for sign-in first and sends the fragment token
+  // nowhere. The signed-in accept is covered by the unit suite and stories.
+  for (const scheme of ['dark', 'light'] as const) {
+    test(`invitation page asks a signed-out visitor to sign in and clears the fragment (${scheme})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.goto('/invitations/accept#token=inert-e2e-token');
+      const card = page.locator('.login__card');
+      const heading = page.getByRole('heading', { name: 'Accept an invitation' });
+      const signIn = page.getByRole('link', { name: 'Go to sign in' });
+      await expect(signIn).toBeVisible();
+      const lede = page.getByText('open the link from your email again');
+      await expect(lede).toBeVisible();
+      await expect(page).toHaveURL(/\/invitations\/accept$/);
+      await expectPinnedAssertionSet(page, {
+        flow: 'login',
+        surface: 'invitation-accept',
+        theme: scheme,
+        text: [heading, lede],
+        radii: [[card, 'container'], [signIn, 'control']],
+        fonts: [[heading, 'ui']],
+        colours: [
+          [heading, 'color', '--tx'],
+          [card, 'backgroundColor', '--bg-raise'],
+        ],
+        hairlines: [card],
+        density: [[signIn, '--control']],
+      });
+    });
+  }
+
   // Recovery-code sign-in (#571): a human who lost their second factor spends
   // one recovery code in the browser for a display-once authority, which is
   // handed straight into the establish form. The account is a fresh invitee
