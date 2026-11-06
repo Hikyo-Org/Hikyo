@@ -3308,6 +3308,7 @@ fieldset.field > legend {
 @media (max-width: 700px) {
   .visually-hidden-phone,
   .values .values__table thead th,
+  .table--cards thead th,
   .btn--icon-phone > .btn__label {
     position: absolute;
     width: 1px;
@@ -3418,6 +3419,7 @@ fieldset.field > legend {
   :is(.values .values__table, .table--cards) tbody th {
     grid-column: 1;
     border-bottom: 0;
+    text-align: start;
   }
 
   /* `dense` puts the Actions beside the key, in the line the key opened. */
