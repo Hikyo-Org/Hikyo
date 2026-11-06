@@ -2079,6 +2079,10 @@ fieldset.field > legend {
   .matrix__legend-body dt {
     white-space: normal;
   }
+
+  .matrix__legend-body dd {
+    overflow-wrap: anywhere;
+  }
 }
 
 .matrix__legend-body p {
