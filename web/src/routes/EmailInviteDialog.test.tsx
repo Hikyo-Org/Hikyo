@@ -110,7 +110,63 @@ describe('EmailInviteDialog', () => {
   });
 });
 
+describe('EmailInviteDialog list refresh', () => {
+  const json = (data: object) =>
+    new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+  beforeEach(() => client.setConfig({ baseUrl: 'https://hikyo.test' }));
+
+  it('shows the new invitation in the pending list once it is recorded', async () => {
+    let sent = false;
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => {
+      const items = sent ? [{
+        id: invitation, email: 'dana@example.com', template: 'editor', invited_by: inviter,
+        created_at: '2026-11-06T10:00:00Z', expires_at: '2026-11-13T10:00:00Z',
+      }] : [];
+      return json({ items, count: items.length });
+    }));
+    mocks.send.mockImplementation(async () => { sent = true; });
+    const view = await renderForm(<>
+      <EmailInvitations org={org} invitedByName={() => 'Alex'} onRevoked={vi.fn()} />
+      <EmailInviteDialog org={org} scopeName="Acme" onDone={vi.fn()} onCancel={vi.fn()} />
+    </>);
+    try {
+      await settleTask();
+      expect(view.container.textContent).toContain('No pending email invitations.');
+      await fill(view.container, 'dana@example.com', 'editor');
+      await settleTask();
+      expect(view.container.querySelector('tbody tr')?.textContent).toContain('dana@example.com');
+    } finally { await view.unmount(); }
+  });
+});
+
 describe('EmailInvitations', () => {
+  const pending = (email: string, template: string, id: string) => ({
+    id, email, template, invited_by: inviter, created_at: '2026-11-06T10:00:00Z', expires_at: '2026-11-13T10:00:00Z',
+  });
+
+  it('filters the pending list by email and says so when nothing matches', async () => {
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+      count: 2,
+      items: [pending('dana@example.com', 'editor', invitation), pending('lee@example.com', 'viewer', 'eiv_44444444-4444-4444-8444-444444444444')],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+    const view = await renderForm(<EmailInvitations org={org} invitedByName={() => 'Alex'} onRevoked={vi.fn()} />);
+    try {
+      await settleTask();
+      const rows = () => [...view.container.querySelectorAll('tbody tr')].map((row) => row.textContent ?? '');
+      expect(rows()).toHaveLength(2);
+      const input = control(view.container, 'input[type="search"]', HTMLInputElement);
+      await act(async () => typeInto(input, 'LEE'));
+      expect(rows()).toHaveLength(1);
+      expect(rows()[0]).toContain('lee@example.com');
+      await act(async () => typeInto(input, 'nobody'));
+      expect(rows()).toHaveLength(0);
+      expect(view.container.textContent).toContain('No invitation matches “nobody”.');
+    } finally { await view.unmount(); }
+  });
+});
+
+describe('EmailInvitations list', () => {
   const json = (data: object, status = 200) =>
     new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 

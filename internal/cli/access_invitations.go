@@ -79,7 +79,7 @@ func runAccessInvitation(ctx context.Context, ios IO, args []string) error {
 		body := apigen.EmailInvitationSendRequest{Email: email, Template: apigen.RoleTemplate(template)}
 		if err := client.Do(ctx, http.MethodPost, path, body, &out); err != nil {
 			var ce *Error
-			if asCLIError(err, &ce) && strings.Contains(ce.Error(), "mailer-unconfigured") {
+			if asCLIError(err, &ce) && ce.Detail == "mailer-unconfigured" {
 				return failf(ExitRefused,
 					"email invitations need a configured mailer, and this instance has none. Use `hikyo access member invite` to create a new account, SCIM, or an administrator of both organisations instead.")
 			}

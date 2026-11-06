@@ -123,9 +123,6 @@ export function InvitationAccept() {
       </Alert>
       {accepting.isError ? <Alert>{acceptanceFailureText(accepting.error)}</Alert> : null}
       <div className="actions">
-        <Button type="button" disabled={accepting.isPending} onClick={() => { setToken(''); void navigate(surfaceById('projects').path); }}>
-          Not now
-        </Button>
         <Button
           type="button"
           variant="primary"
@@ -141,6 +138,9 @@ export function InvitationAccept() {
           })}
         >
           {accepting.isPending ? 'Accepting…' : 'Accept'}
+        </Button>
+        <Button type="button" disabled={accepting.isPending} onClick={() => { setToken(''); void navigate(surfaceById('projects').path); }}>
+          Not now
         </Button>
       </div>
     </>;

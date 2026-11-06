@@ -122,6 +122,7 @@ describe('InvitationAccept', () => {
     const view = await mount();
     try {
       await settleTask();
+      expect([...view.container.querySelectorAll('.actions button')].map((b) => b.textContent)).toEqual(['Accept', 'Not now']);
       await act(async () => button(view.container, 'Not now').click());
       await settleTask();
       expect(mocks.accept).not.toHaveBeenCalled();

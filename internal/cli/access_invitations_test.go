@@ -22,6 +22,8 @@ type invitationFake struct {
 	signedOut bool
 	notFound  bool
 	mailer    bool
+	// mailerDetail makes the send refuse with this detail instead.
+	mailerDetail string
 }
 
 func (f *invitationFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -33,6 +35,10 @@ func (f *invitationFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	base := "/api/v1/orgs/" + invitationOrg + "/email-invitations"
 	switch {
 	case r.Method == http.MethodPost && r.URL.Path == base:
+		if f.mailerDetail != "" {
+			fail(400, "bad_request", f.mailerDetail)
+			return
+		}
 		if f.mailer {
 			fail(400, "bad_request", "mailer-unconfigured")
 			return
@@ -189,5 +195,14 @@ func TestInvitationAcceptRefusesTokenArgument(t *testing.T) {
 	}
 	if fake.previews != 0 {
 		t.Fatal("a refused invocation reached the server")
+	}
+}
+
+func TestInvitationSendOtherRefusalKeepsServerMessage(t *testing.T) {
+	// A refusal whose detail merely mentions the marker must not be rewritten.
+	ios, _, stderr := definitionsTestIO(t, &invitationFake{t: t, mailerDetail: "not mailer-unconfigured at all"})
+	code := cli.Run(t.Context(), ios, []string{"access", "invitation", "send", "a@example.test", "--template", "viewer", "--instance", "local", "--org", invitationOrg})
+	if code != cli.ExitRefused || strings.Contains(stderr.String(), "configured mailer") || !strings.Contains(stderr.String(), "not mailer-unconfigured at all") {
+		t.Fatalf("code=%d stderr=%s", code, stderr)
 	}
 }

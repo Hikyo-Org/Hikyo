@@ -4,6 +4,7 @@ import {
   emailInvitationTemplate,
   emailInvitationTemplates,
   sendEmailInvitation,
+  useRefreshEmailInvitations,
   sendFailureText,
 } from '../api/emailInvitations.ts';
 import { Alert } from '../ui/Alert.tsx';
@@ -36,6 +37,7 @@ export function EmailInviteDialog({
   const [recorded, setRecorded] = useState(false);
   const first = useRef<HTMLInputElement>(null);
   const formId = useId();
+  const refreshList = useRefreshEmailInvitations(org);
 
   if (recorded) {
     return (
@@ -76,6 +78,7 @@ export function EmailInviteDialog({
     try {
       await sendEmailInvitation(org, { email: address, template: chosen });
       setRecorded(true);
+      void refreshList();
     } catch (error) {
       setFailure(sendFailureText(error));
     } finally {

@@ -52,6 +52,8 @@ export const Preview: Story = {
     await expect(canvas.getByText(/signs you out on every device/)).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Accept' })).toBeEnabled();
     await expect(canvas.getByRole('button', { name: 'Not now' })).toBeEnabled();
+    // Primary first (DESIGN.md, Action rows).
+    await expect(canvas.getAllByRole('button').map((b) => b.textContent)).toEqual(['Accept', 'Not now']);
   },
 };
 
