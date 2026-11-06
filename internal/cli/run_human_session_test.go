@@ -317,7 +317,8 @@ func TestRunHumanSessionRefusesAHeldPersonalKey(t *testing.T) {
 			}
 		}))
 		ios.StderrIsTerminal = func() bool { return true }
-		ios.TerminalSession, _ = terminalSession(t, "y\n")
+		// A decline: a refusal placed after the confirmation reports "declined" instead.
+		ios.TerminalSession, _ = terminalSession(t, "n\n")
 		execed := false
 		ios.Exec = func(string, []string, []string) error { execed = true; return nil }
 		code := cli.Run(t.Context(), ios, runArgs(extra...))
