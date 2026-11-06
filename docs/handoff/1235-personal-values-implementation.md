@@ -2,103 +2,135 @@
 
 ## Result
 
-The server, store, CLI and delivery slice of the [personal-values ADR](../adr/personal-values.md) is implemented on PR #1167, the
-same PR as the ADR. The ADR is marked accepted and operative. The PR is not merged: the ADR's Implementation acceptance list is only
-partly met, and the owner authorized the merge only once all of it holds.
+The [personal-values ADR](../adr/personal-values.md) is implemented on PR #1167, the same PR as the ADR, which is accepted and
+operative. Every item of its Implementation acceptance list is backed by code and a test on SQLite and PostgreSQL, except where the
+limitations below say otherwise.
 
 What exists:
 
-- Migration `00086_personal_values.sql` (both engines): `personal_values` and `personal_value_notices`, with owner-bound store methods.
-  The owner comes from the proof (`authz.VerifyOwner`), never from an argument.
-- Envelope: `crypto.PersonalValueAAD` binds org, project, environment, key and owner. Reencrypt walks the rows.
-- Service `PersonalValues`: list, set, reveal, delete own, members (metadata only, audited as `personal_value.holders_read`) and
-  delete member. Every operation refuses non-human callers, sessionless callers and workspace sessions with the nonexistent answer.
-  Set and reveal take the per-key reveal ceremony, and only a passkey or authenticator window opens it: a window an identity provider
-  opened (OIDC or SAML) is refused, checked on the window row the decision consumes. Set refuses protected environments. Qualification counts standing TOTP and passkey factors.
-- Delivery overlay for developer credentials only. Withheld causes are `consent`, `config_only` and `suspended`, and notices carry their
-  cause. A file target's selection bounds the overlay as it bounds shared rows, and a personal-only key still crosses. Personal
-  changes, and losing or regaining the predicate, move the cursor.
-- The `--personal` consent is bound into the developer-credential ceremony (CLI, server and the browser approval page, which shows it).
-- Cascades: key delete, key rename (not a same-name rename), definitions apply, environment delete (audited per owner), and factor loss
-  (last factor or recovery code) delete values and leave notices.
-- CLI: `hikyo personal list|get --reveal|set|set --clear [--member]|members`, and `hikyo dev session --personal` for consent.
-  `hikyo run` refuses withheld and noticed keys on the credential path, and refuses held keys on the human-session path.
-- API Revision 15 with six operations, regenerated Go and TypeScript clients.
+- **Storage.** Migration `00086_personal_values.sql` (both engines): `personal_values`, `personal_value_notices` and
+  `key_personal_required_environments`. Store methods take the owner from the proof (`authz.VerifyOwner`), never from an argument.
+- **Envelope.** `crypto.PersonalValueAAD` binds org, project, environment, key and owner. Reencrypt walks the rows.
+- **Service `PersonalValues`.** It covers list, set, reveal, delete own, members, delete member, counts and the offboarding report.
+  - Every operation refuses non-human callers, sessionless callers, developer credentials and workspace sessions, with the
+    nonexistent answer.
+  - The owner lists and deletes their own values whatever their grants.
+  - Set and reveal take the per-key reveal ceremony. A passkey or authenticator window opens it. An identity-provider window opens it
+    only for a passwordless account with no factor that qualifies through an OIDC or SAML provider with an assurance policy.
+  - Set refuses protected environments. A project cap applies.
+- **Account rules.**
+  - Network credential reset refuses an account with a linked identity at mint and at consumption. The refusal is uniform, and the
+    audit cause is `linked-identity`.
+  - Losing the last factor, consuming a recovery code, establishing a password on a factorless or federated-qualified account, and
+    cloned-passkey disablement each delete the owner's values in that transaction.
+- **Delivery.**
+  - Developer credentials get an overlay. Without consent, under `--config-only`, or with a suspended value, they get names only, and
+    notices carry their cause.
+  - A personal change never answers `current`.
+  - `personal_required_in` makes a missing value fail only the owner's run.
+- **Schema and lifecycle.**
+  - Key delete, rename, definitions apply, environment delete, `forbidden_in` and restore cascade, and leave notices.
+  - A definitions plan reports how many personal values each environment deletion removes.
+  - Schema publish never evaluates a personal value. The owner is warned on set and reveal.
+  - The retention sweep suspends on predicate loss, clears on regain, and deletes after 14 days with a `retention` notice.
+- **Report.** Matrix counts with the eligible denominator, and the offboarding report.
+- **CLI.**
+  - `hikyo personal list|get --reveal|set|set --clear [--member]|members|counts|offboarding-report`.
+  - `hikyo dev session --personal` gives consent.
+  - `hikyo run` refuses withheld, noticed and missing-required keys on the credential path, and held keys on the human-session path.
+- **Browser.**
+  - My personal values page: set, reveal and delete, plus notices and their dismissal.
+  - Matrix personal marks and counts, with a key-panel member delete.
+  - The offboarding report.
+  - The ceremony and the developer-credential approval page show consent.
+  - There is no `.env` download.
+- **ADR amendments.** Tenant isolation is amended for the scheduler's retention doors.
 
 ## Acceptance map
 
-Tests are in `internal/isolation/personal_values_e2e_test.go` unless noted. Each runs on SQLite and PostgreSQL.
+Isolation tests are in `internal/isolation/` and run on SQLite and PostgreSQL.
 
-| Acceptance item | State |
+| Acceptance item | Evidence |
 |---|---|
-| No grant or administrator reads or overwrites another person's value | Done for the administrator template, including the administrator's own set on the same key: `TestPersonalValueOverlayAndAdministratorBlindness`. **Remaining:** member-access rules, org-wide rules and presets |
-| Network reset refuses linked-identity accounts at mint and consumption | **Remaining** |
-| Set and get refuse a non-qualifying account | Done for factorless accounts and federated windows (`TestPersonalValueGateRefusesFederatedWindowAndProtectedEnvironment`): `TestPersonalValueWithheldWithoutConsentConfigOnlyOrQualification`, `TestPersonalValueFactorLossDeletesAndLeavesNotice`. **Remaining:** federated proof while a password stands (federated qualification not implemented) |
-| Last factor, recovery code, password on factorless account delete values | Done for passkey removal and recovery codes: `TestPersonalValueFactorLossDeletesAndLeavesNotice`, `TestPersonalValueRecoveryCodeConsumptionPurges`. **Remaining:** password established on a factorless account, and tests for the TOTP-removal and cloned-passkey purges (implemented, untested) |
-| Planted recovery code destroys but never reads | Partly: `TestPersonalValueRecoveryCodeConsumptionPurges` proves deletion in the consuming transaction |
-| No personal value in machine delivery, adapters, snapshots, revisions, diffs, copy, clone, receipts, `exportValues`, MCP, definitions export | Done for `exportValues` (`TestPersonalValueStaysOutOfExport`), MCP (`internal/mcpserver/personal_exclusion_test.go`) and custodian delivery (overlay test). **Remaining:** explicit tests for the other surfaces |
-| Schema publish never evaluates a personal value; owner warned | **Remaining** (the owner warning is not implemented) |
-| Missing required personal value fails only the owner's run | **Remaining** (`personal_required_in` not implemented) |
-| AAD refuses a moved row; DEK rotation and reencrypt cover rows | Done: `TestPersonalValueMovedToAnotherOwnerDoesNotOpen`, `TestPersonalValueReencryptAfterDEKRotation` |
-| Predicate loss stops delivery; deletion at 14 days; regain restores | Partly: suspension stops delivery and is not answered `current` (withheld test). **Remaining:** 14-day sweep and restore on regain |
-| Notices for restore, rename, delete plus re-declare, `forbidden_in`, lost qualification, administrator deletion | Done for rename and delete plus re-declare through `Keys` (`TestPersonalValueKeyRenameAndDeleteCascade`), lost qualification and administrator deletion; a same-name rename keeps values (`TestPersonalValueSameNameRenameKeepsAndEnvironmentDeleteAudits`). **Remaining:** restore, `forbidden_in`, and tests for the definitions-apply cascades (implemented, untested) |
-| No consent, human session, `--config-only`, suspended: names only and `hikyo run` refuses | Done: server side in the withheld test, CLI refusal in `internal/cli/personal_run_internal_test.go` and, through `cli.Run`, `TestRunHumanSessionRefusesAHeldPersonalKey`. **Remaining:** a CLI test against a real local server |
-| Developer credentials, workspace sessions, MCP refused; uniform `--member` answer | Done: `internal/service/personal_internal_test.go`, overlay test, MCP exclusion test |
-| A personal change is never answered `current` | Done: overlay test (administrator deletion and notice dismissal are not answered `current`) |
-| Disclosure report | **Remaining** |
-| Browser completes every task; Playwright and CLI tests; matrix stories at desktop and phone width | **Remaining** (no browser UI yet) |
+| No grant, preset or org-wide rule reads another person's value; no administrator overwrites one | `TestPersonalValueNoGrantPresetOrRuleReadsAnother`, `TestPersonalValueOverlayAndAdministratorBlindness` |
+| Network reset refuses linked-identity accounts at mint and consumption; a factor holder keeps values and the password alone reaches nothing | `TestPersonalAccountNetworkResetRefusesLinkedIdentityAtMint`, `...AtConsumption` (asserts the `linked-identity` cause), `TestPersonalAccountFactorHolderKeepsValuesAfterReset` |
+| Set and get refuse a non-qualifying account; a federated proof does not count while a password stands | `TestPersonalAccountFederatedQualification`, `TestPersonalValueGateRefusesFederatedWindowAndProtectedEnvironment`, `TestPersonalValueWithheldWithoutConsentConfigOnlyOrQualification` |
+| Last factor, recovery code and a password on a factorless account delete values in that transaction | `TestPersonalValueFactorLossDeletesAndLeavesNotice`, `TestPersonalAccountTOTPRemovalPurges`, `TestPersonalAccountClonedPasskeyPurges`, `TestPersonalValueRecoveryCodeConsumptionPurges`, `TestPersonalAccountSetPasswordOnFactorlessAccountPurges`, `TestPersonalAccountPasswordOnFederatedAccountPurges` |
+| A planted recovery code destroys but never reads | `TestPersonalAccountPlantedRecoveryCodeNeverReads` |
+| No personal value in machine delivery, adapters, snapshots, revisions, diffs, copy, clone, receipts, `exportValues`, MCP or definitions export | `TestPersonalValueExcludedFromSharedSurfaces`, `TestPersonalValueCiphertextReadersAreConfined`, `TestPersonalValueStaysOutOfExport`, `internal/mcpserver/personal_exclusion_test.go` |
+| Schema publish never evaluates a personal value; the owner is warned and still receives it | `TestPersonalValueWarningsNeverRefuseAndPublishIgnoresThem` |
+| A missing required value fails only the owner's run, never a publish | `TestPersonalRequiredInDeliversMissing`, `TestPersonalRequiredInRulesAndAuthority`, `TestPersonalRequiredInDefinitionsRoundTripAndEnvironmentDelete` |
+| AAD refuses a moved row; DEK rotation and reencrypt cover rows | `TestPersonalValueMovedToAnotherOwnerDoesNotOpen`, `TestPersonalValueReencryptAfterDEKRotation` |
+| Predicate loss stops delivery at once; deletion at 14 days; regain restores | `TestPersonalValueRetentionSweep`, `TestPersonalValueWithheldWithoutConsentConfigOnlyOrQualification` |
+| Restore, rename, delete plus re-declare, `forbidden_in`, lost qualification and administrator deletion leave a notice that makes `hikyo run` refuse | `TestPersonalValueRestorePurges`, `TestPersonalValueKeyRenameAndDeleteCascade`, `TestPersonalValueApplyKeyDeleteAndRenameCascade`, `TestPersonalValueForbiddenCascade`, `TestPersonalValueFactorLossDeletesAndLeavesNotice`, `TestPersonalValueOverlayAndAdministratorBlindness`; CLI refusal in `internal/cli/personal_run_internal_test.go` |
+| No consent, human session, `--config-only` or a suspended value: names only, and `hikyo run` refuses | `TestPersonalValueWithheldWithoutConsentConfigOnlyOrQualification`, `TestRunRefusesWithheldAndNoticedPersonalKeys`, `TestHumanSessionRunRefusesHeldPersonalKeys`, `TestRunHumanSessionRefusesAHeldPersonalKey`, and the real-server CLI test below |
+| Developer credentials, workspace sessions and MCP refused; uniform `--member` answer | `TestRefusePersonalCallerAdmitsOnlyAnOrdinaryHumanSession`, `TestPersonalValueOverlayAndAdministratorBlindness`, `TestMCPExposesNoPersonalValueSurface` |
+| A personal change or deletion is never answered `current` | `TestPersonalValueOverlayAndAdministratorBlindness` |
+| The report matches developer-credential disclosures, states its window, contains no values | `TestPersonalOffboardingReport`, `TestPersonalOffboardingReportCLISQLite`, `...Postgres` |
+| Deletion plan reports the personal values it removes | `TestPersonalValueApplyEnvironmentDeleteAuditsPerOwner` |
+| Browser completes every task; CLI completes every task | Playwright `web/e2e/flows/reveal.spec.ts` › personal values (desktop and mobile); `TestPersonalValueCLIAgainstARealServer{SQLite,Postgres}` drives set, list, reveal, members, counts, `run` with and without consent, `--config-only`, clear, and `--personal-required-in` keep and clear against a real local server |
+| Matrix stories for the new marks at desktop and phone width | `Matrix.stories.tsx` `PersonalMarks`, `PhonePersonalMarks`; `PersonalValues.stories.tsx`, `OffboardingReport.stories.tsx` |
 
-Also remaining from the ADR:
+## Mutation checks
 
-- Owner list and delete still require `read` on the environment, where the ADR says the owner manages their own values whatever their
-  grants.
-- `members` and member delete require `manage-members` at project level; the ADR allows a holder covering the key in the environment.
-  This is stricter than the ADR, not a leak.
+1. **Owner filter dropped.** The SQLite owner reads drop their owner filter: `TestPersonalValueOverlayAndAdministratorBlindness/sqlite`
+   fails.
+2. **`refusePersonalCaller` returns nil.** `TestRefusePersonalCallerAdmitsOnlyAnOrdinaryHumanSession` fails for the workspace session,
+   developer credential, workload, automation and sessionless human.
+3. **Refusal removed from `hikyo run`.** With the personal-key refusal removed from `runDeveloperOnline`, the real-server CLI test
+   fails.
+4. **Required setting not kept.** With the server no longer keeping `personal_required_in` on a declaration update that omits it, the
+   real-server CLI test fails at "checklist after a declare without the flag".
+
+## Limitations
+
+- **Federated-only developers.** They can set and reveal values, but minting a developer credential still needs a local factor
+  (developer-credentials ADR), so they must enrol a factor before `hikyo run` can deliver them.
+- **Test coverage gaps.**
+  - SAML qualification is implemented but untested: there is no SAML seed helper in the isolation package.
+  - The federated tests create the identity link and window by SQL. No real provider ceremony is driven.
+  - Adapter exclusion rests on the source confinement pin (`TestPersonalValueCiphertextReadersAreConfined`), with no runtime adapter
+    test.
+  - The report's 404 rule is not mutation-checked.
+- **Warnings.** Schema warnings show on set and reveal, not on list.
+- **Refusal codes.** The 403 variants (unqualified, factor required, protected) share the uniform refusal code. The browser infers the
+  remedy from local facts.
+- **Browser.**
+  - Inside a workspace, the browser's factor checks read the home instance.
+  - Phone matrix marks are truncated visually; the accessible name is full.
+- **Permissions.** `PersonalRequiredList` is granted to every operation that reads the catalogue, a read-only superset.
+- **Revisions.** Changing `personal_required_in` bumps the schema revision.
+- **Review needed.** The sensitive-inventory pins need maintainer security review.
 
 ## Reviews
 
-Fresh-context Standards and Spec/security reviews ran on `claude-opus-5-5` (Anthropic only; no cross-provider review). Fixed from them:
-the federated-window gate (High), the cursor on predicate changes, protected environments, same-name rename, missing wire-registry
-purge events on recovery and cloned-passkey routes, the personal cap (now locked, excluding the caller's own cell, `ErrLimitExceeded`),
-environment-delete audit, holder lookup errors, consent binding into the ceremony, the projection bound on delivered values, and weak
-test assertions. A fresh-context re-review confirmed ten of the eleven fixes and found a regression in the projection bound
-(personal-only keys dropped under consent), plus a factor check made on a separate read and an inverted lock order; all three are
-fixed, with a test delivering a personal-only key.
-
-A third fresh-context review covered the suite fixes (budget classification, the personal CLI authentication rule, the legacy
-drill's reversal of migration 00086, and the human-session fixture). It found that the reveal budget reasons overstated their
-bound (the reauthentication window slides above a 0 window, and value reveal uses no gate limiter) and that no test drove the
-human-session held-key refusal through `cli.Run`. Both are fixed: `TestRunHumanSessionRefusesAHeldPersonalKey` refuses before the
-confirmation and any export, with and without `--config-only`, and fails if the refusal is removed or moved later. A re-review
-confirmed the fixes.
-
-Known gaps from the reviews, not fixed here:
-
-- The browser approval page does not tell an account with a linked identity provider that `personal set` needs a passkey or
-  authenticator approval, so an identity-provider approval fails as forbidden.
-- No test covers the personal cap or the definitions-apply environment-delete audit.
-
-## Mutation check
-
-Two central guards were broken on purpose and the failures captured.
-
-1. The SQLite owner reads (`GetPersonalValueForOwner`, `ListPersonalValuesForOwner`) drop the owner filter:
-   `TestPersonalValueOverlayAndAdministratorBlindness/sqlite` fails with `administrator list: err=<nil> entries=1`.
-2. `refusePersonalCaller` returns nil: `TestRefusePersonalCallerAdmitsOnlyAnOrdinaryHumanSession` fails for the workspace session,
-   developer credential, workload, automation and sessionless human. The e2e overlay test still passes under this mutation because
-   authorization refuses developer credentials independently.
+Fresh-context Standards and Spec/security reviews ran on `claude-opus-5-5` (Anthropic only; no cross-provider review) at each stage of
+this PR. Their findings were fixed and re-reviewed. The final whole-PR round is recorded in the PR body.
 
 ## Amended ADR tickets
 
-Fourteen ADRs carry the amendment banner: developer-credentials, compose-integration, flat-model, audit-model, encryption-model,
-api-cli-surface, permission-model, human-auth, source-of-truth, schema-model, mvp-boundary, threat-model, revision-model and ops-spec.
-The originating tickets found by search are #807 (developer-credentials, compose-integration) and #760 (human-auth); the others have
-no ticket recorded in the repository. None were reopened, as instructed.
+These fourteen ADRs carry the amendment banner:
+
+- developer-credentials
+- compose-integration
+- flat-model
+- audit-model
+- encryption-model
+- api-cli-surface
+- permission-model
+- human-auth
+- source-of-truth
+- schema-model
+- mvp-boundary
+- threat-model
+- revision-model
+- ops-spec
+
+Tenant isolation gains a declared amendment for the retention sweep. The originating tickets found are #807 (developer-credentials,
+compose-integration) and #760 (human-auth). None were reopened, as instructed.
 
 ## Next steps
 
-1. Implement the remaining rows above, starting with the browser surface and its Playwright tests, then the retention sweep and
-   restore, `personal_required_in`, the schema warning, and the linked-identity reset refusal.
-2. Add the real-server CLI test and the remaining exclusion tests.
-3. Rerun the Standards and Spec reviews on the complete change, then merge with
-   `gh pr merge 1167 --merge --auto --match-head-commit <sha>` once `ci-dev-required` is green and no thread is unresolved.
+1. Add a SAML seed helper and a SAML qualification test.
+2. Decide whether a federated-only developer may mint a developer credential with an identity-provider window. That needs an
+   amendment to the developer-credentials ADR.
