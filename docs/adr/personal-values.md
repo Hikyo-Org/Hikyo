@@ -1,12 +1,13 @@
 # Hikyo personal values: one shared environment, one value per developer (ADR, proposed 2026-11-03)
 
 > **Status: proposed. Operative when its implementation PR merges.** The owner took decisions O1 to O4 below on
-> 2026-11-03. Everything else is a concrete proposal derived from them, and merging this ADR is the owner's
-> acceptance of those details. No code implements this yet.
+> 2026-11-03 and O5 to O8 on 2026-11-06. Everything else is a concrete proposal derived from them, and merging this ADR is
+> the owner's acceptance of those details. No code implements this yet.
 >
 > **Review disposition:** the [amendment procedure](./oss-mechanics.md) asks for a reopened ticket and adversarial
-> cross-model review. Neither happened. Cross-provider review was not run and is not CLEAN, and it needs an explicit owner
-> waiver recorded here before this locks. The [handoff](../handoff/personal-values-design.md) records what actually ran.
+> cross-model review. Cross-provider review did not run and is not CLEAN. The owner waived it on 2026-11-06 (O8). The reopened
+> tickets are still owed. Independent review ran on one provider only, and the [handoff](../handoff/personal-values-design.md)
+> records what actually ran.
 
 ## Problem
 
@@ -30,6 +31,18 @@ scale, and the matrix is the smallest reason why:
   values, and the reverse.
 - **O4. Scope.** Administrator-assigned per-person values are out of v1. A secret the whole team shares is an ordinary
   value in the shared environment.
+
+On 2026-11-06 the owner accepted the remaining recommendations:
+
+- **O5. Declared limits.** The two limits in [What this guarantee is](#what-this-guarantee-is) are accepted as declared: anyone
+  with `edit` and `publish` on the shared environment can capture a personal value through a proxy setting or a changed
+  endpoint, and an administrator who prepares an account before handover can keep its password and authenticator.
+- **O6. Account rules.** The rules in [Which accounts qualify](#which-accounts-qualify) stand as written: network
+  `credential-reset` refuses accounts with a linked external identity, and losing the only factor, including through a recovery
+  code, deletes personal values.
+- **O7. No browser `.env` download.** Running a local program needs the CLI.
+- **O8. Review waiver.** Cross-provider review is waived. The other provider is unavailable, and the owner's current policy makes
+  cross-provider review optional. It did not run and is not CLEAN.
 
 The requirement behind them: an administrator must not be able to see a developer's personal secrets, such as a GitHub
 token. [What this guarantee is](#what-this-guarantee-is) states how far that holds.
@@ -192,7 +205,7 @@ ADR:
 - CLI sign-in and reauthentication for federated or passkey accounts open a browser
   ([api-cli-surface.md](./api-cli-surface.md)).
 
-A browser download of a `.env` containing personal values was considered and left out. It would create a plaintext copy that
+A browser download of a `.env` containing personal values was considered and left out (O7). It would create a plaintext copy that
 bypasses loader-control and goes stale on every change.
 
 ### The matrix
