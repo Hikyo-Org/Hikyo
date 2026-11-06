@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { type CSSProperties, useRef, useState } from 'react';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
 
+import { safeArea } from '../../.storybook/layout.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 import { Button } from './Button.tsx';
 import { Glyph } from './Glyph.tsx';
@@ -220,6 +221,34 @@ export const PhoneFullWidth: Story = {
   args: { rows: 4, floorSlack: Infinity },
   play: async ({ canvasElement }) => {
     await expect(await edges(canvasElement)).toEqual({ panel: 0, scrim: 0 });
+  },
+};
+
+// A notched phone: the panel reaches all four viewport edges, so its head and
+// body keep clear of the notch, the rounded corners and the home indicator, the
+// left strip included. Beside the side menu the menu has already cleared the
+// left strip (`--chrome-menu` counts it), so only the other three are padded.
+const NOTCH = { top: 47, right: 20, bottom: 34, left: 30 };
+const paddingOf = (canvasElement: HTMLElement) => {
+  const panel = canvasElement.querySelector('.side-panel');
+  if (!(panel instanceof HTMLElement)) throw new Error('side panel missing');
+  const style = getComputedStyle(panel);
+  return [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft];
+};
+
+export const PhoneClearsSafeArea: Story = {
+  args: { rows: 4, floorSlack: Infinity },
+  beforeEach: () => safeArea(NOTCH),
+  play: async ({ canvasElement }) => {
+    await expect(paddingOf(canvasElement)).toEqual(['47px', '20px', '34px', '30px']);
+  },
+};
+
+export const BesideMenuClearsSafeArea: Story = {
+  args: { rows: 4, floorSlack: 10 },
+  beforeEach: () => safeArea(NOTCH),
+  play: async ({ canvasElement }) => {
+    await expect(paddingOf(canvasElement)).toEqual(['47px', '20px', '34px', '0px']);
   },
 };
 

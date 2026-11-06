@@ -30,6 +30,13 @@
   z-index: var(--z-overlay);
   display: flex;
   flex-direction: column;
+  /* The sheet reaches all four viewport edges on a phone and three beside the
+     side menu: keep its head and body clear of a notch, a rounded corner and
+     the home indicator (`--safe-*`, app.css). The left inset counts only for
+     what the menu has not already cleared. */
+  padding:
+    var(--safe-top, 0px) var(--safe-right, 0px) var(--safe-bottom, 0px)
+    calc(var(--safe-left, 0px) - min(var(--safe-left, 0px), var(--side-panel-edge)));
   border-left: 1px solid var(--line);
   background: var(--bg-panel);
   color: var(--tx);
