@@ -26,7 +26,7 @@ export function EmailInviteDialog({
 }: {
   org: string;
   scopeName: string;
-  /** Called when the recorded stage is closed, so the page can refresh its list. */
+  /** Called when the recorded stage is closed; the list refresh itself is the dialog's own. */
   onDone: () => void;
   onCancel: () => void;
 }) {

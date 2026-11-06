@@ -117,9 +117,9 @@ export function InvitationAccept() {
         <dd>{formatWhen(preview.expires_at)}</dd>
       </dl>
       <Alert tone="warn">
-        Accepting signs you out on every device and ends your developer credentials, so anything
-        using them stops working until you create new ones. If this becomes your only organisation,
-        its administrators can reset your sign-in.
+        If accepting adds access, you will be signed out on every device and your developer
+        credentials will stop working until you create new ones. If this becomes your only
+        organisation, its administrators can reset your sign-in.
       </Alert>
       {accepting.isError ? <Alert>{acceptanceFailureText(accepting.error)}</Alert> : null}
       <div className="actions">

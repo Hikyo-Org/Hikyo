@@ -210,10 +210,16 @@ func TestSignupMailFailureCountsREDErrorWithoutChangingAcceptedResponse(t *testi
 	}
 }
 
-func TestRecordEmailInvitationMailFailureCountsOnly(t *testing.T) {
+func TestEmailInvitationMailFailureSourceCountsOnly(t *testing.T) {
 	m := NewMetrics(nil)
-	m.RecordEmailInvitationMailFailure()
-	if got := testutil.ToFloat64(m.emailInvitationMailFailures); got != 1 {
+	m.SetEmailInvitationFailureSource(func() float64 { return 3 })
+	if got := testutil.ToFloat64(m.emailInvitationMailFailures); got != 3 {
 		t.Fatalf("email invitation mail failures = %v", got)
+	}
+	if got := testutil.ToFloat64(m.errors[classAuth][status5xx]); got != 0 {
+		t.Fatalf("5xx error counter moved to %v", got)
+	}
+	if got := testutil.ToFloat64(m.signupMailFailures); got != 0 {
+		t.Fatalf("signup mail failures moved to %v", got)
 	}
 }

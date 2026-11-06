@@ -56,9 +56,9 @@ func TestEmailInvitationDispatchOutcomes(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = db.Close() })
 			receipt := EmailInvitationReceipt{ID: "ein_test", Email: "a@example.test", ExpiresAt: time.Now().Add(time.Hour)}
-			var dials, failures atomic.Int64
+			var dials atomic.Int64
 			newSvc := func(mail func(context.Context) (*runtimeconfig.Bundle, error)) *EmailInvitations {
-				return &EmailInvitations{DB: db, Mail: mail, MailFailed: func() { failures.Add(1) }}
+				return &EmailInvitations{DB: db, Mail: mail, Sends: NewMailSends()}
 			}
 			failing := func(context.Context) (*runtimeconfig.Bundle, error) {
 				dials.Add(1)
@@ -76,32 +76,70 @@ func TestEmailInvitationDispatchOutcomes(t *testing.T) {
 			svc := newSvc(failing)
 			svc.dispatch(t.Context(), receipt, "intent-failed", "Org", "tok", true)
 			svc.WaitForMail()
-			if got := last(); !strings.HasPrefix(got, "failure ") || !strings.Contains(got, `"mail_sent":false`) || dials.Load() != 1 || failures.Load() != 1 {
-				t.Fatalf("failed send: %s dials=%d failures=%d", got, dials.Load(), failures.Load())
+			if got := last(); !strings.HasPrefix(got, "failure ") || !strings.Contains(got, `"mail_sent":false`) || dials.Load() != 1 || svc.Sends.Failures() != 1 {
+				t.Fatalf("failed send: %s dials=%d failures=%v", got, dials.Load(), svc.Sends.Failures())
 			}
 
-			// A full concurrency bound records a failure without dialling.
-			svc = newSvc(failing)
-			svc.semOnce.Do(func() { svc.sem = make(chan struct{}, emailInvitationMailConcurrency) })
-			for range emailInvitationMailConcurrency {
-				svc.sem <- struct{}{}
-			}
+			// A matched send in flight does not change whether, or how many,
+			// other sends are attempted.
+			const others = 8
+			blocked, unblock := make(chan struct{}), make(chan struct{})
 			dials.Store(0)
-			failures.Store(0)
-			svc.dispatch(t.Context(), receipt, "intent-full", "Org", "tok", true)
+			svc = newSvc(func(context.Context) (*runtimeconfig.Bundle, error) {
+				if dials.Add(1) == 1 {
+					close(blocked)
+					<-unblock
+				}
+				return nil, errors.New("smtp down")
+			})
+			svc.dispatch(t.Context(), receipt, "intent-held", "Org", "tok", true)
+			<-blocked
+			for i := range others {
+				svc.dispatch(t.Context(), receipt, "intent-other-"+string(rune('a'+i)), "Org", "tok", true)
+			}
+			deadline := time.Now().Add(10 * time.Second)
+			for dials.Load() != 1+others && time.Now().Before(deadline) {
+				time.Sleep(10 * time.Millisecond)
+			}
+			if got := dials.Load(); got != 1+others {
+				t.Fatalf("dials with one send in flight = %d, want %d", got, 1+others)
+			}
+			close(unblock)
 			svc.WaitForMail()
-			if got := last(); !strings.HasPrefix(got, "failure ") || !strings.Contains(got, "intent-full") || dials.Load() != 0 || failures.Load() != 1 {
-				t.Fatalf("full semaphore: %s dials=%d failures=%d", got, dials.Load(), failures.Load())
+			if got := svc.Sends.Failures(); got != 1+others {
+				t.Fatalf("failures = %v, want %d", got, 1+others)
+			}
+
+			// Stopping cancels a blocked send and records its failure outcome.
+			svc = newSvc(func(ctx context.Context) (*runtimeconfig.Bundle, error) {
+				dials.Add(1)
+				<-ctx.Done()
+				return nil, ctx.Err()
+			})
+			dials.Store(0)
+			before := len(dispatchOutcomes(t, db))
+			svc.dispatch(t.Context(), receipt, "intent-stopped", "Org", "tok", true)
+			for dials.Load() != 1 {
+				time.Sleep(5 * time.Millisecond)
+			}
+			stopped := make(chan struct{})
+			go func() { svc.Sends.Stop(); close(stopped) }()
+			select {
+			case <-stopped:
+			case <-time.After(10 * time.Second):
+				t.Fatal("Stop did not cancel the blocked send")
+			}
+			if got := last(); !strings.HasPrefix(got, "failure ") || !strings.Contains(got, "intent-stopped") || len(dispatchOutcomes(t, db)) != before+1 || svc.Sends.Failures() != 1 {
+				t.Fatalf("stopped send: %s", got)
 			}
 
 			// An unmatched send never dials and states that no mail was sent.
 			svc = newSvc(failing)
 			dials.Store(0)
-			failures.Store(0)
 			svc.dispatch(t.Context(), receipt, "intent-unmatched", "Org", "tok", false)
 			svc.WaitForMail()
-			if got := last(); !strings.HasPrefix(got, "success ") || !strings.Contains(got, `"mail_sent":false`) || !strings.Contains(got, "intent-unmatched") || dials.Load() != 0 || failures.Load() != 0 {
-				t.Fatalf("unmatched send: %s dials=%d failures=%d", got, dials.Load(), failures.Load())
+			if got := last(); !strings.HasPrefix(got, "success ") || !strings.Contains(got, `"mail_sent":false`) || !strings.Contains(got, "intent-unmatched") || dials.Load() != 0 || svc.Sends.Failures() != 0 {
+				t.Fatalf("unmatched send: %s dials=%d failures=%v", got, dials.Load(), svc.Sends.Failures())
 			}
 
 			// WaitForMail (the generation's stop join) waits for an in-flight send.
@@ -111,7 +149,7 @@ func TestEmailInvitationDispatchOutcomes(t *testing.T) {
 				<-release
 				return nil, errors.New("late failure")
 			})
-			before := len(dispatchOutcomes(t, db))
+			before = len(dispatchOutcomes(t, db))
 			svc.dispatch(t.Context(), receipt, "intent-inflight", "Org", "tok", true)
 			<-entered
 			joined := make(chan struct{})

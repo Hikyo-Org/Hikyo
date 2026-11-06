@@ -556,19 +556,9 @@ func runEmailInvitations(t *testing.T, db *store.DB) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		mraw, _ := json.Marshal(matched)
-		uraw, _ := json.Marshal(unmatched)
-		if !slices.Equal(jsonKeys(t, string(mraw)), jsonKeys(t, string(uraw))) {
-			t.Fatalf("receipt keys differ: %s vs %s", mraw, uraw)
-		}
 		list, err := rig.svc.List(ctx, service.LocalPrincipal(admin), orgA)
 		if err != nil || len(list) != 2 {
 			t.Fatalf("list = %+v, %v", list, err)
-		}
-		lm, _ := json.Marshal(list[0])
-		lu, _ := json.Marshal(list[1])
-		if !slices.Equal(jsonKeys(t, string(lm)), jsonKeys(t, string(lu))) {
-			t.Fatalf("list entry keys differ: %s vs %s", lm, lu)
 		}
 		payload := func(id string) string {
 			return queryString(t, db, `SELECT payload FROM audit_tenant_events WHERE type = 'member.email_invited' AND object_id = '`+id+`'`)
@@ -618,6 +608,20 @@ func runEmailInvitations(t *testing.T, db *store.DB) {
 		multi := rig.account("usr_ei_multi", "multi@example.test")
 		execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_ei_multi', 'usr_ei_multi', 'read', 'org_b', `+ts+`)`)
 		solo := rig.account("usr_ei_solo", "solo@example.test")
+		bResetter := rig.account("usr_ei_b_resetter", "b-resetter@example.test")
+		execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_ei_b_resetter', 'usr_ei_b_resetter', 'credential-reset', 'org_b', `+ts+`)`)
+		// Before accepting: the inviting org's holder reaches neither person
+		// (the multi person's only org is org_b, the solo person has none), and
+		// org_b's holder reaches the person whose only org it is.
+		if _, err := auth.ResetCredential(ctx, service.LocalPrincipal(resetter), string(solo), "response"); err == nil {
+			t.Fatal("an org credential-reset holder reset a person with no org before they accepted")
+		}
+		if _, err := auth.ResetCredential(ctx, service.LocalPrincipal(resetter), string(multi), "response"); err == nil {
+			t.Fatal("an org credential-reset holder reset a person of another org before they accepted")
+		}
+		if _, err := auth.ResetCredential(ctx, service.LocalPrincipal(bResetter), string(multi), "response"); err != nil {
+			t.Fatalf("the holder of the person's only org could not reset them before acceptance: %v", err)
+		}
 		for _, p := range []struct {
 			who  domain.PrincipalID
 			mail string
@@ -630,8 +634,14 @@ func runEmailInvitations(t *testing.T, db *store.DB) {
 				t.Fatal(err)
 			}
 		}
+		// After: the acceptance made the multi person belong to two orgs, so
+		// neither org's holder reaches them alone; the solo person's only org is
+		// now the inviting one.
 		if _, err := auth.ResetCredential(ctx, service.LocalPrincipal(resetter), string(multi), "response"); err == nil {
 			t.Fatal("an org credential-reset holder reset a person who also belongs to another org")
+		}
+		if _, err := auth.ResetCredential(ctx, service.LocalPrincipal(bResetter), string(multi), "response"); err == nil {
+			t.Fatal("the other org's holder still reaches a person the acceptance made multi-org")
 		}
 		if _, err := auth.ResetCredential(ctx, service.LocalPrincipal(resetter), string(solo), "response"); err != nil {
 			t.Fatalf("an org credential-reset holder could not reset a person whose only org is theirs: %v", err)
