@@ -186,6 +186,7 @@ import {
   getOrgIdentityImage,
   getOrgRegistrationPolicy,
   getOrgRetention,
+  getPersonalOffboardingReport,
   getPkiIssuerCrl,
   getProject,
   getProjectCapacity,
@@ -244,6 +245,7 @@ import {
   listOrgs,
   listPasskeys,
   listPendingDrafts,
+  listPersonalValueCounts,
   listPersonalValueMembers,
   listPkiIssuers,
   listPkiProfiles,
@@ -604,6 +606,7 @@ import type {
   GetOrgIdentityImageData,
   GetOrgRegistrationPolicyData,
   GetOrgRetentionData,
+  GetPersonalOffboardingReportData,
   GetPkiIssuerCrlData,
   GetProjectCapacityData,
   GetProjectData,
@@ -662,6 +665,7 @@ import type {
   ListOrgsData,
   ListPasskeysData,
   ListPendingDraftsData,
+  ListPersonalValueCountsData,
   ListPersonalValueMembersData,
   ListPkiIssuersData,
   ListPkiProfilesData,
@@ -999,6 +1003,7 @@ import {
   zGetOrgRegistrationPolicyResponse,
   zGetOrgResponse,
   zGetOrgRetentionResponse,
+  zGetPersonalOffboardingReportResponse,
   zGetPkiIssuerCrlResponse,
   zGetProjectCapacityResponse,
   zGetProjectIdentityImageResponse,
@@ -1057,6 +1062,7 @@ import {
   zListOrgsResponse,
   zListPasskeysResponse,
   zListPendingDraftsResponse,
+  zListPersonalValueCountsResponse,
   zListPersonalValueMembersResponse,
   zListPkiIssuersResponse,
   zListPkiProfilesResponse,
@@ -1366,6 +1372,7 @@ export const getOrgOp: BodyOperation<GetOrgData, typeof zGetOrgResponse> = /* @_
 export const getOrgIdentityImageOp: BodyOperation<GetOrgIdentityImageData, typeof zGetOrgIdentityImageResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOrgIdentityImage, [200], zGetOrgIdentityImageResponse);
 export const getOrgRegistrationPolicyOp: BodyOperation<GetOrgRegistrationPolicyData, typeof zGetOrgRegistrationPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOrgRegistrationPolicy, [200], zGetOrgRegistrationPolicyResponse);
 export const getOrgRetentionOp: BodyOperation<GetOrgRetentionData, typeof zGetOrgRetentionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOrgRetention, [200], zGetOrgRetentionResponse);
+export const getPersonalOffboardingReportOp: BodyOperation<GetPersonalOffboardingReportData, typeof zGetPersonalOffboardingReportResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getPersonalOffboardingReport, [200], zGetPersonalOffboardingReportResponse);
 export const getPkiIssuerCrlOp: BodyOperation<GetPkiIssuerCrlData, typeof zGetPkiIssuerCrlResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getPkiIssuerCrl, [200], zGetPkiIssuerCrlResponse);
 export const getProjectOp: BodyOperation<GetProjectData, typeof zGetProjectResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getProject, [200], zGetProjectResponse);
 export const getProjectCapacityOp: BodyOperation<GetProjectCapacityData, typeof zGetProjectCapacityResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getProjectCapacity, [200], zGetProjectCapacityResponse);
@@ -1424,6 +1431,7 @@ export const listOrgRulesOp: BodyOperation<ListOrgRulesData, typeof zListOrgRule
 export const listOrgsOp: BodyOperation<ListOrgsData, typeof zListOrgsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listOrgs, [200], zListOrgsResponse);
 export const listPasskeysOp: BodyOperation<ListPasskeysData, typeof zListPasskeysResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listPasskeys, [200], zListPasskeysResponse);
 export const listPendingDraftsOp: BodyOperation<ListPendingDraftsData, typeof zListPendingDraftsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listPendingDrafts, [200], zListPendingDraftsResponse);
+export const listPersonalValueCountsOp: BodyOperation<ListPersonalValueCountsData, typeof zListPersonalValueCountsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listPersonalValueCounts, [200], zListPersonalValueCountsResponse);
 export const listPersonalValueMembersOp: BodyOperation<ListPersonalValueMembersData, typeof zListPersonalValueMembersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listPersonalValueMembers, [200], zListPersonalValueMembersResponse);
 export const listPkiIssuersOp: BodyOperation<ListPkiIssuersData, typeof zListPkiIssuersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listPkiIssuers, [200], zListPkiIssuersResponse);
 export const listPkiProfilesOp: BodyOperation<ListPkiProfilesData, typeof zListPkiProfilesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listPkiProfiles, [200], zListPkiProfilesResponse);

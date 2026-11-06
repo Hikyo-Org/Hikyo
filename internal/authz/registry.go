@@ -539,6 +539,8 @@ const (
 	OpPersonalValueDelete       Operation = "personal-value.delete"
 	OpPersonalValueMembers      Operation = "personal-value.members"
 	OpPersonalValueDeleteMember Operation = "personal-value.delete-member"
+	OpPersonalValueCounts       Operation = "personal-value.counts"
+	OpPersonalOffboardingReport Operation = "personal-value.offboarding-report"
 	// Offline disclosure records are accepted only through a live machine
 	// presentation holding the same environment read authority as delivery.
 	OpDeliveryReconcileOffline Operation = "delivery.reconcile-offline"
@@ -1950,6 +1952,27 @@ var operationTable = map[Operation]opSpec{
 			StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventPersonalValueHoldersRead},
+	},
+	// Matrix marks: per-key holder and notice counts, never a value.
+	OpPersonalValueCounts: {
+		class:   ClassTenant,
+		level:   domain.LevelEnv,
+		formula: Formula{{Cap: domain.CapManageMembers, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{
+			StoreCatalogueList: true, StoreAuditTenantInsert: true,
+		},
+		events: []audit.EventType{audit.EventPersonalValueCountsRead},
+	},
+	// Offboarding report (personal-values ADR, Offboarding 3): names only.
+	OpPersonalOffboardingReport: {
+		class: ClassTenant,
+		level: domain.LevelProject,
+		formula: Formula{
+			{Cap: domain.CapManageMembers, At: domain.LevelProject},
+			{Cap: domain.CapAuditRead, At: domain.LevelProject},
+		},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventPersonalOffboardingReportRead},
 	},
 	OpPersonalValueDeleteMember: {
 		class:   ClassTenant,

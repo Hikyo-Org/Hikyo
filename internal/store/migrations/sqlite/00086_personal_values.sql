@@ -8,6 +8,7 @@
 -- these rows explicitly in their own transaction.
 -- hikyo:table personal_values class=environment chain=org_id,project_id
 -- hikyo:table personal_value_notices class=environment chain=org_id,project_id
+-- hikyo:table key_personal_required_environments class=key chain=org_id,project_id
 CREATE TABLE personal_values (
  id TEXT PRIMARY KEY,
  org_id TEXT NOT NULL,
@@ -18,6 +19,9 @@ CREATE TABLE personal_values (
  ciphertext BLOB NOT NULL,
  created_at TEXT NOT NULL,
  updated_at TEXT NOT NULL,
+ -- When the retention sweep first saw the owner without the access
+ -- predicate; cleared when it returns. 14 days later the sweep deletes the value.
+ suspended_at TEXT,
  UNIQUE (org_id, project_id, environment_id, key_id, owner_principal_id),
  FOREIGN KEY (org_id, project_id, environment_id) REFERENCES environments (org_id, project_id, id),
  FOREIGN KEY (org_id, project_id, key_id) REFERENCES keys (org_id, project_id, id),
@@ -41,6 +45,19 @@ CREATE TABLE personal_value_notices (
  FOREIGN KEY (owner_principal_id) REFERENCES principals (id)
 );
 CREATE INDEX personal_value_notices_owner ON personal_value_notices(owner_principal_id);
+-- personal_required_in: the explicit environments where each developer must
+-- hold their own personal value. Only `none` (no rows) and `explicit` exist,
+-- so a later environment is never reached. Its own table rather than a third
+-- `rule` in key_presence_environments, whose CHECK sqlite cannot alter.
+CREATE TABLE key_personal_required_environments (
+ org_id TEXT NOT NULL,
+ project_id TEXT NOT NULL,
+ key_id TEXT NOT NULL,
+ environment_id TEXT NOT NULL,
+ PRIMARY KEY (org_id, project_id, key_id, environment_id),
+ FOREIGN KEY (org_id, project_id, key_id) REFERENCES keys (org_id, project_id, id),
+ FOREIGN KEY (org_id, project_id, environment_id) REFERENCES environments (org_id, project_id, id)
+);
 -- Consent to personal values is recorded per developer credential. A
 -- credential minted before this column, or by a client that never showed the
 -- consent, carries 0 and receives names only.

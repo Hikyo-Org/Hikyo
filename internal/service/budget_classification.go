@@ -172,6 +172,8 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpValueStage, authz.OpValueInitialize, authz.OpValueValidate, authz.OpValuePendingList, authz.OpRevealWindowRead,
 		// personal values: the caller's own names, one own cell, or one key's holder metadata
 		authz.OpPersonalValueList, authz.OpPersonalValueDelete, authz.OpPersonalValueMembers, authz.OpPersonalValueDeleteMember,
+		// personal counts: one environment's per-key counts; offboarding report: one person's retained audit trail in one project
+		authz.OpPersonalValueCounts, authz.OpPersonalOffboardingReport,
 		// revisions / pins: paged reads and single-revision restores
 		authz.OpRevisionList, authz.OpRevisionShow, authz.OpRevisionSignals,
 		authz.OpRevisionRestore, authz.OpRevisionRestoreHistory, authz.OpRevisionRestoreCurrent,

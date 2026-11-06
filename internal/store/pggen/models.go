@@ -832,6 +832,13 @@ type KeyGroup struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type KeyPersonalRequiredEnvironment struct {
+	OrgID         string
+	ProjectID     string
+	KeyID         string
+	EnvironmentID string
+}
+
 type KeyPresenceEnvironment struct {
 	OrgID         string
 	ProjectID     string
@@ -1044,6 +1051,7 @@ type PersonalValue struct {
 	Ciphertext       []byte
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
+	SuspendedAt      pgtype.Timestamptz
 }
 
 type PersonalValueNotice struct {

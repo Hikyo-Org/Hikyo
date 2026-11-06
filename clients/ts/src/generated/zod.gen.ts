@@ -2062,6 +2062,10 @@ export const zPersonalValueEntry = z.object({
     set: z.boolean(),
     updated_at: z.iso.datetime().optional(),
     notice: zPersonalValueNoticeCause.optional(),
+    required: z.boolean().optional(),
+    suspended: z.boolean().optional(),
+    suspended_at: z.iso.datetime().optional(),
+    warnings: z.array(z.string().max(512)).max(32).optional(),
     value: z.string().optional()
 });
 
@@ -2075,6 +2079,46 @@ export const zPersonalValueHolder = z.object({
     set: z.boolean(),
     updated_at: z.iso.datetime().optional(),
     notice: zPersonalValueNoticeCause.optional()
+});
+
+export const zPersonalValueCount = z.object({
+    key_id: zId,
+    name: z.string().max(256),
+    holders: z.int().gte(0),
+    notices: z.int().gte(0),
+    required: z.boolean()
+});
+
+export const zPersonalValueCounts = z.object({
+    eligible: z.int().gte(0),
+    items: z.array(zPersonalValueCount)
+});
+
+export const zPersonalOffboardingReceipt = z.object({
+    environment_id: zId,
+    environment_name: z.string().max(256),
+    key_name: z.string().max(256),
+    last_received_at: z.iso.datetime(),
+    changed_since: z.boolean()
+});
+
+export const zPersonalOffboardingServiceAccount = z.object({
+    id: zId,
+    name: z.string().max(256),
+    created_at: z.iso.datetime()
+});
+
+/**
+ * Names only, never values. What to rotate after someone leaves.
+ */
+export const zPersonalOffboardingReport = z.object({
+    principal_id: zId,
+    username: z.string(),
+    evidence_from: z.iso.datetime(),
+    generated_at: z.iso.datetime(),
+    received: z.array(zPersonalOffboardingReceipt),
+    service_accounts: z.array(zPersonalOffboardingServiceAccount),
+    limits: z.array(z.string().max(512))
 });
 
 export const zPersonalValueHolderList = z.object({
@@ -3403,7 +3447,8 @@ export const zDeliveredKey = z.object({
     personal: z.enum([
         'value',
         'withheld',
-        'notice'
+        'notice',
+        'missing'
     ]).optional(),
     personal_reason: z.string().max(64).optional()
 });
@@ -3572,7 +3617,8 @@ export const zDefinitionsBundleKey = z.object({
     group: z.string().max(128),
     declaration: zKeyDeclaration,
     required_in: zDefinitionsBundlePresence,
-    forbidden_in: zDefinitionsBundlePresence
+    forbidden_in: zDefinitionsBundlePresence,
+    personal_required_in: zDefinitionsBundlePresence.optional()
 });
 
 export const zDefinitionsBundle = z.object({
@@ -3607,7 +3653,8 @@ export const zKeyPresence = z.object({
  */
 export const zKeyPresenceRules = z.object({
     required_in: zKeyPresence,
-    forbidden_in: zKeyPresence
+    forbidden_in: zKeyPresence,
+    personal_required_in: zKeyPresence.optional()
 });
 
 export const zKey = z.object({
@@ -6891,6 +6938,28 @@ export const zRevealMyPersonalValuePath = z.object({
  * The entry, plaintext included.
  */
 export const zRevealMyPersonalValueResponse = zPersonalValueEntry;
+
+export const zListPersonalValueCountsPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * The counts.
+ */
+export const zListPersonalValueCountsResponse = zPersonalValueCounts;
+
+export const zGetPersonalOffboardingReportPath = z.object({
+    org: zId,
+    project: zId,
+    member: z.string().min(1).max(256)
+});
+
+/**
+ * The report.
+ */
+export const zGetPersonalOffboardingReportResponse = zPersonalOffboardingReport;
 
 export const zListPersonalValueMembersPath = z.object({
     org: zId,

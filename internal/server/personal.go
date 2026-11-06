@@ -16,6 +16,8 @@ type PersonalValueService interface {
 	Delete(ctx context.Context, actor service.Actor, scope domain.Scope, keyName string) error
 	Members(ctx context.Context, actor service.Actor, scope domain.Scope, keyName string) ([]service.PersonalHolder, error)
 	DeleteMember(ctx context.Context, actor service.Actor, scope domain.Scope, keyName, member string) error
+	Counts(ctx context.Context, actor service.Actor, scope domain.Scope) (service.PersonalCounts, error)
+	OffboardingReport(ctx context.Context, actor service.Actor, scope domain.Scope, member string) (service.OffboardingReport, error)
 }
 
 func wirePersonalEntry(e service.PersonalEntry, reveal bool) apigen.PersonalValueEntry {
@@ -31,6 +33,20 @@ func wirePersonalEntry(e service.PersonalEntry, reveal bool) apigen.PersonalValu
 	if e.Notice != "" {
 		cause := apigen.PersonalValueNoticeCause(e.Notice)
 		out.Notice = &cause
+	}
+	if e.Required {
+		out.Required = &e.Required
+	}
+	if e.Suspended {
+		out.Suspended = &e.Suspended
+		if !e.SuspendedAt.IsZero() {
+			t := e.SuspendedAt
+			out.SuspendedAt = &t
+		}
+	}
+	if len(e.Warnings) > 0 {
+		w := append([]string(nil), e.Warnings...)
+		out.Warnings = &w
 	}
 	if reveal {
 		v := e.Value

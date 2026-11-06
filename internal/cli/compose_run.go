@@ -666,6 +666,8 @@ func personalRefusalCause(reason string) string {
 		return "--config-only delivers no personal values"
 	case "suspended":
 		return "your personal value is suspended while your account does not qualify"
+	case "required":
+		return "a personal value is required here and you have none; set it with hikyo personal set"
 	case "":
 		return "personal value withheld"
 	default:

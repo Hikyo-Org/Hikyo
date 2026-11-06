@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
@@ -17,7 +18,7 @@ import (
 // developer's own credential. The value never reaches argv, exactly as for
 // `values set`; a reveal goes through the print triad.
 
-var personalColumns = []string{"KEY", "PRESENCE", "UPDATED", "NOTICE"}
+var personalColumns = []string{"KEY", "PRESENCE", "UPDATED", "NOTICE", "STATUS"}
 
 func runPersonal(ctx context.Context, ios IO, args []string) (returnErr error) {
 	sub, rest, err := subverb("personal", args, "list", "get", "set", "members")
@@ -106,6 +107,7 @@ func runPersonal(ctx context.Context, ios IO, args []string) (returnErr error) {
 		}
 		t := personalTable(list.Items)
 		t.JSON = list
+		personalWarnings(ios, list.Items...)
 		return Render(ios.Stdout, f, t)
 
 	case "get":
@@ -152,6 +154,7 @@ func runPersonal(ctx context.Context, ios IO, args []string) (returnErr error) {
 		}
 		t := personalTable([]apigen.PersonalValueEntry{entry})
 		t.JSON = entry
+		personalWarnings(ios, entry)
 		return Render(ios.Stdout, f, t)
 
 	case "members":
@@ -175,9 +178,34 @@ func runPersonal(ctx context.Context, ios IO, args []string) (returnErr error) {
 func personalTable(items []apigen.PersonalValueEntry) Table {
 	t := Table{Columns: personalColumns}
 	for _, e := range items {
-		t.Rows = append(t.Rows, []string{e.Name, presenceWord(e.Set), personalTime(e.UpdatedAt), personalNotice(e.Notice)})
+		t.Rows = append(t.Rows, []string{e.Name, presenceWord(e.Set), personalTime(e.UpdatedAt), personalNotice(e.Notice), personalStatus(e)})
 	}
 	return t
+}
+
+// personalStatus names the checklist and suspension state in words.
+func personalStatus(e apigen.PersonalValueEntry) string {
+	var parts []string
+	if e.Required != nil && *e.Required {
+		parts = append(parts, "required")
+	}
+	if e.Suspended != nil && *e.Suspended {
+		parts = append(parts, "suspended since "+personalTime(e.SuspendedAt))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// personalWarnings names, on stderr, schema rules an owner's value does not
+// satisfy. They never refuse the value.
+func personalWarnings(ios IO, entries ...apigen.PersonalValueEntry) {
+	for _, e := range entries {
+		if e.Warnings == nil {
+			continue
+		}
+		for _, w := range *e.Warnings {
+			fmt.Fprintf(ios.Stderr, "warning: your personal value for %s: %s\n", e.Name, w)
+		}
+	}
 }
 
 func personalTime(t *time.Time) string {

@@ -388,10 +388,12 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"SELECT COUNT(*) FROM environments WHERE parameters_json <> '{}'",
 		"SELECT COUNT(*) FROM snapshots WHERE parameter_contract <> '{}'",
 		"SELECT COUNT(*) FROM projects WHERE key_limit_override IS NOT NULL OR key_limit_revision <> 0",
-		// 00086: a personal value or notice is a developer's own data, and a
-		// consented developer credential is covered by the check above.
+		// 00086: a personal value or notice is a developer's own data, a
+		// personal requirement is schema evidence, and a consented developer
+		// credential is covered by the check above.
 		"SELECT COUNT(*) FROM personal_values",
 		"SELECT COUNT(*) FROM personal_value_notices",
+		"SELECT COUNT(*) FROM key_personal_required_environments",
 		// 00085: a customised hue, mark or uploaded image is operator evidence.
 		"SELECT COUNT(*) FROM orgs WHERE identity_hue <> 195 OR identity_mark IS NOT NULL OR identity_image IS NOT NULL OR identity_image_type IS NOT NULL OR identity_image_version IS NOT NULL",
 		"SELECT COUNT(*) FROM projects WHERE identity_hue <> 195 OR identity_mark IS NOT NULL OR identity_image IS NOT NULL OR identity_image_type IS NOT NULL OR identity_image_version IS NOT NULL",
@@ -452,6 +454,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	}
 	// Reverse 00086 only after proving no personal value or notice is
 	// discarded. Its developer_credentials column goes with that table below.
+	drillExec(t, db, "DROP TABLE key_personal_required_environments")
 	drillExec(t, db, "DROP TABLE personal_value_notices")
 	drillExec(t, db, "DROP TABLE personal_values")
 	// Reverse 00085 only after proving no customised chrome identity is discarded.

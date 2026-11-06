@@ -60,6 +60,16 @@ type PersonalEntry struct {
 	UpdatedAt time.Time
 	// Notice is the cause of a removal the owner has not yet acknowledged.
 	Notice string
+	// Required marks a key that is personal_required_in this environment, so
+	// a checklist row can carry no value and no notice.
+	Required bool
+	// Suspended is set while the owner has lost the access predicate without
+	// a credential change; SuspendedAt is when the sweep first saw it.
+	Suspended   bool
+	SuspendedAt time.Time
+	// Warnings name schema rules the owner's value does not satisfy. They
+	// never refuse the value.
+	Warnings []string
 	// Value is set only by Reveal.
 	Value string
 }
@@ -85,19 +95,17 @@ func refusePersonalCaller(caller authz.Identity) error {
 	return nil
 }
 
-func (s *PersonalValues) authorize(ctx context.Context, az *authz.TxAuthorizer, actor Actor, op authz.Operation, scope domain.Scope) (authz.Identity, authz.Proof, error) {
+// caller resolves the actor and admits only a human's own session; the
+// operation's proof is minted at each call site.
+func (s *PersonalValues) caller(ctx context.Context, az *authz.TxAuthorizer, actor Actor) (authz.Identity, error) {
 	caller, err := actor.resolve(ctx, az, time.Now().UTC())
 	if err != nil {
-		return authz.Identity{}, nil, err
+		return authz.Identity{}, err
 	}
 	if err := refusePersonalCaller(caller); err != nil {
-		return authz.Identity{}, nil, err
+		return authz.Identity{}, err
 	}
-	p, err := az.Authorize(ctx, caller, op, scope)
-	if err != nil {
-		return authz.Identity{}, nil, err
-	}
-	return caller, p, nil
+	return caller, nil
 }
 
 func (s *PersonalValues) sealer(ctx context.Context, scope domain.Scope) (*crypto.ProjectSealer, error) {
@@ -122,7 +130,11 @@ func personalEvent(ctx context.Context, typ audit.EventType, actor domain.Princi
 // List returns the caller's own values (masked) and notices in one environment.
 func (s *PersonalValues) List(ctx context.Context, actor Actor, scope domain.Scope) ([]PersonalEntry, error) {
 	return tx.WriteResult(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) ([]PersonalEntry, error) {
-		_, p, err := s.authorize(ctx, az, actor, authz.OpPersonalValueList, scope)
+		caller, err := s.caller(ctx, az, actor)
+		if err != nil {
+			return nil, err
+		}
+		p, err := az.Authorize(ctx, caller, authz.OpPersonalValueList, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -183,7 +195,11 @@ func (s *PersonalValues) Set(ctx context.Context, actor Actor, scope domain.Scop
 		return PersonalEntry{}, err
 	}
 	return tx.WriteResult(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) (PersonalEntry, error) {
-		caller, p, err := s.authorize(ctx, az, actor, authz.OpPersonalValueSet, scope)
+		caller, err := s.caller(ctx, az, actor)
+		if err != nil {
+			return PersonalEntry{}, err
+		}
+		p, err := az.Authorize(ctx, caller, authz.OpPersonalValueSet, scope)
 		if err != nil {
 			return PersonalEntry{}, err
 		}
@@ -278,7 +294,11 @@ func (s *PersonalValues) Reveal(ctx context.Context, actor Actor, scope domain.S
 		return PersonalEntry{}, err
 	}
 	return tx.WriteResult(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) (PersonalEntry, error) {
-		caller, p, err := s.authorize(ctx, az, actor, authz.OpPersonalValueReveal, scope)
+		caller, err := s.caller(ctx, az, actor)
+		if err != nil {
+			return PersonalEntry{}, err
+		}
+		p, err := az.Authorize(ctx, caller, authz.OpPersonalValueReveal, scope)
 		if err != nil {
 			return PersonalEntry{}, err
 		}
@@ -319,7 +339,11 @@ func (s *PersonalValues) Reveal(ctx context.Context, actor Actor, scope domain.S
 // name. A name the caller holds neither for is not found.
 func (s *PersonalValues) Delete(ctx context.Context, actor Actor, scope domain.Scope, keyName string) error {
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, p, err := s.authorize(ctx, az, actor, authz.OpPersonalValueDelete, scope)
+		caller, err := s.caller(ctx, az, actor)
+		if err != nil {
+			return err
+		}
+		p, err := az.Authorize(ctx, caller, authz.OpPersonalValueDelete, scope)
 		if err != nil {
 			return err
 		}
@@ -358,7 +382,11 @@ func (s *PersonalValues) Delete(ctx context.Context, actor Actor, scope domain.S
 // Members lists who holds a value or notice for one key: metadata only.
 func (s *PersonalValues) Members(ctx context.Context, actor Actor, scope domain.Scope, keyName string) ([]PersonalHolder, error) {
 	return tx.WriteResult(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) ([]PersonalHolder, error) {
-		caller, p, err := s.authorize(ctx, az, actor, authz.OpPersonalValueMembers, scope)
+		caller, err := s.caller(ctx, az, actor)
+		if err != nil {
+			return nil, err
+		}
+		p, err := az.Authorize(ctx, caller, authz.OpPersonalValueMembers, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -440,7 +468,11 @@ func personalHolders(ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
 // value, and their notice stays until they dismiss it.
 func (s *PersonalValues) DeleteMember(ctx context.Context, actor Actor, scope domain.Scope, keyName, member string) error {
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, p, err := s.authorize(ctx, az, actor, authz.OpPersonalValueDeleteMember, scope)
+		caller, err := s.caller(ctx, az, actor)
+		if err != nil {
+			return err
+		}
+		p, err := az.Authorize(ctx, caller, authz.OpPersonalValueDeleteMember, scope)
 		if err != nil {
 			return err
 		}

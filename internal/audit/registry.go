@@ -467,6 +467,10 @@ const (
 	EventPersonalValueDelivered   EventType = "personal_value.delivered"
 	EventPersonalValueDeleted     EventType = "personal_value.deleted"
 	EventPersonalValueHoldersRead EventType = "personal_value.holders_read"
+	// counts_read and offboarding_report_read are metadata reads under
+	// manage-members (and audit-read for the report): names and counts only.
+	EventPersonalValueCountsRead       EventType = "personal_value.counts_read"
+	EventPersonalOffboardingReportRead EventType = "personal_value.offboarding_report_read"
 	// value.staged records an edit landing in the actor's own WORKING STATE
 	// (#51). It is deliberately its own type rather than a `value.set` with a
 	// flag: a draft delivers nothing, so an investigator asking "when did this
@@ -1765,7 +1769,6 @@ var registry = map[EventType]TypeSpec{
 			"owner_principal_id": {Kind: KindString, Required: true},
 		},
 	},
-	// One per key per delivery, under the fetch envelope's correlation.
 	// Who holds a personal value for a key is metadata an administrator reads
 	// under manage-members, so the read is on the tenant trail like grant lists.
 	EventPersonalValueHoldersRead: {
@@ -1779,6 +1782,27 @@ var registry = map[EventType]TypeSpec{
 			"count":  {Kind: KindInt, Required: true},
 		},
 	},
+	EventPersonalValueCountsRead: {
+		SchemaVersion: 1,
+		Retention:     RetentionAccess,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"keys": {Kind: KindInt, Required: true},
+		},
+	},
+	EventPersonalOffboardingReportRead: {
+		SchemaVersion: 1,
+		Retention:     RetentionAccess,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"subject_principal_id": {Kind: KindString, Required: true},
+			"received":             {Kind: KindInt, Required: true},
+			"service_accounts":     {Kind: KindInt, Required: true},
+		},
+	},
+	// One per key per delivery, under the fetch envelope's correlation.
 	EventPersonalValueDelivered: {
 		SchemaVersion: 1,
 		Retention:     RetentionAccess,

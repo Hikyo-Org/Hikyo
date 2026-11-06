@@ -555,6 +555,8 @@ operations:
   revealMyPersonalValue: {issue: 1235}
   listPersonalValueMembers: {issue: 1235}
   deletePersonalValueMember: {issue: 1235}
+  listPersonalValueCounts: {issue: 1235}
+  getPersonalOffboardingReport: {issue: 1235}
   mintDeveloperCredential: {exception: bounded-developer-delegation}
   listMyDeveloperCredentials: {exception: bounded-developer-delegation}
   revokeAllMyDeveloperCredentials: {exception: bounded-developer-delegation}

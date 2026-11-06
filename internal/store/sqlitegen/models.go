@@ -830,6 +830,13 @@ type KeyGroup struct {
 	CreatedAt string
 }
 
+type KeyPersonalRequiredEnvironment struct {
+	OrgID         string
+	ProjectID     string
+	KeyID         string
+	EnvironmentID string
+}
+
 type KeyPresenceEnvironment struct {
 	OrgID         string
 	ProjectID     string
@@ -1042,6 +1049,7 @@ type PersonalValue struct {
 	Ciphertext       []byte
 	CreatedAt        string
 	UpdatedAt        string
+	SuspendedAt      sql.NullString
 }
 
 type PersonalValueNotice struct {

@@ -612,6 +612,8 @@ var pinnedContractSurface = map[string]bool{
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/reveal":             true,
 	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members":             true,
 	"DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members/{member}": true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-value-counts":                     true,
+	"GET /api/v1/orgs/{org}/projects/{project}/personal-offboarding-report/{member}":                                 true,
 	// Initial drafts stay local and never fetch data from another instance.
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}/initialize": true,
 	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/reveal-window":            true,
