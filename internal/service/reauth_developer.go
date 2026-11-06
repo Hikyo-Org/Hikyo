@@ -28,10 +28,6 @@ type developerCredentialBinding struct {
 	Target        DeveloperCredentialReauthTarget `json:"target"`
 }
 
-func NewDeveloperCredentialReauthIntent(environmentID string, keyIDs []string, ttl time.Duration, consent bool) (ReauthIntent, error) {
-	return NewPersonalDeveloperCredentialReauthIntent(environmentID, keyIDs, ttl, consent, false)
-}
-
 // NewPersonalDeveloperCredentialReauthIntent also binds whether the credential
 // will deliver the minting person's personal values.
 func NewPersonalDeveloperCredentialReauthIntent(environmentID string, keyIDs []string, ttl time.Duration, consent, personal bool) (ReauthIntent, error) {

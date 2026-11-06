@@ -528,7 +528,7 @@ func (s *Auth) attemptLogin(ctx context.Context, username, password string, arti
 		// A standing local factor is required at sign-in for both artifacts.
 		// Browser challenges remain browser-bound. CLI users complete the same
 		// browser ceremonies through the existing loopback or device handoff.
-		factors, err := s.enrolledFactors(ctx, az, account.ID)
+		factors, err := enrolledFactors(ctx, az, account.ID)
 		if err != nil {
 			return err
 		}

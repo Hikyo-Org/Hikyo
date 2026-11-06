@@ -1498,7 +1498,7 @@ func runDeveloperAuditLifecycle(t *testing.T, db *store.DB) {
 	if _, err := credentials.Mint(ctx, service.Bearer(token), scope, request); !errors.Is(err, service.ErrNoReauthWindow) {
 		t.Fatalf("mint without fresh intent = %v", err)
 	}
-	intent, err := service.NewDeveloperCredentialReauthIntent(string(scope.Env), request.KeyIDs, request.Lifetime, true)
+	intent, err := service.NewPersonalDeveloperCredentialReauthIntent(string(scope.Env), request.KeyIDs, request.Lifetime, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
