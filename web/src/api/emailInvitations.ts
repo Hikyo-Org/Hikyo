@@ -51,6 +51,12 @@ export function useRevokeEmailInvitation(org: string) {
   });
 }
 
+/** Refreshes the pending list after a send, so the new invitation shows without a reload. */
+export function useRefreshEmailInvitations(org: string) {
+  const queries = useQueryClient();
+  return () => queries.invalidateQueries({ queryKey: listKey(org) });
+}
+
 export async function sendEmailInvitation(
   org: string,
   input: { email: string; template: RoleTemplateId },

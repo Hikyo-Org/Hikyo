@@ -1,7 +1,10 @@
+import { useState } from 'react';
+
 import { listFailureText, useEmailInvitations, useRevokeEmailInvitation, revokeFailureText } from '../api/emailInvitations.ts';
 import { formatWhen } from '../lib/formatWhen.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Input } from '../ui/Input.tsx';
 import { Panel } from './Sections.tsx';
 
 /**
@@ -19,14 +22,31 @@ export function EmailInvitations({
 }) {
   const invitations = useEmailInvitations(org, true);
   const revoke = useRevokeEmailInvitation(org);
-  const items = invitations.data?.items ?? [];
+  const all = invitations.data?.items ?? [];
+  const [find, setFind] = useState('');
+  const needle = find.trim().toLocaleLowerCase();
+  const items = needle === ''
+    ? all
+    : all.filter((item) => [item.email, item.template, invitedByName(item.invited_by)].some((text) => text.toLocaleLowerCase().includes(needle)));
 
   return (
     <Panel id="members-email-invitations" title="Pending email invitations">
       {invitations.isPending ? <p role="status">Loading invitations…</p> : null}
       {invitations.isError ? <Alert>{listFailureText(invitations.error)}</Alert> : null}
       {revoke.isError ? <Alert>{revokeFailureText(revoke.error)}</Alert> : null}
-      {invitations.isSuccess && items.length === 0 ? <p role="status">No pending email invitations.</p> : null}
+      {invitations.isSuccess && all.length === 0 ? <p role="status">No pending email invitations.</p> : null}
+      {all.length === 0 ? null : (
+        <div className="access-filter">
+          <Input
+            label="Find an invitation"
+            type="search"
+            hint="By email, template or inviter."
+            value={find}
+            onChange={(event) => setFind(event.target.value)}
+          />
+        </div>
+      )}
+      {all.length > 0 && items.length === 0 ? <p role="status">{`No invitation matches “${find.trim()}”.`}</p> : null}
       {items.length === 0 ? null : (
         <div className="table-scroll">
           <table className="values__table">

@@ -494,11 +494,18 @@ export const PendingEmailInvitations: Story = {
         {
           url: EMAIL_INVITATIONS_URL,
           body: {
-            count: 1,
+            count: 2,
             items: [{
               id: 'eiv_123e4567-e89b-12d3-a456-426614174090',
               email: 'dana@example.com',
               template: 'editor',
+              invited_by: DANA,
+              created_at: '2026-11-06T10:00:00Z',
+              expires_at: '2026-11-13T10:00:00Z',
+            }, {
+              id: 'eiv_123e4567-e89b-12d3-a456-426614174091',
+              email: 'lee@example.com',
+              template: 'viewer',
               invited_by: DANA,
               created_at: '2026-11-06T10:00:00Z',
               expires_at: '2026-11-13T10:00:00Z',
@@ -513,6 +520,9 @@ export const PendingEmailInvitations: Story = {
     await expect(await canvas.findByRole('heading', { name: 'Pending email invitations' })).toBeVisible();
     await expect(await canvas.findByText('dana@example.com')).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Revoke the invitation for dana@example.com' })).toBeVisible();
+    await userEvent.type(canvas.getByRole('searchbox', { name: 'Find an invitation' }), 'lee');
+    await expect(canvas.queryByText('dana@example.com')).toBeNull();
+    await expect(canvas.getByText('lee@example.com')).toBeVisible();
     await userEvent.click(await canvas.findByRole('button', { name: 'Invite by email' }));
     await expect(within(document.body).getByRole('dialog')).toHaveTextContent('Invite by email');
     await userEvent.click(within(within(document.body).getByRole('dialog')).getByRole('button', { name: 'Cancel' }));

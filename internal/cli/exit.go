@@ -69,6 +69,9 @@ const (
 type Error struct {
 	Code int
 	Err  error
+	// Detail is the API's safe machine-readable detail for a refusal, when the
+	// response carried one. Callers match it exactly instead of the message.
+	Detail string
 }
 
 func (e *Error) Error() string { return e.Err.Error() }
