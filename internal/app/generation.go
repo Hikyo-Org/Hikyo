@@ -215,7 +215,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		transitService.Shared = owner.haCoord
 	}
 
-	updatesService := &service.Updates{DB: db, Source: updateSource, Version: Version, Channel: updatecheck.Channel(cfg.UpdateChannel), Log: log, SelfConfig: selfConfig}
+	updatesService := &service.Updates{DB: db, Source: updateSource, Version: Version, Channel: updatecheck.Channel(cfg.UpdateChannel), Log: log, SelfConfig: selfConfig, SecurityStatusFile: cfg.SecurityMaintenanceStatusFile}
 	// One RED collector shared by the API middleware (writer) and the
 	// operational /metrics handler (reader) (#513). The limiter supplies its
 	// admission-pressure gauges at scrape time.

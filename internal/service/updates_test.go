@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -224,4 +225,44 @@ func updateServiceDB(t *testing.T, authenticatedAt time.Time) (*store.DB, string
 		t.Fatal(err)
 	}
 	return db, artifact
+}
+
+func TestSecurityMaintenanceReadAuthorizesLikeUpdateStatusAndAuditsTheRead(t *testing.T) {
+	now := time.Date(2026, 8, 24, 4, 0, 0, 0, time.UTC)
+	db, artifact := updateServiceDB(t, now)
+	updates := fixtureUpdates(db, nil, now)
+
+	// Unset and missing are the same honest answer; the file is not required.
+	report, err := updates.GetSecurityMaintenance(t.Context(), Bearer(artifact))
+	if err != nil || report.Reported || report.Unreadable {
+		t.Fatalf("unset: %+v %v", report, err)
+	}
+	path := filepath.Join(t.TempDir(), "status.json")
+	updates.SecurityStatusFile = path
+	if report, err = updates.GetSecurityMaintenance(t.Context(), Bearer(artifact)); err != nil || report.Reported || report.Unreadable {
+		t.Fatalf("missing: %+v %v", report, err)
+	}
+	if err := os.WriteFile(path, []byte(`{"format":"hikyo.security-maintenance-status/v1","enrolled":true,"phase":"current","protection_gap":false,"applicable":[],"coverage":[],"covered_components":[],"catalog_sequence":1}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if report, err = updates.GetSecurityMaintenance(t.Context(), Bearer(artifact)); err != nil || !report.Reported || report.Status.Phase != "current" {
+		t.Fatalf("valid: %+v %v", report, err)
+	}
+	var count int
+	if err := db.SQLiteRead().QueryRowContext(t.Context(),
+		`SELECT COUNT(*) FROM audit_instance_events WHERE type = 'system.update_status_read' AND object_id = 'security_maintenance'`).Scan(&count); err != nil || count != 3 {
+		t.Fatalf("audited reads = %d, err = %v, want 3", count, err)
+	}
+
+	// Without the instance-config grant the file is never consulted.
+	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `DELETE FROM grants WHERE id = 'gr_update'`); err != nil {
+		t.Fatal(err)
+	}
+	report, err = updates.GetSecurityMaintenance(t.Context(), Bearer(artifact))
+	if err == nil || report.Reported || report.Unreadable {
+		t.Fatalf("ungranted caller read status: %+v %v", report, err)
+	}
+	if _, err := updates.GetSecurityMaintenance(t.Context(), Bearer("not-an-artifact")); err == nil {
+		t.Fatal("unauthenticated caller read status")
+	}
 }

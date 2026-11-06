@@ -48,7 +48,7 @@
     "routes/EstablishCredential.tsx": "3d70213bb23c1b6aee5d2f531ad8b18144e9bcd1e510922e13ee6125e5beb1f9",
     "routes/HistoryDrawer.tsx": "78feade13e0625945852a7448b9857f5c431d88f2e420a5e4fc0ea81a5696565",
     "routes/ImportWizard.tsx": "d5ec441119335238e96df21509c400ecfb9bb7b957ac9d3ec832a52fa2b104a2",
-    "routes/InstanceAdmin.tsx": "13aa59ccd60f613b7040590eaaa3b82d561b7eab0d0ddad47f37039d715a52d6",
+    "routes/InstanceAdmin.tsx": "1c4d3e266d80ffd5b00405b4ce62848c3b601e3d7a53a35a49708ff248f553f3",
     "routes/InstanceConfig.tsx": "d8e6fcc815f047a60d67a3c67272875f7236d19302d68714bd47f07e13c4546b",
     "routes/InstanceMailPanel.tsx": "60f177ef568821e190746a5fc3fdc9333b00de0f7dac03aba2f5104737bcd4b8",
     "routes/InvitationAccept.tsx": "de9804ea02ffafd09dda096a5c225015685b52141b19e960fbc2428fcfad804e",

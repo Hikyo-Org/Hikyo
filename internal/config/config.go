@@ -86,8 +86,7 @@ type Config struct {
 	// local CLI traffic. It is bootstrap-only and never a managed runtime path.
 	CLISocket string
 	// SecurityMaintenanceStatusFile is an optional public file the separate
-	// maintenance coordinator writes. Nothing reads it until the status API that
-	// ships with the coordinator; it is validated now so that release accepts it.
+	// maintenance coordinator writes. The server only reads it.
 	SecurityMaintenanceStatusFile string
 	TLSCertFile                   string
 	TLSKeyFile                    string
