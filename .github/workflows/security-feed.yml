@@ -1,0 +1,449 @@
+name: security-feed
+
+# Inert until the repository variable HIKYO_SECURITY_FEED_ENABLED is 'true'.
+# Daily liveness needs online keys only; an advisory needs the separately
+# reviewed publish environment. Clients read only https://hikyo.app/security-feed/,
+# so changing where that site is hosted never touches an installation. The
+# security-feed branch is this publisher's private store, because Pages replaces
+# the whole site on each deployment and signing needs exact prior versions. Pushes
+# are fast-forward only: a raced run fails, never overwrites, and prior versioned
+# files are never deleted or changed. No docs build runs here: deploy re-serves the
+# last built site with the new feed, so a broken docs build cannot stale the feed.
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+    inputs:
+      advisory_id:
+        description: Advisory ID. Leave empty to only withdraw or renew.
+        type: string
+      summary:
+        description: Advisory summary
+        type: string
+      severity:
+        description: Advisory severity
+        type: choice
+        default: critical
+        options: [low, moderate, high, critical]
+      components:
+        description: Affected components, comma separated
+        type: string
+      introduced:
+        description: First affected version. Empty means the start of the profile.
+        type: string
+      fixed_version:
+        description: Signed release that fixes the advisory
+        type: string
+      platforms:
+        description: Affected platforms, comma separated
+        type: string
+        default: linux/amd64,linux/arm64
+      withdraw_target:
+        description: Release version to withdraw
+        type: string
+      withdraw_advisory:
+        description: Advisory ID to withdraw
+        type: string
+      features:
+        description: The target release changes features
+        type: boolean
+      schema:
+        description: The target release changes the schema
+        type: boolean
+      api:
+        description: The target release changes the API
+        type: boolean
+      configuration:
+        description: The target release changes configuration
+        type: boolean
+      maintenance:
+        description: The target release requires maintenance
+        type: boolean
+      rollout_minutes:
+        description: Staged rollout duration, 0 to 10080
+        type: string
+        default: '0'
+      rotating_root:
+        description: Publish the next root from pending/ in the store, authenticating the prior feed under the current root.
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  verified-binary:
+    if: vars.HIKYO_SECURITY_FEED_ENABLED == 'true' && (github.event_name == 'schedule' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GOFLAGS: -mod=readonly
+    outputs:
+      sha256: ${{ steps.authenticate.outputs.sha256 }}
+    steps:
+      - name: Check out the trusted main harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Install pinned verifier for published stable OCI signatures
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+      # Publishing depends on the production build stamp, so this is a signed
+      # release binary, never a source build. It uses the stable verifier of
+      # scripts/security/verify-release.sh. That script's later evidence step
+      # expects a manifest platform field that stable binaries do not carry.
+      - name: Download and authenticate the pinned stable release
+        id: authenticate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Pinned, not latest: revoking a bad latest release must not stop its withdrawal.
+          PUBLISHER_VERSION: ${{ vars.HIKYO_SECURITY_FEED_PUBLISHER_VERSION }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$PUBLISHER_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf '::error::Set HIKYO_SECURITY_FEED_PUBLISHER_VERSION to a signed stable version.\n'
+            exit 1
+          fi
+          version=$PUBLISHER_VERSION
+          tag="v$version"
+          source=$(git rev-parse "refs/tags/$tag^{commit}")
+          git merge-base --is-ancestor "$source" HEAD
+          work="$RUNNER_TEMP/publisher"
+          mkdir -m 700 "$work"
+          mkdir "$work/bundle"
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir "$work/bundle"
+          go run ./scripts/release/stable verify --trust release/trust \
+            --directory "$work/bundle" --version "$version" --commit "$source" \
+            --historical --published >"$work/stable-identity.json"
+          tar -xzf "$work/bundle/hikyo_${version}_Linux_x86_64.tar.gz" -C "$work" hikyo
+          printf 'sha256=%s\n' "$(sha256sum "$work/hikyo" | cut -d ' ' -f 1)" >>"$GITHUB_OUTPUT"
+      - name: Hand the authenticated binary to the key-holding job
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: security-feed-publisher-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publisher/hikyo
+          if-no-files-found: error
+          retention-days: 1
+
+  refresh:
+    needs: verified-binary
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: security-feed-online
+    permissions:
+      contents: write
+    outputs:
+      pushed: ${{ steps.push.outputs.pushed }}
+    concurrency:
+      group: security-feed-refresh
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: security-feed-publisher-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publisher
+      # No source or action runs after this point, and the signing binary never
+      # receives the repository token.
+      - name: Prepare the binary and the private feed checkout
+        env:
+          BINARY_SHA256: ${{ needs.verified-binary.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d)
+          printf 'FEED_WORK=%s\n' "$work" >>"$GITHUB_ENV"
+          printf '%s  %s\n' "$BINARY_SHA256" "$RUNNER_TEMP/publisher/hikyo" | sha256sum --check --strict
+          install -m 700 "$RUNNER_TEMP/publisher/hikyo" "$work/hikyo"
+          git clone --depth 1 --branch security-feed "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$work/feed"
+          chmod -R go-w "$work/feed"
+          find "$work/feed" -path "$work/feed/.git" -prune -o -type d -exec chmod 700 {} +
+      - name: Write online keys to mode-0600 temporary files
+        env:
+          SNAPSHOT_KEY: ${{ secrets.SECURITY_FEED_SNAPSHOT_KEY }}
+          TIMESTAMP_KEY: ${{ secrets.SECURITY_FEED_TIMESTAMP_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir "$FEED_WORK/keys"
+          printf '%s\n' "$SNAPSHOT_KEY" >"$FEED_WORK/keys/snapshot.pem"
+          printf '%s\n' "$TIMESTAMP_KEY" >"$FEED_WORK/keys/timestamp.pem"
+      - name: Re-sign snapshot and timestamp
+        id: resign
+        run: |
+          set -euo pipefail
+          feed="$FEED_WORK/feed"
+          root=$(find "$feed/metadata" -maxdepth 1 -name '*.root.json' | sort -V | tail -n 1)
+          snapshot_version=$(jq -er '.signed.meta["snapshot.json"].version' "$feed/metadata/timestamp.json")
+          targets_version=$(jq -er '.signed.meta["targets.json"].version' "$feed/metadata/$snapshot_version.snapshot.json")
+          targets=$(date -u -d "$(jq -er '.signed.expires' "$feed/metadata/$targets_version.targets.json")" +%s)
+          now=$(date -u +%s)
+          timestamp=$((now + 3 * 86400))
+          snapshot=$((now + 7 * 86400))
+          # Stay alive up to the targets expiry instead of failing a week early.
+          if [ "$snapshot" -gt "$targets" ]; then snapshot=$targets; fi
+          if [ "$timestamp" -gt "$snapshot" ]; then timestamp=$snapshot; fi
+          "$FEED_WORK/hikyo" security-maintenance feed refresh --root "$root" --output "$feed" \
+            --snapshot-expires "$(date -u -d "@$snapshot" +%FT%TZ)" \
+            --timestamp-expires "$(date -u -d "@$timestamp" +%FT%TZ)" \
+            --snapshot-key "$FEED_WORK/keys/snapshot.pem" --timestamp-key "$FEED_WORK/keys/timestamp.pem"
+          printf 'targets=%s\n' "$targets" >>"$GITHUB_OUTPUT"
+      - name: Push only new files and the moved timestamp
+        id: push
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          feed="$FEED_WORK/feed"
+          git -C "$feed" add -- metadata targets
+          changes=$(git -C "$feed" diff --cached --name-status)
+          if grep -Ev '^A[[:space:]]|^M[[:space:]]+metadata/timestamp\.json$' <<<"$changes"; then
+            printf 'refusing to change or delete prior feed files\n' >&2
+            exit 1
+          fi
+          git -C "$feed" -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit --quiet --message 'chore(security-feed): refresh metadata'
+          git -C "$feed" -c credential.helper= -c credential.helper='!gh auth git-credential' push origin HEAD:refs/heads/security-feed
+          printf 'pushed=true\n' >>"$GITHUB_OUTPUT"
+      - name: Fail visibly when the targets role needs a renewal publish
+        env:
+          TARGETS_EXPIRES: ${{ steps.resign.outputs.targets }}
+        run: |
+          set -euo pipefail
+          if [ "$TARGETS_EXPIRES" -lt "$(($(date -u +%s) + 14 * 86400))" ]; then
+            printf '::error::Targets expire within 14 days. Run this workflow manually with no advisory inputs to renew.\n'
+            exit 1
+          fi
+      - name: Remove keys and temporary files
+        if: always()
+        run: |
+          if [ -n "${FEED_WORK:-}" ]; then rm -rf "$FEED_WORK"; fi
+
+  publish:
+    needs: verified-binary
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: security-feed-publish
+    permissions:
+      contents: write
+    outputs:
+      pushed: ${{ steps.push.outputs.pushed }}
+    concurrency:
+      group: security-feed-publish
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: security-feed-publisher-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publisher
+      # No source or action runs after this point, and the signing binary never
+      # receives the repository token.
+      - name: Prepare the binary and the private feed checkout
+        env:
+          BINARY_SHA256: ${{ needs.verified-binary.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d)
+          printf 'FEED_WORK=%s\n' "$work" >>"$GITHUB_ENV"
+          printf '%s  %s\n' "$BINARY_SHA256" "$RUNNER_TEMP/publisher/hikyo" | sha256sum --check --strict
+          install -m 700 "$RUNNER_TEMP/publisher/hikyo" "$work/hikyo"
+          git clone --depth 1 --branch security-feed "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$work/feed"
+          chmod -R go-w "$work/feed"
+          find "$work/feed" -path "$work/feed/.git" -prune -o -type d -exec chmod 700 {} +
+      - name: Author the next catalog from the signed release
+        env:
+          ADVISORY_ID: ${{ inputs.advisory_id }}
+          SUMMARY: ${{ inputs.summary }}
+          SEVERITY: ${{ inputs.severity }}
+          COMPONENTS: ${{ inputs.components }}
+          INTRODUCED: ${{ inputs.introduced }}
+          FIXED_VERSION: ${{ inputs.fixed_version }}
+          PLATFORMS: ${{ inputs.platforms }}
+          WITHDRAW_TARGET: ${{ inputs.withdraw_target }}
+          WITHDRAW_ADVISORY: ${{ inputs.withdraw_advisory }}
+          FEATURES: ${{ inputs.features }}
+          SCHEMA: ${{ inputs.schema }}
+          API: ${{ inputs.api }}
+          CONFIGURATION: ${{ inputs.configuration }}
+          MAINTENANCE: ${{ inputs.maintenance }}
+          ROLLOUT_MINUTES: ${{ inputs.rollout_minutes }}
+        run: |
+          set -euo pipefail
+          feed="$FEED_WORK/feed"
+          args=(--output "$FEED_WORK/catalog.json")
+          if [ -f "$feed/metadata/timestamp.json" ]; then
+            # Publishing authenticates this same file against the signed chain.
+            snapshot_version=$(jq -er '.signed.meta["snapshot.json"].version' "$feed/metadata/timestamp.json")
+            targets_version=$(jq -er '.signed.meta["targets.json"].version' "$feed/metadata/$snapshot_version.snapshot.json")
+            digest=$(jq -er '.signed.targets["security/catalog.json"].hashes.sha256' "$feed/metadata/$targets_version.targets.json")
+            args+=(--previous-catalog "$feed/targets/security/$digest.catalog.json")
+          fi
+          if [ -n "$WITHDRAW_TARGET" ]; then args+=(--withdraw-target "$WITHDRAW_TARGET"); fi
+          if [ -n "$WITHDRAW_ADVISORY" ]; then args+=(--withdraw-advisory "$WITHDRAW_ADVISORY"); fi
+          if [ -n "$ADVISORY_ID" ]; then
+            args+=(--id "$ADVISORY_ID" --summary "$SUMMARY" --severity "$SEVERITY" --fixed-version "$FIXED_VERSION")
+            args+=(--cache "$FEED_WORK/cache" --rollout-minutes "$ROLLOUT_MINUTES")
+            if [ -n "$INTRODUCED" ]; then args+=(--introduced "$INTRODUCED"); fi
+            IFS=, read -ra values <<<"$COMPONENTS"
+            for value in "${values[@]}"; do args+=(--component "$value"); done
+            IFS=, read -ra values <<<"$PLATFORMS"
+            for value in "${values[@]}"; do args+=(--platform "$value"); done
+            if [ "$FEATURES" = true ]; then args+=(--features); fi
+            if [ "$SCHEMA" = true ]; then args+=(--schema); fi
+            if [ "$API" = true ]; then args+=(--api); fi
+            if [ "$CONFIGURATION" = true ]; then args+=(--configuration); fi
+            if [ "$MAINTENANCE" = true ]; then args+=(--maintenance); fi
+          elif [ -n "$SUMMARY$COMPONENTS$INTRODUCED$FIXED_VERSION" ]; then
+            printf 'advisory inputs require advisory_id\n' >&2
+            exit 1
+          fi
+          "$FEED_WORK/hikyo" security-maintenance feed advisory "${args[@]}"
+      - name: Write publish keys to mode-0600 temporary files
+        env:
+          TARGETS_KEY: ${{ secrets.SECURITY_FEED_TARGETS_KEY }}
+          SNAPSHOT_KEY: ${{ secrets.SECURITY_FEED_SNAPSHOT_KEY }}
+          TIMESTAMP_KEY: ${{ secrets.SECURITY_FEED_TIMESTAMP_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir "$FEED_WORK/keys"
+          printf '%s\n' "$TARGETS_KEY" >"$FEED_WORK/keys/targets.pem"
+          printf '%s\n' "$SNAPSHOT_KEY" >"$FEED_WORK/keys/snapshot.pem"
+          printf '%s\n' "$TIMESTAMP_KEY" >"$FEED_WORK/keys/timestamp.pem"
+      - name: Sign and check the repository with the real client
+        env:
+          ROTATING_ROOT: ${{ inputs.rotating_root }}
+        run: |
+          set -euo pipefail
+          feed="$FEED_WORK/feed"
+          root=$(find "$feed/metadata" -maxdepth 1 -name '*.root.json' | sort -V | tail -n 1)
+          previous=()
+          if [ "$ROTATING_ROOT" = true ]; then
+            # Kept out of metadata/ until now: a docs deployment serves all of that
+            # directory, and clients would then refuse the feed the old keys signed.
+            next=$(find "$feed/pending" -maxdepth 1 -name '*.root.json' | sort -V | tail -n 1)
+            previous=(--previous-root "$root")
+            root="$feed/metadata/$(basename "$next")"
+            mv "$next" "$root"
+          fi
+          version=1
+          if [ -f "$feed/metadata/timestamp.json" ]; then
+            version=$(($(jq -er '.signed.version' "$feed/metadata/timestamp.json") + 1))
+          fi
+          targets=$(date -u -d "$(jq -er '.expires_at' "$FEED_WORK/catalog.json")" +%s)
+          root_expires=$(date -u -d "$(jq -er '.signed.expires' "$root")" +%s)
+          if [ "$targets" -gt "$root_expires" ]; then targets=$root_expires; fi
+          now=$(date -u +%s)
+          timestamp=$((now + 3 * 86400))
+          snapshot=$((now + 7 * 86400))
+          if [ "$snapshot" -gt "$targets" ]; then snapshot=$targets; fi
+          if [ "$timestamp" -gt "$snapshot" ]; then timestamp=$snapshot; fi
+          "$FEED_WORK/hikyo" security-maintenance feed publish --catalog "$FEED_WORK/catalog.json" \
+            --root "$root" --output "$feed" --cache "$FEED_WORK/cache" --version "$version" \
+            --targets-expires "$(date -u -d "@$targets" +%FT%TZ)" \
+            --snapshot-expires "$(date -u -d "@$snapshot" +%FT%TZ)" \
+            --timestamp-expires "$(date -u -d "@$timestamp" +%FT%TZ)" \
+            --targets-key "$FEED_WORK/keys/targets.pem" \
+            --snapshot-key "$FEED_WORK/keys/snapshot.pem" --timestamp-key "$FEED_WORK/keys/timestamp.pem" "${previous[@]}"
+      - name: Push only new files and the moved timestamp
+        id: push
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          feed="$FEED_WORK/feed"
+          git -C "$feed" add -A -- metadata targets
+          # A rotation moves the next root out of pending/, which is otherwise absent.
+          if [ -d "$feed/pending" ] || git -C "$feed" ls-files --error-unmatch pending >/dev/null 2>&1; then
+            git -C "$feed" add -A -- pending
+          fi
+          changes=$(git -C "$feed" diff --cached --no-renames --name-status)
+          if grep -Ev '^A[[:space:]]|^D[[:space:]]+pending/[0-9]+\.root\.json$|^M[[:space:]]+metadata/timestamp\.json$' <<<"$changes"; then
+            printf 'refusing to change or delete prior feed files\n' >&2
+            exit 1
+          fi
+          git -C "$feed" -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit --quiet --message 'chore(security-feed): publish catalog'
+          git -C "$feed" -c credential.helper= -c credential.helper='!gh auth git-credential' push origin HEAD:refs/heads/security-feed
+          printf 'pushed=true\n' >>"$GITHUB_OUTPUT"
+      - name: Remove keys and temporary files
+        if: always()
+        run: |
+          if [ -n "${FEED_WORK:-}" ]; then rm -rf "$FEED_WORK"; fi
+
+  deploy:
+    needs: [refresh, publish]
+    # The refresh job can fail after pushing, to warn of a near targets expiry.
+    if: always() && (needs.refresh.outputs.pushed == 'true' || needs.publish.outputs.pushed == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      pages: write
+    # Shared with docs.yml, so each deployment starts from the latest of both.
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Merge the feed into the last built site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # A fork's run can also report the branch name main, so filter on who ran it.
+          # An empty run would make gh search every artifact in the repository.
+          runs=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/docs.yml/runs?branch=main&status=success&per_page=100" --jq \
+            ".workflow_runs[] | select((.event == \"push\" or .event == \"schedule\") and .head_repository.full_name == \"$GITHUB_REPOSITORY\") | .id")
+          run=${runs%%$'\n'*}
+          if ! [[ "$run" =~ ^[0-9]+$ ]]; then
+            printf '::error::No docs build from this repository is available to re-serve. Run docs.yml.\n'
+            exit 1
+          fi
+          built="$RUNNER_TEMP/built"
+          gh run download "$run" --repo "$GITHUB_REPOSITORY" --name github-pages --dir "$built"
+          mkdir "$built/site"
+          tar -xf "$built/artifact.tar" -C "$built/site"
+          if [ -n "$(find "$built/site" -type l -print -quit)" ]; then
+            printf 'refusing a site artifact containing symbolic links\n' >&2
+            exit 1
+          fi
+          ./scripts/ci/merge-security-feed.sh "$built/site" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          tar --hard-dereference --directory "$built/site" -cf "$RUNNER_TEMP/artifact.tar" .
+          jq -er '.signed.version' "$built/site/security-feed/metadata/timestamp.json" >"$RUNNER_TEMP/timestamp-version"
+      - name: Upload Pages artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: github-pages
+          path: ${{ runner.temp }}/artifact.tar
+          retention-days: 90
+          if-no-files-found: error
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
+      - name: Verify clients read this version, with no redirect
+        run: |
+          set -euo pipefail
+          want=$(cat "$RUNNER_TEMP/timestamp-version")
+          # Pages caches for up to ten minutes.
+          for _ in $(seq 1 60); do
+            got=$(curl -fsS --max-redirs 0 "https://hikyo.app/security-feed/metadata/timestamp.json" | jq -er '.signed.version') || got=
+            if [ "$got" = "$want" ]; then exit 0; fi
+            sleep 15
+          done
+          printf '::error::hikyo.app serves timestamp version %s, expected %s.\n' "${got:-none}" "$want"
+          exit 1

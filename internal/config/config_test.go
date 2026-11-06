@@ -651,6 +651,29 @@ func TestCLISocketIsAbsoluteCanonicalBootstrapConfiguration(t *testing.T) {
 	}
 }
 
+func TestSecurityMaintenanceStatusFileIsOptionalAbsoluteCanonicalPath(t *testing.T) {
+	cfg, _, err := Load("server", []string{"--dev"}, env(), nil)
+	if err != nil {
+		t.Fatalf("unset: %v", err)
+	}
+	if cfg.SecurityMaintenanceStatusFile != "" {
+		t.Fatalf("unset: file = %q", cfg.SecurityMaintenanceStatusFile)
+	}
+	path := filepath.Join(t.TempDir(), "status.json")
+	cfg, _, err = Load("server", []string{"--dev"}, env("HIKYO_SECURITY_MAINTENANCE_STATUS_FILE", path), nil)
+	if err != nil {
+		t.Fatalf("absolute: %v", err)
+	}
+	if cfg.SecurityMaintenanceStatusFile != path {
+		t.Fatalf("absolute: file = %q, want %q", cfg.SecurityMaintenanceStatusFile, path)
+	}
+	for _, bad := range []string{"status.json", "/run/../status.json", "/run//status.json"} {
+		if _, _, err := Load("server", []string{"--dev"}, env("HIKYO_SECURITY_MAINTENANCE_STATUS_FILE", bad), nil); err == nil || !strings.Contains(err.Error(), "absolute canonical") {
+			t.Fatalf("%q: err = %v", bad, err)
+		}
+	}
+}
+
 // The per-IP pre-auth allowance is a security ceiling. It is overridable for
 // exactly one traffic shape — a test harness driving every login of every flow
 // from one loopback address — and the override is fail-closed twice: a

@@ -61,6 +61,7 @@ for its ripple register.
 | revision-model ADR | [revision-model.md](./revision-model.md) |
 | saml-sp ADR | [saml-sp.md](./saml-sp.md) |
 | schema-model ADR | [schema-model.md](./schema-model.md) |
+| security-maintenance ADR (proposed) | [security-maintenance.md](./security-maintenance.md) |
 | scim-provisioning ADR | [scim-provisioning.md](./scim-provisioning.md) |
 | secret-scanning ADR | [secret-scanning.md](./secret-scanning.md) |
 | source-of-truth ADR | [source-of-truth.md](./source-of-truth.md) |

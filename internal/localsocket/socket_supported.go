@@ -20,7 +20,23 @@ import (
 // ValidatePath requires an absolute canonical socket path inside an existing,
 // euid-owned 0700 directory. Every ancestor must also prevent another local
 // user from replacing the directory entry, including through symbolic links.
-func ValidatePath(path string) error {
+func ValidatePath(path string) error { return validatePath(path, "", false) }
+
+// ValidatePathOnVolume is ValidatePath for a path under a mounted volume whose
+// root the platform owns and may leave group-writable (a Kubernetes fsGroup).
+// Only that one directory skips the group-writability test; its owner is still
+// checked, and a world-writable root without the sticky bit is refused.
+func ValidatePathOnVolume(path, volume string) error { return validatePath(path, volume, false) }
+
+// ValidatePathOnWorldWritableVolume is ValidatePathOnVolume for an operator who
+// explicitly accepted a volume root that any local user can write, such as a
+// local-path provisioner's 0777 directory. Another user could then replace the
+// state directory inside it.
+func ValidatePathOnWorldWritableVolume(path, volume string) error {
+	return validatePath(path, volume, true)
+}
+
+func validatePath(path, volume string, worldWritableVolume bool) error {
 	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
 		return errors.New("local CLI socket path must be absolute and canonical")
 	}
@@ -38,25 +54,25 @@ func ValidatePath(path string) error {
 	if err := requireOwner(parent, info); err != nil {
 		return err
 	}
-	if err := validateAncestors(parent); err != nil {
+	if err := validateAncestors(parent, volume, worldWritableVolume); err != nil {
 		return err
 	}
 	resolved, err := filepath.EvalSymlinks(parent)
 	if err != nil {
 		return fmt.Errorf("resolve local CLI socket parent: %w", err)
 	}
-	return validateAncestors(resolved)
+	return validateAncestors(resolved, volume, worldWritableVolume)
 }
 
 // Root and this euid are trusted custodians. Sticky directories owned by
 // either (for example /tmp) protect the next owned entry against other users.
 // Inspect every symlink target hierarchy, not just the final resolved path:
 // a trusted alias may reach a safe directory through a replaceable middle hop.
-func validateAncestors(parent string) error {
-	return validateAncestorTargets(parent, make(map[string]bool), 0)
+func validateAncestors(parent, volume string, worldWritableVolume bool) error {
+	return validateAncestorTargets(parent, volume, worldWritableVolume, make(map[string]bool), 0)
 }
 
-func validateAncestorTargets(parent string, checked map[string]bool, depth int) error {
+func validateAncestorTargets(parent, volume string, worldWritableVolume bool, checked map[string]bool, depth int) error {
 	if depth > 40 {
 		return errors.New("local CLI socket ancestor symlink chain is too deep")
 	}
@@ -87,12 +103,16 @@ func validateAncestorTargets(parent string, checked map[string]bool, depth int) 
 			if !filepath.IsAbs(target) {
 				target = current[:strings.LastIndex(current, string(filepath.Separator))+1] + target
 			}
-			if err := validateAncestorTargets(target, checked, depth+1); err != nil {
+			if err := validateAncestorTargets(target, volume, worldWritableVolume, checked, depth+1); err != nil {
 				return err
 			}
 			continue
 		}
-		if !info.IsDir() || (info.Mode().Perm()&0o022 != 0 && info.Mode()&os.ModeSticky == 0) {
+		replaceable := info.Mode().Perm()&0o022 != 0 && info.Mode()&os.ModeSticky == 0
+		if replaceable && current == volume && info.Mode().Perm()&0o002 != 0 && !worldWritableVolume {
+			return fmt.Errorf("volume root %s is world-writable without the sticky bit, so another local user could replace the state directory: remove its world write permission (chmod o-w, for example from an initContainer), use a storage class that leaves it group-writable, or accept the risk with accept_world_writable_volume_root", current)
+		}
+		if !info.IsDir() || (replaceable && current != volume) {
 			return fmt.Errorf("local CLI socket ancestor %s permits another user to replace path entries", current)
 		}
 	}
