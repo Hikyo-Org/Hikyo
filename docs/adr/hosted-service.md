@@ -85,7 +85,7 @@ The environment key seals `value_entries`, `pending_changes`, `snapshot_entries`
 | Service-account token (`wl`, `au`) | Symmetric, under HKDF over the token body with its own label. The token format is unchanged, and the server still stores only the SHA-256 verifier | No. A new or widened scope needs a re-mint with a holder present | **Re-minted** |
 | Installation (decision 11) | None. Only the outer layer, under `sealedSlotKey`, with the slot kind bound in the AAD | No. A holder must be present | Re-wrapped by the holder driving the rotation |
 
-**Rotation has a fixed order:** add the new key version, mint new tokens, distribute them, re-encrypt, then retire the old version. An old token can open only the old version, so it fails on rows already moved. Tokens must be replaced before re-encryption starts.
+**Rotation has a fixed order:** add the new key version, mint new tokens, distribute them, re-encrypt, then retire the old version. An old token can open only the old version, so it fails on rows already moved. Tokens must be replaced before re-encryption starts. A new token holds slots for both versions, so it keeps fetching rows on either version until the old version retires, which deletes those slots.
 
 **Rotation alone does not cure a captured holder key.** Its private key must also be replaced.
 
@@ -113,7 +113,7 @@ Client-side decryption was deferred, not rejected. See [Rejected alternatives](#
 | Copy, compare between environments | Need a key for each environment in one request |
 | Schema publish, key delete, rename, reclassify, declassify, group change | **Need keys for every affected environment in one request, or are refused.** A recovery key or a member holding them all can do this. An automation token spanning all environments must be re-minted after a new environment is created |
 | Rotating or re-encrypting an environment key | Driven by a holder in batches, each carrying the key. The installation-wide `reencrypt` skips Sealed orgs |
-| Backup | Exports ciphertext. A restore drill must prove `sealedSlotKey` by opening a sampled slot's outer layer, and may not report "no secret" when Sealed orgs exist |
+| Backup | Exports ciphertext. A restore drill must prove `sealedSlotKey` by opening a sampled slot's outer layer, and may not report "no secret" when Sealed orgs exist. It must also decrypt a sampled value of a canary Sealed org that the operator owns, using that org's holder. Without that, the drill reports Sealed recovery as unverified |
 | Adapter sync | **Needs unattended access on the target environment** (decision 11, from phase 2), and is refused without it. Refused entirely until phase 2 |
 | OIDC-federated machine credentials, including Kubernetes ServiceAccount federation | **A fetch needs unattended access on the environment fetched** (decision 11, from phase 2). Refused entirely until phase 2. Fetching an environment without it is refused, and other environments are unaffected. For those, the Kubernetes operator uses a bootstrap Secret holding a token |
 | Dynamic-secret providers | **Refused.** They are not a consumer of unattended access at launch |
@@ -133,7 +133,7 @@ Instance-scope grants cover only **org lifecycle** for a Sealed org: its existen
 - **Support access** is a time-limited grant approved by an org administrator, and mirrored to the org's audit trail. It conveys no key.
 - **Evidence.** Every instance-scope action on a Sealed org is recorded in that org's trail. A direct datastore edit leaves no such record, so this is evidence and not prevention.
 - **Unattended access.** An instance grant or support grant cannot enable it, add a consumer to it or open its slot. Decision 11 lists who can.
-- **Slots.** Adding or removing a holder needs a presented holder secret. An org can never remove its way below two holders or one recovery key. If removing a person's membership, including through SCIM, leaves fewer than two usable holders, the org blocks new publishes until it has two again.
+- **Slots.** Adding or removing a holder needs a presented holder secret. An org can never remove its way below two holders or one recovery key. **The same holds per environment:** each environment keeps at least two holders able to open it, and a recovery key counts. Removing a membership, including through SCIM, always proceeds. If it leaves the org or any environment with fewer than two usable holders, publishes to the affected environments are blocked and org administrators are alerted, until a holder adds a second one.
 - **Remote directory.** Paired remote instances do not see Sealed org names.
 
 Direct datastore access still reveals metadata. Blocking it inside the application does not change that, and the honest statement says so.
@@ -234,7 +234,7 @@ The owner accepted that anyone with production access can capture holder secrets
 - **The transit key changes every hour, and nodes stay stateless.** Epochs are clock-based. Each epoch's key pair is derived by HKDF from a new tier-3 `holderTransitKey`, wrapped by the master key, with the epoch in the info. Every node derives the same pair, so any node can serve any request. A public route publishes the current and next public keys, and the server accepts the previous, current and, within a short clock skew, next epochs. `holderTransitKey` can be rotated at any time, and losing it costs nothing, because no stored data is under it.
 - **No forward secrecy.** Every epoch key can be derived again from `holderTransitKey`. Anyone who later obtains the root key can open every archived capture of these envelopes, recovery keys included, however old.
 - **The envelope is bound to its request.** Its AAD binds the method, path, canonical query, a digest of the body, the org, the session or credential presenting it, the epoch, a client nonce and a timestamp. The server refuses a timestamp outside a window of 30 seconds. Captured ciphertext cannot be moved to another request, body or session. Nodes keep no record of used nonces, so whoever logged both the request and its session cookie can replay that exact request within the window, and receive its response.
-- **Hikyo's own clients also send service-account token bodies this way**: the web app, CLI, Kubernetes operator and MCP server. A raw bearer token stays accepted, so that existing CI keeps working. It is exposed to such logging, and opens its environments until the token expires or is revoked.
+- **Hikyo's own clients also send service-account token bodies this way**: the web app, CLI and Kubernetes operator. MCP clients send the raw token to the server, so decision 12 does not protect MCP traffic. A raw bearer token stays accepted, so that existing CI keeps working. It is exposed to such logging, and opens its environments until the token expires or is revoked.
 
 **What it does not stop:** a modified server, a memory dump, raw bearer tokens, replay within the window, someone holding both the captured traffic and the root key, or any component terminating TLS, including a CDN, that replaces the published public key. Plaintext values in responses are still visible to anything that records responses after TLS termination. This mitigation protects the long-lived keys, not the values in one response.
 
@@ -326,7 +326,7 @@ The owner's decisions left these open. The owner confirmed them on 2026-11-04, e
 
 ## Acceptance gates
 
-No hosted service may accept paying customers until all of these hold:
+No hosted service may accept paying customers until all of these hold, except gate 10, which must hold before decision 11 ships:
 
 1. A datastore dump plus the root key yields no plaintext from a Sealed environment that has never had unattended access, or from a dump taken after its key was rotated following removal, and allows no offline guess testing of plaintext through server-keyed digests, tested on both engines.
 2. Instance grants, self-grants and break-glass grants yield no values and no org-owned metadata through the application, including from an environment with unattended access. Attempts are visible in the org's trail.
@@ -338,7 +338,7 @@ No hosted service may accept paying customers until all of these hold:
 8. A rolling upgrade across a declared pair completes under load, within a declared error budget.
 9. The Sealed protocol specification exists, an independent cryptographic review of it and of decisions 3 to 5, 11 and 12 is complete, including the HPKE mode, the AAD layout, epoch derivation and the replay window, and its findings are resolved.
 10. Before decision 11 ships: an installation slot opens only for its listed consumers, every change listed in decision 11, including an issuer key source change, is refused without a presented key, a binding stops when its issuer's key source changes, and a restored slot stays inert until re-confirmed under the enabling formula. A token authenticates only into the org its request names, through that org's own binding. A binding in a Sealed org cannot name an instance-level issuer, and its audience must equal the required value. Enforced by test.
-11. A holder secret outside the decision 12 envelope is refused. An envelope with another request, body, session, an expired epoch or a timestamp outside the window fails. A capture at the service's own TLS termination, during a test run using only Hikyo's own clients, contains no holder secret or service-account token. Enforced by test.
+11. A holder secret outside the decision 12 envelope is refused, except a service-account token sent as a raw bearer, which stays accepted and is tested as such. An envelope with another request, body, session, an expired epoch or a timestamp outside the window fails. A capture at the service's own TLS termination, during a test run using only Hikyo's own clients, contains no holder secret or service-account token, apart from MCP traffic. Enforced by test.
 12. Until decision 11 ships, a Sealed org refuses creating, replacing or re-activating adapter targets, federation bindings and issuers, and no instance-level issuer can authenticate into a Sealed org. Enforced by test.
 
 ## Review record
