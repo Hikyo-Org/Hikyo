@@ -137,8 +137,8 @@ func restoreReconcile(ctx context.Context, run func(context.Context, tx.RestoreF
 // CompleteRestore is the closure the restore transaction runs against the
 // restored state, before it is committed or published. It advances the
 // credential epoch and retires pending human proofs, invalidates restored
-// adapter and dynamic-provider credentials, holds restored CA issuers, and
-// writes the reconstruction record in that same act. Any failure is returned
+// adapter and dynamic-provider credentials, holds restored CA issuers, purges
+// every personal value, and writes the reconstruction record in that same act. Any failure is returned
 // to abort the restore transaction.
 //
 // It is a package-level function rather than a method because it has no
@@ -176,6 +176,14 @@ func CompleteRestore(now time.Time, m store.Manifest) tx.RestoreFn {
 		pending, err := az.UnreconciledPrincipals(ctx)
 		if err != nil {
 			return err
+		}
+		// Personal values do not survive a restore (personal-values ADR): every
+		// principal is unreconciled once the epoch advances, so each owner's
+		// values are deleted here with a `restore` notice.
+		for _, principal := range pending {
+			if err := purgePersonalValues(ctx, az, principal.ID, PersonalCauseRestore, now); err != nil {
+				return err
+			}
 		}
 		e, err := domainEvent(ctx, audit.EventRestoreCompleted, "",
 			audit.Object{Type: "instance", ID: string(m.Engine)}, audit.Payload{
