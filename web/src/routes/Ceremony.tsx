@@ -75,7 +75,8 @@ export type CeremonyPurpose =
   | 'approve'
   | 'reject'
   | 'bypass'
-  | 'access';
+  | 'access'
+  | 'personal';
 
 const PURPOSE_VERB: Record<CeremonyPurpose, string> = {
   reveal: 'reveal',
@@ -88,6 +89,7 @@ const PURPOSE_VERB: Record<CeremonyPurpose, string> = {
   reject: 'reject changes in',
   bypass: 'bypass approvals in',
   access: 'take emergency access in',
+  personal: 'set your personal value in',
 };
 
 /**
@@ -126,6 +128,8 @@ const SIGNED_OPERATION: Record<
   // environment alone: consent to force a change through is not consent to
   // take standing authority.
   access: 'access',
+  // A personal value uses the environment's reveal gate (personal-values ADR).
+  personal: 'reveal',
 };
 
 /**
@@ -154,6 +158,11 @@ export type CeremonyRequest = {
   keys: ReadonlyArray<{ id: string; name: string; classification?: 'secret' | 'config' }>;
   /** The guard's state, which decides whether TOTP is on the table. */
   window: RevealWindow;
+  /**
+   * Only the account's own passkey or authenticator app may approve
+   * (personal values): an identity provider approval is not offered.
+   */
+  possessionOnly?: boolean;
 };
 
 /**
@@ -195,10 +204,11 @@ export function Ceremony({
   const methods = useAuthMethods();
   const oidcProvider = useSessionOIDCProvider();
   const inventory = useTotpStatus();
-  const offersOIDC = request.window.totp_offered && oidcProvider !== null && inventory.data?.can_reauth_oidc === true;
+  const possessionOnly = request.possessionOnly === true;
+  const offersOIDC = !possessionOnly && request.window.totp_offered && oidcProvider !== null && inventory.data?.can_reauth_oidc === true;
   const offersTOTP = request.window.totp_offered && inventory.data?.confirmed === true;
   const noProof = inventory.isSuccess && !inventory.data.has_passkey && !offersTOTP && !offersOIDC &&
-    (!request.window.totp_offered || !inventory.data.can_reauth_oidc || methods.isSuccess);
+    (possessionOnly || !request.window.totp_offered || !inventory.data.can_reauth_oidc || methods.isSuccess);
   const signed = SIGNED_OPERATION[request.purpose];
 
   const attempt = async (factor: 'passkey' | 'oidc' | 'totp', run: () => Promise<void>) => {
@@ -248,7 +258,7 @@ export function Ceremony({
       title={title}
       lede={
         <>
-          This confirms a <strong>{LEDE_NOUN[signed]}</strong>, not your account security. It is separate from
+          This confirms a <strong>{request.purpose === 'personal' ? 'change to your personal value' : LEDE_NOUN[signed]}</strong>, not your account security. It is separate from
           signing in and from any step-up you have already done.
           {workspace === null ? null : (
             <>
@@ -302,7 +312,18 @@ export function Ceremony({
 
       {workspace === null ? (
         <>
-          {noProof ? <Alert>This needs a second factor. Sign in through a provider that asserts one, or add an authenticator or password under <a href="/settings?tab=factors">Settings › Security</a>. {request.window.totp_offered ? 'Provider sign-in alone cannot authorise this operation.' : 'This policy requires an enrolled passkey.'}</Alert> : null}
+          {noProof && possessionOnly ? (
+            <Alert>
+              This needs an authenticator app or passkey on your account. Add one under{' '}
+              <a href="/settings?tab=factors">Settings › Security</a>, then try again.
+            </Alert>
+          ) : null}
+          {possessionOnly ? (
+            <CeremonyNotice glyph="passkey">
+              Personal values take your own passkey or authenticator app. An identity provider approval cannot authorise them.
+            </CeremonyNotice>
+          ) : null}
+          {noProof && !possessionOnly ? <Alert>This needs a second factor. Sign in through a provider that asserts one, or add an authenticator or password under <a href="/settings?tab=factors">Settings › Security</a>. {request.window.totp_offered ? 'Provider sign-in alone cannot authorise this operation.' : 'This policy requires an enrolled passkey.'}</Alert> : null}
           {inventory.isError ? <Alert>Your credential inventory could not be loaded. Close this dialog and try again.</Alert> : null}
           {oidcSession && request.window.totp_offered && methods.isError ? (
             <ProviderDiscoveryAlert onRetry={() => void methods.refetch()} />
@@ -315,7 +336,7 @@ export function Ceremony({
               {request.window.protected
                 ? 'This environment is protected, so every disclosure takes its own passkey ceremony. A code cannot authorise it.'
                 : 'This environment allows no reauthentication window, so every disclosure takes its own passkey ceremony. A code cannot authorise it.'}
-              {oidcSession
+              {oidcSession && !possessionOnly
                 ? ' Your identity provider cannot satisfy a per-disclosure gate; use a passkey.'
                 : ''}
             </CeremonyNotice>
