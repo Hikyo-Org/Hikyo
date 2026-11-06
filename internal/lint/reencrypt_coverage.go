@@ -93,6 +93,7 @@ var reencryptCovered = map[string]string{
 var reencryptExemptBlobs = map[string]string{
 	"remote_pairing_invites.capability_verifier": "SHA256 verifier of random 256-bit invitation capability",
 	"remote_pairing_replays.jti_verifier":        "SHA256 verifier of proof replay identifier, never decryptable",
+	"org_email_invitations.token_verifier":       "SHA256 verifier of a random single-use invitation artifact, never decryptable",
 	// Chrome identity avatars: plaintext PNG/JPEG/WebP bytes served to any reader of the org or project, not secret.
 	"orgs.identity_image":     "public avatar image bytes (not secret, not enveloped)",
 	"projects.identity_image": "public avatar image bytes (not secret, not enveloped)",

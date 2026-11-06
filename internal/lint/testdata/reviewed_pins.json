@@ -251,12 +251,12 @@
     "AdapterAdoptionConflictCount": {
       "authority": "Adopt verifies StoreAdaptersAdopt and loads the current target under the proof-derived org/project. This count additionally binds artifact, target, resolved owning environment, repository, destination, generation, surface and exact effective name, and refuses consumed consent. The Vault-only version requirement is derived from the current provider, not caller input; a missing or nonpositive witness cannot authorize Vault recovery. Direct generated tests independently change every coordinate/identity and prove consumed and missing-version refusal. The AWS witness requirement is likewise derived from the current provider; an empty legacy witness refuses AWS adoption. Generated-query tests pin both-engine witness refusal and preserve the version and full owning-chain cases.",
       "sql_hash": {
-        "sqlite": "b28b1b6582e7ea7077569ef37307b058a463e401ba20078542d94fce321b374a",
-        "postgres": "b28b1b6582e7ea7077569ef37307b058a463e401ba20078542d94fce321b374a"
+        "postgres": "b28b1b6582e7ea7077569ef37307b058a463e401ba20078542d94fce321b374a",
+        "sqlite": "b28b1b6582e7ea7077569ef37307b058a463e401ba20078542d94fce321b374a"
       },
       "api_hash": {
-        "sqlite": "263d7e438e94cbc70211aef8924fc1ec55d4653c51b83ce80b1b771018a9ddfa",
-        "postgres": "fd7b4699ff55d3521f69ca0c7fb3ac16556ea193d2a3da63598cf306cbe81ca9"
+        "postgres": "fd7b4699ff55d3521f69ca0c7fb3ac16556ea193d2a3da63598cf306cbe81ca9",
+        "sqlite": "263d7e438e94cbc70211aef8924fc1ec55d4653c51b83ce80b1b771018a9ddfa"
       },
       "tests": [
         "internal/isolation/adapter_reviewed_predicate_scope_test.go:TestAdapterAdoptionConflictCountBindsConsentAndOwningChain"
@@ -521,12 +521,12 @@
     "AdapterPlanLedger": {
       "authority": "PlanMaterial verifies StoreAdaptersPlanMaterial and passes the owning org/project/environment, target ID and current target generation. Every ledger/target/conflict/effect alias carries the same composite chain; target joins additionally bind current generation. Pending consent requires explicit adoption from the immediately preceding target generation and identical destination/repository/surface/normalized name, with no later successful write. Malformed SQLite times deny consent. No provider values are read, and generic Owned is never adoption authority. The AWS metadata witness subquery repeats exactly the reviewed version-witness owning-chain, generation, destination, repository, name and unconsumed-consent predicates; only its nonempty witness predicate differs. Both-engine provenance tests assert the exact witness is present only while that consent is pending, including failed/successful effects, destination/name changes, generation changes and malformed SQLite times.",
       "sql_hash": {
-        "sqlite": "b42eccfb0e359ffce3db731dc660101fb2adfdcb34085c3a7f54935b77bc6184",
-        "postgres": "7ab71c01f7bb72db532beae5a87972dcef652a047b7ef61847eea24c581c6858"
+        "postgres": "7ab71c01f7bb72db532beae5a87972dcef652a047b7ef61847eea24c581c6858",
+        "sqlite": "b42eccfb0e359ffce3db731dc660101fb2adfdcb34085c3a7f54935b77bc6184"
       },
       "api_hash": {
-        "sqlite": "559db55722ec0af149c17143eba67ec2b951e8ca1e57fe976daf557f501afb92",
-        "postgres": "b986af122022936ea1893eefd7821186ebf7b6ac4a3cfd5764918006ab99e465"
+        "postgres": "b986af122022936ea1893eefd7821186ebf7b6ac4a3cfd5764918006ab99e465",
+        "sqlite": "559db55722ec0af149c17143eba67ec2b951e8ca1e57fe976daf557f501afb92"
       },
       "tests": [
         "internal/store/adapter_adoption_provenance_test.go:TestAdapterAdoptionProvenanceSQLite",
@@ -733,12 +733,12 @@
     "AdapterWorkerLoadExecutionLedgerQuery": {
       "authority": "The worker execution guard pins the claimed job lease, target, generation and owning org/project/environment. Every ledger/target/conflict/effect alias binds that exact composite chain. Pending adoption additionally matches the live target generation to the verified job and consent from generation minus one, exact destination/repository/surface/name, and absence of a later successful write. Failed effects preserve consent; success, stale generation, foreign scope, missing or malformed provenance deny it. No tenant-selected identifiers or provider values are read. The AWS metadata witness subquery repeats exactly the reviewed version-witness owning-chain, generation, destination, repository, name and unconsumed-consent predicates; only its nonempty witness predicate differs. Both-engine provenance tests assert the exact witness is present only while that consent is pending, including failed/successful effects, destination/name changes, generation changes and malformed SQLite times.",
       "sql_hash": {
-        "sqlite": "59b1199060e377262dc0100f8387c8878583e1ba7c0754e8fd8d132bb50cfe3f",
-        "postgres": "e05de3a3e520c739e6de90c30df3089b7b799726b36779f56c72211fb4bbcb37"
+        "postgres": "e05de3a3e520c739e6de90c30df3089b7b799726b36779f56c72211fb4bbcb37",
+        "sqlite": "59b1199060e377262dc0100f8387c8878583e1ba7c0754e8fd8d132bb50cfe3f"
       },
       "api_hash": {
-        "sqlite": "f995c7c16400ca1dfeb52be1b01a07cd9dbd7abddfee5843adffc0e77365c2a3",
-        "postgres": "b791c9f55da688173704b53d0f956c37082ffdd8110cbf71894e4f7bbff52946"
+        "postgres": "b791c9f55da688173704b53d0f956c37082ffdd8110cbf71894e4f7bbff52946",
+        "sqlite": "f995c7c16400ca1dfeb52be1b01a07cd9dbd7abddfee5843adffc0e77365c2a3"
       },
       "tests": [
         "internal/store/adapter_adoption_provenance_test.go:TestAdapterAdoptionProvenanceSQLite",
@@ -968,8 +968,18 @@
       "hash": "7d2788ff12d92a4e142665b0da8fc1995223129d35d8687bfd8166de7fa26b89",
       "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
     },
+    "internal/store/authn/email_invitations.go:Resolver.restoreEmailInvitationNextEpoch": {
+      "hash": "f61d11a673282caa8808196aa60400ad7f2bd727402f3b0bb0594c398cb07fa6",
+      "reason": "Historical authenticated-archive catalog probe checks only the one fixed org_email_invitations table name introduced in migration 00086 before a generated credential-epoch maximum. An archive without the table remains supported; no tenant rows, request-selected identifiers, invitation tokens or addresses are read by handwritten SQL. nextEpoch preserves the sane-range and overflow guard.",
+      "callers": {
+        "internal/store/authn/remote_pairing.go:Resolver.restorePairingNextEpoch": "e77222e3043f8bf91e594f57871c7a0b3ebce052ad1b2a5f38200e6197a71fbf"
+      },
+      "dependencies": [
+        "internal/store/authn/restore.go:nextEpoch"
+      ]
+    },
     "internal/store/authn/remote_pairing.go:Resolver.restorePairingNextEpoch": {
-      "hash": "c9eaba5ed98f8f97ca1762ba4f0b7319d78ef6c8a78b6ab869a71f6a1d8f7e26",
+      "hash": "e77222e3043f8bf91e594f57871c7a0b3ebce052ad1b2a5f38200e6197a71fbf",
       "reason": "Historical authenticated-archive catalog probe checks only the two fixed remote_pairing_invites and remote_pairing_exchanges table names introduced together in migration 00079 before a generated credential-epoch maximum. Both absent remains supported, partial schema is refused, and no tenant rows, request-selected identifiers, PAKE records or capability verifiers are read by handwritten SQL. nextEpoch preserves the sane-range and overflow guard.",
       "callers": {
         "internal/store/authn/restore.go:Resolver.restoreDeveloperNextEpoch": "349e28128c9942ebb49d971b5c7632e04b7de760eb8dc883b425483e6bbc45e6"
