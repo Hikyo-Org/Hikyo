@@ -556,7 +556,7 @@ ssh certificates:
   "ssh-ca krl" (RevokedKeys); refresh both on a timer.
 
 transit (managed keys; key material never leaves custody):
-  hikyo transit key create <name> --env E --algorithm xchacha20-poly1305|ed25519|hmac-sha256
+  hikyo transit key create <name> --env E --algorithm xchacha20-poly1305|ed25519|mldsa65|hmac-sha256
       [--custody software] [--allow op,op] [--rotation-period 720h]
       [--caller principal=op,op]...
   hikyo transit key list --env E [-o table|json]

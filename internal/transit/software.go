@@ -127,7 +127,8 @@ func (s *Software) Decrypt(ctx context.Context, t Target, v Version, record, aad
 	return s.with(ctx, t, v, func(k *crypto.TransitKey) ([]byte, error) { return k.Decrypt(record, aad) })
 }
 
-// Sign returns a raw Ed25519 signature for message under this version.
+// Sign returns the signature payload (raw Ed25519, or algorithm-prefixed
+// ML-DSA-65) for message under this version.
 // Missing material, keyring, unsealing, and TransitKey.Sign errors propagate.
 func (s *Software) Sign(ctx context.Context, t Target, v Version, message []byte) ([]byte, error) {
 	return s.with(ctx, t, v, func(k *crypto.TransitKey) ([]byte, error) { return k.Sign(message) })

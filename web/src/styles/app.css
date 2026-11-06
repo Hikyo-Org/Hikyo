@@ -101,8 +101,7 @@ h3,
 .sidebar__version-label,
 .page--members .grants th,
 .page--members .inspect label,
-.page--members .capability__origin,
-.context-sidebar__org small {
+.page--members .capability__origin {
   margin: 0;
   font-size: var(--fs-xs);
   font-weight: 500;
@@ -689,28 +688,6 @@ fieldset.field > legend {
   flex: none;
 }
 
-.rail__action {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-control);
-  color: var(--tx-dim);
-  text-decoration: none;
-}
-
-.rail__action > .glyph {
-  font-size: var(--icon);
-}
-
-.rail__action:hover,
-.rail__action[aria-current='page'] {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: color-mix(in oklch, var(--bg), var(--accent) 9%);
-}
-
 .account-entry {
   position: relative;
   display: grid;
@@ -769,7 +746,7 @@ fieldset.field > legend {
 }
 
 /* The organisation block sits flush at the top of the sidebar, and 30px below
-   a context block (project or instance) when one is stacked above it. */
+   the project block when one is stacked above it. */
 .sidebar > .sidebar__section--organisation {
   margin-top: 0;
 }
@@ -784,13 +761,61 @@ fieldset.field > legend {
   max-width: 40ch;
 }
 
-/* margin-top:auto pins the version to the sidebar's foot regardless of how
-   short the section list above it is; the sidebar is a flex column. */
+/* The spacer pushes the foot group (instance tier, account on mobile, version)
+   down when there is room and keeps one section gap above it when there is not.
+   The foot sticks: it replaced the rail cog, so scrolling a long project block
+   must not hide the way to the instance pages. Sticky insets start inside the
+   sidebar's 20px bottom padding and the foot owns that padding, so both negative
+   offsets cancel it: no row shows below the foot, stuck or not. The tier
+   carries the hairline that divides it from the blocks above. */
+.sidebar__spacer {
+  flex: 1 0 var(--sidebar-section-gap);
+}
+
+.sidebar__foot {
+  position: sticky;
+  bottom: -20px;
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  margin-bottom: -20px;
+  padding-bottom: 20px;
+  background: var(--bg-panel);
+}
+
+/* Too short to give up that much height, or a drawer that also carries the
+   account block: scroll with the list instead. */
+@media (max-height: 639px), (max-width: 700px) {
+  .sidebar__foot {
+    position: static;
+  }
+}
+
+/* Keep a keyboard-focused row clear of the stuck foot (WCAG 2.4.11): the
+   tallest foot is the expanded tier's five rows plus heading and version. */
+@media (min-height: 640px) and (min-width: 701px) {
+  .sidebar {
+    scroll-padding-bottom: calc(5 * var(--control) + 112px);
+  }
+}
+
+.sidebar__foot > .sidebar__section--instance {
+  border-top: 1px solid var(--chrome-line);
+}
+
+.sidebar__foot > .sidebar__section + .sidebar__section {
+  margin-top: var(--sidebar-section-gap);
+}
+
+.sidebar__foot > .sidebar__section + .sidebar__section > h2 {
+  padding-top: 0;
+}
+
 .sidebar__version {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin: auto 0 0;
+  margin: 0;
   padding: var(--space-4) var(--space-4) 0;
   font-size: var(--fs-xs);
   color: var(--tx-faint);
@@ -805,8 +830,17 @@ fieldset.field > legend {
    anything in it. Both of these read --tx-dim only because --tx-faint did not
    exist; --tx-faint clears 4.5:1 on every surface in both themes. */
 .sidebar__section h2 {
+  display: flex;
   margin: 0;
   padding: 16px 16px 6px;
+}
+
+/* A long organisation name truncates; the full heading is its title. */
+.sidebar__heading-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar__items {
@@ -873,7 +907,7 @@ fieldset.field > legend {
 
 /* The project back-link: a `.sidebar__link` with a
    leading glyph, for the pages that have no project context block and no
-   org-page project list to fall back to (account settings today). */
+   org-page project list to fall back to (account settings, instance pages). */
 .sidebar__back {
   gap: var(--space-2);
 }
@@ -899,47 +933,6 @@ fieldset.field > legend {
   display: flex;
   flex-direction: column;
   min-width: 0;
-}
-
-.context-sidebar__org {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: var(--space-3) var(--space-4) var(--space-1);
-  min-width: 0;
-}
-
-.context-sidebar__org > span:last-child {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  line-height: 1.2;
-}
-
-.context-sidebar__org strong,
-.context-sidebar__org small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.context-sidebar__org strong {
-  font-size: var(--fs-md);
-}
-
-.context-sidebar__org small {
-  color: var(--tx-faint);
-  font-family: var(--font-mono);
-}
-
-.context-sidebar__org-avatar.avatar {
-  width: 28px;
-  height: 28px;
-  flex: none;
-  border: 0;
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  cursor: default;
 }
 
 .context-sidebar > h2 {
@@ -1460,7 +1453,6 @@ fieldset.field > legend {
   .rail__projects,
   .rail__divider,
   .rail__spacer,
-  .rail__action,
   .rail__account-space {
     display: none;
   }
@@ -1511,13 +1503,6 @@ fieldset.field > legend {
 
   .sidebar__mobile-only {
     display: block;
-  }
-
-  /* The drawer's organisation switcher above already names the active
-     organisation; repeating it as the project block's header is noise here.
-     Desktop keeps the header because the rail shows only a monogram. */
-  .context-sidebar__org {
-    display: none;
   }
 
   .sidebar__close {

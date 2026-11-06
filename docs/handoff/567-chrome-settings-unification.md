@@ -3,6 +3,8 @@
 Spec: `docs/superpowers/specs/2026-09-01-chrome-settings-invite-design.md` (PR1 section). The implementation plan was executed and removed after merge; the spec remains the design record.
 Follow-up: #568 (member invitation) stacks on this branch.
 
+> **Superseded in part (2026-11-05):** the rail cog and the instance context block are gone. The instance scope is a tier at the sidebar's foot and Remotes moved to `/instance/remotes`. See [1219-sidebar-instance-tier.md](./1219-sidebar-instance-tier.md).
+
 ## What changed
 
 **One navigation table.** `web/src/app/navigation.ts` now types `section` as

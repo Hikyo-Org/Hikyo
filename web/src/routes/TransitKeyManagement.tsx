@@ -56,6 +56,7 @@ const algorithmOperations: Record<TransitKey['algorithm'], TransitKey['allowed_o
   'xchacha20-poly1305': ['encrypt', 'decrypt', 'rewrap', 'datakey'],
   ed25519: ['sign', 'verify'],
   'hmac-sha256': ['hmac', 'hmac-verify'],
+  mldsa65: ['sign', 'verify'],
 };
 
 export function TransitCreateKey({ env, onClose }: { env: EnvRef; onClose: () => void }) {
@@ -88,7 +89,7 @@ export function TransitCreateKey({ env, onClose }: { env: EnvRef; onClose: () =>
       {error !== '' ? <Alert>{error}</Alert> : null}
       <Input label="Key name" required pattern="[a-z0-9][a-z0-9._-]{0,62}" maxLength={63} value={name} onChange={(event) => setName(event.target.value)} autoComplete="off" />
       <Select label="Algorithm" value={algorithm} onChange={(event) => { const next = zTransitAlgorithm.parse(event.target.value); setAlgorithm(next); setPlaintext(false); setAllowed(algorithmOperations[next]); }}>
-        <option value="xchacha20-poly1305">XChaCha20-Poly1305 (encryption)</option><option value="ed25519">Ed25519 (signing)</option><option value="hmac-sha256">HMAC-SHA256 (message authentication)</option>
+        <option value="xchacha20-poly1305">XChaCha20-Poly1305 (encryption)</option><option value="ed25519">Ed25519 (signing)</option><option value="mldsa65">ML-DSA-65 (post-quantum signing)</option><option value="hmac-sha256">HMAC-SHA256 (message authentication)</option>
       </Select>
       <Input label="Rotation period (seconds)" type="number" min={0} step={1} value={rotation} onChange={(event) => setRotation(event.target.value)} hint="Zero disables automatic rotation; otherwise at least 3600 seconds." />
       <CallerInput value={callers} onChange={setCallers} />

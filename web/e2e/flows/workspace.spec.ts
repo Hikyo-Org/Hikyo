@@ -188,7 +188,7 @@ test.describe('multi-instance', () => {
   });
 
   test('This instance directory shows identity, metadata and scoped refusal', async ({ page }, testInfo) => {
-    await page.goto('/remotes');
+    await page.goto('/instance/remotes');
     const panel = page.getByRole('region', { name: 'This instance', exact: true });
     await expect(panel.getByText('Identity', { exact: true })).toBeVisible();
     const identity = await panel.locator('dd').first().textContent();
@@ -241,7 +241,7 @@ test.describe('multi-instance', () => {
   });
 
   test('the directory card carries state, identity and the last-known listing', async ({ page }) => {
-    await page.goto('/remotes');
+    await page.goto('/instance/remotes');
     const entry = card(page);
     await expect(entry).toBeVisible();
     await expect(entry).toContainText(BASE_URL_B);
@@ -281,7 +281,7 @@ test.describe('multi-instance', () => {
   test('mints a connection credential in the UI, a peer connects with it, and revocation refuses the next fetch', async ({
     page,
   }) => {
-    await onB(page, '/remotes');
+    await onB(page, '/instance/remotes');
     const section = page.locator('#connection-credentials');
     await expect(section).toBeVisible();
 
@@ -351,11 +351,11 @@ test.describe('multi-instance', () => {
   }) => {
     // --- consent, through the serving instance's own UI ---------------------
     const b = await context.newPage();
-    await onB(b, '/remotes');
+    await onB(b, '/instance/remotes');
     await allowOrigin(b);
 
     // --- the ceremony -------------------------------------------------------
-    await page.goto('/remotes');
+    await page.goto('/instance/remotes');
     const entry = card(page);
     // Preparation is eager; the enabled action proves the network work has
     // completed before the click that must synchronously open the popup.
@@ -462,7 +462,7 @@ test.describe('multi-instance', () => {
     expect(headers['cookie'], 'the cross-origin probe carried cookies').toBeUndefined();
 
     // --- kill switch 1: the remote withdraws consent ------------------------
-    await onB(b, '/remotes');
+    await onB(b, '/instance/remotes');
     await b
       .getByRole('button', { name: `Remove ${VIEWING_ORIGIN} and kill its workspace sessions` })
       .click();
@@ -475,7 +475,7 @@ test.describe('multi-instance', () => {
     await expect(entry.getByRole('button', { name: 'Try again' })).toBeVisible({ timeout: 30_000 });
 
     // --- kill switch 2: revoked from the remote's active-session list -------
-    await onB(b, '/remotes');
+    await onB(b, '/instance/remotes');
     await allowOrigin(b);
 
     await entry.getByRole('button', { name: 'Try again' }).click();
@@ -517,12 +517,12 @@ test.describe('multi-instance', () => {
 
     // Consent, through B's own UI.
     const bPage = await context.newPage();
-    await onB(bPage, '/remotes');
+    await onB(bPage, '/instance/remotes');
     await allowOrigin(bPage);
     await bPage.close();
 
     // Open the workspace with the popup ceremony.
-    await page.goto('/remotes');
+    await page.goto('/instance/remotes');
     const entry = card(page);
     const proceed = entry.getByRole('button', { name: /^Continue to / });
     await expect(proceed).toBeVisible({ timeout: 30_000 });
@@ -574,7 +574,7 @@ test.describe('multi-instance', () => {
     // assertion would count, its "revoked 1 workspace session" is a real
     // assertion and must not be loosened to absorb this one's litter.
     const cleanup = await context.newPage();
-    await onB(cleanup, '/remotes');
+    await onB(cleanup, '/instance/remotes');
     await cleanup
       .getByRole('button', { name: `Remove ${VIEWING_ORIGIN} and kill its workspace sessions` })
       .click();
@@ -599,7 +599,7 @@ test.describe('multi-instance', () => {
     context,
   }) => {
     const b = await context.newPage();
-    await onB(b, '/remotes');
+    await onB(b, '/instance/remotes');
     await allowOrigin(b);
     await b.close();
 
@@ -616,7 +616,7 @@ test.describe('multi-instance', () => {
     const bSession = (await context.cookies()).filter((c) => c.domain === HOST_B);
     await context.clearCookies({ domain: HOST_B });
 
-    await page.goto('/remotes');
+    await page.goto('/instance/remotes');
     const entry = card(page);
     const proceed = entry.getByRole('button', { name: /^Continue to / });
     await expect(proceed).toBeVisible({ timeout: 30_000 });
@@ -656,7 +656,7 @@ test.describe('multi-instance', () => {
     await context.clearCookies({ domain: HOST_B });
     await context.addCookies(bSession);
     const cleanup = await context.newPage();
-    await onB(cleanup, '/remotes');
+    await onB(cleanup, '/instance/remotes');
     await cleanup
       .getByRole('button', { name: `Remove ${VIEWING_ORIGIN} and kill its workspace sessions` })
       .click();
@@ -807,7 +807,7 @@ pairingTest.describe('manual remote pairing', () => {
     const peer = readPairingPeer();
     const administrator = await context.newPage();
     try {
-      await page.goto('/remotes');
+      await page.goto('/instance/remotes');
       // The pre-existing fixture names B already; remove it before the actual
       // pairing ceremony so duplicate-identity protection remains in force.
       await card(page).getByRole('button', { name: 'Remove', exact: true }).click();
@@ -830,7 +830,7 @@ pairingTest.describe('manual remote pairing', () => {
 
       // Only the phrase crosses from the requester to this independent admin
       // tab. No request is submitted to B before the admin manually approves it.
-      await onB(administrator, '/remotes');
+      await onB(administrator, '/instance/remotes');
       await administrator.bringToFront();
       await administrator.getByRole('button', { name: 'Create pairing invitation', exact: true }).click();
       const approval = administrator.getByRole('complementary', { name: 'Create pairing invitation', exact: true });
@@ -909,7 +909,7 @@ pairingTest.describe('manual remote pairing', () => {
       // Preserve the browser workspace fixture after proving the genuine
       // pinned HTTPS exchange. This does not change its credential or binding.
       repointPairedRemoteAtB();
-      if (!page.isClosed()) await page.goto('/remotes');
+      if (!page.isClosed()) await page.goto('/instance/remotes');
     }
   });
 });

@@ -8,6 +8,8 @@ const base = {
   projectId: '',
   remote: '',
   isInstanceOperator: true,
+  activeOrgName: 'Acme',
+  projectName: 'Billing',
   systemScope: null,
   projects: [],
   onOrgPage: false,
@@ -27,7 +29,6 @@ describe('sidebarModel', () => {
     expect(model.organisation?.links.map((l) => l.label)).toEqual([
       'Overview',
       'Projects',
-      'Remotes',
       'Members',
       'Organisation settings',
       'SCIM provisioning',
@@ -36,13 +37,11 @@ describe('sidebarModel', () => {
     expect(model.organisation?.links.map((l) => l.to)).toEqual([
       '/',
       '/projects',
-      '/remotes',
       '/orgs/org_1/members',
       '/orgs/org_1/settings',
       '/orgs/org_1/scim',
       '/orgs/org_1/audit',
     ]);
-    expect(model.instance?.links.map((l) => l.to)).toEqual(['/instance', '/instance/config', '/instance/audit', '/instance/members']);
     expect(model.account.links.map((l) => l.to)).toEqual(['/settings']);
   });
 
@@ -78,6 +77,10 @@ describe('sidebarModel', () => {
     ]);
     expect(model.organisation).not.toBeNull();
     expect(model.instance).not.toBeNull();
+    expect(model.context?.title).toBe('Project');
+    expect(model.context?.qualifiers).toEqual(['Billing']);
+    expect(model.organisation?.title).toBe('Organisation');
+    expect(model.organisation?.qualifiers).toEqual(['Acme']);
   });
 
   it('disables the local-only project destinations for a remote workspace', () => {
@@ -103,44 +106,100 @@ describe('sidebarModel', () => {
     );
   });
 
-  it('makes the instance block the context on an instance route and does not repeat it', () => {
-    const model = sidebarModel({ ...base, surface: surfaceById('instance-members') });
-    expect(model.context?.kind).toBe('instance');
-    expect(model.context?.links.map((l) => l.to)).toEqual(['/instance', '/instance/config', '/instance/audit', '/instance/members']);
-    expect(model.instance).toBeNull();
+  it('shows the remote boundary in the headings and disables org-scoped organisation links in a workspace', () => {
+    const model = sidebarModel({ ...base, surface: surfaceById('matrix'), projectId: 'prj_1', remote: 'edge' });
+    expect(model.context?.qualifiers).toEqual(['on edge', 'prj_1']);
+    expect(model.organisation?.qualifiers).toEqual(['on edge']);
+    const links = model.organisation?.links;
+    for (const id of ['members', 'org-settings', 'scim', 'audit']) {
+      const row = mustFind(links, id);
+      expect(row.disabledReason).toBe(`${row.label} is local-instance only`);
+    }
+    // No org in their path: still the way back to local.
+    expect(mustFind(links, 'overview').disabledReason).toBeNull();
+    expect(mustFind(links, 'projects').disabledReason).toBeNull();
+    for (const row of sidebarModel({ ...base, surface: surfaceById('projects') }).organisation?.links ?? []) {
+      expect(row.disabledReason).toBeNull();
+    }
+  });
+
+  describe('instance tier', () => {
+    const tier = (input: Partial<Parameters<typeof sidebarModel>[0]>) =>
+      sidebarModel({ ...base, surface: surfaceById('projects'), ...input }).instance;
+    const noInstanceGrants = { isInstanceOperator: false, canReadInstanceAudit: false, canReadInstanceDirectory: false };
+
+    it('collapses an operator to Remotes and the entry row off the instance routes, and expands in place on them', () => {
+      expect(tier({})?.title).toBe('This instance');
+      expect(tier({})?.links.map((l) => l.id)).toEqual(['remotes', 'instance-admin']);
+      const expanded = sidebarModel({ ...base, surface: surfaceById('instance-members') });
+      expect(expanded.instance?.links.map((l) => [l.id, l.to])).toEqual([
+        ['remotes', '/instance/remotes'],
+        ['instance-admin', '/instance'],
+        ['instance-config', '/instance/config'],
+        ['instance-audit', '/instance/audit'],
+        ['instance-members', '/instance/members'],
+      ]);
+      // Collapsed rows are a prefix of the expanded ones: nothing jumps when the tier opens.
+      expect(expanded.instance?.links.slice(0, 2).map((l) => l.id)).toEqual(tier({})?.links.map((l) => l.id));
+      // The tier is never the top context block.
+      expect(expanded.context).toBeNull();
+    });
+
+    it('keeps Remotes for an operator holding no instance-directory, since connection custody lives there', () => {
+      expect(tier({ canReadInstanceDirectory: false })?.links.map((l) => l.id)).toContain('remotes');
+    });
+
+    it('gives an audit-only reader the audit trail and, expanded, nothing configurable', () => {
+      const audit = { ...noInstanceGrants, canReadInstanceAudit: true };
+      expect(tier(audit)?.links.map((l) => l.id)).toEqual(['instance-audit']);
+      const onInstance = sidebarModel({ ...base, ...audit, surface: surfaceById('instance-audit') });
+      expect(onInstance.instance?.links.map((l) => l.id)).toEqual(['instance-audit']);
+    });
+
+    it('gives a directory-only holder Remotes alone, collapsed or expanded', () => {
+      const directory = { ...noInstanceGrants, canReadInstanceDirectory: true };
+      expect(tier(directory)?.links.map((l) => l.id)).toEqual(['remotes']);
+      expect(sidebarModel({ ...base, ...directory, surface: surfaceById('remotes') }).instance?.links.map((l) => l.id)).toEqual(['remotes']);
+    });
+
+    it('gives a directory and audit reader both rows', () => {
+      const both = { ...noInstanceGrants, canReadInstanceAudit: true, canReadInstanceDirectory: true };
+      expect(tier(both)?.links.map((l) => l.id)).toEqual(['remotes', 'instance-audit']);
+    });
+
+    it('shows an ordinary member no tier at all, and no Remotes row anywhere', () => {
+      const model = sidebarModel({ ...base, ...noInstanceGrants, surface: surfaceById('instance-admin') });
+      expect(model.instance).toBeNull();
+      expect(model.organisation?.links.map((l) => l.id)).not.toContain('remotes');
+    });
+
+    it('renders for an operator with no organisation, whose way in the rail cog used to be', () => {
+      const model = tier({ activeOrgId: '' });
+      expect(model?.links.map((l) => l.id)).toEqual(['remotes', 'instance-admin']);
+    });
+
+    it('stays local and enabled in a remote workspace', () => {
+      const links = tier({ remote: 'edge' })?.links;
+      expect(links?.map((l) => [l.to, l.disabledReason])).toEqual([
+        ['/instance/remotes', null],
+        ['/instance', null],
+      ]);
+    });
+  });
+
+  it('offers the way back to a project on instance routes, with the organisation block above the tier', () => {
+    const model = sidebarModel({ ...base, surface: surfaceById('instance-config'), lastProjectId: 'prj_1', projects: [{ id: 'prj_1', name: 'Billing platform' }] });
+    expect(model.context).toBeNull();
+    expect(model.backToProject).toEqual({ label: 'Billing platform', to: '/orgs/org_1/projects/prj_1/matrix' });
     expect(model.organisation).not.toBeNull();
+    expect(model.orgProjectList).toBe(false);
   });
 
-  it('hides the instance block from non-operators and org links while no org is active', () => {
-    const model = sidebarModel({
-      ...base,
-      surface: surfaceById('projects'),
-      isInstanceOperator: false,
-      activeOrgId: '',
-    });
-    expect(model.instance).toBeNull();
+  it('hides org links while no org is active, keeping the instance tier', () => {
+    const model = sidebarModel({ ...base, surface: surfaceById('projects'), isInstanceOperator: false, activeOrgId: '' });
     expect(model.context).toBeNull();
-    expect(model.organisation?.links.map((l) => l.to)).toEqual(['/', '/projects', '/remotes']);
-  });
-
-  it('never shows the instance context to a non-operator even on its route', () => {
-    const model = sidebarModel({
-      ...base,
-      surface: surfaceById('instance-admin'),
-      isInstanceOperator: false,
-    });
-    expect(model.context).toBeNull();
-    expect(model.instance).toBeNull();
-  });
-
-  it('offers the audit reader only its instance trail without granting configuration navigation', () => {
-    const model = sidebarModel({
-      ...base,
-      surface: surfaceById('settings'),
-      isInstanceOperator: false,
-      canReadInstanceAudit: true,
-    });
-    expect(model.instance?.links.map((item) => item.id)).toEqual(['instance-audit']);
+    expect(model.organisation?.links.map((l) => l.to)).toEqual(['/', '/projects']);
+    expect(model.organisation?.qualifiers).toEqual([]);
   });
 
   it('links back to the last-opened project on a page with no context block and no org-page fallback (account settings)', () => {
@@ -192,6 +251,15 @@ describe('sidebarModel', () => {
     expect(isLinkActive(members, '/orgs/org_1/members', '')).toBe(false);
     expect(isLinkActive(members, '/orgs/org_1/settings', '?project=prj_1')).toBe(false);
   });
+
+  it('never marks a local row current on the remote page at the same path', () => {
+    const config: SidebarLink = { id: 'instance-config', label: 'Hikyo configuration', to: '/instance/config', disabledReason: null };
+    expect(isLinkActive(config, '/instance/config', '')).toBe(true);
+    expect(isLinkActive(config, '/instance/config', '?remote=edge')).toBe(false);
+    expect(isLinkActive(config, '/instance/config', '?remote=')).toBe(true);
+    const matrix: SidebarLink = { id: 'matrix', label: 'Environment matrix', to: '/m?remote=edge', disabledReason: null };
+    expect(isLinkActive(matrix, '/m', '?remote=edge')).toBe(true);
+  });
 });
 
 describe('sidebarModel in the Hikyo system scope', () => {
@@ -224,7 +292,6 @@ describe('sidebarModel in the Hikyo system scope', () => {
     expect(model.organisation?.links.map((l) => l.id)).toEqual([
       'overview',
       'projects',
-      'remotes',
       'members',
       'org-settings',
       'audit',

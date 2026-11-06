@@ -16,10 +16,9 @@ replacement) limit every `pqc-auth` claim. **The PQ release-authenticity claim
 stays HOLD.** On 2026-11-04 the owner authorized merge of this PR once CI is
 green and accepted publication in the next nightly; that is the maintainer
 security approval for this implementation as built, and it is not approval to
-enable a signer, activate a root or name ML-DSA recovery custody. The open owner
-choices (signing granularity, ML-DSA recovery custody, DEC-17 thresholds, the
-#1126 profile selector and vault path, the #1127 proxy leg, the API freeze) stay
-open and can still change this design. Cross-provider review is SKIPPED by
+enable a signer, activate a root or name ML-DSA recovery custody. The owner
+confirmed signing granularity as built on 2026-11-04 and deferred ML-DSA recovery custody,
+the other #1132 choices and DEC-17 thresholds; those can still change this design. Cross-provider review is SKIPPED by
 explicit owner instruction (2026-11-02) and is not CLEAN.
 
 ## Candidate
@@ -395,7 +394,7 @@ re-enable a revoked key or destroy a retained key; see the runbook.
 ## Next authorized steps (each needs its own authority)
 
 1. Maintainer security review of this verifier; owner answers on release key
-   versus recovery key and on signing granularity.
+   versus recovery key once a signer exists. Signing granularity is confirmed as built.
 2. Owner names ML-DSA recovery custody (blocks the runbook).
 2a. Owner sets DEC-17 latency, CPU and memory thresholds from the baseline above
    before #1132 is accepted; none is proposed here.

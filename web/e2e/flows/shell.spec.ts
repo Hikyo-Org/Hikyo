@@ -171,7 +171,8 @@ test.describe('app chrome', () => {
     await expect(sidebar).toHaveCSS('width', '218px');
     await expect(header).toHaveCSS('height', '61px');
     await expect(header.getByText('Signed in as')).toBeVisible();
-    await expect(rail.getByRole('link', { name: 'Instance settings' })).toBeVisible();
+    // The rail carries no instance entry: the tier at the sidebar's foot replaced the cog.
+    await expect(rail.getByRole('link', { name: 'Instance settings' })).toHaveCount(0);
 
     const projectNav = sidebar.getByRole('navigation', { name: 'Project' });
     const matrixLink = projectNav.getByRole('link', { name: 'Environment matrix' });
@@ -181,11 +182,8 @@ test.describe('app chrome', () => {
     );
     await expect(matrixLink).toHaveCSS('min-height', control);
     await expect(matrixLink).toHaveCSS('font-size', '13px');
-    await expect(sidebar.locator('.context-sidebar__org-avatar')).toHaveCSS('width', '28px');
-    // whoami reports no organisation role, so the org block states none.
-    await expect(sidebar.locator('.context-sidebar__org small')).toHaveCount(0);
     await expect(sidebar.locator('.context-sidebar__group').first()).toHaveCSS('height', control);
-    await expect(sidebar.getByRole('heading', { name: 'Organisation' })).toBeVisible();
+    await expect(sidebar.getByRole('heading', { name: /^Organisation\s*·\s*\S/ })).toBeVisible();
     await expect(projectNav.getByRole('link', { name: 'Version history' })).toHaveCount(0);
     await expect(projectNav.getByRole('link', { name: 'Machine access' })).toBeVisible();
     await expect(projectNav.getByRole('link', { name: 'Members' })).toBeVisible();
@@ -193,26 +191,63 @@ test.describe('app chrome', () => {
     // reachable in project mode (#567).
     // Exact: the project block's `Project audit` (#572) also contains the word.
     await expect(sidebar.getByRole('link', { name: 'Audit', exact: true })).toBeVisible();
-    // Account and instance live in the rail on desktop, not in the sidebar.
+    // Account lives in the rail-foot menu on desktop, not in the sidebar. The
+    // instance tier sits at the foot, collapsed to Remotes and its entry row.
     await expect(sidebar.getByRole('link', { name: 'Account & security' })).toHaveCount(0);
-    await expect(sidebar.getByRole('link', { name: 'Instance settings' })).toHaveCount(0);
+    const tier = sidebar.getByRole('region', { name: 'Instance pages' });
+    await expect(tier.getByRole('heading', { name: 'This instance' })).toBeVisible();
+    await expect(tier.getByRole('link', { name: 'Remotes' })).toBeVisible();
+    await expect(tier.getByRole('link', { name: 'Instance settings' })).toBeVisible();
+    await expect(tier.getByRole('link', { name: 'Instance members' })).toHaveCount(0);
   });
 
-  test('stacks the instance context above the organisation block on instance routes', async ({ page }, testInfo) => {
+  test('keeps the instance tier in view and a focused row clear of it on a short desktop', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name === 'mobile', 'the drawer scrolls its foot with the list');
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.getByRole('navigation', { name: 'Organisations' }).getByRole('button', { name: /^Project / }).first().click();
+
+    const sidebar = page.getByRole('navigation', { name: 'Sections', exact: true });
+    const foot = sidebar.locator('.sidebar__foot');
+    await expect(sidebar.getByRole('navigation', { name: 'Project', exact: true })).toBeVisible();
+    await expect(foot.getByRole('link', { name: 'Remotes' })).toBeInViewport({ ratio: 1 });
+
+    const audit = sidebar.getByRole('link', { name: 'Audit', exact: true });
+    await audit.focus();
+    await expect(foot.getByRole('link', { name: 'Remotes' })).toBeInViewport({ ratio: 1 });
+    await expect(async () => {
+      const [row, footBox] = await Promise.all([audit.boundingBox(), foot.boundingBox()]);
+      expect((row?.y ?? 0) + (row?.height ?? 0)).toBeLessThanOrEqual(footBox?.y ?? 0);
+    }).toPass();
+  });
+
+  test('sends the legacy /remotes path to /instance/remotes, keeping its query and hash', async ({ page }) => {
+    await page.goto('/remotes?probe=1#connection-credentials');
+    await expect(page).toHaveURL(/\/instance\/remotes\?probe=1#connection-credentials$/);
+    await expect(page.getByRole('heading', { name: 'Remotes', level: 1 })).toBeVisible();
+  });
+
+  test('expands the instance tier in place at the foot, below the organisation block, on instance routes', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name === 'mobile', 'desktop sidebar composition');
     await page.goto('/instance/members');
     const sidebar = page.getByRole('navigation', { name: 'Sections', exact: true });
-    const instanceNav = sidebar.getByRole('navigation', { name: 'Instance' });
-    await expect(instanceNav.getByRole('link', { name: 'Instance members' })).toHaveAttribute(
+    const tier = sidebar.getByRole('region', { name: 'Instance pages' });
+    await expect(tier.getByRole('link', { name: 'Instance members' })).toHaveAttribute(
       'aria-current',
       'page',
     );
     // Exact matching: the settings link must not light up under its sibling.
-    await expect(instanceNav.getByRole('link', { name: 'Instance settings' })).not.toHaveAttribute(
+    await expect(tier.getByRole('link', { name: 'Instance settings' })).not.toHaveAttribute(
       'aria-current',
       'page',
     );
-    await expect(sidebar.getByRole('heading', { name: 'Organisation' })).toBeVisible();
+    // Remotes leads the instance rows, so nothing jumps when the tier opens.
+    await expect(tier.getByRole('link').first()).toHaveText('Remotes');
+    const organisation = sidebar.getByRole('region', { name: /^Organisation/ });
+    await expect(organisation).toBeVisible();
+    const [orgBox, tierBox] = await Promise.all([organisation.boundingBox(), tier.boundingBox()]);
+    expect(tierBox?.y ?? 0).toBeGreaterThan((orgBox?.y ?? 0) + (orgBox?.height ?? 0));
+    // No project context on an instance page: the way back to a project shows.
+    await expect(sidebar.locator('.sidebar__back')).toBeVisible();
     await expect(page.getByLabel('Breadcrumb')).toContainText('Instance');
   });
 
@@ -233,8 +268,10 @@ test.describe('app chrome', () => {
       drawer.locator('.sidebar__mobile-projects button, .sidebar__section--projects a'),
     ).not.toHaveCount(0);
     await expect(drawer.getByRole('link', { name: 'Account & security' })).toBeVisible();
-    await expect(drawer.getByRole('link', { name: 'Instance settings' })).toBeVisible();
-    await expect(drawer.getByRole('link', { name: 'Instance members' })).toBeVisible();
+    // The same tier as desktop, collapsed off the instance routes.
+    const tier = drawer.getByRole('region', { name: 'Instance pages' });
+    await expect(tier.getByRole('link', { name: 'Remotes' })).toBeVisible();
+    await expect(tier.getByRole('link', { name: 'Instance settings' })).toBeVisible();
     await expect(drawer.locator(':focus')).toBeVisible();
 
     await page.keyboard.press('Shift+Tab');
@@ -442,7 +479,12 @@ test.describe('app chrome', () => {
     await page.route('**/api/v1/auth/whoami', async (route) => {
       const response = await route.fetch();
       const body = await response.json();
-      body.capabilities = { ...body.capabilities, instance_operator: false };
+      body.capabilities = {
+        ...body.capabilities,
+        instance_operator: false,
+        instance_audit_read: false,
+        instance_directory: false,
+      };
       await route.fulfill({ response, json: body });
     });
     let retentionCalled = false;
@@ -454,13 +496,11 @@ test.describe('app chrome', () => {
     if (testInfo.project.name === 'mobile') {
       await openNav(page);
     }
-    const instanceAdmin =
-      testInfo.project.name === 'mobile'
-        ? page
-            .getByRole('navigation', { name: 'Sections', exact: true })
-            .getByRole('link', { name: 'Instance settings' })
-        : page.locator('.rail__action[aria-label="Instance settings"]');
-    await expect(instanceAdmin).toHaveCount(0);
+    // Nothing instance-scoped is held, so there is no tier at all, and no Remotes row.
+    const sections = page.getByRole('navigation', { name: 'Sections', exact: true });
+    await expect(sections.getByRole('region', { name: 'Instance pages' })).toHaveCount(0);
+    await expect(sections.getByRole('link', { name: 'Instance settings' })).toHaveCount(0);
+    await expect(sections.getByRole('link', { name: 'Remotes' })).toHaveCount(0);
     expect(retentionCalled).toBe(false);
     // whoami is re-read on load, focus and hydrate, so drop the async override
     // before the page tears down, a route.fetch still in flight at test end

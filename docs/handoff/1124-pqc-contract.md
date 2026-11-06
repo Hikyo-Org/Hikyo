@@ -32,10 +32,10 @@ Owner decisions of 2026-11-02 and the amendment route are recorded once, in the
 **Update 2026-11-04.** The owner superseded the "draft, not merge-ready" hold: merge
 to `dev` is authorized once required checks are green, bottom-up, and publication in
 the next nightly is accepted. That instruction is the security approval for each PR's final
-reviewed head, except #1172, which is held. Merging this PR makes nothing operative; a banner
+reviewed head, except #1172, which that authorization held back. Merging this PR makes nothing operative; a banner
 whose trigger is the #1126 or #1127 implementation becomes operative when #1158 or #1156
 merges, although those tickets stay open. Decisions still
-open are listed in the ADR row for #1148.
+open are listed in the #1123 ledger, `1123-post-quantum-program.md`.
 
 ## What the maintainer approval covered
 

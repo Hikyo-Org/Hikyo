@@ -82,6 +82,7 @@ var transitAlgorithmOps = map[crypto.TransitAlgorithm][]string{
 	crypto.TransitXChaCha20Poly1305: {TransitOpEncrypt, TransitOpDecrypt, TransitOpRewrap, TransitOpDataKey, TransitOpDataKeyPlaintext},
 	crypto.TransitEd25519:           {TransitOpSign, TransitOpVerify},
 	crypto.TransitHMACSHA256:        {TransitOpHMAC, TransitOpHMACVerify},
+	crypto.TransitMLDSA65:           {TransitOpSign, TransitOpVerify},
 }
 
 // transitProducing are the operations that create new ciphertext, signatures,

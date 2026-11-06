@@ -37,6 +37,7 @@ for its ripple register.
 | compose-integration ADR | [compose-integration.md](./compose-integration.md) |
 | deployment-adapter ADR | [deployment-adapter.md](./deployment-adapter.md) |
 | design-tooling ADR | [design-tooling.md](./design-tooling.md) |
+| desktop-app ADR | [desktop-app.md](./desktop-app.md) |
 | encryption-model ADR | [encryption-model.md](./encryption-model.md) |
 | flat-model ADR | [flat-model.md](./flat-model.md) |
 | github-adapter ADR | [github-adapter.md](./github-adapter.md) |

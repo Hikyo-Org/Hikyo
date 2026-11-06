@@ -67,3 +67,18 @@ export const CreateKey: Story = { play: async ({ canvas }) => {
 export const ReadRefused: Story = { parameters: { app: { responses: [environments, { url: keysPath, status: 403, body: { error: { code: 'forbidden', message: 'Forbidden' } } }] } }, play: async ({ canvas }) => {
   await expect(await canvas.findByText('Transit access was refused. Check your environment permissions, caller grant and second factor.')).toBeVisible();
 } };
+// Shaped like a real ML-DSA-65 SubjectPublicKeyInfo (OID and length header, 1974
+// bytes, 2632 base64 characters); the key bytes are filler.
+const spki = `MIIHsjALBglghkgBZQMEAxIDggehAA${'Q'.repeat(2602)}`;
+const postQuantum = {
+  ...key, id: 'trk_00000000-0000-7000-8000-000000000002', name: 'attestations', algorithm: 'mldsa65', allowed_operations: ['sign', 'verify'],
+  rotation_period_seconds: 0, rotation_due: false,
+  versions: [{ version: 1, material: 'sealed', created_at: at, public_key: spki }, { version: 2, material: 'sealed', created_at: at, public_key: spki.replace('Q', 'R') }],
+};
+export const PostQuantumSigningKey: Story = { parameters: { app: { path: `${path}&key=${postQuantum.name}`, responses: [environments, { url: keysPath, body: { items: [key, postQuantum] } }, { url: `${keysPath}/${postQuantum.name}`, body: postQuantum }] } }, play: async ({ canvas }) => {
+  await expect(await canvas.findByRole('button', { name: 'Inspect attestations' })).toBeVisible();
+  const detail = await canvas.findByRole('region', { name: 'Selected Transit key' });
+  await expect(within(detail).getByText('mldsa65')).toBeVisible();
+  await userEvent.click(within(detail).getByText('Public key for version 1'));
+  await expect(await within(detail).findByText(/base64 SubjectPublicKeyInfo/)).toBeVisible();
+} };

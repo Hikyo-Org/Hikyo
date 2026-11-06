@@ -13,8 +13,11 @@ What does take effect when the pull request carrying this note merges is the
 E-01 banner on the pairing ADR. The register says a decision takes effect only
 after its amendment and the implementing change, "which needs its own security
 approval" ([register](../../adr/post-quantum-migration.md#decision-register)).
-The owner gave that maintainer security approval on 2026-11-04 by authorizing this merge. The register records DEC-13 (a); options A to D, the DEC-13 wording and the E-01 fields stay open. The E-01 row is also not yet
-effective as an exception; see [E-01 as registered](#e-01-as-registered-and-a-proposed-row).
+The owner gave that maintainer security approval on 2026-11-04 by authorizing this merge.
+On the same day the owner decided option A below (stay HOLD under E-01), accepted the
+E-01 fields in [E-01 as registered](#e-01-as-registered-and-the-accepted-row), and
+accepted the DEC-13 wording (its last sentence since updated to say the narrowing is done) and the #1135 narrowing text in the
+[handoff](../../handoff/1130-pairing-hold.md). #1130 stays open as the tracked residual gap.
 
 Source read at `f5d549182` (PR #1156 head). The four named files, and
 `internal/authz/remote_pairing.go`, have no diff against the issue baseline
@@ -38,7 +41,7 @@ exists".
    independently analyzed by at least three different groups". Section 2 names
    long-lived passwords as the primary use case of its CPaceOQUAKE+ variant, and it calls one-time device pairing "a
    comparatively weak motivating example". DEC-13's PAKE blocker stands.
-2. **One DEC-13 premise has changed.** The register says "`go-jose` lacks ML-DSA".
+2. **One DEC-13 premise has changed.** The register said "`go-jose` lacks ML-DSA"; the row is now corrected.
    `go-jose` v4.1.8, published 2026-11-02T17:56:45Z (the day of the decision), adds
    ML-DSA behind `//go:build go1.27`, and RFC 9964 (Proposed Standard, 2026-05-20)
    defines the JOSE identifiers. Hikyo builds with Go 1.27.3 but pins `go-jose`
@@ -213,7 +216,7 @@ bounds bind, not a preference for it.
 
 ## Options for the owner
 
-No option is selected here. DEC-13 is the owner's.
+Decided on 2026-11-04: the owner chose **option A**, as recommended. DEC-13 is the owner's.
 
 | | Option | Consequence |
 | --- | --- | --- |
@@ -279,25 +282,24 @@ the empty-context rule against DEC-07, or the DEC-03 form for credentials; heade
 qualification of supported edges; NIST action on PAKEs; a published practical attack
 on SRP-2048 parameters or on ML-DSA. A trigger starts a recheck, not a build.
 
-## E-01 as registered, and a proposed row
+## E-01 as registered, and the accepted row
 
 [migration](migration.md#exception-register) says an exception is "effective only
 once its row has its peer, version, expiry and recheck trigger, as DEC-10
-requires", and DEC-10 caps expiry at 180 days or the next trigger. The E-01 row
-(Surface "Pairing, DPoP, SRP, pins (I20)"; Limitation "Classical authenticity;
-active forger captures transcript; pins from a classical chain"; Child #1130;
-Decision DEC-13) has none of those fields, as no row in that table does. Its
-limitation also omits the recorder case established above. So the pairing ADR
-banner records an exception that is not yet effective. The owner can accept the
-fields below; they are a proposal and nothing in the register or in
-`migration.md` is edited here.
+requires", and DEC-10 caps expiry at 180 days or the next trigger. The E-01 row as
+first registered (Surface "Pairing, DPoP, SRP, pins (I20)"; Limitation "Classical
+authenticity; active forger captures transcript; pins from a classical chain"; Child
+#1130; Decision DEC-13) had none of those fields, and its limitation omitted the
+recorder case established above. On 2026-11-04 the owner accepted the fields below,
+with the first release named as every release to date, and they are now on the E-01
+row in `migration.md`. The row is effective from that date.
 
-| Field | Proposed value |
+| Field | Accepted value |
 | --- | --- |
 | Owner | Marc Went |
 | Peer | Any remote Hikyo instance reached by pairing (`/api/v1/auth/pairing/*`) or by a paired directory fetch (`/api/v1/instance/directory`) |
-| Version | Invitation bundle version 1, SRP version 4 (`go-srp` v0.0.7) and the Ed25519 DPoP profile, as in the source at `f5d549182`; the owner names the first Hikyo release it applies to |
+| Version | Invitation bundle version 1, SRP version 4 (`go-srp` v0.0.7) and the Ed25519 DPoP profile, as in the source at `f5d549182`; every Hikyo release to date |
 | Limitation | Classical authenticity only. (1) Active forger: a forged classical pinned leaf receives the capability, the SRP messages and the bearer credential. (2) Recorder: an adversary who later breaks the classical key exchange of any recorded pairing or directory exchange obtains the bearer credential and public key, and with a quantum computer the DPoP signing key, and can authenticate the connection until the credential expires or is revoked (at most 365 days). A guessable phrase in a recorded pairing is recoverable offline. (3) The pin is read over a classical chain |
 | Claim limitation | No PQ authenticity, pin or password-exchange claim for pairing. No confidentiality claim for the pairing hop at compat (E-08); a hybrid group protects only exchanges that were hybrid when recorded |
-| Expiry | At most 180 days from acceptance or the next trigger (2027-05-02 if accepted on 2026-11-03); at most two renewals, then an ADR-recorded decision (DEC-10) |
+| Expiry | 2027-05-03 (180 days from the owner's acceptance on 2026-11-04) or the next trigger; at most two renewals, then an ADR-recorded decision (DEC-10) |
 | Recheck trigger | The triggers above |

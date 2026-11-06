@@ -28,7 +28,9 @@ export function TransitKeyFacts({ transitKey }: { transitKey: TransitKey }) {
       <dt>Deletion scheduled</dt><dd>{transitKey.deletion_after == null ? 'Not scheduled' : formatWhen(transitKey.deletion_after)}</dd>
       <dt>Allowed operations</dt><dd>{transitKey.allowed_operations.join(', ')}</dd>
     </dl>
-    <h3>Key versions</h3><div className="table-scroll"><table className="values__table machine__table">
+    <h3>Key versions</h3>
+    {transitKey.algorithm === 'mldsa65' ? <p className="field__hint">Public keys of this ML-DSA-65 key are base64 SubjectPublicKeyInfo (SPKI), which verifiers load after decoding the base64 or wrapping it as PEM. Ed25519 keys show the raw 32-byte key.</p> : null}
+    <div className="table-scroll"><table className="values__table machine__table">
       <caption className="visually-hidden">Public version metadata for {transitKey.name}</caption><thead><tr><th scope="col">Version</th><th scope="col">Material status</th><th scope="col">Created</th><th scope="col">Public key</th></tr></thead>
       <tbody>{transitKey.versions.map((version) => <tr key={String(version.version)}><td>{String(version.version)}</td><td>{version.material}</td><td>{formatWhen(version.created_at)}</td><td>{version.public_key == null ? 'None' : <TextareaPublicKey value={version.public_key} version={String(version.version)} />}</td></tr>)}</tbody>
     </table></div>
