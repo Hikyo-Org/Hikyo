@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { ApiError } from './client.ts';
-import { countsMark, NOTICE_CAUSE_TEXT, ownMark, personalSetRefusalText } from './personal.ts';
+import { countsMark, NOTICE_CAUSE_TEXT, ownMark, personalSetRefusalText, personalWarningText } from './personal.ts';
 
 const count = (over: Partial<{ holders: number; notices: number; required: boolean }>) => ({
   key_id: 'k1',
@@ -34,9 +34,9 @@ describe('ownMark', () => {
   const entry = { name: 'DATABASE_URL', key_id: 'k1', set: false };
 
   it('says suspended before anything else', () => {
-    expect(ownMark({ ...entry, set: true, suspended: true, warnings: ['too long'] })).toEqual({
+    expect(ownMark({ ...entry, set: true, suspended: true })).toEqual({
       text: 'personal · suspended',
-      words: 'your personal value is suspended and not delivered, breaks a schema rule (a warning only)',
+      words: 'your personal value is suspended and not delivered',
     });
   });
 
@@ -46,11 +46,24 @@ describe('ownMark', () => {
     expect(mark?.words).toContain(NOTICE_CAUSE_TEXT.administrator);
   });
 
-  it('distinguishes set, warned, missing and absent', () => {
+  it('distinguishes set, missing and absent', () => {
     expect(ownMark({ ...entry, set: true })?.text).toBe('personal');
-    expect(ownMark({ ...entry, set: true, warnings: ['pattern'] })?.text).toBe('personal · warning');
     expect(ownMark({ ...entry, required: true })?.text).toBe('personal · missing');
     expect(ownMark(entry)).toBeNull();
+  });
+});
+
+describe('personalWarningText', () => {
+  it('names the broken rules and says the value is still delivered', () => {
+    expect(personalWarningText('API_TOKEN', ['maxLength', 'pattern'])).toBe(
+      'Your value for API_TOKEN does not satisfy these rules of the key: maxLength, pattern. This is a warning only: the value is kept and still delivered to you.',
+    );
+    expect(personalWarningText('API_TOKEN', ['pattern'])).toContain('this rule of the key: pattern.');
+  });
+
+  it('is silent without warnings', () => {
+    expect(personalWarningText('API_TOKEN', undefined)).toBeNull();
+    expect(personalWarningText('API_TOKEN', [])).toBeNull();
   });
 });
 

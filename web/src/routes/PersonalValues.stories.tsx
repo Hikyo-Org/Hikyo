@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { zEnvironmentList, zKeyList, zPersonalValueList, zRevealWindow, zTotpStatus } from '@hikyo/zod';
-import { expect, userEvent, waitFor, within } from 'storybook/test';
+import { zEnvironmentList, zKeyList, zPersonalValueEntry, zPersonalValueList, zRevealWindow, zTotpStatus } from '@hikyo/zod';
+import { expect, spyOn, userEvent, waitFor, within } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
@@ -10,8 +10,9 @@ import { ORG, PRJ, STAGING as ENV } from '../testkit/ids.ts';
 import { PersonalValues } from './PersonalValues.tsx';
 
 // My personal values for one environment: the owner's own values, masked, with
-// the checklist of required keys, removal notices, suspension and warnings.
-// Set and reveal run the reveal ceremony, which these stories do not drive.
+// the checklist of required keys, removal notices and suspension. Set and reveal
+// run the reveal ceremony; the warning stories open a live window so it asks
+// nothing, and the response names the schema rules the value breaks.
 const PATH = `/orgs/${ORG}/projects/${PRJ}/environments/${ENV}/personal-values`;
 const ROUTE = '/orgs/:org/projects/:project/environments/:environment/personal-values';
 const PROJECT_URL = `/api/v1/orgs/${ORG}/projects/${PRJ}`;
@@ -56,7 +57,7 @@ const populated = {
     { key_id: keyId(2), name: 'STRIPE_SECRET_KEY', set: false, required: true },
     { key_id: keyId(3), name: 'SENTRY_DSN', set: false, notice: 'administrator' },
     { key_id: keyId(4), name: 'DEBUG_TOKEN', set: true, suspended: true, suspended_at: '2026-10-20T12:00:00Z' },
-    { key_id: keyId(5), name: 'FEATURE_PREVIEW_KEY', set: true, warnings: ['longer than 32 characters'] },
+    { key_id: keyId(5), name: 'FEATURE_PREVIEW_KEY', set: true },
   ],
 } satisfies z.input<typeof zPersonalValueList>;
 
@@ -74,7 +75,7 @@ const factors = (over: Partial<z.input<typeof zTotpStatus>> = {}) => ({
   body: { has_password: true, has_passkey: true, can_reauth_oidc: false, confirmed: true, pending: false, ...over } satisfies z.input<typeof zTotpStatus>,
 });
 
-const app = (rest: { list?: Omit<MockRoute, 'url'>; window?: z.input<typeof zRevealWindow>; totp?: MockRoute } = {}) => ({
+const app = (rest: { list?: Omit<MockRoute, 'url'>; window?: z.input<typeof zRevealWindow>; totp?: MockRoute; extra?: readonly MockRoute[] } = {}) => ({
   app: {
     // The page reads the session (an identity provider approval cannot set a personal value).
     auth: true,
@@ -86,6 +87,7 @@ const app = (rest: { list?: Omit<MockRoute, 'url'>; window?: z.input<typeof zRev
       { url: `${PROJECT_URL}/environments`, body: environments },
       { url: `${PROJECT_URL}/keys`, body: keys },
       rest.totp ?? factors(),
+      ...(rest.extra ?? []),
     ],
   },
 });
@@ -105,8 +107,9 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// Every state at once: set, required and missing, removed with its cause,
-// suspended, and set with a schema warning. The fixed statement leads.
+// Every state at once: set, required and missing, removed with its cause, and
+// suspended. The fixed statement leads. The list carries no schema warnings:
+// only a set or reveal returns them.
 export const Populated: Story = {
   play: async ({ canvas }) => {
     // AuthProvider remounts the page when the session binds: wait for the loaded list first.
@@ -117,7 +120,7 @@ export const Populated: Story = {
     await expect(canvas.getByText(/an administrator deleted it/)).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Dismiss the notice for SENTRY_DSN' })).toBeVisible();
     await expect(canvas.getByText(/Not delivered while you lack access here/)).toBeVisible();
-    await expect(canvas.getByText(/longer than 32 characters/)).toBeVisible();
+    await expect(canvas.queryByText(/does not satisfy/)).toBeNull();
     // No .env download anywhere: running a program is the CLI's job.
     await expect(canvas.queryByRole('link', { name: /download|\.env/i })).toBeNull();
     await expect(canvas.queryByRole('button', { name: /download|\.env/i })).toBeNull();
@@ -185,5 +188,59 @@ export const Phone: Story = {
     if (!(scroller instanceof HTMLElement)) throw new Error('table wrapper missing');
     await expect(scroller.scrollWidth).toBeLessThanOrEqual(scroller.clientWidth);
     await expect(reveal.getBoundingClientRect().right).toBeLessThanOrEqual(scroller.getBoundingClientRect().right);
+  },
+};
+
+// A live window, so set and reveal ask for no approval in these stories.
+const liveWindow = { ...window, live: true, expires_at: '2099-01-01T00:00:00Z' } satisfies z.input<typeof zRevealWindow>;
+const typed = 'sk_test_fixture-value-that-breaks-the-pattern';
+const shownValue = 'postgres://fixture@db.example.test/dev';
+
+// The owner saves a value that breaks two of the key's rules: it is saved, and
+// the warning names the rules, never the value.
+export const SetWarns: Story = {
+  parameters: app({
+    window: liveWindow,
+    extra: [{
+      url: `${LIST_URL}/STRIPE_SECRET_KEY`,
+      method: 'PUT',
+      body: { key_id: keyId(2), name: 'STRIPE_SECRET_KEY', set: true, updated_at: '2026-11-01T08:00:00Z', warnings: ['maxLength', 'pattern'] } satisfies z.input<typeof zPersonalValueEntry>,
+    }],
+  }),
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Set STRIPE_SECRET_KEY' }));
+    const panel = within(await canvas.findByRole('complementary', { name: 'Personal value for STRIPE_SECRET_KEY' }));
+    await userEvent.type(panel.getByLabelText('Your value for STRIPE_SECRET_KEY in staging'), typed);
+    await userEvent.click(panel.getByRole('button', { name: 'Save my value' }));
+    await expect(await canvas.findByText('Your personal value for STRIPE_SECRET_KEY is saved.')).toBeVisible();
+    const warning = await canvas.findByText(/^Your value for STRIPE_SECRET_KEY does not satisfy these rules of the key: maxLength, pattern\./);
+    await expect(warning).toBeVisible();
+    await expect(warning).toHaveTextContent('This is a warning only: the value is kept and still delivered to you.');
+    await expect(canvas.queryByText(typed, { exact: false })).toBeNull();
+  },
+};
+
+// The owner reveals a value that breaks a rule: the value shows, and the
+// warning beside it names the rule only.
+export const RevealWarns: Story = {
+  beforeEach: () => {
+    // The reveal acts only on a focused window, which a headless run may lack.
+    const focus = spyOn(document, 'hasFocus').mockReturnValue(true);
+    return () => focus.mockRestore();
+  },
+  parameters: app({
+    window: liveWindow,
+    extra: [{
+      url: `${LIST_URL}/DATABASE_URL/reveal`,
+      method: 'POST',
+      body: { key_id: keyId(1), name: 'DATABASE_URL', set: true, value: shownValue, warnings: ['pattern'] } satisfies z.input<typeof zPersonalValueEntry>,
+    }],
+  }),
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Reveal DATABASE_URL' }));
+    await expect(await canvas.findByText(shownValue)).toBeVisible();
+    const warning = await canvas.findByText(/^Your value for DATABASE_URL does not satisfy this rule of the key: pattern\./);
+    await expect(warning).toBeVisible();
+    await expect(warning.textContent).not.toContain(shownValue);
   },
 };

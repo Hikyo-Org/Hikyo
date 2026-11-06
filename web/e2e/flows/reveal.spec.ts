@@ -874,7 +874,7 @@ test.describe('personal values', () => {
     await expect(page.getByRole('button', { name: `Dismiss the notice for ${key}` })).toHaveCount(0);
   });
 
-  // Needs the integrated server: the report endpoint answers 500 until the service lands.
+  // Needs the integrated server, which serves the offboarding report.
   // The seeded person holds no project-scoped rule, so the project Members view lists no
   // person to link from (the Members story covers that link); the report's own form is the door.
   test('opens the offboarding report for a member', async () => {
