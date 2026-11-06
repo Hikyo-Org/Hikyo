@@ -29,7 +29,7 @@ ADR. Banners are marked proposed, so no locked ADR changes yet.
 
 ## Remaining before the ADR can lock
 
-1. The owner confirms resolution 9: unattended access per environment for adapter sync and workload identity. The other resolutions were confirmed on 2026-11-04. The owner also confirms that decision 2's accepted trust covers capture from production, not only tampering.
+1. The owner confirms resolution 9: unattended access per environment for adapter sync and workload identity. The other resolutions were confirmed on 2026-11-04. The owner confirmed on 2026-11-06 that decision 2's accepted trust covers capture from production.
 2. The status and banners change from proposed to locked. The owner waived ticket reopening and cross-provider review, and the ADR records that.
 
 ## Remaining before any paid launch
