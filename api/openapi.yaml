@@ -28,7 +28,9 @@
 #                     every generated consumer must tolerate unknown ones. The
 #                     `enum` keyword is deliberately absent on open enums so
 #                     runtime validation tolerates growth; a closed enum uses
-#                     `enum` and never grows.
+#                     `enum` and never grows, apart from the one-time
+#                     `mldsa65` growth declared in the api-cli-surface ADR
+#                     and listed in api/freeze.go.
 openapi: 3.1.0
 jsonSchemaDialect: https://spec.openapis.org/oas/3.1/dialect/base
 
@@ -39,7 +41,8 @@ info:
   description: |
     Every response may gain fields additively within `/api/v1`; clients MUST
     ignore fields they do not know. Open enums (`x-extensible-enum`) may gain
-    values; closed enums never do.
+    values; closed enums never do, apart from one declared one-time growth:
+    `mldsa65` on the Transit and PKI key-algorithm enums.
 
     Unauthorized is indistinguishable from nonexistent on every tenant-scoped
     route: status, body and shape are identical (permission model ADR). Error
@@ -5583,11 +5586,12 @@ paths:
         transmitted out of band. The reset advances the target's session
         generation and revokes its sessions in the same transaction.
 
-        Org-scoped credential-reset reaches only a target whose grants lie
-        entirely within that org and who holds no instance capability; the
-        org-bounded test is evaluated in one serializable transaction with the
-        target's grant set (a concurrent grant landing conflicts with the
-        in-flight reset). A target holding an instance capability has no network
+        Org-scoped credential-reset reaches only a target whose org footprint
+        (grants, member-access rules, access grants, SCIM user rows, developer
+        credentials and service accounts) is exactly that org and who holds no
+        instance capability; the org-bounded test is evaluated in one
+        serializable transaction with the target's grant set and footprint (a
+        concurrent grant landing conflicts with the in-flight reset). A target holding an instance capability has no network
         reset path at all — break-glass only. This route dispatches between the
         org-scoped and instance-scoped credential-reset operations by that
         classification. Every failure that could enumerate the
@@ -14838,7 +14842,7 @@ paths:
     post:
       operationId: transitSign
       tags: [transit]
-      summary: Sign a message with an Ed25519 key.
+      summary: Sign a message with an Ed25519 or ML-DSA-65 key.
       x-hikyo-class: tenant
       x-hikyo-operation: transit.use
       x-hikyo-formula: [crypto-use@environment]
@@ -14865,7 +14869,7 @@ paths:
     post:
       operationId: transitVerify
       tags: [transit]
-      summary: Verify an Ed25519 signature.
+      summary: Verify an Ed25519 or ML-DSA-65 signature.
       description: |
         An invalid signature answers valid=false, not an error.
       x-hikyo-class: tenant
@@ -16283,7 +16287,7 @@ components:
         name: {$ref: "#/components/schemas/PkiName"}
         common_name: {type: string, maxLength: 64}
         organization: {type: string, maxLength: 64}
-        key_algorithm: {type: string, enum: [ecdsa-p256, ecdsa-p384, rsa-3072, rsa-4096]}
+        key_algorithm: {type: string, enum: [ecdsa-p256, ecdsa-p384, rsa-3072, rsa-4096, mldsa65]}
         ttl_seconds: {type: integer, format: int64, minimum: 86400}
         parent: {$ref: "#/components/schemas/PkiName"}
         crl_distribution_url: {type: string, maxLength: 2048}
@@ -16298,7 +16302,7 @@ components:
       type: object
       additionalProperties: false
       properties:
-        key_algorithm: {type: string, enum: [ecdsa-p256, ecdsa-p384, rsa-3072, rsa-4096]}
+        key_algorithm: {type: string, enum: [ecdsa-p256, ecdsa-p384, rsa-3072, rsa-4096, mldsa65]}
         ttl_seconds: {type: integer, format: int64, minimum: 86400}
         crl_distribution_url: {type: string, maxLength: 2048}
         private_key_pem:
@@ -16337,7 +16341,7 @@ components:
         ip_ranges: {type: array, items: {type: string, maxLength: 64}, maxItems: 64}
         uri_patterns: {type: array, items: {type: string, maxLength: 1024}, maxItems: 64}
         allow_wildcard_names: {type: boolean}
-        key_algorithms: {type: array, items: {type: string, enum: [ecdsa-p256, ecdsa-p384, ed25519, rsa-2048, rsa-3072, rsa-4096]}}
+        key_algorithms: {type: array, items: {type: string, enum: [ecdsa-p256, ecdsa-p384, ed25519, rsa-2048, rsa-3072, rsa-4096, mldsa65]}}
         key_usages: {type: array, items: {type: string, enum: [digital-signature, key-encipherment, key-agreement]}}
         ext_key_usages: {type: array, items: {type: string, enum: [server-auth, client-auth]}}
         max_ttl_seconds: {type: integer, format: int64, minimum: 300, maximum: 7776000}
@@ -16477,7 +16481,7 @@ components:
         issuer: {$ref: "#/components/schemas/PkiName"}
         csr_pem: {type: string, maxLength: 65536}
         generate_key: {type: boolean}
-        key_algorithm: {type: string, enum: [ecdsa-p256, ecdsa-p384, ed25519, rsa-2048, rsa-3072, rsa-4096]}
+        key_algorithm: {type: string, enum: [ecdsa-p256, ecdsa-p384, ed25519, rsa-2048, rsa-3072, rsa-4096, mldsa65]}
         common_name: {type: string, maxLength: 255}
         dns_names: {type: array, items: {type: string, maxLength: 255}, maxItems: 100}
         ip_addresses: {type: array, items: {type: string, maxLength: 64}, maxItems: 100}
@@ -17950,15 +17954,25 @@ components:
         instance_audit_read:
           type: boolean
           description: >-
-            True when the caller holds instance audit-read. This navigation
-            hint does not imply instance-config or replace per-request authority
-            and MFA checks. Absent on older servers.
+            True when the caller's session can exercise instance audit-read: the
+            grant, and the second factor it requires, so a password-only session
+            reads false. This navigation hint does not imply instance-config or
+            replace per-request authority checks. Absent on older servers.
+        instance_directory:
+          type: boolean
+          description: >-
+            True when the caller's session can exercise instance-directory, which
+            the remote-instance directory read requires: the grant, and the second
+            factor it requires, so a password-only session reads false. This
+            navigation hint does not imply instance-config or replace per-request
+            authority checks. Absent on older servers.
         instance_operator:
           type: boolean
           description: >-
-            True when the caller holds instance-config authority — the grant the
-            retention-health and update-status reads require. The instance
-            administration chrome and those background polls gate on it.
+            True when the caller's session can exercise instance-config, which the
+            retention-health and update-status reads require: the grant, and the
+            second factor it requires, so a password-only session reads false. The
+            instance administration chrome and those background polls gate on it.
         delivery_report_grant:
           $ref: "#/components/schemas/UnheldGrantReach"
 
@@ -24853,7 +24867,7 @@ components:
 
     TransitAlgorithm:
       type: string
-      enum: [xchacha20-poly1305, ed25519, hmac-sha256]
+      enum: [xchacha20-poly1305, ed25519, hmac-sha256, mldsa65]
 
     TransitCustody:
       type: string
@@ -24887,7 +24901,10 @@ components:
           description: Where the version's material lives. The material itself is never returned.
         public_key:
           type: [string, "null"]
-          description: The Ed25519 public key (standard base64) for signing keys; public metadata.
+          description: >-
+            The public key (standard base64) for signing keys; public metadata. The encoding
+            depends on the key's algorithm: ed25519 is the raw 32-byte key, mldsa65 is the
+            DER SubjectPublicKeyInfo.
         created_at: {$ref: "#/components/schemas/Timestamp"}
 
     TransitKey:

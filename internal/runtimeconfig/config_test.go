@@ -1,6 +1,8 @@
 package runtimeconfig_test
 
 import (
+	"errors"
+	"maps"
 	"strings"
 	"testing"
 
@@ -8,6 +10,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
+	"github.com/Hikyo-Org/hikyo/internal/schema"
 )
 
 func TestAbsentManagedValuesUseDocumentedDefaults(t *testing.T) {
@@ -126,6 +129,24 @@ func TestPrepareLegacyDerivedIPOriginBeforeContextualApplication(t *testing.T) {
 	}
 }
 
+func TestEveryCatalogueKeyHasAFolder(t *testing.T) {
+	counts := make(map[string]int)
+	for _, key := range runtimeconfig.Catalogue() {
+		folder := runtimeconfig.Folder(key.Name)
+		if folder == "" {
+			t.Errorf("catalogue key %s has no folder", key.Name)
+		}
+		counts[folder]++
+	}
+	want := map[string]int{"Audit": 2, "Authentication": 5, "Backup": 6, "Capacity": 2, "Deployment": 2, "MCP": 3, "Mail": 8, "Network": 4, "Updates": 1}
+	if !maps.Equal(counts, want) {
+		t.Fatalf("folders = %v, want %v", counts, want)
+	}
+	if folder := runtimeconfig.Folder("OTHER"); folder != "" {
+		t.Fatalf("unknown key folder = %q", folder)
+	}
+}
+
 func TestCatalogueCoversEveryOwnerApplicationSetting(t *testing.T) {
 	catalogue := make(map[string]runtimeconfig.Key)
 	for _, key := range runtimeconfig.Catalogue() {
@@ -200,5 +221,46 @@ func TestMailPreparationNamesMalformedSettingWithoutContactingRelay(t *testing.T
 	bundle, err := runtimeconfig.Prepare(valid)
 	if err != nil || !bundle.MailConfigured() {
 		t.Fatalf("local-only preparation failed: %v", err)
+	}
+}
+
+// The managed value cap and the hybrid recipient bound are one decision: 32
+// hybrid recipients fit a managed value, 33 are refused by count with the bound
+// named, and a mixed set is refused naming the mix.
+func TestPrepareBoundsHybridBackupRecipients(t *testing.T) {
+	if backup.MaxRecipientListBytes != schema.MaxValueBytes {
+		t.Fatalf("backup list bound %d drifted from the managed value cap %d", backup.MaxRecipientListBytes, schema.MaxValueBytes)
+	}
+	hybrid := make([]string, backup.MaxHybridRecipients+1)
+	for i := range hybrid {
+		var err error
+		if _, hybrid[i], err = backup.GenerateHybridIdentity(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	atLimit := strings.Join(hybrid[:backup.MaxHybridRecipients], ",")
+	if len(atLimit) != 62719 {
+		t.Fatalf("32 joined hybrid recipients = %d bytes, want 62719", len(atLimit))
+	}
+	if _, err := runtimeconfig.Prepare(map[string]string{"HIKYO_BACKUP_RECIPIENTS": atLimit}); err != nil {
+		t.Fatalf("32 hybrid recipients refused: %v", err)
+	}
+	if _, err := runtimeconfig.Prepare(map[string]string{"HIKYO_BACKUP_RECIPIENTS": strings.Join(hybrid, ",")}); !errors.Is(err, backup.ErrTooManyHybridRecipients) {
+		t.Fatalf("33 hybrid recipients = %v, want ErrTooManyHybridRecipients", err)
+	}
+	_, classical, err := backup.GenerateIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtimeconfig.Prepare(map[string]string{"HIKYO_BACKUP_RECIPIENTS": hybrid[0] + "," + classical}); !errors.Is(err, backup.ErrMixedRecipients) {
+		t.Fatalf("mixed recipients = %v, want ErrMixedRecipients", err)
+	}
+	// 64 hybrid recipients (125,439 bytes) cannot fit a managed value at all.
+	many := make([]string, 64)
+	for i := range many {
+		many[i] = hybrid[i%len(hybrid)]
+	}
+	if _, err := runtimeconfig.Prepare(map[string]string{"HIKYO_BACKUP_RECIPIENTS": strings.Join(many, ",")}); err == nil {
+		t.Fatal("64 hybrid recipients accepted in a managed value")
 	}
 }

@@ -328,6 +328,9 @@ type txForwarded interface {
 	// dedup read every create performs under the principal-row lock.
 	GrantRowsForPrincipal(ctx context.Context, p domain.PrincipalID) ([]GrantRow, error)
 
+	// PrincipalFootprintOrgs lists every org holding any row about a principal.
+	PrincipalFootprintOrgs(ctx context.Context, p domain.PrincipalID) ([]domain.OrgID, error)
+
 	// GrantsForResetTarget reads the credential-reset target's full grant set for
 	// the org-bounded test, under the row lock the reset holds.
 	GrantsForResetTarget(ctx context.Context, p domain.PrincipalID) ([]domain.Grant, error)

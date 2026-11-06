@@ -495,7 +495,12 @@ func (s *Transit) Verify(ctx context.Context, actor Actor, scope domain.Scope, n
 		if _, err := u.availableCustody(ctx, v); err != nil {
 			return useResult{}, err
 		}
-		out = TransitOutput{KeyVersion: v, Valid: crypto.VerifyTransitSignature(m.PublicKey, message, sig)}
+		// The verifier's algorithm is the key row's, never the presented value's.
+		alg, err := crypto.ParseTransitAlgorithm(u.key.Algorithm)
+		if err != nil {
+			return useResult{}, err
+		}
+		out = TransitOutput{KeyVersion: v, Valid: crypto.VerifyTransitSignature(alg, m.PublicKey, message, sig)}
 		return useResult{version: v}, nil
 	})
 	return out, err

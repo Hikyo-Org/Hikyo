@@ -113,6 +113,11 @@ function Probe({
       <output data-testid="operator">
         {auth.identity === null ? '' : String(auth.identity.capabilities.instance_operator)}
       </output>
+      <output data-testid="instance-hints">
+        {auth.identity === null
+          ? ''
+          : `${String(auth.identity.capabilities.instance_audit_read)}/${String(auth.identity.capabilities.instance_directory)}`}
+      </output>
       <output data-testid="report-reach">
         {auth.identity === null ? '' : auth.identity.capabilities.delivery_report_grant.orgs.join(',')}
       </output>
@@ -570,6 +575,34 @@ describe('AuthProvider', () => {
     await act(async () => globalThis.dispatchEvent(new Event('focus')));
     await settle();
     expect(text(container, 'report-reach')).toBe('org_a');
+  });
+
+  it.each([
+    ['audit-read', { instance_audit_read: true }, 'true/undefined'],
+    ['directory', { instance_directory: true }, 'undefined/true'],
+  ])('settles a changed instance %s hint on refocus', async (_name, grant, expected) => {
+    const before = identity('00', '10');
+    const after: WhoAmI = { ...before, capabilities: { ...before.capabilities, ...grant } };
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<(...args: Parameters<typeof fetch>) => Promise<Response>>()
+        .mockResolvedValueOnce(json(before))
+        .mockResolvedValueOnce(json(after)),
+    );
+
+    const { container } = await renderAuth(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    await settle();
+    expect(text(container, 'instance-hints')).toBe('undefined/undefined');
+
+    // The instance tier's rows gate on these, so a grant change must reach it.
+    await act(async () => globalThis.dispatchEvent(new Event('focus')));
+    await settle();
+    expect(text(container, 'instance-hints')).toBe(expected);
   });
 
   it('defaults capabilities on a login result and hydrates them from whoami', async () => {

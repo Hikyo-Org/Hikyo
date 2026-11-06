@@ -16,12 +16,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 )
 
 const (
 	ReceiptFormat                = "backup-receipt/v1"
+	HybridReceiptFormat          = "backup-receipt/v2"
 	AttestationFormat            = "upgrade-attestation/v1"
 	RotationFormat               = "operator-key-rotation/v1"
 	MaxArtifactBytes             = 64 << 10
@@ -105,13 +107,41 @@ func (s Snapshot) Validate() error {
 	if len(s.RecipientFingerprints) == 0 || len(s.RecipientFingerprints) > MaxRecipients || !slices.IsSorted(s.RecipientFingerprints) {
 		return errors.New("invalid backup recipient inventory")
 	}
-	for index, fingerprint := range s.RecipientFingerprints {
-		digest, ok := strings.CutPrefix(fingerprint, "age-x25519-sha256:")
-		if !ok || releaseidentity.Digest(digest).Validate() != nil || (index > 0 && s.RecipientFingerprints[index-1] == fingerprint) {
-			return errors.New("invalid backup recipient fingerprint")
-		}
+	if _, err := s.RecipientAlgorithm(); err != nil {
+		return err
 	}
 	return nil
+}
+
+// RecipientAlgorithm names the one key class of the inventory. An inventory
+// mixing classical and hybrid fingerprints is a public claim of an independent
+// classical unlock path, so it is refused rather than classified. Hybrid
+// inventories are bounded by the backup writer's hybrid recipient count.
+func (s Snapshot) RecipientAlgorithm() (backup.Algorithm, error) {
+	var algorithm backup.Algorithm
+	for index, fingerprint := range s.RecipientFingerprints {
+		current, _, ok := backup.ParseFingerprint(fingerprint)
+		if !ok || (index > 0 && s.RecipientFingerprints[index-1] == fingerprint) {
+			return "", errors.New("invalid backup recipient fingerprint")
+		}
+		if index > 0 && current != algorithm {
+			return "", errors.New("backup recipient inventory mixes key algorithms")
+		}
+		algorithm = current
+	}
+	if algorithm == backup.AlgorithmHybrid && len(s.RecipientFingerprints) > backup.MaxHybridRecipients {
+		return "", errors.New("invalid backup recipient inventory")
+	}
+	return algorithm, nil
+}
+
+// FormatFor returns the receipt schema for an inventory: v1 stays the
+// classical X25519 schema it always was, v2 is the hybrid schema.
+func FormatFor(algorithm backup.Algorithm) string {
+	if algorithm == backup.AlgorithmHybrid {
+		return HybridReceiptFormat
+	}
+	return ReceiptFormat
 }
 
 func (s *Snapshot) UnmarshalJSON(raw []byte) error {
@@ -146,10 +176,19 @@ type Receipt struct {
 }
 
 func (r Receipt) Validate() error {
-	if r.Format != ReceiptFormat || r.CiphertextSHA256.Validate() != nil || r.ManifestSHA256.Validate() != nil || r.CiphertextBytes <= 0 || r.CiphertextBytes > MaxCiphertextBytes {
+	if (r.Format != ReceiptFormat && r.Format != HybridReceiptFormat) || r.CiphertextSHA256.Validate() != nil || r.ManifestSHA256.Validate() != nil || r.CiphertextBytes <= 0 || r.CiphertextBytes > MaxCiphertextBytes {
 		return errors.New("invalid backup receipt")
 	}
-	return r.Snapshot.Validate()
+	if err := r.Snapshot.Validate(); err != nil {
+		return err
+	}
+	// The schema version names the key class: a v1 receipt never carries a
+	// hybrid fingerprint and a v2 receipt never carries a classical one.
+	algorithm, _ := r.Snapshot.RecipientAlgorithm()
+	if r.Format != FormatFor(algorithm) {
+		return errors.New("backup receipt format does not match its recipient algorithm")
+	}
+	return nil
 }
 
 func ParseReceipt(raw []byte) (Receipt, error) {

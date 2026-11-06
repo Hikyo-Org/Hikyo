@@ -108,7 +108,11 @@ func (s *Auth) ResetCredential(ctx context.Context, actor Actor, targetPrincipal
 		if err != nil {
 			return err
 		}
-		org, instanceCap, orgCount := classifyResetTarget(grants)
+		footprint, err := az.PrincipalFootprintOrgs(ctx, target)
+		if err != nil {
+			return err
+		}
+		org, instanceCap, orgCount := classifyResetTarget(grants, footprint)
 		if instanceCap {
 			// Instance-capability targets have no network path — break-glass only,
 			// UNCONDITIONALLY, prior to and independent of the org-count branch (A3).
@@ -297,19 +301,28 @@ func (s *Auth) mintResetAuthority(ctx context.Context, az *authz.TxAuthorizer, a
 	}, nil
 }
 
-// classifyResetTarget derives the reset reachability of a target from its grant
-// set. An instance-scoped grant of ANY capability is treated as an instance
-// capability (fail-closed: it confers instance-wide reach), routing the target to
-// break-glass only. Otherwise the count of distinct orgs the target holds grants
-// in decides: exactly one → org-bounded (that org); zero or many → instance
-// operation only (a zero-grant target has no owning org to address, fail-closed).
-func classifyResetTarget(grants []domain.Grant) (org string, instanceCap bool, orgCount int) {
-	orgs := map[string]bool{}
+// classifyResetTarget derives the reset reachability of a target. An
+// instance-scoped grant of ANY capability is treated as an instance capability
+// (fail-closed: it confers instance-wide reach), routing the target to
+// break-glass only. Otherwise the count of distinct orgs in the target's
+// footprint decides: exactly one → org-bounded (that org); zero or many →
+// instance operation only (a footprint-less target has no owning org to
+// address, fail-closed). The footprint, not the grants alone, is counted
+// because rules and access grants are grants in the widened model (permission
+// model amendment, member-access-rules ADR). A stale footprint row errs in
+// either direction: it can make a target with no grants resettable by that org,
+// or make a one-org target multi-org (instance operation only).
+func classifyResetTarget(grants []domain.Grant, footprint []domain.OrgID) (org string, instanceCap bool, orgCount int) {
 	for _, g := range grants {
 		if g.Scope.Org == "" {
 			return "", true, 0
 		}
-		orgs[string(g.Scope.Org)] = true
+	}
+	orgs := map[string]bool{}
+	for _, o := range footprint {
+		if o != "" {
+			orgs[string(o)] = true
+		}
 	}
 	for o := range orgs {
 		org = o

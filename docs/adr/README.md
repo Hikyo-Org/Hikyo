@@ -37,6 +37,7 @@ for its ripple register.
 | compose-integration ADR | [compose-integration.md](./compose-integration.md) |
 | deployment-adapter ADR | [deployment-adapter.md](./deployment-adapter.md) |
 | design-tooling ADR | [design-tooling.md](./design-tooling.md) |
+| desktop-app ADR | [desktop-app.md](./desktop-app.md) |
 | encryption-model ADR | [encryption-model.md](./encryption-model.md) |
 | flat-model ADR | [flat-model.md](./flat-model.md) |
 | github-adapter ADR | [github-adapter.md](./github-adapter.md) |
@@ -65,6 +66,7 @@ for its ripple register.
 | signed-upgrade-compatibility ADR | [signed-upgrade-compatibility.md](./signed-upgrade-compatibility.md) |
 | system-architecture ADR | [system-architecture.md](./system-architecture.md) |
 | generated-boundaries ADR (proposed) | [generated-boundaries.md](./generated-boundaries.md) |
+| post-quantum-migration ADR (proposed) | [post-quantum-migration.md](./post-quantum-migration.md) |
 | tenant-isolation ADR | [tenant-isolation.md](./tenant-isolation.md) |
 | threat-model ADR | [threat-model.md](./threat-model.md) |
 | workload-push-delivery ADR (proposed) | [workload-push-delivery.md](./workload-push-delivery.md) |

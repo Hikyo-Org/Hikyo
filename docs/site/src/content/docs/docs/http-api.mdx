@@ -33,7 +33,7 @@ or an OIDC federation binding.
 - Responses use one uniform error model.
 - Unauthorized and missing tenant resources have the same status and shape.
 - Responses may gain fields within `/api/v1`; clients must ignore unknown fields.
-- Open enums may gain values; closed enums do not.
+- Open enums may gain values; closed enums do not, apart from one declared one-time growth: `mldsa65` on the Transit and PKI key-algorithm enums.
 
 The contract records operation-specific authorization, accepted artifact types,
 and the minimum API revision. Generate clients from the checked-in document,

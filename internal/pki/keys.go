@@ -11,6 +11,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
+	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -33,15 +34,18 @@ const (
 	RSA2048   KeyAlgorithm = "rsa-2048"
 	RSA3072   KeyAlgorithm = "rsa-3072"
 	RSA4096   KeyAlgorithm = "rsa-4096"
+	// MLDSA65 is pure ML-DSA-65 (FIPS 204, category 3), the only post-quantum
+	// signature set DEC-02 selects. ML-DSA-44 and -87 are refused.
+	MLDSA65 KeyAlgorithm = "mldsa65"
 )
 
 // LeafKeyAlgorithms is the closed set a profile may admit for leaves.
-var LeafKeyAlgorithms = []KeyAlgorithm{ECDSAP256, ECDSAP384, Ed25519, RSA2048, RSA3072, RSA4096}
+var LeafKeyAlgorithms = []KeyAlgorithm{ECDSAP256, ECDSAP384, Ed25519, RSA2048, RSA3072, RSA4096, MLDSA65}
 
 // CAKeyAlgorithms is the narrower set a CA key may use: Ed25519 CA
 // certificates have poor relying-party support and RSA-2048 is below the
 // strength a multi-year CA key needs.
-var CAKeyAlgorithms = []KeyAlgorithm{ECDSAP256, ECDSAP384, RSA3072, RSA4096}
+var CAKeyAlgorithms = []KeyAlgorithm{ECDSAP256, ECDSAP384, RSA3072, RSA4096, MLDSA65}
 
 var (
 	// ErrUnknownAlgorithm refuses a key algorithm outside the closed set.
@@ -50,6 +54,11 @@ var (
 	// one of the closed set (for example RSA-1024 or P-521).
 	ErrUnsupportedKey = errors.New("pki: unsupported public key")
 )
+
+// IsPQ reports whether the algorithm is post-quantum. The private PKI keeps
+// the classical and post-quantum worlds apart: a chain, a rotation or a
+// profile never silently crosses between them (ADR D3, DEC-19).
+func IsPQ(algorithm KeyAlgorithm) bool { return algorithm == MLDSA65 }
 
 // ParseKeyAlgorithm rejects an unknown algorithm rather than defaulting one.
 func ParseKeyAlgorithm(s string) (KeyAlgorithm, error) {
@@ -77,6 +86,8 @@ func GenerateKey(algorithm KeyAlgorithm) (crypto.Signer, error) {
 		return rsa.GenerateKey(rand.Reader, 3072)
 	case RSA4096:
 		return rsa.GenerateKey(rand.Reader, 4096)
+	case MLDSA65:
+		return mldsa.GenerateKey(mldsa.MLDSA65())
 	}
 	return nil, fmt.Errorf("%w %q", ErrUnknownAlgorithm, algorithm)
 }
@@ -95,6 +106,10 @@ func AlgorithmOf(public crypto.PublicKey) (KeyAlgorithm, error) {
 	case ed25519.PublicKey:
 		if len(key) == ed25519.PublicKeySize {
 			return Ed25519, nil
+		}
+	case *mldsa.PublicKey:
+		if key.Parameters() == mldsa.MLDSA65() {
+			return MLDSA65, nil
 		}
 	case *rsa.PublicKey:
 		switch key.N.BitLen() {

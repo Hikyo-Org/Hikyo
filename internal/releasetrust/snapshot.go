@@ -60,6 +60,11 @@ type snapshotState struct {
 	// nightlyRevoked comes from the current published nightly policy, not
 	// from any policy copy bundled with a release under verification.
 	nightlyRevoked []releaseidentity.Digest
+	// nightlySeen and nightlyPolicy record the nightly policy bytes this
+	// snapshot was verified with (nil material is distinct from empty), so a
+	// PQ call can require the same material.
+	nightlySeen   bool
+	nightlyPolicy releaseidentity.Digest
 }
 
 // Snapshot can only be created by successful signature and policy validation.
@@ -208,7 +213,9 @@ func VerifySnapshot(pinned PinnedTrust, material SnapshotMaterial, floor Snapsho
 		return Snapshot{}, fmt.Errorf("upgrade catalog: %w", err)
 	}
 	var nightlyRevoked []releaseidentity.Digest
+	nightlySeen, nightlyDigest := material.NightlyPolicy != nil, releaseidentity.Digest("")
 	if material.NightlyPolicy != nil {
+		nightlyDigest = releaseidentity.Hash(material.NightlyPolicy)
 		if len(material.NightlyPolicy) > MaxDocumentBytes || !slices.Contains(catalog.NightlyPolicies, releaseidentity.Hash(material.NightlyPolicy)) {
 			return Snapshot{}, errors.New("current nightly policy is not recovery-authorized")
 		}
@@ -227,7 +234,7 @@ func VerifySnapshot(pinned PinnedTrust, material SnapshotMaterial, floor Snapsho
 		stablePolicy = releaseidentity.Hash(material.StablePolicy)
 	}
 	identityBytes := []byte(string(stablePolicy) + ":" + string(metadataDigest) + ":" + string(catalogDigest))
-	return Snapshot{state: &snapshotState{legacyStablePolicy: releaseidentity.Hash(pinned.Root), workflowPolicy: workflowPolicy, stableTrustedRoot: cloneStableRoot(material.StableTrustedRoot), root: root, metadata: metadata, keys: keys, recoveryKey: bytes.Clone(pinned.RecoveryPublicKey), catalog: catalog, floor: nextFloor, id: releaseidentity.Hash(identityBytes), stablePolicy: stablePolicy, nightlyRevoked: nightlyRevoked}}, nil
+	return Snapshot{state: &snapshotState{legacyStablePolicy: releaseidentity.Hash(pinned.Root), workflowPolicy: workflowPolicy, stableTrustedRoot: cloneStableRoot(material.StableTrustedRoot), root: root, metadata: metadata, keys: keys, recoveryKey: bytes.Clone(pinned.RecoveryPublicKey), catalog: catalog, floor: nextFloor, id: releaseidentity.Hash(identityBytes), stablePolicy: stablePolicy, nightlyRevoked: nightlyRevoked, nightlySeen: nightlySeen, nightlyPolicy: nightlyDigest}}, nil
 }
 
 func checkFloor(sequence int64, digest releaseidentity.Digest, known int64, knownDigest releaseidentity.Digest) error {

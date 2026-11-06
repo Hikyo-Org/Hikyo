@@ -54,7 +54,7 @@ func (a *TxAuthorizer) selfConfigProfile(ctx context.Context, caller Identity, o
 }
 
 // IsSelfConfig reports the database-resolved protected resource profile on a
-// canonical proof. It is a value-handling hint, never a new authorization door.
+// canonical proof. It is a value and display hint, never a new authorization door.
 func IsSelfConfig(p Proof) bool {
 	v, ok := p.(*proof)
 	return ok && v != nil && v.selfConfig && v.tok != nil && v.tok.alive()

@@ -140,10 +140,10 @@ func Operate(material []byte, t Target, fn func(*crypto.TransitKey) ([]byte, err
 	return fn(k)
 }
 
-// PublicKeyFor returns the Ed25519 public key for signing material, or nil for
-// any other algorithm.
+// PublicKeyFor returns the public key for signing material (Ed25519 or
+// ML-DSA-65), or nil for any other algorithm.
 func PublicKeyFor(material []byte, t Target) ([]byte, error) {
-	if t.Binding.Algorithm != crypto.TransitEd25519 {
+	if t.Binding.Algorithm != crypto.TransitEd25519 && t.Binding.Algorithm != crypto.TransitMLDSA65 {
 		return nil, nil
 	}
 	return Operate(material, t, func(k *crypto.TransitKey) ([]byte, error) { return k.PublicKey() })

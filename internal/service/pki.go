@@ -36,6 +36,58 @@ type PKI struct {
 	// `unknown` and is published on the CRL.
 	IssuingDeadline time.Duration
 	Now             func() time.Time
+	// MLDSAEnabled lets this service create ML-DSA-65 issuers, profiles and
+	// leaves (#1133). It is false in production wiring: the api-cli-surface
+	// amendment lets the /api/v1 contract name mldsa65, and this gate is what
+	// keeps any instance from minting one. The zero value refuses, including on
+	// the import path, whose algorithm comes from the key and not from an enum.
+	MLDSAEnabled bool
+}
+
+// ErrPKIAlgorithmHeld refuses a post-quantum algorithm on an instance that has
+// not enabled it. It is a closed refusal and creates no row.
+var ErrPKIAlgorithmHeld = fmt.Errorf("%w: this key algorithm is not enabled on this instance", domain.ErrInvalid)
+
+func (s *PKI) algorithmEnabled(algorithm pki.KeyAlgorithm) error {
+	if pki.IsPQ(algorithm) && !s.MLDSAEnabled {
+		return ErrPKIAlgorithmHeld
+	}
+	return nil
+}
+
+// checkRotationAlgorithm keeps a named issuer on one side of the classical and
+// post-quantum line across versions. Profiles reference issuer names, so
+// letting rotation cross it would change the signature algorithm of every
+// leaf issued under those profiles without a profile change, which bypasses
+// the narrowing-only rule. A post-quantum issuer is a new name and, because
+// adding an issuer to a profile is a widening, a new profile.
+func checkRotationAlgorithm(previous string, next pki.KeyAlgorithm) error {
+	was, err := pki.ParseKeyAlgorithm(previous)
+	if err != nil {
+		return fmt.Errorf("service: stored issuer algorithm: %w", err)
+	}
+	if pki.IsPQ(was) != pki.IsPQ(next) {
+		return fmt.Errorf("%w: rotation cannot move an issuer between classical and post-quantum keys; create a new issuer and a new profile", domain.ErrInvalid)
+	}
+	return nil
+}
+
+// refuseUnmatchedMLDSA stops a request naming mldsa65 from succeeding with a
+// classical key it supplied, which would read as the algorithm the caller asked
+// for. The import, imported-rotation and CSR paths otherwise never read the
+// field. Other mismatches stay accepted, as they are in v1.
+func refuseUnmatchedMLDSA(named string, key crypto.PublicKey) error {
+	if named != string(pki.MLDSA65) {
+		return nil
+	}
+	algorithm, err := pki.AlgorithmOf(key)
+	if err != nil {
+		return pkiInvalid(err)
+	}
+	if algorithm != pki.MLDSA65 {
+		return fmt.Errorf("%w: key_algorithm mldsa65 does not match the supplied %s key", domain.ErrInvalid, algorithm)
+	}
+	return nil
 }
 
 func (s *PKI) now() time.Time { return nowOr(s.Now) }
@@ -345,6 +397,9 @@ func (s *PKI) sealIssuerKey(key crypto.Signer) (pkiKeyMaterial, error) {
 	if err != nil {
 		return pkiKeyMaterial{}, pkiInvalid(err)
 	}
+	if err := s.algorithmEnabled(algorithm); err != nil {
+		return pkiKeyMaterial{}, err
+	}
 	fingerprint, err := pki.KeyFingerprint(key.Public())
 	if err != nil {
 		return pkiKeyMaterial{}, err
@@ -408,6 +463,9 @@ func (s *PKI) prepareIssuerKey(req PKIIssuerRequest, imported bool) (pkiKeyMater
 		if err != nil {
 			return pkiKeyMaterial{}, pkiInvalid(err)
 		}
+		if err := refuseUnmatchedMLDSA(req.KeyAlgorithm, key.Public()); err != nil {
+			return pkiKeyMaterial{}, err
+		}
 		if err := pki.CheckCAAlgorithm(algorithm); err != nil {
 			return pkiKeyMaterial{}, pkiInvalid(err)
 		}
@@ -421,6 +479,9 @@ func (s *PKI) prepareIssuerKey(req PKIIssuerRequest, imported bool) (pkiKeyMater
 		}
 		if err := pki.CheckCAAlgorithm(algorithm); err != nil {
 			return pkiKeyMaterial{}, pkiInvalid(err)
+		}
+		if err := s.algorithmEnabled(algorithm); err != nil {
+			return pkiKeyMaterial{}, err
 		}
 		key, err = pki.GenerateKey(algorithm)
 		if err != nil {
@@ -516,8 +577,21 @@ func (s *PKI) RotateIssuer(ctx context.Context, actor Actor, name string, req PK
 	if !imported && req.KeyAlgorithm == "" {
 		req.KeyAlgorithm = latest.KeyAlgorithm
 	}
+	if !imported {
+		// Refuse before the CPU-heavy generation.
+		next, err := pki.ParseKeyAlgorithm(req.KeyAlgorithm)
+		if err != nil {
+			return PKIIssuerResult{}, pkiInvalid(err)
+		}
+		if err := checkRotationAlgorithm(latest.KeyAlgorithm, next); err != nil {
+			return PKIIssuerResult{}, err
+		}
+	}
 	material, err := s.prepareIssuerKey(req, imported)
 	if err != nil {
+		return PKIIssuerResult{}, err
+	}
+	if err := checkRotationAlgorithm(latest.KeyAlgorithm, material.algorithm); err != nil {
 		return PKIIssuerResult{}, err
 	}
 	var out PKIIssuerResult

@@ -8,7 +8,7 @@ Hikyo backup and restore are host-only commands. They operate on the configured
 datastore and have no network API.
 
 Add global `-v`, `-vv` or `-vvv` before the command to see phases, operational
-details or timings, for example `hikyo -vvv backup export`. Archive contents,
+details or timings, for example `hikyo -vvv backup export --out DIR --recipient R`. Archive contents,
 unlock material and root keys are excluded from these diagnostics. See
 [CLI verbosity](/docs/cli-reference/#verbosity) for the shared output contract.
 
@@ -44,6 +44,122 @@ complete. A configured export that fails blocks the migration.
 
 No configured policy causes a loud, durable skip but does not block migration.
 There are no down migrations, so the only downgrade path is restore.
+
+## Hybrid post-quantum recipients (opt-in)
+
+By default `keygen` mints an X25519 identity and nothing changes for an install
+that does not ask. To protect new archives against a recorded archive being read
+later by a quantum computer, mint age's hybrid identity (X25519 plus ML-KEM-768):
+
+```bash
+hikyo backup keygen --hybrid --output-file /secure-custody/hikyo-backup-identity-pq
+```
+
+The private identity is 77 characters (`AGE-SECRET-KEY-PQ-1...`). The public
+recipient is 1959 characters (`age1pq1...`) and is safe in configuration. Delivery
+is the same display-once path as above.
+
+Selecting hybrid is configuring a hybrid recipient: `HIKYO_BACKUP_RECIPIENTS`
+(or repeated `--recipient`) must then hold only hybrid recipients.
+
+| Rule | Behavior |
+| --- | --- |
+| One class per export | All hybrid or all X25519. A mix is refused with `hybrid post-quantum and classical recipients cannot be mixed`, before any file is created, because the X25519 recipient would be an independent door to the same data. |
+| At most 32 hybrid recipients | 32 recipients are 62,719 characters of configuration, inside the 65,536-byte managed value limit. 33 are refused by count. The 256-recipient and 256 KiB header limits for reading are unchanged; 32 hybrid recipients measure a 49,846-byte header. |
+| No passphrase beside recipients | Unchanged. |
+| Duplicates | A hybrid recipient listed twice is refused. |
+| Hikyo readers | `restore run`, `restore drill` and `upgrade-drill` refuse an archive whose header holds a hybrid stanza beside any other stanza type. Hikyo never writes such an archive. Another age tool holding an X25519 identity could still open one, because age does not check this on decrypt. |
+
+An archive written to hybrid recipients needs a Hikyo binary that understands
+them. An older binary refuses the hybrid identity and the `backup-receipt/v2`
+receipt. Upgrade every host that may restore (the minimum capable reader is the
+release that contains this change) before the first hybrid export, and keep the
+X25519 identity: archives already written for it stay readable only with it.
+
+### Migrating retained archives without deleting anything
+
+1. Upgrade the binary on every host that may need to restore. If you rely on
+   `sudo hikyo upgrade` or container upgrades, note that a hybrid policy makes
+   them refuse (see below); plan to upgrade by the manual route.
+2. `hikyo backup keygen --hybrid --output-file ...` on the custody host. Store it
+   apart from the root key and apart from the old X25519 identity.
+3. Keep the old identity. Existing archives are not rewritten and need it.
+4. Change the policy, then take a fresh recovery point. On an adopted
+   (managed) install the stored policy decides scheduled exports and
+   `sudo hikyo upgrade`; the environment seeds it only before adoption and
+   cannot replace an adopted value. Edit the backup recipients in the managed
+   configuration to the hybrid recipient (alone), then Publish and Apply (see
+   [managed configuration](/docs/managed-configuration/)). On an install that
+   was never adopted, set `HIKYO_BACKUP_RECIPIENTS`. The `hikyo backup export`
+   CLI reads neither the stored policy nor those environment values on any
+   install: pass both, with
+   `hikyo backup export --recipient <hybrid recipient> --out "$HIKYO_BACKUP_DIR"`.
+   Without them it fails with "export needs at least one age recipient" or
+   "no destination: pass --out DIR (the CLI does not read HIKYO_BACKUP_DIR)".
+5. Prove the effective policy changed and the archive restores. A CLI export
+   with `--recipient` proves only that flag, not the policy, and it delays the
+   next scheduled export by a full interval (24 hours by default), which cannot
+   be started on demand. After Apply, wait for a scheduled export. Archive names
+   do not show the trigger, so identify it by its `backup.exported` audit event
+   with `trigger` set to `scheduled`, and drill that archive:
+   `hikyo restore drill --from ARCHIVE --identity-file ...` with the hybrid
+   identity, against an empty scratch target. An archive still written to the
+   X25519 recipient fails the drill, which shows the stored policy has not
+   changed. For an
+   upgrade, run `upgrade-export --out DIR --recipient <hybrid recipient>` and the operator
+   `upgrade-drill` with the hybrid identity; the receipt is `backup-receipt/v2`
+   and its fingerprint begins `age-hybrid-mlkem768x25519-sha256:`. Neither
+   `backup export` nor a scheduled export writes a receipt; only upgrade exports
+   do.
+6. To roll back, set the recipient back to the X25519 recipient (managed policy
+   on an adopted install). Hybrid archives
+   already written remain readable with the hybrid identity, so keep it.
+
+The `age-x25519-sha256:` fingerprint namespace and `backup-receipt/v1` keep their
+meaning: a classical key is never relabeled, and receipts written before this
+change validate unchanged.
+
+### What hybrid recipients do not do
+
+* The age file key is 16 bytes. The archive payload and metadata are protected at
+  128-bit strength, not 256-bit. Secret fields inside the archive still need the
+  root key, and a copy of the custody record that holds root escrow opens them.
+* A passphrase export is only as strong as the passphrase's entropy. Hybrid
+  recipients do not apply to it, and the scrypt exclusivity rule is unchanged.
+* Re-encrypting to a new recipient cannot revoke a copy someone already holds.
+  Old identities keep opening old archives.
+* age has no sender authentication: anyone holding a public recipient can write
+  an archive for it, and a receipt is an unsigned public marker. Receipt-bound
+  restore provenance for a strict backup profile is not implemented.
+* Automatic upgrade custody (`operator.age`) still generates an X25519 identity
+  at enrollment, and `sudo hikyo upgrade` and the opted-in container upgrade
+  export to that identity and retain the full-data archive. With a hybrid
+  `HIKYO_BACKUP_RECIPIENTS` (the effective managed value, not a stale
+  environment line) they therefore **refuse before any backup** and before the
+  service is stopped, rather than leave a classical archive of data you asked to
+  protect. The refusal happens before the archive, the upgrade journal and the
+  service stop, so the host keeps its current image and source and starts
+  normally. It is not free of writes: `sudo hikyo upgrade` opens upgrade custody
+  first, so a host with no `operator.age` gets a new custody vault and root
+  escrow, and a passphrase-era vault is rewrapped to root-key wrapping, before
+  the refusal. Both are the same state a refusal-free first run would create. To proceed, set the managed
+  policy back to X25519 recipients through the normal owner configuration, or
+  take the manual upgrade route with a hybrid recipient and a separately held
+  hybrid identity (see the manual upgrade runbook). An install with X25519
+  recipients upgrades exactly as before.
+
+  **One case has no documented recovery.** If an earlier run already froze the
+  source for backup (state `backup-preparing`) under an X25519 policy and the
+  managed policy then became hybrid before the upgrade finished, every start
+  keeps refusing. The boot gate returns "requires its next exact binary" for any
+  other command on a frozen source, including `hikyo admin config recover` and
+  the manual route, so neither is a working exit; this was confirmed in the code,
+  not by running it. This release offers no verified way out of that state.
+  Do not change the managed backup policy to hybrid while an upgrade is in
+  progress.
+* The built-in secret scanner recognizes neither X25519 (`AGE-SECRET-KEY-1...`)
+  nor hybrid (`AGE-SECRET-KEY-PQ-1...`) age identities: its age rule is not in
+  the compiled ruleset. Keep identities out of managed values either way.
 
 ## 2b. Schedule automatic exports
 
@@ -196,18 +312,19 @@ compliance; do not suppress its health signal.
 ## 3. Run a manual export
 
 ```bash
-hikyo backup export
+hikyo backup export --recipient <recipient> --out "$HIKYO_BACKUP_DIR"
 ```
 
-The command refuses to write an unencrypted archive. You may override the
-destination with `--out` and repeat `--recipient` for a complete replacement
-recipient set.
+The command refuses to write an unencrypted archive. It reads neither the
+recipients nor the destination from the environment or the stored policy, so
+both are required, except that `--passphrase-file` can stand in for `--recipient`.
+Repeat `--recipient` for a complete replacement recipient set.
 
 An export with `--out OTHER_DIR` can replace the recorded recovery point while
 placing the archive outside `HIKYO_BACKUP_DIR`. Scheduled pruning then reports
 `recovery_uncertain` and preserves candidates because it cannot verify that
-recovery point in the managed directory. Run `hikyo backup export` without
-`--out` to record a fresh recovery point there, then rerun pruning. Independently
+recovery point in the managed directory. Run `hikyo backup export` with `--recipient` and
+with `--out` set to `HIKYO_BACKUP_DIR` to record a fresh recovery point there, then rerun pruning. Independently
 managed copies outside that directory need their own retention controls.
 
 Verify the reported path, byte count, engine, and schema version. Move a copy to

@@ -556,7 +556,7 @@ ssh certificates:
   "ssh-ca krl" (RevokedKeys); refresh both on a timer.
 
 transit (managed keys; key material never leaves custody):
-  hikyo transit key create <name> --env E --algorithm xchacha20-poly1305|ed25519|hmac-sha256
+  hikyo transit key create <name> --env E --algorithm xchacha20-poly1305|ed25519|mldsa65|hmac-sha256
       [--custody software] [--allow op,op] [--rotation-period 720h]
       [--caller principal=op,op]...
   hikyo transit key list --env E [-o table|json]
@@ -945,7 +945,7 @@ func establishWithTLSMode(ios IO, st *State, target, name, trustFile, socket, tl
 		if socket != "" && socket != bundle.CLISocket {
 			return TrustEntry{}, failf(ExitRefused, "the explicit local CLI socket does not match the provisioned trust bundle")
 		}
-		entry := TrustEntry{Name: cmp.Or(name, bundle.Name), Origin: origin, SPKIPin: bundle.SPKIPin, TLSMode: bundle.TLSMode, CLISocket: bundle.CLISocket}
+		entry := TrustEntry{Name: cmp.Or(name, bundle.Name), Origin: origin, SPKIPin: bundle.SPKIPin, TLSMode: bundle.TLSMode, CLISocket: bundle.CLISocket, TLSProfile: bundle.TLSProfile}
 		if err := requireSameTLSMode(tlsMode, entry); err != nil {
 			return TrustEntry{}, err
 		}

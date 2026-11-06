@@ -90,7 +90,15 @@ func transitKeyResponse(v service.TransitKeyView) (apigen.TransitKey, error) {
 		}
 		item := apigen.TransitKeyVersion{Version: int64(ver.Version), Material: material, CreatedAt: createdAt}
 		if len(ver.PublicKey) > 0 {
-			public := base64.StdEncoding.EncodeToString(ver.PublicKey)
+			alg, err := crypto.ParseTransitAlgorithm(v.Algorithm)
+			if err != nil {
+				return apigen.TransitKey{}, err
+			}
+			exposed, err := crypto.ExposeTransitPublicKey(alg, ver.PublicKey)
+			if err != nil {
+				return apigen.TransitKey{}, fmt.Errorf("server: transit public key: %w", err)
+			}
+			public := base64.StdEncoding.EncodeToString(exposed)
 			item.PublicKey = &public
 		}
 		out.Versions = append(out.Versions, item)

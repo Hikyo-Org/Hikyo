@@ -111,6 +111,12 @@ type upgradeDrillFixture struct {
 }
 
 func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy bool, prepare ...func(*store.DB)) upgradeDrillFixture {
+	return newUpgradeDrillFixtureWith(t, engine, secret, hierarchy, backup.GenerateIdentity, prepare...)
+}
+
+// newUpgradeDrillFixtureWith mints the operator backup identity with generate,
+// so every drill consumer can run for X25519 and for hybrid custody.
+func newUpgradeDrillFixtureWith(t *testing.T, engine store.Engine, secret, hierarchy bool, generate func() (string, string, error), prepare ...func(*store.DB)) upgradeDrillFixture {
 	t.Helper()
 	cfg := upgradeDrillDatabase(t, engine)
 	root, err := crypto.GenerateRootKey()
@@ -192,7 +198,7 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 	if err != nil {
 		t.Fatal(err)
 	}
-	identity, recipient, err := backup.GenerateIdentity()
+	identity, recipient, err := generate()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +316,7 @@ func TestLegacyDrillFixtureRefusesProjectCapacityEvidence(t *testing.T) {
 	}
 }
 
-// The runtime-created fixture includes migrations 45 through 82, while the
+// The runtime-created fixture includes migrations 45 through 84, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -330,10 +336,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+38 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 82 only")
+	if len(current.Entries) != len(legacy.Entries)+40 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 84 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -437,6 +443,8 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate, PKI, temporary-access, file-target, member-access-rule or manual-pairing evidence", query, err)
 		}
 	}
+	// Reverse 00083: index only.
+	drillExec(t, db, "DROP INDEX scim_users_account_only")
 	// Reverse 00082: lookup indexes carry no independent data or uniqueness.
 	drillExec(t, db, "DROP INDEX adapter_effects_adoption_lookup")
 	drillExec(t, db, "DROP INDEX adapter_conflicts_adoption_lookup")
@@ -652,7 +660,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// the enrolment gate column.
 		"DROP TABLE login_challenges",
 		"ALTER TABLE sessions DROP COLUMN enrolment_required",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84)",
 	} {
 		drillExec(t, db, query)
 	}
@@ -1083,4 +1091,76 @@ func exportDrillPreparation(t *testing.T, cfg store.Config, options backup.Optio
 		t.Fatal(err)
 	}
 	return out
+}
+
+// The same actual recovery on both engines with a hybrid operator identity: the
+// v2 receipt, the hybrid fingerprint, the held-identity lookup, the scratch
+// restore, and the public gate over the signed attestation.
+func TestUpgradeDrillHybridBothEngineRecovery(t *testing.T) {
+	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
+		for _, secret := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/secret=%t", engine, secret), func(t *testing.T) {
+				f := newUpgradeDrillFixtureWith(t, engine, secret, true, backup.GenerateHybridIdentity)
+				receipt, err := backupreceipt.ParseReceipt(f.request.Receipt)
+				if err != nil {
+					t.Fatal(err)
+				}
+				fingerprints := receipt.Snapshot.RecipientFingerprints
+				if receipt.Format != backupreceipt.HybridReceiptFormat || len(fingerprints) != 1 || !strings.HasPrefix(fingerprints[0], backup.FingerprintPrefixHybrid) {
+					t.Fatalf("hybrid export wrote receipt %q with %v", receipt.Format, fingerprints)
+				}
+				result, err := DrillUpgrade(t.Context(), f.request)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !result.HierarchyReadable || !bytes.Equal(f.request.RootKey, make([]byte, crypto.KeySize)) {
+					t.Fatal("root escrow not proved and consumed")
+				}
+				material := backupreceipt.EvidenceMaterial{Receipt: f.request.Receipt, Attestation: result.Attestation, Signature: trustfixture.Sign(t, f.signer.PrimarySigner, result.Attestation)}
+				evidence, err := backupreceipt.VerifyLegacyEvidence(t.Context(), f.request.Operator, f.request.Plan, f.request.Ciphertext, material, backupreceipt.LegacyInspection{InstanceID: f.source.InstanceID, Engine: releaseidentity.Engine(engine), SchemaSHA256: f.source.SchemaDigest, MigrationSHA256: f.source.MigrationDigest, RestoreEpoch: f.source.RestoreEpoch}, f.proposal, time.Now())
+				if err != nil || !evidence.Valid() {
+					t.Fatal("hybrid drill attestation failed public gate", err)
+				}
+			})
+		}
+	}
+}
+
+// A custody mismatch stays a refusal for hybrid: an identity of the other
+// algorithm, a different hybrid identity, and a substituted receipt inventory
+// each fail before any attestation exists.
+func TestUpgradeDrillHybridRefusesCustodyMismatch(t *testing.T) {
+	for _, name := range []string{"other hybrid identity", "x25519 identity", "classical fingerprint swapped in", "mixed inventory"} {
+		t.Run(name, func(t *testing.T) {
+			f := newUpgradeDrillFixtureWith(t, store.EngineSQLite, false, true, backup.GenerateHybridIdentity)
+			switch name {
+			case "other hybrid identity", "x25519 identity":
+				generate := backup.GenerateHybridIdentity
+				if name == "x25519 identity" {
+					generate = backup.GenerateIdentity
+				}
+				identity, _, err := generate()
+				if err != nil {
+					t.Fatal(err)
+				}
+				f.request.Unlock = backup.Unlock{Identity: identity}
+			case "classical fingerprint swapped in", "mixed inventory":
+				r, err := backupreceipt.ParseReceipt(f.request.Receipt)
+				if err != nil {
+					t.Fatal(err)
+				}
+				classical := backup.FingerprintPrefixX25519 + strings.Repeat("4", 64)
+				if name == "mixed inventory" {
+					r.Snapshot.RecipientFingerprints = append(r.Snapshot.RecipientFingerprints, classical)
+				} else {
+					r.Snapshot.RecipientFingerprints = []string{classical}
+				}
+				f.request.Receipt = trustfixture.JSON(t, r)
+			}
+			result, err := DrillUpgrade(t.Context(), f.request)
+			if err == nil || len(result.Attestation) != 0 || result.HierarchyReadable {
+				t.Fatal("custody mismatch produced an attestation")
+			}
+		})
+	}
 }

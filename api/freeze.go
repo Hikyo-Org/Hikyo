@@ -1,12 +1,14 @@
 package api
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/oasdiff/oasdiff/checker"
 	"github.com/oasdiff/oasdiff/diff"
+	"github.com/oasdiff/oasdiff/flatten/commonparams"
 	oasload "github.com/oasdiff/oasdiff/load"
 )
 
@@ -72,6 +74,9 @@ var PermittedChanges = map[string]bool{
 	// growth of the CLOSED ones, which never grow. oasdiff cannot tell the
 	// two apart; leaving the ids off the list is what makes the distinction
 	// hold.
+	//
+	// There is exactly one exception, and it is not in this map: see
+	// MLDSA65EnumGrowth, the one-time amendment of 2026-11-04.
 
 	// Documentation-only movement. It changes no wire behaviour, and refusing
 	// it would make improving a description a breaking change.
@@ -82,6 +87,71 @@ var PermittedChanges = map[string]bool{
 	"description-changed":                   true,
 	"request-property-description-changed":  true,
 	"response-property-description-changed": true,
+}
+
+// MLDSA65EnumGrowth is the single, one-time exception to the closed-enum rule
+// above, declared by the api-cli-surface amendment of 2026-11-04 (ticket #25,
+// "One-time growth of closed enums for mldsa65"): the Transit algorithm enum
+// and the PKI key-algorithm enums grow once, by the value `mldsa65`, and by
+// nothing else. It sets no precedent; closed enums otherwise never grow.
+//
+// The exception is a closed list of exact findings, not an allowlisted change
+// id, so anything outside it still fails: `mldsa44` on the same path,
+// `mldsa65` on any other enum or operation that oasdiff reports, and a future
+// `mldsa87`. oasdiff has no finding for enum growth in a response header, so
+// the guard does not see that (#1217). Adding to this list is an ADR amendment,
+// not a code edit.
+const (
+	requestEnumAdded  = "request-property-enum-value-added"
+	responseEnumAdded = "response-property-enum-value-added"
+	mldsa65           = "mldsa65"
+	environmentPath   = "/api/v1/orgs/{org}/projects/{project}/environments/{environment}"
+)
+
+// EnumGrowth names one permitted enum-value addition: the oasdiff change id,
+// the operation, the path and the property oasdiff reports. The added value
+// is always mldsa65 and is checked separately.
+type EnumGrowth struct {
+	ID, Operation, Path, Property string
+}
+
+var MLDSA65EnumGrowth = []EnumGrowth{
+	{requestEnumAdded, "POST", "/api/v1/instance/pki/issuers", "key_algorithm"},
+	{requestEnumAdded, "POST", "/api/v1/instance/pki/issuers/{issuer}/rotate", "key_algorithm"},
+	{requestEnumAdded, "POST", "/api/v1/instance/pki/profiles", "policy/key_algorithms/items/"},
+	{requestEnumAdded, "PUT", "/api/v1/instance/pki/profiles/{profile}", "policy/key_algorithms/items/"},
+	{requestEnumAdded, "POST", environmentPath + "/certificates", "key_algorithm"},
+	{requestEnumAdded, "POST", environmentPath + "/transit-keys", "algorithm"},
+	{responseEnumAdded, "GET", "/api/v1/instance/pki/profiles", "profiles/items/policy/key_algorithms/items/"},
+	{responseEnumAdded, "POST", "/api/v1/instance/pki/profiles", "policy/key_algorithms/items/"},
+	{responseEnumAdded, "GET", "/api/v1/instance/pki/profiles/{profile}", "policy/key_algorithms/items/"},
+	{responseEnumAdded, "PUT", "/api/v1/instance/pki/profiles/{profile}", "policy/key_algorithms/items/"},
+	{responseEnumAdded, "POST", "/api/v1/instance/pki/profiles/{profile}/bindings", "policy/key_algorithms/items/"},
+	{responseEnumAdded, "DELETE", "/api/v1/instance/pki/profiles/{profile}/bindings/{binding}", "policy/key_algorithms/items/"},
+	{responseEnumAdded, "GET", environmentPath + "/certificate-profiles", "profiles/items/policy/key_algorithms/items/"},
+	{responseEnumAdded, "GET", environmentPath + "/transit-keys", "items/items/algorithm"},
+	{responseEnumAdded, "POST", environmentPath + "/transit-keys", "algorithm"},
+	{responseEnumAdded, "GET", environmentPath + "/transit-keys/{transit_key}", "algorithm"},
+	{responseEnumAdded, "PATCH", environmentPath + "/transit-keys/{transit_key}", "algorithm"},
+	{responseEnumAdded, "POST", environmentPath + "/transit-keys/{transit_key}/lifecycle", "algorithm"},
+	{responseEnumAdded, "POST", environmentPath + "/transit-keys/{transit_key}/rotate", "algorithm"},
+	{responseEnumAdded, "POST", environmentPath + "/transit-keys/{transit_key}/trim", "key/algorithm"},
+}
+
+// permittedEnumGrowth reports whether change is one of MLDSA65EnumGrowth.
+// oasdiff's arguments for both change ids are (value, property, ...).
+func permittedEnumGrowth(change checker.Change) bool {
+	args := change.GetArgs()
+	if len(args) < 2 || fmt.Sprint(args[0]) != mldsa65 {
+		return false
+	}
+	got := EnumGrowth{change.GetId(), change.GetOperation(), change.GetPath(), fmt.Sprint(args[1])}
+	for _, want := range MLDSA65EnumGrowth {
+		if got == want {
+			return true
+		}
+	}
+	return false
 }
 
 // Violation is one refused change.
@@ -101,7 +171,7 @@ func (v Violation) String() string {
 	if where == "" {
 		where = "(document)"
 	}
-	return fmt.Sprintf("[%s] %s: %s (oasdiff level %s)", v.ID, where, v.Text, v.Level)
+	return fmt.Sprintf("[%s] %s: %s (level %s)", v.ID, where, v.Text, v.Level)
 }
 
 // CheckFreeze diffs revised against base and returns every change that is not
@@ -137,13 +207,14 @@ func CheckFreeze(base, revised []byte) ([]Violation, error) {
 
 	// Every check, down to INFO. The default run reports breaking changes
 	// only, which is precisely the fail-open behaviour the ADR rejects.
-	config := checker.NewConfig(checker.GetAllChecks())
+	// Draft: a stability label is lifecycle metadata and must hide nothing.
+	config := checker.NewConfig(checker.GetAllChecks(), checker.WithStabilityLevel(checker.StabilityDraft))
 	changes := checker.CheckBackwardCompatibilityUntilLevel(config, report, sources, checker.INFO)
 
-	var violations []Violation
+	violations := freezeRemovals(report)
 	for _, change := range changes {
 		id := change.GetId()
-		if PermittedChanges[id] {
+		if PermittedChanges[id] || permittedEnumGrowth(change) {
 			continue
 		}
 		violations = append(violations, Violation{
@@ -154,11 +225,9 @@ func CheckFreeze(base, revised []byte) ([]Violation, error) {
 			Level:     change.GetLevel().String(),
 		})
 	}
-	sort.Slice(violations, func(i, j int) bool {
-		if violations[i].ID != violations[j].ID {
-			return violations[i].ID < violations[j].ID
-		}
-		return violations[i].Path < violations[j].Path
+	slices.SortFunc(violations, func(a, b Violation) int {
+		return cmp.Or(cmp.Compare(a.ID, b.ID), cmp.Compare(a.Path, b.Path),
+			cmp.Compare(a.Operation, b.Operation), cmp.Compare(a.Text, b.Text), cmp.Compare(a.Level, b.Level))
 	})
 	return violations, nil
 }
@@ -171,5 +240,36 @@ func specInfo(raw []byte, name string) (*oasload.SpecInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	normalizeFreezeParameters(doc)
 	return &oasload.SpecInfo{Spec: doc, Url: name}, nil
+}
+
+// Compare the effective operation contract, so moving an unchanged parameter
+// between a path and its operations is neutral. The parsed documents belong to
+// this check only; the authored spec bytes are never modified.
+func normalizeFreezeParameters(doc *openapi3.T) {
+	documents := []*openapi3.T{doc}
+	seen := make(map[*openapi3.Callback]bool)
+	for len(documents) > 0 {
+		current := documents[len(documents)-1]
+		documents = documents[:len(documents)-1]
+		commonparams.Move(current)
+		for _, path := range current.Paths.Map() {
+			for _, operation := range path.Operations() {
+				for _, ref := range operation.Callbacks {
+					if ref == nil || ref.Value == nil || seen[ref.Value] {
+						continue
+					}
+					seen[ref.Value] = true
+					// commonparams handles a document's top-level paths. Adapt
+					// callback expressions to that shape and normalize them too.
+					paths := openapi3.NewPaths()
+					for expression, item := range ref.Value.Map() {
+						paths.Set(expression, item)
+					}
+					documents = append(documents, &openapi3.T{Paths: paths})
+				}
+			}
+		}
+	}
 }

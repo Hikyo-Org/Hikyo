@@ -300,7 +300,11 @@ func Fingerprint(origin, recipient, ackKey string, generation int64) (string, er
 // the ownership ledger. Any trust-boundary change (a new fingerprint) moves
 // it, so existing targets fail closed with a destination-id mismatch.
 func DestinationID(fingerprint, namespace string) int64 {
-	sum := newLP(destinationDomain).str(fingerprint).str(namespace).sum()
+	return destinationID(destinationDomain, fingerprint, namespace)
+}
+
+func destinationID(domain, fingerprint, namespace string) int64 {
+	sum := newLP(domain).str(fingerprint).str(namespace).sum()
 	id := int64(binary.BigEndian.Uint64(sum[:8]) & math.MaxInt64)
 	if id == 0 {
 		return 1
@@ -322,8 +326,10 @@ type IdempotencyParts struct {
 }
 
 // IdempotencyKey derives the at-least-once identity of one effect.
-func IdempotencyKey(p IdempotencyParts) string {
-	return newLP(idempotencyDomain).str(p.TargetID).str(p.Fingerprint).str(p.Route).
+func IdempotencyKey(p IdempotencyParts) string { return idempotencyKey(idempotencyDomain, p) }
+
+func idempotencyKey(domain string, p IdempotencyParts) string {
+	return newLP(domain).str(p.TargetID).str(p.Fingerprint).str(p.Route).
 		i64(p.Generation).i64(p.Revision).str(string(p.Op)).str(p.Surface).str(p.Name).hexSum()
 }
 
@@ -387,6 +393,21 @@ func validateEnvelope(e *Envelope) error {
 	if e.V != Version {
 		return fmt.Errorf("%w: unsupported version", ErrMalformed)
 	}
+	if err := validateScope(e); err != nil {
+		return err
+	}
+	if len(e.Ciphertext) == 0 || len(e.Ciphertext) > MaxCiphertext {
+		return fmt.Errorf("%w: ciphertext size", ErrMalformed)
+	}
+	if !hexKey.MatchString(e.IdempotencyKey) || !strings.HasPrefix(e.KeyID, "sha256:") || !hexKey.MatchString(e.KeyID[len("sha256:"):]) || len(e.Sig) != ed25519.SignatureSize {
+		return fmt.Errorf("%w: invalid key fields", ErrMalformed)
+	}
+	return validateWindow(e.IssuedAt, e.ExpiresAt)
+}
+
+// validateScope checks the target, route, source and names every protocol
+// version carries identically.
+func validateScope(e *Envelope) error {
 	if !idSyntax.MatchString(e.TargetID) || !idSyntax.MatchString(e.InstanceID) || !idSyntax.MatchString(e.Namespace) || !routeSyntax.MatchString(e.Route) || e.Generation < 1 {
 		return fmt.Errorf("%w: invalid identity fields", ErrMalformed)
 	}
@@ -403,18 +424,13 @@ func validateEnvelope(e *Envelope) error {
 	default:
 		return fmt.Errorf("%w: unknown op", ErrMalformed)
 	}
-	if err := validateNames(e.Op, e.Names); err != nil {
-		return err
-	}
-	if len(e.Ciphertext) == 0 || len(e.Ciphertext) > MaxCiphertext {
-		return fmt.Errorf("%w: ciphertext size", ErrMalformed)
-	}
-	if !hexKey.MatchString(e.IdempotencyKey) || !strings.HasPrefix(e.KeyID, "sha256:") || !hexKey.MatchString(e.KeyID[len("sha256:"):]) || len(e.Sig) != ed25519.SignatureSize {
-		return fmt.Errorf("%w: invalid key fields", ErrMalformed)
-	}
-	issued, err1 := time.Parse(timeLayout, e.IssuedAt)
-	expires, err2 := time.Parse(timeLayout, e.ExpiresAt)
-	if err1 != nil || err2 != nil || issued.Format(timeLayout) != e.IssuedAt || expires.Format(timeLayout) != e.ExpiresAt {
+	return validateNames(e.Op, e.Names)
+}
+
+func validateWindow(issuedAt, expiresAt string) error {
+	issued, err1 := time.Parse(timeLayout, issuedAt)
+	expires, err2 := time.Parse(timeLayout, expiresAt)
+	if err1 != nil || err2 != nil || issued.Format(timeLayout) != issuedAt || expires.Format(timeLayout) != expiresAt {
 		return fmt.Errorf("%w: timestamps must be canonical UTC seconds", ErrMalformed)
 	}
 	if !expires.After(issued) || expires.Sub(issued) > MaxLifetime {
@@ -668,13 +684,17 @@ func validateAck(a *Ack) error {
 	if !ok || !hexKey.MatchString(digest) || !hexKey.MatchString(a.IdempotencyKey) || len(a.Sig) != ed25519.SignatureSize {
 		return fmt.Errorf("%w: invalid ack fields", ErrMalformed)
 	}
-	switch a.Status {
+	return validateStatus(a.Status, a.Reason)
+}
+
+func validateStatus(status AckStatus, reason string) error {
+	switch status {
 	case AckApplied, AckAlreadyApplied:
-		if a.Reason != "" {
+		if reason != "" {
 			return fmt.Errorf("%w: success carries no reason", ErrMalformed)
 		}
 	case AckConflict, AckRejected:
-		if !reasonSyntax.MatchString(a.Reason) {
+		if !reasonSyntax.MatchString(reason) {
 			return fmt.Errorf("%w: failure reason must match [a-z0-9_]{1,64}", ErrMalformed)
 		}
 	default:

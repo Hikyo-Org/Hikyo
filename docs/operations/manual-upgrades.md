@@ -128,7 +128,7 @@ the existing `SnapshotFloor` JSON to reject an older or conflicting snapshot;
 assembly does not update that floor. Runtime always enforces the installation's
 own persisted floor and actual datastore state.
 
-The command verifies the recovery-signed snapshot, authorized primary keys,
+The command verifies the authenticated trust snapshot, authorized primary keys,
 stable release signatures and bound compatibility documents. It then runs the
 production bundle loader over the exact staged bytes, including bridge proofs.
 It publishes a new output directory atomically and refuses an existing path,
@@ -200,6 +200,15 @@ the verified route order.
 ```sh
 hikyo backup upgrade-export --out /srv/upgrade-export --recipient "$AGE_RECIPIENT"
 ```
+
+`AGE_RECIPIENT` may be an X25519 recipient or, once every host that may restore
+runs a release that reads them, age's hybrid post-quantum recipient (`age1pq1...`,
+set `--recipient` once per recipient; all hybrid or all X25519, at most 32
+hybrid). With a hybrid `HIKYO_BACKUP_RECIPIENTS`, `sudo hikyo upgrade` and the
+container upgrade refuse before any backup because their custody identity is
+X25519; this manual route is the supported one. A hybrid export writes a
+`backup-receipt/v2` receipt. See
+[Hybrid post-quantum recipients](/docs/backup-and-restore/#hybrid-post-quantum-recipients-opt-in).
 
 On the operator custody host, use the reported ciphertext and receipt paths,
 the same public trust and an independently empty scratch target:

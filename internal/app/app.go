@@ -27,6 +27,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
+	"github.com/Hikyo-Org/hikyo/internal/tlspolicy"
 	"github.com/Hikyo-Org/hikyo/internal/updater"
 	"github.com/Hikyo-Org/hikyo/internal/upgradegate"
 )
@@ -377,6 +378,11 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		return nil, fmt.Errorf("boot: managed configuration is invalid: %w", err)
 	}
 	cfg = effective
+	// After adoption the managed value decides. A differing bootstrap value is
+	// ignored, so say so without echoing it (it may be invalid).
+	if env := bootstrap.ManagedInputs[config.TLSProfileKey]; env != "" && env != effective.TLSProfile {
+		log.Warn("HIKYO_TLS_PROFILE in the environment is ignored; the adopted managed value decides", "adopted_profile", effective.TLSProfile)
+	}
 	diagnostics.Printf(ctx, 2, "Validating HTTP API contract")
 	if err := resources.warmOpenAPI(); err != nil {
 		return nil, fmt.Errorf("boot: refusing to serve: OpenAPI contract: %w", err)
@@ -387,10 +393,11 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		selfConfig: selfConfig, budget: serviceBudget(cfg), advisory: service.NewAdvisory(), fakeProvider: newDevFakeProvider(),
 		values: ownerValues, nodeValues: nodeValues, seedNodeValues: nodeValues,
 		endpointErrors: make(chan error, 4)}
-	certificate, err := newManagedCertificate(cfg.TLSCertPEM, cfg.TLSKeyPEM)
+	certificate, err := newManagedCertificate(cfg.TLSCertPEM, cfg.TLSKeyPEM, tlspolicy.Profile(cfg.TLSProfile))
 	if err != nil {
 		return nil, err
 	}
+	certificate.observeTo(log)
 	diagnostics.Printf(ctx, 1, "Preparing public and operational listeners")
 	listened := diagnostics.Time(ctx, "prepare server listeners")
 	endpoints, err := owner.prepareEndpoints(cfg, certificate)
@@ -445,6 +452,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		return nil, err
 	}
 	owner.current = newRunningGeneration(graph)
+	graph.certificate.logConfigured(log)
 	guard.add(func() error {
 		owner.stop()
 		return selfConfig.CloseRuntime()

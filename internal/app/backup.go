@@ -61,17 +61,16 @@ const MinRestoreSchemaVersion = 16
 func BackupUsage(w io.Writer) {
 	fmt.Fprint(w, `hikyo backup - age-encrypted instance export (server host only)
 
-  hikyo backup export [--out DIR] [--recipient AGE-RECIPIENT]...
-                      [--passphrase-file PATH]
-  hikyo backup keygen [--output-file PATH | --dangerously-print]
-  hikyo backup upgrade-export [--bundle DIR] [--out DIR] [--recipient AGE-RECIPIENT]... [--json]
+  hikyo backup export --out DIR ((--recipient AGE-RECIPIENT)... | --passphrase-file PATH)
+  hikyo backup keygen [--hybrid] [--output-file PATH | --dangerously-print]
+  hikyo backup upgrade-export [--bundle DIR] --out DIR (--recipient AGE-RECIPIENT)... [--json]
   hikyo backup upgrade-drill --from ARCHIVE --receipt PATH --identity-file PATH
                       --root-key-file PATH (--target-sqlite PATH | --target-postgres-dsn-file PATH)
-                      [--principal ID] [--project ORG/PROJECT] [--bundle DIR] [--out DIR]
-                      [--cosign PATH] [--signing-key PATH] [--valid-for 24h]
+                      [--principal ID] [--project ORG/PROJECT] [--bundle DIR] --out DIR
+                      [--cosign PATH] --signing-key PATH [--valid-for 24h]
 
 For a development datastore, put --dev immediately after the group:
-  hikyo backup --dev export
+  hikyo backup --dev export --out DIR --recipient AGE-RECIPIENT
 The production trust domain remains the default.
 
 export writes ONE age-encrypted archive holding a consistent snapshot of the
@@ -79,17 +78,22 @@ datastore. Every sensitive field inside it is already envelope ciphertext and
 the wrapped key hierarchy travels with it, so reading a value out of a backup
 needs BOTH the backup identity and the root key. Export itself reads neither.
 
-Recipients come from --recipient, or from HIKYO_BACKUP_RECIPIENTS; the
-destination from --out or HIKYO_BACKUP_DIR. An export with no recipients is
-refused, never written unencrypted. A passphrase (age's scrypt recipient) is
-mutually exclusive with public recipients: the age specification requires an
-scrypt stanza to be the only stanza in its container, so a container carrying
-both would have two doors of unequal strength.
+export reads neither HIKYO_BACKUP_RECIPIENTS nor HIKYO_BACKUP_DIR: pass the
+recipients with --recipient and the destination with --out. An export with no
+recipients is refused, never written unencrypted. A passphrase (age's scrypt
+recipient) is mutually exclusive with public recipients: the age specification
+requires an scrypt stanza to be the only stanza in its container, so a
+container carrying both would have two doors of unequal strength.
 
 keygen mints a backup identity and prints it once. Store the PRIVATE half in a
 custody store SEPARATE from the root key's - two keys in one password manager
 is one failure domain wearing two names, and the escrow runbook requires two.
 Delivery follows the print triad, as with every other display-once value.
+By default it mints an X25519 identity. --hybrid mints age's post-quantum
+hybrid identity (X25519 + ML-KEM-768) instead: its recipient is about 2000
+characters, an export takes at most 32 of them, and they cannot be mixed with
+X25519 recipients in one export. A hybrid archive needs a reader that knows the
+hybrid stanza; keep an X25519 identity for archives written before you switched.
 
 upgrade-export and upgrade-drill are the pre-upgrade evidence pair that
 sudo hikyo upgrade runs against a verified release bundle: export writes the
@@ -179,10 +183,10 @@ func (r *recipientList) Set(v string) error { *r = append(*r, strings.TrimSpace(
 func runBackupExport(ctx context.Context, cfg *config.Config, log *slog.Logger, args []string, stderr io.Writer) error {
 	fs := flag.NewFlagSet("backup export", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	out := fs.String("out", "", "directory to publish the archive into (default HIKYO_BACKUP_DIR)")
+	out := fs.String("out", "", "directory to publish the archive into (required)")
 	passphraseFile := fs.String("passphrase-file", "", "read the container passphrase from this file (age scrypt recipient)")
 	var recipients recipientList
-	fs.Var(&recipients, "recipient", "age public recipient; repeatable (default HIKYO_BACKUP_RECIPIENTS)")
+	fs.Var(&recipients, "recipient", "age public recipient; repeatable (required unless --passphrase-file is set)")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -196,7 +200,7 @@ func runBackupExport(ctx context.Context, cfg *config.Config, log *slog.Logger, 
 		dir = cfg.BackupDir
 	}
 	if dir == "" {
-		return errors.New("no destination: pass --out DIR or set HIKYO_BACKUP_DIR")
+		return errors.New("no destination: pass --out DIR (the CLI does not read HIKYO_BACKUP_DIR)")
 	}
 
 	diagnostics.Printf(ctx, 1, "backup: validating datastore admission")
@@ -235,7 +239,9 @@ func runBackupExport(ctx context.Context, cfg *config.Config, log *slog.Logger, 
 // exportOptions resolves the recipient policy from flags then configuration.
 // Flags win entirely rather than merging: a half-overridden recipient set is
 // how an operator ends up with an archive only the recipient they meant to
-// replace can open.
+// replace can open. A CLI process never has configured recipients, because
+// config.LoadBootstrap moves them out of the Config, so the fallback only serves
+// callers that build a Config by hand.
 func exportOptions(cfg *config.Config, recipients recipientList, passphraseFile string) (backup.Options, error) {
 	o := backup.Options{Recipients: recipients}
 	if len(o.Recipients) == 0 && passphraseFile == "" {
@@ -249,6 +255,9 @@ func exportOptions(cfg *config.Config, recipients recipientList, passphraseFile 
 		o.Passphrase = pass
 	}
 	if err := o.Validate(); err != nil {
+		if errors.Is(err, backup.ErrNoRecipients) {
+			return backup.Options{}, fmt.Errorf("%w; pass --recipient AGE-RECIPIENT (the CLI does not read HIKYO_BACKUP_RECIPIENTS)", err)
+		}
 		return backup.Options{}, err
 	}
 	return o, nil
@@ -274,6 +283,7 @@ func runBackupKeygen(args []string, stderr io.Writer, terminalSession *disclose.
 	fs.SetOutput(stderr)
 	outputFile := fs.String("output-file", "", "write the identity to a file this command creates (0600)")
 	dangerous := fs.Bool("dangerously-print", false, "write the identity to stdout, and to whatever collects it")
+	hybrid := fs.Bool("hybrid", false, "mint a post-quantum hybrid identity (X25519 + ML-KEM-768) instead of X25519")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -288,7 +298,11 @@ func runBackupKeygen(args []string, stderr io.Writer, terminalSession *disclose.
 		return err
 	}
 	defer sink.AbortOnReturn(&returnErr)
-	identity, recipient, err := backup.GenerateIdentity()
+	generate := backup.GenerateIdentity
+	if *hybrid {
+		generate = backup.GenerateHybridIdentity
+	}
+	identity, recipient, err := generate()
 	if err != nil {
 		return err
 	}

@@ -79,6 +79,12 @@ func preparationDatabase(t *testing.T, engine store.Engine) store.Config {
 }
 
 func TestPreparationExportUsesLiveSessionWithoutRuntimeAdmission(t *testing.T) {
+	for algorithm, generate := range map[string]func() (string, string, error){"x25519": backup.GenerateIdentity, "hybrid": backup.GenerateHybridIdentity} {
+		t.Run(algorithm, func(t *testing.T) { preparationExportUsesLiveSession(t, algorithm, generate) })
+	}
+}
+
+func preparationExportUsesLiveSession(t *testing.T, algorithm string, generate func() (string, string, error)) {
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			cfg := preparationDatabase(t, engine)
@@ -101,7 +107,7 @@ func TestPreparationExportUsesLiveSessionWithoutRuntimeAdmission(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			identity, recipient, err := backup.GenerateIdentity()
+			identity, recipient, err := generate()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -127,6 +133,17 @@ func TestPreparationExportUsesLiveSessionWithoutRuntimeAdmission(t *testing.T) {
 			raw, err := os.ReadFile(exported.ReceiptPath)
 			if err != nil {
 				t.Fatal(err)
+			}
+			receipt, err := backupreceipt.ParseReceipt(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantFormat, wantPrefix := backupreceipt.ReceiptFormat, backup.FingerprintPrefixX25519
+			if algorithm == "hybrid" {
+				wantFormat, wantPrefix = backupreceipt.HybridReceiptFormat, backup.FingerprintPrefixHybrid
+			}
+			if receipt.Format != wantFormat || len(receipt.Snapshot.RecipientFingerprints) != 1 || !strings.HasPrefix(receipt.Snapshot.RecipientFingerprints[0], wantPrefix) {
+				t.Fatalf("%s export wrote receipt format %q, fingerprints %v", algorithm, receipt.Format, receipt.Snapshot.RecipientFingerprints)
 			}
 			pinned, err := backupreceipt.PinCiphertext(t.Context(), exported.Path, t.TempDir())
 			if err != nil {

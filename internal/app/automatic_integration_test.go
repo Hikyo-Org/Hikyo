@@ -41,14 +41,18 @@ import (
 func TestAutomaticUpgradePackagedNightlyRoute(t *testing.T) {
 	source := newUpgradeDrillFixture(t, store.EngineSQLite, true, true)
 	route, claims, _ := automaticProcessRoute(t, source)
-	for _, scenario := range []string{"success", "install-interruption", "health-failure"} {
+	for _, scenario := range []string{"success", "hybrid-success", "install-interruption", "health-failure"} {
 		t.Run(scenario, func(t *testing.T) {
 			failInstall := scenario == "install-interruption"
 			f := source
 			if scenario != "success" {
 				f = newUpgradeDrillFixture(t, store.EngineSQLite, true, true)
 			}
-			host, journal := automaticProcessProof(t, f, route)
+			generate := backup.GenerateIdentity
+			if scenario == "hybrid-success" {
+				generate = backup.GenerateHybridIdentity
+			}
+			host, journal := automaticProcessProofWith(t, f, route, generate)
 			host.failInstall = failInstall
 			host.failHealth = scenario == "health-failure"
 			t.Cleanup(func() {
@@ -240,6 +244,13 @@ func automaticProcessRoute(t *testing.T, source upgradeDrillFixture) (automaticR
 }
 
 func automaticProcessProof(t *testing.T, f upgradeDrillFixture, route automaticRoute) (*automaticProcessHost, *automaticJournal) {
+	return automaticProcessProofWith(t, f, route, backup.GenerateIdentity)
+}
+
+// automaticProcessProofWith exports through the packaged binary's real
+// upgrade-export CLI to a recipient from generate, drills it, and leaves the
+// public evidence for the production evidence loader.
+func automaticProcessProofWith(t *testing.T, f upgradeDrillFixture, route automaticRoute, generate func() (string, string, error)) (*automaticProcessHost, *automaticJournal) {
 	t.Helper()
 	work := t.TempDir()
 	installation := filepath.Join(work, "installation")
@@ -252,7 +263,7 @@ func automaticProcessProof(t *testing.T, f upgradeDrillFixture, route automaticR
 	automaticProcessPut(t, filepath.Join(work, "root.key"), []byte(crypto.EncodeRootKey(f.root)))
 	host := &automaticProcessHost{work: work, installed: filepath.Join(work, "hikyo"), fenced: true, baseEnv: []string{"PATH=" + os.Getenv("PATH"), "HOME=" + work, "HIKYO_DB=sqlite:" + f.cfg.Path, "HIKYO_EXTERNAL_ORIGIN=https://automatic.fixture.invalid", "HIKYO_UPDATE_CHANNEL=off", "HIKYO_UPGRADE_STATE_DIR=" + installation}}
 	host.evidence = hostupgrade.RuntimeEvidence{BundleDirectory: route.Directory, OperatorPublicKey: publicPath, TargetManifest: string(route.Plan.Target().ManifestSHA256), LegacyWritersStopped: true}
-	identity, recipient, err := backup.GenerateIdentity()
+	identity, recipient, err := generate()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,6 +286,9 @@ func automaticProcessProof(t *testing.T, f upgradeDrillFixture, route automaticR
 		t.Fatalf("backup output must be JSON: %v\n%s", err, stdout.String())
 	}
 	receipt := automaticProcessRead(t, exported.Receipt)
+	if parsed, err := backupreceipt.ParseReceipt(receipt); err != nil || (strings.HasPrefix(recipient, "age1pq1")) != (parsed.Format == backupreceipt.HybridReceiptFormat) {
+		t.Fatalf("packaged upgrade-export wrote receipt format %q: %v", parsed.Format, err)
+	}
 	pinned, err := backupreceipt.PinCiphertext(t.Context(), exported.Ciphertext, work)
 	if err != nil {
 		t.Fatal(err)

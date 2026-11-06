@@ -238,14 +238,22 @@ type Identity struct {
 	// EnrolmentRequired mirrors the session flag (#760): whoami surfaces it so
 	// the SPA renders the enrolment gate a flagged session is confined to.
 	EnrolmentRequired bool
-	// InstanceOperator is a disclosure-safe UI hint: the caller holds the
-	// instance-config authority the operator-only reads (retention health,
-	// update status) require. It is a reflection of the caller's own grant, not
-	// an authorization — every one of those reads is still judged per request.
+	// InstanceOperator is a disclosure-safe UI hint: the session can exercise the
+	// instance-config authority the operator-only reads (retention health, update
+	// status) require, the grant and its second factor. It is not an
+	// authorization: every one of those reads is still judged per request.
 	InstanceOperator bool
 	// InstanceAuditRead gates audit navigation independently of instance-config.
-	// It reflects the caller's own grant; every read still authorizes normally.
+	// It reflects what this session can exercise (the grant and its second
+	// factor, so a password-only session reads false); every read still
+	// authorizes normally.
 	InstanceAuditRead bool
+	// InstanceDirectory gates the Remotes navigation row for a directory-only
+	// reader. It reflects what this session can exercise under the operation
+	// behind GET /api/v1/instance/remotes (the instance-directory grant and its
+	// second factor, so a password-only session reads false); every read still
+	// authorizes normally.
+	InstanceDirectory bool
 	// DeliveryReportGrant is a disclosure-safe UI hint: where the caller may
 	// grant `report-delivery-status`. No human holds that atom, so every grant
 	// of it is an unheld grant, and this is exactly the grant-unheld rule's
@@ -999,6 +1007,11 @@ func (s *Auth) Identity(ctx context.Context, presented string) (Identity, error)
 			return err
 		}
 		out.InstanceAuditRead = auditReader
+		directoryReader, err := az.HoldsInstanceCapability(ctx, id, authz.OpRemoteList)
+		if err != nil {
+			return err
+		}
+		out.InstanceDirectory = directoryReader
 		// The caller's own grant rows, read without an operation or an audit
 		// record, the same footing as the check above: the grant dialog gates
 		// its report-delivery-status offer on this rather than probing the org

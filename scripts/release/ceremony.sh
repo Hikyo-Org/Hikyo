@@ -587,6 +587,7 @@ phase_candidate() {
 		jq --arg version "$version" --argjson release_sequence "$next_release_sequence" '
 			.sequence += 1 |
 			.event = {type: "release-candidate", signed_by: .recovery.id} |
+			del(.source_commit, .release_tag) |
 			.pending_release = {version: $version, sequence: $release_sequence, manifest_sha256: ("0" * 64)}
 		' "$ram_dir/trust/metadata.json" >"$ram_dir/trust/metadata.candidate.json"
 		printf 'Cosign will prompt for the RECOVERY passphrase.\n'
