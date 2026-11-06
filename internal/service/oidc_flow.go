@@ -1264,6 +1264,11 @@ func (s *Auth) UnlinkIdentity(ctx context.Context, presented, identityID, proof 
 		if e := az.RemoveExternalIdentity(ctx, identityID); e != nil {
 			return e
 		}
+		// The removed identity may have been what qualified the account for
+		// personal values, as every other credential write checks.
+		if e := purgePersonalIfUnqualified(ctx, az, account, now); e != nil {
+			return e
+		}
 		*result, e = s.reissueSession(ctx, az, account, evidence.factorClass(), MethodLocalPassword, Artifact(live.Artifact), now)
 		if e != nil {
 			return e
