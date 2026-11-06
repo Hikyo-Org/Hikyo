@@ -39,7 +39,7 @@ func accountQualified(ctx context.Context, az *authz.TxAuthorizer, accountID str
 	if err != nil || len(factors) > 0 {
 		return len(factors) > 0, err
 	}
-	return federatedQualified(ctx, az, accountID, now)
+	return federatedQualified(ctx, az, accountID, "", now)
 }
 
 // federatedQualified reports a passwordless account holding a current-epoch
@@ -47,7 +47,10 @@ func accountQualified(ctx context.Context, az *authz.TxAuthorizer, accountID str
 // static half of the reveal gate those providers enforce at reauthentication.
 // A password row in the current credential epoch disqualifies it, and OAuth2
 // identities never qualify (OAuth2 opens no reauthentication window).
-func federatedQualified(ctx context.Context, az *authz.TxAuthorizer, accountID string, now time.Time) (bool, error) {
+//
+// A non-empty oidcProvider names the OIDC provider that opened a window: only
+// an identity through that very provider then counts.
+func federatedQualified(ctx context.Context, az *authz.TxAuthorizer, accountID, oidcProvider string, now time.Time) (bool, error) {
 	inventory, err := localProofInventory(ctx, az, accountID)
 	if err != nil || inventory.password {
 		return false, err
@@ -61,7 +64,8 @@ func federatedQualified(ctx context.Context, az *authz.TxAuthorizer, accountID s
 		return false, err
 	}
 	for _, identity := range identities {
-		if identity.CredentialEpoch != epoch {
+		if identity.CredentialEpoch != epoch ||
+			(oidcProvider != "" && (identity.Kind != OIDCKind || identity.ProviderID != oidcProvider)) {
 			continue
 		}
 		ok, err := identityPassesRevealGate(ctx, az, identity, now)
@@ -104,9 +108,16 @@ func identityPassesRevealGate(ctx context.Context, az *authz.TxAuthorizer, ident
 // admitFederatedPersonalWindow decides whether a window an identity provider
 // opened may open a personal value. Only a qualifying passwordless account
 // with no standing factor may use one: a factor holder must use the factor,
-// so an identity-provider administrator cannot reach their values.
+// so an identity-provider administrator cannot reach their values. The
+// provider that opened the window must itself be one the account qualifies
+// through, so a second linked provider cannot borrow that qualification.
+//
+// shortcut: only an OIDC window is admitted. SAML reauthentication does not
+// bind the session's provider, so the session cannot name the opener, and
+// reauth_windows cannot store a SAML factor class today; name the opener from
+// the window's SAML transaction once such a window can exist.
 func admitFederatedPersonalWindow(ctx context.Context, az *authz.TxAuthorizer, w authz.ReauthWindow, now time.Time) error {
-	if w.FactorClass != "oidc" && w.FactorClass != SAMLKind {
+	if w.FactorClass != OIDCKind {
 		return ErrPersonalFactorRequired
 	}
 	session, err := az.AuthenticateSessionByID(ctx, w.SessionID, now)
@@ -124,7 +135,12 @@ func admitFederatedPersonalWindow(ctx context.Context, az *authz.TxAuthorizer, w
 	if len(factors) > 0 {
 		return ErrPersonalFactorRequired
 	}
-	ok, err := federatedQualified(ctx, az, account.ID, now)
+	// The OIDC reauthentication callback refuses any provider but the
+	// session's own, so the session names the provider that opened the window.
+	if session.ProviderID == "" {
+		return ErrPersonalFactorRequired
+	}
+	ok, err := federatedQualified(ctx, az, account.ID, session.ProviderID, now)
 	if err != nil {
 		return err
 	}

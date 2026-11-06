@@ -269,6 +269,23 @@ func (r *Resolver) ErasePrivacyAccount(ctx context.Context, account, principal, 
 			return err
 		}
 	}
+	// Personal values and their notices go with the subject: an erased owner
+	// keeps neither a value nor a key name (personal-values ADR).
+	if r.sq != nil {
+		if _, err := r.sq.DeletePersonalValuesForOwner(ctx, principal); err != nil {
+			return err
+		}
+		if err := r.sq.DeletePersonalValueNoticesForOwner(ctx, principal); err != nil {
+			return err
+		}
+	} else {
+		if _, err := r.pg.DeletePersonalValuesForOwner(ctx, principal); err != nil {
+			return err
+		}
+		if err := r.pg.DeletePersonalValueNoticesForOwner(ctx, principal); err != nil {
+			return err
+		}
+	}
 	if r.sq != nil {
 		return r.sq.PrivacyEraseAccount(ctx, sqlitegen.PrivacyEraseAccountParams{Username: username, AccountID: account})
 	}

@@ -47,10 +47,6 @@ const LoginChallengeLifetime = 5 * time.Minute
 // it would both mint an ungated session on a `required` instance and be
 // presentable against a challenge. This mirrors the epoch check the webauthn
 // finish already applies to the credential it verifies.
-func (s *Auth) enrolledFactors(ctx context.Context, az *authz.TxAuthorizer, accountID string) ([]string, error) {
-	return enrolledFactors(ctx, az, accountID)
-}
-
 func enrolledFactors(ctx context.Context, az *authz.TxAuthorizer, accountID string) ([]string, error) {
 	epoch, err := az.CredentialEpoch(ctx)
 	if err != nil {
@@ -86,7 +82,7 @@ func (s *Auth) computeEnrolmentRequired(ctx context.Context, az *authz.TxAuthori
 	if method != MethodLocalPassword || !s.secondFactorRequired() {
 		return false, nil
 	}
-	factors, err := s.enrolledFactors(ctx, az, accountID)
+	factors, err := enrolledFactors(ctx, az, accountID)
 	if err != nil {
 		return false, err
 	}

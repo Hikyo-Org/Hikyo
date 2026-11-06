@@ -206,14 +206,24 @@ func (f acctFederated) passwordCurrent(current bool) {
 	execRaw(f.t, f.db, `UPDATE password_credentials SET credential_epoch=`+epoch+` WHERE account_id='`+f.account+`'`)
 }
 
-// window opens a passkey window for keyA, then presents it as one an
+// window opens a passkey window for keyA, then presents it as one the "corp"
 // identity provider opened, with the passkey hidden again.
 func (f acctFederated) window(t *testing.T) {
+	t.Helper()
+	f.windowVia(t, "corp")
+}
+
+// windowVia presents the window as opened by the OIDC provider with the given
+// slug: an OIDC reauthentication is only ever opened on a session of that
+// same provider, so the session records it.
+func (f acctFederated) windowVia(t *testing.T, slug string) {
 	t.Helper()
 	f.passkey(true)
 	f.e.admin.token = personalReauth(t, f.e.admin.auth, f.e.admin.token, f.e.device, f.e.keyA)
 	f.passkey(false)
 	execRaw(t, f.db, `UPDATE reauth_windows SET factor_class='oidc' WHERE environment_id='env_a1'`)
+	execRaw(t, f.db, `UPDATE sessions SET provider_id=(SELECT id FROM oidc_providers WHERE slug='`+slug+
+		`') WHERE id IN (SELECT session_id FROM reauth_windows WHERE environment_id='env_a1')`)
 }
 
 func newAcctFederated(t *testing.T, db *store.DB, username string) (acctFederated, string) {
@@ -450,6 +460,122 @@ func TestPersonalAccountPlantedRecoveryCodeNeverReads(t *testing.T) {
 		entries, err := e.pv.List(ctx, service.Bearer(token), envScope(envA1))
 		if err != nil || len(entries) != 1 || entries[0].Set || entries[0].Notice != service.PersonalCauseQualificationLost {
 			t.Fatalf("owner list after a planted recovery: err=%v entries=%d", err, len(entries))
+		}
+	})
+}
+
+// A federated window is bound to the provider that opened it: a second linked
+// provider the account does not qualify through cannot borrow the
+// qualification the first one gives, nor can a window whose opener the
+// session does not name.
+func TestPersonalAccountFederatedWindowBoundToOpener(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f, _ := newAcctFederated(t, db, "pv-federated-opener")
+		e := f.e
+		ctx := t.Context()
+		weak := acctProvider(t, e, "corp-weak", nil, true)
+		acctLinkOIDC(t, db, "eid_pv_opener_weak", f.account, weak, "corp-weak")
+		f.passwordCurrent(false)
+		set := func() error {
+			_, err := e.pv.Set(ctx, service.Bearer(e.admin.token), envScope(envA1), ceremonySecretA, personalPlain)
+			return err
+		}
+
+		f.windowVia(t, "corp-weak")
+		if err := set(); !errors.Is(err, service.ErrPersonalFactorRequired) {
+			t.Fatalf("window opened by a non-qualifying provider: set = %v", err)
+		}
+		f.window(t)
+		execRaw(t, db, `UPDATE sessions SET provider_id=NULL WHERE id IN (SELECT session_id FROM reauth_windows WHERE environment_id='env_a1')`)
+		if err := set(); !errors.Is(err, service.ErrPersonalFactorRequired) {
+			t.Fatalf("window whose session names no provider: set = %v", err)
+		}
+		if queryInt(t, db, `SELECT COUNT(*) FROM personal_values`) != 0 {
+			t.Fatal("a refused window stored a value")
+		}
+		f.window(t)
+		if err := set(); err != nil {
+			t.Fatalf("window opened by the qualifying provider: set = %v", err)
+		}
+	})
+}
+
+// Unlinking an identity re-checks qualification in the same transaction, as
+// every other credential write does. Here the account's passkey vanished
+// without a credential write, so its value is suspended; the unlink deletes it.
+func TestPersonalAccountUnlinkPurgesUnqualified(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		e := personalFixture(t, db, "pv-unlink")
+		ctx := t.Context()
+		e.setOwn(t, ceremonySecretA, e.keyA, personalPlain)
+		issuer := acctProvider(t, &e, "corp", strptr(`{"amr_sets":[["mfa"]]}`), true)
+		acctLinkOIDC(t, db, "eid_pv_unlink", e.admin.accountID, issuer, "corp")
+		execRaw(t, db, `DELETE FROM webauthn_credentials WHERE account_id='`+e.admin.accountID+`'`)
+		if queryInt(t, db, `SELECT COUNT(*) FROM personal_values`) != 1 {
+			t.Fatal("setup: suspension deleted the value")
+		}
+		if _, err := e.admin.auth.UnlinkIdentity(ctx, e.admin.token, "eid_pv_unlink", ceremonyPassword); err != nil {
+			t.Fatal(err)
+		}
+		acctPurged(t, db, ceremonySecretA)
+	})
+}
+
+// A passwordless, factorless account that qualifies through its identity
+// provider cannot unlink that identity at all: the unlink needs a password or
+// TOTP proof, which such an account does not hold. Its value stays.
+func TestPersonalAccountFederatedUnlinkNeedsProof(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f, _ := newAcctFederated(t, db, "pv-federated-unlink")
+		e := f.e
+		ctx := t.Context()
+		f.passwordCurrent(false)
+		f.window(t)
+		if _, err := e.pv.Set(ctx, service.Bearer(e.admin.token), envScope(envA1), ceremonySecretA, personalPlain); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.admin.auth.UnlinkIdentity(ctx, e.admin.token, "eid_pv-federated-unlink", ceremonyPassword); !errors.Is(err, service.ErrNoProofCredential) {
+			t.Fatalf("federated unlink = %v", err)
+		}
+		if queryInt(t, db, `SELECT COUNT(*) FROM external_identities WHERE account_id='`+f.account+`'`) != 1 ||
+			queryInt(t, db, `SELECT COUNT(*) FROM personal_values`) != 1 {
+			t.Fatal("a refused unlink removed the identity or the value")
+		}
+	})
+}
+
+// Erasing a privacy subject deletes the subject's personal values and notices
+// in the erasure transaction and leaves no notice behind; another owner's
+// value and notice are untouched.
+func TestPersonalAccountPrivacyEraseDeletesValuesAndNotices(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		e := personalFixture(t, db, "pv-erase")
+		ctx := t.Context()
+		auth := e.admin.auth
+		subject := string(e.admin.boot.PrincipalID)
+		other := queryString(t, db, `SELECT principal_id FROM accounts WHERE username='pv-erase-admin'`)
+		e.setOwn(t, ceremonySecretA, e.keyA, personalPlain)
+		e.adminTok = personalReauth(t, auth, e.adminTok, e.adminDev, e.keyA)
+		if _, err := e.pv.Set(ctx, service.Bearer(e.adminTok), envScope(envA1), ceremonySecretA, personalPlain); err != nil {
+			t.Fatal(err)
+		}
+		for _, owner := range []string{subject, other} {
+			execRaw(t, db, `INSERT INTO personal_value_notices (org_id, project_id, environment_id, key_name, owner_principal_id, cause, created_at) VALUES ('org_a', 'prj_a1', 'env_a1', 'PV_ERASE_NOTICE', '`+
+				owner+`', '`+service.PersonalCauseAdministrator+`', `+ts+`)`)
+		}
+
+		if _, err := auth.ApplyPrivacySubject(ctx, subject, "erase", ""); err != nil {
+			t.Fatal(err)
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM personal_values WHERE owner_principal_id='`+subject+`'`); n != 0 {
+			t.Fatalf("%d personal values survived the erasure", n)
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM personal_value_notices WHERE owner_principal_id='`+subject+`'`); n != 0 {
+			t.Fatalf("%d personal value notices survived the erasure", n)
+		}
+		if queryInt(t, db, `SELECT COUNT(*) FROM personal_values WHERE owner_principal_id='`+other+`'`) != 1 ||
+			queryInt(t, db, `SELECT COUNT(*) FROM personal_value_notices WHERE owner_principal_id='`+other+`'`) != 1 {
+			t.Fatal("erasure touched another owner's value or notice")
 		}
 	})
 }
