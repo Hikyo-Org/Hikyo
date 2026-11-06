@@ -941,7 +941,8 @@ export const Failed: Story = {
 // Personal marks. Someone who manages members sees counts per cell (staging);
 // a developer sees only their own state (development, where the counts read is
 // refused). Every mark is words, inside the cell, so each environment stays one
-// column; the cell's accessible name carries the long form.
+// column; the cell's accessible name carries the long form. The own list is read
+// only where counts failed: staging's counts answered, so its own list is never read.
 const personalCounts = {
   eligible: 14,
   items: [
@@ -956,8 +957,16 @@ const ownPersonal = {
     { key_id: keyId(12), name: 'OTEL_EXPORTER_OTLP_HEADERS', set: false, notice: 'administrator' },
   ],
 } satisfies z.input<typeof zPersonalValueList>;
+const stagingOwnReads: string[] = [];
 const personalRows: readonly MockRoute[] = [
   { url: `${PROJECT_URL}/environments/${STG}/personal-value-counts`, body: personalCounts },
+  {
+    url: `${PROJECT_URL}/environments/${STG}/personal-values`,
+    handler: (request) => {
+      stagingOwnReads.push(request.url);
+      return new Response(null, { status: 500 });
+    },
+  },
   { url: `${PROJECT_URL}/environments/${DEV}/personal-value-counts`, status: 403, body: { error: { code: 'forbidden', message: 'not permitted' } } },
   { url: `${PROJECT_URL}/environments/${DEV}/personal-values`, body: ownPersonal },
 ];
@@ -988,6 +997,8 @@ const expectPersonalMarks = async (canvas: ReturnType<typeof within>, canvasElem
   // mark ellipsises (shortcut: a long mark is cut on a phone, the cell's name keeps
   // the words; widen the phone column floor if the counts must always show).
   if (!phone) await expect(mark.scrollWidth).toBeLessThanOrEqual(mark.clientWidth);
+  // Counts answered for staging, so the caller's own list there was never fetched.
+  await expect(stagingOwnReads).toEqual([]);
 };
 
 export const PersonalMarks: Story = {

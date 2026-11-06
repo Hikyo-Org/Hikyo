@@ -10,6 +10,7 @@ import {
   NOTICE_CAUSE_TEXT,
   PERSONAL_STATEMENT,
   personalSetRefusalText,
+  personalWarningText,
   useDeclaredKeys,
   useDeletePersonalValue,
   usePersonalValues,
@@ -35,7 +36,8 @@ import { FOCUS_REMASK_NOTICE, useRemaskOnFocusLoss, waitForDisclosureFocus } fro
 /**
  * My personal values (personal-values ADR, O3): the owner's own values for one
  * shared environment, masked, with the checklist of required keys, removal
- * notices with their cause, suspension and schema warnings. Set and reveal take
+ * notices with their cause, and suspension. A set or reveal names the schema
+ * rules the value does not satisfy, as a warning only. Set and reveal take
  * the environment's reveal ceremony, approved only by the owner's passkey or
  * authenticator app. There is no `.env` download (O7): running a program needs
  * the CLI.
@@ -78,6 +80,8 @@ function PersonalSurface({ env }: { env: EnvRef }) {
   const [retry, setRetry] = useState<(() => void) | null>(null);
   const [forceSet, setForceSet] = useState(false);
   const [done, setDone] = useState<string | null>(null);
+  // Rule names from the last set or reveal, never the value: shown, never blocking.
+  const [warning, setWarning] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ readonly key: string } | null>(null);
   const [deleting, setDeleting] = useState<PersonalValueEntry | null>(null);
 
@@ -124,6 +128,7 @@ function PersonalSurface({ env }: { env: EnvRef }) {
     const task = ceremony.begin([purpose, key, String(force)]);
     setRefusal(null);
     setRetry(null);
+    setWarning(null);
     let state;
     try {
       state = await fetchRevealWindow(env, transport.client, task.signal);
@@ -166,6 +171,8 @@ function PersonalSurface({ env }: { env: EnvRef }) {
       try {
         const fresh = await reveal.mutateAsync(key);
         ceremony.commit(task, () => {
+          // Rule names only, so the warning stands even when the value itself is withheld.
+          setWarning(personalWarningText(key, fresh.warnings));
           if (generation !== focus.current || document.hidden || !document.hasFocus()) {
             setRefusal(FOCUS_REMASK_NOTICE);
             return;
@@ -187,12 +194,13 @@ function PersonalSurface({ env }: { env: EnvRef }) {
   const doSet = (key: string, value: string, force = false) => {
     void withCeremony(key, 'personal', async (task) => {
       try {
-        await save.mutateAsync({ key, value });
+        const saved = await save.mutateAsync({ key, value });
         ceremony.commit(task, () => {
           setEditing(null);
           setForceSet(false);
           setShown(null);
           setDone(`Your personal value for ${key} is saved.`);
+          setWarning(personalWarningText(key, saved.warnings));
         });
       } catch (error) {
         ceremony.commit(task, () => {
@@ -206,6 +214,7 @@ function PersonalSurface({ env }: { env: EnvRef }) {
   const doDelete = (entry: PersonalValueEntry) => {
     setRefusal(null);
     setDone(null);
+    setWarning(null);
     remove.mutate(entry.name, {
       onSuccess: () => {
         setDeleting(null);
@@ -243,13 +252,14 @@ function PersonalSurface({ env }: { env: EnvRef }) {
         )}>{refusal}</Alert>
       )}
       {done === null ? null : <Alert tone="done">{done}</Alert>}
+      {warning === null ? null : <Alert tone="warn">{warning}</Alert>}
 
       <div className="actions">
         <Button
           type="button"
           variant="primary"
           disabled={protectedEnvironment || !hasFactor || catalogue.data === undefined}
-          onClick={() => { setDone(null); setEditing({ key: '' }); }}
+          onClick={() => { setDone(null); setWarning(null); setEditing({ key: '' }); }}
         >
           Set a value
         </Button>
@@ -306,7 +316,7 @@ function PersonalSurface({ env }: { env: EnvRef }) {
                           type="button"
                           aria-label={`${entry.set ? 'Replace' : 'Set'} ${entry.name}`}
                           disabled={protectedEnvironment || !hasFactor}
-                          onClick={() => { setDone(null); setEditing({ key: entry.name }); }}
+                          onClick={() => { setDone(null); setWarning(null); setEditing({ key: entry.name }); }}
                         >
                           {entry.set ? 'Replace' : 'Set'}
                         </Button>
@@ -410,13 +420,6 @@ function EntryState({ entry }: { entry: PersonalValueEntry }) {
       </span>,
     );
   }
-  for (const warning of entry.warnings ?? []) {
-    parts.push(
-      <span key={`warning-${warning}`} className="personal-values__state">
-        <Badge tone="changed" icon="warn">warning</Badge> {warning}. Your value is still delivered.
-      </span>,
-    );
-  }
   if (entry.set && entry.updated_at !== undefined && parts.length === 0) {
     parts.push(<span key="updated">Changed {new Date(entry.updated_at).toLocaleString()}</span>);
   }
@@ -468,7 +471,7 @@ function SetValuePanel({
         ) : null}
         <Textarea
           label={`Your value for ${key === '' ? 'the key' : key} in ${environmentName}`}
-          hint="Always kept secret and never validated against the key's rules. Saving asks for your passkey or authenticator app."
+          hint="Always kept secret. It is checked against the key's rules only to warn you, and is never refused or published. Saving asks for your passkey or authenticator app."
           mono
           autoComplete="off"
           spellCheck={false}

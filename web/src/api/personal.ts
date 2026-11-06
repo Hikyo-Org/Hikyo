@@ -183,10 +183,8 @@ export function countsMark(item: PersonalValueCounts['items'][number], eligible:
 
 /** The mark a developer sees: only their own state for the key. */
 export function ownMark(entry: PersonalValueEntry): PersonalMark | null {
-  const warned = (entry.warnings?.length ?? 0) > 0;
-  const warning = warned ? ', breaks a schema rule (a warning only)' : '';
   if (entry.suspended === true) {
-    return { text: 'personal · suspended', words: `your personal value is suspended and not delivered${warning}` };
+    return { text: 'personal · suspended', words: 'your personal value is suspended and not delivered' };
   }
   if (entry.notice !== undefined) {
     return {
@@ -195,7 +193,7 @@ export function ownMark(entry: PersonalValueEntry): PersonalMark | null {
     };
   }
   if (entry.set) {
-    return { text: warned ? 'personal · warning' : 'personal', words: `your personal value is used for you${warning}` };
+    return { text: 'personal', words: 'your personal value is used for you' };
   }
   if (entry.required === true) {
     return { text: 'personal · missing', words: 'a personal value is required here and you have not set one' };
@@ -206,35 +204,38 @@ export function ownMark(entry: PersonalValueEntry): PersonalMark | null {
 /**
  * The personal marks for every matrix cell, keyed `keyId/environmentId`.
  *
- * Counts answer only a `manage-members` holder; everyone else falls back to
- * their own list. Both families are separate from the matrix's readiness: a
- * failed read means no mark, never a degraded column.
+ * Counts answer only a `manage-members` holder. The caller's own list is read
+ * only for an environment whose counts read failed or was refused, so a manager
+ * costs one request per environment, not two. Both families are separate from
+ * the matrix's readiness: a failed read means no mark, never a degraded column.
  */
 export function usePersonalMarks(
   ref: MatrixRef,
   environmentIds: readonly string[],
 ): ReadonlyMap<string, PersonalMark> {
   const transport = useTransport();
-  const countData = useQueries({
+  const counts = useQueries({
     queries: environmentIds.map((environment) => ({
       queryKey: countsKey({ ...ref, environment }),
       queryFn: () => parsed(listPersonalValueCountsOp, { path: { ...ref, environment }, ...transport }),
       retry: false,
     })),
-    combine: dataOf,
+    combine: dataOrFailure,
   });
   const ownData = useQueries({
-    queries: environmentIds.map((environment) => ({
+    queries: environmentIds.map((environment, index) => ({
       queryKey: personalKey({ ...ref, environment }),
       queryFn: () => parsed(listMyPersonalValuesOp, { path: { ...ref, environment }, ...transport }),
       retry: false,
+      // Mirrors the marks below: counts with data win, so only a failed counts read needs the own list.
+      enabled: counts[index]?.failed === true,
     })),
     combine: dataOf,
   });
   return useMemo(() => {
     const marks = new Map<string, PersonalMark>();
     environmentIds.forEach((environment, index) => {
-      const managed = countData[index];
+      const managed = counts[index]?.data;
       if (managed !== undefined) {
         for (const item of managed.items) {
           const mark = countsMark(item, managed.eligible);
@@ -248,12 +249,30 @@ export function usePersonalMarks(
       }
     });
     return marks;
-  }, [countData, environmentIds, ownData]);
+  }, [counts, environmentIds, ownData]);
 }
 
 /** Stable `combine`: only the data, so an unchanged family keeps its identity across renders. */
 function dataOf<T>(results: readonly { readonly data: T | undefined }[]): readonly (T | undefined)[] {
   return results.map((result) => result.data);
+}
+
+/** Stable `combine`: the data, and whether the read failed with none to show. */
+function dataOrFailure<T>(
+  results: readonly { readonly data: T | undefined; readonly isError: boolean }[],
+): readonly { readonly data: T | undefined; readonly failed: boolean }[] {
+  return results.map((result) => ({ data: result.data, failed: result.isError && result.data === undefined }));
+}
+
+/**
+ * The schema warning for the owner's value, from a set or reveal response:
+ * the rules it does not satisfy, by name, never the value. A warning only; the
+ * value is kept and delivered (personal-values ADR). Null when there is none.
+ */
+export function personalWarningText(key: string, warnings: readonly string[] | undefined): string | null {
+  if (warnings === undefined || warnings.length === 0) return null;
+  const rules = warnings.length === 1 ? 'this rule' : 'these rules';
+  return `Your value for ${key} does not satisfy ${rules} of the key: ${warnings.join(', ')}. This is a warning only: the value is kept and still delivered to you.`;
 }
 
 /**
