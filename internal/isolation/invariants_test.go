@@ -405,6 +405,13 @@ func TestInvariant11SystemProofEnumeration(t *testing.T) {
 		// instance-wide adapter health counts under scheduler authority (#157):
 		// a reviewed widening, pinned beside the storage high-water.
 		authz.StoreAdaptersHealthCounts: true,
+		// The personal-value retention sweep (#1235): the installation-wide
+		// metadata page, the per-row suspend mark and the 14-day delete with
+		// its owner notice. A reviewed widening, pinned for ADR review.
+		authz.StorePersonalValuesRetentionList:   true,
+		authz.StorePersonalValuesRetentionMark:   true,
+		authz.StorePersonalValuesRetentionDelete: true,
+		authz.StorePersonalValueNoticesRecord:    true,
 		// Bounded audit expiry: the reviewed scheduler extension can adopt
 		// host policy and prune with a transactional audit receipt. No tenant
 		// or boot authority receives these operations.

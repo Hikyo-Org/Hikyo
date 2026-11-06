@@ -2062,6 +2062,13 @@
   },
   {
     "engine": "postgres",
+    "name": "ListPersonalValuesForRetention",
+    "annotation": "instance-scoped",
+    "hash": "0a8a3986a38a7d912883623440571fc6577a903aef76bc29f7ea3ec3776a6cf3",
+    "reason": "The personal-value retention sweep checks every value's owner against the live access predicate across all tenants (personal-values ADR, Retention); it reads metadata and the key name only, never ciphertext, and each row supplies the tenant chain its follow-up writes are scoped to."
+  },
+  {
+    "engine": "postgres",
     "name": "ListPkiIssuersForReencrypt",
     "annotation": "instance-scoped",
     "hash": "cd67b0fbc1a86de1e674efe05ede36d9b8311aad83e5ec2ff748816468b5e0b9"
@@ -5527,6 +5534,13 @@
     "name": "ListPasswordCredsForReencrypt",
     "annotation": "authn-resolution",
     "hash": "d05b767efd734b08508c8612835cc67d775d786fad8ccef6c6cd4b4cecd1afc6"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListPersonalValuesForRetention",
+    "annotation": "instance-scoped",
+    "hash": "0a8a3986a38a7d912883623440571fc6577a903aef76bc29f7ea3ec3776a6cf3",
+    "reason": "The personal-value retention sweep checks every value's owner against the live access predicate across all tenants (personal-values ADR, Retention); it reads metadata and the key name only, never ciphertext, and each row supplies the tenant chain its follow-up writes are scoped to."
   },
   {
     "engine": "sqlite",

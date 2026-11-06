@@ -7,6 +7,7 @@ package sqlitegen
 
 import (
 	"context"
+	"database/sql"
 )
 
 const countPersonalValuesForProject = `-- name: CountPersonalValuesForProject :one
@@ -24,6 +25,68 @@ func (q *Queries) CountPersonalValuesForProject(ctx context.Context, arg CountPe
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const deleteEnvironmentPersonalRequired = `-- name: DeleteEnvironmentPersonalRequired :exec
+DELETE FROM key_personal_required_environments
+WHERE org_id = ?1 AND project_id = ?2
+  AND environment_id = ?3
+`
+
+type DeleteEnvironmentPersonalRequiredParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+	ChainEnvID     string
+}
+
+func (q *Queries) DeleteEnvironmentPersonalRequired(ctx context.Context, arg DeleteEnvironmentPersonalRequiredParams) error {
+	_, err := q.db.ExecContext(ctx, deleteEnvironmentPersonalRequired, arg.ChainOrgID, arg.ChainProjectID, arg.ChainEnvID)
+	return err
+}
+
+const deleteExpiredPersonalValue = `-- name: DeleteExpiredPersonalValue :execrows
+DELETE FROM personal_values
+WHERE org_id = ?1 AND project_id = ?2
+  AND id = ?3 AND suspended_at IS NOT NULL AND suspended_at <= ?4
+`
+
+type DeleteExpiredPersonalValueParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+	ID             string
+	CutoffTime     sql.NullString
+}
+
+// DeleteExpiredPersonalValue deletes one value suspended since at least the
+// cutoff, so a value whose owner regained access in between survives.
+func (q *Queries) DeleteExpiredPersonalValue(ctx context.Context, arg DeleteExpiredPersonalValueParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteExpiredPersonalValue,
+		arg.ChainOrgID,
+		arg.ChainProjectID,
+		arg.ID,
+		arg.CutoffTime,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteKeyPersonalRequired = `-- name: DeleteKeyPersonalRequired :exec
+DELETE FROM key_personal_required_environments
+WHERE org_id = ?1 AND project_id = ?2
+  AND key_id = ?3
+`
+
+type DeleteKeyPersonalRequiredParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+	KeyID          string
+}
+
+func (q *Queries) DeleteKeyPersonalRequired(ctx context.Context, arg DeleteKeyPersonalRequiredParams) error {
+	_, err := q.db.ExecContext(ctx, deleteKeyPersonalRequired, arg.ChainOrgID, arg.ChainProjectID, arg.KeyID)
+	return err
 }
 
 const deletePersonalValueForCell = `-- name: DeletePersonalValueForCell :execrows
@@ -137,11 +200,10 @@ func (q *Queries) DeletePersonalValueNoticesForEnvironment(ctx context.Context, 
 	return result.RowsAffected()
 }
 
-const deletePersonalValuesForEnvironment = `-- name: DeletePersonalValuesForEnvironment :many
+const deletePersonalValuesForEnvironment = `-- name: DeletePersonalValuesForEnvironment :exec
 DELETE FROM personal_values
 WHERE org_id = ?1 AND project_id = ?2
   AND environment_id = ?3
-RETURNING owner_principal_id
 `
 
 type DeletePersonalValuesForEnvironmentParams struct {
@@ -150,27 +212,9 @@ type DeletePersonalValuesForEnvironmentParams struct {
 	ChainEnvID     string
 }
 
-func (q *Queries) DeletePersonalValuesForEnvironment(ctx context.Context, arg DeletePersonalValuesForEnvironmentParams) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, deletePersonalValuesForEnvironment, arg.ChainOrgID, arg.ChainProjectID, arg.ChainEnvID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []string
-	for rows.Next() {
-		var owner_principal_id string
-		if err := rows.Scan(&owner_principal_id); err != nil {
-			return nil, err
-		}
-		items = append(items, owner_principal_id)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) DeletePersonalValuesForEnvironment(ctx context.Context, arg DeletePersonalValuesForEnvironmentParams) error {
+	_, err := q.db.ExecContext(ctx, deletePersonalValuesForEnvironment, arg.ChainOrgID, arg.ChainProjectID, arg.ChainEnvID)
+	return err
 }
 
 const deletePersonalValuesForKey = `-- name: DeletePersonalValuesForKey :execrows
@@ -187,6 +231,34 @@ type DeletePersonalValuesForKeyParams struct {
 
 func (q *Queries) DeletePersonalValuesForKey(ctx context.Context, arg DeletePersonalValuesForKeyParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, deletePersonalValuesForKey, arg.ChainOrgID, arg.ChainProjectID, arg.KeyID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deletePersonalValuesForKeyInEnvironment = `-- name: DeletePersonalValuesForKeyInEnvironment :execrows
+DELETE FROM personal_values
+WHERE org_id = ?1 AND project_id = ?2
+  AND key_id = ?3 AND environment_id = ?4
+`
+
+type DeletePersonalValuesForKeyInEnvironmentParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+	KeyID          string
+	EnvironmentID  string
+}
+
+// DeletePersonalValuesForKeyInEnvironment is the forbidden_in cascade: a key
+// newly forbidden in one environment loses its personal values there only.
+func (q *Queries) DeletePersonalValuesForKeyInEnvironment(ctx context.Context, arg DeletePersonalValuesForKeyInEnvironmentParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deletePersonalValuesForKeyInEnvironment,
+		arg.ChainOrgID,
+		arg.ChainProjectID,
+		arg.KeyID,
+		arg.EnvironmentID,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -249,6 +321,28 @@ func (q *Queries) GetPersonalValueForOwner(ctx context.Context, arg GetPersonalV
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const insertKeyPersonalRequired = `-- name: InsertKeyPersonalRequired :exec
+INSERT INTO key_personal_required_environments (org_id, project_id, key_id, environment_id)
+VALUES (?1, ?2, ?3, ?4)
+`
+
+type InsertKeyPersonalRequiredParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+	KeyID          string
+	EnvironmentID  string
+}
+
+func (q *Queries) InsertKeyPersonalRequired(ctx context.Context, arg InsertKeyPersonalRequiredParams) error {
+	_, err := q.db.ExecContext(ctx, insertKeyPersonalRequired,
+		arg.ChainOrgID,
+		arg.ChainProjectID,
+		arg.KeyID,
+		arg.EnvironmentID,
+	)
+	return err
 }
 
 const insertPersonalValue = `-- name: InsertPersonalValue :exec
@@ -322,6 +416,47 @@ func (q *Queries) InsertPersonalValueNotice(ctx context.Context, arg InsertPerso
 		arg.CreatedAt,
 	)
 	return err
+}
+
+const listKeyPersonalRequired = `-- name: ListKeyPersonalRequired :many
+SELECT key_id, environment_id FROM key_personal_required_environments
+WHERE org_id = ?1 AND project_id = ?2
+ORDER BY key_id, environment_id
+`
+
+type ListKeyPersonalRequiredParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+}
+
+type ListKeyPersonalRequiredRow struct {
+	KeyID         string
+	EnvironmentID string
+}
+
+// personal_required_in: a key's environments where each developer is expected
+// to hold a personal value. No rows means `none`; rows mean `explicit`.
+func (q *Queries) ListKeyPersonalRequired(ctx context.Context, arg ListKeyPersonalRequiredParams) ([]ListKeyPersonalRequiredRow, error) {
+	rows, err := q.db.QueryContext(ctx, listKeyPersonalRequired, arg.ChainOrgID, arg.ChainProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListKeyPersonalRequiredRow
+	for rows.Next() {
+		var i ListKeyPersonalRequiredRow
+		if err := rows.Scan(&i.KeyID, &i.EnvironmentID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listPersonalValueCellsForKey = `-- name: ListPersonalValueCellsForKey :many
@@ -512,8 +647,43 @@ func (q *Queries) ListPersonalValueNoticesForOwner(ctx context.Context, arg List
 	return items, nil
 }
 
+const listPersonalValueOwnersForEnvironment = `-- name: ListPersonalValueOwnersForEnvironment :many
+SELECT owner_principal_id FROM personal_values
+WHERE org_id = ?1 AND project_id = ?2
+  AND environment_id = ?3
+`
+
+type ListPersonalValueOwnersForEnvironmentParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+	ChainEnvID     string
+}
+
+func (q *Queries) ListPersonalValueOwnersForEnvironment(ctx context.Context, arg ListPersonalValueOwnersForEnvironmentParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listPersonalValueOwnersForEnvironment, arg.ChainOrgID, arg.ChainProjectID, arg.ChainEnvID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var owner_principal_id string
+		if err := rows.Scan(&owner_principal_id); err != nil {
+			return nil, err
+		}
+		items = append(items, owner_principal_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPersonalValuesForOwner = `-- name: ListPersonalValuesForOwner :many
-SELECT id, key_id, owner_principal_id, ciphertext, created_at, updated_at FROM personal_values
+SELECT id, key_id, owner_principal_id, ciphertext, created_at, updated_at, suspended_at FROM personal_values
 WHERE org_id = ?1 AND project_id = ?2
   AND environment_id = ?3 AND owner_principal_id = ?4
 ORDER BY key_id
@@ -533,6 +703,7 @@ type ListPersonalValuesForOwnerRow struct {
 	Ciphertext       []byte
 	CreatedAt        string
 	UpdatedAt        string
+	SuspendedAt      sql.NullString
 }
 
 func (q *Queries) ListPersonalValuesForOwner(ctx context.Context, arg ListPersonalValuesForOwnerParams) ([]ListPersonalValuesForOwnerRow, error) {
@@ -556,6 +727,7 @@ func (q *Queries) ListPersonalValuesForOwner(ctx context.Context, arg ListPerson
 			&i.Ciphertext,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SuspendedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -626,6 +798,65 @@ func (q *Queries) ListPersonalValuesForReencrypt(ctx context.Context, arg ListPe
 	return items, nil
 }
 
+const listPersonalValuesForRetention = `-- name: ListPersonalValuesForRetention :many
+SELECT personal_values.id, personal_values.org_id, personal_values.project_id, personal_values.environment_id,
+    personal_values.key_id, keys.name AS key_name, personal_values.owner_principal_id, personal_values.suspended_at
+FROM personal_values JOIN keys ON keys.org_id = personal_values.org_id
+    AND keys.project_id = personal_values.project_id AND keys.id = personal_values.key_id
+WHERE personal_values.id > ?1
+ORDER BY personal_values.id LIMIT ?2
+`
+
+type ListPersonalValuesForRetentionParams struct {
+	Cursor    string
+	PageLimit int64
+}
+
+type ListPersonalValuesForRetentionRow struct {
+	ID               string
+	OrgID            string
+	ProjectID        string
+	EnvironmentID    string
+	KeyID            string
+	KeyName          string
+	OwnerPrincipalID string
+	SuspendedAt      sql.NullString
+}
+
+// hikyo:reason The personal-value retention sweep checks every value's owner against the live access predicate across all tenants (personal-values ADR, Retention); it reads metadata and the key name only, never ciphertext, and each row supplies the tenant chain its follow-up writes are scoped to.
+// hikyo:instance-scoped
+func (q *Queries) ListPersonalValuesForRetention(ctx context.Context, arg ListPersonalValuesForRetentionParams) ([]ListPersonalValuesForRetentionRow, error) {
+	rows, err := q.db.QueryContext(ctx, listPersonalValuesForRetention, arg.Cursor, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPersonalValuesForRetentionRow
+	for rows.Next() {
+		var i ListPersonalValuesForRetentionRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.EnvironmentID,
+			&i.KeyID,
+			&i.KeyName,
+			&i.OwnerPrincipalID,
+			&i.SuspendedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const recordPersonalValueNoticesForOwner = `-- name: RecordPersonalValueNoticesForOwner :exec
 INSERT INTO personal_value_notices (org_id, project_id, environment_id, key_name, owner_principal_id, cause, created_at)
 SELECT personal_values.org_id, personal_values.project_id, personal_values.environment_id, keys.name,
@@ -671,6 +902,54 @@ func (q *Queries) ReencryptPersonalValue(ctx context.Context, arg ReencryptPerso
 		arg.ChainProjectID,
 		arg.ID,
 		arg.OldCiphertext,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const resumePersonalValue = `-- name: ResumePersonalValue :execrows
+UPDATE personal_values SET suspended_at = NULL
+WHERE org_id = ?1 AND project_id = ?2
+  AND id = ?3 AND suspended_at IS NOT NULL
+`
+
+type ResumePersonalValueParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+	ID             string
+}
+
+func (q *Queries) ResumePersonalValue(ctx context.Context, arg ResumePersonalValueParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, resumePersonalValue, arg.ChainOrgID, arg.ChainProjectID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const suspendPersonalValue = `-- name: SuspendPersonalValue :execrows
+UPDATE personal_values SET suspended_at = ?1
+WHERE org_id = ?2 AND project_id = ?3
+  AND id = ?4 AND suspended_at IS NULL
+`
+
+type SuspendPersonalValueParams struct {
+	SuspendedAt    sql.NullString
+	ChainOrgID     string
+	ChainProjectID string
+	ID             string
+}
+
+// SuspendPersonalValue records when the sweep first saw the owner without
+// the access predicate; a value already suspended keeps its first time.
+func (q *Queries) SuspendPersonalValue(ctx context.Context, arg SuspendPersonalValueParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, suspendPersonalValue,
+		arg.SuspendedAt,
+		arg.ChainOrgID,
+		arg.ChainProjectID,
+		arg.ID,
 	)
 	if err != nil {
 		return 0, err

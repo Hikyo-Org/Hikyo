@@ -879,8 +879,11 @@ const (
 	StoreCatalogueGroupClearMembers StoreOp = "catalogue.ClearGroupMembers"
 	StoreCataloguePresenceList      StoreOp = "catalogue.ListPresence"
 	StoreCataloguePresenceReplace   StoreOp = "catalogue.ReplacePresence"
-	StoreCataloguePresenceCascade   StoreOp = "catalogue.DeletePresenceForEnvironment"
-	StoreCatalogueRevisionGet       StoreOp = "catalogue.SchemaRevision"
+	// personal_required_in rows (#1235): no rows is `none`, rows are `explicit`.
+	StoreCataloguePersonalRequiredList    StoreOp = "catalogue.PersonalRequired"
+	StoreCataloguePersonalRequiredReplace StoreOp = "catalogue.ReplacePersonalRequired"
+	StoreCataloguePresenceCascade         StoreOp = "catalogue.DeletePresenceForEnvironment"
+	StoreCatalogueRevisionGet             StoreOp = "catalogue.SchemaRevision"
 
 	StoreAdaptersTarget                 StoreOp = "adapters.Target"
 	StoreAdaptersGet                    StoreOp = "adapters.Get"
@@ -1255,6 +1258,13 @@ const (
 	StorePersonalValueNoticesDismiss StoreOp = "personalvaluenotices.DismissOwn"
 	StorePersonalValueNoticesForKey  StoreOp = "personalvaluenotices.ForKeyName"
 	StorePersonalValueNoticesRecord  StoreOp = "personalvaluenotices.Record"
+	// The retention sweep (scheduler): an installation-wide metadata page, then
+	// tenant-scoped suspend/resume and expiry deletes per row.
+	StorePersonalValuesRetentionList   StoreOp = "personalvalues.RetentionPage"
+	StorePersonalValuesRetentionMark   StoreOp = "personalvalues.MarkSuspended"
+	StorePersonalValuesRetentionDelete StoreOp = "personalvalues.DeleteExpired"
+	// The forbidden_in cascade: one key's personal values in one environment.
+	StorePersonalValuesDeleteForKeyInEnv StoreOp = "personalvalues.DeleteForKeyInEnvironment"
 
 	// Secret-change approvals (#151). The policy-bound review-and-merge engine's
 	// store doors. Policy CRUD and its child approver/bypasser sets are
@@ -1418,17 +1428,19 @@ const (
 // op it can invoke is in this set. A wrongly listed op is caught by review
 // of this pinned table, exactly like the formula pins.
 var readOnlyStoreOps = map[StoreOp]bool{
-	StorePersonalValuesGetOwn:        true,
-	StorePersonalValuesListOwn:       true,
-	StorePersonalValuesCountProject:  true,
-	StorePersonalValuesHolders:       true,
-	StorePersonalValuesCellsForKey:   true,
-	StorePersonalValuesReencryptList: true,
-	StorePersonalValueNoticesListOwn: true,
-	StorePersonalValueNoticesForKey:  true,
-	StoreOrgsGet:                     true,
-	StoreOrgsList:                    true,
-	StoreOrgsCount:                   true,
+	StorePersonalValuesGetOwn:          true,
+	StorePersonalValuesListOwn:         true,
+	StorePersonalValuesCountProject:    true,
+	StorePersonalValuesHolders:         true,
+	StorePersonalValuesCellsForKey:     true,
+	StorePersonalValuesReencryptList:   true,
+	StorePersonalValueNoticesListOwn:   true,
+	StorePersonalValuesRetentionList:   true,
+	StoreCataloguePersonalRequiredList: true,
+	StorePersonalValueNoticesForKey:    true,
+	StoreOrgsGet:                       true,
+	StoreOrgsList:                      true,
+	StoreOrgsCount:                     true,
 	// Lease inspect is a bare-read (`read@env`), so its two reads are pinned
 	// read-only for the auditedNone check (#147).
 	StoreDynamicLeasesGet:  true,
@@ -1904,6 +1916,8 @@ var operationTable = map[Operation]opSpec{
 		formula: Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{
 			StoreCatalogueList: true, StorePersonalValuesListOwn: true, StorePersonalValueNoticesListOwn: true,
+			// The checklist of keys personal_required_in the environment.
+			StoreCataloguePersonalRequiredList: true,
 		},
 		auditedNone: true,
 	},
@@ -1917,7 +1931,10 @@ var operationTable = map[Operation]opSpec{
 		storeOps: map[StoreOp]bool{
 			StoreCatalogueList: true, StorePersonalValuesPut: true, StorePersonalValuesCountProject: true,
 			StoreProjectsLock: true, StorePersonalValuesGetOwn: true,
-			StorePersonalValueNoticesDismiss: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true,
+			// A key forbidden_in the environment is refused.
+			StoreCataloguePresenceList:         true,
+			StoreCataloguePersonalRequiredList: true,
+			StorePersonalValueNoticesDismiss:   true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventPersonalValueSet},
 	},
@@ -2430,7 +2447,8 @@ var operationTable = map[Operation]opSpec{
 			// collapses any explicit set it empties, and advances the catalogue
 			// revision — the catalogue changed, so its revision must.
 			StoreCataloguePresenceList: true, StoreCataloguePresenceCascade: true,
-			StoreCatalogueList: true, StoreCatalogueUpdateDeclaration: true,
+			StoreCataloguePersonalRequiredList: true,
+			StoreCatalogueList:                 true, StoreCatalogueUpdateDeclaration: true,
 			StoreCatalogueRevisionBump: true,
 			// The environment's own values go with it (#50): they attach to
 			// this environment and nothing else, the composite foreign key
@@ -2480,9 +2498,11 @@ var operationTable = map[Operation]opSpec{
 			StoreEnvironmentsCount: true,
 			StoreProjectsGet:       true, StoreProjectsLock: true, StoreCatalogueCount: true,
 			StoreCatalogueList: true, StoreCataloguePresenceList: true,
-			StoreCatalogueGroupGet: true, StoreCatalogueCreate: true,
+			StoreCataloguePersonalRequiredList: true,
+			StoreCatalogueGroupGet:             true, StoreCatalogueCreate: true,
 			StoreCataloguePresenceReplace: true, StoreCatalogueRevisionBump: true,
-			StoreAuditTenantInsert: true,
+			StoreCataloguePersonalRequiredReplace: true,
+			StoreAuditTenantInsert:                true,
 		},
 		events: []audit.EventType{audit.EventKeyCreated, audit.EventScanningFindingBlocked, audit.EventScanningFindingOverridden},
 	},
@@ -2492,6 +2512,7 @@ var operationTable = map[Operation]opSpec{
 		formula: Formula{{Cap: domain.CapRead, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{
 			StoreCatalogueGet: true, StoreCataloguePresenceList: true,
+			StoreCataloguePersonalRequiredList: true,
 		},
 		auditedNone: true,
 	},
@@ -2501,7 +2522,8 @@ var operationTable = map[Operation]opSpec{
 		formula: Formula{{Cap: domain.CapRead, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{
 			StoreCatalogueList: true, StoreCataloguePresenceList: true,
-			StoreCatalogueRevisionGet: true,
+			StoreCataloguePersonalRequiredList: true,
+			StoreCatalogueRevisionGet:          true,
 			// The MCP-bounded key page (#629) reads the catalogue by keyset and
 			// resolves presence per page key under this same read authorization.
 			StoreCatalogueListPage: true, StoreCataloguePresenceForKey: true,
@@ -2524,7 +2546,8 @@ var operationTable = map[Operation]opSpec{
 			StoreProjectsGet:      true, StoreProjectsLock: true, StoreCatalogueGet: true, StoreCatalogueRename: true,
 			StoreCatalogueAdapterPins:  true,
 			StoreCatalogueRevisionBump: true, StoreCataloguePresenceList: true,
-			StoreAuditTenantInsert: true,
+			StoreCataloguePersonalRequiredList: true,
+			StoreAuditTenantInsert:             true,
 		},
 		events: []audit.EventType{audit.EventPersonalValueDeleted, audit.EventKeyRenamed, audit.EventScanningFindingBlocked, audit.EventScanningFindingOverridden},
 	},
@@ -2539,13 +2562,18 @@ var operationTable = map[Operation]opSpec{
 			StoreEnvironmentsList: true,
 			StoreProjectsGet:      true, StoreProjectsLock: true, StoreCatalogueGet: true, StoreCatalogueList: true,
 			StoreCataloguePresenceList: true, StoreCatalogueUpdateDeclaration: true,
-			StoreCataloguePresenceReplace: true, StoreCatalogueRevisionBump: true,
+			StoreCataloguePersonalRequiredList: true,
+			StoreCataloguePresenceReplace:      true, StoreCatalogueRevisionBump: true,
+			StoreCataloguePersonalRequiredReplace: true,
 			// The resulting revision is read back inside the same transaction:
 			// the audit record names the revision the change LANDED at, not the
 			// one it started from.
 			StoreCatalogueRevisionGet: true, StoreAuditTenantInsert: true,
+			// A key made forbidden_in an environment loses its personal values
+			// there, each owner left a `forbidden` notice (#1235).
+			StorePersonalValuesCellsForKey: true, StorePersonalValuesDeleteForKeyInEnv: true, StorePersonalValueNoticesRecord: true,
 		},
-		events: []audit.EventType{audit.EventKeyDeclarationChanged, audit.EventScanningFindingBlocked, audit.EventScanningFindingOverridden},
+		events: []audit.EventType{audit.EventKeyDeclarationChanged, audit.EventScanningFindingBlocked, audit.EventScanningFindingOverridden, audit.EventPersonalValueDeleted},
 	},
 	// Metadata is the schema-model ADR's one delivery exemption: description,
 	// deprecated, deprecation_note and folder path change nothing an environment
@@ -2564,6 +2592,7 @@ var operationTable = map[Operation]opSpec{
 			StoreCatalogueGet: true, StoreCatalogueUpdateMetadata: true,
 			StoreCatalogueRevisionBump: true,
 			StoreCataloguePresenceList: true, StoreAuditTenantInsert: true,
+			StoreCataloguePersonalRequiredList: true,
 			// A folder move enumerates the project's environments for the
 			// member-access widening census (ADR D9).
 			StoreEnvironmentsList: true,
@@ -2581,7 +2610,8 @@ var operationTable = map[Operation]opSpec{
 			StoreEnvironmentsList: true,
 			StoreProjectsGet:      true, StoreProjectsLock: true, StoreCatalogueGet: true, StoreCatalogueGroupGet: true,
 			StoreCatalogueList: true, StoreCataloguePresenceList: true,
-			StoreCatalogueSetGroup: true, StoreCatalogueRevisionBump: true,
+			StoreCataloguePersonalRequiredList: true,
+			StoreCatalogueSetGroup:             true, StoreCatalogueRevisionBump: true,
 			StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventKeyGroupMembershipChanged},
@@ -2630,6 +2660,7 @@ var operationTable = map[Operation]opSpec{
 			StoreCatalogueSetClassification: true, StoreCatalogueRevisionBump: true,
 			StoreCatalogueAdapterPins:  true,
 			StoreCataloguePresenceList: true, StoreAuditTenantInsert: true,
+			StoreCataloguePersonalRequiredList: true,
 			// Reclassifying a key to secret makes its dismissals moot and drops
 			// them (#74, ADR section 4 lifecycle).
 			StoreScanningDismissalsDeleteByKey: true,
@@ -2684,7 +2715,8 @@ var operationTable = map[Operation]opSpec{
 		storeOps: map[StoreOp]bool{
 			StoreProjectsGet: true, StoreEnvironmentsList: true,
 			StoreCatalogueList: true, StoreCataloguePresenceList: true,
-			StoreCatalogueGroupList: true, StoreCatalogueRevisionGet: true,
+			StoreCataloguePersonalRequiredList: true,
+			StoreCatalogueGroupList:            true, StoreCatalogueRevisionGet: true,
 		},
 		auditedNone: true,
 	},
@@ -2695,7 +2727,8 @@ var operationTable = map[Operation]opSpec{
 		storeOps: map[StoreOp]bool{
 			StoreProjectsGet: true, StoreEnvironmentsList: true,
 			StoreCatalogueList: true, StoreCataloguePresenceList: true,
-			StoreCatalogueGroupList: true, StoreCatalogueRevisionGet: true,
+			StoreCataloguePersonalRequiredList: true,
+			StoreCatalogueGroupList:            true, StoreCatalogueRevisionGet: true,
 		},
 		auditedNone: true,
 	},
@@ -2712,7 +2745,8 @@ var operationTable = map[Operation]opSpec{
 			StoreProjectsLock:        true, StoreProjectsGet: true,
 			StoreEnvironmentsList: true, StoreEnvironmentsListProtection: true,
 			StoreCatalogueList: true, StoreCataloguePresenceList: true,
-			StoreCatalogueGroupList: true, StoreCatalogueRevisionGet: true,
+			StoreCataloguePersonalRequiredList: true,
+			StoreCatalogueGroupList:            true, StoreCatalogueRevisionGet: true,
 			StoreSnapshotsProjectRevisions:   true,
 			StoreValuesCountEnvironment:      true,
 			StoreValuesEnvironmentsWithValue: true,
@@ -2750,22 +2784,26 @@ var operationTable = map[Operation]opSpec{
 		formula: Formula{{Cap: domain.CapDefinitionsEdit, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{
 			StorePersonalValuesCellsForKey: true, StorePersonalValuesDeleteForKey: true, StorePersonalValueNoticesRecord: true,
-			StoreProjectsGetCapacity: true,
-			StoreProjectsLock:        true, StoreProjectsGet: true,
+			// A key made forbidden_in an environment loses its personal values there.
+			StorePersonalValuesDeleteForKeyInEnv: true,
+			StoreProjectsGetCapacity:             true,
+			StoreProjectsLock:                    true, StoreProjectsGet: true,
 			StoreEnvironmentsList: true, StoreEnvironmentsListProtection: true,
 			StoreEnvironmentsCount: true, StoreEnvironmentsNextOrder: true,
 			StoreEnvironmentsCreate: true, StoreEnvironmentsRename: true,
 			StoreEnvironmentsDelete: true,
 			StoreCatalogueList:      true, StoreCatalogueGet: true,
 			StoreCatalogueCount: true, StoreCataloguePresenceList: true,
-			StoreCatalogueGroupList: true, StoreCatalogueGroupGet: true,
+			StoreCataloguePersonalRequiredList: true,
+			StoreCatalogueGroupList:            true, StoreCatalogueGroupGet: true,
 			StoreCatalogueRevisionGet: true, StoreCatalogueRevisionBump: true,
 			StoreCatalogueCreate: true, StoreCatalogueRename: true,
 			StoreCatalogueUpdateMetadata: true, StoreCatalogueUpdateDeclaration: true,
 			StoreCatalogueSetClassification: true, StoreCatalogueSetGroup: true,
 			StoreCatalogueDelete: true, StoreCatalogueAdapterPins: true,
 			StoreCataloguePresenceReplace: true, StoreCataloguePresenceCascade: true,
-			StoreCatalogueGroupCreate: true, StoreCatalogueGroupRename: true,
+			StoreCataloguePersonalRequiredReplace: true,
+			StoreCatalogueGroupCreate:             true, StoreCatalogueGroupRename: true,
 			StoreCatalogueGroupDelete: true, StoreCatalogueGroupClearMembers: true,
 			StoreValuesCountEnvironment: true, StoreValuesEnvironmentsWithValue: true,
 			StoreValuesClearKey:                true,
@@ -2895,7 +2933,8 @@ var operationTable = map[Operation]opSpec{
 			// puts under `read` along with the rest of the catalogue. The
 			// clone preflight reads them here to answer "would this leave a
 			// required secret absent?" before anything is written.
-			StoreCataloguePresenceList: true,
+			StoreCataloguePresenceList:         true,
+			StoreCataloguePersonalRequiredList: true,
 			// The MCP-bounded inspect page (#629) walks the catalogue by keyset
 			// and resolves each page key's cell with Values().Get.
 			StoreCatalogueListPage: true,
@@ -2944,7 +2983,8 @@ var operationTable = map[Operation]opSpec{
 			StoreEnvironmentParametersGet: true,
 			StoreProjectsLock:             true, StoreCatalogueList: true,
 			StoreCataloguePresenceList: true, StoreValuesPut: true,
-			StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true,
+			StoreCataloguePersonalRequiredList: true,
+			StoreKeysAssertActiveDEKVersion:    true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventValueSet, audit.EventScanningFindingWarned},
 	},
@@ -2982,8 +3022,9 @@ var operationTable = map[Operation]opSpec{
 			// A key `required_in` this environment refuses to be cleared, so
 			// the presence rows are an input to the clear as much as to the
 			// write.
-			StoreCataloguePresenceList: true,
-			StoreValuesClear:           true, StoreAuditTenantInsert: true,
+			StoreCataloguePresenceList:         true,
+			StoreCataloguePersonalRequiredList: true,
+			StoreValuesClear:                   true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventValueCleared},
 	},
@@ -3025,8 +3066,9 @@ var operationTable = map[Operation]opSpec{
 			StoreEnvironmentParametersGet: true,
 			StoreProjectsLock:             true, StoreCatalogueList: true,
 			StoreCataloguePresenceList: true, StoreEnvironmentsGetSettings: true,
-			StoreApprovalPolicyCovering: true,
-			StoreValuesPut:              true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true,
+			StoreCataloguePersonalRequiredList: true,
+			StoreApprovalPolicyCovering:        true,
+			StoreValuesPut:                     true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventValueCopied},
 	},
@@ -3042,8 +3084,9 @@ var operationTable = map[Operation]opSpec{
 			StoreEnvironmentParametersGet: true,
 			StoreProjectsLock:             true, StoreCatalogueList: true,
 			StoreCataloguePresenceList: true, StoreEnvironmentsGetSettings: true,
-			StoreApprovalPolicyCovering: true,
-			StoreValuesPut:              true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true,
+			StoreCataloguePersonalRequiredList: true,
+			StoreApprovalPolicyCovering:        true,
+			StoreValuesPut:                     true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true,
 		},
 		// The config leg is where a copied/cloned config value is scanned
 		// warn-only (#74, Surface 1); the secret leg never scans.
@@ -3097,7 +3140,8 @@ var operationTable = map[Operation]opSpec{
 			StoreEnvironmentParametersGet: true,
 			StoreProjectsLock:             true, StoreCatalogueList: true,
 			StoreCataloguePresenceList: true, StoreCatalogueRevisionGet: true,
-			StoreValuesList: true, StoreValuesPut: true,
+			StoreCataloguePersonalRequiredList: true,
+			StoreValuesList:                    true, StoreValuesPut: true,
 			StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true,
 		},
 		// The writes land as ordinary value writes, so they emit the ordinary
@@ -3146,7 +3190,8 @@ var operationTable = map[Operation]opSpec{
 		formula: Formula{{Cap: domain.CapEdit, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{
 			StoreCatalogueList: true, StoreCataloguePresenceList: true,
-			StoreEnvironmentParametersGet: true, StoreAuditTenantInsert: true,
+			StoreCataloguePersonalRequiredList: true,
+			StoreEnvironmentParametersGet:      true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventValueChangeValidated},
 	},
@@ -3161,7 +3206,8 @@ var operationTable = map[Operation]opSpec{
 		storeOps: map[StoreOp]bool{
 			StoreProjectsLock: true, StoreCatalogueList: true,
 			StoreCataloguePresenceList: true, StoreCatalogueRevisionGet: true,
-			StoreValuesList: true, StoreValuesPut: true, StoreValuesClear: true,
+			StoreCataloguePersonalRequiredList: true,
+			StoreValuesList:                    true, StoreValuesPut: true, StoreValuesClear: true,
 			StorePendingListForOwner: true, StorePendingListMarkers: true,
 			StorePendingDiscard:  true,
 			StoreSnapshotsLatest: true, StoreSnapshotsEntries: true,
@@ -3225,7 +3271,8 @@ var operationTable = map[Operation]opSpec{
 		formula: Formula{{Cap: domain.CapDefinitionsEdit, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{
 			StoreCatalogueList: true, StoreCataloguePresenceList: true, StoreCatalogueRevisionGet: true,
-			StoreValuesList: true, StoreSnapshotsLatest: true, StoreSnapshotsEntries: true,
+			StoreCataloguePersonalRequiredList: true,
+			StoreValuesList:                    true, StoreSnapshotsLatest: true, StoreSnapshotsEntries: true,
 			StoreSnapshotsInsert: true, StoreSnapshotsInsertEntry: true,
 			StoreSnapshotsRecordSecretValueOccurrence: true, StoreSnapshotsInsertChange: true,
 			StoreEnvironmentParametersGet: true, StoreAdaptersEnqueuePublished: true,
@@ -3239,7 +3286,8 @@ var operationTable = map[Operation]opSpec{
 		formula: Formula{{Cap: domain.CapDefinitionsEdit, At: domain.LevelEnv}, {Cap: domain.CapPublish, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{
 			StoreCatalogueList: true, StoreCataloguePresenceList: true, StoreCatalogueRevisionGet: true,
-			StoreValuesList: true, StoreSnapshotsLatest: true, StoreSnapshotsEntries: true,
+			StoreCataloguePersonalRequiredList: true,
+			StoreValuesList:                    true, StoreSnapshotsLatest: true, StoreSnapshotsEntries: true,
 			StoreSnapshotsInsert: true, StoreSnapshotsInsertEntry: true,
 			StoreSnapshotsRecordSecretValueOccurrence: true, StoreSnapshotsInsertChange: true,
 			StoreEnvironmentParametersGet: true, StoreAdaptersEnqueuePublished: true,
@@ -3712,6 +3760,7 @@ var operationTable = map[Operation]opSpec{
 		storeOps: map[StoreOp]bool{
 			StoreEnvironmentParametersGet: true,
 			StoreCatalogueList:            true, StoreCataloguePresenceList: true, StorePendingListForOwnerInEnvironment: true,
+			StoreCataloguePersonalRequiredList: true,
 			// The MCP-bounded pending page (#629) reads the caller's drafts by
 			// keyset and resolves each page key's name and classification with
 			// GetInProject, both under this read authorization.
@@ -3781,7 +3830,8 @@ var operationTable = map[Operation]opSpec{
 			StoreSnapshotsParameterContract: true,
 			StoreOrgsGet:                    true, StoreProjectsGet: true, StoreProjectsLock: true, StoreCatalogueList: true,
 			StoreCataloguePresenceList: true, StoreSnapshotsLatest: true,
-			StoreSnapshotsAtRevision: true, StoreSnapshotsEntries: true, StoreSnapshotsList: true,
+			StoreCataloguePersonalRequiredList: true,
+			StoreSnapshotsAtRevision:           true, StoreSnapshotsEntries: true, StoreSnapshotsList: true,
 			StoreSnapshotsSecretValueOccurrenceIDsIn: true,
 			StorePinsGetForWorkload:                  true, StorePinsCountProject: true,
 			StorePinsInsert: true, StorePinsDelete: true, StorePinsList: true, StoreAuditTenantInsert: true,
@@ -4551,10 +4601,11 @@ var operationTable = map[Operation]opSpec{
 			// A workload bound to a file target (#164) is delivered that
 			// target's key selection only.
 			StoreFileTargetsForPrincipal: true, StoreFileTargetsKeys: true,
-			StoreCatalogueList:         true,
-			StoreCataloguePresenceList: true,
-			StoreCatalogueRevisionGet:  true,
-			StoreAuditTenantInsert:     true,
+			StoreCatalogueList:                 true,
+			StoreCataloguePresenceList:         true,
+			StoreCataloguePersonalRequiredList: true,
+			StoreCatalogueRevisionGet:          true,
+			StoreAuditTenantInsert:             true,
 			// The personal overlay (#1235): only a developer credential's proof
 			// carries an owner whose rows these return.
 			StorePersonalValuesListOwn: true, StorePersonalValueNoticesListOwn: true,
@@ -5617,6 +5668,14 @@ var systemSites = map[SystemSite]map[StoreOp]bool{
 		StoreTransitDestroyVersions:     true,
 		StoreTransitDestroy:             true,
 		StoreKeysAssertActiveDEKVersion: true,
+		// The personal-value retention sweep (#1235, personal-values ADR):
+		// the installation-wide metadata page, then per row the suspend or
+		// resume mark and, 14 days on, the guarded delete with the owner's
+		// `retention` notice, all under scoped authority.
+		StorePersonalValuesRetentionList:   true,
+		StorePersonalValuesRetentionMark:   true,
+		StorePersonalValuesRetentionDelete: true,
+		StorePersonalValueNoticesRecord:    true,
 	},
 }
 
@@ -5643,6 +5702,8 @@ var systemSiteEvents = map[SystemSite][]audit.EventType{
 		audit.EventDeliveryTargetPurged,
 		// Transit automatic rotation and deletion purge (#156).
 		audit.EventTransitKeyRotated, audit.EventTransitKeyDestroyed,
+		// Personal values deleted by the retention sweep (#1235).
+		audit.EventPersonalValueDeleted,
 	},
 }
 
