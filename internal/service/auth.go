@@ -821,6 +821,23 @@ func (s *Auth) EstablishCredential(ctx context.Context, authority, password stri
 			return nil
 		}
 
+		// A network reset never reaches an account with a linked identity,
+		// checked again here in case one was linked after the mint. The
+		// uniform refusal does not say why; break-glass still works.
+		if live.IssuedBy == "credential-reset" {
+			linked, err := az.ExternalIdentitiesForAccount(ctx, live.AccountID)
+			if err != nil {
+				return err
+			}
+			if len(linked) > 0 {
+				if aerr := s.refuseAuthorityIn(ctx, az, "purpose"); aerr != nil {
+					return aerr
+				}
+				refused = domain.ErrUnauthenticated
+				return nil
+			}
+		}
+
 		// The NULL guard is the atomic claim: two concurrent presentations
 		// cannot both establish a credential, and the loser fails closed.
 		claimed, err := az.ConsumeAuthority(ctx, live.ID, now)
@@ -877,6 +894,11 @@ func (s *Auth) EstablishCredential(ctx context.Context, authority, password stri
 			return err
 		}
 		if err := az.RevokeAllSessionsFor(ctx, account.PrincipalID); err != nil {
+			return err
+		}
+		// A password established on a factorless account deletes its personal
+		// values, including one that qualified through its identity provider.
+		if err := purgePersonalIfUnqualified(ctx, az, account, now); err != nil {
 			return err
 		}
 
