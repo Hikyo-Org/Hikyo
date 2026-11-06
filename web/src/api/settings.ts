@@ -20,10 +20,16 @@ import {
   reorderEnvironmentsOp,
   rotateDekOp,
   rotateMasterKeyOp,
+  clearOrgIdentityImageOp,
+  clearProjectIdentityImageOp,
   rotateRootKeyOp,
   rotateScanningKeyOp,
   rotateTokenKeyOp,
   setEnvironmentSettingsOp,
+  setOrgIdentityImageOp,
+  setOrgIdentityOp,
+  setProjectIdentityImageOp,
+  setProjectIdentityOp,
   setOrgRetentionOp,
   setProjectRetentionOp,
 } from '@hikyo/operations';
@@ -45,6 +51,7 @@ import {
   type QueryClient,
   type UseQueryResult,
 } from '@tanstack/react-query';
+import type { IdentityRequest } from '@hikyo/client';
 import type { Client } from '@hikyo/runtime-core';
 import type { z } from 'zod';
 import { useEffect } from 'react';
@@ -454,6 +461,80 @@ export function useRenameProject(org: string) {
       parsed(renameProjectOp, { path: { org, project: input.project }, body: { name: input.name } }),
     onSettled: () => auth.refreshSession(),
   });
+}
+
+/** Refresh every read that carries an identity: my-orgs, the org, and the project reads and lists. */
+async function invalidateIdentity(queries: QueryClient): Promise<void> {
+  await Promise.all(
+    ['orgs', 'org', 'projects', 'project'].map((head) => queries.invalidateQueries({ queryKey: [head] })),
+  );
+}
+
+type IdentityImageInput = { readonly blob: Blob; readonly contentType: string };
+
+/**
+ * The three identity writes for an organisation (manage-members). The page stays
+ * mounted across an org switch and a mutation's function follows the latest
+ * render, so the target travels in the variables: a save queued on one org can
+ * never land on the next.
+ */
+export function useOrgIdentityMutations(org: string) {
+  const queries = useQueryClient();
+  const settled = { onSettled: () => invalidateIdentity(queries) };
+  const set = useMutation({
+    mutationFn: (input: { org: string; body: IdentityRequest }) =>
+      parsed(setOrgIdentityOp, { path: { org: input.org }, body: input.body }),
+    ...settled,
+  });
+  const setImage = useMutation({
+    mutationFn: (input: { org: string; image: IdentityImageInput }) =>
+      parsed(setOrgIdentityImageOp, {
+        path: { org: input.org },
+        body: input.image.blob,
+        headers: { 'Content-Type': input.image.contentType },
+      }),
+    ...settled,
+  });
+  const clearImage = useMutation({
+    mutationFn: (input: { org: string }) => parsed(clearOrgIdentityImageOp, { path: { org: input.org } }),
+    ...settled,
+  });
+  return {
+    set: { mutateAsync: (body: IdentityRequest) => set.mutateAsync({ org, body }) },
+    setImage: { mutateAsync: (image: IdentityImageInput) => setImage.mutateAsync({ org, image }) },
+    clearImage: { mutateAsync: () => clearImage.mutateAsync({ org }) },
+  };
+}
+
+/** The three identity writes for a project (manage-projects); the target travels as for an org. */
+export function useProjectIdentityMutations(org: string, project: string) {
+  const queries = useQueryClient();
+  const settled = { onSettled: () => invalidateIdentity(queries) };
+  const set = useMutation({
+    mutationFn: (input: { path: { org: string; project: string }; body: IdentityRequest }) =>
+      parsed(setProjectIdentityOp, input),
+    ...settled,
+  });
+  const setImage = useMutation({
+    mutationFn: (input: { path: { org: string; project: string }; image: IdentityImageInput }) =>
+      parsed(setProjectIdentityImageOp, {
+        path: input.path,
+        body: input.image.blob,
+        headers: { 'Content-Type': input.image.contentType },
+      }),
+    ...settled,
+  });
+  const clearImage = useMutation({
+    mutationFn: (input: { path: { org: string; project: string } }) =>
+      parsed(clearProjectIdentityImageOp, input),
+    ...settled,
+  });
+  const path = { org, project };
+  return {
+    set: { mutateAsync: (body: IdentityRequest) => set.mutateAsync({ path, body }) },
+    setImage: { mutateAsync: (image: IdentityImageInput) => setImage.mutateAsync({ path, image }) },
+    clearImage: { mutateAsync: () => clearImage.mutateAsync({ path }) },
+  };
 }
 
 export function useDeleteProject(org: string, onDeleted?: () => void) {
@@ -873,6 +954,10 @@ export type SettingsOperation =
   | 'delete-org'
   | 'rename-project'
   | 'delete-project'
+  | 'set-org-identity'
+  | 'set-project-identity'
+  | 'set-org-identity-image'
+  | 'set-project-identity-image'
   | 'set-org-retention'
   | 'set-project-retention'
   | 'set-environment-settings'
@@ -973,6 +1058,12 @@ function settingsAction(operation: SettingsOperation | undefined): string {
       return 'rename this project';
     case 'delete-project':
       return 'delete this project';
+    case 'set-org-identity':
+    case 'set-org-identity-image':
+      return 'change this organisation identity';
+    case 'set-project-identity':
+    case 'set-project-identity-image':
+      return 'change this project identity';
     case 'set-org-retention':
       return 'change this organisation retention policy';
     case 'set-project-retention':
@@ -1008,6 +1099,12 @@ function invalidSettingsText(operation: SettingsOperation | undefined): string {
       return 'The organisation name is invalid.';
     case 'rename-project':
       return 'The project name is invalid.';
+    case 'set-org-identity':
+    case 'set-project-identity':
+      return 'The content must be at most two characters, with no control characters or surrounding spaces.';
+    case 'set-org-identity-image':
+    case 'set-project-identity-image':
+      return 'The server refused this image. Use a PNG, JPEG or WebP of at most 256 KiB and 1024 by 1024 pixels.';
     case 'set-org-retention':
       return 'The organisation retention policy is invalid; both bounded values must be positive.';
     case 'set-project-retention':
@@ -1033,6 +1130,12 @@ function unavailableSettingsText(operation: SettingsOperation | undefined): stri
       return 'This organisation is unavailable or does not exist. Renaming requires organisation membership administration.';
     case 'delete-org':
       return 'This organisation is unavailable or does not exist. Deleting requires instance administration.';
+    case 'set-org-identity':
+    case 'set-org-identity-image':
+      return 'This organisation is unavailable or does not exist. Changing its identity requires organisation membership administration.';
+    case 'set-project-identity':
+    case 'set-project-identity-image':
+      return 'This project is unavailable or does not exist. Changing its identity requires project administration.';
     case 'rename-project':
     case 'delete-project':
       return 'This project is unavailable or does not exist.';

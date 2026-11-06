@@ -204,6 +204,7 @@
   "OAuth2TransactionByState": "func(ctx context.Context, stateVerifier []byte) (OAuth2Transaction, error)",
   "OIDCTransactionByState": "func(ctx context.Context, stateVerifier []byte) (OIDCTransaction, error)",
   "OpenReauthWindow": "func(ctx context.Context, w NewReauthWindow) error",
+  "OrgImageVisibleTo": "func(ctx context.Context, caller Identity, org domain.OrgID) (OrgImage, error)",
   "OrgsForPrincipal": "func(ctx context.Context, caller Identity) ([]OrgIdentity, error)",
   "PasswordCredentialFor": "func(ctx context.Context, accountID string) (PasswordCredential, error)",
   "PeekDeveloperCredentialPolicy": "func(ctx context.Context) (time.Duration, error)",

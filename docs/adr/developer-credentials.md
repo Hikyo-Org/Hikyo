@@ -1,5 +1,7 @@
 # Bounded developer credentials (#807, locked 2026-10-09)
 
+> **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** `dev` credentials must present a holder secret separately, in Sealed orgs. See its supersession register.
+
 Status: **owner-locked on 2026-10-09; operative when this implementation PR merges**.
 After the grilled decision and ordinary Standards and Spec reviews, the owner
 accepted the concrete lifecycle and limits by instructing "implement, commit,

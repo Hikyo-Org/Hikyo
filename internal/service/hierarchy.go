@@ -131,12 +131,14 @@ type Org struct {
 	// names the minting policy of a self-served org, else empty.
 	Origin               string
 	RegistrationPolicyID string
+	Identity             ChromeIdentity
 }
 
 func orgOf(o store.Org) Org {
 	return Org{
 		ID: o.ID, Name: o.Name, Active: o.Active, Metadata: o.Metadata, CreatedAt: o.CreatedAt,
 		Origin: o.Origin, RegistrationPolicyID: o.RegistrationPolicyID,
+		Identity: chromeIdentityOf(o.Identity),
 	}
 }
 
@@ -178,6 +180,7 @@ func (s *Orgs) Create(ctx context.Context, actor Actor, name string, active bool
 		Metadata:  metadata,
 		CreatedAt: store.CanonTime(now),
 		Origin:    "manual",
+		Identity:  store.ChromeIdentity{Hue: store.DefaultChromeHue},
 	}
 	// Session invalidation updates the creator's shared generation row. Admit
 	// org creates before postgres takes a SERIALIZABLE snapshot so concurrent
@@ -246,8 +249,9 @@ func (s *Orgs) Get(ctx context.Context, actor Actor, org domain.OrgID) (Org, err
 // rail needs a name and a route; `metadata` and `active` are operator-set
 // state and belong to Get, which authorizes.
 type MyOrg struct {
-	ID   string
-	Name string
+	ID       string
+	Name     string
+	Identity ChromeIdentity
 }
 
 // ListMine is the navigation surface: exactly the organisations the caller's
@@ -298,7 +302,7 @@ func (s *Orgs) ListMine(ctx context.Context, actor Actor) ([]MyOrg, error) {
 	}
 	out := make([]MyOrg, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, MyOrg{ID: string(r.ID), Name: r.Name})
+		out = append(out, MyOrg{ID: string(r.ID), Name: r.Name, Identity: ChromeIdentity{Hue: r.Hue, Mark: r.Mark, ImageVersion: r.ImageVersion}})
 	}
 	return out, nil
 }
@@ -478,10 +482,11 @@ type Project struct {
 	OrgID           string
 	Name            string
 	CreatedAt       time.Time
+	Identity        ChromeIdentity
 }
 
 func projectOf(p store.Project) Project {
-	return Project{ID: p.ID, OrgID: p.OrgID, Name: p.Name, CreatedAt: p.CreatedAt}
+	return Project{ID: p.ID, OrgID: p.OrgID, Name: p.Name, CreatedAt: p.CreatedAt, Identity: chromeIdentityOf(p.Identity)}
 }
 
 // Projects owns the project surface.
@@ -524,7 +529,7 @@ func (s *Projects) Create(ctx context.Context, actor Actor, org domain.OrgID, na
 	if err != nil {
 		return Project{}, err
 	}
-	return Project{ID: proj.ID, OrgID: string(org), Name: proj.Name, CreatedAt: proj.CreatedAt}, nil
+	return Project{ID: proj.ID, OrgID: string(org), Name: proj.Name, CreatedAt: proj.CreatedAt, Identity: ChromeIdentity{Hue: store.DefaultChromeHue}}, nil
 }
 
 func (s *Projects) Get(ctx context.Context, actor Actor, scope domain.Scope) (Project, error) {

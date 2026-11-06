@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { zEnvironmentList, zRevealWindow, zValueList } from '@hikyo/zod';
-import { expect, userEvent, waitFor } from 'storybook/test';
+import { expect, spyOn, userEvent, waitFor } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
@@ -104,6 +104,187 @@ export const Populated: Story = {
     await expect(canvas.getByText(dottedText(/^Locked\s*·\s*a passkey per disclosure$/))).toBeVisible();
     await expect(canvas.getByText('info')).toBeVisible();
     await expect(canvas.getAllByText('absent')).toHaveLength(2);
+  },
+};
+
+// The laid-out text of an element's own text node: its width and how many
+// lines it takes. The box of the element says nothing about this (a column of
+// one glyph a line sits in a box as wide as its widest line).
+const ownText = (element: HTMLElement) => {
+  const node = [...element.childNodes].find((child) => child.nodeType === Node.TEXT_NODE && (child.textContent ?? '') !== '');
+  if (node === undefined) throw new Error('no text node');
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  const rects = [...range.getClientRects()];
+  return {
+    chars: (node.textContent ?? '').length,
+    lines: new Set(rects.map((rect) => Math.round(rect.top))).size,
+    left: Math.min(...rects.map((rect) => rect.left)),
+    right: Math.max(...rects.map((rect) => rect.right)),
+  };
+};
+
+// A phone: an unbreakable value (a URL) and a key name past the 18 character
+// wrap point must not push the Actions column off the scrolling wrapper. The
+// table fits the phone, so every row's action is in reach without a sideways scroll.
+export const PhoneKeepsActionsInReach: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  parameters: rows({
+    url: VALUES_URL,
+    body: { ...populated, count: populated.count + 1, items: [...populated.items, cell(10, 'PUBLIC_APP_URL', 'config', 'https://staging.example.test/callbacks/oauth')] },
+  }),
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('button', { name: 'Reveal DATABASE_URL' })).toBeVisible();
+    const wrapper = canvas.getByRole('table').parentElement!;
+    await expect(wrapper.scrollWidth).toBeLessThanOrEqual(wrapper.clientWidth);
+    const edge = wrapper.getBoundingClientRect().right;
+    for (const button of canvas.getAllByRole('button', { name: /^(Reveal|Copy) / })) {
+      await expect(button.getBoundingClientRect().right).toBeLessThanOrEqual(edge);
+    }
+    await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(document.documentElement.clientWidth);
+  },
+};
+
+// A live reveal on the narrowest phone: the value is the text with its
+// countdown, and the value column is what the key and Actions columns leave.
+// The text breaks anywhere and keeps the room, and the countdown wraps under
+// it instead of holding its own width: in a row it kept its width and the text
+// shrank to a glyph a line, then the table outgrew the wrapper and pushed
+// Copy out of reach. One secret revealed, then every secret.
+const longSecret = 'postgresql://demo-only:fixture@database.example.test:5432/hikyo_staging?sslmode=require';
+const liveWindow: RevealWindow = { ...locked, live: true, expires_at: '2099-01-01T00:00:00Z' };
+const revealed = (n: number, name: string, value: string): ValueList['items'][number] => ({ ...cell(n, name, 'secret', value), revealed: true, value });
+
+export const PhoneRevealedValueStaysReadable: Story = {
+  globals: { viewport: { value: 'phoneNarrow', isRotated: false } },
+  beforeEach: () => {
+    // The reveal acts only on a focused window, which a headless run may lack.
+    const focus = spyOn(document, 'hasFocus').mockReturnValue(true);
+    return () => focus.mockRestore();
+  },
+  parameters: {
+    app: {
+      ...rows({ url: VALUES_URL, body: populated }, { url: WINDOW_URL, body: liveWindow }).app,
+      responses: [
+        { url: VALUES_URL, body: populated },
+        { url: WINDOW_URL, body: liveWindow },
+        { url: ENVIRONMENTS_URL, body: environments },
+        { url: `${VALUES_URL}/DATABASE_URL/reveal`, method: 'POST', body: revealed(1, 'DATABASE_URL', longSecret) },
+        {
+          url: `${VALUES_URL}/reveal`,
+          method: 'POST',
+          body: {
+            count: 3,
+            items: [revealed(1, 'DATABASE_URL', longSecret), revealed(2, 'STRIPE_SECRET_KEY', `sk_live_${'0123456789'.repeat(4)}`), revealed(8, 'OIDC_CLIENT_SECRET', 'oidc-client-secret-fixture-value')],
+          },
+        },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    const wrapper = (await canvas.findByRole('table')).parentElement!;
+    const edge = wrapper.getBoundingClientRect().right;
+    const fontSize = (element: HTMLElement) => Number.parseFloat(getComputedStyle(element).fontSize);
+    const expectReadable = async (count: number) => {
+      const values = await waitFor(() => {
+        const found = [...wrapper.querySelectorAll<HTMLElement>('.values__plain')].filter((value) => value.querySelector('.values__countdown') !== null);
+        if (found.length !== count) throw new Error(`${String(found.length)} live values, want ${String(count)}`);
+        return found;
+      });
+      for (const value of values) {
+        const text = ownText(value);
+        // The text itself, not its box: at least 20 characters a line on
+        // average (a mono glyph is 0.6em), and inside the wrapper.
+        await expect(text.right - text.left).toBeGreaterThanOrEqual(20 * 0.6 * fontSize(value));
+        await expect(text.chars / text.lines).toBeGreaterThanOrEqual(20);
+        await expect(text.right).toBeLessThanOrEqual(edge);
+        const countdown = value.querySelector<HTMLElement>('.values__countdown')!;
+        // The countdown sits under the text inside the value's own width.
+        await expect(countdown.getBoundingClientRect().right).toBeLessThanOrEqual(value.getBoundingClientRect().right + 0.5);
+        await expect(countdown.scrollWidth).toBeLessThanOrEqual(countdown.clientWidth);
+      }
+      await expect(wrapper.scrollWidth).toBeLessThanOrEqual(wrapper.clientWidth);
+      for (const button of canvas.getAllByRole('button', { name: /^(Reveal|Copy) / })) {
+        await expect(button.getBoundingClientRect().right).toBeLessThanOrEqual(edge);
+      }
+      await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(document.documentElement.clientWidth);
+    };
+    await userEvent.click(await canvas.findByRole('button', { name: 'Reveal DATABASE_URL' }));
+    await expectReadable(1);
+    // The editor is the row's own full-width line: a fourth cell under a
+    // three-column header grew the table past the phone and left the value a
+    // column of glyphs. The value stays readable, and Save draft in reach.
+    await userEvent.click(canvas.getByRole('button', { name: 'DATABASE_URL' }));
+    const editor = wrapper.querySelector<HTMLElement>('.values__editor')!;
+    await expect(editor).toBeVisible();
+    await expectReadable(1);
+    const room = editor.getBoundingClientRect();
+    await expect(room.width).toBeGreaterThanOrEqual(wrapper.clientWidth - 2 * fontSize(editor));
+    await expect(room.right).toBeLessThanOrEqual(edge);
+    // The input itself takes the row (it sat at 170px in a 336px row), so a placeholder gets the row's width (a long write-only one still clips at 320).
+    await expect(canvas.getByLabelText(/^New value for DATABASE_URL/).getBoundingClientRect().width).toBeGreaterThanOrEqual(wrapper.clientWidth - 4 * fontSize(editor));
+    const save = canvas.getByRole('button', { name: 'Save draft' }).getBoundingClientRect();
+    await expect(save.left).toBeGreaterThanOrEqual(wrapper.getBoundingClientRect().left);
+    await expect(save.right).toBeLessThanOrEqual(edge);
+    await userEvent.click(canvas.getByRole('button', { name: 'DATABASE_URL' }));
+    await userEvent.click(canvas.getByRole('button', { name: 'Reveal every secret' }));
+    await expectReadable(3);
+  },
+};
+
+// The longest key the fixtures hold (88 characters) and a value beside it: the
+// key wraps in its own column and the value keeps the full width under it, on
+// the narrowest phone, before and after a reveal of nothing at all.
+export const PhoneLongKeyKeepsValueWide: Story = {
+  globals: { viewport: { value: 'phoneNarrow', isRotated: false } },
+  play: async ({ canvas }) => {
+    const wrapper = (await canvas.findByRole('table')).parentElement!;
+    const long = await canvas.findByRole('button', { name: /^ANALYTICS_PIPELINE/ });
+    const value = canvas.getByText('warehouse://eu-west-4/nightly');
+    const text = ownText(value);
+    await expect(wrapper.scrollWidth).toBeLessThanOrEqual(wrapper.clientWidth);
+    // The value reads on one line, at the width of the table, not squeezed beside the key.
+    await expect(text.lines).toBe(1);
+    await expect(long.getBoundingClientRect().bottom).toBeLessThanOrEqual(value.getBoundingClientRect().top + 0.5);
+    for (const button of canvas.getAllByRole('button', { name: /^(Reveal|Copy) / })) {
+      await expect(button.getBoundingClientRect().right).toBeLessThanOrEqual(wrapper.getBoundingClientRect().right);
+    }
+    // The wrapped key reads from the left, not centred like a button's label.
+    await expect(getComputedStyle(long).textAlign).toBe('left');
+    // ... and its text lines up with the value's, not 9px in from it (the button's padding and border).
+    await expect(ownText(long).left).toBeCloseTo(text.left, 0);
+    // The key's focus ring, pulled out with it, is not cut off by the wrapper's clip.
+    for (let tabs = 0; tabs < 80 && document.activeElement !== long; tabs += 1) await userEvent.tab();
+    await expect(long).toHaveFocus();
+    const ring = getComputedStyle(long);
+    await expect(ring.outlineStyle).not.toBe('none');
+    const reach = Number.parseFloat(ring.outlineWidth) + Number.parseFloat(ring.outlineOffset);
+    await expect(long.getBoundingClientRect().left - reach).toBeGreaterThanOrEqual(wrapper.getBoundingClientRect().left);
+    await expect(long.getBoundingClientRect().right + reach).toBeLessThanOrEqual(wrapper.getBoundingClientRect().right);
+    // The column headings stay for assistive technology and are not drawn: they
+    // name three columns that the card layout no longer has.
+    // Found without `hidden: true`, so a removed (display: none) header fails.
+    for (const name of ['Key', 'Value', 'Actions']) {
+      const heading = canvas.getByRole('columnheader', { name }).getBoundingClientRect();
+      await expect(heading.width).toBeLessThanOrEqual(1);
+    }
+    // The key and its Actions share the first line, Reveal over Copy so the key
+    // keeps the room: the Actions sit beside the key, not in a line of their own.
+    const key = canvas.getByRole('button', { name: 'DATABASE_URL' }).getBoundingClientRect();
+    const reveal = canvas.getByRole('button', { name: 'Reveal DATABASE_URL' }).getBoundingClientRect();
+    const copy = canvas.getByRole('button', { name: /^Copy DATABASE_URL/ }).getBoundingClientRect();
+    await expect(reveal.top).toBeLessThan(key.bottom);
+    await expect(copy.top).toBeGreaterThanOrEqual(reveal.bottom);
+    // A lone Copy fills the Actions track like the stacked buttons do.
+    const lone = canvas.getAllByRole('button', { name: /^Copy / }).find((button) => button.closest('.actions')!.children.length === 1)!.getBoundingClientRect();
+    await expect(lone.width).toBeCloseTo(reveal.width, 0);
+    // The open editor holds the unbroken long key in its label without scrolling
+    // the table sideways, and its field takes the row.
+    await userEvent.click(long);
+    const field = await canvas.findByLabelText(/^New value for ANALYTICS_PIPELINE/);
+    await expect(wrapper.scrollWidth).toBeLessThanOrEqual(wrapper.clientWidth);
+    await expect(field.getBoundingClientRect().width).toBeGreaterThanOrEqual(wrapper.clientWidth - 4 * Number.parseFloat(getComputedStyle(field).fontSize));
+    await expect(canvas.getByRole('button', { name: 'Save draft' }).getBoundingClientRect().right).toBeLessThanOrEqual(wrapper.getBoundingClientRect().right);
   },
 };
 

@@ -726,6 +726,17 @@ var pinnedContractSurface = map[string]bool{
 	// relays or forwards data on the caller's behalf.
 	"GET /api/v1/orgs/{org}/projects/{project}/capacity": true,
 	"PUT /api/v1/orgs/{org}/projects/{project}/capacity": true,
+
+	// Chrome identity (hue, mark, uploaded avatar) is stored in this instance's
+	// own org and project rows. Nothing is fetched, relayed or forwarded.
+	"PUT /api/v1/orgs/{org}/identity":                             true,
+	"GET /api/v1/orgs/{org}/identity/image":                       true,
+	"PUT /api/v1/orgs/{org}/identity/image":                       true,
+	"DELETE /api/v1/orgs/{org}/identity/image":                    true,
+	"PUT /api/v1/orgs/{org}/projects/{project}/identity":          true,
+	"GET /api/v1/orgs/{org}/projects/{project}/identity/image":    true,
+	"PUT /api/v1/orgs/{org}/projects/{project}/identity/image":    true,
+	"DELETE /api/v1/orgs/{org}/projects/{project}/identity/image": true,
 }
 
 func TestContractRouteSurfaceIsExhaustivelyPinned(t *testing.T) {

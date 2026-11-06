@@ -146,6 +146,8 @@ New subsystem; shape decided in its ticket. **Minimum bar fixed here so a no-op 
 
 ## 3. Hosted SaaS & billing — committed follow-on, not 1.0
 
+> **Advanced by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06):** topology, protection modes and upgrade rule are decided there. The self-hoster test and the billing rule below stay binding.
+
 **Decision: hosted SaaS (with billing for the hosted service only) is upgraded from "not precluded" ([#3](https://github.com/Hikyo-Org/Hikyo/issues/3)) to a named, committed follow-on effort — its own wayfinder map, started after 1.0 ships.** It is not 1.0 scope: it collides with locked no-self-registration ([human-auth](./human-auth.md)), the self-hosted trust boundary ([threat-model](./threat-model.md)), and this map's own destination.
 
 **Binding constraint on 1.0, with a conformance gate (normative for synthesis):** the [oss-mechanics](./oss-mechanics.md) **decidable self-hoster test is the instrument** — it is already locked; this section binds 1.0 to pass it wholesale. Concretely, at synthesis: **every capability in the spec document set is run through the self-hoster test as a checklist**, and any capability that a self-hoster cannot fully exercise — policy, API shape, recovery path, tenancy behavior, data transformation — is a synthesis-blocking defect, not a roadmap note. Named instances of the rule (not a substitute for it): operator ≡ org-admin assumptions must not harden into API shape; multi-tenancy invariants stay strict (they are the SaaS foundation); billing hooks are absent, not stubbed. The no-`/ee` pledge is unaffected: the hosted offering charges for hosting, never for capability. Self-hosted Hikyo remains feature-complete forever.

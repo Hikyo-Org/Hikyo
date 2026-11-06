@@ -66,6 +66,8 @@ export const PhoneActionGrid: Story = {
     await expect(c!.top).toBeGreaterThanOrEqual(a!.bottom);
     await expect(Math.round(c!.top)).toBe(Math.round(d!.top));
     const table = row!.closest('table')!;
+    // Machine tables keep their columns: the Values card layout must not reach them.
+    await expect(getComputedStyle(table).display).toBe('table');
     await expect(getComputedStyle(table).fontSize).toBe(getComputedStyle(document.documentElement).getPropertyValue('--fs-xs').trim());
     await expect(getComputedStyle(table.parentElement!).overflowX).toBe('auto');
     // The story's own mounted root, not `document.documentElement` (the

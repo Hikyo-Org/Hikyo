@@ -1260,6 +1260,30 @@
     ]
   },
   {
+    "operation": "org.identity-image-clear",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
+    ]
+  },
+  {
+    "operation": "org.identity-image-set",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
+    ]
+  },
+  {
+    "operation": "org.identity-set",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
+    ]
+  },
+  {
     "operation": "org.list",
     "class": "instance",
     "level": "instance",
@@ -1458,6 +1482,38 @@
     "level": "project",
     "formula": [
       "read@project"
+    ]
+  },
+  {
+    "operation": "project.identity-image-clear",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-projects@org"
+    ]
+  },
+  {
+    "operation": "project.identity-image-get",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "read@project"
+    ]
+  },
+  {
+    "operation": "project.identity-image-set",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-projects@org"
+    ]
+  },
+  {
+    "operation": "project.identity-set",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-projects@org"
     ]
   },
   {
