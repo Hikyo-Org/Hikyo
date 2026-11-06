@@ -1,0 +1,2 @@
+# Unified-diff blank context lines are a single space; regenerating the patch brings them back.
+MainActivity.patch -whitespace
