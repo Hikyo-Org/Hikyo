@@ -78,8 +78,10 @@ developer's run, names the key, and never affects a publish.
 ## Who can do what
 
 There is no capability atom for personal values, so no grant, preset, wildcard rule or org-scoped role can reach them. For human
-sessions, the authorization chokepoint compares the caller to the owner. A developer credential resolves to its recorded human.
-Every other artifact, and MCP, is excluded per operation. Grants stay additive: this is not a deny rule, it is a resource with no
+sessions, the authorization chokepoint compares the caller to the owner. A developer credential reaches personal values only through
+the [delivery](#delivery) overlay, for its recorded human, and the `personal` operations refuse it. A workspace session from another
+instance's page ([multi-instance.md](./multi-instance.md)) is refused too, because that ADR already declares its bearer extractable by
+the viewing page. Every other artifact, and MCP, is excluded per operation. Grants stay additive: this is not a deny rule, it is a resource with no
 grantable read.
 
 | Actor | Can | Cannot |
@@ -90,7 +92,9 @@ grantable read.
 | Holder of `definitions-edit` | Delete values indirectly, through key rename, key delete or `forbidden_in` | Read them |
 | Holder of audit read | See who holds a value, from events | Read it |
 
-Set and get use the existing `reveal` reauthentication gate for that environment. The `11/14` denominator is humans currently
+Set and get use the existing `reveal` reauthentication gate for that environment. `--member NAME` resolves only a principal holding a
+value or notice for that key in `E`; any other name is answered exactly as a nonexistent one, as
+[tenant-isolation.md](./tenant-isolation.md) requires of writers that name a principal. The `11/14` denominator is humans currently
 holding both `read(E)` and `reveal(E)`.
 
 ## Closing the paths to a value
@@ -112,9 +116,11 @@ Access checks `read(E)`, `reveal(E)` and qualification live. Two rules keep this
    Otherwise an administrator could use a planted recovery code to clear the developer's factor, enrol their own and read the values. A
    person who loses their only factor re-enters their values. TOTP cannot be replaced in place today, so someone changing phones keeps
    their values only by adding a passkey first. Changes with no credential write, such as a disabled provider or expired SAML metadata,
-   only suspend access, and the [retention sweep](#offboarding) handles them.
-2. **Network `credential-reset` refuses an account with any linked external identity**, at mint and again at consumption, and points to
-   the identity provider. Otherwise an administrator could reset an SSO developer, set a password and enrol their own factor, all
+   only suspend access, and the [retention sweep](#offboarding) handles them. While a value is suspended, delivery sends only its key
+name and `hikyo run` refuses the key, as for a notice.
+2. **Network `credential-reset` refuses an account with any linked external identity**, at mint and again at consumption, with the
+   existing uniform refusal, so the response does not reveal that the account uses SSO. Audit records the cause, and the documentation
+   points to the identity provider. Otherwise an administrator could reset an SSO developer, set a password and enrol their own factor, all
    invisible to a developer who still signs in through SSO. A linked identity counts even when its provider is disabled, so that case
    needs break-glass.
 
@@ -150,19 +156,24 @@ Protected: viewing a personal value through any product surface, API or CLI, by 
 
 Not protected. The product must say so where values are entered: "Hikyo does not show this to administrators. Your instance
 operator could read it, and anyone who can change shared values here could capture it once your program runs. If someone gave you your
-password or authenticator, replace them and check your linked identities first."
+password, authenticator or recovery codes, replace them, regenerate your recovery codes and check your linked identities first."
 
 - **Anyone with `edit` and `publish` on the environment** can obtain a value from any process that receives it, without value
   access. Publishing `HTTPS_PROXY`, `NODE_TLS_REJECT_UNAUTHORIZED=0` or a changed `API_BASE_URL` is enough. Loader-control refusal
   does not cover these, and [compose-integration.md](./compose-integration.md) already says a name list cannot be the boundary.
-  Keep publish rights on the shared environment narrow.
+  This includes any administrator who can grant themselves those rights, such as an org administrator holding `manage-members`: the
+  grant and the publish are audited, not prevented. Keep publish rights on the shared environment narrow.
 - **An administrator who prepared the account before handover.** An administrator can consume an invitation or a reset of a factorless
-  local account, enrol a factor or link an identity, and hand over a password and authenticator they kept a copy of. Every step finishes
-  before the developer arrives, so no server-side check can close this. A developer should enrol their own factor, replace anything
-  handed to them, and check linked identities before entering a value.
+  local account, enrol a factor or link an identity, and hand over a password and authenticator they kept a copy of, keeping the
+  recovery codes too. Every step relies on a credential obtained before handover, so no server-side check can close this. A kept
+  recovery code still works weeks later: consuming it deletes the values and locks the developer out, and if the same administrator
+  hands over the replacement, the values the developer re-enters are exposed again. A developer should enrol their own factor, replace
+  anything handed to them, regenerate their recovery codes, and check linked identities before entering a value.
 - **The instance operator**, a running-server compromise, or a root key combined with a database or backup copy. The
   [threat model](./threat-model.md) already trusts these.
-- **An identity provider administrator** who can authenticate as the developer.
+- **An identity provider administrator** who can authenticate as the developer, and a **holder of instance `instance-config`**, who
+  can confirm new signing certificates or endpoints for an existing provider ([saml-sp.md](./saml-sp.md)) and so authenticate as a
+  developer who qualifies through federated sign-in. A developer with a standing possession factor is not exposed this way.
 - **Any process running as the developer's OS user**, including an agent ([developer-credentials.md](./developer-credentials.md)).
 
 ## Delivery
@@ -177,7 +188,9 @@ itself. The route's contract refuses human sessions today, so the human-session 
 - The delivery cursor binds a per-owner personal-state generation, so no change, including deleting the last personal value, is
   answered as `current`.
 - `hikyo run` names overridden keys on stderr, never values, so the person can tell which value they got.
-- `--config-only` excludes personal values, skips the requirement check and serves shared entries.
+- `--config-only` and the human-session path never receive personal values and skip the requirement check. They get the names of keys
+  where the caller holds a value or notice (the human-session path through `hikyo personal list`), and `hikyo run` refuses those keys
+  rather than silently serving the shared value. Other keys are served from the shared entries.
 - A credential's consent extends to the owner's current and future personal values in that environment, and the mint prompt says so.
   A credential minted without that consent gets only the names of keys where its owner holds a value or notice, and `hikyo run` refuses
   those keys and asks for a new credential, rather than silently using the shared value.
@@ -246,7 +259,7 @@ Every mark carries text, per [PRODUCT.md](../../PRODUCT.md).
    because a developer credential's actor is the developer principal. It lists names only, needs `manage-members` and audit read over
    that scope, and states its evidence window: audit retention limits it, and only audited disclosures appear.
 4. **Hikyo cannot undo disclosure.** It cannot revoke a GitHub token or erase what already left the server, and the report says so.
-   Deleted values persist in backups as [ops-spec.md](./ops-spec.md) § Retention and erasure describes.
+   Deleted values persist in backups as [ops-spec.md § 2, Retention & erasure](./ops-spec.md#2-retention--erasure) describes.
 
 A person who rejoins after deletion starts empty.
 
@@ -300,7 +313,7 @@ Each ADR below carries a banner pointing here. Each becomes operative with the i
 SQLite and PostgreSQL must both prove:
 
 - No grant, preset or org-wide rule reads another person's value, and no administrator can overwrite one.
-- Network reset refuses an account with a linked identity at mint and at consumption. A factor-holding account keeps its values after
+- Network reset refuses an account with a linked identity at mint and at consumption, with the uniform refusal. A factor-holding account keeps its values after
   reset, and its password alone reaches nothing.
 - Set and get refuse an account that does not qualify, and a federated proof does not count while a local password stands.
 - Last factor removed, recovery code consumed, and a password established on a factorless account each delete values in that transaction.
@@ -314,7 +327,11 @@ SQLite and PostgreSQL must both prove:
 - Loss of the predicate stops delivery at once, deletion happens at 14 days, and regaining access within the window restores values.
 - Restore, rename, key deletion followed by re-declaration, `forbidden_in`, lost qualification and administrator deletion each leave a
   notice that makes `hikyo run` refuse the key until dismissed.
-- A credential minted without consent gets names only, and `hikyo run` refuses those keys. Human-session delivery has no personal value.
+- A credential minted without consent gets names only, and `hikyo run` refuses those keys. Human-session delivery and `--config-only`
+  have no personal value, and `hikyo run` refuses keys where the caller holds a value or notice on those paths too. A suspended value
+  makes `hikyo run` refuse its key.
+- Developer credentials, workspace sessions and MCP are refused by every `personal` operation, and `--member` naming someone without a
+  value or notice for that key is answered as a nonexistent principal.
 - A personal change or deletion is never answered as `current`.
 - The report matches disclosures made through a developer credential, states its evidence window, and contains no values.
 

@@ -1,6 +1,6 @@
 # Hikyo audit logging & event model (ADR, locked 2026-08-02)
 
-> **Proposed declared amendment (2026-11-03, [personal-values.md](./personal-values.md), operative when its implementation PR merges):** new events `personal_value.set`, `.revealed`, `.delivered` (access class, under the fetch envelope) and `.deleted` (security class, with cause). None carry plaintext or a value fingerprint.
+> **Proposed declared amendment (2026-11-03, owner decisions O5 to O8 on 2026-11-06, [personal-values.md](./personal-values.md), operative when its implementation PR merges; cross-provider review waived by the owner on 2026-11-06, did not run and is not CLEAN; the amended tickets are not reopened yet):** new events `personal_value.set`, `.revealed`, `.delivered` (access class, under the fetch envelope) and `.deleted` (security class, with cause). None carry plaintext or a value fingerprint.
 
 > **Owner-approved amendment (2026-10-28, #1034, operative when its implementation PR merges):** bounded `auth.request_refused` summaries replace generic invalid-artifact silence for the covered paths. The exact staging, sampling, attribution, sink-loss and health contract is [auth-refusal-signals.md](./auth-refusal-signals.md). The owner explicitly approved that contract and waived cross-provider review for #1034 only. Maintainer security review and the human merge gate remain. Earlier MCP silence is superseded only at this scope; dedicated refusals and `grant.denied` remain unchanged.
 

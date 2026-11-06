@@ -1,6 +1,6 @@
 # Hikyo MVP boundary & acceptance criteria (ADR, locked 2026-08-06)
 
-> **Proposed declared amendment (2026-11-03, [personal-values.md](./personal-values.md), operative when its implementation PR merges):** personal values are admitted on owner demand, for unprotected environments only. Administrator-assigned per-person values stay out.
+> **Proposed declared amendment (2026-11-03, owner decisions O5 to O8 on 2026-11-06, [personal-values.md](./personal-values.md), operative when its implementation PR merges; cross-provider review waived by the owner on 2026-11-06, did not run and is not CLEAN; the amended tickets are not reopened yet):** personal values are admitted on owner demand, for unprotected environments only. Administrator-assigned per-person values stay out.
 
 > **Owner-locked declared amendment (2026-10-09, [#807](https://github.com/Hikyo-Org/Hikyo/issues/807), operative when its implementation PR merges; cross-provider review explicitly waived by the owner for this decision):** Bounded developer credentials requested by #807 are admitted to this implementation lane under the separate developer-credentials ADR. This does not admit JIT deploy tokens, automation renewals, historical delivery or ordinary human sessions for unattended launch. The normative lifecycle and acceptance contract is [developer-credentials.md](./developer-credentials.md). Historical statements below are superseded only within this bounded scope.
 
