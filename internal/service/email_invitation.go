@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
 	"sync"
@@ -31,8 +32,9 @@ const emailInvitationMailConcurrency = 4
 
 // EmailInvitations owns the email invitation of an existing account (#1207).
 // The send never contacts the mail server inside the request: it writes the
-// same rows whether or not the address matched an account, and a single
-// background attempt follows the commit for a match only.
+// same rows whether or not the address matched an account, and one background
+// task follows the commit for either: a mail attempt for a match, an outcome
+// stating that no mail was sent otherwise.
 type EmailInvitations struct {
 	DB  *store.DB
 	Now func() time.Time
@@ -44,6 +46,8 @@ type EmailInvitations struct {
 	Budget *Budget
 	// MailFailed counts a lost or failed background send.
 	MailFailed func()
+	// Log reports an outcome that could not be recorded; nil uses slog.Default.
+	Log *slog.Logger
 
 	semOnce sync.Once
 	sem     chan struct{}
@@ -53,7 +57,8 @@ type EmailInvitations struct {
 func (s *EmailInvitations) now() time.Time { return nowOr(s.Now) }
 
 // WaitForMail blocks until every background send started so far has finished
-// and recorded its outcome. It exists for tests.
+// and recorded its outcome. The generation calls it on stop, before the
+// database closes; tests use it to observe outcomes.
 func (s *EmailInvitations) WaitForMail() { s.sends.Wait() }
 
 // EmailInvitationSendSpec is one send.
@@ -215,53 +220,65 @@ func (s *EmailInvitations) Send(ctx context.Context, actor Actor, spec EmailInvi
 	if err != nil {
 		return EmailInvitationReceipt{}, err
 	}
-	if matched {
-		s.dispatch(ctx, receipt, intent, orgName, token)
-	}
+	s.dispatch(ctx, receipt, intent, orgName, token, matched)
 	return receipt, nil
 }
 
 var emailInvitationMail = template.Must(template.ParseFS(signupMailTemplates, "mail_templates/email-invitation.txt"))
 
-// dispatch starts the one background send for a matched account. The request
-// has already been answered by the time it matters: a lost send is recorded
-// and counted, never reported to the administrator.
-func (s *EmailInvitations) dispatch(ctx context.Context, receipt EmailInvitationReceipt, intent, orgName, token string) {
+// dispatch starts the one background attempt that closes the dispatch intent,
+// for every send. A matched account is mailed; an unmatched address is never
+// dialled and its outcome states that no mail was sent. The request has already
+// been answered by the time it matters: a lost send is recorded and counted,
+// never reported to the administrator.
+func (s *EmailInvitations) dispatch(ctx context.Context, receipt EmailInvitationReceipt, intent, orgName, token string, matched bool) {
 	s.semOnce.Do(func() { s.sem = make(chan struct{}, emailInvitationMailConcurrency) })
 	detached := context.WithoutCancel(ctx)
-	select {
-	case s.sem <- struct{}{}:
-	default:
-		if s.MailFailed != nil {
-			s.MailFailed()
+	var fullErr error
+	if matched {
+		select {
+		case s.sem <- struct{}{}:
+		default:
+			fullErr = errors.New("service: email invitation mail concurrency exhausted")
 		}
-		return
 	}
 	s.sends.Add(1)
 	go func() {
 		defer s.sends.Done()
-		defer func() { <-s.sem }()
-		sendCtx, cancel := context.WithTimeout(detached, mail.SendTimeout)
-		defer cancel()
-		sendErr := s.deliver(sendCtx, receipt, orgName, token)
+		sent := false
+		sendErr := fullErr
+		if matched && fullErr == nil {
+			sendCtx, cancel := context.WithTimeout(detached, mail.SendTimeout)
+			sendErr = s.deliver(sendCtx, receipt, orgName, token)
+			cancel()
+			<-s.sem
+			sent = sendErr == nil
+		}
 		if sendErr != nil && s.MailFailed != nil {
 			s.MailFailed()
 		}
 		outcomeCtx, stop := context.WithTimeout(detached, mail.SendTimeout)
 		defer stop()
-		_ = tx.Write(outcomeCtx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		err := tx.Write(outcomeCtx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 			status := audit.OutcomeSuccess
 			if sendErr != nil {
 				status = audit.OutcomeFailure
 			}
 			ev, err := newAuditEvent(ctx, audit.EventMemberEmailInvitationMailResult, "",
 				audit.Object{Type: "mail-intent", ID: intent}, status, "",
-				audit.Payload{"intent_id": intent, "invitation_id": receipt.ID})
+				audit.Payload{"intent_id": intent, "invitation_id": receipt.ID, "mail_sent": sent})
 			if err != nil {
 				return err
 			}
 			return az.RecordAuthEvent(ctx, ev)
 		})
+		if err != nil {
+			log := s.Log
+			if log == nil {
+				log = slog.Default()
+			}
+			log.Error("email invitation mail outcome not recorded", "intent", intent, "err", err)
+		}
 	}()
 }
 
@@ -412,6 +429,20 @@ func (s *EmailInvitations) recordRefusal(ctx context.Context, ref *emailInvitati
 	})
 }
 
+// checkInviter is the one side-effect-free test that the inviter still holds
+// the authority, shared by preview and accept. It records nothing, so no
+// outcome reaches the organisation's trail.
+func checkInviter(ctx context.Context, az *authz.TxAuthorizer, row authz.EmailInvitation, step string) (*emailInvitationRefusal, error) {
+	holds, err := az.RegistrationAuthorityHolds(ctx, row.InviterPrincipalID, authz.OpEmailInvitationAccept, domain.Scope{Org: row.OrgID})
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return nil, err
+	}
+	if err != nil || !holds {
+		return &emailInvitationRefusal{cause: "inviter-unauthorized", step: step, invitation: row.ID, org: row.OrgID}, nil
+	}
+	return nil, nil
+}
+
 // Preview shows what a token offers the signed-in person. It writes nothing
 // except the cause of a refusal.
 func (s *EmailInvitations) Preview(ctx context.Context, actor Actor, token string) (EmailInvitationOffer, error) {
@@ -427,14 +458,8 @@ func (s *EmailInvitations) Preview(ctx context.Context, actor Actor, token strin
 			ref = refusal
 			return err
 		}
-		scope := domain.Scope{Org: row.OrgID}
-		holds, err := az.RegistrationAuthorityHolds(ctx, row.InviterPrincipalID, authz.OpEmailInvitationAccept, scope)
-		if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		if ref, err = checkInviter(ctx, az, row, "preview"); err != nil || ref != nil {
 			return err
-		}
-		if err != nil || !holds {
-			ref = &emailInvitationRefusal{cause: "inviter-unauthorized", step: "preview", invitation: row.ID, org: row.OrgID}
-			return nil
 		}
 		name, err := az.OrgEmailInvitationOrgName(ctx, row.OrgID)
 		if errors.Is(err, domain.ErrNotFound) {
@@ -475,7 +500,6 @@ func (s *EmailInvitations) Accept(ctx context.Context, actor Actor, token string
 			return nonNilRollback(err, refusal)
 		}
 		scope := domain.Scope{Org: row.OrgID}
-		inviterRefused := &emailInvitationRefusal{cause: "inviter-unauthorized", step: "accept", invitation: row.ID, org: row.OrgID}
 		name, err := az.OrgEmailInvitationOrgName(ctx, row.OrgID)
 		if errors.Is(err, domain.ErrNotFound) {
 			ref = &emailInvitationRefusal{cause: "org-gone", step: "accept", invitation: row.ID, org: row.OrgID}
@@ -484,14 +508,16 @@ func (s *EmailInvitations) Accept(ctx context.Context, actor Actor, token string
 		if err != nil {
 			return err
 		}
+		// The same side-effect-free check as Preview: a lost inviter must not
+		// write a grant.denied to the organisation's trail, which only the
+		// bound account's own token could trigger.
+		if ref, err = checkInviter(ctx, az, row, "accept"); err != nil || ref != nil {
+			return nonNilRollback(err, ref)
+		}
 		inviter := authz.Identity{Principal: row.InviterPrincipalID}
 		az.SetClock(now)
 		p, err := az.Authorize(ctx, inviter, authz.OpEmailInvitationAccept, scope)
 		if err != nil {
-			if errors.Is(err, domain.ErrNotFound) || errors.Is(err, domain.ErrUnauthorized) {
-				ref = inviterRefused
-				return domain.ErrNotFound
-			}
 			return err
 		}
 		consumed, err := az.ConsumeOrgEmailInvitation(ctx, row.ID, row.TokenVerifier)

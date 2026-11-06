@@ -116,6 +116,11 @@ func (o *ownerRuntime) stop() {
 		<-g.workersDone
 	}
 	g.requests.Wait()
+	// Detached email invitation sends outlive their requests; the database
+	// closes only after they record their outcomes.
+	if g.graph.emailInvitations != nil {
+		g.graph.emailInvitations.WaitForMail()
+	}
 	g.graph.closeIdleConnections()
 }
 

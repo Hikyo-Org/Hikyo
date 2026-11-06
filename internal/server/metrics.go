@@ -52,14 +52,15 @@ const (
 	MetricAdapterTargetsAttention = "hikyo_adapter_targets_attention"
 	MetricAdapterJobsQueued       = "hikyo_adapter_jobs_queued"
 
-	MetricRequestsTotal       = "hikyo_http_requests_total"
-	MetricRequestErrors       = "hikyo_http_request_errors_total"
-	MetricSignupMailFailures  = "hikyo_signup_mail_failures_total"
-	MetricRequestsInFlight    = "hikyo_http_requests_in_flight"
-	MetricRequestDuration     = "hikyo_http_request_duration_seconds"
-	MetricMCPRequestsTotal    = "hikyo_mcp_requests_total"
-	MetricMCPRequestsInFlight = "hikyo_mcp_requests_in_flight"
-	MetricMCPRequestDuration  = "hikyo_mcp_request_duration_seconds"
+	MetricRequestsTotal               = "hikyo_http_requests_total"
+	MetricRequestErrors               = "hikyo_http_request_errors_total"
+	MetricSignupMailFailures          = "hikyo_signup_mail_failures_total"
+	MetricEmailInvitationMailFailures = "hikyo_email_invitation_mail_failures_total"
+	MetricRequestsInFlight            = "hikyo_http_requests_in_flight"
+	MetricRequestDuration             = "hikyo_http_request_duration_seconds"
+	MetricMCPRequestsTotal            = "hikyo_mcp_requests_total"
+	MetricMCPRequestsInFlight         = "hikyo_mcp_requests_in_flight"
+	MetricMCPRequestDuration          = "hikyo_mcp_request_duration_seconds"
 
 	MetricAdmissionConcurrencyLimit = "hikyo_admission_concurrency_limit"
 	MetricAdmissionInFlight         = "hikyo_admission_in_flight"
@@ -285,21 +286,22 @@ type HASnapshotter interface {
 type Metrics struct {
 	registry *prometheus.Registry
 
-	signupMailFailures prometheus.Counter
-	inFlight           prometheus.Gauge
-	requests           [numClasses][numStatusBuckets]prometheus.Counter
-	errors             [numClasses][numStatusBuckets]prometheus.Counter
-	durations          [numClasses]prometheus.Observer
-	mcpRequests        *prometheus.CounterVec
-	mcpInFlight        prometheus.Gauge
-	mcpDurations       *prometheus.HistogramVec
-	ha                 *haCollector
-	approvals          *approvalCollector
-	access             *accessCollector
-	dyn                *dynamicCollector
-	ssh                *sshCollector
-	transit            *transitCollector
-	pki                *pkiCollector
+	signupMailFailures          prometheus.Counter
+	emailInvitationMailFailures prometheus.Counter
+	inFlight                    prometheus.Gauge
+	requests                    [numClasses][numStatusBuckets]prometheus.Counter
+	errors                      [numClasses][numStatusBuckets]prometheus.Counter
+	durations                   [numClasses]prometheus.Observer
+	mcpRequests                 *prometheus.CounterVec
+	mcpInFlight                 prometheus.Gauge
+	mcpDurations                *prometheus.HistogramVec
+	ha                          *haCollector
+	approvals                   *approvalCollector
+	access                      *accessCollector
+	dyn                         *dynamicCollector
+	ssh                         *sshCollector
+	transit                     *transitCollector
+	pki                         *pkiCollector
 }
 
 // SetHASource attaches the multi-node HA gauge source. It is called once
@@ -323,6 +325,10 @@ func NewMetrics(adm AdmissionSnapshotter) *Metrics {
 	signupMailFailures := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: MetricSignupMailFailures,
 		Help: "Failed synchronous signup SMTP sends, including requests answered with uniform HTTP 202.",
+	})
+	emailInvitationMailFailures := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: MetricEmailInvitationMailFailures,
+		Help: "Failed or dropped background email invitation sends; the administrator's request was already answered.",
 	})
 	inFlight := prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: MetricRequestsInFlight,
@@ -353,10 +359,10 @@ func NewMetrics(adm AdmissionSnapshotter) *Metrics {
 	sshc := newSSHCollector()
 	tr := newTransitCollector()
 	pkiGauges := newPKICollector()
-	registry.MustRegister(requests, errors, signupMailFailures, inFlight, durations, mcpRequests, mcpInFlight, mcpDurations, newAdmissionCollector(adm), ha, approvals, access, dyn, sshc, pkiGauges, tr)
+	registry.MustRegister(requests, errors, signupMailFailures, emailInvitationMailFailures, inFlight, durations, mcpRequests, mcpInFlight, mcpDurations, newAdmissionCollector(adm), ha, approvals, access, dyn, sshc, pkiGauges, tr)
 
 	m := &Metrics{
-		registry: registry, inFlight: inFlight, signupMailFailures: signupMailFailures,
+		registry: registry, inFlight: inFlight, signupMailFailures: signupMailFailures, emailInvitationMailFailures: emailInvitationMailFailures,
 		mcpRequests: mcpRequests, mcpInFlight: mcpInFlight, mcpDurations: mcpDurations,
 		ha: ha, approvals: approvals, access: access, dyn: dyn, ssh: sshc, pki: pkiGauges, transit: tr,
 	}
@@ -875,4 +881,11 @@ func (c *transitCollector) Describe(ch chan<- *prometheus.Desc) {
 func (m *Metrics) RecordSignupMailFailure() {
 	m.signupMailFailures.Inc()
 	m.errors[classAuth][status5xx].Inc()
+}
+
+// RecordEmailInvitationMailFailure counts a background email invitation send
+// that failed or was dropped. No address, organisation or SMTP response enters
+// the metric.
+func (m *Metrics) RecordEmailInvitationMailFailure() {
+	m.emailInvitationMailFailures.Inc()
 }

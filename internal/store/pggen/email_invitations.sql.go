@@ -185,10 +185,10 @@ func (q *Queries) OrgEmailInvitationMaxCredentialEpoch(ctx context.Context) (int
 }
 
 const privacyEraseOrgEmailInvitations = `-- name: PrivacyEraseOrgEmailInvitations :exec
-DELETE FROM org_email_invitations WHERE account_id = $1
+UPDATE org_email_invitations SET account_id = NULL WHERE account_id = $1
 `
 
-// hikyo:reason Account erasure deletes every invitation bound to the erased account.
+// hikyo:reason Account erasure unbinds every invitation bound to the erased account; the row stays listed until it expires and can never validate.
 // hikyo:authn-resolution
 func (q *Queries) PrivacyEraseOrgEmailInvitations(ctx context.Context, accountID pgtype.Text) error {
 	_, err := q.db.Exec(ctx, privacyEraseOrgEmailInvitations, accountID)
