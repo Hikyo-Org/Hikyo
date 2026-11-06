@@ -723,6 +723,9 @@ personal values:
                                                  who holds one (manage-members)
   hikyo personal set <KEY> --env E --clear --member NAME
                                                  delete another person's value
+  hikyo personal counts --env E [-o table|json]
+                                                 holders and notices per key, with
+                                                 holders/eligible for required keys (manage-members)
   hikyo personal offboarding-report <NAME> [-o table|json]
                                                  shared keys they received and service
                                                  accounts they created (manage-members, audit-read)

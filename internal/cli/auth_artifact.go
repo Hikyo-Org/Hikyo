@@ -84,7 +84,7 @@ var authRuleRows = []authRuleRow{
 		"key list", "key show", "key group list", "key group show",
 		"values list", "values get", "values declare", "values diff",
 		"values import", "values pending",
-		"personal list", "personal get", "personal set", "personal members", "personal offboarding-report",
+		"personal list", "personal get", "personal set", "personal members", "personal counts", "personal offboarding-report",
 		"revision list", "revision rollback",
 		"pin create", "pin release",
 		"approval policy list", "approval policy create", "approval policy update", "approval policy delete",

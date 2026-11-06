@@ -98,6 +98,10 @@ func runPersonalValueCLI(t *testing.T, engine store.Engine) {
 		t.Fatalf("personal members: exit=%d stderr=%s", code, stderr)
 	}
 
+	if code, stdout, stderr := personal("counts"); code != cli.ExitOK || !strings.Contains(stdout, "DATABASE_PASSWORD") || !strings.Contains(stderr, "eligible here (read and reveal): 1") {
+		t.Fatalf("personal counts: exit=%d stdout=%s stderr=%s", code, stdout, stderr)
+	}
+
 	// The human-session path never delivers a personal value: it refuses the
 	// key before the confirmation, so nothing is disclosed.
 	code, stderr, injected := runPersonalHumanSession(t, rig, target)

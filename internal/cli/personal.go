@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,7 +29,7 @@ const personalSetStatement = "Hikyo does not show this to administrators. Your i
 	"regenerate your recovery codes and check your linked identities first."
 
 func runPersonal(ctx context.Context, ios IO, args []string) (returnErr error) {
-	sub, rest, err := subverb("personal", args, "list", "get", "set", "members", "offboarding-report")
+	sub, rest, err := subverb("personal", args, "list", "get", "set", "members", "counts", "offboarding-report")
 	if err != nil {
 		return err
 	}
@@ -56,8 +57,8 @@ func runPersonal(ctx context.Context, ios IO, args []string) (returnErr error) {
 		return err
 	}
 	switch sub {
-	case "list":
-		if err := flags.checkNoPositionals("personal list"); err != nil {
+	case "list", "counts":
+		if err := flags.checkNoPositionals("personal " + sub); err != nil {
 			return err
 		}
 	case "offboarding-report":
@@ -119,6 +120,28 @@ func runPersonal(ctx context.Context, ios IO, args []string) (returnErr error) {
 	}
 
 	switch sub {
+	case "counts":
+		var counts apigen.PersonalValueCounts
+		if err := client.Do(ctx, http.MethodGet, project+"/environments/"+url.PathEscape(env)+"/personal-value-counts", nil, &counts); err != nil {
+			return err
+		}
+		t := Table{Columns: []string{"KEY", "HOLDERS", "NOTICES", "REQUIRED"}, JSON: counts}
+		for _, c := range counts.Items {
+			holders := strconv.Itoa(c.Holders)
+			if c.Required {
+				holders = fmt.Sprintf("%d/%d", c.Holders, counts.Eligible)
+			}
+			required := "no"
+			if c.Required {
+				required = "yes"
+			}
+			t.Rows = append(t.Rows, []string{c.Name, holders, strconv.Itoa(c.Notices), required})
+		}
+		if f == FormatTable {
+			fmt.Fprintf(ios.Stderr, "eligible here (read and reveal): %d\n", counts.Eligible)
+		}
+		return Render(ios.Stdout, f, t)
+
 	case "list":
 		var list apigen.PersonalValueList
 		if err := client.Do(ctx, http.MethodGet, base, nil, &list); err != nil {

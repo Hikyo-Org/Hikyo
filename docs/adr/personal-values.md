@@ -209,6 +209,7 @@ exception class is added.
 | Delete my value, dismiss a notice | Same page | `hikyo personal set KEY --clear` |
 | See who holds a value | Matrix side panel, Members | `hikyo personal members KEY` |
 | Delete someone's value | Same panel | `hikyo personal set KEY --clear --member NAME` |
+| Holder counts per key | Matrix marks | `hikyo personal counts` |
 | Offboarding report | Members | `hikyo personal offboarding-report NAME` |
 
 Spellings belong to [api-cli-spellings.md](../spec/api-cli-spellings.md). Three things are outside this rule, and all predate this
