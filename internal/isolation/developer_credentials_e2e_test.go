@@ -12,6 +12,13 @@ import (
 
 func mintDeveloperWithPasskey(t *testing.T, db *store.DB, f *ceremonyEnv, ttl time.Duration) (service.MintedDeveloperCredential, string) {
 	t.Helper()
+	return mintDeveloper(t, db, f, ttl, false)
+}
+
+// mintDeveloper mints through the passkey ceremony; personal states the
+// personal-value consent, which is never inferred.
+func mintDeveloper(t *testing.T, db *store.DB, f *ceremonyEnv, ttl time.Duration, personal bool) (service.MintedDeveloperCredential, string) {
+	t.Helper()
 	scope := envScope(envA1)
 	del := deliverySvc(t, db)
 	preview, err := del.FetchAs(t.Context(), service.LocalPrincipal(f.admin.boot.PrincipalID), scope, "", service.FetchOptions{})
@@ -40,7 +47,7 @@ func mintDeveloperWithPasskey(t *testing.T, db *store.DB, f *ceremonyEnv, ttl ti
 	}
 	f.admin.token = reauth.SessionToken
 	svc := &service.DeveloperCredentials{DB: db, Auth: f.admin.auth}
-	minted, err := svc.Mint(t.Context(), service.Bearer(f.admin.token), scope, service.MintDeveloperCredentialRequest{Lifetime: ttl, ConsentCurrentAndFuture: true, KeyIDs: ids})
+	minted, err := svc.Mint(t.Context(), service.Bearer(f.admin.token), scope, service.MintDeveloperCredentialRequest{Lifetime: ttl, ConsentCurrentAndFuture: true, KeyIDs: ids, PersonalConsent: personal})
 	if err != nil {
 		t.Fatal(err)
 	}

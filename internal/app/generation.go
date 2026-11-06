@@ -306,6 +306,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		Registration:         registrationSvc,
 		Identities:           &service.Identities{DB: db, Auth: authSvc},
 		DeveloperCredentials: &service.DeveloperCredentials{DB: db, Auth: authSvc},
+		PersonalValues:       &service.PersonalValues{DB: db, Keyring: kr, Auth: authSvc},
 		// One Federation across the issuer surface and the delivery surface, and
 		// one JWKS cache inside it: the cache's staleness bound is an instance
 		// property, so two caches would mean two answers to "are this issuer's

@@ -541,6 +541,12 @@ operations:
   transitHMAC:            {webui: transit-keys}
   transitVerifyHMAC:      {webui: transit-keys}
 
+  listMyPersonalValues: {issue: 1235}
+  setMyPersonalValue: {issue: 1235}
+  deleteMyPersonalValue: {issue: 1235}
+  revealMyPersonalValue: {issue: 1235}
+  listPersonalValueMembers: {issue: 1235}
+  deletePersonalValueMember: {issue: 1235}
   mintDeveloperCredential: {exception: bounded-developer-delegation}
   listMyDeveloperCredentials: {exception: bounded-developer-delegation}
   revokeAllMyDeveloperCredentials: {exception: bounded-developer-delegation}

@@ -470,6 +470,9 @@ func (s *Definitions) executeResolution(ctx context.Context, r store.Repos, az *
 		if err := releaseKeyRules(ctx, r, az, p, caller.Principal, scope, del.ID); err != nil {
 			return err
 		}
+		if err := cascadePersonalForKey(ctx, r, p, caller.Principal, key, PersonalCauseKeyDeleted); err != nil {
+			return err
+		}
 		if err := r.Catalogue().Delete(ctx, p, del.ID); err != nil {
 			return err
 		}
@@ -711,6 +714,9 @@ func (s *Definitions) deleteEnvironment(ctx context.Context, r store.Repos, az *
 	if err := r.SSH().PurgeEnvironment(ctx, ep); err != nil {
 		return err
 	}
+	if _, err := r.PersonalValues().DeleteForEnvironment(ctx, ep); err != nil {
+		return err
+	}
 	if err := releaseEnvironmentGrants(ctx, r, az, ep, caller.Principal, envScope); err != nil {
 		return err
 	}
@@ -825,6 +831,9 @@ func (s *Definitions) finishRenames(ctx context.Context, r store.Repos, az *auth
 				from = upd.PrevName
 				break
 			}
+		}
+		if err := cascadePersonalForKey(ctx, r, p, caller.Principal, store.CatalogueKey{ID: kr.id, Name: from}, PersonalCauseKeyRenamed); err != nil {
+			return err
 		}
 		if err := insertDefinitionEvent(ctx, r, p, caller, audit.EventKeyRenamed, "key", kr.id,
 			audit.Payload{"previous_name": audit.SanitizeFreeText(from), "name": audit.SanitizeFreeText(kr.to)}); err != nil {

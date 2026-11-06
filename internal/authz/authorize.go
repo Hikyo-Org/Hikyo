@@ -346,7 +346,7 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 		a.captureDenial(ctx, principal, op, spec, resolutionResolvable, chain, domain.Scope{})
 		return nil, domain.ErrUnauthorized
 	}
-	return &proof{kind: kindTenant, op: op, chain: chain, tok: a.tok, selfConfig: protected, key: bound, navigation: navigation}, nil
+	return &proof{kind: kindTenant, op: op, chain: chain, tok: a.tok, owner: grantPrincipal, selfConfig: protected, key: bound, navigation: navigation}, nil
 }
 
 // missingScopeRefusalWork equalizes application-controlled query work with a

@@ -50,6 +50,10 @@ type proof struct {
 	site  SystemSite   // kindSystem only
 	chain domain.Scope // tenant proofs and scoped system proofs: resolved chain, never caller input
 	tok   *TxToken
+	// owner is the human whose own resources a tenant proof reaches: the
+	// caller, or a developer credential's recorded authority. Personal values
+	// bind their owner from here, never from a caller argument.
+	owner domain.PrincipalID
 	// key is set when a member access rule was consulted for a key-aware
 	// authorization: the proof then vouches for that one key (resolved from
 	// the database) and nothing wider. Nil on every other proof.

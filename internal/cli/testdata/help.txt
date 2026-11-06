@@ -466,7 +466,7 @@ access:
   hikyo project-settings machine-reveal get|set --enabled true|false
 
 developer credentials:
-  hikyo dev session --env E [--ttl 8h] [-o table|json]
+  hikyo dev session --env E [--ttl 8h] [--personal] [-o table|json]
   hikyo dev session list [-o table|json]
   hikyo dev session revoke --id <credential-id> | --all
   hikyo instance-config developer-credential-policy get [-o table|json]
@@ -477,6 +477,22 @@ developer credentials:
   repository. Only online hikyo run discovers this exact environment's
   credential. Ordinary logout leaves it active until fixed expiry;
   dev session revoke --all ends your delegations on this instance.
+  --personal also delivers your own personal values; without it, hikyo
+  run refuses keys you hold one for rather than serving the shared value.
+
+personal values:
+  hikyo personal list --env E [-o table|json]      your values (presence only) and notices
+  hikyo personal set <KEY> --env E (--stdin | --value-file PATH)
+                                                 set your own value for a declared key
+  hikyo personal set <KEY> --env E --clear          delete your value or dismiss its notice
+  hikyo personal get <KEY> --env E --reveal [--output-file PATH | --dangerously-print]
+  hikyo personal members <KEY> --env E [-o table|json]
+                                                 who holds one (manage-members)
+  hikyo personal set <KEY> --env E --clear --member NAME
+                                                 delete another person's value
+
+  A personal value is delivered only to its owner's developer credential.
+  Administrators see who holds one, never the value.
 
 machine identities:
   hikyo sa list [-o table|json]

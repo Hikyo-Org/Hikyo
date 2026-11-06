@@ -517,6 +517,18 @@ const (
 	// the ADR requires one immutable access record per fetch, including the
 	// conditional fetch that delivers nothing.
 	OpDeliveryFetch Operation = "delivery.fetch"
+	// Personal values (#1235, personal-values ADR). No capability atom reaches
+	// another person's value: every owner operation binds the owner from the
+	// proof, so the formula decides only whether the caller may act on their
+	// own value in this environment. Set and reveal carry the reveal gate's
+	// `read ∧ reveal`; list and delete need `read`. Members and member delete
+	// return and remove metadata only and never read ciphertext.
+	OpPersonalValueList         Operation = "personal-value.list"
+	OpPersonalValueSet          Operation = "personal-value.set"
+	OpPersonalValueReveal       Operation = "personal-value.reveal"
+	OpPersonalValueDelete       Operation = "personal-value.delete"
+	OpPersonalValueMembers      Operation = "personal-value.members"
+	OpPersonalValueDeleteMember Operation = "personal-value.delete-member"
 	// Offline disclosure records are accepted only through a live machine
 	// presentation holding the same environment read authority as delivery.
 	OpDeliveryReconcileOffline Operation = "delivery.reconcile-offline"
@@ -1205,6 +1217,26 @@ const (
 	StoreScanningDismissalsDeleteByProject StoreOp = "scanningdismissals.DeleteByProject"
 	StoreScanningDismissalsDeleteAll       StoreOp = "scanningdismissals.DeleteAll"
 
+	// Personal values (#1235). The Own doors bind the owner from the proof;
+	// Holders and DeleteMember name an owner but never return ciphertext.
+	StorePersonalValuesPut          StoreOp = "personalvalues.Put"
+	StorePersonalValuesGetOwn       StoreOp = "personalvalues.GetOwn"
+	StorePersonalValuesListOwn      StoreOp = "personalvalues.ListOwn"
+	StorePersonalValuesDeleteOwn    StoreOp = "personalvalues.DeleteOwn"
+	StorePersonalValuesCountProject StoreOp = "personalvalues.CountProject"
+	StorePersonalValuesHolders      StoreOp = "personalvalues.Holders"
+	StorePersonalValuesDeleteMember StoreOp = "personalvalues.DeleteMember"
+	StorePersonalValuesCellsForKey  StoreOp = "personalvalues.CellsForKey"
+	StorePersonalValuesDeleteForKey StoreOp = "personalvalues.DeleteForKey"
+	// DeleteForEnvironment also clears that environment's notices.
+	StorePersonalValuesDeleteForEnv  StoreOp = "personalvalues.DeleteForEnvironment"
+	StorePersonalValuesReencryptList StoreOp = "personalvalues.ListForReencrypt"
+	StorePersonalValuesReencrypt     StoreOp = "personalvalues.Reencrypt"
+	StorePersonalValueNoticesListOwn StoreOp = "personalvaluenotices.ListOwn"
+	StorePersonalValueNoticesDismiss StoreOp = "personalvaluenotices.DismissOwn"
+	StorePersonalValueNoticesForKey  StoreOp = "personalvaluenotices.ForKeyName"
+	StorePersonalValueNoticesRecord  StoreOp = "personalvaluenotices.Record"
+
 	// Secret-change approvals (#151). The policy-bound review-and-merge engine's
 	// store doors. Policy CRUD and its child approver/bypasser sets are
 	// project-scoped; requests and votes are environment-scoped. The two
@@ -1367,9 +1399,17 @@ const (
 // op it can invoke is in this set. A wrongly listed op is caught by review
 // of this pinned table, exactly like the formula pins.
 var readOnlyStoreOps = map[StoreOp]bool{
-	StoreOrgsGet:   true,
-	StoreOrgsList:  true,
-	StoreOrgsCount: true,
+	StorePersonalValuesGetOwn:        true,
+	StorePersonalValuesListOwn:       true,
+	StorePersonalValuesCountProject:  true,
+	StorePersonalValuesHolders:       true,
+	StorePersonalValuesCellsForKey:   true,
+	StorePersonalValuesReencryptList: true,
+	StorePersonalValueNoticesListOwn: true,
+	StorePersonalValueNoticesForKey:  true,
+	StoreOrgsGet:                     true,
+	StoreOrgsList:                    true,
+	StoreOrgsCount:                   true,
 	// Lease inspect is a bare-read (`read@env`), so its two reads are pinned
 	// read-only for the auditedNone check (#147).
 	StoreDynamicLeasesGet:  true,
@@ -1837,6 +1877,70 @@ var registry = mustNewRegistry(operationTable)
 // invariant 6. The table is never read directly: newRegistry validates it into
 // the immutable registry below, so no lookup can observe an unvalidated row.
 var operationTable = map[Operation]opSpec{
+	OpPersonalValueList: {
+		class:   ClassTenant,
+		level:   domain.LevelEnv,
+		formula: Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{
+			StoreCatalogueList: true, StorePersonalValuesListOwn: true, StorePersonalValueNoticesListOwn: true,
+		},
+		auditedNone: true,
+	},
+	OpPersonalValueSet: {
+		class: ClassTenant,
+		level: domain.LevelEnv,
+		formula: Formula{
+			{Cap: domain.CapRead, At: domain.LevelEnv},
+			{Cap: domain.CapReveal, At: domain.LevelEnv},
+		},
+		storeOps: map[StoreOp]bool{
+			StoreCatalogueList: true, StorePersonalValuesPut: true, StorePersonalValuesCountProject: true,
+			StorePersonalValueNoticesDismiss: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true,
+		},
+		events: []audit.EventType{audit.EventPersonalValueSet},
+	},
+	OpPersonalValueReveal: {
+		class: ClassTenant,
+		level: domain.LevelEnv,
+		formula: Formula{
+			{Cap: domain.CapRead, At: domain.LevelEnv},
+			{Cap: domain.CapReveal, At: domain.LevelEnv},
+		},
+		storeOps: map[StoreOp]bool{
+			StoreCatalogueList: true, StorePersonalValuesGetOwn: true, StoreAuditTenantInsert: true,
+		},
+		events: []audit.EventType{audit.EventPersonalValueRevealed},
+	},
+	OpPersonalValueDelete: {
+		class:   ClassTenant,
+		level:   domain.LevelEnv,
+		formula: Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{
+			StoreCatalogueList: true, StorePersonalValuesDeleteOwn: true, StorePersonalValueNoticesDismiss: true,
+			StoreAuditTenantInsert: true,
+		},
+		events: []audit.EventType{audit.EventPersonalValueDeleted},
+	},
+	OpPersonalValueMembers: {
+		class:   ClassTenant,
+		level:   domain.LevelEnv,
+		formula: Formula{{Cap: domain.CapManageMembers, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{
+			StoreCatalogueList: true, StorePersonalValuesHolders: true, StorePersonalValueNoticesForKey: true,
+			StoreAuditTenantInsert: true,
+		},
+		events: []audit.EventType{audit.EventPersonalValueHoldersRead},
+	},
+	OpPersonalValueDeleteMember: {
+		class:   ClassTenant,
+		level:   domain.LevelEnv,
+		formula: Formula{{Cap: domain.CapManageMembers, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{
+			StoreCatalogueList: true, StorePersonalValuesHolders: true, StorePersonalValueNoticesForKey: true,
+			StorePersonalValuesDeleteMember: true, StorePersonalValueNoticesRecord: true, StoreAuditTenantInsert: true,
+		},
+		events: []audit.EventType{audit.EventPersonalValueDeleted},
+	},
 	OpRemotePairingPrepare:  {class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}}, storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true, StoreKeysAssertActiveDEKVersion: true}, events: []audit.EventType{audit.EventRemotePairingPrepared}},
 	OpRemotePairingCreate:   {class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}}, storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true}, events: []audit.EventType{audit.EventRemotePairingInviteCreated}},
 	OpRemotePairingList:     {class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}}, storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true}, events: []audit.EventType{audit.EventRemotePairingInvitesListed}},
@@ -2222,7 +2326,8 @@ var operationTable = map[Operation]opSpec{
 		level:   domain.LevelEnv,
 		formula: Formula{{Cap: domain.CapDefinitionsEdit, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{
-			StoreProjectsGet: true, StoreProjectsLock: true, StoreEnvironmentsGet: true,
+			StorePersonalValuesDeleteForEnv: true,
+			StoreProjectsGet:                true, StoreProjectsLock: true, StoreEnvironmentsGet: true,
 			// The cascade reads the project's presence rows and its keys,
 			// collapses any explicit set it empties, and advances the catalogue
 			// revision — the catalogue changed, so its revision must.
@@ -2313,6 +2418,7 @@ var operationTable = map[Operation]opSpec{
 		level:   domain.LevelProject,
 		formula: Formula{{Cap: domain.CapDefinitionsEdit, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{
+			StorePersonalValuesCellsForKey: true, StorePersonalValuesDeleteForKey: true, StorePersonalValueNoticesRecord: true,
 			// The semantic schema fan-out enumerates the project's
 			// environments; each one is then authorized for `publish`
 			// separately, immediately before commit.
@@ -2322,7 +2428,7 @@ var operationTable = map[Operation]opSpec{
 			StoreCatalogueRevisionBump: true, StoreCataloguePresenceList: true,
 			StoreAuditTenantInsert: true,
 		},
-		events: []audit.EventType{audit.EventKeyRenamed, audit.EventScanningFindingBlocked, audit.EventScanningFindingOverridden},
+		events: []audit.EventType{audit.EventPersonalValueDeleted, audit.EventKeyRenamed, audit.EventScanningFindingBlocked, audit.EventScanningFindingOverridden},
 	},
 	OpKeyUpdateDeclaration: {
 		class:   ClassTenant,
@@ -2387,6 +2493,7 @@ var operationTable = map[Operation]opSpec{
 		level:   domain.LevelProject,
 		formula: Formula{{Cap: domain.CapDefinitionsEdit, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{
+			StorePersonalValuesCellsForKey: true, StorePersonalValuesDeleteForKey: true, StorePersonalValueNoticesRecord: true,
 			// Deleting a key collects every draft that referenced it.
 			StorePendingDiscardKey: true,
 			// The semantic schema fan-out enumerates the project's
@@ -2406,7 +2513,7 @@ var operationTable = map[Operation]opSpec{
 			// dropped before the key row goes (#74, ADR section 4 lifecycle).
 			StoreScanningDismissalsDeleteByKey: true,
 		},
-		events: []audit.EventType{audit.EventRuleRevoked, audit.EventKeyDeleted},
+		events: []audit.EventType{audit.EventPersonalValueDeleted, audit.EventRuleRevoked, audit.EventKeyDeleted},
 	},
 	// Reclassification is a DISTINCT operation, never a field of an ordinary
 	// update: the ceremony's gates and its disclosure-class audit exist only
@@ -2544,6 +2651,7 @@ var operationTable = map[Operation]opSpec{
 		level:   domain.LevelProject,
 		formula: Formula{{Cap: domain.CapDefinitionsEdit, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{
+			StorePersonalValuesCellsForKey: true, StorePersonalValuesDeleteForKey: true, StorePersonalValueNoticesRecord: true,
 			StoreProjectsGetCapacity: true,
 			StoreProjectsLock:        true, StoreProjectsGet: true,
 			StoreEnvironmentsList: true, StoreEnvironmentsListProtection: true,
@@ -2570,7 +2678,7 @@ var operationTable = map[Operation]opSpec{
 			StoreDefinitionsPlanGet: true, StoreDefinitionsPlanApply: true,
 			StoreAuditTenantInsert: true,
 		},
-		events: []audit.EventType{audit.EventRuleMoveWideningConfirmed, audit.EventRuleRevoked,
+		events: []audit.EventType{audit.EventPersonalValueDeleted, audit.EventRuleMoveWideningConfirmed, audit.EventRuleRevoked,
 			audit.EventDefinitionsApplied, audit.EventGrantRevoked,
 			audit.EventDefinitionsApplyRejectedStale,
 			audit.EventDefinitionsDeletionRefused,
@@ -3393,6 +3501,8 @@ var operationTable = map[Operation]opSpec{
 		level:   domain.LevelProject,
 		formula: Formula{{Cap: domain.CapReencrypt, At: domain.LevelNone}},
 		storeOps: map[StoreOp]bool{
+			StorePersonalValuesReencryptList:      true,
+			StorePersonalValuesReencrypt:          true,
 			StoreValuesListForReencrypt:           true,
 			StoreValuesReencrypt:                  true,
 			StoreSnapshotsListForReencrypt:        true,
@@ -4347,8 +4457,11 @@ var operationTable = map[Operation]opSpec{
 			StoreCataloguePresenceList: true,
 			StoreCatalogueRevisionGet:  true,
 			StoreAuditTenantInsert:     true,
+			// The personal overlay (#1235): only a developer credential's proof
+			// carries an owner whose rows these return.
+			StorePersonalValuesListOwn: true, StorePersonalValueNoticesListOwn: true,
 		},
-		events: []audit.EventType{audit.EventDeliveryFetched, audit.EventDisclosure},
+		events: []audit.EventType{audit.EventDeliveryFetched, audit.EventDisclosure, audit.EventPersonalValueDelivered},
 	},
 	OpDeliveryReconcileOffline: {
 		class:   ClassTenant,

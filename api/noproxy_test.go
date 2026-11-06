@@ -605,6 +605,13 @@ var pinnedContractSurface = map[string]bool{
 	"DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}":      true,
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/reveal":       true,
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}/reveal": true,
+	// Personal values (#1235) read and write this instance's own rows only.
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values":                           true,
+	"PUT /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}":                     true,
+	"DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}":                  true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/reveal":             true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members":             true,
+	"DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members/{member}": true,
 	// Initial drafts stay local and never fetch data from another instance.
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}/initialize": true,
 	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/reveal-window":            true,

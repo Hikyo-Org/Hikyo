@@ -280,6 +280,7 @@ export const zId = z.string().min(3).max(64).regex(/^[a-z]{2,8}_[0-9a-fA-F-]{36}
 export const zMintDeveloperCredentialRequest = z.object({
     key_ids: z.array(zId).max(10000),
     consent_current_and_future: z.literal(true),
+    personal_consent: z.boolean().optional().default(false),
     lifetime_seconds: z.coerce.bigint().gte(BigInt(1)).lte(BigInt(28800))
 });
 
@@ -293,7 +294,8 @@ export const zDeveloperCredential = z.object({
     created_at: z.iso.datetime(),
     expires_at: z.iso.datetime(),
     revoked_at: z.iso.datetime().optional(),
-    prefix_hint: z.string()
+    prefix_hint: z.string(),
+    personal_consent: z.boolean().optional()
 });
 
 export const zDeveloperCredentialList = z.object({
@@ -2002,6 +2004,48 @@ export const zCloneEnvironmentRequest = z.object({
     acknowledgements: zAcknowledgements.optional()
 });
 
+export const zSetPersonalValueRequest = z.object({
+    value: z.string().max(65536)
+});
+
+/**
+ * Why a personal value disappeared other than by its owner.
+ */
+export const zPersonalValueNoticeCause = z.enum([
+    'administrator',
+    'retention',
+    'restore',
+    'key_renamed',
+    'key_deleted',
+    'forbidden',
+    'qualification_lost'
+]);
+
+export const zPersonalValueEntry = z.object({
+    key_id: zId.optional(),
+    name: z.string().max(256),
+    set: z.boolean(),
+    updated_at: z.iso.datetime().optional(),
+    notice: zPersonalValueNoticeCause.optional(),
+    value: z.string().optional()
+});
+
+export const zPersonalValueList = z.object({
+    items: z.array(zPersonalValueEntry)
+});
+
+export const zPersonalValueHolder = z.object({
+    principal_id: zId,
+    username: z.string().optional(),
+    set: z.boolean(),
+    updated_at: z.iso.datetime().optional(),
+    notice: zPersonalValueNoticeCause.optional()
+});
+
+export const zPersonalValueHolderList = z.object({
+    items: z.array(zPersonalValueHolder)
+});
+
 export const zSetValueRequest = z.object({
     value: z.string().max(65536),
     acknowledgements: zAcknowledgements.optional()
@@ -3317,7 +3361,13 @@ export const zDeliveredKey = z.object({
         'forbidden',
         'optional',
         'set'
-    ])
+    ]),
+    personal: z.enum([
+        'value',
+        'withheld',
+        'notice'
+    ]).optional(),
+    personal_reason: z.string().max(64).optional()
 });
 
 /**
@@ -6653,6 +6703,80 @@ export const zRevealValuePath = z.object({
  * The cell, plaintext included.
  */
 export const zRevealValueResponse = zValueCell;
+
+export const zListMyPersonalValuesPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * The caller's personal entries.
+ */
+export const zListMyPersonalValuesResponse = zPersonalValueList;
+
+export const zDeleteMyPersonalValuePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    key: zKeyName
+});
+
+/**
+ * Deleted or dismissed.
+ */
+export const zDeleteMyPersonalValueResponse = z.void();
+
+export const zSetMyPersonalValueBody = zSetPersonalValueRequest;
+
+export const zSetMyPersonalValuePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    key: zKeyName
+});
+
+/**
+ * The stored entry. It never echoes the value back.
+ */
+export const zSetMyPersonalValueResponse = zPersonalValueEntry;
+
+export const zRevealMyPersonalValuePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    key: zKeyName
+});
+
+/**
+ * The entry, plaintext included.
+ */
+export const zRevealMyPersonalValueResponse = zPersonalValueEntry;
+
+export const zListPersonalValueMembersPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    key: zKeyName
+});
+
+/**
+ * The holders.
+ */
+export const zListPersonalValueMembersResponse = zPersonalValueHolderList;
+
+export const zDeletePersonalValueMemberPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    key: zKeyName,
+    member: z.string().min(1).max(256)
+});
+
+/**
+ * Deleted.
+ */
+export const zDeletePersonalValueMemberResponse = z.void();
 
 export const zRevealValueDiffBody = zRevealDiffRequest;
 

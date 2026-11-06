@@ -33,11 +33,12 @@ func runDeveloper(ctx context.Context, ios IO, args []string) error {
 	}
 	var ttlRaw, id string
 	format := "table"
-	var all bool
+	var all, personal bool
 	st, flags, err := parseCommon(operation, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output: table or json")
 		if action == "" {
 			fs.StringVar(&ttlRaw, "ttl", "", "fixed lifetime, at most 8h; default is the instance ceiling")
+			fs.BoolVar(&personal, "personal", false, "also deliver your own personal values; without it, keys you hold one for arrive as names only and hikyo run refuses them")
 		}
 		if action == "revoke" {
 			fs.StringVar(&id, "id", "", "credential ID to revoke")
@@ -159,7 +160,7 @@ func runDeveloper(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
-	ok, err := terminal.ConfirmEnumerated(fmt.Sprintf("Delegate your current read and reveal authority at %s\nOrganization %s, project %s, environment %s\nFixed lifetime: %s\nCurrent published keys: %s\nConsent covers ALL CURRENT AND FUTURE published keys in this environment until expiry.\nThe credential survives ordinary logout and never renews. Proceed", client.Entry.Origin, org, project, env, lifetime, strings.Join(names, ", ")))
+	ok, err := terminal.ConfirmEnumerated(fmt.Sprintf("Delegate your current read and reveal authority at %s\nOrganization %s, project %s, environment %s\nFixed lifetime: %s\nCurrent published keys: %s\nConsent covers ALL CURRENT AND FUTURE published keys in this environment until expiry.\n%sThe credential survives ordinary logout and never renews. Proceed", client.Entry.Origin, org, project, env, lifetime, strings.Join(names, ", "), personalConsentLine(personal)))
 	if err != nil {
 		return failf(ExitRefused, "reading developer credential consent: %v", err)
 	}
@@ -170,7 +171,7 @@ func runDeveloper(ctx context.Context, ios IO, args []string) error {
 	if err := freshDeveloperReauth(ctx, client, st, ios, &session, base, env, keys, intent); err != nil {
 		return err
 	}
-	request := apigen.MintDeveloperCredentialRequest{KeyIds: keys, ConsentCurrentAndFuture: true, LifetimeSeconds: int64(ttl / time.Second)}
+	request := apigen.MintDeveloperCredentialRequest{KeyIds: keys, ConsentCurrentAndFuture: true, LifetimeSeconds: int64(ttl / time.Second), PersonalConsent: &personal}
 	var minted apigen.MintDeveloperCredentialResult
 	mintPath := base + "/environments/" + url.PathEscape(env) + "/developer-credentials"
 	if err := client.Do(ctx, http.MethodPost, mintPath, request, &minted); err != nil {
@@ -306,4 +307,13 @@ func runDeveloperCredentialPolicy(ctx context.Context, ios IO, args []string) er
 	}
 	_, err = fmt.Fprintf(ios.Stdout, "max lifetime: %s\n", time.Duration(policy.MaxLifetimeSeconds)*time.Second)
 	return err
+}
+
+// personalConsentLine states the personal-value consent the human confirms;
+// it is recorded only when --personal was given, never inferred.
+func personalConsentLine(personal bool) string {
+	if personal {
+		return "It ALSO delivers your own personal values for this environment.\n"
+	}
+	return "Your personal values are NOT delivered; keys you hold one for arrive as names only.\n"
 }

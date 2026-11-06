@@ -223,6 +223,7 @@
   "PruneCLILogins": "func(ctx context.Context, at time.Time) error",
   "PruneExpiredRegistrationSignup": "func(ctx context.Context, id string, at time.Time) (bool, error)",
   "PruneRemotePairingState": "func(ctx context.Context, now time.Time) error",
+  "PurgePersonalValues": "func(ctx context.Context, owner domain.PrincipalID, cause string, at time.Time) (int64, error)",
   "ReactivateBinding": "func(ctx context.Context, id string, at time.Time) (bool, error)",
   "ReauthWindowFor": "func(ctx context.Context, sessionID, environmentID string) (ReauthWindow, error)",
   "RebindSAMLExternalIdentityProvider": "func(ctx context.Context, id, expectedProviderID, newProviderID string) (bool, error)",

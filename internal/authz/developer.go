@@ -38,7 +38,7 @@ func (a *TxAuthorizer) authenticateDeveloper(ctx context.Context, presented stri
 		_ = a.refuseAdmission(ctx, Identity{Principal: c.PrincipalID, AuthorityPrincipal: c.AuthorityPrincipal, CredentialID: c.ID, Class: domain.ClassDeveloper}, "delivery.fetch", "developer-credential", "invalid-developer-credential")
 		return Identity{}, domain.ErrUnauthenticated
 	}
-	return Identity{Principal: c.PrincipalID, Class: domain.ClassDeveloper, CredentialID: c.ID, Artifact: string(crypto.ArtifactDeveloper), CredentialExpiresAt: c.ExpiresAt, CreatedAt: c.CreatedAt, AuthorityPrincipal: c.AuthorityPrincipal, DeveloperScope: c.Scope}, nil
+	return Identity{Principal: c.PrincipalID, Class: domain.ClassDeveloper, CredentialID: c.ID, Artifact: string(crypto.ArtifactDeveloper), CredentialExpiresAt: c.ExpiresAt, CreatedAt: c.CreatedAt, AuthorityPrincipal: c.AuthorityPrincipal, DeveloperScope: c.Scope, PersonalConsent: c.PersonalConsent}, nil
 }
 func (a *TxAuthorizer) DeveloperCredentialPolicy(ctx context.Context) (time.Duration, error) {
 	return a.r.DeveloperCredentialPolicy(ctx)
@@ -191,4 +191,11 @@ func (a *TxAuthorizer) DeveloperDeliveryGrants(ctx context.Context, caller Ident
 		{Capability: domain.CapRead, Scope: chain},
 		{Capability: domain.CapReveal, Scope: chain},
 	}, nil
+}
+
+// PurgePersonalValues deletes an owner's personal values everywhere and
+// leaves a notice for each, inside the credential change that cost the owner
+// qualification (#1235).
+func (a *TxAuthorizer) PurgePersonalValues(ctx context.Context, owner domain.PrincipalID, cause string, at time.Time) (int64, error) {
+	return a.r.PurgePersonalValuesForOwner(ctx, owner, cause, at)
 }

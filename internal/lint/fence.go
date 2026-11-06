@@ -108,7 +108,7 @@ func marked(fn *ast.FuncDecl, token string) bool {
 	return fn.Doc != nil && strings.Contains(fn.Doc.Text(), token)
 }
 
-// sealCall reports a call to ProjectSealer.SealValue/SealField or
+// sealCall reports a call to ProjectSealer.SealValue/SealField/SealPersonalValue or
 // InstanceSealer.SealField, resolved through the type-checked selection so a
 // same-named method on any other type does not match.
 func sealCall(p *packages.Package, call *ast.CallExpr) bool {
@@ -121,7 +121,7 @@ func sealCall(p *packages.Package, call *ast.CallExpr) bool {
 		return false
 	}
 	name := selection.Obj().Name()
-	if name != "SealValue" && name != "SealField" {
+	if name != "SealValue" && name != "SealField" && name != "SealPersonalValue" {
 		return false
 	}
 	return namedTypeIs(selection.Recv(), Module+"/internal/crypto", "ProjectSealer", "InstanceSealer")

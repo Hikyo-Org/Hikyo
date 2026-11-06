@@ -1,0 +1,308 @@
+package isolation
+
+import (
+	"errors"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/delivery"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/service"
+	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/webauthntest"
+)
+
+// Personal values (#1235, personal-values ADR). The owner is the ceremony
+// fixture's human; a second, invited project administrator holds every
+// administrative capability and must never read the owner's value.
+
+const personalPlain = "personal-synthetic-owner-value"
+
+type personalEnv struct {
+	ceremonyEnv
+	db       *store.DB
+	pv       *service.PersonalValues
+	adminTok string
+	adminDev *webauthntest.Device
+	keyA     string
+}
+
+func personalFixture(t *testing.T, db *store.DB, username string) personalEnv {
+	t.Helper()
+	ctx := t.Context()
+	f := ceremonyFixture(t, db, username)
+	invite, err := (&service.Grants{DB: db, Auth: f.admin.auth}).InviteMember(ctx, service.LocalPrincipal(f.admin.boot.PrincipalID),
+		service.InviteSpec{Scope: domain.Scope{Org: orgA}, Username: username + "-admin", Template: domain.TemplateAdmin, Delivery: "response"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.admin.auth.EstablishCredential(ctx, invite.Authority, ceremonyPassword); err != nil {
+		t.Fatal(err)
+	}
+	login, err := f.admin.auth.LocalLogin(ctx, username+"-admin", ceremonyPassword, service.ArtifactCLI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dev := webauthntest.New(ceremonyRPID, ceremonyOrigin)
+	adminTok := enrolPasskeyAndStepUp(t, f.admin.auth, ctx, login.SessionToken, ceremonyPassword, dev)
+	return personalEnv{
+		ceremonyEnv: f, db: db,
+		pv:       &service.PersonalValues{DB: db, Keyring: f.values.Keyring, Auth: f.admin.auth},
+		adminTok: adminTok, adminDev: dev, keyA: "key_" + ceremonySecretA,
+	}
+}
+
+// reauth runs the per-key passkey ceremony personal set and reveal require and
+// returns the rotated session token.
+func personalReauth(t *testing.T, auth *service.Auth, token string, dev *webauthntest.Device, keyID string) string {
+	t.Helper()
+	intent, err := service.NewDisclosureReauthIntent(service.PurposeReveal, []string{string(envA1)}, []string{keyID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts, err := auth.ReauthPasskeyStart(t.Context(), token, intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := dev.Assert(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := auth.ReauthPasskeyFinish(t.Context(), token, resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fresh.SessionToken
+}
+
+func (e *personalEnv) setOwn(t *testing.T, keyName, keyID, value string) {
+	t.Helper()
+	e.admin.token = personalReauth(t, e.admin.auth, e.admin.token, e.device, keyID)
+	if _, err := e.pv.Set(t.Context(), service.Bearer(e.admin.token), envScope(envA1), keyName, value); err != nil {
+		t.Fatalf("personal set %s: %v", keyName, err)
+	}
+}
+
+func deliveredKey(t *testing.T, r service.FetchResult, name string) service.DeliveredKey {
+	t.Helper()
+	for _, k := range r.Keys {
+		if k.Name == name {
+			return k
+		}
+	}
+	t.Fatalf("delivery lacks key %s", name)
+	return service.DeliveredKey{}
+}
+
+// valueIs reports a delivered value without ever printing it.
+func valueIs(k service.DeliveredKey, want string) bool { return k.Value != nil && *k.Value == want }
+
+func TestPersonalValueOverlayAndAdministratorBlindness(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		e := personalFixture(t, db, "personal-overlay")
+		ctx := t.Context()
+		e.setOwn(t, ceremonySecretA, e.keyA, personalPlain)
+
+		own, err := e.pv.List(ctx, service.Bearer(e.admin.token), envScope(envA1))
+		if err != nil || len(own) != 1 || own[0].Name != ceremonySecretA || !own[0].Set || own[0].Value != "" {
+			t.Fatalf("own list: err=%v entries=%d", err, len(own))
+		}
+
+		minted, _ := mintDeveloper(t, db, &e.ceremonyEnv, time.Hour, true)
+		del := deliverySvc(t, db)
+		first, err := del.Fetch(ctx, minted.Value, envScope(envA1), "", service.FetchOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		a := deliveredKey(t, first, ceremonySecretA)
+		if !valueIs(a, personalPlain) || a.Personal != service.PersonalDelivered {
+			t.Fatalf("personal value did not take precedence (personal=%q)", a.Personal)
+		}
+		if b := deliveredKey(t, first, ceremonySecretB); !valueIs(b, "plaintext-"+ceremonySecretB) || b.Personal != "" {
+			t.Fatal("a key without a personal value lost its shared value")
+		}
+		if queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE type='personal_value.delivered'`) != 1 {
+			t.Fatal("personal delivery not audited exactly once")
+		}
+		again, err := del.Fetch(ctx, minted.Value, envScope(envA1), first.Cursor, service.FetchOptions{})
+		if err != nil || !again.Current {
+			t.Fatalf("unchanged personal state not current: err=%v", err)
+		}
+
+		// The administrator: every route answers with their own (empty) state
+		// or the shared value, never the owner's.
+		admin := service.Bearer(e.adminTok)
+		if mine, err := e.pv.List(ctx, admin, envScope(envA1)); err != nil || len(mine) != 0 {
+			t.Fatalf("administrator list: err=%v entries=%d", err, len(mine))
+		}
+		e.adminTok = personalReauth(t, e.admin.auth, e.adminTok, e.adminDev, e.keyA)
+		if _, err := e.pv.Reveal(ctx, service.Bearer(e.adminTok), envScope(envA1), ceremonySecretA); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("administrator reveal of a value they do not own = %v", err)
+		}
+		holders, err := e.pv.Members(ctx, service.Bearer(e.adminTok), envScope(envA1), ceremonySecretA)
+		if err != nil || len(holders) != 1 || holders[0].Principal != e.admin.boot.PrincipalID || !holders[0].Set {
+			t.Fatalf("members: err=%v holders=%d", err, len(holders))
+		}
+		e.adminTok = personalReauth(t, e.admin.auth, e.adminTok, e.adminDev, e.keyA)
+		shared, err := e.values.Get(ctx, service.Bearer(e.adminTok), envScope(envA1), ceremonySecretA, true)
+		if err != nil || shared.Value != "plaintext-"+ceremonySecretA {
+			t.Fatalf("administrator value reveal did not return the shared value: err=%v", err)
+		}
+		adminDelivery, err := del.FetchAs(ctx, service.LocalPrincipal(custodian), envScope(envA1), "", service.FetchOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if k := deliveredKey(t, adminDelivery, ceremonySecretA); k.Personal != "" || valueIs(k, personalPlain) {
+			t.Fatal("non-developer delivery carried a personal value")
+		}
+		// No stored audit row, and no stored ciphertext, carries the plaintext.
+		for _, table := range []string{"audit_tenant_events", "audit_instance_events"} {
+			if n := queryInt(t, db, `SELECT COUNT(*) FROM `+table+` WHERE payload LIKE '%`+personalPlain+`%'`); n != 0 {
+				t.Fatalf("%s holds the personal plaintext", table)
+			}
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM personal_values WHERE ciphertext LIKE '%`+personalPlain+`%'`); n != 0 {
+			t.Fatal("personal value stored in plaintext")
+		}
+
+		// An unknown member and a nonholder are answered alike.
+		if err := e.pv.DeleteMember(ctx, service.Bearer(e.adminTok), envScope(envA1), ceremonySecretA, "nobody-at-all"); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("delete of nonexistent member = %v", err)
+		}
+		if err := e.pv.DeleteMember(ctx, service.Bearer(e.adminTok), envScope(envA1), ceremonySecretA, "personal-overlay-admin"); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("delete of nonholder = %v", err)
+		}
+		// Administrator removal leaves the owner a notice, and run is refused
+		// rather than silently falling back to the shared value.
+		if err := e.pv.DeleteMember(ctx, service.Bearer(e.adminTok), envScope(envA1), ceremonySecretA, "personal-overlay"); err != nil {
+			t.Fatal(err)
+		}
+		after, err := del.Fetch(ctx, minted.Value, envScope(envA1), first.Cursor, service.FetchOptions{})
+		if err != nil || after.Current {
+			t.Fatalf("removal answered as current: err=%v", err)
+		}
+		if k := deliveredKey(t, after, ceremonySecretA); k.Value != nil || k.Personal != service.PersonalNotice || k.PersonalReason != service.PersonalCauseAdministrator {
+			t.Fatalf("notice not delivered (personal=%q reason=%q)", k.Personal, k.PersonalReason)
+		}
+		// Dismissing the notice restores the shared value, and moves the cursor.
+		if err := e.pv.Delete(ctx, service.Bearer(e.admin.token), envScope(envA1), ceremonySecretA); err != nil {
+			t.Fatal(err)
+		}
+		restored, err := del.Fetch(ctx, minted.Value, envScope(envA1), after.Cursor, service.FetchOptions{})
+		if err != nil || restored.Current {
+			t.Fatalf("dismissal answered as current: err=%v", err)
+		}
+		if k := deliveredKey(t, restored, ceremonySecretA); !valueIs(k, "plaintext-"+ceremonySecretA) || k.Personal != "" {
+			t.Fatal("shared value not restored after dismissal")
+		}
+		// The developer credential reaches personal values only through delivery.
+		if _, err := e.pv.List(ctx, service.Bearer(minted.Value), envScope(envA1)); err == nil {
+			t.Fatal("developer credential admitted to the personal surface")
+		}
+	})
+}
+
+func TestPersonalValueWithheldWithoutConsentConfigOnlyOrQualification(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		e := personalFixture(t, db, "personal-withheld")
+		ctx := t.Context()
+		e.setOwn(t, ceremonySecretA, e.keyA, personalPlain)
+		del := deliverySvc(t, db)
+
+		unconsented, _ := mintDeveloper(t, db, &e.ceremonyEnv, time.Hour, false)
+		r, err := del.Fetch(ctx, unconsented.Value, envScope(envA1), "", service.FetchOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if k := deliveredKey(t, r, ceremonySecretA); k.Value != nil || k.Personal != service.PersonalWithheld || k.PersonalReason != service.PersonalReasonConsent {
+			t.Fatalf("unconsented credential: personal=%q reason=%q", k.Personal, k.PersonalReason)
+		}
+		consented, _ := mintDeveloper(t, db, &e.ceremonyEnv, time.Hour, true)
+		r, err = del.Fetch(ctx, consented.Value, envScope(envA1), "", service.FetchOptions{Projection: delivery.ModeConfigOnly})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if k := deliveredKey(t, r, ceremonySecretA); k.Value != nil || k.Personal != service.PersonalWithheld || k.PersonalReason != service.PersonalReasonConfigOnly {
+			t.Fatalf("config-only: personal=%q reason=%q", k.Personal, k.PersonalReason)
+		}
+		// A change with no credential write (here the passkey row vanishing
+		// underneath) suspends rather than deletes.
+		execRaw(t, db, `DELETE FROM webauthn_credentials WHERE account_id='`+e.admin.accountID+`'`)
+		r, err = del.Fetch(ctx, consented.Value, envScope(envA1), "", service.FetchOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if k := deliveredKey(t, r, ceremonySecretA); k.Value != nil || k.PersonalReason != service.PersonalReasonSuspended {
+			t.Fatalf("unqualified owner: personal=%q reason=%q", k.Personal, k.PersonalReason)
+		}
+		if queryInt(t, db, `SELECT COUNT(*) FROM personal_values`) != 1 {
+			t.Fatal("suspension deleted the value")
+		}
+	})
+}
+
+func TestPersonalValueFactorLossDeletesAndLeavesNotice(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		e := personalFixture(t, db, "personal-factor-loss")
+		ctx := t.Context()
+		e.setOwn(t, ceremonySecretA, e.keyA, personalPlain)
+		keys, err := e.admin.auth.ListPasskeys(ctx, e.admin.token)
+		if err != nil || len(keys) != 1 {
+			t.Fatalf("passkeys: err=%v n=%d", err, len(keys))
+		}
+		removed, err := e.admin.auth.RemovePasskey(ctx, e.admin.token, keys[0].ID, ceremonyPassword, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if queryInt(t, db, `SELECT COUNT(*) FROM personal_values`) != 0 {
+			t.Fatal("removing the only factor kept the personal value")
+		}
+		if queryInt(t, db, `SELECT COUNT(*) FROM personal_value_notices WHERE cause='qualification_lost' AND key_name='`+ceremonySecretA+`'`) != 1 {
+			t.Fatal("factor loss left no notice")
+		}
+		if queryInt(t, db, `SELECT COUNT(*) FROM audit_instance_events WHERE type='personal_value.deleted'`) != 1 {
+			t.Fatal("factor-loss purge not audited")
+		}
+		// The unqualified owner can no longer set one.
+		if _, err := e.pv.Set(ctx, service.Bearer(removed.SessionToken), envScope(envA1), ceremonySecretA, "x"); err == nil {
+			t.Fatal("unqualified owner set a personal value")
+		}
+	})
+}
+
+func TestPersonalValueKeyRenameAndDeleteCascade(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		e := personalFixture(t, db, "personal-cascade")
+		ctx := t.Context()
+		e.setOwn(t, ceremonySecretA, e.keyA, personalPlain)
+		e.setOwn(t, ceremonySecretB, "key_"+ceremonySecretB, personalPlain)
+		keys := &service.Keys{DB: db}
+		actor := service.LocalPrincipal(custodian)
+		if _, err := keys.Rename(ctx, actor, scopeProject(orgA, prjA1), e.keyA, "CEREMONY_SECRET_RENAMED", nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := keys.Delete(ctx, actor, scopeProject(orgA, prjA1), "key_"+ceremonySecretB); err != nil {
+			t.Fatal(err)
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM personal_values`); n != 0 {
+			t.Fatalf("cascade left %d personal values", n)
+		}
+		for name, cause := range map[string]string{ceremonySecretA: "key_renamed", ceremonySecretB: "key_deleted"} {
+			if queryInt(t, db, `SELECT COUNT(*) FROM personal_value_notices WHERE key_name='`+name+`' AND cause='`+cause+`'`) != 1 {
+				t.Fatalf("no %s notice for %s", cause, name)
+			}
+		}
+		entries, err := e.pv.List(ctx, service.Bearer(e.admin.token), envScope(envA1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var causes []string
+		for _, en := range entries {
+			causes = append(causes, en.Notice)
+		}
+		if strings.Join(causes, ",") == "" {
+			t.Fatal("owner sees no notices after the cascade")
+		}
+	})
+}

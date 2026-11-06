@@ -88,6 +88,10 @@ func (a *API) FetchDelivery(ctx context.Context, req apigen.FetchDeliveryRequest
 			Value:           k.Value,
 			SnapshotReceipt: k.SnapshotReceipt,
 		})
+		if k.Personal != "" {
+			personal, reason := apigen.DeliveredKeyPersonal(k.Personal), k.PersonalReason
+			keys[len(keys)-1].Personal, keys[len(keys)-1].PersonalReason = &personal, &reason
+		}
 	}
 	out := apigen.FetchDelivery200JSONResponse{
 		Revision:          res.Revision,

@@ -189,6 +189,8 @@ type API struct {
 	Registration         RegistrationService
 	Identities           IdentityService
 	DeveloperCredentials DeveloperCredentialService
+	// PersonalValues is the per-developer value surface (#1235).
+	PersonalValues PersonalValueService
 	Federation           FederationService
 	Delivery             DeliveryService
 	Settings             SettingsService

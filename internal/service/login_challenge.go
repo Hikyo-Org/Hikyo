@@ -48,6 +48,10 @@ const LoginChallengeLifetime = 5 * time.Minute
 // presentable against a challenge. This mirrors the epoch check the webauthn
 // finish already applies to the credential it verifies.
 func (s *Auth) enrolledFactors(ctx context.Context, az *authz.TxAuthorizer, accountID string) ([]string, error) {
+	return enrolledFactors(ctx, az, accountID)
+}
+
+func enrolledFactors(ctx context.Context, az *authz.TxAuthorizer, accountID string) ([]string, error) {
 	epoch, err := az.CredentialEpoch(ctx)
 	if err != nil {
 		return nil, err

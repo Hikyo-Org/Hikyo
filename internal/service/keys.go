@@ -875,6 +875,9 @@ func (s *Keys) Rename(ctx context.Context, actor Actor, scope domain.Scope, id, 
 		if err := publisher.authorizeKeyFanOut(ctx, r, az, caller, p, scope, keyTarget, false, false); err != nil {
 			return err
 		}
+		if err := cascadePersonalForKey(ctx, r, p, caller.Principal, before, PersonalCauseKeyRenamed); err != nil {
+			return err
+		}
 		if err := concealBeyondRule(p, r.Catalogue().Rename(ctx, p, id, name)); err != nil {
 			return err
 		}
@@ -1615,6 +1618,9 @@ func (s *Keys) Delete(ctx context.Context, actor Actor, scope domain.Scope, id s
 		// Member access rules naming this key by id lose that item; a rule
 		// left with nothing to reach is revoked.
 		if err := releaseKeyRules(ctx, r, az, p, caller.Principal, scope, id); err != nil {
+			return err
+		}
+		if err := cascadePersonalForKey(ctx, r, p, caller.Principal, before, PersonalCauseKeyDeleted); err != nil {
 			return err
 		}
 		if err := r.Catalogue().Delete(ctx, p, id); err != nil {

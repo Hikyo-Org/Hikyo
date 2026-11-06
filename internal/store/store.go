@@ -469,6 +469,9 @@ type Repos interface {
 	// dismissal, so a read-only twin would have no caller — the shape SCIM took
 	// for the same reason.
 	ScanningDismissals() ScanningDismissalRepo
+	// PersonalValues is the per-developer value surface (#1235). Write bundle
+	// only: every read either discloses (and audits) or sits beside a write.
+	PersonalValues() PersonalValueRepo
 	// Reencrypt is the instance-credential reencrypt surface (#75/#187).
 	Reencrypt() ReencryptRepo
 	// Approvals is the policy-bound secret-change approval engine (#151). It is

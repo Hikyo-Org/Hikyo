@@ -28,6 +28,8 @@ type DeveloperCredential struct {
 	CreatedAt           time.Time
 	ExpiresAt           time.Time
 	RevokedAt           time.Time
+	// PersonalConsent is the minting human's explicit opt-in to receive their personal values through this credential.
+	PersonalConsent bool
 }
 
 func (c DeveloperCredential) Live(now time.Time, epoch int64) bool {
@@ -137,12 +139,12 @@ func (r *Resolver) ClampDeveloperCredentialExpiry(ctx context.Context, id string
 }
 func (r *Resolver) InsertDeveloperCredential(ctx context.Context, c DeveloperCredential, verifier []byte) error {
 	if r.sq != nil {
-		return r.sq.InsertDeveloperCredential(ctx, sqlitegen.InsertDeveloperCredentialParams{ID: c.ID, PrincipalID: string(c.PrincipalID), AuthorityPrincipalID: string(c.AuthorityPrincipal), OrgID: string(c.Scope.Org), ProjectID: string(c.Scope.Project), EnvID: string(c.Scope.Env), Verifier: verifier, PrefixHint: c.PrefixHint, ParentSessionID: c.ParentSessionID, ProviderID: c.ProviderID, Oauth2ProviderID: c.OAuth2ProviderID, SamlProviderID: c.SAMLProviderID, AuthMethod: c.AuthMethod, AuthorityGeneration: c.AuthorityGeneration, CredentialEpoch: c.CredentialEpoch, CreatedAt: encodeTime(c.CreatedAt), ExpiresAt: encodeTime(c.ExpiresAt)})
+		return r.sq.InsertDeveloperCredential(ctx, sqlitegen.InsertDeveloperCredentialParams{ID: c.ID, PrincipalID: string(c.PrincipalID), AuthorityPrincipalID: string(c.AuthorityPrincipal), OrgID: string(c.Scope.Org), ProjectID: string(c.Scope.Project), EnvID: string(c.Scope.Env), Verifier: verifier, PrefixHint: c.PrefixHint, ParentSessionID: c.ParentSessionID, ProviderID: c.ProviderID, Oauth2ProviderID: c.OAuth2ProviderID, SamlProviderID: c.SAMLProviderID, AuthMethod: c.AuthMethod, AuthorityGeneration: c.AuthorityGeneration, CredentialEpoch: c.CredentialEpoch, CreatedAt: encodeTime(c.CreatedAt), ExpiresAt: encodeTime(c.ExpiresAt), PersonalConsent: boolInt(c.PersonalConsent)})
 	}
-	return r.pg.InsertDeveloperCredential(ctx, pggen.InsertDeveloperCredentialParams{ID: c.ID, PrincipalID: string(c.PrincipalID), AuthorityPrincipalID: string(c.AuthorityPrincipal), OrgID: string(c.Scope.Org), ProjectID: string(c.Scope.Project), EnvID: string(c.Scope.Env), Verifier: verifier, PrefixHint: c.PrefixHint, ParentSessionID: c.ParentSessionID, ProviderID: c.ProviderID, Oauth2ProviderID: c.OAuth2ProviderID, SamlProviderID: c.SAMLProviderID, AuthMethod: c.AuthMethod, AuthorityGeneration: c.AuthorityGeneration, CredentialEpoch: c.CredentialEpoch, CreatedAt: pgTimestamp(c.CreatedAt), ExpiresAt: pgTimestamp(c.ExpiresAt)})
+	return r.pg.InsertDeveloperCredential(ctx, pggen.InsertDeveloperCredentialParams{ID: c.ID, PrincipalID: string(c.PrincipalID), AuthorityPrincipalID: string(c.AuthorityPrincipal), OrgID: string(c.Scope.Org), ProjectID: string(c.Scope.Project), EnvID: string(c.Scope.Env), Verifier: verifier, PrefixHint: c.PrefixHint, ParentSessionID: c.ParentSessionID, ProviderID: c.ProviderID, Oauth2ProviderID: c.OAuth2ProviderID, SamlProviderID: c.SAMLProviderID, AuthMethod: c.AuthMethod, AuthorityGeneration: c.AuthorityGeneration, CredentialEpoch: c.CredentialEpoch, CreatedAt: pgTimestamp(c.CreatedAt), ExpiresAt: pgTimestamp(c.ExpiresAt), PersonalConsent: int32(boolInt(c.PersonalConsent))})
 }
 func sqliteDeveloper(row sqlitegen.DeveloperCredential) (DeveloperCredential, error) {
-	c := DeveloperCredential{ID: row.ID, PrincipalID: domain.PrincipalID(row.PrincipalID), AuthorityPrincipal: domain.PrincipalID(row.AuthorityPrincipalID), Scope: domain.Scope{Org: domain.OrgID(row.OrgID), Project: domain.ProjectID(row.ProjectID), Env: domain.EnvID(row.EnvID)}, PrefixHint: row.PrefixHint, ParentSessionID: row.ParentSessionID, ProviderID: row.ProviderID, OAuth2ProviderID: row.Oauth2ProviderID, SAMLProviderID: row.SamlProviderID, AuthMethod: row.AuthMethod, AuthorityGeneration: row.AuthorityGeneration, CredentialEpoch: row.CredentialEpoch}
+	c := DeveloperCredential{ID: row.ID, PrincipalID: domain.PrincipalID(row.PrincipalID), AuthorityPrincipal: domain.PrincipalID(row.AuthorityPrincipalID), Scope: domain.Scope{Org: domain.OrgID(row.OrgID), Project: domain.ProjectID(row.ProjectID), Env: domain.EnvID(row.EnvID)}, PrefixHint: row.PrefixHint, ParentSessionID: row.ParentSessionID, ProviderID: row.ProviderID, OAuth2ProviderID: row.Oauth2ProviderID, SAMLProviderID: row.SamlProviderID, AuthMethod: row.AuthMethod, AuthorityGeneration: row.AuthorityGeneration, CredentialEpoch: row.CredentialEpoch, PersonalConsent: row.PersonalConsent == 1}
 	var err error
 	c.CreatedAt, err = decodeTime(row.CreatedAt)
 	if err != nil {
@@ -161,7 +163,7 @@ func sqliteDeveloper(row sqlitegen.DeveloperCredential) (DeveloperCredential, er
 	return c, nil
 }
 func pgDeveloper(row pggen.DeveloperCredential) (DeveloperCredential, error) {
-	c := DeveloperCredential{ID: row.ID, PrincipalID: domain.PrincipalID(row.PrincipalID), AuthorityPrincipal: domain.PrincipalID(row.AuthorityPrincipalID), Scope: domain.Scope{Org: domain.OrgID(row.OrgID), Project: domain.ProjectID(row.ProjectID), Env: domain.EnvID(row.EnvID)}, PrefixHint: row.PrefixHint, ParentSessionID: row.ParentSessionID, ProviderID: row.ProviderID, OAuth2ProviderID: row.Oauth2ProviderID, SAMLProviderID: row.SamlProviderID, AuthMethod: row.AuthMethod, AuthorityGeneration: row.AuthorityGeneration, CredentialEpoch: row.CredentialEpoch}
+	c := DeveloperCredential{ID: row.ID, PrincipalID: domain.PrincipalID(row.PrincipalID), AuthorityPrincipal: domain.PrincipalID(row.AuthorityPrincipalID), Scope: domain.Scope{Org: domain.OrgID(row.OrgID), Project: domain.ProjectID(row.ProjectID), Env: domain.EnvID(row.EnvID)}, PrefixHint: row.PrefixHint, ParentSessionID: row.ParentSessionID, ProviderID: row.ProviderID, OAuth2ProviderID: row.Oauth2ProviderID, SAMLProviderID: row.SamlProviderID, AuthMethod: row.AuthMethod, AuthorityGeneration: row.AuthorityGeneration, CredentialEpoch: row.CredentialEpoch, PersonalConsent: row.PersonalConsent == 1}
 	if !row.CreatedAt.Valid || !row.ExpiresAt.Valid {
 		return c, fmt.Errorf("authn: missing developer timestamps")
 	}

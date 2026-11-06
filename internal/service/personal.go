@@ -1,0 +1,506 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/audit"
+	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/schema"
+	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/tx"
+)
+
+// Personal values (#1235, personal-values ADR): one value per developer for a
+// declared key in an unprotected environment. The owner is always the proof's
+// principal, so every method here acts on the caller's own value, except the
+// member methods, which see and remove metadata only.
+
+// MaxPersonalValuesPerProject matches the resolved-cell budget.
+const MaxPersonalValuesPerProject = 100_000
+
+// Notice causes (personal-values ADR, Removal notices).
+const (
+	PersonalCauseAdministrator     = "administrator"
+	PersonalCauseRetention         = "retention"
+	PersonalCauseRestore           = "restore"
+	PersonalCauseKeyRenamed        = "key_renamed"
+	PersonalCauseKeyDeleted        = "key_deleted"
+	PersonalCauseForbidden         = "forbidden"
+	PersonalCauseQualificationLost = "qualification_lost"
+)
+
+// ErrPersonalUnqualified refuses set and reveal for an account with no
+// standing possession factor. It is a 403: the caller can reach the
+// environment, and enrolling a factor is the remedy.
+var ErrPersonalUnqualified = fmt.Errorf("%w: personal values need an authenticator app or passkey on this account", domain.ErrUnauthorized)
+
+// PersonalValues is the personal value service.
+type PersonalValues struct {
+	DB      *store.DB
+	Keyring *crypto.Keyring
+	// Auth supplies the reveal reauthentication gate and the factor check.
+	Auth *Auth
+}
+
+// PersonalEntry is one of the caller's own keys: a value, a notice, or both.
+type PersonalEntry struct {
+	KeyID     string
+	Name      string
+	Set       bool
+	UpdatedAt time.Time
+	// Notice is the cause of a removal the owner has not yet acknowledged.
+	Notice string
+	// Value is set only by Reveal.
+	Value string
+}
+
+// PersonalHolder is metadata about another person's value: never the value.
+type PersonalHolder struct {
+	Principal domain.PrincipalID
+	Username  string
+	Set       bool
+	UpdatedAt time.Time
+	Notice    string
+}
+
+// refusePersonalCaller admits only a human's own session. Developer
+// credentials reach personal values only through delivery; a workspace
+// session is extractable by the viewing page (multi-instance ADR); machines
+// have no personal values. The refusal is the uniform nonexistent answer.
+func refusePersonalCaller(caller authz.Identity) error {
+	if caller.Class != domain.ClassHuman || caller.SessionID == "" ||
+		caller.Artifact == authz.WorkspaceArtifact {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+func (s *PersonalValues) authorize(ctx context.Context, az *authz.TxAuthorizer, actor Actor, op authz.Operation, scope domain.Scope) (authz.Identity, authz.Proof, error) {
+	caller, err := actor.resolve(ctx, az, time.Now().UTC())
+	if err != nil {
+		return authz.Identity{}, nil, err
+	}
+	if err := refusePersonalCaller(caller); err != nil {
+		return authz.Identity{}, nil, err
+	}
+	p, err := az.Authorize(ctx, caller, op, scope)
+	if err != nil {
+		return authz.Identity{}, nil, err
+	}
+	return caller, p, nil
+}
+
+// requireQualified checks, live, that the caller's account holds a standing
+// possession factor. shortcut: federated qualification (a passwordless SSO
+// account whose provider passes the reveal gate) is not yet recognized, so
+// such accounts enrol a factor; upgrade with the qualification follow-up.
+func (s *PersonalValues) requireQualified(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity) error {
+	ok, err := personalQualified(ctx, az, caller.Principal)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrPersonalUnqualified
+	}
+	return nil
+}
+
+func personalQualified(ctx context.Context, az *authz.TxAuthorizer, owner domain.PrincipalID) (bool, error) {
+	account, err := az.AccountByPrincipal(ctx, owner)
+	if err != nil {
+		return false, err
+	}
+	factors, err := enrolledFactors(ctx, az, account.ID)
+	return len(factors) > 0, err
+}
+
+func (s *PersonalValues) sealer(ctx context.Context, scope domain.Scope) (*crypto.ProjectSealer, error) {
+	if s.Keyring == nil {
+		return nil, errors.New("service: personal values require a keyring")
+	}
+	return s.Keyring.ForProject(ctx, string(scope.Org), string(scope.Project))
+}
+
+func personalAAD(scope domain.Scope, keyID string, owner domain.PrincipalID) crypto.PersonalValueAAD {
+	return crypto.PersonalValueAAD{OrgID: string(scope.Org), ProjectID: string(scope.Project), EnvID: string(scope.Env), KeyID: keyID, OwnerPrincipalID: string(owner)}
+}
+
+func personalEvent(ctx context.Context, typ audit.EventType, actor domain.PrincipalID, key store.CatalogueKey, owner domain.PrincipalID, extra audit.Payload) (audit.Event, error) {
+	payload := audit.Payload{"key_id": key.ID, "name": audit.SanitizeFreeText(key.Name), "owner_principal_id": string(owner)}
+	for k, v := range extra {
+		payload[k] = v
+	}
+	return domainEvent(ctx, typ, actor, audit.Object{Type: "key", ID: key.ID}, payload)
+}
+
+// List returns the caller's own values (masked) and notices in one environment.
+func (s *PersonalValues) List(ctx context.Context, actor Actor, scope domain.Scope) ([]PersonalEntry, error) {
+	return tx.WriteResult(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) ([]PersonalEntry, error) {
+		_, p, err := s.authorize(ctx, az, actor, authz.OpPersonalValueList, scope)
+		if err != nil {
+			return nil, err
+		}
+		return ownEntries(ctx, r, p)
+	})
+}
+
+// ownEntries merges the proof owner's values and notices, ordered by name.
+func ownEntries(ctx context.Context, r store.Repos, p authz.Proof) ([]PersonalEntry, error) {
+	keys, err := r.Catalogue().List(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	values, err := r.PersonalValues().ListOwn(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	notices, err := r.PersonalValues().NoticesOwn(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	byKey := map[string]store.PersonalValue{}
+	for _, v := range values {
+		byKey[v.KeyID] = v
+	}
+	noticeByName := map[string]string{}
+	for _, n := range notices {
+		noticeByName[n.KeyName] = n.Cause
+	}
+	out := []PersonalEntry{}
+	for _, k := range keys {
+		v, set := byKey[k.ID]
+		cause := noticeByName[k.Name]
+		delete(noticeByName, k.Name)
+		if !set && cause == "" {
+			continue
+		}
+		out = append(out, PersonalEntry{KeyID: k.ID, Name: k.Name, Set: set, UpdatedAt: v.UpdatedAt, Notice: cause})
+	}
+	// A notice on a name no longer declared still makes `hikyo run` refuse a
+	// re-declared key, so it is listed too.
+	for _, n := range notices {
+		if _, left := noticeByName[n.KeyName]; left {
+			out = append(out, PersonalEntry{Name: n.KeyName, Notice: n.Cause})
+		}
+	}
+	return out, nil
+}
+
+// Set stores or replaces the caller's own value for a declared key.
+// No schema rule evaluates it (the oracle rule), and it is never scanned.
+func (s *PersonalValues) Set(ctx context.Context, actor Actor, scope domain.Scope, keyName, value string) (PersonalEntry, error) {
+	if len(value) > schema.MaxValueBytes {
+		return PersonalEntry{}, invalidDetail("personal value for %q exceeds %d bytes", keyName, schema.MaxValueBytes)
+	}
+	sealer, err := s.sealer(ctx, scope)
+	if err != nil {
+		return PersonalEntry{}, err
+	}
+	return tx.WriteResult(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) (PersonalEntry, error) {
+		caller, p, err := s.authorize(ctx, az, actor, authz.OpPersonalValueSet, scope)
+		if err != nil {
+			return PersonalEntry{}, err
+		}
+		if err := s.requireQualified(ctx, az, caller); err != nil {
+			return PersonalEntry{}, err
+		}
+		keys, err := r.Catalogue().List(ctx, p)
+		if err != nil {
+			return PersonalEntry{}, err
+		}
+		key, err := keyByName(keys, keyName)
+		if err != nil {
+			return PersonalEntry{}, err
+		}
+		if err := s.personalGate(ctx, az, caller, scope, key.ID); err != nil {
+			return PersonalEntry{}, err
+		}
+		count, err := r.PersonalValues().CountProject(ctx, p)
+		if err != nil {
+			return PersonalEntry{}, err
+		}
+		if count >= MaxPersonalValuesPerProject {
+			return PersonalEntry{}, invalidDetail("project holds the maximum of %d personal values", MaxPersonalValuesPerProject)
+		}
+		id, err := newID("pv")
+		if err != nil {
+			return PersonalEntry{}, err
+		}
+		sealed, err := sealer.SealPersonalValue(personalAAD(scope, key.ID, caller.Principal), []byte(value))
+		if err != nil {
+			return PersonalEntry{}, err
+		}
+		if err := fenceProject(ctx, r, p, sealer, scope); err != nil {
+			return PersonalEntry{}, err
+		}
+		at := store.CanonTime(time.Now())
+		if err := r.PersonalValues().Put(ctx, p, id, key.ID, sealed, at); err != nil {
+			return PersonalEntry{}, err
+		}
+		if _, err := r.PersonalValues().DismissNotice(ctx, p, key.Name); err != nil {
+			return PersonalEntry{}, err
+		}
+		ev, err := personalEvent(ctx, audit.EventPersonalValueSet, caller.Principal, key, caller.Principal, nil)
+		if err != nil {
+			return PersonalEntry{}, err
+		}
+		if err := r.Audit().InsertTenant(ctx, p, ev); err != nil {
+			return PersonalEntry{}, err
+		}
+		return PersonalEntry{KeyID: key.ID, Name: key.Name, Set: true, UpdatedAt: at}, nil
+	})
+}
+
+// personalGate consumes the reveal reauthentication window for one key.
+func (s *PersonalValues) personalGate(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, scope domain.Scope, keyID string) error {
+	intent, err := NewDisclosureReauthIntent(PurposeReveal, []string{string(scope.Env)}, []string{keyID})
+	if err != nil {
+		return err
+	}
+	return requireCeremony(ctx, s.Auth, az, caller, intent)
+}
+
+// Reveal returns the caller's own plaintext. The disclosure event commits
+// before the value leaves the server.
+func (s *PersonalValues) Reveal(ctx context.Context, actor Actor, scope domain.Scope, keyName string) (PersonalEntry, error) {
+	sealer, err := s.sealer(ctx, scope)
+	if err != nil {
+		return PersonalEntry{}, err
+	}
+	return tx.WriteResult(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) (PersonalEntry, error) {
+		caller, p, err := s.authorize(ctx, az, actor, authz.OpPersonalValueReveal, scope)
+		if err != nil {
+			return PersonalEntry{}, err
+		}
+		if err := s.requireQualified(ctx, az, caller); err != nil {
+			return PersonalEntry{}, err
+		}
+		keys, err := r.Catalogue().List(ctx, p)
+		if err != nil {
+			return PersonalEntry{}, err
+		}
+		key, err := keyByName(keys, keyName)
+		if err != nil {
+			return PersonalEntry{}, err
+		}
+		row, err := r.PersonalValues().GetOwn(ctx, p, key.ID)
+		if err != nil {
+			return PersonalEntry{}, err
+		}
+		if err := s.personalGate(ctx, az, caller, scope, key.ID); err != nil {
+			return PersonalEntry{}, err
+		}
+		ev, err := personalEvent(ctx, audit.EventPersonalValueRevealed, caller.Principal, key, caller.Principal, nil)
+		if err != nil {
+			return PersonalEntry{}, err
+		}
+		if err := r.Audit().InsertTenant(ctx, p, ev); err != nil {
+			return PersonalEntry{}, err
+		}
+		plain, err := sealer.OpenPersonalValue(personalAAD(scope, key.ID, caller.Principal), row.Ciphertext)
+		if err != nil {
+			return PersonalEntry{}, fmt.Errorf("service: personal value %s: %w", row.ID, err)
+		}
+		return PersonalEntry{KeyID: key.ID, Name: key.Name, Set: true, UpdatedAt: row.UpdatedAt, Value: string(plain)}, nil
+	})
+}
+
+// Delete removes the caller's own value and dismisses any notice on the
+// name. A name the caller holds neither for is not found.
+func (s *PersonalValues) Delete(ctx context.Context, actor Actor, scope domain.Scope, keyName string) error {
+	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		caller, p, err := s.authorize(ctx, az, actor, authz.OpPersonalValueDelete, scope)
+		if err != nil {
+			return err
+		}
+		keys, err := r.Catalogue().List(ctx, p)
+		if err != nil {
+			return err
+		}
+		key, keyErr := keyByName(keys, keyName)
+		if keyErr != nil && !errors.Is(keyErr, domain.ErrNotFound) {
+			return keyErr
+		}
+		var removed int64
+		if keyErr == nil {
+			if removed, err = r.PersonalValues().DeleteOwn(ctx, p, key.ID); err != nil {
+				return err
+			}
+		}
+		dismissed, err := r.PersonalValues().DismissNotice(ctx, p, keyName)
+		if err != nil {
+			return err
+		}
+		if removed == 0 && dismissed == 0 {
+			return domain.ErrNotFound
+		}
+		if removed == 0 {
+			return nil
+		}
+		ev, err := personalEvent(ctx, audit.EventPersonalValueDeleted, caller.Principal, key, caller.Principal, audit.Payload{"cause": "owner"})
+		if err != nil {
+			return err
+		}
+		return r.Audit().InsertTenant(ctx, p, ev)
+	})
+}
+
+// Members lists who holds a value or notice for one key: metadata only.
+func (s *PersonalValues) Members(ctx context.Context, actor Actor, scope domain.Scope, keyName string) ([]PersonalHolder, error) {
+	return tx.WriteResult(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) ([]PersonalHolder, error) {
+		caller, p, err := s.authorize(ctx, az, actor, authz.OpPersonalValueMembers, scope)
+		if err != nil {
+			return nil, err
+		}
+		key, holders, err := personalHolders(ctx, r, az, p, keyName)
+		if err != nil {
+			return nil, err
+		}
+		ev, err := domainEvent(ctx, audit.EventPersonalValueHoldersRead, caller.Principal, audit.Object{Type: "key", ID: key.ID},
+			audit.Payload{"key_id": key.ID, "name": audit.SanitizeFreeText(key.Name), "count": len(holders)})
+		if err != nil {
+			return nil, err
+		}
+		return holders, r.Audit().InsertTenant(ctx, p, ev)
+	})
+}
+
+func personalHolders(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof, keyName string) (store.CatalogueKey, []PersonalHolder, error) {
+	keys, err := r.Catalogue().List(ctx, p)
+	if err != nil {
+		return store.CatalogueKey{}, nil, err
+	}
+	key, err := keyByName(keys, keyName)
+	if err != nil {
+		return store.CatalogueKey{}, nil, err
+	}
+	values, err := r.PersonalValues().Holders(ctx, p, key.ID)
+	if err != nil {
+		return key, nil, err
+	}
+	notices, err := r.PersonalValues().NoticesForKeyName(ctx, p, key.Name)
+	if err != nil {
+		return key, nil, err
+	}
+	byOwner := map[domain.PrincipalID]*PersonalHolder{}
+	var order []domain.PrincipalID
+	add := func(owner domain.PrincipalID) *PersonalHolder {
+		if h, ok := byOwner[owner]; ok {
+			return h
+		}
+		h := &PersonalHolder{Principal: owner}
+		if account, err := az.AccountByPrincipal(ctx, owner); err == nil {
+			h.Username = account.Username
+		}
+		byOwner[owner] = h
+		order = append(order, owner)
+		return h
+	}
+	for _, v := range values {
+		h := add(v.Owner)
+		h.Set, h.UpdatedAt = true, v.UpdatedAt
+	}
+	for _, n := range notices {
+		add(n.Owner).Notice = n.Cause
+	}
+	out := make([]PersonalHolder, len(order))
+	for i, o := range order {
+		out[i] = *byOwner[o]
+	}
+	return key, out, nil
+}
+
+// DeleteMember removes another person's value and leaves them a notice.
+// member names a username or principal id; a person who holds neither a value
+// nor a notice for this key is answered exactly as a nonexistent one.
+func (s *PersonalValues) DeleteMember(ctx context.Context, actor Actor, scope domain.Scope, keyName, member string) error {
+	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		caller, p, err := s.authorize(ctx, az, actor, authz.OpPersonalValueDeleteMember, scope)
+		if err != nil {
+			return err
+		}
+		key, holders, err := personalHolders(ctx, r, az, p, keyName)
+		if err != nil {
+			return err
+		}
+		var target *PersonalHolder
+		for i := range holders {
+			if member != "" && (holders[i].Username == member || string(holders[i].Principal) == member) {
+				target = &holders[i]
+				break
+			}
+		}
+		if target == nil {
+			return domain.ErrNotFound
+		}
+		if !target.Set {
+			return nil
+		}
+		if _, err := r.PersonalValues().DeleteMember(ctx, p, key.ID, target.Principal); err != nil {
+			return err
+		}
+		if err := r.PersonalValues().RecordNotice(ctx, p, string(scope.Env), key.Name, target.Principal, PersonalCauseAdministrator, time.Now()); err != nil {
+			return err
+		}
+		ev, err := personalEvent(ctx, audit.EventPersonalValueDeleted, caller.Principal, key, target.Principal, audit.Payload{"cause": PersonalCauseAdministrator})
+		if err != nil {
+			return err
+		}
+		return r.Audit().InsertTenant(ctx, p, ev)
+	})
+}
+
+// purgePersonalValues deletes the owner's personal values in this
+// authentication transaction and records the purge on the instance trail.
+func purgePersonalValues(ctx context.Context, az *authz.TxAuthorizer, owner domain.PrincipalID, cause string, now time.Time) error {
+	n, err := az.PurgePersonalValues(ctx, owner, cause, now)
+	if err != nil || n == 0 {
+		return err
+	}
+	e, err := newAuditEvent(ctx, audit.EventPersonalValueDeleted, owner, audit.Object{Type: "principal", ID: string(owner)},
+		audit.OutcomeSuccess, "", audit.Payload{"owner_principal_id": string(owner), "cause": cause, "count": int(n)})
+	if err != nil {
+		return err
+	}
+	return az.RecordAuthEvent(ctx, e)
+}
+
+// purgePersonalIfUnqualified purges once a credential change leaves the
+// account with no standing possession factor.
+func purgePersonalIfUnqualified(ctx context.Context, az *authz.TxAuthorizer, account authz.Account, now time.Time) error {
+	factors, err := enrolledFactors(ctx, az, account.ID)
+	if err != nil || len(factors) > 0 {
+		return err
+	}
+	return purgePersonalValues(ctx, az, account.PrincipalID, PersonalCauseQualificationLost, now)
+}
+
+// cascadePersonalForKey removes every personal value of a key that is being
+// deleted or renamed, leaving each owner a notice under the key's old name so
+// `hikyo run` refuses the key rather than falling back to the shared value.
+func cascadePersonalForKey(ctx context.Context, r store.Repos, p authz.Proof, actor domain.PrincipalID, key store.CatalogueKey, cause string) error {
+	cells, err := r.PersonalValues().CellsForKey(ctx, p, key.ID)
+	if err != nil || len(cells) == 0 {
+		return err
+	}
+	now := time.Now().UTC()
+	for _, c := range cells {
+		if err := r.PersonalValues().RecordNotice(ctx, p, c.EnvironmentID, key.Name, c.Owner, cause, now); err != nil {
+			return err
+		}
+		ev, err := personalEvent(ctx, audit.EventPersonalValueDeleted, actor, key, c.Owner, audit.Payload{"cause": cause})
+		if err != nil {
+			return err
+		}
+		if err := r.Audit().InsertTenant(ctx, p, ev); err != nil {
+			return err
+		}
+	}
+	_, err = r.PersonalValues().DeleteForKey(ctx, p, key.ID)
+	return err
+}

@@ -613,6 +613,9 @@ func (s *Auth) RemoveTOTP(ctx context.Context, presented, password string) (Logi
 		if err := az.RemoveTOTPForAccount(ctx, account.ID); err != nil {
 			return err
 		}
+		if err := purgePersonalIfUnqualified(ctx, az, account, now); err != nil {
+			return err
+		}
 		*result, err = s.reissueSession(ctx, az, account, "password", MethodLocalPassword, Artifact(live.Artifact), now)
 		if err != nil {
 			return err
@@ -1151,6 +1154,12 @@ func (s *Auth) attemptRecovery(ctx context.Context, username, code string) (Reco
 				return domain.ErrConflict
 			}
 			retiredPasskeys++
+		}
+		// Recovery retired every factor, so the account no longer qualifies
+		// for personal values: they go now, before any factor can be enrolled
+		// (a planted recovery code can destroy them but never read them).
+		if err := purgePersonalValues(ctx, az, account.PrincipalID, PersonalCauseQualificationLost, now); err != nil {
+			return err
 		}
 		// Minting an authority sweeps every outstanding one for this account.
 		if err := az.ConsumeOutstandingAuthorities(ctx, account.ID, now); err != nil {

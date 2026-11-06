@@ -70,7 +70,10 @@ var SpecYAML []byte
 // Revision 12 adds manual remote invitations, PAKE redemption, and key-bound
 // directory pairing. Existing operations retain their first-appearance minima.
 // Revision 13 adds instance audit trail query and export.
-const Revision = 13
+// Revision 14 adds per-developer personal values (#1235): the owner's list,
+// set, reveal and delete, the members list and member delete, the delivery
+// overlay fields and developer-credential personal consent.
+const Revision = 14
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
 // explicitly does not plan one.

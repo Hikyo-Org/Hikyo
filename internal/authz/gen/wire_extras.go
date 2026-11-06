@@ -21,8 +21,8 @@ var reviewedWireExtras = wireExtras{
 		"http:POST /api/v1/auth/signup":                      {Events: []string{"EventRegistrationSignupAdmitted", "EventRegistrationSignupRefused", "EventRegistrationSignupExpired", "EventRegistrationMailIntent", "EventRegistrationMailOutcome"}},
 		"http:POST /api/v1/auth/signup/verify":               {Events: []string{"EventRegistrationSignupRefused", "EventRegistrationSignupCompleted", "EventOrgCreated", "EventGrantCreated", "EventGrantTemplateApplied"}},
 		"http:DELETE /api/v1/auth/identities/{id}":           {Events: []string{"EventIdentityUnlinked", "EventDeveloperCredentialRevoked", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},
-		"http:DELETE /api/v1/auth/totp":                      {Events: []string{"EventAuthFactorRemoved", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},
-		"http:DELETE /api/v1/auth/webauthn/credentials/{id}": {Events: []string{"EventAuthPasskeyRemoved", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},
+		"http:DELETE /api/v1/auth/totp":                      {Events: []string{"EventPersonalValueDeleted", "EventAuthFactorRemoved", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},
+		"http:DELETE /api/v1/auth/webauthn/credentials/{id}": {Events: []string{"EventPersonalValueDeleted", "EventAuthPasskeyRemoved", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},
 		// The self-scoped revoke. A workspace session's death is a #71 event; an
 		// ordinary session's is a logout, already the trail's own vocabulary.
 		"http:DELETE /api/v1/me/sessions/{session}":                                                             {Events: []string{"EventAuthLogout", "EventRemoteWorkspaceSessionRevoked"}},
@@ -447,6 +447,8 @@ var reviewedWireExtras = wireExtras{
 		"cli:server": {Class: "ClassSystem", Events: []string{"EventBackupExported", "EventBackupExportSkipped", "EventRequestRefused"}},
 		// SSH user certificates (#155): client transport for the tenant-scoped
 		// CA, profile and certificate routes and nothing wider.
+		// `personal` reaches only the tenant-scoped personal-value routes.
+		"cli:personal":    {Class: "ClassTenant"},
 		"cli:ssh-ca":      {Class: "ClassTenant"},
 		"cli:ssh-cert":    {Class: "ClassTenant"},
 		"cli:ssh-profile": {Class: "ClassTenant"},
