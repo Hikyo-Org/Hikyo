@@ -70,8 +70,8 @@ func runKey(ctx context.Context, ios IO, args []string) error {
 				"the value-dependent rules as a JSON document, e.g. {\"rule\":{\"type\":\"string\"}}")
 			fs.StringVar(&requiredIn, "required-in", "none", "presence: all|none|<env-id,env-id,...>")
 			fs.StringVar(&forbiddenIn, "forbidden-in", "none", "presence: all|none|<env-id,env-id,...>")
-			fs.StringVar(&personalRequiredIn, "personal-required-in", "none",
-				"environments where each developer must hold a personal value: none|<env-id,env-id,...>")
+			fs.StringVar(&personalRequiredIn, "personal-required-in", "",
+				"environments where each developer must hold a personal value: none|<env-id,env-id,...> (declare: absent keeps the current setting)")
 		}
 		if sub == "create" {
 			fs.StringVar(&classification, "classification", "", "secret or config")
@@ -147,9 +147,10 @@ func runKey(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
-	// Sent only when set, so a key without one reads and declares as before.
-	// `all` is passed through for the server to refuse.
-	if personalRequiredIn != "" && personalRequiredIn != "none" {
+	// Sent only when given, so a declare without the flag keeps the stored
+	// setting and `--personal-required-in none` clears it. `all` is passed
+	// through for the server to refuse.
+	if personalRequiredIn != "" {
 		personal, err := parsePresenceRule("--personal-required-in", personalRequiredIn)
 		if err != nil {
 			return err

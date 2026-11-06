@@ -105,6 +105,9 @@ type KeyDeclarationUpdate struct {
 	// it alone moves nothing any environment delivers to a shared consumer, so
 	// it takes definitions-edit alone and no per-environment publish.
 	PersonalRequired schema.Presence
+	// KeepPersonalRequired leaves the stored personal_required_in in place, for
+	// a client that did not send the field (one predating it never clears it).
+	KeepPersonalRequired bool
 }
 
 // KeyGroupView is a group with the two derived facts a reader needs: who is in
@@ -1238,6 +1241,9 @@ func (s *Keys) UpdateDeclaration(ctx context.Context, actor Actor, scope domain.
 		personalRows, err := r.Catalogue().PersonalRequired(ctx, p)
 		if err != nil {
 			return err
+		}
+		if u.KeepPersonalRequired {
+			u.PersonalRequired = personalRequiredOf(id, personalRows)
 		}
 		u.PersonalRequired = normalPersonal(u.PersonalRequired)
 		personalChanged := !personalEqual(personalRequiredOf(id, personalRows), u.PersonalRequired)

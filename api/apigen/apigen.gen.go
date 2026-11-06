@@ -8587,7 +8587,8 @@ type KeyPresenceRules struct {
 	// PersonalRequiredIn Environments where each developer must hold their own personal
 	// value. `none` or `explicit` only: `all` is refused because it would
 	// reach environments created later. Refused where the key is also
-	// required or forbidden, and for a key in a group. Absent means `none`.
+	// required or forbidden, and for a key in a group. Absent means `none`
+	// on create; on a declaration update, absent keeps the stored setting.
 	PersonalRequiredIn *KeyPresence `json:"personal_required_in,omitempty"`
 
 	// RequiredIn A mode plus an explicit set, never a bare id list: `all` is SYMBOLIC

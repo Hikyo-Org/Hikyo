@@ -136,7 +136,8 @@ func (a *API) UpdateKeyDeclaration(ctx context.Context, req apigen.UpdateKeyDecl
 	key, err := a.Keys.UpdateDeclaration(ctx, service.Bearer(bearer(ctx)),
 		projectScope(req.Org, req.Project), req.Key,
 		service.KeyDeclarationUpdate{Declaration: declaration, Presence: presence,
-			PersonalRequired: domainPersonalRequired(req.Body.Presence.PersonalRequiredIn)}, derefAcks(req.Body.Acknowledgements))
+			PersonalRequired:     domainPersonalRequired(req.Body.Presence.PersonalRequiredIn),
+			KeepPersonalRequired: req.Body.Presence.PersonalRequiredIn == nil}, derefAcks(req.Body.Acknowledgements))
 	if err != nil {
 		return nil, err
 	}
@@ -294,8 +295,9 @@ func domainPresence(p *apigen.KeyPresenceRules) schema.PresenceRules {
 	}
 }
 
-// domainPersonalRequired reads an absent personal_required_in as `none`; the
-// service refuses `all` and every other invalid shape.
+// domainPersonalRequired reads an absent personal_required_in as `none` (a
+// declaration update keeps the stored one instead); the service refuses `all`
+// and every other invalid shape.
 func domainPersonalRequired(p *apigen.KeyPresence) schema.Presence {
 	if p == nil {
 		return schema.Presence{Mode: schema.PresenceNone}

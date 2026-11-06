@@ -187,6 +187,14 @@ func TestPersonalRequiredInRulesAndAuthority(t *testing.T) {
 		if personalRequiredRows(t, db) != 1 {
 			t.Fatal("refused updates changed the rows")
 		}
+		// A declaration update that does not carry the field keeps it.
+		if _, err := keys.UpdateDeclaration(ctx, service.LocalPrincipal(alice), project, k.ID,
+			service.KeyDeclarationUpdate{Declaration: k.Declaration, Presence: k.Presence, KeepPersonalRequired: true}, nil); err != nil {
+			t.Fatalf("update without personal_required_in: %v", err)
+		}
+		if personalRequiredRows(t, db) != 1 {
+			t.Fatal("an update without personal_required_in cleared it")
+		}
 
 		// A key with personal_required_in cannot join a group.
 		group, err := (&service.KeyGroups{DB: db, Keyring: keys.Keyring}).Create(ctx, service.LocalPrincipal(custodian), project, "personal-group", nil)

@@ -37,12 +37,13 @@ func runPersonalValueCLI(t *testing.T, engine store.Engine) {
 	scope := domain.Scope{Org: cOrg, Project: cPrj, Env: cEnv}
 
 	// The developer: a local account with a confirmed authenticator app (the
-	// qualification), read, reveal and manage-members on the project, and a
+	// qualification), read, reveal, manage-members and definitions-edit on the
+	// project, and a
 	// session holding a live reauthentication window over the environment.
 	auth := authService(t, rig.db)
 	dev := bootstrapAdmin(t, rig.db, adminOpts{username: "pv-cli", displayName: "PV CLI", password: ceremonyPassword, auth: auth, login: true})
 	principal := dev.boot.PrincipalID
-	for _, cap := range []string{"read", "reveal", "manage-members"} {
+	for _, cap := range []string{"read", "reveal", "manage-members", "definitions-edit"} {
 		execRaw(t, rig.db, `INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_pv_cli_`+cap+`', '`+string(principal)+`', '`+cap+`', '`+cOrg+`', '`+cPrj+`', NULL, `+ts+`)`)
 	}
 	seedOrigins(t, rig.db)
@@ -155,6 +156,26 @@ func runPersonalValueCLI(t *testing.T, engine store.Engine) {
 	}
 	if n := queryInt(t, rig.db, `SELECT COUNT(*) FROM personal_values`); n != 0 {
 		t.Fatalf("clear left %d personal values", n)
+	}
+
+	// personal_required_in through `hikyo key declare`: the owner's checklist
+	// shows the key, and a declare without the flag keeps it.
+	project := []string{"--instance", "local", "--org", cOrg, "--project", cPrj}
+	declare := func(extra ...string) {
+		t.Helper()
+		args := append(append([]string{"key", "declare", cKeyWork, "--declaration", `{"rule":{"type":"string"}}`}, extra...), project...)
+		if code, _, stderr := rig.runCLI(t, t.TempDir(), nil, args...); code != cli.ExitOK {
+			t.Fatalf("key declare %v: exit=%d stderr=%s", extra, code, stderr)
+		}
+	}
+	declare("--personal-required-in", cEnv)
+	declare()
+	if code, stdout, stderr := personal("list"); code != cli.ExitOK || !strings.Contains(stdout, "WORKER_URL") || !strings.Contains(stdout, "required") {
+		t.Fatalf("checklist after a declare without the flag: exit=%d stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	declare("--personal-required-in", "none")
+	if n := queryInt(t, rig.db, `SELECT COUNT(*) FROM key_personal_required_environments`); n != 0 {
+		t.Fatalf("--personal-required-in none left %d rows", n)
 	}
 }
 
