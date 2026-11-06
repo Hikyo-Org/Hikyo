@@ -205,6 +205,12 @@ referenced inside a callback took the operation's direction although the
 server writes a callback request. All three are fixed and pinned in the same
 test; wrappers inside a callback now count as read and written.
 
+CodeRabbit's re-review of `4c4670c` found that a reusable request body,
+response or parameter with an inline schema still took its usual direction
+in the components walk when a callback referenced it. Each now takes the
+direction its references give it, so one a callback references is compared
+as read and written, and its parameter `required` may no longer drop.
+
 ## Remaining delivery gates
 
 Independent Standards and Spec review, hosted feedback and merge-group proof

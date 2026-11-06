@@ -426,8 +426,8 @@ func (w *contractWalker) operation(l loc, b, r map[string]any, bp, rp any) {
 	w.parameters(l, b, r, bp, rp)
 	w.keywords(l, b, r, map[string]rule{
 		"parameters":  noop,
-		"requestBody": w.obj(func(l loc, b, r map[string]any) { w.requestBody(l, b, r) }),
-		"responses":   w.names(nameOpts{add: true, ext: true}, w.obj(func(l loc, b, r map[string]any) { w.response(l, b, r) })),
+		"requestBody": w.obj(func(l loc, b, r map[string]any) { w.requestBody(l, b, r, ctxRequest) }),
+		"responses":   w.names(nameOpts{add: true, ext: true}, w.obj(func(l loc, b, r map[string]any) { w.response(l, b, r, ctxResponse) })),
 		"callbacks":   w.names(nameOpts{add: true}, w.callback),
 		"servers":     w.servers(),
 		"operationId": func(l loc, b, r any, hb, hr bool) {
@@ -566,7 +566,7 @@ func (w *contractWalker) parameters(l loc, b, r map[string]any, bp, rp any) {
 	slices.SortFunc(keys, func(a, b paramKey) int {
 		return strings.Compare(a.in+"\x00"+a.name, b.in+"\x00"+b.name)
 	})
-	param := w.obj(w.parameter)
+	param := w.obj(func(l loc, b, r map[string]any) { w.parameter(l, b, r, ctxRequest) })
 	for _, k := range keys {
 		kl := l.with("parameters").with(k.in).with(k.name)
 		bv, inB := be[k]
@@ -592,8 +592,10 @@ func (w *contractWalker) parameters(l loc, b, r map[string]any, bp, rp any) {
 	}
 }
 
-func (w *contractWalker) requestBody(l loc, b, r map[string]any) {
-	w.keywords(l, b, r, map[string]rule{"content": w.content(ctxRequest, false)}, nil)
+// requestBody, response and parameter take c from how they are reached: a
+// reusable one inside a callback is read and written.
+func (w *contractWalker) requestBody(l loc, b, r map[string]any, c contractCtx) {
+	w.keywords(l, b, r, map[string]rule{"content": w.content(c, false)}, nil)
 }
 
 func (w *contractWalker) content(c contractCtx, add bool) rule {
@@ -615,11 +617,11 @@ func (w *contractWalker) encoding(l loc, b, r map[string]any, c contractCtx) {
 	}, nil)
 }
 
-func (w *contractWalker) response(l loc, b, r map[string]any) {
+func (w *contractWalker) response(l loc, b, r map[string]any, c contractCtx) {
 	link := w.obj(func(l loc, b, r map[string]any) { w.keywords(l, b, r, nil, nil) })
 	w.keywords(l, b, r, map[string]rule{
-		"headers": w.names(nameOpts{add: true, lower: true}, w.obj(func(l loc, b, r map[string]any) { w.header(l, b, r, ctxResponse) })),
-		"content": w.content(ctxResponse, true),
+		"headers": w.names(nameOpts{add: true, lower: true}, w.obj(func(l loc, b, r map[string]any) { w.header(l, b, r, c) })),
+		"content": w.content(c, true),
 		"links":   w.names(nameOpts{add: true}, link),
 	}, nil)
 }
@@ -631,15 +633,15 @@ func (w *contractWalker) header(l loc, b, r map[string]any, c contractCtx) {
 	}, nil)
 }
 
-func (w *contractWalker) parameter(l loc, b, r map[string]any) {
+func (w *contractWalker) parameter(l loc, b, r map[string]any, c contractCtx) {
 	w.keywords(l, b, r, map[string]rule{
-		"schema":  w.schemaRule(ctxRequest),
-		"content": w.content(ctxRequest, false),
-		// Only true -> false/absent is additive.
+		"schema":  w.schemaRule(c),
+		"content": w.content(c, false),
+		// Only true -> false/absent is additive, and only where no client reads it.
 		"required": func(l loc, b, r any, hb, hr bool) {
 			bt, ok1 := b.(bool)
 			rt, ok2 := r.(bool)
-			if (hb && !ok1) || (hr && !ok2) {
+			if (hb && !ok1) || (hr && !ok2) || c&ctxResponse != 0 {
 				w.strict(l, b, r, hb, hr)
 			} else if !bt && rt {
 				w.changed(l, "")
@@ -777,9 +779,9 @@ func (w *contractWalker) components(l loc, b, r map[string]any) {
 		"schemas": section(func(l loc, b, r any, hb, hr bool) {
 			w.schemaRule(w.ctx("schemas", l))(l, b, r, hb, hr)
 		}),
-		"responses":       section(w.obj(func(l loc, b, r map[string]any) { w.response(l, b, r) })),
-		"parameters":      section(w.obj(w.parameter)),
-		"requestBodies":   section(w.obj(func(l loc, b, r map[string]any) { w.requestBody(l, b, r) })),
+		"responses":       section(w.obj(func(l loc, b, r map[string]any) { w.response(l, b, r, w.ctx("responses", l)) })),
+		"parameters":      section(w.obj(func(l loc, b, r map[string]any) { w.parameter(l, b, r, w.ctx("parameters", l)) })),
+		"requestBodies":   section(w.obj(func(l loc, b, r map[string]any) { w.requestBody(l, b, r, w.ctx("requestBodies", l)) })),
 		"headers":         section(w.obj(func(l loc, b, r map[string]any) { w.header(l, b, r, w.ctx("headers", l)) })),
 		"links":           section(free),
 		"callbacks":       section(w.callback),

@@ -743,6 +743,42 @@ func TestFreezeContractReviewFollowUps(t *testing.T) {
 		}
 		refused(t, doc(`"required":["a"],`), doc(""))
 	})
+	t.Run("reusable wrappers with inline schemas take their callback direction", func(t *testing.T) {
+		const inline = `"content":{"application/json":{"schema":{"type":"object",%s"properties":{"a":{"type":"string"}%s}}}}`
+		// use is a whole operation body.
+		doc := func(callback bool, use, components string) string {
+			op := use
+			if callback {
+				op = `"callbacks":{"C":{"{$request.query.url}":{"post":{` + use + `}}}},` + contractOK
+			}
+			return withComponents(`{"/api/v1/thing":{"post":{`+op+`}}}`, components)
+		}
+		rb := func(required string) string {
+			return `"requestBodies":{"RB":{` + fmt.Sprintf(inline, required, "") + `}}`
+		}
+		const useRB = `"requestBody":{"$ref":"#/components/requestBodies/RB"},` + contractOK
+		permitted(t, doc(false, useRB, rb(`"required":["a"],`)), doc(false, useRB, rb("")))
+		refused(t, doc(true, useRB, rb(`"required":["a"],`)), doc(true, useRB, rb("")))
+
+		resp := func(required, extra string) string {
+			return `"responses":{"R":{"description":"ok",` + fmt.Sprintf(inline, required, extra) + `}}`
+		}
+		const useR = `"responses":{"201":{"$ref":"#/components/responses/R"}}`
+		withN := func(callback bool) (string, string) {
+			return doc(callback, useR, resp("", "")), doc(callback, useR, resp(`"required":["n"],`, `,"n":{"type":"string"}`))
+		}
+		base, revised := withN(false)
+		permitted(t, base, revised)
+		base, revised = withN(true)
+		refused(t, base, revised)
+
+		param := func(required string) string {
+			return `"parameters":{"P":{"name":"p","in":"query",` + required + `"schema":{"type":"string"}}}`
+		}
+		const useP = `"parameters":[{"$ref":"#/components/parameters/P"}],` + contractOK
+		permitted(t, doc(false, useP, param(`"required":true,`)), doc(false, useP, param("")))
+		refused(t, doc(true, useP, param(`"required":true,`)), doc(true, useP, param("")))
+	})
 	t.Run("a parameter declared twice in one list is an error", func(t *testing.T) {
 		doc := contractThing(`"parameters":[{"name":"p","in":"query","schema":{"type":"string"}},{"name":"p","in":"query","required":true,"schema":{"type":"string"}}],` + contractOK)
 		if _, err := api.CheckFreeze([]byte(doc), []byte(doc)); err == nil || !strings.Contains(err.Error(), "declared twice") {
