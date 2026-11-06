@@ -710,4 +710,15 @@ type txForwarded interface {
 	ExpiredRegistrationSignups(ctx context.Context, at time.Time) ([]ExpiredRegistrationSignup, error)
 	AccountByEmail(ctx context.Context, email string) (Account, error)
 	SetLocalAccountEmail(ctx context.Context, id, email string, at time.Time) error
+
+	// Email invitations of existing accounts (#1207).
+	UpsertOrgEmailInvitation(ctx context.Context, n EmailInvitation) (string, error)
+	CountLiveOrgEmailInvitations(ctx context.Context, org domain.OrgID, at time.Time) (int64, error)
+	ListLiveOrgEmailInvitations(ctx context.Context, org domain.OrgID, at time.Time) ([]EmailInvitationListing, error)
+	OrgEmailInvitationInOrg(ctx context.Context, id string, org domain.OrgID) (EmailInvitation, error)
+	OrgEmailInvitationByVerifier(ctx context.Context, verifier []byte) (EmailInvitation, error)
+	DeleteOrgEmailInvitationInOrg(ctx context.Context, id string, org domain.OrgID) (bool, error)
+	ConsumeOrgEmailInvitation(ctx context.Context, id string, verifier []byte) (bool, error)
+	PruneExpiredOrgEmailInvitations(ctx context.Context, at time.Time) (int64, error)
+	OrgEmailInvitationOrgName(ctx context.Context, org domain.OrgID) (string, error)
 }

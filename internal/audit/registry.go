@@ -242,6 +242,22 @@ const (
 	// lives on the scope's trail so an org administrator can answer "who
 	// invited whom" without instance access.
 	EventMemberInvited EventType = "member.invited"
+	// member.email_invited, member.email_invitation_revoked and
+	// member.email_invitation_accepted are the organisation-trail events of the
+	// email invitation of an existing account (#1207). They carry only what the
+	// administrator typed (address and template) and the acceptance's own
+	// facts; none of them reveals whether the address matched an account. The
+	// instance trail records that: member.email_invitation_dispatch (written in
+	// the send transaction for every send, matched or not),
+	// member.email_invitation_mail_outcome (the background send's result) and
+	// member.email_invitation_refused (the cause of a uniform preview or accept
+	// refusal).
+	EventMemberEmailInvited              EventType = "member.email_invited"
+	EventMemberEmailInvitationRevoked    EventType = "member.email_invitation_revoked"
+	EventMemberEmailInvitationAccepted   EventType = "member.email_invitation_accepted"
+	EventMemberEmailInvitationDispatch   EventType = "member.email_invitation_dispatch"
+	EventMemberEmailInvitationMailResult EventType = "member.email_invitation_mail_outcome"
+	EventMemberEmailInvitationRefused    EventType = "member.email_invitation_refused"
 	// registration.* (#606, audit-model banner 2026-09-03). The policy events
 	// land on the scope's trail (tenant for an org policy, instance for the
 	// instance policy) and carry the authority reassignment every edit makes.
@@ -2140,6 +2156,77 @@ var registry = map[EventType]TypeSpec{
 			"grants_created": {Kind: KindInt, Required: true},
 			"authority_id":   {Kind: KindString, Required: true},
 			"delivery":       {Kind: KindString, Required: true, Enum: []string{"file", "terminal", "stdout", "response"}},
+		},
+	},
+	EventMemberEmailInvited: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"invitation_id": {Kind: KindString, Required: true},
+			"email":         {Kind: KindFreeText, Required: true},
+			"template":      {Kind: KindString, Required: true},
+			"expires_at":    {Kind: KindString, Required: true},
+		},
+	},
+	EventMemberEmailInvitationRevoked: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"invitation_id": {Kind: KindString, Required: true},
+			"email":         {Kind: KindFreeText, Required: true},
+		},
+	},
+	EventMemberEmailInvitationAccepted: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"invitation_id":  {Kind: KindString, Required: true},
+			"principal_id":   {Kind: KindString, Required: true},
+			"account_id":     {Kind: KindString, Required: true},
+			"template":       {Kind: KindString, Required: true},
+			"grants_created": {Kind: KindInt, Required: true},
+		},
+	},
+	EventMemberEmailInvitationDispatch: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeIntent: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"invitation_id": {Kind: KindString, Required: true},
+			"org_id":        {Kind: KindString, Required: true},
+			"matched":       {Kind: KindBool, Required: true},
+		},
+	},
+	EventMemberEmailInvitationMailResult: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true, OutcomeFailure: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"intent_id":     {Kind: KindString, Required: true},
+			"invitation_id": {Kind: KindString, Required: true},
+		},
+	},
+	EventMemberEmailInvitationRefused: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeFailure: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"cause": {Kind: KindString, Required: true, Enum: []string{
+				"malformed", "unknown", "other-account", "unmatched", "expired",
+				"epoch-superseded", "session", "org-gone", "inviter-unauthorized", "consumed",
+			}},
+			"step":          {Kind: KindString, Required: true, Enum: []string{"preview", "accept"}},
+			"invitation_id": {Kind: KindString},
+			"org_id":        {Kind: KindString},
 		},
 	},
 	EventRegistrationPolicyCreated: registrationPolicySpec(),
