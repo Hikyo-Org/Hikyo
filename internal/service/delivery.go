@@ -425,7 +425,7 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 			return err
 		}
 		if caller.Class == domain.ClassDeveloper {
-			rows, manifest, err = personalOverlay(ctx, r, az, p, sealer, scope, caller, mode, rows, manifest)
+			rows, manifest, err = personalOverlay(ctx, r, az, p, sealer, scope, caller, mode, only, rows, manifest)
 			if err != nil {
 				return err
 			}

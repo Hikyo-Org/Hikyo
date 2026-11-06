@@ -42,7 +42,7 @@ const (
 // and a reason, and `hikyo run` refuses it.
 func personalOverlay(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof,
 	sealer *crypto.ProjectSealer, scope domain.Scope, caller authz.Identity, mode delivery.Mode,
-	rows []DeliveredKey, manifest []delivery.Row) ([]DeliveredKey, []delivery.Row, error) {
+	only map[string]bool, rows []DeliveredKey, manifest []delivery.Row) ([]DeliveredKey, []delivery.Row, error) {
 	values, err := r.PersonalValues().ListOwn(ctx, p)
 	if err != nil {
 		return nil, nil, err
@@ -95,9 +95,9 @@ func personalOverlay(ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
 		if !ok {
 			return nil, nil, fmt.Errorf("service: personal value %s names no declared key", v.ID)
 		}
-		// A value crosses only for a key the projection already serves, so it
-		// never widens the credential's key scope; a withheld row carries none.
-		if _, served := index[key.Name]; !served && reason == "" {
+		// A file target's selection (#164) bounds the overlay as it bounds the
+		// shared rows. A personal-only key has no shared row and still crosses.
+		if only != nil && !only[key.ID] {
 			continue
 		}
 		held[key.Name] = true
@@ -122,7 +122,7 @@ func personalOverlay(ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
 		// An undeclared name delivers no shared value to fall back to; the
 		// notice stays stored for a key re-declared under that name.
 		key, declared := byName[n.KeyName]
-		if held[n.KeyName] || !declared {
+		if held[n.KeyName] || !declared || only != nil && !only[key.ID] {
 			continue
 		}
 		manifest = append(manifest, delivery.Row{Key: "personal-notice\x00" + n.KeyName, Occurrence: n.Cause + "@" + n.CreatedAt.String()})

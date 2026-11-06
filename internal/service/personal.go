@@ -229,12 +229,13 @@ func (s *PersonalValues) Set(ctx context.Context, actor Actor, scope domain.Scop
 		if settings.Protected {
 			return PersonalEntry{}, ErrPersonalProtected
 		}
-		if err := s.personalGate(ctx, az, caller, scope, key.ID); err != nil {
+		// The cap is counted under the project lock, taken before the ceremony
+		// as copy does, and replacing the caller's own value never grows the
+		// count (as the pending cap in values.go).
+		if err := r.Projects().Lock(ctx, p); err != nil {
 			return PersonalEntry{}, err
 		}
-		// The cap is counted under the project lock, and replacing the caller's
-		// own value never grows the count (as the pending cap in values.go).
-		if err := r.Projects().Lock(ctx, p); err != nil {
+		if err := s.personalGate(ctx, az, caller, scope, key.ID); err != nil {
 			return PersonalEntry{}, err
 		}
 		_, err = r.PersonalValues().GetOwn(ctx, p, key.ID)
@@ -290,17 +291,7 @@ func (s *PersonalValues) personalGate(ctx context.Context, az *authz.TxAuthorize
 	if err != nil {
 		return err
 	}
-	w, err := az.ReauthWindowFor(ctx, caller.SessionID, string(scope.Env))
-	if errors.Is(err, domain.ErrNotFound) {
-		return ErrNoReauthWindow
-	}
-	if err != nil {
-		return err
-	}
-	if w.FactorClass != "webauthn" && w.FactorClass != "totp" {
-		return ErrPersonalFactorRequired
-	}
-	return requireCeremony(ctx, s.Auth, az, caller, intent)
+	return requireCeremony(ctx, s.Auth, az, caller, intent.requiringPossession())
 }
 
 // Reveal returns the caller's own plaintext. The disclosure event commits

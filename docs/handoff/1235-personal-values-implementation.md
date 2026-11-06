@@ -14,10 +14,10 @@ What exists:
 - Service `PersonalValues`: list, set, reveal, delete own, members (metadata only, audited as `personal_value.holders_read`) and
   delete member. Every operation refuses non-human callers, sessionless callers and workspace sessions with the nonexistent answer.
   Set and reveal take the per-key reveal ceremony, and only a passkey or authenticator window opens it: a window an identity provider
-  opened (OIDC or SAML) is refused. Set refuses protected environments. Qualification counts standing TOTP and passkey factors.
+  opened (OIDC or SAML) is refused, checked on the window row the decision consumes. Set refuses protected environments. Qualification counts standing TOTP and passkey factors.
 - Delivery overlay for developer credentials only. Withheld causes are `consent`, `config_only` and `suspended`, and notices carry their
-  cause. A value crosses only for a key the credential's projection serves. Personal changes, and losing or regaining the predicate,
-  move the cursor.
+  cause. A file target's selection bounds the overlay as it bounds shared rows, and a personal-only key still crosses. Personal
+  changes, and losing or regaining the predicate, move the cursor.
 - The `--personal` consent is bound into the developer-credential ceremony (CLI, server and the browser approval page, which shows it).
 - Cascades: key delete, key rename (not a same-name rename), definitions apply, environment delete (audited per owner), and factor loss
   (last factor or recovery code) delete values and leave notices.
@@ -61,7 +61,15 @@ Fresh-context Standards and Spec/security reviews ran on `claude-opus-5-5` (Anth
 the federated-window gate (High), the cursor on predicate changes, protected environments, same-name rename, missing wire-registry
 purge events on recovery and cloned-passkey routes, the personal cap (now locked, excluding the caller's own cell, `ErrLimitExceeded`),
 environment-delete audit, holder lookup errors, consent binding into the ceremony, the projection bound on delivered values, and weak
-test assertions. The re-review of these fixes is recorded on the PR.
+test assertions. A fresh-context re-review confirmed ten of the eleven fixes and found a regression in the projection bound
+(personal-only keys dropped under consent), plus a factor check made on a separate read and an inverted lock order; all three are
+fixed, with a test delivering a personal-only key.
+
+Known gaps from the reviews, not fixed here:
+
+- The browser approval page does not tell an account with a linked identity provider that `personal set` needs a passkey or
+  authenticator approval, so an identity-provider approval fails as forbidden.
+- No test covers the personal cap or the definitions-apply environment-delete audit.
 
 ## Mutation check
 

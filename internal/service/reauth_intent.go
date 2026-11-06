@@ -22,6 +22,17 @@ type ReauthIntent struct {
 	keyIDs            []string
 	keySet            string
 	environmentSet    string
+	// possessionOnly refuses windows an identity provider opened: the
+	// window consumed must come from a passkey or authenticator app.
+	possessionOnly bool
+}
+
+// requiringPossession returns the intent restricted to passkey and
+// authenticator windows (personal values: a standing possession factor is
+// what keeps an identity-provider administrator out).
+func (i ReauthIntent) requiringPossession() ReauthIntent {
+	i.possessionOnly = true
+	return i
 }
 
 type reauthIntentVariant uint8
@@ -57,6 +68,7 @@ type reauthIntentBinding struct {
 	environmentIDs   []string
 	environmentSet   string
 	challengeBinding string
+	possessionOnly   bool
 }
 
 // reauthIntentDescriptor is the single closed relation between an intent's
@@ -265,9 +277,10 @@ func newAdapterReauthIntent(variant reauthIntentVariant, environmentIDs []string
 // whose window is being opened or consumed.
 func (i ReauthIntent) bindingFor(adapterEnvironmentID string) (reauthIntentBinding, error) {
 	binding := reauthIntentBinding{
-		environmentID: i.environmentID,
-		keyIDs:        append([]string(nil), i.keyIDs...),
-		keySet:        i.keySet,
+		environmentID:  i.environmentID,
+		keyIDs:         append([]string(nil), i.keyIDs...),
+		keySet:         i.keySet,
+		possessionOnly: i.possessionOnly,
 	}
 	descriptor, ok := descriptorForVariant(i.variant)
 	if !ok {

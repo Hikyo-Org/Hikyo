@@ -302,6 +302,11 @@ func TestPersonalValueKeyRenameAndDeleteCascade(t *testing.T) {
 		// A key with no shared value, so deleting it is not refused for values.
 		execRaw(t, db, `INSERT INTO keys (id, org_id, project_id, name, folder_path, classification, description, deprecated, deprecation_note, declaration, required_mode, forbidden_mode, created_at) VALUES ('key_personal_only', 'org_a', 'prj_a1', '`+personalOnly+`', '', 'secret', '', FALSE, '', '{"rule":{"type":"string"}}', 'none', 'none', `+ts+`)`)
 		e.setOwn(t, personalOnly, "key_personal_only", personalPlain)
+		// A key whose only value is personal still crosses under consent.
+		consented, _ := mintDeveloper(t, db, &e.ceremonyEnv, time.Hour, true)
+		if got, err := deliverySvc(t, db).Fetch(ctx, consented.Value, envScope(envA1), "", service.FetchOptions{}); err != nil || !valueIs(deliveredKey(t, got, personalOnly), personalPlain) {
+			t.Fatalf("personal-only key not delivered: err=%v", err)
+		}
 		keys := &service.Keys{DB: db, Keyring: e.values.Keyring}
 		actor := service.LocalPrincipal(custodian)
 		if _, err := keys.Rename(ctx, actor, scopeProject(orgA, prjA1), e.keyA, "CEREMONY_SECRET_RENAMED", nil); err != nil {
