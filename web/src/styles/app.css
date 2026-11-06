@@ -5211,6 +5211,9 @@ label.chk:has(input:disabled) {
    (Remotes, the matrix): centred, it floated in the middle of a wide window. */
 .page--chrome {
   display: grid;
+  /* One track no wider than the page: a wide table scrolls inside its
+     `.table-scroll` instead of stretching the auto track past the viewport. */
+  grid-template-columns: minmax(0, 1fr);
   width: 100%;
   max-width: 860px;
 }
@@ -8012,5 +8015,93 @@ label.chk:has(input:disabled) {
   .access-table .grants :is(.mono, code, kbd),
   .access-table .grants th[scope='row'] {
     font-size: var(--fs-xs);
+  }
+}
+
+/* My personal values: the masked table, the states beside each value and the
+   plaintext countdown (personal-values ADR, O3). */
+.personal-values__states {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.personal-values__state {
+  color: var(--tx-dim);
+}
+
+.personal-values__absent {
+  color: var(--tx-faint);
+}
+
+.personal-values__plain {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  overflow-wrap: anywhere;
+}
+
+.personal-values__countdown {
+  color: var(--tx-faint);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+}
+
+.personal-values__cli {
+  color: var(--tx-dim);
+}
+
+/* Personal holders for one key, in the key declaration panel. */
+.personal-members__list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.personal-members__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.personal-members__when {
+  color: var(--tx-dim);
+  font-size: var(--fs-sm);
+}
+
+/* The matrix's personal mark: words after the cell state in the same column,
+   never colour alone. Like the value, it ellipsises when a phone squeezes the
+   column below its sized width; the cell's accessible name keeps the words. */
+.matrix-cell__personal {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--tx-dim);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+/* The offboarding report prints without the application chrome. */
+@media print {
+  .chrome {
+    display: block;
+    height: auto;
+  }
+
+  .rail,
+  .sidebar,
+  .chrome__account,
+  .nav-scrim,
+  .skip,
+  .no-print {
+    display: none;
+  }
+
+  .offboarding-report .table-scroll {
+    overflow: visible;
   }
 }
