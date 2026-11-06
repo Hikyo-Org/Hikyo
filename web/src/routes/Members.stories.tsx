@@ -467,6 +467,11 @@ export const ProjectWithAccessRules: Story = {
     await expect(await canvas.findAllByText("Also applies to other projects: change it on the organisation's Members page.")).toHaveLength(3);
     await expect(canvas.queryByRole('button', { name: /^Edit rule \d of Bob Tran/ })).toBeNull();
     await expect(canvas.getByRole('button', { name: 'Edit rule 1 of Alice Novak' })).toBeVisible();
+    // A person in a project view links to their offboarding report for this project.
+    await expect(canvas.getByRole('link', { name: 'Offboarding report for Alice Novak' })).toHaveAttribute(
+      'href',
+      expect.stringMatching(new RegExp(`^/orgs/${ORG}/projects/${IDS.payments}/offboarding-report\\?member=`)),
+    );
     // The key question (in its side panel) asks about this project only.
     await userEvent.click(canvas.getByRole('button', { name: 'Who can reach one key?' }));
     const ask = within(canvas.getByRole('complementary', { name: 'Who can reach one key?' }));

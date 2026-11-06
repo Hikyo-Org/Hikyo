@@ -783,7 +783,6 @@ test.describe('pinned assertion set', () => {
  */
 const PERSONAL_PATH = `/orgs/${seed.org}/projects/${seed.project}/environments/${seed.dev}/personal-values`;
 const MATRIX_PATH = `/orgs/${seed.org}/projects/${seed.project}/matrix`;
-const MEMBERS_PATH = `/orgs/${seed.org}/members?project=${seed.project}`;
 const REPORT_PATH = `/orgs/${seed.org}/projects/${seed.project}/offboarding-report`;
 // A fixture, not a secret: what the owner types and then reads back.
 const PERSONAL_FIXTURE = 'personal-fixture-development';
@@ -875,10 +874,14 @@ test.describe('personal values', () => {
     await expect(page.getByRole('button', { name: `Dismiss the notice for ${key}` })).toHaveCount(0);
   });
 
-  test('opens the offboarding report for a member from the members view', async () => {
-    await page.goto(MEMBERS_PATH);
-    await page.getByRole('link', { name: /^Offboarding report for / }).first().click();
+  // Needs the integrated server: the report endpoint answers 500 until the service lands.
+  // The seeded person holds no project-scoped rule, so the project Members view lists no
+  // person to link from (the Members story covers that link); the report's own form is the door.
+  test('opens the offboarding report for a member', async () => {
+    await page.goto(REPORT_PATH);
     await expect(page.getByRole('heading', { name: 'Offboarding report', level: 1 })).toBeVisible();
+    await page.getByLabel('Member', { exact: true }).fill(seed.principal);
+    await page.getByRole('button', { name: 'Show report' }).click();
     await expect(page).toHaveURL(/\/offboarding-report\?member=/);
     // Names only, with the evidence window and the limits stated.
     await expect(page.getByText(/^Evidence from /)).toBeVisible();
