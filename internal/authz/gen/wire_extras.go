@@ -274,6 +274,7 @@ var reviewedWireExtras = wireExtras{
 		"cli:operator":                           {Class: "ClassSystem"},
 		"cli:updater":                            {Class: "ClassSystem"},
 		"cli:upgrade":                            {Class: "ClassSystem"},
+		"cli:security-maintenance":               {Class: "ClassSystem"},
 		"cli:config-rollout":                     {Class: "ClassSystem"},
 		"cli:--version":                          {Class: "ClassUnauthenticated"},
 		"cli:--upgrade-bundle-formats":           {Class: "ClassUnauthenticated"},

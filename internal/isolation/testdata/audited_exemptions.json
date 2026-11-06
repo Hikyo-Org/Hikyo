@@ -8,6 +8,7 @@
 	"cli:operator": "separate Kubernetes reconciler process with no server keyring or datastore; delivery fetch/report/tombstone and offline reconciliation carry their existing remote operation audit mappings",
 	"cli:updater": "retired legacy mode refuses before reading configuration, datastore, custody material, or deployment credentials; no mutation occurs",
 	"cli:upgrade": "host-local signed deployment bundle activation and operator rotation use their dedicated durable upgrade-state records and receipts, not ordinary tenant authority; no separate tenant/instance audit event is declared for these host custody operations",
+	"cli:security-maintenance": "separate explicitly enrolled local installation authority; public signed feed verification, publisher files, and deployment/source/status transitions use maintenance, deployment and authenticated upgrade journals; no tenant API or separate tenant/instance audit event is declared for these host custody and workload operations",
 	"cli:config-rollout": "operator-enrolled Kubernetes configuration rollout with its own deployment authority and controller conditions; loads no Hikyo datastore/keyring and performs no separate Hikyo audit operation",
 	"cli:--version": "machine-readable local build metadata print, no server or datastore",
 	"cli:--upgrade-bundle-formats": "local supported bundle format print, no server or datastore",
