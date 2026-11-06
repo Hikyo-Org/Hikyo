@@ -127,7 +127,8 @@ func freezeContract(base, revised []byte) ([]Violation, error) {
 // parseContractDocument decodes exactly as kin-openapi's loader does (JSON
 // first, then oasdiff/yaml), so `off` or `yes` stays the string every other
 // consumer of the spec reads, not a YAML 1.1 boolean. Numbers stay
-// json.Number, so integers beyond float64 precision remain distinct.
+// json.Number, so integers beyond float64 precision remain distinct (in YAML,
+// up to the uint64 range; yaml.v3 decodes larger ones as float64).
 func parseContractDocument(raw []byte) (map[string]any, error) {
 	useNumber := func(d *json.Decoder) *json.Decoder { d.UseNumber(); return d }
 	var v any
@@ -859,12 +860,15 @@ func (w *contractWalker) reach(root map[string]any) {
 			w.fail(fmt.Sprintf("unsupported $ref %q: only #/components/<section>/<name> refs are compared", ref))
 			return
 		}
-		switch section {
-		case "parameters", "requestBodies":
+		switch {
+		case c&ctxBoth == ctxBoth:
+			// Inside a callback the server writes the request and reads the
+			// response, so a wrapper there stays read and written.
+		case section == "parameters" || section == "requestBodies":
 			c = ctxRequest | c&(ctxFrozen|ctxInverted)
-		case "responses":
+		case section == "responses":
 			c = ctxResponse | c&(ctxFrozen|ctxInverted)
-		case "schemas", "headers":
+		case section == "schemas" || section == "headers":
 			// Read by whoever reads the referrer.
 		default:
 			c = ctxBoth | c&(ctxFrozen|ctxInverted)
@@ -893,7 +897,7 @@ func (w *contractWalker) reach(root map[string]any) {
 				x := v[k]
 				if s, ok := x.(string); ok && k == "$ref" {
 					follow(s, c)
-				} else if names, ok := x.(map[string]any); ok && contractNameMaps[k] {
+				} else if names, ok := x.(map[string]any); ok && contractNameMaps[k] && names["$ref"] == nil {
 					// Keys here are names: a property called `not` freezes nothing.
 					for _, n := range slices.Sorted(maps.Keys(names)) {
 						visit(names[n], c)
@@ -914,7 +918,11 @@ func (w *contractWalker) reach(root map[string]any) {
 	// pathItemRef walks a referenced path item with the same directions as an
 	// inline one.
 	pathItemRef := func(ref string) {
-		_, name, _ := componentRef(ref)
+		_, name, ok := componentRef(ref)
+		if !ok || strings.Contains(strings.TrimPrefix(ref, "#/components/pathItems/"), "/") {
+			w.fail(fmt.Sprintf("unsupported $ref %q: only #/components/<section>/<name> refs are compared", ref))
+			return
+		}
 		if seen["pathItems/"+name] {
 			return
 		}
@@ -974,7 +982,11 @@ func (w *contractWalker) reach(root map[string]any) {
 	// Every other component reaches its schemas in its own direction, used or
 	// not (an unreferenced component is frozen too); this also validates refs.
 	for _, section := range slices.Sorted(maps.Keys(components)) {
-		sec, _ := components[section].(map[string]any)
+		sec, isMap := components[section].(map[string]any)
+		if !isMap {
+			visit(components[section], 0)
+			continue
+		}
 		for _, name := range slices.Sorted(maps.Keys(sec)) {
 			ref := "#/components/" + section + "/" + strings.NewReplacer("~", "~0", "/", "~1").Replace(name)
 			if section == "pathItems" {

@@ -722,6 +722,27 @@ func TestFreezeContractReviewFollowUps(t *testing.T) {
 		}
 		refused(t, yamlDoc("9007199254740992"), yamlDoc("9007199254740993"))
 	})
+	t.Run("unsupported refs error wherever they hide", func(t *testing.T) {
+		for name, doc := range map[string]string{
+			"callback named headers": contractThing(`"callbacks":{"real":{"{$request.query.url}":{"post":{` + contractOK + `}}},` +
+				`"headers":{"$ref":"#/paths/~1api~1v1~1thing/post/callbacks/real"}},` + contractOK),
+			"non-map components extension": withComponents(`{"/api/v1/thing":{"post":{`+contractOK+`}}}`, `"x-list":[{"$ref":"#/paths/x"}]`),
+			"deep path item ref":           withComponents(`{"/api/v1/thing":{"$ref":"#/components/pathItems/P/post"}}`, `"pathItems":{"P":{"post":{`+contractOK+`}}}`),
+		} {
+			t.Run(name, func(t *testing.T) {
+				if _, err := api.CheckFreeze([]byte(doc), []byte(doc)); err == nil || !strings.Contains(err.Error(), "unsupported $ref") {
+					t.Fatalf("want an unsupported $ref error, got %v", err)
+				}
+			})
+		}
+	})
+	t.Run("a request body inside a callback is read by clients", func(t *testing.T) {
+		doc := func(required string) string {
+			return withComponents(`{"/api/v1/thing":{"post":{"callbacks":{"C":{"{$request.query.url}":{"post":{"requestBody":{"$ref":"#/components/requestBodies/RB"},`+contractOK+`}}}},`+contractOK+`}}}`,
+				`"requestBodies":{"RB":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/S"}}}}},"schemas":{`+s(required)+`}`)
+		}
+		refused(t, doc(`"required":["a"],`), doc(""))
+	})
 	t.Run("a parameter declared twice in one list is an error", func(t *testing.T) {
 		doc := contractThing(`"parameters":[{"name":"p","in":"query","schema":{"type":"string"}},{"name":"p","in":"query","required":true,"schema":{"type":"string"}}],` + contractOK)
 		if _, err := api.CheckFreeze([]byte(doc), []byte(doc)); err == nil || !strings.Contains(err.Error(), "declared twice") {

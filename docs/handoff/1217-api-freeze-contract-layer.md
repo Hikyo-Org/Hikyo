@@ -11,9 +11,10 @@ third, independent source of violations next to the oasdiff allowlist and
 `freezeRemovals`: `freezeContract` in `api/freeze_contract.go`. It parses the
 raw base and revised documents (not kin-openapi's model, which would silently
 drop keywords it does not carry) with kin-openapi's own decoder, so YAML 1.2
-scalars such as `off` stay strings, and numbers stay exact (`json.Number`), so
-integers beyond float64 precision remain distinct. It walks them with knowledge of each OpenAPI
-object kind, and refuses every difference except a short list of permitted
+scalars such as `off` stay strings. Numbers stay exact (`json.Number`), so
+integers beyond float64 precision remain distinct (in YAML up to the uint64
+range, beyond which yaml.v3 decodes a float). It walks them with knowledge of
+each OpenAPI object kind, and refuses every difference except a short list of permitted
 additions and prose edits. Its violation IDs are `hikyo-contract-removed`,
 `hikyo-contract-added` and `hikyo-contract-changed`. oasdiff, the allowlist and
 `freezeRemovals` are unchanged; no source suppresses another.
@@ -184,18 +185,25 @@ GOMAXPROCS=2 go vet -p 2 ./api ./scripts/ci/api-freeze-guard
 
 ## PR #1232 review (CodeRabbit)
 
-Twelve of thirteen findings were fixed, each with a case in
-`TestFreezeContractReviewFollowUps` or `TestFreezeKnownFalseRefusals` that
-fails on the earlier layer (except the `operationId` case, a test gap only):
-first component addition, reusable callback normalization, path-item ref
-directions, property names in the reachability walk, unused wrapper
-directions, `contains` under `maxContains`, numeric precision, duplicate
-parameters, and three test fixes (an `operationId` on an existing operation,
-the `ID` description search bounded to its block, exact refusal sources
-asserted). Declined: refusing new properties under `oneOf`, see the known exposure
-above. The `mldsa65` reader finding needs no change: no header in
-v1.0.0 reaches the five amended enums, and making one reach them is a `$ref`
-change, which is refused.
+All thirteen findings were triaged: eleven fixed, one declined, one needing
+no change. The fixes are eight in the layer (first component addition,
+reusable callback normalization, path-item ref directions, property names in
+the reachability walk, unused wrapper directions, `contains` under
+`maxContains`, numeric precision, duplicate parameters) and three in tests (an
+`operationId` on an existing operation, the `ID` description search bounded
+to its block, exact refusal sources asserted). Each layer fix has a case in
+`TestFreezeContractReviewFollowUps` that fails on the earlier layer. Declined:
+refusing new properties under `oneOf`, see the known exposure above. No
+change needed for the `mldsa65` reader finding: no header in v1.0.0 reaches
+the five amended enums, and making one reach them is a `$ref` change, which
+is refused.
+
+A fresh review of those fixes found that a callback or other entry named like
+a name map (`headers`, `properties`...) hid its `$ref` from validation, that a
+non-map `components` extension was no longer validated, and that wrappers
+referenced inside a callback took the operation's direction although the
+server writes a callback request. All three are fixed and pinned in the same
+test; wrappers inside a callback now count as read and written.
 
 ## Remaining delivery gates
 
