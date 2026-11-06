@@ -305,8 +305,8 @@ func (s *EmailInvitations) List(ctx context.Context, actor Actor, org domain.Org
 			})
 		}
 		ev, err := domainEvent(ctx, audit.EventGrantMembershipRead, caller.Principal,
-			audit.Object{Type: "org", ID: string(org)},
-			audit.Payload{"scope": "org:" + string(org) + ":email-invitations", "row_count": int64(len(out))})
+			audit.Object{Type: "scope", ID: renderScope(domain.Scope{Org: org})},
+			audit.Payload{"scope": renderScope(domain.Scope{Org: org}), "row_count": int64(len(out))})
 		if err != nil {
 			return err
 		}
