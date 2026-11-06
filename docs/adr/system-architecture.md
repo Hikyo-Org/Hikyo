@@ -1,5 +1,7 @@
 # Hikyo system architecture & stack (ADR, locked 2026-08-02)
 
+> **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** the 1 to 3 orgs, 25 users, 10,000 entries envelope, for hosted installations. See its supersession register.
+
 > **Owner-locked declared amendment (accepted by the owner on 2026-11-05 with [#1214](https://github.com/Hikyo-Org/Hikyo/pull/1214), [#1215](https://github.com/Hikyo-Org/Hikyo/issues/1215), originating ticket [#22](https://github.com/Hikyo-Org/Hikyo/issues/22) reopened; operative when the pull request adding the shell (plan PR 3) merges; decision in the [desktop app ADR](./desktop-app.md). Cross-provider review is SKIPPED by explicit owner instruction (2026-11-04) and is not CLEAN.)** `hikyo` stays one artifact with one version string. A desktop app is a separately versioned client beside it, with its source in a nested Go module so that Wails and cgo never enter the root `go.mod`, and with no background process, so "no resident client-side agent" still holds.
 
 > **Declared stable-signing amendment (2026-09-08):** The owner selected online keyless stable signing with reviewed draft publication. [Stable workflow signing](stable-workflow-signing.md) supersedes the historical offline stable ceremony after implementation merge and explicit recovery-signed policy activation. The existing root remains; activation and 1.0 publication are pending.
