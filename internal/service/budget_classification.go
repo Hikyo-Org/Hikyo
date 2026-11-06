@@ -127,6 +127,8 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpAdvisoryWatch, authz.OpAdvisoryEvent)
 	add(budgetClassExempt, "reveal ceremony + per-key gate limiter (GateAttemptsPerMinute) bound it",
 		authz.OpValueReveal)
+	add(budgetClassExempt, "personal set/reveal: one cell, each consuming a single-use possession reauthentication window (§10 authenticated API bounds the attempts)",
+		authz.OpPersonalValueSet, authz.OpPersonalValueReveal)
 	add(budgetClassExempt, "delivery-target list: one environment, at most 100 rows per reporting principal (§10 authenticated API)",
 		authz.OpDeliveryTargetList)
 	add(budgetClassExempt, "file-target configuration and inspection: project-scoped admin metadata, one row per workload service account (§10 authenticated API)",
@@ -168,6 +170,8 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		// values (non-export, non-copy, non-import, non-publish): single-cell reads/writes
 		authz.OpValueRead, authz.OpValueList, authz.OpValueSet, authz.OpValueClear,
 		authz.OpValueStage, authz.OpValueInitialize, authz.OpValueValidate, authz.OpValuePendingList, authz.OpRevealWindowRead,
+		// personal values: the caller's own names, one own cell, or one key's holder metadata
+		authz.OpPersonalValueList, authz.OpPersonalValueDelete, authz.OpPersonalValueMembers, authz.OpPersonalValueDeleteMember,
 		// revisions / pins: paged reads and single-revision restores
 		authz.OpRevisionList, authz.OpRevisionShow, authz.OpRevisionSignals,
 		authz.OpRevisionRestore, authz.OpRevisionRestoreHistory, authz.OpRevisionRestoreCurrent,

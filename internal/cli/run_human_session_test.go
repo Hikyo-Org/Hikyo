@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
@@ -45,6 +46,10 @@ func runHumanServer(t *testing.T, windowLive bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
+		case strings.HasSuffix(r.URL.Path, "/meta"):
+			_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture", ApiRevision: api.Revision})
+		case strings.HasSuffix(r.URL.Path, "/personal-values"):
+			_ = json.NewEncoder(w).Encode(apigen.PersonalValueList{Items: []apigen.PersonalValueEntry{}})
 		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
 			_ = json.NewEncoder(w).Encode(apigen.RevealWindow{Live: windowLive})
 		case strings.HasSuffix(r.URL.Path, "/revisions/latest"):
