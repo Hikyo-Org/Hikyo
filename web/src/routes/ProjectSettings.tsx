@@ -27,6 +27,7 @@ import {
   useEnvironments,
   useOrgRetention,
   useProject,
+  useProjectIdentityMutations,
   useProjectRetention,
   useReencryptProject,
   useRenameEnvironment,
@@ -48,6 +49,8 @@ import { ReadOnlyContext } from '../ui/ReadOnlyContext.ts';
 import { DefinitionsBundlePanel } from './DefinitionsBundlePanel.tsx';
 import { ProjectDeveloperCredentials } from './ProjectDeveloperCredentials.tsx';
 import { ProjectCapacityPolicy } from './ProjectCapacityPolicy.tsx';
+import { identityActions } from './chrome-identity-actions.ts';
+import { projectIdentityImageUrl } from './chrome-identity.ts';
 import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
 import { ConsequencesDialog, Panel, SectionTabs, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback } from './useFeedback.ts';
@@ -79,6 +82,7 @@ export function ProjectSettings() {
   const definitionsSettings = useDefinitionsSettings(org, project);
   const setDefinitionsSettings = useSetDefinitionsSettings(org, project);
   const rename = useRenameProject(org);
+  const identityMutations = useProjectIdentityMutations(org, project);
   const remove = useDeleteProject(org, () => navigate(surfaceById('projects').path));
   const nameId = useId();
 
@@ -96,7 +100,7 @@ export function ProjectSettings() {
     <div className="page page--chrome">
       <h1>Project settings<Sep />{current?.name ?? 'project'}</h1>
       <p className="page__lede">
-        Rename this project, edit its metadata, and manage its environments; grants are edited
+        Rename this project, set its badge, edit its metadata, and manage its environments; grants are edited
         on the members surface.
       </p>
 
@@ -116,9 +120,17 @@ export function ProjectSettings() {
           { id: 'project-identity', label: 'Identity', content: (
             <Panel id="project-identity" title="Identity">
               <ChromeIdentityControls
+                key={`${org}/${project}`}
                 identityId={current?.id ?? project}
                 name={current?.name ?? 'project'}
                 kind="project"
+                identity={current?.identity}
+                imageUrl={(version) => projectIdentityImageUrl(org, project, version)}
+                actions={identityActions(
+                  identityMutations,
+                  { identity: 'set-project-identity', image: 'set-project-identity-image' },
+                  { report, ok: feedback.ok },
+                )}
               />
             </Panel>
           ) },

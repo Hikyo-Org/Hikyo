@@ -1406,6 +1406,169 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/orgs/{org}/identity:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+    put:
+      operationId: setOrgIdentity
+      tags: [hierarchy]
+      summary: Set the organisation's hue, mark or both.
+      description: |
+        Changes the organisation's chrome identity hue, short mark or both. A field
+        that is absent is left as stored, so a hue-only save cannot overwrite a
+        newer mark. `mark` is at most two grapheme clusters of free text or
+        emoji, without control characters or surrounding whitespace; an empty
+        mark falls back to the monogram derived from the name. The uploaded image is separate
+        (`setOrgIdentityImage`). Idempotent. A grant refusal is the uniform 404; a single-factor
+        session holding the capability gets 403.
+      x-hikyo-class: tenant
+      x-hikyo-operation: org.identity-set
+      x-hikyo-formula: [manage-members@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 14
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdentityRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The organisation with its updated identity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Org"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/identity/image:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+    get:
+      operationId: getOrgIdentityImage
+      tags: [hierarchy]
+      summary: Read the organisation's uploaded image.
+      description: |
+        Returns the stored bytes with the exact validated content type and
+        `X-Content-Type-Options: nosniff`. Visible to the callers `listMyOrgs`
+        shows the organisation to, which includes a member holding only a
+        project grant, and to any other caller holding `read@org`, such as an
+        instance operator on the organisation's settings page. Anyone else,
+        a machine credential, or no image is the uniform 404. `v` is the `identity.image_version` the caller is rendering and
+        only busts caches; it never selects a version.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 14
+      parameters:
+        - $ref: "#/components/parameters/IdentityImageVersion"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The stored image bytes with their exact content type.
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    put:
+      operationId: setOrgIdentityImage
+      tags: [hierarchy]
+      summary: Upload the organisation's image.
+      description: |
+        Raw body, `image/png`, `image/jpeg` or `image/webp` only, at most 256
+        KiB and 1024 by 1024 pixels. The magic bytes must match the declared
+        content type and the pixels must decode. SVG is never accepted: the
+        browser converts it to PNG before upload. Replaces any previous image.
+        A grant refusal is the uniform 404; a single-factor
+        session holding the capability gets 403.
+      x-hikyo-class: tenant
+      x-hikyo-operation: org.identity-image-set
+      x-hikyo-formula: [manage-members@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 14
+      requestBody:
+        required: true
+        content:
+          image/*:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The organisation with its updated identity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Org"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    delete:
+      operationId: clearOrgIdentityImage
+      tags: [hierarchy]
+      summary: Remove the organisation's uploaded image.
+      description: |
+        Clears the image so the mark (or the name-derived monogram) shows again.
+        Idempotent. A grant refusal is the uniform 404; a single-factor
+        session holding the capability gets 403.
+      x-hikyo-class: tenant
+      x-hikyo-operation: org.identity-image-clear
+      x-hikyo-formula: [manage-members@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 14
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The organisation without an uploaded image.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Org"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /api/v1/orgs/{org}/projects/{project}:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -1504,6 +1667,162 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/identity:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+    put:
+      operationId: setProjectIdentity
+      tags: [hierarchy]
+      summary: Set the project's hue, mark or both.
+      description: |
+        Changes the project's chrome identity hue, short mark or both. A field
+        that is absent is left as stored, so a hue-only save cannot overwrite a
+        newer mark. `mark` is at most two grapheme clusters of free text or
+        emoji, without control characters or surrounding whitespace; an empty
+        mark falls back to the monogram derived from the name. The uploaded image is separate
+        (`setProjectIdentityImage`). Idempotent. Refusal is the uniform 404.
+      x-hikyo-class: tenant
+      x-hikyo-operation: project.identity-set
+      x-hikyo-formula: [manage-projects@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 14
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdentityRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The project with its updated identity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/identity/image:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+    get:
+      operationId: getProjectIdentityImage
+      tags: [hierarchy]
+      summary: Read the project's uploaded image.
+      description: |
+        Returns the stored bytes with the exact validated content type and
+        `X-Content-Type-Options: nosniff`. Requires `read` at the project, like
+        `getProject`. `v` is the `identity.image_version` the caller is
+        rendering and only busts caches; it never selects a version.
+      x-hikyo-class: tenant
+      x-hikyo-operation: project.identity-image-get
+      x-hikyo-formula: [read@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 14
+      parameters:
+        - $ref: "#/components/parameters/IdentityImageVersion"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The stored image bytes with their exact content type.
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    put:
+      operationId: setProjectIdentityImage
+      tags: [hierarchy]
+      summary: Upload the project's image.
+      description: |
+        Raw body, `image/png`, `image/jpeg` or `image/webp` only, at most 256
+        KiB and 1024 by 1024 pixels. The magic bytes must match the declared
+        content type and the pixels must decode. SVG is never accepted: the
+        browser converts it to PNG before upload. Replaces any previous image.
+        Refusal is the uniform 404.
+      x-hikyo-class: tenant
+      x-hikyo-operation: project.identity-image-set
+      x-hikyo-formula: [manage-projects@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 14
+      requestBody:
+        required: true
+        content:
+          image/*:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The project with its updated identity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    delete:
+      operationId: clearProjectIdentityImage
+      tags: [hierarchy]
+      summary: Remove the project's uploaded image.
+      description: |
+        Clears the image so the mark (or the name-derived monogram) shows again.
+        Idempotent. Refusal is the uniform 404.
+      x-hikyo-class: tenant
+      x-hikyo-operation: project.identity-image-clear
+      x-hikyo-formula: [manage-projects@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 14
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The project without an uploaded image.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
 
   /api/v1/orgs/{org}/projects/{project}/environments:
     parameters:
@@ -5441,7 +5760,8 @@ paths:
         gate. An operator who wants the whole instance asks for the whole
         instance, and steps up to do it.
 
-        Identity only — id and name. An organisation's `metadata` is
+        Identity only: id, name and the chrome `identity` (hue, mark, image
+        version) the rail renders. An organisation's `metadata` is
         operator-set and is read through `getOrg`, which authorizes.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
@@ -15278,6 +15598,14 @@ components:
       description: Project identifier.
       schema:
         $ref: "#/components/schemas/ID"
+    IdentityImageVersion:
+      name: v
+      in: query
+      required: false
+      description: The `identity.image_version` being rendered; a cache-busting hint only.
+      schema:
+        type: string
+        pattern: "^[0-9a-f]{64}$"
     EnvironmentID:
       name: environment
       in: path
@@ -18574,6 +18902,48 @@ components:
             The registration policy that minted the org, a trail pointer with
             no foreign key (the org keeps it after the policy is deleted); null
             for a manual org.
+        identity:
+          $ref: "#/components/schemas/ChromeIdentity"
+
+    ChromeIdentity:
+      type: object
+      required: [hue, mark, image_version]
+      description: |
+        The editable avatar of an organisation or project. `mark` is null when
+        the monogram is derived from the name; `image_version` is a lowercase
+        hex content hash of the uploaded image, null when there is none, and is
+        what the image URL's `v` query parameter carries.
+      properties:
+        hue:
+          type: integer
+          minimum: 0
+          maximum: 359
+        mark:
+          type: [string, "null"]
+        image_version:
+          type: [string, "null"]
+          pattern: "^[0-9a-f]{64}$"
+
+    IdentityRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: |
+        A partial write: each field present replaces the stored one and an
+        absent field is left unchanged, so saving one field never overwrites
+        a concurrent change to the other.
+      properties:
+        hue:
+          type: integer
+          minimum: 0
+          maximum: 359
+        mark:
+          type: [string, "null"]
+          maxLength: 128
+          description: |
+            At most two grapheme clusters; no control or invisible format
+            characters and no surrounding whitespace. Empty selects the
+            name-derived monogram; null or absent leaves the stored mark.
 
     OrgList:
       type: object
@@ -18594,7 +18964,7 @@ components:
       required: [id, name]
       description: |
         An organisation as a navigation destination: what the caller needs to
-        show it and route to it, and nothing else. Deliberately narrower than
+        show it and route to it (name and chrome identity), and nothing else. Deliberately narrower than
         `Org` — `metadata` and `active` are operator-set state that belongs to
         `getOrg`, which authorizes; a member listing does not.
       properties:
@@ -18602,6 +18972,8 @@ components:
           $ref: "#/components/schemas/ID"
         name:
           type: string
+        identity:
+          $ref: "#/components/schemas/ChromeIdentity"
 
     MyOrgList:
       type: object
@@ -18674,6 +19046,8 @@ components:
           type: string
         created_at:
           $ref: "#/components/schemas/Timestamp"
+        identity:
+          $ref: "#/components/schemas/ChromeIdentity"
 
     ProjectList:
       type: object

@@ -43,13 +43,23 @@ const (
 	OpOrgGet    Operation = "org.get"
 	OpOrgList   Operation = "org.list"
 	OpOrgRename Operation = "org.rename"
-	OpOrgDelete Operation = "org.delete"
+	// The chrome identity (hue, mark, uploaded image) of an org and a project.
+	// The org image READ is deliberately not an operation: it follows the
+	// listMyOrgs visibility (see Orgs.IdentityImage).
+	OpOrgIdentitySet        Operation = "org.identity-set"
+	OpOrgIdentityImageSet   Operation = "org.identity-image-set"
+	OpOrgIdentityImageClear Operation = "org.identity-image-clear"
+	OpOrgDelete             Operation = "org.delete"
 
-	OpProjectCreate Operation = "project.create"
-	OpProjectGet    Operation = "project.get"
-	OpProjectList   Operation = "project.list"
-	OpProjectRename Operation = "project.rename"
-	OpProjectDelete Operation = "project.delete"
+	OpProjectCreate             Operation = "project.create"
+	OpProjectGet                Operation = "project.get"
+	OpProjectList               Operation = "project.list"
+	OpProjectRename             Operation = "project.rename"
+	OpProjectIdentitySet        Operation = "project.identity-set"
+	OpProjectIdentityImageSet   Operation = "project.identity-image-set"
+	OpProjectIdentityImageClear Operation = "project.identity-image-clear"
+	OpProjectIdentityImageGet   Operation = "project.identity-image-get"
+	OpProjectDelete             Operation = "project.delete"
 
 	OpEnvCreate       Operation = "environment.create"
 	OpEnvRead         Operation = "environment.read"
@@ -767,6 +777,8 @@ const (
 	StoreOrgsList                      StoreOp = "orgs.List"
 	StoreOrgsCount                     StoreOp = "orgs.Count"
 	StoreOrgsRename                    StoreOp = "orgs.Rename"
+	StoreOrgsSetIdentity               StoreOp = "orgs.SetIdentity"
+	StoreOrgsSetIdentityImage          StoreOp = "orgs.SetIdentityImage"
 	StoreOrgsLock                      StoreOp = "orgs.Lock"
 	StoreOrgsSetRetention              StoreOp = "orgs.SetRetention"
 	StoreOrgsDelete                    StoreOp = "orgs.Delete"
@@ -776,12 +788,17 @@ const (
 	StoreProjectsGetCapacity StoreOp = "projects.GetCapacity"
 	StoreProjectsSetCapacity StoreOp = "projects.SetCapacity"
 	StoreProjectsList        StoreOp = "projects.List"
+	StoreProjectsListIDs     StoreOp = "projects.ListIDs"
 	// StoreProjectsListAll is the cross-org enumeration the multi-instance
 	// directory serves (#71). It belongs to instance-scope operations only.
-	StoreProjectsListAll      StoreOp = "projects.ListAll"
-	StoreProjectsLock         StoreOp = "projects.Lock"
-	StoreProjectsRename       StoreOp = "projects.Rename"
-	StoreProjectsSetRetention StoreOp = "projects.SetRetention"
+	StoreProjectsListAll StoreOp = "projects.ListAll"
+	StoreProjectsLock    StoreOp = "projects.Lock"
+	StoreProjectsRename  StoreOp = "projects.Rename"
+	// The chrome identity (hue, mark, uploaded image) of a project.
+	StoreProjectsSetIdentity      StoreOp = "projects.SetIdentity"
+	StoreProjectsSetIdentityImage StoreOp = "projects.SetIdentityImage"
+	StoreProjectsGetIdentityImage StoreOp = "projects.GetIdentityImage"
+	StoreProjectsSetRetention     StoreOp = "projects.SetRetention"
 	// StoreProjectsSetDefinitionsSource flips the git/db definitions mode (#70).
 	// It rides project-settings authority, off the definitions-edit path.
 	StoreProjectsSetDefinitionsSource StoreOp = "projects.SetDefinitionsSource"
@@ -1383,14 +1400,16 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreSSHGetCertificate:   true,
 	StoreSSHListCertificates: true,
 	// Transit key inspection is a bare-read (`read@env`) of metadata only (#156).
-	StoreTransitKeysList:     true,
-	StoreTransitKeysGet:      true,
-	StoreTransitVersionsList: true,
-	StoreTransitCallersList:  true,
-	StoreProjectsGet:         true,
-	StoreProjectsGetCapacity: true,
-	StoreProjectsList:        true,
-	StoreProjectsListAll:     true,
+	StoreTransitKeysList:          true,
+	StoreTransitKeysGet:           true,
+	StoreTransitVersionsList:      true,
+	StoreTransitCallersList:       true,
+	StoreProjectsGet:              true,
+	StoreProjectsGetIdentityImage: true,
+	StoreProjectsGetCapacity:      true,
+	StoreProjectsList:             true,
+	StoreProjectsListIDs:          true,
+	StoreProjectsListAll:          true,
 	// Private PKI (#154) public reads. Sealed CA key reads remain excluded:
 	// in-process signing still requires an audited operation.
 	StorePKIIssuersList: true, StorePKIIssuersGet: true,
@@ -1917,6 +1936,30 @@ var operationTable = map[Operation]opSpec{
 		storeOps: map[StoreOp]bool{StoreOrgsGet: true, StoreOrgsRename: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventOrgRenamed}, // org names not scanned (#74)
 	},
+	// The chrome identity is org administration like the name: the same
+	// formula as org.rename. Each write reads the row first, in the same
+	// transaction, so the trail records the transition that actually happened.
+	OpOrgIdentitySet: {
+		class:    ClassTenant,
+		level:    domain.LevelOrg,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreOrgsGet: true, StoreOrgsLock: true, StoreOrgsSetIdentity: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventOrgIdentityChanged},
+	},
+	OpOrgIdentityImageSet: {
+		class:    ClassTenant,
+		level:    domain.LevelOrg,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreOrgsGet: true, StoreOrgsLock: true, StoreOrgsSetIdentityImage: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventOrgIdentityChanged},
+	},
+	OpOrgIdentityImageClear: {
+		class:    ClassTenant,
+		level:    domain.LevelOrg,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreOrgsGet: true, StoreOrgsLock: true, StoreOrgsSetIdentityImage: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventOrgIdentityChanged},
+	},
 	OpOrgDelete: {
 		class:    ClassTenant,
 		level:    domain.LevelOrg,
@@ -2108,7 +2151,7 @@ var operationTable = map[Operation]opSpec{
 		class:       ClassTenant,
 		level:       domain.LevelOrg,
 		formula:     Formula{{Cap: domain.CapRead, At: domain.LevelOrg}},
-		storeOps:    map[StoreOp]bool{StoreProjectsList: true},
+		storeOps:    map[StoreOp]bool{StoreProjectsList: true, StoreProjectsListIDs: true},
 		auditedNone: true,
 	},
 	OpProjectRename: {
@@ -2117,6 +2160,37 @@ var operationTable = map[Operation]opSpec{
 		formula:  Formula{{Cap: domain.CapManageProjects, At: domain.LevelOrg}},
 		storeOps: map[StoreOp]bool{StoreProjectsGet: true, StoreProjectsRename: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventProjectRenamed}, // project names not scanned (#74)
+	},
+	// Project chrome identity: project lifecycle authority like the rename.
+	OpProjectIdentitySet: {
+		class:    ClassTenant,
+		level:    domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageProjects, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreProjectsGet: true, StoreProjectsLock: true, StoreProjectsSetIdentity: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventProjectIdentityChanged},
+	},
+	OpProjectIdentityImageSet: {
+		class:    ClassTenant,
+		level:    domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageProjects, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreProjectsGet: true, StoreProjectsLock: true, StoreProjectsSetIdentityImage: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventProjectIdentityChanged},
+	},
+	OpProjectIdentityImageClear: {
+		class:    ClassTenant,
+		level:    domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageProjects, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreProjectsGet: true, StoreProjectsLock: true, StoreProjectsSetIdentityImage: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventProjectIdentityChanged},
+	},
+	// The avatar read is bare `read` like project.get, so it takes the same
+	// audited-none permit.
+	OpProjectIdentityImageGet: {
+		class:       ClassTenant,
+		level:       domain.LevelProject,
+		formula:     Formula{{Cap: domain.CapRead, At: domain.LevelProject}},
+		storeOps:    map[StoreOp]bool{StoreProjectsGetIdentityImage: true},
+		auditedNone: true,
 	},
 	OpProjectDelete: {
 		class:   ClassTenant,

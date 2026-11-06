@@ -17,7 +17,8 @@ VALUES ($1, $2, $3, $4, $5, $6, $7);
 -- name: GetOrg :one
 SELECT id, name, active, metadata, created_at,
        retention_mode, retention_age_seconds, retention_revision_count,
-       origin, registration_policy_id
+       origin, registration_policy_id,
+       identity_hue, identity_mark, identity_image_version
 FROM orgs WHERE id = sqlc.arg(chain_org_id);
 
 -- LockOrg serializes retention-cap changes with project override changes, so
@@ -29,7 +30,8 @@ SELECT id FROM orgs WHERE id = sqlc.arg(chain_org_id) FOR UPDATE;
 -- name: ListOrgs :many
 SELECT id, name, active, metadata, created_at,
        retention_mode, retention_age_seconds, retention_revision_count,
-       origin, registration_policy_id
+       origin, registration_policy_id,
+       identity_hue, identity_mark, identity_image_version
 FROM orgs WHERE (sqlc.arg(include_self_config) = 1 OR NOT EXISTS (SELECT 1 FROM self_config_binding b WHERE b.org_id=orgs.id)) ORDER BY name;
 
 -- hikyo:instance-scoped
@@ -48,3 +50,16 @@ WHERE id = sqlc.arg(chain_org_id);
 
 -- name: DeleteOrg :execrows
 DELETE FROM orgs WHERE id = sqlc.arg(chain_org_id);
+
+-- Chrome identity (hue, short mark, uploaded image). The image bytes are read
+-- only by the dedicated image query (GetOrgIdentityImage in authn.sql), so
+-- Get/List stay small.
+-- name: SetOrgIdentity :execrows
+UPDATE orgs SET identity_hue = sqlc.arg(identity_hue), identity_mark = sqlc.narg(identity_mark)
+WHERE id = sqlc.arg(chain_org_id);
+
+-- name: SetOrgIdentityImage :execrows
+UPDATE orgs SET identity_image = sqlc.narg(identity_image),
+    identity_image_type = sqlc.narg(identity_image_type),
+    identity_image_version = sqlc.narg(identity_image_version)
+WHERE id = sqlc.arg(chain_org_id);

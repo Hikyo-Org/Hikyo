@@ -8,6 +8,13 @@ export type ChromeIdentity = {
   readonly image: string | null;
 };
 
+/** The `identity` member of Org, MyOrg and Project as the API delivers it. */
+export type ApiChromeIdentity = {
+  readonly hue: number;
+  readonly mark?: string | null;
+  readonly image_version?: string | null;
+};
+
 export const CHROME_IDENTITY_EVENT = 'hikyo:chrome-identity-change';
 
 const DEFAULT_IDENTITY: ChromeIdentity = { hue: 195, glyph: null, image: null };
@@ -71,14 +78,48 @@ export function writeChromeIdentity(
   }
 }
 
+function cssUrl(image: string): string {
+  return `url("${image.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}")`;
+}
+
+/** orgIdentityImageUrl is the same-origin image URL; the version busts the cache on change. */
+export function orgIdentityImageUrl(org: string, version: string): string {
+  return `/api/v1/orgs/${encodeURIComponent(org)}/identity/image?v=${encodeURIComponent(version)}`;
+}
+
+export function projectIdentityImageUrl(org: string, project: string, version: string): string {
+  return `/api/v1/orgs/${encodeURIComponent(org)}/projects/${encodeURIComponent(project)}/identity/image?v=${encodeURIComponent(version)}`;
+}
+
+/**
+ * chromeIdentityFromApi adapts the server identity. `imageUrl` is null when the
+ * image cannot be fetched same-origin (a remote workspace), which falls back to
+ * mark plus hue instead of a cross-origin request.
+ */
+export function chromeIdentityFromApi(
+  identity: ApiChromeIdentity | undefined,
+  imageUrl: ((version: string) => string) | null,
+): ChromeIdentity {
+  if (identity === undefined) return DEFAULT_IDENTITY;
+  const version = identity.image_version;
+  const mark = identity.mark;
+  return {
+    hue: identity.hue,
+    glyph: mark === undefined || mark === null || mark === '' ? null : mark,
+    image: imageUrl === null || version === undefined || version === null ? null : imageUrl(version),
+  };
+}
+
 export function chromeIdentityStyle(identity: ChromeIdentity): CSSProperties {
   return {
-    background: `oklch(0.62 0.11 ${String(identity.hue)})`,
+    // backgroundColor, never the `background` shorthand: React re-applies only
+    // changed properties, and the shorthand would reset the image longhands.
+    backgroundColor: `oklch(0.62 0.11 ${String(identity.hue)})`,
     color: 'oklch(0.12 0.02 225)',
     ...(identity.image === null
       ? {}
       : {
-          backgroundImage: `url(${identity.image})`,
+          backgroundImage: cssUrl(identity.image),
           backgroundPosition: 'center',
           backgroundSize: 'cover',
         }),
@@ -107,12 +148,12 @@ export function chromeRailIdentityStyle(
   const image = identity.image === null
     ? {}
     : {
-        backgroundImage: `url(${identity.image})`,
+        backgroundImage: cssUrl(identity.image),
         backgroundPosition: 'center',
         backgroundSize: 'cover',
       };
   if (active) return image;
-  return { background: `oklch(0.62 0.11 ${String(identity.hue)} / 0.18)`, ...image };
+  return { backgroundColor: `oklch(0.62 0.11 ${String(identity.hue)} / 0.18)`, ...image };
 }
 
 export function chromeIdentityMark(identity: ChromeIdentity, name: string): string {

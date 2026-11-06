@@ -19,7 +19,13 @@ type RouteMocks = {
     refetch: ReturnType<typeof vi.fn>;
   };
   org: {
-    data: { id: string; name: string; active: boolean; created_at: string };
+    data: {
+      id: string;
+      name: string;
+      active: boolean;
+      created_at: string;
+      identity: { hue: number; mark: string | null };
+    };
     isError: boolean;
   };
   projects: {
@@ -56,6 +62,7 @@ const mocks = vi.hoisted<RouteMocks>(() => ({
       name: "Acme",
       active: true,
       created_at: "2026-08-24T08:00:00Z",
+      identity: { hue: 195, mark: null },
     },
     isError: false,
   },
@@ -105,6 +112,11 @@ vi.mock("../api/settings.ts", async (importActual) => {
     ...actual,
     useDeleteOrg: () => ({ isPending: false, mutate: vi.fn() }),
     useOrg: () => mocks.org,
+    useOrgIdentityMutations: () => ({
+      set: { mutateAsync: vi.fn() },
+      setImage: { mutateAsync: vi.fn() },
+      clearImage: { mutateAsync: vi.fn() },
+    }),
     useOrgRetention: () => mocks.retention,
     useOrgTopology: () => mocks.topology,
     useProjectRetentions: () => new Map(),
@@ -274,7 +286,7 @@ describe("Organisation settings accessibility polish", () => {
   it("associates the organisation Name input with its visible label", async () => {
     const view = await renderOrgSettings();
     const input = view.container.querySelector<HTMLInputElement>(
-      '#org-identity input:not([type="range"]):not([type="file"])',
+      '#org-identity .identity-name input',
     );
     if (input === null) {
       throw new Error("organisation Name input is missing");
@@ -283,6 +295,21 @@ describe("Organisation settings accessibility polish", () => {
       `label[for="${input.id}"]`,
     );
     expect(label?.textContent).toBe("Name");
+    await view.unmount();
+  });
+
+  it("gives every editable identity control an accessible name", async () => {
+    const view = await renderOrgSettings();
+    const controls = [
+      ...view.container.querySelectorAll<HTMLElement>("#org-identity button, #org-identity input"),
+    ].filter((control) => control.closest(".identity-name") === null);
+    expect(controls.length).toBeGreaterThan(8);
+    for (const control of controls) {
+      const labelled =
+        control.getAttribute("aria-label") !== null ||
+        (control.id !== "" && view.container.querySelector(`label[for="${control.id}"]`) !== null);
+      expect(labelled, control.outerHTML).toBe(true);
+    }
     await view.unmount();
   });
 });
