@@ -22,7 +22,188 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | 
 {{- printf "%s-storage" (include "hikyo.fullname" . | trunc 55 | trimSuffix "-") -}}
 {{- end -}}
 
+{{/*
+The image every Hikyo container in the server Deployment runs. Once the security
+maintenance coordinator has replaced it, helm upgrade keeps that image, so an
+unchanged values file never moves the server back. securityMaintenance.keepLiveImage=false
+is the deliberate way to apply image.digest instead; NOTES.txt warns when it was not
+applied. lookup returns nothing under helm template or a client-side dry run: those
+render image.digest.
+*/}}
+{{- define "hikyo.server.image" -}}
+{{- $image := printf "%s@%s" .Values.image.repository (required "image.digest is required" .Values.image.digest) -}}
+{{- $maintenance := .Values.securityMaintenance | default dict -}}
+{{- if and (include "hikyo.maintenance.enabled" .) (ne (toString $maintenance.keepLiveImage) "false") -}}
+  {{- $live := lookup "apps/v1" "Deployment" .Release.Namespace (include "hikyo.fullname" .) | default dict -}}
+  {{- if dig "spec" "template" "metadata" "annotations" "hikyo.dev/security-release-manifest" "" $live -}}
+    {{- $pinned := printf "^%s@sha256:[0-9a-f]{64}$" (regexQuoteMeta .Values.image.repository) -}}
+    {{- range $live.spec.template.spec.containers -}}
+      {{- if and (eq .name "server") (regexMatch $pinned .image) -}}
+        {{- $image = .image -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- $image -}}
+{{- end -}}
+
+{{/*
+The coordinator's image. Its CronJob moves only after a proven healthy run, so a helm
+upgrade keeps the CronJob's live image: the live Deployment can run an unproven target
+while an update is failing. Without a CronJob yet it takes the server image.
+*/}}
+{{- define "hikyo.coordinator.image" -}}
+{{- $image := include "hikyo.server.image" . -}}
+{{- $maintenance := .Values.securityMaintenance | default dict -}}
+{{- if ne (toString $maintenance.keepLiveImage) "false" -}}
+  {{- $live := lookup "batch/v1" "CronJob" .Release.Namespace (include "hikyo.coordinator.name" .) | default dict -}}
+  {{- $pinned := printf "^%s@sha256:[0-9a-f]{64}$" (regexQuoteMeta .Values.image.repository) -}}
+  {{- range dig "spec" "jobTemplate" "spec" "template" "spec" "containers" (list) $live -}}
+    {{- if and (eq .name "coordinator") (regexMatch $pinned .image) -}}
+      {{- $image = .image -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- $image -}}
+{{- end -}}
+
+{{/*
+Coordinator object names. A CronJob name is limited to 52 characters, so a long release
+prefix is cut and suffixed with a hash of the full name, keeping releases in one namespace
+apart. The same names appear in the Role's resourceNames and in the config.
+*/}}
+{{- define "hikyo.coordinator.prefix" -}}
+{{- $full := include "hikyo.fullname" .root -}}
+{{- if le (len $full) (int .max) -}}
+{{- $full -}}
+{{- else -}}
+{{- printf "%s-%s" ($full | trunc (sub .max 9 | int) | trimSuffix "-") ($full | sha256sum | trunc 8) -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "hikyo.coordinator.name" -}}
+{{- printf "%s-security-maintenance" (include "hikyo.coordinator.prefix" (dict "root" . "max" 30)) -}}
+{{- end -}}
+
+{{- define "hikyo.coordinator.stage" -}}
+{{- printf "%s-security-stage" (include "hikyo.coordinator.prefix" (dict "root" . "max" 40)) -}}
+{{- end -}}
+
+{{- define "hikyo.coordinator.status" -}}
+{{- printf "%s-security-status" (include "hikyo.coordinator.prefix" (dict "root" . "max" 40)) -}}
+{{- end -}}
+
+{{/*
+Prints "true" when security maintenance is in effect: securityMaintenance.enabled (on by
+default) and upgrade.unattended.enabled (the operator's explicit choice). Without
+unattended upgrades the chart renders as it did before security maintenance existed.
+Tolerates --reuse-values.
+*/}}
+{{- define "hikyo.maintenance.enabled" -}}
+{{- if and (.Values.securityMaintenance | default dict).enabled (((.Values.upgrade | default dict).unattended | default dict).enabled) -}}true{{- end -}}
+{{- end -}}
+
+{{/*
+The feed trust root: the root.json shipped in this chart (files/security-feed-root.json,
+committed by the maintainers' key ceremony), unless securityMaintenance.coordinator.feedRoot
+overrides it. Never fetched from the feed it authorizes. Empty when neither exists.
+*/}}
+{{- define "hikyo.coordinator.feedRoot" -}}
+{{- $coordinator := (.Values.securityMaintenance | default dict).coordinator | default dict -}}
+{{- $coordinator.feedRoot | default (.Files.Get "files/security-feed-root.json") -}}
+{{- end -}}
+
+{{/*
+Prints "true" when the in-cluster coordinator is effective: security maintenance is in
+effect, the coordinator is enabled and a feed root exists. Without a root it renders
+nothing and never fails an install or upgrade; NOTES.txt says why.
+*/}}
+{{- define "hikyo.coordinator.enabled" -}}
+{{- $coordinator := (.Values.securityMaintenance | default dict).coordinator | default dict -}}
+{{- if and (include "hikyo.maintenance.enabled" .) $coordinator.enabled (include "hikyo.coordinator.feedRoot" . | trim) -}}true{{- end -}}
+{{- end -}}
+
+{{/* Labels differ from the server's name label, so neither its Service nor its NetworkPolicy selects these pods. */}}
+{{- define "hikyo.coordinator.podLabels" -}}
+app.kubernetes.io/name: {{ include "hikyo.name" . }}-security-maintenance
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end -}}
+
+{{/*
+Pod spec of the CronJob and of the enrollment hook. The state volume's root belongs to
+kubelet (fsGroup), and ConfigMap files mount by subPath because the coordinator refuses
+the symlinks of a ConfigMap directory.
+*/}}
+{{- define "hikyo.coordinator.podSpec" -}}
+{{- $root := .root -}}
+{{- $c := $root.Values.securityMaintenance.coordinator -}}
+{{- $name := include "hikyo.coordinator.name" $root -}}
+serviceAccountName: {{ $name }}
+automountServiceAccountToken: true
+restartPolicy: Never
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+containers:
+  - name: coordinator
+    image: {{ include "hikyo.coordinator.image" $root | quote }}
+    imagePullPolicy: IfNotPresent
+    args:
+      - security-maintenance
+      {{- range .args }}
+      - {{ . | quote }}
+      {{- end }}
+      - --config=/etc/hikyo/security-maintenance.json
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      readOnlyRootFilesystem: true
+    resources:
+      {{- toYaml $c.resources | nindent 6 }}
+    volumeMounts:
+      - name: state
+        mountPath: /var/lib/hikyo-security-maintenance
+      - name: config
+        mountPath: /etc/hikyo/security-maintenance.json
+        subPath: security-maintenance.json
+        readOnly: true
+      - name: config
+        mountPath: /etc/hikyo/security-feed-root.json
+        subPath: security-feed-root.json
+        readOnly: true
+      - name: status
+        mountPath: /run/hikyo-security-status
+      - name: tmp
+        mountPath: /tmp
+volumes:
+  - name: state
+    persistentVolumeClaim:
+      claimName: {{ $name }}-state
+  - name: config
+    configMap:
+      name: {{ $name }}
+      defaultMode: 0444
+  - name: status
+    emptyDir:
+      medium: Memory
+      sizeLimit: 1Mi
+  - name: tmp
+    emptyDir: {}
+{{- end -}}
+
 {{- define "hikyo.server.validate" -}}
+{{- if include "hikyo.coordinator.enabled" . -}}
+  {{- $coordinator := (.Values.securityMaintenance | default dict).coordinator | default dict -}}
+  {{- if and (((.Values.networkPolicy | default dict).egress | default dict).restricted) (empty ((($coordinator.egress | default dict).apiServer | default dict).to)) -}}
+    {{- fail "networkPolicy.egress.restricted requires securityMaintenance.coordinator.egress.apiServer.to: the coordinator cannot reach the Kubernetes API server otherwise" -}}
+  {{- end -}}
+{{- end -}}
 {{- $storage := .Values.database.storageMonitoring -}}
 {{- if $storage.enabled -}}
   {{- $url := required "database.storageMonitoring.kubeletURL is required" $storage.kubeletURL -}}

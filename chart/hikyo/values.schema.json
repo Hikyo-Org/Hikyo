@@ -10,6 +10,40 @@
     "upgrade"
   ],
   "properties": {
+    "securityMaintenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "keepLiveImage": {"type": "boolean"},
+        "coordinator": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "enroll": {"type": "boolean"},
+            "enrollOnUpgrade": {"type": "boolean"},
+            "feedRoot": {"type": "string"},
+            "feedURL": {"type": "string", "pattern": "^https://[^\\s?#]+$"},
+            "schedule": {"type": "string", "minLength": 1},
+            "stateSize": {"type": "string", "minLength": 1},
+            "storageClassName": {"type": "string"},
+            "acceptWorldWritableVolumeRoot": {"type": "boolean"},
+            "policy": {"type": "object"},
+            "resources": {"type": "object"},
+            "egress": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "apiServer": {"$ref": "#/definitions/networkPolicyDestination"},
+                "internet": {"$ref": "#/definitions/networkPolicyDestination"}
+              }
+            }
+          }
+        }
+      }
+    },
     "upgrade": {
       "type": "object",
       "additionalProperties": false,

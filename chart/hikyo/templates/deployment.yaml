@@ -10,6 +10,9 @@ metadata:
   name: {{ include "hikyo.fullname" . }}
   labels:
     {{- include "hikyo.labels" . | nindent 4 }}
+    {{- if include "hikyo.maintenance.enabled" . }}
+    hikyo.dev/security-maintenance: helm
+    {{- end }}
 spec:
   # Release changes require explicit full-stop maintenance. This prevents a
   # default Kubernetes rolling replacement from retaining old server writers.
@@ -98,7 +101,7 @@ spec:
         {{- end }}
         {{- end }}
         - name: root-key-stage
-          image: "{{ .Values.image.repository }}@{{ required "image.digest is required" .Values.image.digest }}"
+          image: {{ include "hikyo.server.image" . | quote }}
           imagePullPolicy: IfNotPresent
           args: ["__hikyo-stage-root-key"]
           volumeMounts:
@@ -114,7 +117,7 @@ spec:
             readOnlyRootFilesystem: true
       {{- if .Values.tls.existingSecret }}
         - name: tls-stage
-          image: "{{ .Values.image.repository }}@{{ required "image.digest is required" .Values.image.digest }}"
+          image: {{ include "hikyo.server.image" . | quote }}
           imagePullPolicy: IfNotPresent
           args: ["__hikyo-stage-tls", "--once"]
           volumeMounts:
@@ -133,7 +136,7 @@ spec:
       {{- end }}
       containers:
         - name: server
-          image: "{{ .Values.image.repository }}@{{ required "image.digest is required" .Values.image.digest }}"
+          image: {{ include "hikyo.server.image" . | quote }}
           imagePullPolicy: IfNotPresent
           args:
             - server
@@ -218,6 +221,10 @@ spec:
                   fieldPath: metadata.name
             {{- end }}
             {{- end }}
+            {{- if include "hikyo.coordinator.enabled" . }}
+            - name: HIKYO_SECURITY_MAINTENANCE_STATUS_FILE
+              value: /run/hikyo-security-status/status.json
+            {{- end }}
             - name: HIKYO_UPDATE_CHANNEL
               value: {{ .Values.updates.channel | quote }}
             - name: HIKYO_EXTERNAL_ORIGIN
@@ -290,6 +297,12 @@ spec:
               readOnly: true
             - name: tmp
               mountPath: /tmp
+            {{- if include "hikyo.coordinator.enabled" . }}
+            # The whole volume, not a subPath: only a directory mount sees the file change.
+            - name: security-status
+              mountPath: /run/hikyo-security-status
+              readOnly: true
+            {{- end }}
             {{- if and .Values.database.storageMonitoring.enabled (not (and .Values.rollout.enabled .Values.rollout.enrolled)) }}
             - name: storage-api-token
               mountPath: /var/run/secrets/kubernetes.io/serviceaccount
@@ -338,7 +351,7 @@ spec:
             {{- toYaml .Values.resources | nindent 12 }}
         {{- if .Values.tls.existingSecret }}
         - name: tls-stage-watch
-          image: "{{ .Values.image.repository }}@{{ required "image.digest is required" .Values.image.digest }}"
+          image: {{ include "hikyo.server.image" . | quote }}
           imagePullPolicy: IfNotPresent
           args: ["__hikyo-stage-tls"]
           volumeMounts:
@@ -397,6 +410,14 @@ spec:
             sizeLimit: 64Ki
         - name: tmp
           emptyDir: {}
+        {{- if include "hikyo.coordinator.enabled" . }}
+        # Published by the coordinator, which the server cannot reach. Optional so
+        # the Pod starts before the first run.
+        - name: security-status
+          configMap:
+            name: {{ include "hikyo.coordinator.status" . }}
+            optional: true
+        {{- end }}
         {{- if and .Values.rollout.enabled .Values.rollout.enrolled }}
         - name: rollout-enrollment
           configMap:

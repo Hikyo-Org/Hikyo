@@ -3,9 +3,12 @@
 package app
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/upgradebundle"
@@ -30,6 +33,29 @@ func TestAutomaticBundleFormatRejectsHistoricalCandidateBeforeApplication(t *tes
 				t.Fatalf("accepted=%t, err=%v", tc.accepted, err)
 			}
 		})
+	}
+}
+
+// A probe that times out or cannot start is not evidence about the release: it must not be
+// reported as a missing capability.
+func TestAutomaticBundleFormatDoesNotBlameTheReleaseForAProbeFailure(t *testing.T) {
+	slow := filepath.Join(t.TempDir(), "slow")
+	if err := os.WriteFile(slow, []byte("#!/bin/sh\nexec sleep 30\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	expired, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+	for name, probe := range map[string]struct {
+		ctx    context.Context
+		binary string
+	}{
+		"deadline":     {expired, slow},
+		"not-runnable": {t.Context(), filepath.Join(t.TempDir(), "absent")},
+	} {
+		err := checkAutomaticBundleFormat(probe.ctx, probe.binary)
+		if err == nil || strings.Contains(err.Error(), "lacks platform-specific bundle support") {
+			t.Fatalf("%s: err=%v", name, err)
+		}
 	}
 }
 

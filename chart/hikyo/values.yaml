@@ -93,6 +93,86 @@ upgrade:
   # Explicit operator assertion AFTER every pre-gate writer has stopped.
   legacyWritersStopped: false
 
+# Security maintenance, on by default but effective only when upgrade.unattended.enabled
+# is true: unattended upgrades need a scratch database and a state volume only the
+# operator can provide, so they stay the operator's explicit choice. With them off the
+# chart renders as if this section did not exist. When effective it labels the
+# Deployment so the coordinator accepts this Helm release as its owner. After the
+# coordinator replaces the image, helm upgrade keeps it and ignores image.digest.
+# See docs/operations/security-maintenance.md.
+securityMaintenance:
+  enabled: true
+  # Once the coordinator has replaced the server image, helm upgrade keeps that image
+  # and ignores image.digest, so a routine upgrade never moves the server backwards.
+  # Set false on one upgrade to apply image.digest on purpose, then return to true.
+  keepLiveImage: true
+  # Run the coordinator in this cluster as a CronJob, with its own ServiceAccount, so
+  # no separate host or kubeconfig is needed. The server keeps no token and no RBAC.
+  # It renders nothing, and never fails an install or upgrade, while no feed root exists.
+  # Setting false, turning maintenance or unattended upgrades off, or removing the only
+  # feed root (feedRoot emptied with none shipped in the chart) deletes its state volume:
+  # the enrollment and any rollback journal. Do it only while status shows no operation
+  # in progress.
+  coordinator:
+    enabled: true
+    # CONSENT. true renders a one-shot post-install Job that enrolls this installation:
+    # installing the chart with unattended upgrades on authorizes automatic replacement
+    # of the server image, under the policy below, by the signed releases the feed
+    # names. Set false to withhold it; the CronJob then reports explicit_enrollment_required.
+    # false does not revoke an enrollment already made; set enabled=false to stop updates,
+    # after which re-enabling needs a new enrollment.
+    # Enrolling pins the live Deployment's UID, so a replaced Deployment is refused.
+    enroll: true
+    # Also run the enrollment Job on helm upgrade. Off by default: a failed hook on
+    # upgrade fails the release, and an upgraded release did not consent through the default.
+    enrollOnUpgrade: false
+    # Override for the feed trust root. Empty uses files/security-feed-root.json, which
+    # ships in the chart. Never fetched from the feed it authorizes. With neither, the
+    # coordinator is not rendered and NOTES.txt says so.
+    feedRoot: ""
+    feedURL: https://hikyo.app/security-feed/
+    schedule: "*/15 * * * *"
+    # Private coordinator state: feed floors, journal, downloaded release payloads.
+    stateSize: 2Gi
+    storageClassName: ""
+    # RISK. true accepts a state volume whose root any local user can write without the
+    # sticky bit, as k3s local-path leaves it (0777). Another user who can write that
+    # root could swap the state directory: the enrollment, journal and downloads.
+    # Prefer chmod o-w on the root from an initContainer running as the volume owner,
+    # or a storage class that does not leave the root world-writable.
+    acceptWorldWritableVolumeRoot: false
+    # Passed through as the coordinator's policy (snake_case keys). See the runbook.
+    policy:
+      mode: automatic
+      channel: stable
+      upgrade_class: compatible
+      allow_maintenance: true
+      minimum_severity: low
+      window_start_minute: 0
+      window_duration_minutes: 0
+      urgent_severity: critical
+    resources: {}
+    # Used only with networkPolicy.egress.restricted, which selects the server pods and
+    # not these. Under it the coordinator gets its own policy: DNS, the Kubernetes API
+    # server (set apiServer.to, for example the control plane address; required) and the
+    # public feed, GitHub and registry on 443. This never widens the server's policy.
+    egress:
+      apiServer:
+        to: []
+        ports:
+          - protocol: TCP
+            port: 443
+          - protocol: TCP
+            port: 6443
+      internet:
+        to:
+          - ipBlock:
+              cidr: 0.0.0.0/0
+              except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+        ports:
+          - protocol: TCP
+            port: 443
+
 # Canonical browser-visible origin. Paths, query strings, fragments, userinfo,
 # and trailing slashes are refused.
 #
