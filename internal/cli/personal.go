@@ -149,7 +149,6 @@ func runPersonal(ctx context.Context, ios IO, args []string) (returnErr error) {
 		}
 		t := personalTable(list.Items)
 		t.JSON = list
-		personalWarnings(ios, list.Items...)
 		return Render(ios.Stdout, f, t)
 
 	case "get":
