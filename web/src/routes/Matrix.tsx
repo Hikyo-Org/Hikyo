@@ -1914,7 +1914,7 @@ function MatrixLegend() {
           <dd>a secret is set; <Glyph name="lock" label="lock" /> marks the key. Open the cell to reveal it, if permitted</dd>
           <dt className="mono">· absent</dt>
           <dd>not set here, so nothing is delivered</dd>
-          <dt className="mono"><Glyph name="alert" label="alert" /> required · absent</dt>
+          <dt className="mono"><Glyph name="alert" label="alert" /> required ·&nbsp;absent</dt>
           <dd>required in this environment and absent: publish is blocked</dd>
           <dt className="mono"><Glyph name="cross" label="cross" /> value</dt>
           <dd>the value is set but fails its declaration</dd>

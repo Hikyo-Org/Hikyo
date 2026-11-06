@@ -691,7 +691,12 @@ async function expectLegendStaysOnScreen(canvasElement: HTMLElement): Promise<vo
   await expect(box.width).toBeGreaterThanOrEqual(200);
   await expect(box.left).toBeGreaterThanOrEqual(card.getBoundingClientRect().left);
   await expect(box.right).toBeLessThanOrEqual(card.getBoundingClientRect().right);
-  // Every description's text fits its column, not just the box around them.
+  // Every term and description fits its column, not just the box around them.
+  for (const dt of body.querySelectorAll<HTMLElement>('dt')) {
+    const range = document.createRange();
+    range.selectNodeContents(dt);
+    await expect(range.getBoundingClientRect().right).toBeLessThanOrEqual(dt.getBoundingClientRect().right + 0.5);
+  }
   for (const dd of body.querySelectorAll<HTMLElement>('dd')) {
     const range = document.createRange();
     range.selectNodeContents(dd);
