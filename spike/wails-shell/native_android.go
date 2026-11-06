@@ -22,6 +22,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -39,6 +40,7 @@ type nativeStream struct {
 	pw        *io.PipeWriter
 	cancel    context.CancelFunc
 	wroteHead bool
+	lastNL    bool // the last byte written to an event stream was a newline
 }
 
 func (s *nativeStream) Header() http.Header { return s.header }
@@ -50,7 +52,38 @@ func (s *nativeStream) WriteHeader(code int) {
 }
 func (s *nativeStream) Write(p []byte) (int, error) {
 	s.WriteHeader(http.StatusOK)
+	if pad := ssePad.Load(); pad > 0 && strings.HasPrefix(strings.ToLower(s.header.Get("Content-Type")), "text/event-stream") {
+		return s.writeSSE(p, int(pad))
+	}
 	return s.pw.Write(p)
+}
+
+// ssePad is the size of the comment block added after each event. The WebView releases a stream in 2048-byte units, so
+// without it a live event waits until enough later bytes arrive (measured on WebView 133: 5 events 800 ms apart all
+// arrived at stream end). An event of 2048 bytes or more is delivered at once; /sse-pad?n= changes it, 0 turns it off.
+var ssePad atomic.Int64
+
+func init() { ssePad.Store(2048) }
+
+// writeSSE writes p with a comment block after each blank line (an event boundary), never inside an event. lastNL carries the
+// boundary state across Writes, and a CR is ignored so CRLF streams count too.
+func (s *nativeStream) writeSSE(p []byte, pad int) (int, error) {
+	comment := ": " + strings.Repeat(" ", pad) + "\n\n"
+	var out []byte
+	for _, b := range p {
+		out = append(out, b)
+		switch {
+		case b == '\r':
+		case b == '\n' && s.lastNL:
+			out, s.lastNL = append(out, comment...), false
+		default:
+			s.lastNL = b == '\n'
+		}
+	}
+	if _, err := s.pw.Write(out); err != nil {
+		return 0, err
+	}
+	return len(p), nil
 }
 func (s *nativeStream) Flush() {} // the pipe is unbuffered, so every Write is already delivered to the reader
 

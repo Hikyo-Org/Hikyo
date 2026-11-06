@@ -5,7 +5,7 @@
 set -eu
 tags=production,android,probe
 [ "${1:-}" = stock ] && tags=$tags,stockhost
-ndk=$(ls -d "$ANDROID_HOME"/ndk/* | sort -V | tail -1)
+ndk=$(find "$ANDROID_HOME/ndk" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
 cc=$ndk/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android24-clang
 wails3 android overlay:gen >/dev/null
 mkdir -p build/android/app/src/main/jniLibs/arm64-v8a
@@ -16,13 +16,17 @@ app=build/android/app; java=$app/src/main/java/com/wails/app
 if [ "${1:-}" = stock ]; then
   [ -f $java/MainActivity.java.orig ] && cp $java/MainActivity.java.orig $java/MainActivity.java
   rm -f $java/SpikeBridge.java $app/src/main/assets/spike-shim.js
+  [ -f $java/WailsForegroundService.java.orig ] && cp $java/WailsForegroundService.java.orig $java/WailsForegroundService.java
+  sed -i.bak 's/foregroundServiceType="shortService"/foregroundServiceType="dataSync"/' $app/src/main/AndroidManifest.xml
 else
   app=build/android/app; java=$app/src/main/java/com/wails/app
   # idempotent: start from the generated MainActivity, then patch
   [ -f $java/MainActivity.java.orig ] || cp $java/MainActivity.java $java/MainActivity.java.orig
   cp $java/MainActivity.java.orig $java/MainActivity.java
+  [ -f $java/WailsForegroundService.java.orig ] || cp $java/WailsForegroundService.java $java/WailsForegroundService.java.orig
   patch -s -p1 -d $java < android-host/MainActivity.patch
-  cp android-host/java/SpikeBridge.java $java/
+  cp android-host/java/SpikeBridge.java android-host/java/WailsForegroundService.java $java/
+  sed -i.bak 's/foregroundServiceType="dataSync"/foregroundServiceType="shortService"/' $app/src/main/AndroidManifest.xml
   mkdir -p $app/src/main/assets && cp android-host/assets/spike-shim.js $app/src/main/assets/
   sed -i.bak 's/androidx.webkit:webkit:1.9.0/androidx.webkit:webkit:1.12.1/' $app/build.gradle
 fi
