@@ -20,8 +20,9 @@ import (
 // principal, so every method here acts on the caller's own value, except the
 // member methods, which see and remove metadata only.
 
-// MaxPersonalValuesPerProject matches the resolved-cell budget.
-const MaxPersonalValuesPerProject = 100_000
+// MaxPersonalValuesPerProject matches the resolved-cell budget. It is a var
+// only so a test can lower it; nothing in production writes it.
+var MaxPersonalValuesPerProject int64 = 100_000
 
 // Notice causes (personal-values ADR, Removal notices).
 const (
