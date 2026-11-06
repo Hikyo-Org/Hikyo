@@ -44,10 +44,22 @@ single-use link the invitation mailed to them.
 5. Answer `202` with `{id, email, template, created_at, expires_at}`.
 
 The request performs the same reads and writes whether or not the address
-matched, and it never contacts the mail server. After commit, and only for a
-matched account, one background send is attempted within the mail per-send
-deadline. Its intent and outcome are recorded on the instance trail only. A
-failed or lost send is not reported to the administrator, who can send again.
+matched, and it never contacts the mail server. The transaction writes a
+`member.email_invitation_dispatch` intent on the instance trail for every send,
+and one background task follows the commit for every send, so every dispatch
+intent receives exactly one `member.email_invitation_mail_outcome`:
+
+- A matched account is mailed once within the mail per-send deadline. The
+  outcome is `success` or `failure`, with `mail_sent` stating whether the mail
+  was handed to the transport. A send dropped because the background
+  concurrency bound is full records `failure` without dialling.
+- An unmatched address is never dialled. Its outcome is `success` with
+  `mail_sent: false`, stating that no mail was sent.
+
+Outcomes live on the instance trail only. A failed or lost send is counted
+(`hikyo_email_invitation_mail_failures_total`) but not reported to the
+administrator, who can send again. Stopping the application waits for the
+in-flight background tasks before the database closes.
 
 Uniformity rules:
 
@@ -106,6 +118,12 @@ While an invitation is pending, nothing about the person changes: no grant, no
 session or generation change, no developer-credential change, and no change to
 the organisation footprint or to credential-reset classification. The table is
 not part of the footprint.
+
+Erasing the matched account (privacy erasure) unbinds the row (`account_id`
+becomes null) instead of deleting it. The row stays in the pending list with
+the same fields and expires on the same date as an unmatched row, but it can
+never validate: acceptance answers the uniform `404`. The `account_id` foreign
+key is `ON DELETE SET NULL` for the same reason.
 
 Accepting is an ordinary privilege increase. When the template creates a grant,
 the person's generation advances and all of their sessions end, the current
