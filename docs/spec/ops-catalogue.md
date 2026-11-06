@@ -111,7 +111,8 @@ Pi-4 fit: one serial pacer per credential at ≥ 1 s spacing bounds adapter CPU 
 | Send budget | 30/hour per organisation; overflow is the uniform `429` | fixed |
 | Live pending invitations | 200 per organisation; overflow is the uniform `429` | fixed |
 | Mailer | required; without it every send is the uniform `mailer-unconfigured` refusal | fixed |
-| Mail attempts | one background attempt per matched send, within the mail per-send deadline; none for an unknown address | fixed |
+| Mail attempts | one background attempt per matched send, within the mail per-send deadline; none for an unknown address; sends are never dropped and are bounded only by the send budget; stopping cancels in-flight attempts and records their failure | fixed |
+| Failure metric | `hikyo_email_invitation_mail_failures_total` counts failed or cancelled background sends, owner-wide across configuration generations; no address, organisation or SMTP response in labels | fixed |
 | Expired rows | deleted by the existing hourly pruning run | fixed |
 
 ## Open registration and social sign-in ([ops-spec.md](../adr/ops-spec.md) amendment 2026-09-03, [#589](https://github.com/Hikyo-Org/Hikyo/issues/589); spec [social-signin.md](./social-signin.md))
