@@ -178,6 +178,16 @@ func runQueryCountChecks(t *testing.T, db *store.DB) {
 			}
 		}
 	})
+	t.Run("personal_owner_fallback_parity", func(t *testing.T) {
+		// The owner fallback (personal-values ADR) adds one owner read to a
+		// human's list or delete denial; a missing chain performs it too.
+		human := authz.Identity{Principal: bob, Class: domain.ClassHuman}
+		for _, scope := range []domain.Scope{{Org: orgA, Project: prjA1, Env: envA1}, {Org: orgA, Project: prjA1, Env: "env_missing"}} {
+			if n, err := countedAuthorizeOp(t, db, human, authz.OpPersonalValueList, scope); !errors.Is(err, domain.ErrNotFound) || n != 4 {
+				t.Fatalf("personal list refusal at %s issued %d queries, error=%v; want 4 (chain + grants + rules + owner)", scope.Env, n, err)
+			}
+		}
+	})
 	t.Run("cross_org_denial_on_existing", func(t *testing.T) {
 		n, err := countedAuthorize(t, db, bob, domain.Scope{Org: orgA, Project: prjA1, Env: envA1})
 		if !errors.Is(err, domain.ErrNotFound) {
