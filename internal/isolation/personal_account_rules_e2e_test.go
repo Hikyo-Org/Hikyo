@@ -116,7 +116,7 @@ func TestPersonalAccountNetworkResetRefusesLinkedIdentityAtConsumption(t *testin
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM credential_authorities WHERE id='`+reset.AuthorityID+`' AND consumed_at IS NULL`); n != 1 {
 			t.Fatal("a refused reset spent its authority")
 		}
-		if n := queryInt(t, db, `SELECT COUNT(*) FROM audit_instance_events WHERE type='auth.credential_authority_refused' AND payload LIKE '%purpose%'`); n != 1 {
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM audit_instance_events WHERE type='auth.credential_authority_refused' AND payload LIKE '%linked-identity%'`); n != 1 {
 			t.Fatalf("consumption refusal audited %d times", n)
 		}
 		if _, err := e.admin.auth.LocalLogin(ctx, "pv-reset-consume-admin", acctNewPassword, service.ArtifactCLI); err == nil {

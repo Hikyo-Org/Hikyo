@@ -1198,7 +1198,7 @@ var registry = map[EventType]TypeSpec{
 			// oracle the response deliberately is not. `purpose` is a claim
 			// refusal (#610): a recovery-issued authority, or an account that
 			// already holds a credential.
-			"cause": {Kind: KindString, Required: true, Enum: []string{"malformed", "unknown", "consumed", "expired", "epoch-superseded", "purpose"}},
+			"cause": {Kind: KindString, Required: true, Enum: []string{"malformed", "unknown", "consumed", "expired", "epoch-superseded", "purpose", "linked-identity"}},
 		},
 	},
 	EventAuthThrottleCrossed: {

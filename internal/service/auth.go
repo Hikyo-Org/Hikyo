@@ -830,7 +830,7 @@ func (s *Auth) EstablishCredential(ctx context.Context, authority, password stri
 				return err
 			}
 			if len(linked) > 0 {
-				if aerr := s.refuseAuthorityIn(ctx, az, "purpose"); aerr != nil {
+				if aerr := s.refuseAuthorityIn(ctx, az, "linked-identity"); aerr != nil {
 					return aerr
 				}
 				refused = domain.ErrUnauthenticated
