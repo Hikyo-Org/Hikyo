@@ -533,17 +533,13 @@ func TestFreezeKnownFalseRefusals(t *testing.T) {
 		refusedOnlyBy(t, contractViolations(t, oauth(`{"read":"Read"}`), oauth(`{"read":"Read it"}`)), "api-security-component-oauth-scope-changed")
 	})
 	t.Run("OAuth scope added", func(t *testing.T) {
-		violations := contractViolations(t, oauth(`{"read":"Read"}`), oauth(`{"read":"Read","write":"Write"}`))
-		if !hasContractViolation(violations) {
-			t.Fatalf("the document layer allowed a new scope:\n%s", render(violations))
-		}
+		refusedOnlyBy(t, contractViolations(t, oauth(`{"read":"Read"}`), oauth(`{"read":"Read","write":"Write"}`)),
+			"api-security-component-oauth-scope-added", "hikyo-contract-added")
 	})
 	t.Run("single-branch oneOf wrapper in a parameter", func(t *testing.T) {
 		schema := `{"type":"object","properties":{"a":{"type":"string"}}}`
-		violations := contractViolations(t, inPosition("param", schema), inPosition("param", `{"oneOf":[`+schema+`]}`))
-		if !hasContractViolation(violations) || !slices.ContainsFunc(violations, func(v api.Violation) bool { return v.ID == "hikyo-property-removed" }) {
-			t.Fatalf("expected both freezeRemovals and the document layer to refuse it:\n%s", render(violations))
-		}
+		refusedOnlyBy(t, contractViolations(t, inPosition("param", schema), inPosition("param", `{"oneOf":[`+schema+`]}`)),
+			"hikyo-contract-added", "hikyo-contract-removed", "hikyo-property-removed")
 	})
 	t.Run("path-level header parameter shadowed in another case", func(t *testing.T) {
 		doc := func(pathLevel string) string {
