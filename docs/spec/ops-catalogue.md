@@ -102,6 +102,18 @@ Pi-4 fit: one serial pacer per credential at ≥ 1 s spacing bounds adapter CPU 
 | Username collision | `409 conflict`; the transaction leaves no principal, account or grant behind | fixed |
 | Delivery | out of band (HTTP response to the inviter, or the CLI print triad); no email channel | fixed |
 
+## Email invitation of an existing account ([email-invitations.md](./email-invitations.md), #1207)
+
+| Entry | Default | Scope |
+|---|---|---|
+| Invitation lifetime | 7 d (the [ops-spec](../adr/ops-spec.md) invitation expiry) | fixed |
+| Invitation use | single use; bound to the account matched at send; uniform `404` otherwise | fixed |
+| Send budget | 30/hour per organisation; overflow is the uniform `429` | fixed |
+| Live pending invitations | 200 per organisation; overflow is the uniform `429` | fixed |
+| Mailer | required; without it every send is the uniform `mailer-unconfigured` refusal | fixed |
+| Mail attempts | one background attempt per matched send, within the mail per-send deadline; none for an unknown address | fixed |
+| Expired rows | deleted by the existing hourly pruning run | fixed |
+
 ## Open registration and social sign-in ([ops-spec.md](../adr/ops-spec.md) amendment 2026-09-03, [#589](https://github.com/Hikyo-Org/Hikyo/issues/589); spec [social-signin.md](./social-signin.md))
 
 | Entry | Default | Scope |
