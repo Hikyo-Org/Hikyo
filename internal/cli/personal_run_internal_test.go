@@ -51,8 +51,12 @@ func TestRunRefusesWithheldAndNoticedPersonalKeys(t *testing.T) {
 }
 
 // The human-session path refuses a key the caller holds a personal value or
-// notice for, and an older server without the operation holds none.
+// notice for, lets a required key the caller holds nothing for take the shared
+// value (this path skips the requirement check), and an older server without
+// the operation holds none.
 func TestHumanSessionRunRefusesHeldPersonalKeys(t *testing.T) {
+	notice := apigen.PersonalValueNoticeCauseKeyRenamed
+	required := true
 	for _, revision := range []int{api.Revision, 14} {
 		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -60,22 +64,65 @@ func TestHumanSessionRunRefusesHeldPersonalKeys(t *testing.T) {
 				_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture", ApiRevision: revision})
 				return
 			}
-			_ = json.NewEncoder(w).Encode(apigen.PersonalValueList{Items: []apigen.PersonalValueEntry{{Name: "MINE", Set: true}}})
+			_ = json.NewEncoder(w).Encode(apigen.PersonalValueList{Items: []apigen.PersonalValueEntry{
+				{Name: "MINE", Set: true},
+				{Name: "NOTICED", Notice: &notice},
+				{Name: "REQUIRED_ONLY", Required: &required},
+			}})
 		}))
 		client, err := NewClient(pinnedTestEntry("test", srv), "human-test")
 		if err != nil {
 			t.Fatal(err)
 		}
 		project := api.PathPrefix + "/orgs/org_test/projects/prj_test"
-		err = refuseHumanPersonalKeys(t.Context(), client, project, "env_test", []string{"SHARED_ONLY", "MINE"})
-		if revision == api.Revision && (err == nil || !strings.Contains(err.Error(), "MINE")) {
-			t.Fatalf("held key not refused: %v", err)
+		err = refuseHumanPersonalKeys(t.Context(), client, project, "env_test", []string{"SHARED_ONLY", "MINE", "NOTICED", "REQUIRED_ONLY"})
+		if revision == api.Revision {
+			var failure *Error
+			if !errors.As(err, &failure) || failure.Code != ExitRefused {
+				t.Fatalf("held keys not refused: %v", err)
+			}
+			for _, want := range []string{"MINE", "NOTICED", "hikyo personal list"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("refusal does not name %q: %v", want, err)
+				}
+			}
+			if strings.Contains(err.Error(), "REQUIRED_ONLY") || strings.Contains(err.Error(), "SHARED_ONLY") {
+				t.Fatalf("refusal names a key the caller holds nothing for: %v", err)
+			}
 		}
 		if revision < api.Revision && err != nil {
 			t.Fatalf("older server refused: %v", err)
 		}
-		if err := refuseHumanPersonalKeys(t.Context(), client, project, "env_test", []string{"SHARED_ONLY"}); err != nil {
-			t.Fatalf("unheld key refused: %v", err)
+		if err := refuseHumanPersonalKeys(t.Context(), client, project, "env_test", []string{"SHARED_ONLY", "REQUIRED_ONLY"}); err != nil {
+			t.Fatalf("unheld or required-only key refused: %v", err)
+		}
+		srv.Close()
+	}
+}
+
+// A failed meta or personal-values lookup refuses the run rather than
+// treating the caller as holding nothing and serving the shared value.
+func TestHumanSessionRunFailsClosedOnLookupError(t *testing.T) {
+	for _, failing := range []string{"/meta", "/personal-values"} {
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasSuffix(r.URL.Path, failing) {
+				http.Error(w, "boom", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if r.URL.Path == api.PathPrefix+"/meta" {
+				_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture", ApiRevision: api.Revision})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(apigen.PersonalValueList{})
+		}))
+		client, err := NewClient(pinnedTestEntry("test", srv), "human-test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		project := api.PathPrefix + "/orgs/org_test/projects/prj_test"
+		if err := refuseHumanPersonalKeys(t.Context(), client, project, "env_test", []string{"SHARED_ONLY"}); err == nil {
+			t.Fatalf("%s failure did not refuse the run", failing)
 		}
 		srv.Close()
 	}

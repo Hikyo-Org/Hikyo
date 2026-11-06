@@ -18,6 +18,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/compose"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
@@ -680,14 +681,24 @@ func personalRefusalCause(reason string) string {
 
 // refuseHumanPersonalKeys is the human-session path's half of that rule: the
 // export it uses never carries personal values, so a key the caller holds a
-// value or notice for (by hikyo personal list) refuses the run. A server older
-// than the personal-values revision holds none.
+// value or notice for (by hikyo personal list) refuses the run. A checklist
+// row for a required key the caller holds nothing for does not: this path
+// skips the requirement check, so the shared value flows. Only a server older
+// than the personal-values revision holds none; any other lookup failure fails.
 func refuseHumanPersonalKeys(ctx context.Context, client *Client, project, env string, names []string) error {
 	meta, err := client.Meta(ctx)
 	if err != nil {
 		return err
 	}
-	if CheckRevision(meta, "listMyPersonalValues") != nil {
+	ops, err := api.Operations()
+	if err != nil {
+		return err
+	}
+	op, ok := ops["listMyPersonalValues"]
+	if !ok {
+		return failf(ExitInternal, "this client has no contract entry for %q", "listMyPersonalValues")
+	}
+	if meta.ApiRevision < op.MinRevision {
 		return nil
 	}
 	var list apigen.PersonalValueList
@@ -700,13 +711,13 @@ func refuseHumanPersonalKeys(ctx context.Context, client *Client, project, env s
 	}
 	var refused []string
 	for _, e := range list.Items {
-		if injected[e.Name] {
+		if injected[e.Name] && (e.Set || e.Notice != nil) {
 			refused = append(refused, e.Name)
 		}
 	}
 	if len(refused) > 0 {
 		slices.Sort(refused)
-		return failf(ExitRefused, "hikyo run --use-human-session: refusing key(s) %s: you hold a personal value or notice for them, which only a developer credential (hikyo dev session --personal) delivers",
+		return failf(ExitRefused, "hikyo run --use-human-session: refusing key(s) %s: you hold a personal value or removal notice for them (see hikyo personal list), and only a developer credential (hikyo dev session --personal) delivers personal values",
 			strings.Join(refused, ", "))
 	}
 	return nil
