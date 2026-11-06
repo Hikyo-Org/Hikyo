@@ -2944,8 +2944,9 @@ export type PersonalValueEntry = {
     suspended?: boolean;
     suspended_at?: string;
     /**
-     * Schema rules this value does not satisfy. A warning to the owner
-     * only: no rule ever refuses a personal value, at write or delivery.
+     * Schema rules this value does not satisfy, returned by set and
+     * reveal only (a list never decrypts). A warning to the owner only:
+     * no rule ever refuses a personal value, at write or delivery.
      *
      */
     warnings?: Array<string>;
@@ -3317,7 +3318,7 @@ export type DefinitionsEnvironmentDeletion = {
     name: string;
     occurrences: number;
     /**
-     * Personal values the deletion removes. Absent from servers older than revision 15.
+     * Personal values the deletion would remove, counted when the plan was made. Apply removes whatever the environment holds then. Absent from servers older than revision 15.
      */
     personal_values?: number;
 };

@@ -201,9 +201,7 @@ func normalizePersonalRequired(k Key, req, forb Presence) (*Presence, error) {
 	if k.PersonalRequiredIn == nil {
 		return nil, nil
 	}
-	if schema.PresenceMode(k.PersonalRequiredIn.Mode) == schema.PresenceAll {
-		return nil, invalidDetail("key %q `personal_required_in` mode `all` is not allowed; use `none` or `explicit`", k.Name)
-	}
+	// schema.CheckPersonalRequired below refuses mode `all`.
 	p, err := normalizePresence("personal_required_in", k.Name, *k.PersonalRequiredIn)
 	if err != nil {
 		return nil, err

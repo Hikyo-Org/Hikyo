@@ -64,7 +64,14 @@ func TestPersonalOwnerListAndDeleteWhateverTheirGrants(t *testing.T) {
 			t.Fatalf("granted owner list: queries=%d err=%v; want 2 and a proof", n, err)
 		}
 
-		// The owner loses read and reveal; their values stay theirs to manage.
+		// Another key is personally required here: the owner's checklist lists it.
+		execRaw(t, db, `INSERT INTO key_personal_required_environments (org_id, project_id, key_id, environment_id) VALUES ('org_a', 'prj_a1', 'key_`+ceremonySecretB+`', 'env_a1')`)
+		if own, err := e.pv.List(ctx, service.Bearer(e.admin.token), envScope(envA1)); err != nil || len(own) != 2 {
+			t.Fatalf("granted owner list with a required key: err=%v entries=%d, want 2", err, len(own))
+		}
+
+		// The owner loses read and reveal; their values stay theirs to manage,
+		// and the checklist (keys they hold nothing for) is no longer shown.
 		execRaw(t, db, `DELETE FROM grant_origins WHERE grant_id IN ('g_cer_personal-owner_read', 'g_cer_personal-owner_reveal')`)
 		execRaw(t, db, `DELETE FROM grants WHERE id IN ('g_cer_personal-owner_read', 'g_cer_personal-owner_reveal')`)
 		owned := service.Bearer(e.admin.token)

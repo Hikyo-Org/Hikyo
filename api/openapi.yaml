@@ -20591,8 +20591,9 @@ components:
           maxItems: 32
           items: {type: string, maxLength: 512}
           description: |
-            Schema rules this value does not satisfy. A warning to the owner
-            only: no rule ever refuses a personal value, at write or delivery.
+            Schema rules this value does not satisfy, returned by set and
+            reveal only (a list never decrypts). A warning to the owner only:
+            no rule ever refuses a personal value, at write or delivery.
         value:
           type: string
           description: Present only on reveal.
@@ -21131,7 +21132,10 @@ components:
           type: integer
           format: int64
           minimum: 0
-          description: Personal values the deletion removes. Absent from servers older than revision 15.
+          description: >-
+            Personal values the deletion would remove, counted when the plan
+            was made. Apply removes whatever the environment holds then.
+            Absent from servers older than revision 15.
 
     DefinitionsPlanDiff:
       type: object

@@ -112,6 +112,10 @@ func (c *presenceCatalogueReader) ListPresence(context.Context, authz.Proof) ([]
 	c.calls = append(c.calls, "presence")
 	return c.rows, nil
 }
+func (c *presenceCatalogueReader) PersonalRequired(context.Context, authz.Proof) ([]store.KeyPresence, error) {
+	c.calls = append(c.calls, "personal")
+	return nil, nil
+}
 func (c *presenceCatalogueReader) ListGroups(context.Context, authz.Proof) ([]store.CatalogueGroup, error) {
 	c.calls = append(c.calls, "groups")
 	return []store.CatalogueGroup{{ID: "group", Name: "database"}}, nil
@@ -143,7 +147,7 @@ func TestBuildCurrentStatePresenceEquivalence(t *testing.T) {
 			if cur.SchemaRevision != 73 || len(cur.Keys) != len(keys) || cur.KeyGroups[0].ID != "group" || cur.Environments[0].ID != "env_b" {
 				t.Fatalf("snapshot metadata/order changed: %+v", cur)
 			}
-			if want := []string{"keys", "presence", "groups", "revision"}; !reflect.DeepEqual(cat.calls, want) {
+			if want := []string{"keys", "presence", "personal", "groups", "revision"}; !reflect.DeepEqual(cat.calls, want) {
 				t.Fatalf("catalogue reads = %v, want %v", cat.calls, want)
 			}
 			for i, key := range keys {

@@ -193,11 +193,11 @@ func (a *TxAuthorizer) DeveloperDeliveryGrants(ctx context.Context, caller Ident
 	}, nil
 }
 
-// PersonalOwnerHolds answers, live, whether owner still holds read and reveal
+// PersonalOwnerHasAccess answers, live, whether owner still holds read and reveal
 // over the whole environment, from grants or whole-environment rules: the
 // access half of the personal-value retention predicate (#1235). An
 // environment that no longer resolves is answered false.
-func (a *TxAuthorizer) PersonalOwnerHolds(ctx context.Context, owner domain.PrincipalID, scope domain.Scope) (bool, error) {
+func (a *TxAuthorizer) PersonalOwnerHasAccess(ctx context.Context, owner domain.PrincipalID, scope domain.Scope) (bool, error) {
 	chain, err := a.r.ResolveChain(ctx, scope)
 	if errors.Is(err, domain.ErrNotFound) {
 		return false, nil

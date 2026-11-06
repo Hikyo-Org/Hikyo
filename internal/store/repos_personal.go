@@ -68,6 +68,13 @@ type PersonalValueNotice struct {
 }
 
 // PersonalValueRepo is the proof-bound personal value surface.
+// PersonalValueReader is the read side the owner's masked list needs on a
+// read transaction: the owner's own rows and notices, bound from the proof.
+type PersonalValueReader interface {
+	ListOwn(ctx context.Context, p authz.Proof) ([]PersonalValue, error)
+	NoticesOwn(ctx context.Context, p authz.Proof) ([]PersonalValueNotice, error)
+}
+
 type PersonalValueRepo interface {
 	// Put replaces the owner's value for keyID in the proof's environment.
 	// The old row is destroyed, never kept as history.
@@ -828,3 +835,6 @@ func (r pgPersonalValues) DeleteExpired(ctx context.Context, p authz.Proof, id s
 	n, err := r.q.DeleteExpiredPersonalValue(ctx, pggen.DeleteExpiredPersonalValueParams{ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ID: id, CutoffTime: pgNullTimestamp(cutoff)})
 	return n == 1, err
 }
+
+func (s sqliteReadRepos) PersonalValues() PersonalValueReader { return s.r.PersonalValues() }
+func (s pgReadRepos) PersonalValues() PersonalValueReader     { return s.r.PersonalValues() }

@@ -6890,7 +6890,7 @@ type DefinitionsEnvironmentDeletion struct {
 	Name        string `json:"name"`
 	Occurrences int64  `json:"occurrences"`
 
-	// PersonalValues Personal values the deletion removes. Absent from servers older than revision 15.
+	// PersonalValues Personal values the deletion would remove, counted when the plan was made. Apply removes whatever the environment holds then. Absent from servers older than revision 15.
 	PersonalValues *int64 `json:"personal_values,omitempty"`
 }
 
@@ -9400,8 +9400,9 @@ type PersonalValueEntry struct {
 	// Value Present only on reveal.
 	Value *string `json:"value,omitempty"`
 
-	// Warnings Schema rules this value does not satisfy. A warning to the owner
-	// only: no rule ever refuses a personal value, at write or delivery.
+	// Warnings Schema rules this value does not satisfy, returned by set and
+	// reveal only (a list never decrypts). A warning to the owner only:
+	// no rule ever refuses a personal value, at write or delivery.
 	Warnings *[]string `json:"warnings,omitempty"`
 }
 

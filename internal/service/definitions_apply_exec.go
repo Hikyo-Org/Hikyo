@@ -972,7 +972,8 @@ func (s *Definitions) updateKey(ctx context.Context, r store.Repos, caller authz
 	if upd.DeclChanged || upd.PresenceChanged || upd.PersonalChanged {
 		if err := insertDefinitionEvent(ctx, r, p, caller, audit.EventKeyDeclarationChanged, "key", upd.ID, audit.Payload{
 			"name": audit.SanitizeFreeText(k.Name), "schema_revision": finalRevision,
-			"rules_changed": upd.DeclChanged, "presence_changed": upd.PresenceChanged || upd.PersonalChanged,
+			"rules_changed": upd.DeclChanged, "presence_changed": upd.PresenceChanged,
+			"personal_required_changed": upd.PersonalChanged,
 		}); err != nil {
 			return err
 		}

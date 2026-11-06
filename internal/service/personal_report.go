@@ -18,7 +18,7 @@ import (
 var OffboardingLimits = []string{
 	"Hikyo cannot undo a disclosure. It cannot revoke a token at its provider or erase what already left the server, so rotate every value listed here at its source.",
 	"Deleted values persist in backups until those backups expire.",
-	"Evidence starts at evidence_from. Audit retention has removed anything older.",
+	"Evidence starts at the date shown with this report. Audit retention has removed anything older.",
 	"Only audited disclosures appear. Config-only exports are not audited per key, so config values read that way are not listed.",
 	"The person's own personal values are not listed. Hikyo did not deliver them to anyone else.",
 }

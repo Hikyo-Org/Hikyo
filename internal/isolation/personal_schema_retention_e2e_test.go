@@ -40,11 +40,9 @@ func personalApply(t *testing.T, db *store.DB, e personalEnv, edit func(*definit
 }
 
 func TestPersonalValueProjectCap(t *testing.T) {
-	saved := service.MaxPersonalValuesPerProject
-	service.MaxPersonalValuesPerProject = 1
-	t.Cleanup(func() { service.MaxPersonalValuesPerProject = saved })
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		e := personalFixture(t, db, "personal-cap")
+		e.pv.MaxPerProject = 1
 		e.setOwn(t, ceremonySecretA, e.keyA, personalPlain)
 		// Replacing an existing value never counts against the cap.
 		e.setOwn(t, ceremonySecretA, e.keyA, personalPlain+"-again")
@@ -176,6 +174,11 @@ func TestPersonalRequiredInRulesAndAuthority(t *testing.T) {
 		}
 		if personalRequiredRows(t, db) != 0 {
 			t.Fatal("none left rows behind")
+		}
+		// The audit event tells the personal setting apart from presence.
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE type='settings.key_declaration_changed'
+			AND payload LIKE '%"personal_required_changed":true%' AND payload LIKE '%"presence_changed":false%'`); n != 1 {
+			t.Fatalf("personal_required_in change audited %d times as its own flag, want 1", n)
 		}
 		update.PersonalRequired = personalRequiredHere()
 		if _, err := keys.UpdateDeclaration(ctx, service.LocalPrincipal(alice), project, k.ID, update, nil); err != nil {
@@ -387,6 +390,15 @@ func TestPersonalValueWarningsNeverRefuseAndPublishIgnoresThem(t *testing.T) {
 		broken, err := e.pv.Set(ctx, service.Bearer(e.admin.token), envScope(envA1), ceremonySecretA, personalPlain+"-still-broken")
 		if err != nil || len(broken.Warnings) == 0 {
 			t.Fatalf("set breaking the rule: err=%v warnings=%v", err, broken.Warnings)
+		}
+		// The owner still receives the value that breaks the rule.
+		minted, _ := mintDeveloper(t, db, &e.ceremonyEnv, time.Hour, true)
+		got, err := deliverySvc(t, db).Fetch(ctx, minted.Value, envScope(envA1), "", service.FetchOptions{})
+		if err != nil {
+			t.Fatalf("delivery of a value breaking the rule: %v", err)
+		}
+		if k := deliveredKey(t, got, ceremonySecretA); !valueIs(k, personalPlain+"-still-broken") || k.Personal != service.PersonalDelivered {
+			t.Fatalf("a value breaking the rule was not delivered (personal=%q)", k.Personal)
 		}
 		e.admin.token = personalReauth(t, e.admin.auth, e.admin.token, e.device, e.keyA)
 		ok, err := e.pv.Set(ctx, service.Bearer(e.admin.token), envScope(envA1), ceremonySecretA, "plaintext-conforming")

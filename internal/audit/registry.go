@@ -1653,6 +1653,9 @@ var registry = map[EventType]TypeSpec{
 		"schema_revision":  {Kind: KindInt, Required: true},
 		"rules_changed":    {Kind: KindBool, Required: true},
 		"presence_changed": {Kind: KindBool, Required: true},
+		// The `personal_required_in` setting (#1235). Optional: events
+		// recorded before it existed carry only `presence_changed`.
+		"personal_required_changed": {Kind: KindBool},
 	}),
 	EventKeyMetadataChanged: hierarchyEvent(Schema{
 		"name":      {Kind: KindFreeText, Required: true},

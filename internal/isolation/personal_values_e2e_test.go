@@ -133,6 +133,13 @@ func TestPersonalValueOverlayAndAdministratorBlindness(t *testing.T) {
 		if err != nil || !again.Current {
 			t.Fatalf("unchanged personal state not current: err=%v", err)
 		}
+		// The owner replacing their own value is never answered current.
+		e.setOwn(t, ceremonySecretA, e.keyA, personalPlain+"-replaced")
+		replaced, err := del.Fetch(ctx, minted.Value, envScope(envA1), first.Cursor, service.FetchOptions{})
+		if err != nil || replaced.Current || !valueIs(deliveredKey(t, replaced, ceremonySecretA), personalPlain+"-replaced") {
+			t.Fatalf("owner replacement answered current=%v err=%v", replaced.Current, err)
+		}
+		e.setOwn(t, ceremonySecretA, e.keyA, personalPlain)
 
 		// The administrator: every route answers with their own (empty) state
 		// or the shared value, never the owner's.

@@ -186,8 +186,8 @@ itself. The route's contract refuses human sessions today, so the human-session 
 - The server overlays the owner's current values on the committed snapshot at fetch time, the one declared exception to delivery
   reading only snapshots ([revision-model.md](./revision-model.md)). The existing loader-control, collision and execution-limit
   checks in `hikyo run` still apply.
-- The delivery cursor binds a per-owner personal-state generation, so no change, including deleting the last personal value, is
-  answered as `current`.
+- The delivery cursor binds the owner's personal state (each value row, notice and withheld or missing marker), so no change,
+  including deleting the last personal value, is answered as `current`.
 - `hikyo run` names overridden keys on stderr, never values, so the person can tell which value they got.
 - `--config-only` and the human-session path never receive personal values and skip the requirement check. They get the names of keys
   where the caller holds a value or notice (the human-session path through `hikyo personal list`), and `hikyo run` refuses those keys
@@ -296,7 +296,7 @@ with a loud refusal.
 Each ADR below carries a banner pointing here. Each becomes operative with the implementation PR.
 
 - [flat-model.md](./flat-model.md): personal values are outside the value model, and owner resolution is the one exception.
-- [revision-model.md](./revision-model.md): the owner overlay at fetch and the cursor generation.
+- [revision-model.md](./revision-model.md): the owner overlay at fetch and the cursor binding.
 - [threat-model.md](./threat-model.md): narrows "org admins are trusted" for viewing personal values and adds the residuals above.
 - [encryption-model.md](./encryption-model.md): envelope kind 9.
 - [permission-model.md](./permission-model.md): owner comparison, metadata authority, no new atom.

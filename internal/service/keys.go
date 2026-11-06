@@ -1336,10 +1336,11 @@ func (s *Keys) UpdateDeclaration(ctx context.Context, actor Actor, scope domain.
 		}
 		ev, err := domainEvent(ctx, audit.EventKeyDeclarationChanged, caller.Principal,
 			audit.Object{Type: "key", ID: before.ID}, audit.Payload{
-				"name":             audit.SanitizeFreeText(before.Name),
-				"schema_revision":  revision,
-				"rules_changed":    rulesChanged,
-				"presence_changed": presenceChanged || personalChanged,
+				"name":                      audit.SanitizeFreeText(before.Name),
+				"schema_revision":           revision,
+				"rules_changed":             rulesChanged,
+				"presence_changed":          presenceChanged,
+				"personal_required_changed": personalChanged,
 			})
 		if err != nil {
 			return err

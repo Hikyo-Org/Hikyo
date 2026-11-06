@@ -21,9 +21,8 @@ import (
 // principal, so every method here acts on the caller's own value, except the
 // member methods, which see and remove metadata only.
 
-// MaxPersonalValuesPerProject matches the resolved-cell budget. It is a var
-// only so a test can lower it; nothing in production writes it.
-var MaxPersonalValuesPerProject int64 = 100_000
+// MaxPersonalValuesPerProject matches the resolved-cell budget.
+const MaxPersonalValuesPerProject int64 = 100_000
 
 // Notice causes (personal-values ADR, Removal notices).
 const (
@@ -54,6 +53,16 @@ type PersonalValues struct {
 	Auth *Auth
 	// Now is the retention sweep's clock; nil means time.Now. Tests inject it.
 	Now func() time.Time
+	// MaxPerProject caps a project's personal values; zero means
+	// MaxPersonalValuesPerProject. Tests lower it.
+	MaxPerProject int64
+}
+
+func (s *PersonalValues) maxPerProject() int64 {
+	if s.MaxPerProject > 0 {
+		return s.MaxPerProject
+	}
+	return MaxPersonalValuesPerProject
 }
 
 func (s *PersonalValues) now() time.Time {
@@ -139,23 +148,34 @@ func personalEvent(ctx context.Context, typ audit.EventType, actor domain.Princi
 }
 
 // List returns the caller's own values (masked) and notices in one environment.
+// It writes and audits nothing, so it runs on a read transaction.
 func (s *PersonalValues) List(ctx context.Context, actor Actor, scope domain.Scope) ([]PersonalEntry, error) {
-	return tx.WriteResult(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) ([]PersonalEntry, error) {
+	var out []PersonalEntry
+	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
 		caller, err := s.caller(ctx, az, actor)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		p, err := az.Authorize(ctx, caller, authz.OpPersonalValueList, scope)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		return ownEntries(ctx, r, p, scope.Env)
+		// An owner admitted only by the owner fallback (no read and reveal
+		// here any more) sees just what they hold, not the required checklist.
+		access, err := az.PersonalOwnerHasAccess(ctx, caller.Principal, scope)
+		if err != nil {
+			return err
+		}
+		out, err = ownEntries(ctx, r, p, scope.Env, access)
+		return err
 	})
+	return out, err
 }
 
 // ownEntries merges the proof owner's values and notices with the
-// environment's checklist of personally required keys, ordered by name.
-func ownEntries(ctx context.Context, r store.Repos, p authz.Proof, env domain.EnvID) ([]PersonalEntry, error) {
+// environment's checklist of personally required keys, ordered by name. The
+// checklist is included only when withChecklist is set.
+func ownEntries(ctx context.Context, r store.ReadRepos, p authz.Proof, env domain.EnvID, withChecklist bool) ([]PersonalEntry, error) {
 	keys, err := r.Catalogue().List(ctx, p)
 	if err != nil {
 		return nil, err
@@ -166,7 +186,7 @@ func ownEntries(ctx context.Context, r store.Repos, p authz.Proof, env domain.En
 	}
 	requiredHere := map[string]bool{}
 	for _, row := range required {
-		if row.EnvironmentID == string(env) {
+		if withChecklist && row.EnvironmentID == string(env) {
 			requiredHere[row.KeyID] = true
 		}
 	}
@@ -207,8 +227,9 @@ func ownEntries(ctx context.Context, r store.Repos, p authz.Proof, env domain.En
 	return out, nil
 }
 
-// Set stores or replaces the caller's own value for a declared key.
-// No schema rule evaluates it (the oracle rule), and it is never scanned.
+// Set stores or replaces the caller's own value for a declared key. Schema
+// rules only warn the owner (never refuse or publish it), and it is never
+// scanned.
 func (s *PersonalValues) Set(ctx context.Context, actor Actor, scope domain.Scope, keyName, value string) (PersonalEntry, error) {
 	if len(value) > schema.MaxValueBytes {
 		return PersonalEntry{}, invalidDetail("personal value for %q exceeds %d bytes", keyName, schema.MaxValueBytes)
@@ -265,8 +286,8 @@ func (s *PersonalValues) Set(ctx context.Context, actor Actor, scope domain.Scop
 		if err != nil {
 			return PersonalEntry{}, err
 		}
-		if !replacing && count >= MaxPersonalValuesPerProject {
-			return PersonalEntry{}, fmt.Errorf("%w: a project holds at most %d personal values", domain.ErrLimitExceeded, MaxPersonalValuesPerProject)
+		if limit := s.maxPerProject(); !replacing && count >= limit {
+			return PersonalEntry{}, fmt.Errorf("%w: a project holds at most %d personal values", domain.ErrLimitExceeded, limit)
 		}
 		id, err := newID("pv")
 		if err != nil {
@@ -745,7 +766,7 @@ func (s *PersonalValues) sweepRetentionBatch(ctx context.Context, cursor string)
 // environment, and a standing possession factor. An owner with no account is
 // not qualified.
 func personalOwnerPredicate(ctx context.Context, az *authz.TxAuthorizer, owner domain.PrincipalID, scope domain.Scope) (bool, error) {
-	ok, err := az.PersonalOwnerHolds(ctx, owner, scope)
+	ok, err := az.PersonalOwnerHasAccess(ctx, owner, scope)
 	if err != nil || !ok {
 		return false, err
 	}
@@ -774,4 +795,11 @@ func retainPersonalExpired(ctx context.Context, r store.Repos, p authz.Proof, ro
 	ev.Actor.Class = audit.ActorSystem
 	ev.OccurredAt = now
 	return r.Audit().InsertTenant(ctx, p, ev)
+}
+
+// personalCountForEnvironment counts one environment's personal values for a
+// definitions deletion plan. Metadata only: it keeps the plan off the
+// personal repo, whose callers are pinned.
+func personalCountForEnvironment(ctx context.Context, r store.Repos, p authz.Proof, environmentID string) (int64, error) {
+	return r.PersonalValues().CountForEnvironment(ctx, p, environmentID)
 }

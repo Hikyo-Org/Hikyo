@@ -159,9 +159,12 @@ func personalOverlay(ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
 			put(DeliveredKey{KeyID: k.ID, Name: k.Name, Classification: k.Classification, Presence: delivery.PresenceSet, Personal: PersonalMissing})
 		}
 	}
+	// The owner's personal values have their own cap, apart from the shared
+	// rows (already capped at resolution), so the length of a shared value
+	// never decides whether a personal value crosses.
 	rendered := 0
 	for _, row := range rows {
-		if row.Value != nil {
+		if row.Personal == PersonalDelivered && row.Value != nil {
 			rendered += len(*row.Value)
 		}
 	}

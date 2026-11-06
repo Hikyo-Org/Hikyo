@@ -267,7 +267,7 @@ func (s *Definitions) persistPlan(ctx context.Context, r store.Repos, az *authz.
 		if err != nil {
 			return PlanView{}, err
 		}
-		personal, err := r.PersonalValues().CountForEnvironment(ctx, p, del.ID)
+		personal, err := personalCountForEnvironment(ctx, r, p, del.ID)
 		if err != nil {
 			return PlanView{}, err
 		}
