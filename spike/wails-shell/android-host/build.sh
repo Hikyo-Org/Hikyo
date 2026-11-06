@@ -5,7 +5,7 @@
 set -eu
 tags=production,android,probe
 [ "${1:-}" = stock ] && tags=$tags,stockhost
-ndk=$(ls -d "$ANDROID_HOME"/ndk/* | sort -V | tail -1)
+ndk=$(find "$ANDROID_HOME/ndk" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
 cc=$ndk/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android24-clang
 wails3 android overlay:gen >/dev/null
 mkdir -p build/android/app/src/main/jniLibs/arm64-v8a
