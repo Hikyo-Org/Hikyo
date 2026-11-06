@@ -1,5 +1,7 @@
 # Hikyo GitLab CI/CD variable adapter: deltas over the deployment-module seam (ADR, 2026-09-26)
 
+> **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** in a Sealed org, a target needs unattended access, and the outbound credential's sealing key changes. See its supersession register.
+
 Context: the MVP boundary ([mvp-boundary.md](./mvp-boundary.md)) kept a GitLab deployment adapter out of 1.0 with the trigger "demand: same seam, same #36-class delta ticket". [#159](https://github.com/Hikyo-Org/Hikyo/issues/159) is that demand, and this ADR is the delta. It adds a third compiled-in provider over the seam fixed in [deployment-adapter.md](./deployment-adapter.md) and the multi-target workflow of [#157](https://github.com/Hikyo-Org/Hikyo/issues/157). Everything not named here transfers unchanged, as it did for [github-adapter.md](./github-adapter.md).
 
 Granularity note: wayfinding-level, like its siblings. Pacing, retry curves, and bounds come from the operations spec.
