@@ -297,6 +297,36 @@ func TestRunHumanSessionRefusesAnUndeliveredConfirmedKey(t *testing.T) {
 	}
 }
 
+// A key the caller holds a personal value or notice for is refused before the
+// confirmation and before any export, with or without --config-only.
+func TestRunHumanSessionRefusesAHeldPersonalKey(t *testing.T) {
+	for _, extra := range [][]string{nil, {"--config-only"}} {
+		fixture := runHumanServer(t, true)
+		exports, listed := 0, 0
+		ios, _, stderr := definitionsTestIO(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case strings.HasSuffix(r.URL.Path, "/environments/env_70/personal-values"):
+				listed++
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(apigen.PersonalValueList{Items: []apigen.PersonalValueEntry{{Name: "LOG_LEVEL", Set: true}}})
+			case strings.HasSuffix(r.URL.Path, "/values/export"):
+				exports++
+				fixture.ServeHTTP(w, r)
+			default:
+				fixture.ServeHTTP(w, r)
+			}
+		}))
+		ios.StderrIsTerminal = func() bool { return true }
+		ios.TerminalSession, _ = terminalSession(t, "y\n")
+		execed := false
+		ios.Exec = func(string, []string, []string) error { execed = true; return nil }
+		code := cli.Run(t.Context(), ios, runArgs(extra...))
+		if code != cli.ExitRefused || execed || exports != 0 || listed != 1 || !strings.Contains(stderr.String(), "refusing key(s) LOG_LEVEL") {
+			t.Fatalf("%v: exit=%d exec=%v exports=%d listed=%d stderr=%s", extra, code, execed, exports, listed, stderr.String())
+		}
+	}
+}
+
 // A 0-window environment: the full projection binds the browser ceremony to the
 // server's disclosure unit, and --config-only opens no ceremony it could not spend.
 // Above 0 the ceremony opens a sliding window, which config-only can use.

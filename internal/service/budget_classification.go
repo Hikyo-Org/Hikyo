@@ -125,9 +125,9 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpSelfConfigStatus, authz.OpSelfConfigPreview, authz.OpSelfConfigAdopt, authz.OpSelfConfigProvisionProject)
 	add(budgetClassExempt, "SSE admission caps (§10, 4/32/128) own concurrency; per-event authz must not be budgeted",
 		authz.OpAdvisoryWatch, authz.OpAdvisoryEvent)
-	add(budgetClassExempt, "reveal ceremony + per-key gate limiter (GateAttemptsPerMinute) bound it",
+	add(budgetClassExempt, "reveal ceremony (a live reauthentication window per environment, single-decision only at a 0 window) + §10 authenticated API bound it",
 		authz.OpValueReveal)
-	add(budgetClassExempt, "personal set/reveal: one cell, each consuming a single-use possession reauthentication window (§10 authenticated API bounds the attempts)",
+	add(budgetClassExempt, "personal set/reveal: one own cell behind the reveal ceremony (a live possession-only reauthentication window per environment, single-decision only at a 0 window) + §10 authenticated API",
 		authz.OpPersonalValueSet, authz.OpPersonalValueReveal)
 	add(budgetClassExempt, "delivery-target list: one environment, at most 100 rows per reporting principal (§10 authenticated API)",
 		authz.OpDeliveryTargetList)
