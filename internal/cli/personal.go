@@ -20,8 +20,15 @@ import (
 
 var personalColumns = []string{"KEY", "PRESENCE", "UPDATED", "NOTICE", "STATUS"}
 
+// personalSetStatement is printed before `personal set` reads or sends a value
+// (personal-values ADR, What this guarantee is).
+const personalSetStatement = "Hikyo does not show this to administrators. Your instance operator could read it, " +
+	"and anyone who can change shared values here could capture it once your program runs. " +
+	"If someone gave you your password, authenticator or recovery codes, replace them, " +
+	"regenerate your recovery codes and check your linked identities first."
+
 func runPersonal(ctx context.Context, ios IO, args []string) (returnErr error) {
-	sub, rest, err := subverb("personal", args, "list", "get", "set", "members")
+	sub, rest, err := subverb("personal", args, "list", "get", "set", "members", "offboarding-report")
 	if err != nil {
 		return err
 	}
@@ -48,11 +55,19 @@ func runPersonal(ctx context.Context, ios IO, args []string) (returnErr error) {
 	if err != nil {
 		return err
 	}
-	if sub == "list" {
+	switch sub {
+	case "list":
 		if err := flags.checkNoPositionals("personal list"); err != nil {
 			return err
 		}
-	} else {
+	case "offboarding-report":
+		if err := flags.checkTarget("personal offboarding-report", "member", ""); err != nil {
+			return err
+		}
+		if flags.positional() == "" {
+			return failf(ExitUsage, "usage: hikyo personal offboarding-report <NAME>")
+		}
+	default:
 		if err := flags.checkTarget("personal "+sub, "key", ""); err != nil {
 			return err
 		}
@@ -70,6 +85,7 @@ func runPersonal(ctx context.Context, ios IO, args []string) (returnErr error) {
 	}
 	var value string
 	if sub == "set" && !clear {
+		fmt.Fprintln(ios.Stderr, personalSetStatement)
 		if value, err = readValue(ios, stdin, valueFile, flags.positional()); err != nil {
 			return err
 		}
@@ -82,6 +98,9 @@ func runPersonal(ctx context.Context, ios IO, args []string) (returnErr error) {
 	project, err := projectBase(resolved)
 	if err != nil {
 		return err
+	}
+	if sub == "offboarding-report" {
+		return personalOffboardingReport(ctx, ios, client, project, flags.positional(), f)
 	}
 	env, err := addressed(resolved, DimEnv, flags.Env, "personal "+sub)
 	if err != nil {
@@ -173,6 +192,39 @@ func runPersonal(ctx context.Context, ios IO, args []string) (returnErr error) {
 		return Render(ios.Stdout, f, t)
 	}
 	return nil
+}
+
+// personalOffboardingReport prints what to rotate after someone leaves: the
+// shared keys they are recorded as receiving and the service accounts they
+// created, names only. The evidence window and the report's limits go to
+// stderr so the table stays parseable.
+func personalOffboardingReport(ctx context.Context, ios IO, client *Client, project, member string, f Format) error {
+	var report apigen.PersonalOffboardingReport
+	if err := client.Do(ctx, http.MethodGet, project+"/personal-offboarding-report/"+url.PathEscape(member), nil, &report); err != nil {
+		return err
+	}
+	t := Table{Columns: []string{"KIND", "NAME", "ENVIRONMENT", "AT", "CHANGED SINCE"}, JSON: report}
+	for _, x := range report.Received {
+		env := x.EnvironmentName
+		if env == "" {
+			env = x.EnvironmentId
+		}
+		changed := "no"
+		if x.ChangedSince {
+			changed = "yes"
+		}
+		t.Rows = append(t.Rows, []string{"received", x.KeyName, env, personalTime(&x.LastReceivedAt), changed})
+	}
+	for _, sa := range report.ServiceAccounts {
+		t.Rows = append(t.Rows, []string{"service account", sa.Name, "", personalTime(&sa.CreatedAt), ""})
+	}
+	if f == FormatTable {
+		fmt.Fprintf(ios.Stderr, "evidence from %s to %s\n", personalTime(&report.EvidenceFrom), personalTime(&report.GeneratedAt))
+		for _, l := range report.Limits {
+			fmt.Fprintln(ios.Stderr, "limit: "+l)
+		}
+	}
+	return Render(ios.Stdout, f, t)
 }
 
 func personalTable(items []apigen.PersonalValueEntry) Table {

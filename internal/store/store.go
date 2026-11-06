@@ -528,6 +528,9 @@ type Repos interface {
 	Transit() TransitRepo
 	// FileTargets is the generic file-destination surface (#164).
 	FileTargets() FileTargetRepo
+	// PersonalReport is the personal-values matrix counts and offboarding
+	// report surface (#1235): counts and names, never a value.
+	PersonalReport() PersonalReportRepo
 }
 
 // ScanningDismissalRepo is the proof-bound dismissal-row surface (#74,

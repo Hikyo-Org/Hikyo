@@ -2574,6 +2574,20 @@
   },
   {
     "engine": "postgres",
+    "name": "PersonalEligibleCandidates",
+    "annotation": "authn-resolution",
+    "hash": "8f368d55c6d2d20212730e3756f8d38146a33e680fe578219214ecb1fc849176",
+    "reason": "the personal-value counts denominator enumerates human principals that might hold reveal in one environment; authz evaluates each with the chokepoint's grant and rule logic and returns only a count."
+  },
+  {
+    "engine": "postgres",
+    "name": "PersonalOwnerHoldsInEnvironment",
+    "annotation": "authn-resolution",
+    "hash": "bc673c18998547d8bbc23c9e4f490c8c2b27378103eab5c50efccec9ec2eac3d",
+    "reason": "authorize() admits the owner's own personal-value list and delete in an environment where the principal holds a value or notice; returns a count, never ciphertext or another principal's row."
+  },
+  {
+    "engine": "postgres",
     "name": "PollCLILogin",
     "annotation": "authn-resolution",
     "hash": "680bf6e7f45de47e56c129ff9f87f608c2cd744d8a4e9601ef22ffa872295f51",
@@ -6039,6 +6053,20 @@
     "annotation": "authn-resolution",
     "hash": "215b8fffffdcf42ed3e18f9ebc336316dc35b02401b1c53cb1e4c4657f449929",
     "reason": "Environment read authorization precedes the non-locking lifetime ceiling affordance."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PersonalEligibleCandidates",
+    "annotation": "authn-resolution",
+    "hash": "8f368d55c6d2d20212730e3756f8d38146a33e680fe578219214ecb1fc849176",
+    "reason": "the personal-value counts denominator enumerates human principals that might hold reveal in one environment; authz evaluates each with the chokepoint's grant and rule logic and returns only a count."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PersonalOwnerHoldsInEnvironment",
+    "annotation": "authn-resolution",
+    "hash": "bc673c18998547d8bbc23c9e4f490c8c2b27378103eab5c50efccec9ec2eac3d",
+    "reason": "authorize() admits the owner's own personal-value list and delete in an environment where the principal holds a value or notice; returns a count, never ciphertext or another principal's row."
   },
   {
     "engine": "sqlite",

@@ -1255,6 +1255,13 @@ const (
 	StorePersonalValueNoticesDismiss StoreOp = "personalvaluenotices.DismissOwn"
 	StorePersonalValueNoticesForKey  StoreOp = "personalvaluenotices.ForKeyName"
 	StorePersonalValueNoticesRecord  StoreOp = "personalvaluenotices.Record"
+	// Matrix counts and the offboarding report (#1235): counts, key names,
+	// environment ids and timestamps, never a value or an audit payload.
+	StorePersonalReportCounts     StoreOp = "personalreport.Counts"
+	StorePersonalReportReceipts   StoreOp = "personalreport.Receipts"
+	StorePersonalReportKeyChanges StoreOp = "personalreport.KeyChanges"
+	StorePersonalReportEvidence   StoreOp = "personalreport.Evidence"
+	StorePersonalReportMemberSeen StoreOp = "personalreport.MemberSeen"
 
 	// Secret-change approvals (#151). The policy-bound review-and-merge engine's
 	// store doors. Policy CRUD and its child approver/bypasser sets are
@@ -1427,6 +1434,11 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StorePersonalValueNoticesListOwn: true,
 	StorePersonalValueNoticesForKey:  true,
 	StoreOrgsGet:                     true,
+	StorePersonalReportCounts:        true,
+	StorePersonalReportReceipts:      true,
+	StorePersonalReportKeyChanges:    true,
+	StorePersonalReportEvidence:      true,
+	StorePersonalReportMemberSeen:    true,
 	StoreOrgsList:                    true,
 	StoreOrgsCount:                   true,
 	// Lease inspect is a bare-read (`read@env`), so its two reads are pinned
@@ -1960,6 +1972,7 @@ var operationTable = map[Operation]opSpec{
 		formula: Formula{{Cap: domain.CapManageMembers, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{
 			StoreCatalogueList: true, StoreAuditTenantInsert: true,
+			StorePersonalReportCounts: true,
 		},
 		events: []audit.EventType{audit.EventPersonalValueCountsRead},
 	},
@@ -1971,8 +1984,12 @@ var operationTable = map[Operation]opSpec{
 			{Cap: domain.CapManageMembers, At: domain.LevelProject},
 			{Cap: domain.CapAuditRead, At: domain.LevelProject},
 		},
-		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
-		events:   []audit.EventType{audit.EventPersonalOffboardingReportRead},
+		storeOps: map[StoreOp]bool{
+			StoreAuditTenantInsert: true, StoreEnvironmentsList: true,
+			StorePersonalReportReceipts: true, StorePersonalReportKeyChanges: true,
+			StorePersonalReportEvidence: true, StorePersonalReportMemberSeen: true,
+		},
+		events: []audit.EventType{audit.EventPersonalOffboardingReportRead},
 	},
 	OpPersonalValueDeleteMember: {
 		class:   ClassTenant,
