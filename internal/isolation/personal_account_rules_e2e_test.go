@@ -1,12 +1,14 @@
 package isolation
 
 import (
+	"encoding/base64"
 	"errors"
 	"net/url"
 	"testing"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/samlsp"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/webauthntest"
@@ -237,7 +239,8 @@ func newAcctFederated(t *testing.T, db *store.DB, username string) (acctFederate
 
 // An account qualifies through its identity provider only while it holds no
 // password in the current epoch and no standing factor, and only through an
-// OIDC or SAML provider with an assurance policy.
+// OIDC provider with an assurance policy. SAML does not qualify while no SAML
+// window can open a personal value.
 func TestPersonalAccountFederatedQualification(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		f, _ := newAcctFederated(t, db, "pv-federated")
@@ -291,6 +294,20 @@ func TestPersonalAccountFederatedQualification(t *testing.T) {
 
 		execRaw(t, db, `UPDATE external_identities SET kind='oauth2' WHERE account_id='`+f.account+`'`)
 		refused("OAuth2 identity")
+
+		// A SAML identity on an enabled provider with an assurance policy and a
+		// subject it accepts would pass the provider's gate, yet does not qualify.
+		nameID, err := samlsp.EncodeNameID(samlsp.NameID{Value: []byte("pv-saml-subject")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		execRaw(t, db, `INSERT INTO saml_providers (id, slug, display_name, kind, entity_id, acs_url, sso_redirect_url, signing_certificates,
+			assurance_policy, allow_email_nameid, force_sign_requests, metadata_want_authn_requests_signed, metadata_source, metadata_signed,
+			enabled, row_version, created_at, updated_at) VALUES ('prv_pv_saml', 'pv-saml', 'PV SAML', 'saml', 'https://saml.pv.test',
+			'https://hikyo.test/acs', 'https://saml.pv.test/sso', '', '{"amr_sets":[["mfa"]]}', 0, 0, 0, 'file', 0, 1, 1, `+ts+`, `+ts+`)`)
+		execRaw(t, db, `UPDATE external_identities SET kind='saml', issuer='https://saml.pv.test', provider_id='prv_pv_saml', subject='`+
+			base64.RawStdEncoding.EncodeToString(nameID)+`' WHERE account_id='`+f.account+`'`)
+		refused("SAML identity")
 
 		// None of these were credential writes: the value is suspended, not deleted.
 		if queryInt(t, db, `SELECT COUNT(*) FROM personal_values`) != 1 {

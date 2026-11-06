@@ -29,12 +29,12 @@ func personalQualified(ctx context.Context, az *authz.TxAuthorizer, owner domain
 	if err != nil {
 		return false, err
 	}
-	return accountQualified(ctx, az, account.ID, time.Now())
+	return accountQualified(ctx, az, account.ID)
 }
 
 // accountQualified: a standing possession factor, or, on a passwordless
 // account, a federated identity that can pass the reveal gate.
-func accountQualified(ctx context.Context, az *authz.TxAuthorizer, accountID string, now time.Time) (bool, error) {
+func accountQualified(ctx context.Context, az *authz.TxAuthorizer, accountID string) (bool, error) {
 	factors, err := enrolledFactors(ctx, az, accountID)
 	if err != nil || len(factors) > 0 {
 		return len(factors) > 0, err
@@ -155,7 +155,7 @@ func purgePersonalValues(ctx context.Context, az *authz.TxAuthorizer, owner doma
 // purgePersonalIfUnqualified purges once a credential change (a factor
 // removed, a password established) leaves the account unqualified.
 func purgePersonalIfUnqualified(ctx context.Context, az *authz.TxAuthorizer, account authz.Account, now time.Time) error {
-	ok, err := accountQualified(ctx, az, account.ID, now)
+	ok, err := accountQualified(ctx, az, account.ID)
 	if err != nil || ok {
 		return err
 	}

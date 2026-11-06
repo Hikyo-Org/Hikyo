@@ -1820,7 +1820,8 @@ var registry = map[EventType]TypeSpec{
 	},
 	// cause is `owner` when the owner removed it, else the notice cause. A
 	// tenant record names one key; the instance record of a qualification
-	// purge counts every value the owner lost across projects instead.
+	// purge or a privacy erasure (cause `erasure`) counts every value the
+	// owner lost across projects instead.
 	EventPersonalValueDeleted: {
 		SchemaVersion: 1,
 		Retention:     RetentionSecurity,

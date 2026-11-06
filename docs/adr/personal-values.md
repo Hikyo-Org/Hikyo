@@ -108,7 +108,8 @@ An account **qualifies** when it can complete the existing `reveal` reauthentica
 
 - a standing possession factor (TOTP or passkey), or
 - on a passwordless account, a federated identity that passes that gate. A local password in the current epoch disqualifies federated
-  proof. OAuth2 sign-in and providers with no assurance policy never pass the gate, so those people enrol a factor.
+  proof. OAuth2 sign-in and providers with no assurance policy never pass the gate, so those people enrol a factor. SAML identities
+  do not qualify until a SAML reauthentication window can open a personal value.
 
 Access checks `read(E)`, `reveal(E)` and qualification live. Two rules keep this safe:
 
@@ -116,7 +117,7 @@ Access checks `read(E)`, `reveal(E)` and qualification live. Two rules keep this
    removing the last factor, consuming a recovery code (which retires factors) and a password being established on a factorless account.
    Otherwise an administrator could use a planted recovery code to clear the developer's factor, enrol their own and read the values. A
    person who loses their only factor re-enters their values. TOTP cannot be replaced in place today, so someone changing phones keeps
-   their values only by adding a passkey first. Changes with no credential write, such as a disabled provider or expired SAML metadata,
+   their values only by adding a passkey first. Changes with no credential write, such as a disabled provider or a provider losing its assurance policy,
    only suspend access, and the [retention sweep](#offboarding) handles them. While a value is suspended, delivery sends only its key
 name and `hikyo run` refuses the key, as for a notice.
 2. **Network `credential-reset` refuses an account with any linked external identity**, at mint and again at consumption, with the
