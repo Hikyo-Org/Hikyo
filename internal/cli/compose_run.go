@@ -694,12 +694,8 @@ func refuseHumanPersonalKeys(ctx context.Context, client *Client, project, env s
 	if err != nil {
 		return err
 	}
-	op, ok := ops["listMyPersonalValues"]
-	if !ok {
-		return failf(ExitInternal, "this client has no contract entry for %q", "listMyPersonalValues")
-	}
-	if meta.ApiRevision < op.MinRevision {
-		return nil
+	if serves, err := servesPersonalList(meta, ops); err != nil || !serves {
+		return err
 	}
 	var list apigen.PersonalValueList
 	if err := client.Do(ctx, http.MethodGet, project+"/environments/"+url.PathEscape(env)+"/personal-values", nil, &list); err != nil {
@@ -721,4 +717,14 @@ func refuseHumanPersonalKeys(ctx context.Context, client *Client, project, env s
 			strings.Join(refused, ", "))
 	}
 	return nil
+}
+
+// servesPersonalList reports whether the server is new enough to list the
+// caller's personal values. A missing contract entry is an error, never "old".
+func servesPersonalList(meta apigen.Meta, ops map[string]api.Operation) (bool, error) {
+	op, ok := ops["listMyPersonalValues"]
+	if !ok {
+		return false, failf(ExitInternal, "this client has no contract entry for %q", "listMyPersonalValues")
+	}
+	return meta.ApiRevision >= op.MinRevision, nil
 }

@@ -100,6 +100,24 @@ func TestHumanSessionRunRefusesHeldPersonalKeys(t *testing.T) {
 	}
 }
 
+// Only a server older than the operation's minimum revision counts as holding
+// nothing; a client missing the contract entry is an error, not an old server.
+func TestServesPersonalListFailsClosed(t *testing.T) {
+	ops, err := api.Operations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := servesPersonalList(apigen.Meta{ApiRevision: api.Revision}, map[string]api.Operation{}); err == nil {
+		t.Fatal("a missing contract entry was read as an old server")
+	}
+	for revision, want := range map[int]bool{14: false, api.Revision: true} {
+		got, err := servesPersonalList(apigen.Meta{ApiRevision: revision}, ops)
+		if err != nil || got != want {
+			t.Fatalf("revision %d: serves = %v, %v; want %v", revision, got, err, want)
+		}
+	}
+}
+
 // A failed meta or personal-values lookup refuses the run rather than
 // treating the caller as holding nothing and serving the shared value.
 func TestHumanSessionRunFailsClosedOnLookupError(t *testing.T) {
