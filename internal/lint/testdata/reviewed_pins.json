@@ -2027,6 +2027,10 @@
       "hash": "7c326493d4200f9d8502ed750215ea8b6860e6ae6927036d24ad5c542766176c",
       "reason": "Upgrade exclusion protocol owns PostgreSQL session locks/shared runtime-drain locks or SQLite process exclusion on its dedicated database/sql connection; lock settlement must preserve that connection identity across historical schema transitions."
     },
+    "internal/store/upgrade/lock.go:SetPostgresSessionTimeouts": {
+      "hash": "9bac4740ed23105dec2790695dd89da8047186adca6e02eeb7c4dd0d704f1e2a",
+      "reason": "Session keepalive protocol sets only this session's tcp_user_timeout and TCP keepalive settings through set_config after connecting, so the server drops the session soon after its client dies and a rollback is not held off by it; it reads and writes no data."
+    },
     "internal/store/upgrade/lock.go:WithLock": {
       "hash": "c26d7dd4d4d3d7902ea061bdfec33038d5f9def003c5baed9e018ed59cdf39a6",
       "reason": "Upgrade exclusion protocol owns PostgreSQL session locks/shared runtime-drain locks or SQLite process exclusion on its dedicated database/sql connection; lock settlement must preserve that connection identity across historical schema transitions.",
@@ -2484,6 +2488,18 @@
         "internal/store/upgrade/schema.go:inspectSQLCatalog",
         "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog"
       ]
+    },
+    "internal/store/upgrade/rollback.go:PreflightPostgresRollback": {
+      "hash": "db1feed585a5e76a2c5e60f2924dad2eb8c8c0a2adc1b80c0285e3897e354d6c",
+      "reason": "Rollback preflight protocol runs before the backup fence, under migration exclusion: read-only catalog queries that check the cluster system identifier is readable, the current schema, and the owner of every object in public, so an install a rollback could not identify or rebuild is refused while nothing has changed."
+    },
+    "internal/store/upgrade/rollback.go:Rollback.Identity": {
+      "hash": "6debc9a5229570354cdb4202d586e6c1a1c8bd3bf1217a14fc0de31ba9b15456",
+      "reason": "Rollback identity protocol reads the actual PostgreSQL database name and cluster system identifier under migration exclusion, so a resumed rollback can tell an emptied database it started from a same-named one elsewhere; no application table is queried."
+    },
+    "internal/store/upgrade/rollback.go:RollbackAdmission.ResetPostgres": {
+      "hash": "ba9bcf30c64c563f75634e48dfa241257b72c557b8e574431fb566dd8023effb",
+      "reason": "Rollback reset protocol runs only under the rollback admission: it refuses while any other client session of any role stays connected, bounds lock waits, drops the objects in the owned public schema in one transaction, and refuses to commit if any object remains, leaving the schema and its grants; it is recovery lifecycle DDL, never a runtime database reset."
     },
     "internal/store/upgrade/runtime_snapshot.go:ReadPostgresSnapshot": {
       "hash": "548295dc1a16edb084ee9bbdce0c793a671aca537cd0dc06b73d9f039c140ff7",
@@ -3023,7 +3039,7 @@
     "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
     "internal/store/upgrade/lock.go:canonicalSQLite": "f89b56750e0b6cff94f8060893f1f2dc69eaf3290d0be240bd671e6f7f72e7ee",
     "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
-    "internal/store/upgrade/lock.go:open": "14627d65f77b206adfab245cf59e0eade3df578b4c1c94a09802424032d43516",
+    "internal/store/upgrade/lock.go:open": "e6be6794a9ed06bbad5305c2176a44ece617f18a6e06eabbcd7800a974358439",
     "internal/store/upgrade/maintenance_leases.go:Session.invalidateSingletonLeases": "a5e73031022d0cc51faeed7cd4199b75ba333c44f755f71e5304d7b37f71f3ed",
     "internal/store/upgrade/operator_rotation.go:Session.OperatorCredentialEpoch": "810ce5a96a5a50da46ab3229c178aba40e0738fe5f14a621a05fd1ecd697920f",
     "internal/store/upgrade/preparation.go:PreparationAdmission.Valid": "1a969335e21e3be6e90af3da2f02aaf65906009f684027eb9c64a92e610337a9",

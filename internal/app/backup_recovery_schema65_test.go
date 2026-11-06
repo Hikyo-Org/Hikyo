@@ -33,7 +33,8 @@ import (
 // and migration digest comes from the canonical inspectors, the release bundle
 // is genuinely signed, and export, archive authentication, restore and recovery
 // admission all execute their ordinary production paths. No authority is forged.
-func recoverySchema65Fixture(t *testing.T, engine store.Engine) upgradeDrillFixture {
+// seed replaces the default organisation, principal and grants.
+func recoverySchema65Fixture(t *testing.T, engine store.Engine, seed ...func(*testing.T, func(string, ...any), *crypto.Keyring)) upgradeDrillFixture {
 	t.Helper()
 	ctx := t.Context()
 	seedCfg := upgradeDrillDatabase(t, engine)
@@ -49,7 +50,8 @@ func recoverySchema65Fixture(t *testing.T, engine store.Engine) upgradeDrillFixt
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	if _, err := crypto.LoadKeyring(ctx, &keyring.Store{DB: db}, slices.Clone(root)); err != nil {
+	kr, err := crypto.LoadKeyring(ctx, &keyring.Store{DB: db}, slices.Clone(root))
+	if err != nil {
 		t.Fatal(err)
 	}
 	state, err := upgrade.InspectControl(ctx, seedUC)
@@ -118,20 +120,26 @@ func recoverySchema65Fixture(t *testing.T, engine store.Engine) upgradeDrillFixt
 		}
 	}
 	sourceSQL := openRecoveryFixtureSQL(t, seedCfg)
-	for _, table := range []string{"instance_identity", "auth_instance_state", "master_keys", "tier3_keys", "upgrade_control", "upgrade_pending", "upgrade_nonces"} {
+	for _, table := range []string{"instance_identity", "auth_instance_state", "master_keys", "upgrade_control", "upgrade_pending", "upgrade_nonces"} {
 		copyRecoveryFixtureTable(t, sourceSQL, native, table)
 	}
-	for _, statement := range []string{
-		`INSERT INTO orgs (id,name,active,metadata,created_at) VALUES ('org_drill','Drill',TRUE,'{}','2026-09-05T00:00:00Z')`,
-		`INSERT INTO projects (id,org_id,name,created_at) VALUES ('prj_drill','org_drill','Drill','2026-09-05T00:00:00Z')`,
-		`INSERT INTO principals (id,kind,created_at) VALUES ('usr_drill','human','2026-09-05T00:00:00Z')`,
-		`INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('gr_drill','usr_drill','manage-identities','org_drill','prj_drill',NULL,'2026-09-05T00:00:00Z')`,
-		`INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('gr_read','usr_drill','read','org_drill','prj_drill',NULL,'2026-09-05T00:00:00Z')`,
-		`INSERT INTO grant_origins (id,grant_id,kind,subject,created_at) VALUES ('gor_drill','gr_drill','manual','usr_drill','2026-09-05T00:00:00Z')`,
-		`INSERT INTO grant_origins (id,grant_id,kind,subject,created_at) VALUES ('gor_read','gr_read','manual','usr_drill','2026-09-05T00:00:00Z')`,
-	} {
-		exec(statement)
+	if len(seed) > 0 {
+		seed[0](t, exec, kr)
+	} else {
+		for _, statement := range []string{
+			`INSERT INTO orgs (id,name,active,metadata,created_at) VALUES ('org_drill','Drill',TRUE,'{}','2026-09-05T00:00:00Z')`,
+			`INSERT INTO projects (id,org_id,name,created_at) VALUES ('prj_drill','org_drill','Drill','2026-09-05T00:00:00Z')`,
+			`INSERT INTO principals (id,kind,created_at) VALUES ('usr_drill','human','2026-09-05T00:00:00Z')`,
+			`INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('gr_drill','usr_drill','manage-identities','org_drill','prj_drill',NULL,'2026-09-05T00:00:00Z')`,
+			`INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('gr_read','usr_drill','read','org_drill','prj_drill',NULL,'2026-09-05T00:00:00Z')`,
+			`INSERT INTO grant_origins (id,grant_id,kind,subject,created_at) VALUES ('gor_drill','gr_drill','manual','usr_drill','2026-09-05T00:00:00Z')`,
+			`INSERT INTO grant_origins (id,grant_id,kind,subject,created_at) VALUES ('gor_read','gr_read','manual','usr_drill','2026-09-05T00:00:00Z')`,
+		} {
+			exec(statement)
+		}
 	}
+	// Last, so that project keys created while a seed sealed its values come along.
+	copyRecoveryFixtureTable(t, sourceSQL, native, "tier3_keys")
 	freshCfg := upgradeDrillDatabase(t, engine)
 	empty := releaseidentity.MigrationManifest{Engine: uc.Engine, Entries: []releaseidentity.Migration{}}
 	fresh, err := upgrade.InspectInstalled(ctx, upgrade.Config{Engine: uc.Engine, Path: freshCfg.Path, DSN: freshCfg.DSN}, empty)

@@ -213,6 +213,11 @@ func resolveExecutable(executablePath func() (string, error)) (string, os.FileMo
 	return target, info.Mode().Perm(), nil
 }
 
+// ArchiveName is the signed binary archive name for one release platform.
+func ArchiveName(version, goos, goarch string) (string, error) {
+	return archiveName(version, goos, goarch)
+}
+
 func archiveName(version, goos, goarch string) (string, error) {
 	var osName, extension string
 	switch goos {

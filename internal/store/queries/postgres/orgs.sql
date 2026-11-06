@@ -34,6 +34,11 @@ SELECT id, name, active, metadata, created_at,
        identity_hue, identity_mark, identity_image_version
 FROM orgs WHERE (sqlc.arg(include_self_config) = 1 OR NOT EXISTS (SELECT 1 FROM self_config_binding b WHERE b.org_id=orgs.id)) ORDER BY name;
 
+-- hikyo:reason Recovery classification reads only org ids, without later-migration columns or the self-config binding join, so it runs on any verified source schema.
+-- hikyo:instance-scoped
+-- name: ListOrgIDs :many
+SELECT id FROM orgs ORDER BY id;
+
 -- hikyo:instance-scoped
 -- name: CountOrgs :one
 SELECT COUNT(*) FROM orgs WHERE (sqlc.arg(include_self_config) = 1 OR NOT EXISTS (SELECT 1 FROM self_config_binding b WHERE b.org_id=orgs.id));

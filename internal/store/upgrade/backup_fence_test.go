@@ -206,3 +206,47 @@ func TestBackupFenceOperatorRotationRequiresRecoveryAndDropsOldIntent(t *testing
 		}
 	})
 }
+
+func TestReleaseBackupFenceRestoresOnlyAFrozenSourceAndNothingLater(t *testing.T) {
+	both(t, func(t *testing.T, cfg Config) {
+		state, _, _ := signedAdmissionFixture(t, cfg)
+		intent, operation := backupFenceIntent(state)
+		if err := WithLock(t.Context(), cfg, func(s *Session) error {
+			if _, err := s.ReleaseBackupFence(t.Context(), state); !errors.Is(err, ErrConflict) {
+				t.Fatalf("released a source that was never frozen: %v", err)
+			}
+			frozen, err := s.FenceBackup(t.Context(), state, intent)
+			if err != nil {
+				return err
+			}
+			released, err := s.ReleaseBackupFence(t.Context(), frozen)
+			if err != nil {
+				return err
+			}
+			if !equalRecord(released, state) {
+				t.Fatal("release did not restore the completed source at its own generation")
+			}
+			read, err := s.Read(t.Context())
+			if err != nil || !equalRecord(read, state) {
+				t.Fatalf("release was not durable: %v", err)
+			}
+			if _, err := s.ReleaseBackupFence(t.Context(), frozen); !errors.Is(err, ErrConflict) {
+				t.Fatalf("released from a stale snapshot: %v", err)
+			}
+			frozen, err = s.FenceBackup(t.Context(), read, intent)
+			if err != nil {
+				return err
+			}
+			prepared, err := s.Prepare(t.Context(), frozen, operation)
+			if err != nil {
+				return err
+			}
+			if _, err := s.ReleaseBackupFence(t.Context(), prepared); !errors.Is(err, ErrConflict) {
+				t.Fatalf("released a prepared operation: %v", err)
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	})
+}

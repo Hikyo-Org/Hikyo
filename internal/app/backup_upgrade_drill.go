@@ -164,10 +164,20 @@ func DrillUpgrade(ctx context.Context, request UpgradeDrillRequest) (UpgradeDril
 		if len(status.Pending) == 0 {
 			result.CredentialProof = "authoritatively-no-unreconciled-principal"
 		} else if request.AutoCredentialProof {
-			if err := recovery.AutoCredentialProof(ctx, kr); err != nil {
+			err := recovery.AutoCredentialProof(ctx, kr)
+			switch {
+			case err == nil:
+				result.CredentialProof = "reconciled-minted-revoked"
+			// Machine credentials are stored as verifiers and the key wrappers were
+			// verified above, so no stored value depends on a principal who can manage
+			// credentials. The lifecycle is only skipped where it has nowhere to run:
+			// no organisation but the protected configuration. A tenant organisation
+			// with no eligible principal refuses, even with no stored secret.
+			case errors.Is(err, service.ErrNoCredentialScope):
+				result.CredentialProof = "authoritatively-no-credential-scope"
+			default:
 				return fmt.Errorf("automatic scratch credential proof: %w", err)
 			}
-			result.CredentialProof = "reconciled-minted-revoked"
 		} else {
 			if request.Principal == "" {
 				return errors.New("populated identity inventory requires an explicit scratch reconciliation principal and project")
