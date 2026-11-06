@@ -3,8 +3,9 @@
 Normative contract for [#1207](https://github.com/Hikyo-Org/Hikyo/issues/1207).
 The owner accepted these decisions on 2026-11-06. They are bound into the ADRs by
 the amendment banners of that date in [human-auth](../adr/human-auth.md),
-[permission-model](../adr/permission-model.md) and
-[tenant-isolation](../adr/tenant-isolation.md).
+[permission-model](../adr/permission-model.md),
+[tenant-isolation](../adr/tenant-isolation.md) and
+[audit-model](../adr/audit-model.md).
 
 An organisation administrator who knows a person's exact email address can
 invite the existing account holding that address into the organisation, with a
@@ -46,20 +47,30 @@ single-use link the invitation mailed to them.
 The request performs the same reads and writes whether or not the address
 matched, and it never contacts the mail server. The transaction writes a
 `member.email_invitation_dispatch` intent on the instance trail for every send,
-and one background task follows the commit for every send, so every dispatch
-intent receives exactly one `member.email_invitation_mail_outcome`:
+and one background task follows the commit for every send. Sends are never
+dropped: each gets its own attempt, bounded only by the per-organisation send
+budget charged before the transaction, so a send in flight changes nothing about
+whether any other send is attempted. An outcome
+(`member.email_invitation_mail_outcome`) is recorded for every dispatch, except
+when the outcome write itself fails or the process dies, which is logged:
 
 - A matched account is mailed once within the mail per-send deadline. The
   outcome is `success` or `failure`, with `mail_sent` stating whether the mail
-  was handed to the transport. A send dropped because the background
-  concurrency bound is full records `failure` without dialling.
+  was handed to the transport.
 - An unmatched address is never dialled. Its outcome is `success` with
   `mail_sent: false`, stating that no mail was sent.
 
 Outcomes live on the instance trail only. A failed or lost send is counted
 (`hikyo_email_invitation_mail_failures_total`) but not reported to the
-administrator, who can send again. Stopping the application waits for the
-in-flight background tasks before the database closes.
+administrator, who can send again. Stopping the application cancels the
+in-flight mail attempts, records their failure outcomes (the outcome write has
+a short timeout of its own), and only then lets the database close.
+
+Accepted residuals. After the response, a matched send's mail transport and
+its later outcome write, a few milliseconds of extra work at different moments
+than an unmatched send's outcome, and the foreign-key check on a matched row are
+not visible in any response, list or organisation trail, and are accepted. The
+mail relay is shared infrastructure.
 
 Uniformity rules:
 
