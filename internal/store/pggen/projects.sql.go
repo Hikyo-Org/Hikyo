@@ -57,7 +57,8 @@ func (q *Queries) DeleteProject(ctx context.Context, arg DeleteProjectParams) (i
 const getProject = `-- name: GetProject :one
 SELECT id, org_id, name, created_at,
        retention_revision_count, retention_age_seconds, definitions_source,
-       machine_reveal, machine_reveal_generation
+       machine_reveal, machine_reveal_generation,
+       identity_hue, identity_mark, identity_image_version
 FROM projects
 WHERE org_id = $1 AND id = $2
 `
@@ -77,6 +78,9 @@ type GetProjectRow struct {
 	DefinitionsSource       string
 	MachineReveal           bool
 	MachineRevealGeneration int64
+	IdentityHue             int32
+	IdentityMark            pgtype.Text
+	IdentityImageVersion    pgtype.Text
 }
 
 // Keep ordinary metadata reads compatible with pre-capacity recovery schemas.
@@ -94,6 +98,9 @@ func (q *Queries) GetProject(ctx context.Context, arg GetProjectParams) (GetProj
 		&i.DefinitionsSource,
 		&i.MachineReveal,
 		&i.MachineRevealGeneration,
+		&i.IdentityHue,
+		&i.IdentityMark,
+		&i.IdentityImageVersion,
 	)
 	return i, err
 }
@@ -117,6 +124,29 @@ func (q *Queries) GetProjectCapacity(ctx context.Context, arg GetProjectCapacity
 	row := q.db.QueryRow(ctx, getProjectCapacity, arg.ChainOrgID, arg.ChainProjectID)
 	var i GetProjectCapacityRow
 	err := row.Scan(&i.KeyLimitOverride, &i.KeyLimitRevision)
+	return i, err
+}
+
+const getProjectIdentityImage = `-- name: GetProjectIdentityImage :one
+SELECT identity_image, identity_image_type, identity_image_version FROM projects
+WHERE org_id = $1 AND id = $2
+`
+
+type GetProjectIdentityImageParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+}
+
+type GetProjectIdentityImageRow struct {
+	IdentityImage        []byte
+	IdentityImageType    pgtype.Text
+	IdentityImageVersion pgtype.Text
+}
+
+func (q *Queries) GetProjectIdentityImage(ctx context.Context, arg GetProjectIdentityImageParams) (GetProjectIdentityImageRow, error) {
+	row := q.db.QueryRow(ctx, getProjectIdentityImage, arg.ChainOrgID, arg.ChainProjectID)
+	var i GetProjectIdentityImageRow
+	err := row.Scan(&i.IdentityImage, &i.IdentityImageType, &i.IdentityImageVersion)
 	return i, err
 }
 
@@ -157,10 +187,38 @@ func (q *Queries) ListAllProjects(ctx context.Context) ([]ListAllProjectsRow, er
 	return items, nil
 }
 
+const listProjectIDs = `-- name: ListProjectIDs :many
+SELECT id FROM projects
+WHERE org_id = $1 ORDER BY id
+`
+
+// ListProjectIDs reads only the id column so the upgrade drill can enumerate
+// projects in a restored scratch database that predates later project columns.
+func (q *Queries) ListProjectIDs(ctx context.Context, orgID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, listProjectIDs, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProjects = `-- name: ListProjects :many
 SELECT id, org_id, name, created_at,
        retention_revision_count, retention_age_seconds, definitions_source,
-       machine_reveal, machine_reveal_generation
+       machine_reveal, machine_reveal_generation,
+       identity_hue, identity_mark, identity_image_version
 FROM projects
 WHERE org_id = $1 ORDER BY name
 `
@@ -175,6 +233,9 @@ type ListProjectsRow struct {
 	DefinitionsSource       string
 	MachineReveal           bool
 	MachineRevealGeneration int64
+	IdentityHue             int32
+	IdentityMark            pgtype.Text
+	IdentityImageVersion    pgtype.Text
 }
 
 func (q *Queries) ListProjects(ctx context.Context, chainOrgID string) ([]ListProjectsRow, error) {
@@ -196,6 +257,9 @@ func (q *Queries) ListProjects(ctx context.Context, chainOrgID string) ([]ListPr
 			&i.DefinitionsSource,
 			&i.MachineReveal,
 			&i.MachineRevealGeneration,
+			&i.IdentityHue,
+			&i.IdentityMark,
+			&i.IdentityImageVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -290,6 +354,62 @@ type SetProjectDefinitionsSourceParams struct {
 // definitions-edit path so a blocked editor cannot disable its own guard.
 func (q *Queries) SetProjectDefinitionsSource(ctx context.Context, arg SetProjectDefinitionsSourceParams) (int64, error) {
 	result, err := q.db.Exec(ctx, setProjectDefinitionsSource, arg.DefinitionsSource, arg.ChainOrgID, arg.ChainProjectID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setProjectIdentity = `-- name: SetProjectIdentity :execrows
+UPDATE projects SET identity_hue = $1, identity_mark = $2
+WHERE org_id = $3 AND id = $4
+`
+
+type SetProjectIdentityParams struct {
+	IdentityHue    int32
+	IdentityMark   pgtype.Text
+	ChainOrgID     string
+	ChainProjectID string
+}
+
+// Chrome identity (hue, short mark, uploaded image). Get/List never select
+// the image bytes; GetProjectIdentityImage is the only reader.
+func (q *Queries) SetProjectIdentity(ctx context.Context, arg SetProjectIdentityParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setProjectIdentity,
+		arg.IdentityHue,
+		arg.IdentityMark,
+		arg.ChainOrgID,
+		arg.ChainProjectID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setProjectIdentityImage = `-- name: SetProjectIdentityImage :execrows
+UPDATE projects SET identity_image = $1,
+    identity_image_type = $2,
+    identity_image_version = $3
+WHERE org_id = $4 AND id = $5
+`
+
+type SetProjectIdentityImageParams struct {
+	IdentityImage        []byte
+	IdentityImageType    pgtype.Text
+	IdentityImageVersion pgtype.Text
+	ChainOrgID           string
+	ChainProjectID       string
+}
+
+func (q *Queries) SetProjectIdentityImage(ctx context.Context, arg SetProjectIdentityImageParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setProjectIdentityImage,
+		arg.IdentityImage,
+		arg.IdentityImageType,
+		arg.IdentityImageVersion,
+		arg.ChainOrgID,
+		arg.ChainProjectID,
+	)
 	if err != nil {
 		return 0, err
 	}

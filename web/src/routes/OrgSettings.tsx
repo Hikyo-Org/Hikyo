@@ -8,6 +8,7 @@ import {
   settingsOperationFailure,
   useDeleteOrg,
   useOrg,
+  useOrgIdentityMutations,
   useOrgRetention,
   useProjectRetentions,
   useProjects,
@@ -22,6 +23,8 @@ import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { ReadOnlyContext } from '../ui/ReadOnlyContext.ts';
+import { identityActions } from './chrome-identity-actions.ts';
+import { orgIdentityImageUrl } from './chrome-identity.ts';
 import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
 import { Panel, SectionTabs, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback } from './useFeedback.ts';
@@ -50,6 +53,7 @@ export function OrgSettings() {
     projects.isSuccess && projects.data !== null ? projects.data.items : [],
   );
   const rename = useRenameOrg();
+  const identityMutations = useOrgIdentityMutations(org);
   const remove = useDeleteOrg(() => {
     notifySuccess('Organisation deleted. Sign in again to continue.');
     navigate(surfaceById('projects').path);
@@ -69,7 +73,7 @@ export function OrgSettings() {
     <div className="page page--chrome">
       <h1>Organisation settings<Sep />{current?.name ?? 'organisation'}</h1>
       <p className="page__lede">
-        Rename this organisation, set its retention policy, or delete it; grants are edited on
+        Rename this organisation, set its badge and retention policy, or delete it; grants are edited on
         the members surface.
       </p>
 
@@ -89,9 +93,17 @@ export function OrgSettings() {
           { id: 'org-identity', label: 'Identity', content: (
             <Panel id="org-identity" title="Identity">
               <ChromeIdentityControls
+                key={org}
                 identityId={current?.id ?? org}
                 name={current?.name ?? 'organisation'}
                 kind="org"
+                identity={current?.identity}
+                imageUrl={(version) => orgIdentityImageUrl(org, version)}
+                actions={identityActions(
+                  identityMutations,
+                  { identity: 'set-org-identity', image: 'set-org-identity-image' },
+                  { report, ok: feedback.ok },
+                )}
               >
                 <div className="field identity-name">
                   <label htmlFor={nameId}>Name</label>

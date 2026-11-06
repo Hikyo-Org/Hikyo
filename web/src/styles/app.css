@@ -228,7 +228,7 @@ input[type='datetime-local']:not(:placeholder-shown) {
 }
 
 /* The browser's own calendar glyph, replaced by drawn geometry (never a
-   fetched image: production serves `img-src 'self'`, csp.test.ts, the same
+   fetched image: production's `img-src` refuses data: URLs, csp.test.ts, the same
    reason the checkbox tick below is a rotated border, not a mask). A
    bordered box with a thicker top band reads as a calendar at this size
    without a real SVG. */
@@ -2537,7 +2537,7 @@ fieldset.field > legend {
 
 /* The editable-slot affordance (env-matrix iteration 22): every slot you can
    edit carries a faint trailing pencil, accent on hover. An aria-hidden glyph
-   (the CSP's `img-src 'self'` rules out a data-URI mask on a pseudo-element)
+   (the CSP's `img-src` rules out a data-URI mask on a pseudo-element)
    that ignores the pointer, so the button stays the only click target.
    The two problem states are deliberately excluded: they already carry a
    glyph and a colour saying what to do, and a third mark beside them is noise
@@ -4221,7 +4221,7 @@ input[type='checkbox']:indeterminate::before {
 }
 
 /* The mark is drawn geometry in the theme's on-accent ink, never a fetched
-   image: production serves img-src 'self' (internal/server/spa.go), which
+   image: production's img-src refuses data: URLs (internal/server/spa.go), which
    blocks a data: mask and would leave checked and indeterminate as a bare
    accent square. The tick is the two trailing borders of a box rotated 45deg
    (its visual centre sits low, hence the lift); the dash is a plain bar. */
@@ -5387,6 +5387,17 @@ label.chk:has(input:disabled) {
   box-shadow: 0 0 0 1px var(--line);
 }
 
+/* A thin bar is a poor thumb target: keep the look, grow the hit area. */
+@media (pointer: coarse) {
+  .identity-hue-range {
+    min-height: var(--touch);
+    height: var(--touch);
+    background-size: 100% 10px;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+}
+
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -5434,6 +5445,30 @@ label.chk:has(input:disabled) {
 
 .identity-upload {
   margin-top: 0;
+}
+
+/* The real file input covers its label button, so it keeps a full touch target
+   while the button draws the look, including the focus ring. */
+.identity-upload__picker {
+  position: relative;
+  display: inline-flex;
+}
+
+.identity-upload__input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.identity-upload input:focus-visible + .btn {
+  outline: var(--ring-width) solid var(--ring-color);
+  outline-offset: var(--ring-offset);
 }
 
 .instance-create-row {

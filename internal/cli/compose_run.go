@@ -636,7 +636,7 @@ func refusePersonalKeys(ios IO, keys []apigen.DeliveredKey) error {
 			continue
 		}
 		switch *k.Personal {
-		case apigen.Value:
+		case apigen.DeliveredKeyPersonalValue:
 			overridden = append(overridden, k.Name)
 		default:
 			reason := ""

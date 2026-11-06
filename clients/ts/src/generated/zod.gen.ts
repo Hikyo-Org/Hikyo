@@ -1539,6 +1539,19 @@ export const zRecoveryCodesResult = z.object({
     login: zLoginResult
 });
 
+/**
+ * The editable avatar of an organisation or project. `mark` is null when
+ * the monogram is derived from the name; `image_version` is a lowercase
+ * hex content hash of the uploaded image, null when there is none, and is
+ * what the image URL's `v` query parameter carries.
+ *
+ */
+export const zChromeIdentity = z.object({
+    hue: z.int().gte(0).lte(359),
+    mark: z.string().nullable(),
+    image_version: z.string().regex(/^[0-9a-f]{64}$/).nullable()
+});
+
 export const zOrg = z.object({
     id: zId,
     name: z.string(),
@@ -1546,7 +1559,19 @@ export const zOrg = z.object({
     metadata: z.record(z.string(), z.unknown()).nullish(),
     created_at: zTimestamp,
     origin: z.enum(['manual', 'registration']),
-    registration_policy_id: z.string().nullish()
+    registration_policy_id: z.string().nullish(),
+    identity: zChromeIdentity.optional()
+});
+
+/**
+ * A partial write: each field present replaces the stored one and an
+ * absent field is left unchanged, so saving one field never overwrites
+ * a concurrent change to the other.
+ *
+ */
+export const zIdentityRequest = z.object({
+    hue: z.int().gte(0).lte(359).optional(),
+    mark: z.string().max(128).nullish()
 });
 
 export const zOrgList = z.object({
@@ -1556,14 +1581,15 @@ export const zOrgList = z.object({
 
 /**
  * An organisation as a navigation destination: what the caller needs to
- * show it and route to it, and nothing else. Deliberately narrower than
+ * show it and route to it (name and chrome identity), and nothing else. Deliberately narrower than
  * `Org` — `metadata` and `active` are operator-set state that belongs to
  * `getOrg`, which authorizes; a member listing does not.
  *
  */
 export const zMyOrg = z.object({
     id: zId,
-    name: z.string()
+    name: z.string(),
+    identity: zChromeIdentity.optional()
 });
 
 export const zMyOrgList = z.object({
@@ -1596,7 +1622,8 @@ export const zProject = z.object({
     id: zId,
     org_id: zId,
     name: z.string(),
-    created_at: zTimestamp
+    created_at: zTimestamp,
+    identity: zChromeIdentity.optional()
 });
 
 export const zProjectList = z.object({
@@ -5077,6 +5104,11 @@ export const zOrgId = zId;
 export const zProjectId = zId;
 
 /**
+ * The `identity.image_version` being rendered; a cache-busting hint only.
+ */
+export const zIdentityImageVersion = z.string().regex(/^[0-9a-f]{64}$/);
+
+/**
  * Environment identifier.
  */
 export const zEnvironmentId = zId;
@@ -5744,6 +5776,50 @@ export const zSetOrgRetentionPath = z.object({
  */
 export const zSetOrgRetentionResponse = zRetentionPolicy;
 
+export const zSetOrgIdentityBody = zIdentityRequest;
+
+export const zSetOrgIdentityPath = z.object({
+    org: zId
+});
+
+/**
+ * The organisation with its updated identity.
+ */
+export const zSetOrgIdentityResponse = zOrg;
+
+export const zClearOrgIdentityImagePath = z.object({
+    org: zId
+});
+
+/**
+ * The organisation without an uploaded image.
+ */
+export const zClearOrgIdentityImageResponse = zOrg;
+
+export const zGetOrgIdentityImagePath = z.object({
+    org: zId
+});
+
+export const zGetOrgIdentityImageQuery = z.object({
+    v: z.string().regex(/^[0-9a-f]{64}$/).optional()
+});
+
+/**
+ * The stored image bytes with their exact content type.
+ */
+export const zGetOrgIdentityImageResponse = z.string();
+
+export const zSetOrgIdentityImageBody = z.string();
+
+export const zSetOrgIdentityImagePath = z.object({
+    org: zId
+});
+
+/**
+ * The organisation with its updated identity.
+ */
+export const zSetOrgIdentityImageResponse = zOrg;
+
 export const zDeleteProjectPath = z.object({
     org: zId,
     project: zId
@@ -5775,6 +5851,54 @@ export const zRenameProjectPath = z.object({
  * The renamed project.
  */
 export const zRenameProjectResponse = zProject;
+
+export const zSetProjectIdentityBody = zIdentityRequest;
+
+export const zSetProjectIdentityPath = z.object({
+    org: zId,
+    project: zId
+});
+
+/**
+ * The project with its updated identity.
+ */
+export const zSetProjectIdentityResponse = zProject;
+
+export const zClearProjectIdentityImagePath = z.object({
+    org: zId,
+    project: zId
+});
+
+/**
+ * The project without an uploaded image.
+ */
+export const zClearProjectIdentityImageResponse = zProject;
+
+export const zGetProjectIdentityImagePath = z.object({
+    org: zId,
+    project: zId
+});
+
+export const zGetProjectIdentityImageQuery = z.object({
+    v: z.string().regex(/^[0-9a-f]{64}$/).optional()
+});
+
+/**
+ * The stored image bytes with their exact content type.
+ */
+export const zGetProjectIdentityImageResponse = z.string();
+
+export const zSetProjectIdentityImageBody = z.string();
+
+export const zSetProjectIdentityImagePath = z.object({
+    org: zId,
+    project: zId
+});
+
+/**
+ * The project with its updated identity.
+ */
+export const zSetProjectIdentityImageResponse = zProject;
 
 export const zListEnvironmentsPath = z.object({
     org: zId,

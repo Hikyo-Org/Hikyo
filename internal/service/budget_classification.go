@@ -146,8 +146,10 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 	add(budgetClassExempt, "§10 authenticated API 300/min per session; single-row/paged CRUD, not a §179 fan-out",
 		// orgs / projects / environments / folders (structure CRUD)
 		authz.OpOrgCreate, authz.OpOrgGet, authz.OpOrgList, authz.OpOrgRename, authz.OpOrgDelete,
+		authz.OpOrgIdentitySet, authz.OpOrgIdentityImageSet, authz.OpOrgIdentityImageClear,
 		authz.OpOrgRetentionRead, authz.OpOrgRetentionUpdate,
 		authz.OpProjectCreate, authz.OpProjectGet, authz.OpProjectList, authz.OpProjectRename, authz.OpProjectDelete,
+		authz.OpProjectIdentitySet, authz.OpProjectIdentityImageSet, authz.OpProjectIdentityImageClear, authz.OpProjectIdentityImageGet,
 		authz.OpProjectRetentionRead, authz.OpProjectRetentionUpdate,
 		authz.OpProjectMachineRevealGet, authz.OpProjectMachineRevealSet,
 		authz.OpProjectCapacityRead, authz.OpProjectCapacitySet,

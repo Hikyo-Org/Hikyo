@@ -115,6 +115,10 @@ operations:
   # hierarchy
   getOrg:                      {webui: org-settings}
   renameOrg:                   {webui: org-settings}
+  setOrgIdentity:              {webui: org-settings}
+  setOrgIdentityImage:         {webui: org-settings}
+  clearOrgIdentityImage:       {webui: org-settings}
+  getOrgIdentityImage:         {webui: org-settings, reach: path}
   deleteOrg:                   {webui: org-settings}
   listProjects:                {webui: projects}
   createProject:               {webui: projects}
@@ -122,6 +126,10 @@ operations:
   setOrgRetention:             {webui: org-settings}
   getProject:                  {webui: project-settings}
   renameProject:               {webui: project-settings}
+  setProjectIdentity:          {webui: project-settings}
+  setProjectIdentityImage:     {webui: project-settings}
+  clearProjectIdentityImage:   {webui: project-settings}
+  getProjectIdentityImage:     {webui: project-settings, reach: path}
   deleteProject:               {webui: project-settings}
   listEnvironments:            {webui: project-settings}
   createEnvironment:           {webui: project-settings}

@@ -42,8 +42,12 @@ const indexPath = "index.html"
 // default, no inline script or style (which constrains the frontend build,
 // deliberately), no framing, no plugin content, no base-tag rewriting.
 // Tuning belongs to the ops spec; the baseline's existence does not.
+//
+// img-src admits `blob:` and never `data:`: the browser converts an uploaded SVG
+// avatar to PNG by loading it from a blob URL into an <img> (createImageBitmap
+// refuses SVG in Chromium and WebKit), which `img-src 'self'` blocks.
 const contentSecurityPolicy = "default-src 'self'; " +
-	"script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; " +
+	"script-src 'self'; style-src 'self'; img-src 'self' blob:; font-src 'self'; " +
 	"connect-src 'self'; base-uri 'none'; object-src 'none'; form-action 'self'; " +
 	"frame-ancestors 'none'"
 

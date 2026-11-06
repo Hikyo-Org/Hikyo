@@ -4,10 +4,11 @@ import { expect } from 'storybook/test';
 import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
 
 // Outside prototype mode (import.meta.env.MODE !== 'prototype') the component
-// is read-only: a preview plus its children, with no way to change the
-// identity from the browser. That is the mode Storybook always runs in.
+// is read-only until the page supplies `actions` (the editable stories below);
+// without them it is a preview plus its children. Storybook always runs outside
+// prototype mode.
 const meta = {
-  parameters: { docs: { description: { component: "Organisation and project identity previews used by navigation chrome. The production surface is read-only because no persistence API exists; prototype mode exposes browser-local hue, glyph and image choices with accessible control names." } } },
+  parameters: { docs: { description: { component: "Organisation and project identity previews used by navigation chrome. The production surface saves hue, content and image through the identity API when the page supplies actions, and is a read-only preview otherwise; prototype mode exposes browser-local hue, glyph and image choices. Every control has an accessible name." } } },
   title: 'Shared/ChromeIdentityControls',
   id: 'routes-chromeidentitycontrols',
   component: ChromeIdentityControls,
@@ -42,5 +43,33 @@ export const ProjectIdentity: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getByLabelText('Project identity preview: PA')).toBeVisible();
     await expect(canvas.getByText("Shown on the project's rail tile.")).toBeVisible();
+  },
+};
+
+const noop = () => Promise.resolve();
+
+export const EditableOrg: Story = {
+  args: {
+    identity: { hue: 280, mark: 'AC' },
+    actions: { setIdentity: noop, setImage: noop, clearImage: noop },
+  },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByLabelText('Hue 280')).toHaveAttribute('aria-pressed', 'true');
+    await expect(canvas.getByLabelText(/^Content/)).toHaveValue('AC');
+    await expect(canvas.getByText(/PNG, JPEG, WebP or SVG, replaces the monogram/)).toBeVisible();
+  },
+};
+
+export const EditableProject: Story = {
+  args: {
+    identityId: 'prj_01989abc-def0-7123-8123-000000000000',
+    name: 'Payments',
+    kind: 'project',
+    identity: { hue: 195, mark: null },
+    actions: { setIdentity: noop, setImage: noop, clearImage: noop },
+  },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByLabelText('Use monogram')).toHaveAttribute('aria-pressed', 'true');
+    await expect(canvas.getByText(/replaces the content/)).toBeVisible();
   },
 };

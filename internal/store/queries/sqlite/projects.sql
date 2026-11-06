@@ -11,14 +11,16 @@ VALUES (?, ?, ?, ?);
 -- name: GetProject :one
 SELECT id, org_id, name, created_at,
        retention_revision_count, retention_age_seconds, definitions_source,
-       machine_reveal, machine_reveal_generation
+       machine_reveal, machine_reveal_generation,
+       identity_hue, identity_mark, identity_image_version
 FROM projects
 WHERE org_id = ? AND id = ?;
 
 -- name: ListProjects :many
 SELECT id, org_id, name, created_at,
        retention_revision_count, retention_age_seconds, definitions_source,
-       machine_reveal, machine_reveal_generation
+       machine_reveal, machine_reveal_generation,
+       identity_hue, identity_mark, identity_image_version
 FROM projects
 WHERE org_id = ? ORDER BY name;
 
@@ -82,3 +84,25 @@ WHERE org_id = sqlc.arg(chain_org_id) AND id = sqlc.arg(chain_project_id);
 -- name: SetProjectCapacity :execrows
 UPDATE projects SET key_limit_override = sqlc.narg(key_limit_override), key_limit_revision = key_limit_revision + 1
 WHERE org_id = sqlc.arg(chain_org_id) AND id = sqlc.arg(chain_project_id) AND key_limit_revision = sqlc.arg(expected_revision);
+
+-- Chrome identity (hue, short mark, uploaded image). Get/List never select
+-- the image bytes; GetProjectIdentityImage is the only reader.
+-- name: SetProjectIdentity :execrows
+UPDATE projects SET identity_hue = ?, identity_mark = ?
+WHERE org_id = ? AND id = ?;
+
+-- name: SetProjectIdentityImage :execrows
+UPDATE projects SET identity_image = ?,
+    identity_image_type = ?,
+    identity_image_version = ?
+WHERE org_id = ? AND id = ?;
+
+-- name: GetProjectIdentityImage :one
+SELECT identity_image, identity_image_type, identity_image_version FROM projects
+WHERE org_id = ? AND id = ?;
+
+-- ListProjectIDs reads only the id column so the upgrade drill can enumerate
+-- projects in a restored scratch database that predates later project columns.
+-- name: ListProjectIDs :many
+SELECT id FROM projects
+WHERE org_id = ? ORDER BY id;
