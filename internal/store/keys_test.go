@@ -377,3 +377,23 @@ func postgresTestDB(t *testing.T) *store.DB {
 	})
 	return openKeyTestDB(t, cfg)
 }
+
+// The full set of values is checked on the upgrade lock session; this proves the pool runs the
+// same hook on every new connection, not only the first.
+func TestPostgresPoolSessionsDropDeadClients(t *testing.T) {
+	db := postgresTestDB(t)
+	for range 2 {
+		conn, err := db.PG().Acquire(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Release()
+		var idle string
+		if err := conn.QueryRow(t.Context(), "SELECT current_setting('tcp_keepalives_idle')").Scan(&idle); err != nil {
+			t.Fatal(err)
+		}
+		if idle != "60" {
+			t.Errorf("tcp_keepalives_idle = %s, want 60", idle)
+		}
+	}
+}

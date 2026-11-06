@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
@@ -229,10 +230,16 @@ func (c OperatorCustody) Check(state upgrade.State) error {
 // acquires datastore exclusion. Backup and reconciliation need no root escrow,
 // but cannot bypass a pending journal, configured pin or external epoch floor.
 func WithInstalledOperator(ctx context.Context, directory string, configured []byte, fn func(OperatorCustody) error) error {
+	return WithInstalledOperatorOwnedBy(ctx, directory, os.Geteuid(), configured, fn)
+}
+
+// WithInstalledOperatorOwnedBy is WithInstalledOperator for custody owned by another
+// user, such as the service account read by the root native rollback. It only reads.
+func WithInstalledOperatorOwnedBy(ctx context.Context, directory string, owner int, configured []byte, fn func(OperatorCustody) error) error {
 	if fn == nil {
 		return errors.New("missing operator custody operation")
 	}
-	f, err := openOperatorFile(ctx, directory, configured, false)
+	f, err := openOperatorFileOwnedBy(ctx, directory, owner, configured, false)
 	if err != nil {
 		return err
 	}

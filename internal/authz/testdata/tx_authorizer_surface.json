@@ -177,6 +177,7 @@
   "InvalidateRestoredAdapterCredentials": "func(ctx context.Context) error",
   "InvalidateRestoredDynamicProviderCredentials": "func(ctx context.Context) error",
   "InvalidateRestoredExternalCredentials": "func(ctx context.Context, now time.Time) error",
+  "IsProtectedOrg": "func(ctx context.Context, org domain.OrgID) (bool, error)",
   "ListDeveloperCredentials": "func(ctx context.Context) ([]DeveloperCredential, error)",
   "ListLiveOrgEmailInvitations": "func(ctx context.Context, org domain.OrgID, at time.Time) ([]EmailInvitationListing, error)",
   "ListOAuth2Providers": "func(ctx context.Context) ([]OAuth2Provider, error)",

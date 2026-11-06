@@ -21,6 +21,14 @@ func nightlyCacheDirectory(identity releaseidentity.Identity) string {
 	return "nightly-" + string(identity.ManifestSHA256) + "-" + runtime.GOOS + "-" + runtime.GOARCH
 }
 
+// CachedReleaseDirectory is where the verified cache under stateDir keeps one release.
+func CachedReleaseDirectory(stateDir string, identity releaseidentity.Identity) string {
+	if identity.Profile == releaseidentity.NightlyV1 {
+		return filepath.Join(stateDir, nightlyCacheDirectory(identity))
+	}
+	return filepath.Join(stateDir, "stable-"+string(identity.ManifestSHA256)+"-"+runtime.GOOS+"-"+runtime.GOARCH)
+}
+
 // Authenticate metadata before selecting any executable payload. Discovery
 // must match the entire signed inventory, but only native bytes are fetched.
 func (i *Installer) downloadNightlyPlatform(ctx context.Context, status updatecheck.Status, stage string, cached bool, snapshot releasetrust.Snapshot) (releasetrust.VerifiedRelease, error) {

@@ -153,6 +153,26 @@ func TestAuthenticatedBackupPreparationPinsFinalTargetAndRefusesMissingProof(t *
 				if err != nil || !sameOperatorState(after, frozen.State) {
 					t.Fatalf("failed proof changed source: %v", err)
 				}
+				request.Mode = ReleasePreparation
+				for index, name := range map[int]string{1: "another signed image", 2: "the target the source was frozen for"} {
+					if _, err := invoke(request, index); err == nil {
+						t.Fatalf("%s lifted the source's fence", name)
+					}
+				}
+				if after, err := upgrade.InspectControl(t.Context(), cfg); err != nil || !sameOperatorState(after, frozen.State) {
+					t.Fatalf("a refused release changed the fence: %v", err)
+				}
+				released, err := invoke(request, 0)
+				if err != nil || released.State.Maintenance || released.State.Pending.Phase != upgrade.Healthy || released.State.Pending.Preparation != nil || released.State.Generation != booted.State.Generation {
+					t.Fatalf("the frozen source could not lift its own fence: %v", err)
+				}
+				if again, err := invoke(request, 0); err != nil || !sameOperatorState(again.State, released.State) {
+					t.Fatalf("releasing a released source failed: %v", err)
+				}
+				request.Mode, request.CheckConfiguration = Boot, nil
+				if resumed, err := invoke(request, 0); err != nil || !resumed.Admission.Valid() {
+					t.Fatalf("the released source did not resume serving: %v", err)
+				}
 			})
 		}
 	}
