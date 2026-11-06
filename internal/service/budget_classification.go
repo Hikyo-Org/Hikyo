@@ -240,6 +240,11 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		// authority mint; frequency governed by the §10 authenticated-API budget
 		// exactly as the template and credential-reset operations beside it.
 		authz.OpMemberInviteOrg, authz.OpMemberInviteInstance,
+		// email invitation of an existing account (#1207): one pending row per
+		// call. The send is additionally bounded by its own 30/hour per-org
+		// budget and the 200-pending cap, charged at the service method.
+		authz.OpEmailInvitationSend, authz.OpEmailInvitationList,
+		authz.OpEmailInvitationRevoke, authz.OpEmailInvitationAccept,
 		// registration policy (#606): one policy row and its child rows per
 		// scope. The sign-up legs the policy opens are charged to the named
 		// `signup` category at their own charge points (#607, #608), never here.

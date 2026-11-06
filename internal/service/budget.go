@@ -194,6 +194,10 @@ const (
 	BudgetSignupPerHour = 20
 	// Operator mail tests share this per-principal hourly bucket across both routes.
 	BudgetMailTestPerHour = 5
+	// Email invitations of existing accounts (#1207, docs/spec/email-invitations.md
+	// section 7): sends per organisation per hour, and live pending rows.
+	BudgetEmailInvitationPerHour = 30
+	EmailInvitationPendingCap    = 200
 
 	// budgetMaxTrackedSubjects bounds how many rate buckets are remembered.
 	// Rate keys carry attacker-influenced values (a principal id, an org id), so
@@ -340,6 +344,13 @@ var (
 	budgetSignup = budgetCategory{
 		name:  "signup",
 		rates: []budgetRateRule{{dimInstance, BudgetSignupPerHour, time.Hour}},
+	}
+	// budgetEmailInvitation bounds the email invitation send: one org-keyed
+	// hourly bucket, charged after authorization and the mailer predicate and
+	// before any write, whatever the address.
+	budgetEmailInvitation = budgetCategory{
+		name:  "email-invitation",
+		rates: []budgetRateRule{{dimOrg, BudgetEmailInvitationPerHour, time.Hour}},
 	}
 	// budgetDefault is the §179 fail-closed default: 60/min per principal, 8
 	// concurrent per org, applied to expensive operations that have no named

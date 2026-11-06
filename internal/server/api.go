@@ -186,6 +186,8 @@ type API struct {
 	Reveal       RevealService
 	KeyGroups    KeyGroupService
 	Grants       GrantService
+	// EmailInvitations is the email invitation of an existing account (#1207).
+	EmailInvitations EmailInvitationService
 	// Rules is the member access rule surface (member-access-rules ADR).
 	Rules RuleService
 	// Registration is the registration policy surface (#606) and the public

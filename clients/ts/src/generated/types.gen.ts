@@ -1779,6 +1779,65 @@ export type RecoveryBeginResult = {
     expires_at: Timestamp;
 };
 
+export type EmailInvitationSendRequest = {
+    /**
+     * The exact address, canonicalized as local sign-up does. Only a
+     * verified address of an existing account can be reached.
+     *
+     */
+    email: string;
+    template: RoleTemplate;
+};
+
+export type EmailInvitation = {
+    id: Id;
+    email: string;
+    template: RoleTemplate;
+    created_at: Timestamp;
+    expires_at: Timestamp;
+};
+
+export type EmailInvitationListing = {
+    id: Id;
+    email: string;
+    template: RoleTemplate;
+    invited_by: Id;
+    created_at: Timestamp;
+    expires_at: Timestamp;
+};
+
+export type EmailInvitationList = {
+    items: Array<EmailInvitationListing>;
+    count: number;
+};
+
+export type EmailInvitationTokenRequest = {
+    /**
+     * The single-use token from the invitation link's fragment.
+     */
+    token: string;
+};
+
+export type EmailInvitationPreview = {
+    org: Id;
+    org_name: string;
+    template: RoleTemplate;
+    expires_at: Timestamp;
+};
+
+export type EmailInvitationAcceptance = {
+    org: Id;
+    org_name: string;
+    template: RoleTemplate;
+    grants_created: number;
+    /**
+     * True when grants were created: every session of the person ended,
+     * the current one included, and they must sign in again.
+     *
+     */
+    signed_out: boolean;
+};
+
 export type InviteMemberRequest = {
     /**
      * The invitee's local login handle; globally unique.
@@ -6914,6 +6973,11 @@ export type RemoteName = EntityName;
  * Connection credential identifier.
  */
 export type ConnectionId = Id;
+
+/**
+ * Pending email invitation identifier.
+ */
+export type EmailInvitationId = Id;
 
 /**
  * Session identifier, always one of the caller's own.
@@ -12393,6 +12457,227 @@ export type InviteOrgMemberResponses = {
 };
 
 export type InviteOrgMemberResponse = InviteOrgMemberResponses[keyof InviteOrgMemberResponses];
+
+export type ListOrgEmailInvitationsData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/email-invitations';
+};
+
+export type ListOrgEmailInvitationsErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListOrgEmailInvitationsError = ListOrgEmailInvitationsErrors[keyof ListOrgEmailInvitationsErrors];
+
+export type ListOrgEmailInvitationsResponses = {
+    /**
+     * The pending invitations.
+     */
+    200: EmailInvitationList;
+};
+
+export type ListOrgEmailInvitationsResponse = ListOrgEmailInvitationsResponses[keyof ListOrgEmailInvitationsResponses];
+
+export type InviteOrgMemberByEmailData = {
+    body: EmailInvitationSendRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/email-invitations';
+};
+
+export type InviteOrgMemberByEmailErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type InviteOrgMemberByEmailError = InviteOrgMemberByEmailErrors[keyof InviteOrgMemberByEmailErrors];
+
+export type InviteOrgMemberByEmailResponses = {
+    /**
+     * The invitation was recorded.
+     */
+    202: EmailInvitation;
+};
+
+export type InviteOrgMemberByEmailResponse = InviteOrgMemberByEmailResponses[keyof InviteOrgMemberByEmailResponses];
+
+export type RevokeOrgEmailInvitationData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Pending email invitation identifier.
+         */
+        invitation: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/email-invitations/{invitation}';
+};
+
+export type RevokeOrgEmailInvitationErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type RevokeOrgEmailInvitationError = RevokeOrgEmailInvitationErrors[keyof RevokeOrgEmailInvitationErrors];
+
+export type RevokeOrgEmailInvitationResponses = {
+    /**
+     * Revoked.
+     */
+    204: void;
+};
+
+export type RevokeOrgEmailInvitationResponse = RevokeOrgEmailInvitationResponses[keyof RevokeOrgEmailInvitationResponses];
 
 export type DeleteOrgRegistrationPolicyData = {
     body: RegistrationPolicyDeleteRequest;
@@ -25513,6 +25798,116 @@ export type ShowWorkspaceHandoffResponses = {
 };
 
 export type ShowWorkspaceHandoffResponse = ShowWorkspaceHandoffResponses[keyof ShowWorkspaceHandoffResponses];
+
+export type PreviewEmailInvitationData = {
+    body: EmailInvitationTokenRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/me/invitations/preview';
+};
+
+export type PreviewEmailInvitationErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type PreviewEmailInvitationError = PreviewEmailInvitationErrors[keyof PreviewEmailInvitationErrors];
+
+export type PreviewEmailInvitationResponses = {
+    /**
+     * The organisation, template and expiry the token offers.
+     */
+    200: EmailInvitationPreview;
+};
+
+export type PreviewEmailInvitationResponse = PreviewEmailInvitationResponses[keyof PreviewEmailInvitationResponses];
+
+export type AcceptEmailInvitationData = {
+    body: EmailInvitationTokenRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/me/invitations/accept';
+};
+
+export type AcceptEmailInvitationErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type AcceptEmailInvitationError = AcceptEmailInvitationErrors[keyof AcceptEmailInvitationErrors];
+
+export type AcceptEmailInvitationResponses = {
+    /**
+     * The invitation was accepted.
+     */
+    200: EmailInvitationAcceptance;
+};
+
+export type AcceptEmailInvitationResponse = AcceptEmailInvitationResponses[keyof AcceptEmailInvitationResponses];
 
 export type ListMySessionsData = {
     body?: never;

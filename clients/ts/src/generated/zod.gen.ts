@@ -1435,6 +1435,10 @@ export const zRecoveryBeginResult = z.object({
     expires_at: zTimestamp
 });
 
+export const zEmailInvitationTokenRequest = z.object({
+    token: z.string().min(1).max(512)
+});
+
 export const zInvitationResult = z.object({
     principal_id: zId,
     account_id: zId,
@@ -2730,6 +2734,48 @@ export const zRoleTemplate = z.enum([
     'admin',
     'operator'
 ]);
+
+export const zEmailInvitationSendRequest = z.object({
+    email: z.string().min(3).max(254),
+    template: zRoleTemplate
+});
+
+export const zEmailInvitation = z.object({
+    id: zId,
+    email: z.string(),
+    template: zRoleTemplate,
+    created_at: zTimestamp,
+    expires_at: zTimestamp
+});
+
+export const zEmailInvitationListing = z.object({
+    id: zId,
+    email: z.string(),
+    template: zRoleTemplate,
+    invited_by: zId,
+    created_at: zTimestamp,
+    expires_at: zTimestamp
+});
+
+export const zEmailInvitationList = z.object({
+    items: z.array(zEmailInvitationListing),
+    count: z.int().gte(0)
+});
+
+export const zEmailInvitationPreview = z.object({
+    org: zId,
+    org_name: z.string(),
+    template: zRoleTemplate,
+    expires_at: zTimestamp
+});
+
+export const zEmailInvitationAcceptance = z.object({
+    org: zId,
+    org_name: z.string(),
+    template: zRoleTemplate,
+    grants_created: z.int().gte(0),
+    signed_out: z.boolean()
+});
 
 export const zInviteMemberRequest = z.object({
     username: z.string().min(1).max(128),
@@ -5316,6 +5362,11 @@ export const zRemoteName = zEntityName;
 export const zConnectionId = zId;
 
 /**
+ * Pending email invitation identifier.
+ */
+export const zEmailInvitationId = zId;
+
+/**
  * Session identifier, always one of the caller's own.
  */
 export const zSessionId = zId;
@@ -6197,6 +6248,36 @@ export const zInviteOrgMemberPath = z.object({
  * The invited principal and its single-use authority.
  */
 export const zInviteOrgMemberResponse = zInvitationResult;
+
+export const zListOrgEmailInvitationsPath = z.object({
+    org: zId
+});
+
+/**
+ * The pending invitations.
+ */
+export const zListOrgEmailInvitationsResponse = zEmailInvitationList;
+
+export const zInviteOrgMemberByEmailBody = zEmailInvitationSendRequest;
+
+export const zInviteOrgMemberByEmailPath = z.object({
+    org: zId
+});
+
+/**
+ * The invitation was recorded.
+ */
+export const zInviteOrgMemberByEmailResponse = zEmailInvitation;
+
+export const zRevokeOrgEmailInvitationPath = z.object({
+    org: zId,
+    invitation: zId
+});
+
+/**
+ * Revoked.
+ */
+export const zRevokeOrgEmailInvitationResponse = z.void();
 
 export const zDeleteOrgRegistrationPolicyBody = zRegistrationPolicyDeleteRequest;
 
@@ -8003,6 +8084,20 @@ export const zShowWorkspaceHandoffPath = z.object({
  * The live transaction's authoritative purpose and any bound step-up policy — identifiers only.
  */
 export const zShowWorkspaceHandoffResponse = zWorkspaceHandoffTransaction;
+
+export const zPreviewEmailInvitationBody = zEmailInvitationTokenRequest;
+
+/**
+ * The organisation, template and expiry the token offers.
+ */
+export const zPreviewEmailInvitationResponse = zEmailInvitationPreview;
+
+export const zAcceptEmailInvitationBody = zEmailInvitationTokenRequest;
+
+/**
+ * The invitation was accepted.
+ */
+export const zAcceptEmailInvitationResponse = zEmailInvitationAcceptance;
 
 /**
  * The caller's sessions.

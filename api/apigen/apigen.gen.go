@@ -7362,6 +7362,92 @@ type DynamicProviderList struct {
 // DynamicProviderState defines model for DynamicProviderState.
 type DynamicProviderState string
 
+// EmailInvitation defines model for EmailInvitation.
+type EmailInvitation struct {
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt Timestamp `json:"created_at"`
+	Email     string    `json:"email"`
+
+	// ExpiresAt RFC 3339 UTC, microsecond precision.
+	ExpiresAt Timestamp `json:"expires_at"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id ID `json:"id"`
+
+	// Template The closed v1 role template set.
+	Template RoleTemplate `json:"template"`
+}
+
+// EmailInvitationAcceptance defines model for EmailInvitationAcceptance.
+type EmailInvitationAcceptance struct {
+	GrantsCreated int `json:"grants_created"`
+
+	// Org A prefixed UUIDv7, e.g. `org_0198…`.
+	Org     ID     `json:"org"`
+	OrgName string `json:"org_name"`
+
+	// SignedOut True when grants were created: every session of the person ended,
+	// the current one included, and they must sign in again.
+	SignedOut bool `json:"signed_out"`
+
+	// Template The closed v1 role template set.
+	Template RoleTemplate `json:"template"`
+}
+
+// EmailInvitationList defines model for EmailInvitationList.
+type EmailInvitationList struct {
+	Count int                      `json:"count"`
+	Items []EmailInvitationListing `json:"items"`
+}
+
+// EmailInvitationListing defines model for EmailInvitationListing.
+type EmailInvitationListing struct {
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt Timestamp `json:"created_at"`
+	Email     string    `json:"email"`
+
+	// ExpiresAt RFC 3339 UTC, microsecond precision.
+	ExpiresAt Timestamp `json:"expires_at"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id ID `json:"id"`
+
+	// InvitedBy A prefixed UUIDv7, e.g. `org_0198…`.
+	InvitedBy ID `json:"invited_by"`
+
+	// Template The closed v1 role template set.
+	Template RoleTemplate `json:"template"`
+}
+
+// EmailInvitationPreview defines model for EmailInvitationPreview.
+type EmailInvitationPreview struct {
+	// ExpiresAt RFC 3339 UTC, microsecond precision.
+	ExpiresAt Timestamp `json:"expires_at"`
+
+	// Org A prefixed UUIDv7, e.g. `org_0198…`.
+	Org     ID     `json:"org"`
+	OrgName string `json:"org_name"`
+
+	// Template The closed v1 role template set.
+	Template RoleTemplate `json:"template"`
+}
+
+// EmailInvitationSendRequest defines model for EmailInvitationSendRequest.
+type EmailInvitationSendRequest struct {
+	// Email The exact address, canonicalized as local sign-up does. Only a
+	// verified address of an existing account can be reached.
+	Email string `json:"email"`
+
+	// Template The closed v1 role template set.
+	Template RoleTemplate `json:"template"`
+}
+
+// EmailInvitationTokenRequest defines model for EmailInvitationTokenRequest.
+type EmailInvitationTokenRequest struct {
+	// Token The single-use token from the invitation link's fragment.
+	Token string `json:"token"`
+}
+
 // EmergencyAccessInput defines model for EmergencyAccessInput.
 type EmergencyAccessInput struct {
 	Capabilities []AccessCapability `json:"capabilities"`
@@ -12526,6 +12612,9 @@ type DeliveryProjection string
 // DynamicProviderID A prefixed UUIDv7, e.g. `org_0198…`.
 type DynamicProviderID = ID
 
+// EmailInvitationID A prefixed UUIDv7, e.g. `org_0198…`.
+type EmailInvitationID = ID
+
 // EnvironmentID A prefixed UUIDv7, e.g. `org_0198…`.
 type EnvironmentID = ID
 
@@ -13705,6 +13794,12 @@ type RemoveWorkspaceOriginJSONRequestBody = WorkspaceOriginRequest
 // AddWorkspaceOriginJSONRequestBody defines body for AddWorkspaceOrigin for application/json ContentType.
 type AddWorkspaceOriginJSONRequestBody = WorkspaceOriginRequest
 
+// AcceptEmailInvitationJSONRequestBody defines body for AcceptEmailInvitation for application/json ContentType.
+type AcceptEmailInvitationJSONRequestBody = EmailInvitationTokenRequest
+
+// PreviewEmailInvitationJSONRequestBody defines body for PreviewEmailInvitation for application/json ContentType.
+type PreviewEmailInvitationJSONRequestBody = EmailInvitationTokenRequest
+
 // UpdateMyProfileJSONRequestBody defines body for UpdateMyProfile for application/json ContentType.
 type UpdateMyProfileJSONRequestBody = UpdateAccountProfileRequest
 
@@ -13713,6 +13808,9 @@ type CreateOrgJSONRequestBody = CreateOrgRequest
 
 // RenameOrgJSONRequestBody defines body for RenameOrg for application/json ContentType.
 type RenameOrgJSONRequestBody = RenameRequest
+
+// InviteOrgMemberByEmailJSONRequestBody defines body for InviteOrgMemberByEmail for application/json ContentType.
+type InviteOrgMemberByEmailJSONRequestBody = EmailInvitationSendRequest
 
 // CreateOrgGrantJSONRequestBody defines body for CreateOrgGrant for application/json ContentType.
 type CreateOrgGrantJSONRequestBody = CreateGrantRequest
@@ -15484,6 +15582,12 @@ type ServerInterface interface {
 	// AddWorkspaceOrigin Consent to one exact UI origin.
 	// (POST /api/v1/instance/workspace-origins)
 	AddWorkspaceOrigin(w http.ResponseWriter, r *http.Request)
+	// AcceptEmailInvitation Accept an email invitation as the signed-in person.
+	// (POST /api/v1/me/invitations/accept)
+	AcceptEmailInvitation(w http.ResponseWriter, r *http.Request)
+	// PreviewEmailInvitation Show what an email invitation token offers the signed-in person.
+	// (POST /api/v1/me/invitations/preview)
+	PreviewEmailInvitation(w http.ResponseWriter, r *http.Request)
 	// ListMyOrgs The organisations the caller's own grants name.
 	// (GET /api/v1/me/orgs)
 	ListMyOrgs(w http.ResponseWriter, r *http.Request)
@@ -15523,6 +15627,15 @@ type ServerInterface interface {
 	// ExportOrgAudit Stream the organization's audit trail as JSONL.
 	// (GET /api/v1/orgs/{org}/audit/export)
 	ExportOrgAudit(w http.ResponseWriter, r *http.Request, org OrgID, params ExportOrgAuditParams)
+	// ListOrgEmailInvitations List the organisation's live pending email invitations.
+	// (GET /api/v1/orgs/{org}/email-invitations)
+	ListOrgEmailInvitations(w http.ResponseWriter, r *http.Request, org OrgID)
+	// InviteOrgMemberByEmail Invite the existing account holding an email address into this organisation.
+	// (POST /api/v1/orgs/{org}/email-invitations)
+	InviteOrgMemberByEmail(w http.ResponseWriter, r *http.Request, org OrgID)
+	// RevokeOrgEmailInvitation Revoke one pending email invitation.
+	// (DELETE /api/v1/orgs/{org}/email-invitations/{invitation})
+	RevokeOrgEmailInvitation(w http.ResponseWriter, r *http.Request, org OrgID, invitation EmailInvitationID)
 	// RevokeOrgGrant Revoke one capability at organisation scope.
 	// (DELETE /api/v1/orgs/{org}/grants)
 	RevokeOrgGrant(w http.ResponseWriter, r *http.Request, org OrgID, params RevokeOrgGrantParams)
@@ -17173,6 +17286,18 @@ func (_ Unimplemented) AddWorkspaceOrigin(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// AcceptEmailInvitation Accept an email invitation as the signed-in person.
+// (POST /api/v1/me/invitations/accept)
+func (_ Unimplemented) AcceptEmailInvitation(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PreviewEmailInvitation Show what an email invitation token offers the signed-in person.
+// (POST /api/v1/me/invitations/preview)
+func (_ Unimplemented) PreviewEmailInvitation(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListMyOrgs The organisations the caller's own grants name.
 // (GET /api/v1/me/orgs)
 func (_ Unimplemented) ListMyOrgs(w http.ResponseWriter, r *http.Request) {
@@ -17248,6 +17373,24 @@ func (_ Unimplemented) QueryOrgAudit(w http.ResponseWriter, r *http.Request, org
 // ExportOrgAudit Stream the organization's audit trail as JSONL.
 // (GET /api/v1/orgs/{org}/audit/export)
 func (_ Unimplemented) ExportOrgAudit(w http.ResponseWriter, r *http.Request, org OrgID, params ExportOrgAuditParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListOrgEmailInvitations List the organisation's live pending email invitations.
+// (GET /api/v1/orgs/{org}/email-invitations)
+func (_ Unimplemented) ListOrgEmailInvitations(w http.ResponseWriter, r *http.Request, org OrgID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// InviteOrgMemberByEmail Invite the existing account holding an email address into this organisation.
+// (POST /api/v1/orgs/{org}/email-invitations)
+func (_ Unimplemented) InviteOrgMemberByEmail(w http.ResponseWriter, r *http.Request, org OrgID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeOrgEmailInvitation Revoke one pending email invitation.
+// (DELETE /api/v1/orgs/{org}/email-invitations/{invitation})
+func (_ Unimplemented) RevokeOrgEmailInvitation(w http.ResponseWriter, r *http.Request, org OrgID, invitation EmailInvitationID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -21996,6 +22139,34 @@ func (siw *ServerInterfaceWrapper) AddWorkspaceOrigin(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// AcceptEmailInvitation operation middleware
+func (siw *ServerInterfaceWrapper) AcceptEmailInvitation(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AcceptEmailInvitation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PreviewEmailInvitation operation middleware
+func (siw *ServerInterfaceWrapper) PreviewEmailInvitation(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PreviewEmailInvitation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListMyOrgs operation middleware
 func (siw *ServerInterfaceWrapper) ListMyOrgs(w http.ResponseWriter, r *http.Request) {
 
@@ -22578,6 +22749,93 @@ func (siw *ServerInterfaceWrapper) ExportOrgAudit(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ExportOrgAudit(w, r, org, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListOrgEmailInvitations operation middleware
+func (siw *ServerInterfaceWrapper) ListOrgEmailInvitations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOrgEmailInvitations(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// InviteOrgMemberByEmail operation middleware
+func (siw *ServerInterfaceWrapper) InviteOrgMemberByEmail(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.InviteOrgMemberByEmail(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeOrgEmailInvitation operation middleware
+func (siw *ServerInterfaceWrapper) RevokeOrgEmailInvitation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "invitation" -------------
+	var invitation EmailInvitationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "invitation", chi.URLParam(r, "invitation"), &invitation, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "invitation", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeOrgEmailInvitation(w, r, org, invitation)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -34631,6 +34889,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/invitations", wrapper.InviteOrgMember)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/email-invitations", wrapper.ListOrgEmailInvitations)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/email-invitations", wrapper.InviteOrgMemberByEmail)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/email-invitations/{invitation}", wrapper.RevokeOrgEmailInvitation)
+	})
+	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/registration-policy", wrapper.DeleteOrgRegistrationPolicy)
 	})
 	r.Group(func(r chi.Router) {
@@ -35178,6 +35445,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/auth/workspace/transactions/{state}", wrapper.ShowWorkspaceHandoff)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/me/invitations/preview", wrapper.PreviewEmailInvitation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/me/invitations/accept", wrapper.AcceptEmailInvitation)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/me/sessions", wrapper.ListMySessions)
@@ -52910,6 +53183,222 @@ func (response AddWorkspaceOrigin503JSONResponse) VisitAddWorkspaceOriginRespons
 	return err
 }
 
+type AcceptEmailInvitationRequestObject struct {
+	Body *AcceptEmailInvitationJSONRequestBody
+}
+
+type AcceptEmailInvitationResponseObject interface {
+	VisitAcceptEmailInvitationResponse(w http.ResponseWriter) error
+}
+
+type AcceptEmailInvitation200JSONResponse EmailInvitationAcceptance
+
+func (response AcceptEmailInvitation200JSONResponse) VisitAcceptEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptEmailInvitation400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response AcceptEmailInvitation400JSONResponse) VisitAcceptEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptEmailInvitation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response AcceptEmailInvitation401JSONResponse) VisitAcceptEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptEmailInvitation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response AcceptEmailInvitation404JSONResponse) VisitAcceptEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptEmailInvitation429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response AcceptEmailInvitation429JSONResponse) VisitAcceptEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptEmailInvitation500JSONResponse struct{ InternalJSONResponse }
+
+func (response AcceptEmailInvitation500JSONResponse) VisitAcceptEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptEmailInvitation503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response AcceptEmailInvitation503JSONResponse) VisitAcceptEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewEmailInvitationRequestObject struct {
+	Body *PreviewEmailInvitationJSONRequestBody
+}
+
+type PreviewEmailInvitationResponseObject interface {
+	VisitPreviewEmailInvitationResponse(w http.ResponseWriter) error
+}
+
+type PreviewEmailInvitation200JSONResponse EmailInvitationPreview
+
+func (response PreviewEmailInvitation200JSONResponse) VisitPreviewEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewEmailInvitation400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PreviewEmailInvitation400JSONResponse) VisitPreviewEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewEmailInvitation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response PreviewEmailInvitation401JSONResponse) VisitPreviewEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewEmailInvitation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PreviewEmailInvitation404JSONResponse) VisitPreviewEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewEmailInvitation429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response PreviewEmailInvitation429JSONResponse) VisitPreviewEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewEmailInvitation500JSONResponse struct{ InternalJSONResponse }
+
+func (response PreviewEmailInvitation500JSONResponse) VisitPreviewEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewEmailInvitation503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PreviewEmailInvitation503JSONResponse) VisitPreviewEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListMyOrgsRequestObject struct {
 }
 
@@ -54362,6 +54851,340 @@ func (response ExportOrgAudit500JSONResponse) VisitExportOrgAuditResponse(w http
 type ExportOrgAudit503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response ExportOrgAudit503JSONResponse) VisitExportOrgAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgEmailInvitationsRequestObject struct {
+	Org OrgID `json:"org"`
+}
+
+type ListOrgEmailInvitationsResponseObject interface {
+	VisitListOrgEmailInvitationsResponse(w http.ResponseWriter) error
+}
+
+type ListOrgEmailInvitations200JSONResponse EmailInvitationList
+
+func (response ListOrgEmailInvitations200JSONResponse) VisitListOrgEmailInvitationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgEmailInvitations401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListOrgEmailInvitations401JSONResponse) VisitListOrgEmailInvitationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgEmailInvitations403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListOrgEmailInvitations403JSONResponse) VisitListOrgEmailInvitationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgEmailInvitations404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListOrgEmailInvitations404JSONResponse) VisitListOrgEmailInvitationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgEmailInvitations429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListOrgEmailInvitations429JSONResponse) VisitListOrgEmailInvitationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgEmailInvitations500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListOrgEmailInvitations500JSONResponse) VisitListOrgEmailInvitationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgEmailInvitations503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListOrgEmailInvitations503JSONResponse) VisitListOrgEmailInvitationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMemberByEmailRequestObject struct {
+	Org  OrgID `json:"org"`
+	Body *InviteOrgMemberByEmailJSONRequestBody
+}
+
+type InviteOrgMemberByEmailResponseObject interface {
+	VisitInviteOrgMemberByEmailResponse(w http.ResponseWriter) error
+}
+
+type InviteOrgMemberByEmail202JSONResponse EmailInvitation
+
+func (response InviteOrgMemberByEmail202JSONResponse) VisitInviteOrgMemberByEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMemberByEmail400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response InviteOrgMemberByEmail400JSONResponse) VisitInviteOrgMemberByEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMemberByEmail401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response InviteOrgMemberByEmail401JSONResponse) VisitInviteOrgMemberByEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMemberByEmail403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response InviteOrgMemberByEmail403JSONResponse) VisitInviteOrgMemberByEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMemberByEmail404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response InviteOrgMemberByEmail404JSONResponse) VisitInviteOrgMemberByEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMemberByEmail429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response InviteOrgMemberByEmail429JSONResponse) VisitInviteOrgMemberByEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMemberByEmail500JSONResponse struct{ InternalJSONResponse }
+
+func (response InviteOrgMemberByEmail500JSONResponse) VisitInviteOrgMemberByEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMemberByEmail503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response InviteOrgMemberByEmail503JSONResponse) VisitInviteOrgMemberByEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeOrgEmailInvitationRequestObject struct {
+	Org        OrgID             `json:"org"`
+	Invitation EmailInvitationID `json:"invitation"`
+}
+
+type RevokeOrgEmailInvitationResponseObject interface {
+	VisitRevokeOrgEmailInvitationResponse(w http.ResponseWriter) error
+}
+
+type RevokeOrgEmailInvitation204Response struct {
+}
+
+func (response RevokeOrgEmailInvitation204Response) VisitRevokeOrgEmailInvitationResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeOrgEmailInvitation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RevokeOrgEmailInvitation401JSONResponse) VisitRevokeOrgEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeOrgEmailInvitation403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RevokeOrgEmailInvitation403JSONResponse) VisitRevokeOrgEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeOrgEmailInvitation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevokeOrgEmailInvitation404JSONResponse) VisitRevokeOrgEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeOrgEmailInvitation429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response RevokeOrgEmailInvitation429JSONResponse) VisitRevokeOrgEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeOrgEmailInvitation500JSONResponse struct{ InternalJSONResponse }
+
+func (response RevokeOrgEmailInvitation500JSONResponse) VisitRevokeOrgEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeOrgEmailInvitation503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeOrgEmailInvitation503JSONResponse) VisitRevokeOrgEmailInvitationResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -83106,6 +83929,12 @@ type StrictServerInterface interface {
 	// AddWorkspaceOrigin Consent to one exact UI origin.
 	// (POST /api/v1/instance/workspace-origins)
 	AddWorkspaceOrigin(ctx context.Context, request AddWorkspaceOriginRequestObject) (AddWorkspaceOriginResponseObject, error)
+	// AcceptEmailInvitation Accept an email invitation as the signed-in person.
+	// (POST /api/v1/me/invitations/accept)
+	AcceptEmailInvitation(ctx context.Context, request AcceptEmailInvitationRequestObject) (AcceptEmailInvitationResponseObject, error)
+	// PreviewEmailInvitation Show what an email invitation token offers the signed-in person.
+	// (POST /api/v1/me/invitations/preview)
+	PreviewEmailInvitation(ctx context.Context, request PreviewEmailInvitationRequestObject) (PreviewEmailInvitationResponseObject, error)
 	// ListMyOrgs The organisations the caller's own grants name.
 	// (GET /api/v1/me/orgs)
 	ListMyOrgs(ctx context.Context, request ListMyOrgsRequestObject) (ListMyOrgsResponseObject, error)
@@ -83145,6 +83974,15 @@ type StrictServerInterface interface {
 	// ExportOrgAudit Stream the organization's audit trail as JSONL.
 	// (GET /api/v1/orgs/{org}/audit/export)
 	ExportOrgAudit(ctx context.Context, request ExportOrgAuditRequestObject) (ExportOrgAuditResponseObject, error)
+	// ListOrgEmailInvitations List the organisation's live pending email invitations.
+	// (GET /api/v1/orgs/{org}/email-invitations)
+	ListOrgEmailInvitations(ctx context.Context, request ListOrgEmailInvitationsRequestObject) (ListOrgEmailInvitationsResponseObject, error)
+	// InviteOrgMemberByEmail Invite the existing account holding an email address into this organisation.
+	// (POST /api/v1/orgs/{org}/email-invitations)
+	InviteOrgMemberByEmail(ctx context.Context, request InviteOrgMemberByEmailRequestObject) (InviteOrgMemberByEmailResponseObject, error)
+	// RevokeOrgEmailInvitation Revoke one pending email invitation.
+	// (DELETE /api/v1/orgs/{org}/email-invitations/{invitation})
+	RevokeOrgEmailInvitation(ctx context.Context, request RevokeOrgEmailInvitationRequestObject) (RevokeOrgEmailInvitationResponseObject, error)
 	// RevokeOrgGrant Revoke one capability at organisation scope.
 	// (DELETE /api/v1/orgs/{org}/grants)
 	RevokeOrgGrant(ctx context.Context, request RevokeOrgGrantRequestObject) (RevokeOrgGrantResponseObject, error)
@@ -88135,6 +88973,68 @@ func (sh *strictHandler) AddWorkspaceOrigin(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// AcceptEmailInvitation operation middleware
+func (sh *strictHandler) AcceptEmailInvitation(w http.ResponseWriter, r *http.Request) {
+	var request AcceptEmailInvitationRequestObject
+
+	var body AcceptEmailInvitationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AcceptEmailInvitation(ctx, request.(AcceptEmailInvitationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AcceptEmailInvitation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AcceptEmailInvitationResponseObject); ok {
+		if err := validResponse.VisitAcceptEmailInvitationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PreviewEmailInvitation operation middleware
+func (sh *strictHandler) PreviewEmailInvitation(w http.ResponseWriter, r *http.Request) {
+	var request PreviewEmailInvitationRequestObject
+
+	var body PreviewEmailInvitationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PreviewEmailInvitation(ctx, request.(PreviewEmailInvitationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PreviewEmailInvitation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PreviewEmailInvitationResponseObject); ok {
+		if err := validResponse.VisitPreviewEmailInvitationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListMyOrgs operation middleware
 func (sh *strictHandler) ListMyOrgs(w http.ResponseWriter, r *http.Request) {
 	var request ListMyOrgsRequestObject
@@ -88477,6 +89377,92 @@ func (sh *strictHandler) ExportOrgAudit(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ExportOrgAuditResponseObject); ok {
 		if err := validResponse.VisitExportOrgAuditResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListOrgEmailInvitations operation middleware
+func (sh *strictHandler) ListOrgEmailInvitations(w http.ResponseWriter, r *http.Request, org OrgID) {
+	var request ListOrgEmailInvitationsRequestObject
+
+	request.Org = org
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListOrgEmailInvitations(ctx, request.(ListOrgEmailInvitationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListOrgEmailInvitations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListOrgEmailInvitationsResponseObject); ok {
+		if err := validResponse.VisitListOrgEmailInvitationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// InviteOrgMemberByEmail operation middleware
+func (sh *strictHandler) InviteOrgMemberByEmail(w http.ResponseWriter, r *http.Request, org OrgID) {
+	var request InviteOrgMemberByEmailRequestObject
+
+	request.Org = org
+
+	var body InviteOrgMemberByEmailJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.InviteOrgMemberByEmail(ctx, request.(InviteOrgMemberByEmailRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "InviteOrgMemberByEmail")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(InviteOrgMemberByEmailResponseObject); ok {
+		if err := validResponse.VisitInviteOrgMemberByEmailResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeOrgEmailInvitation operation middleware
+func (sh *strictHandler) RevokeOrgEmailInvitation(w http.ResponseWriter, r *http.Request, org OrgID, invitation EmailInvitationID) {
+	var request RevokeOrgEmailInvitationRequestObject
+
+	request.Org = org
+	request.Invitation = invitation
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeOrgEmailInvitation(ctx, request.(RevokeOrgEmailInvitationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeOrgEmailInvitation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeOrgEmailInvitationResponseObject); ok {
+		if err := validResponse.VisitRevokeOrgEmailInvitationResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

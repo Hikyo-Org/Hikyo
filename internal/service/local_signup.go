@@ -428,6 +428,10 @@ func signupExpired(ctx context.Context, az *authz.TxAuthorizer, id, policyID str
 func (s *Auth) ReapSignups(ctx context.Context) error {
 	return tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		now := s.now()
+		// Pending email invitations (#1207) expire in the same hourly run.
+		if _, err := az.PruneExpiredOrgEmailInvitations(ctx, now); err != nil {
+			return err
+		}
 		rows, err := az.ExpiredRegistrationSignups(ctx, now)
 		if err != nil {
 			return err
