@@ -357,3 +357,27 @@ func addAssetResponse(status *updatecheck.Status, responses map[string][]byte, b
 
 func stringPointer(value string) *string { return &value }
 func int64Pointer(value int64) *int64    { return &value }
+
+func TestDownloadURLFetchesTrustMetadataOncePerInstaller(t *testing.T) {
+	requests := 0
+	installer := newInstaller(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requests++
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("trust")), Request: request}, nil
+	})}, os.Executable)
+	for range 3 {
+		raw, err := installer.downloadURL(t.Context(), trustURL("metadata.json"), maxTrustBytes)
+		if err != nil || string(raw) != "trust" {
+			t.Fatalf("downloadURL = %q, %v", raw, err)
+		}
+		raw[0] = 'X' // a caller's mutation must not leak into later reads
+	}
+	if _, err := installer.downloadURL(t.Context(), trustURL("metadata.json"), 1); err == nil {
+		t.Fatal("cached metadata bypassed the caller's size limit")
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d; want one cached fetch plus one refetch under the smaller limit", requests)
+	}
+	if _, err := newInstaller(installer.client, os.Executable).downloadURL(t.Context(), trustURL("metadata.json"), maxTrustBytes); err != nil || requests != 3 {
+		t.Fatalf("a new installer must fetch fresh metadata: requests = %d, err = %v", requests, err)
+	}
+}
