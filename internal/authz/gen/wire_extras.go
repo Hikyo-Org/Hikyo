@@ -114,7 +114,7 @@ var reviewedWireExtras = wireExtras{
 		"http:POST /api/v1/auth/cli-reauth/approve":               {Events: []string{"EventAuthCLIReauthHandoff"}},
 		"http:POST /api/v1/auth/cli-reauth/redeem":                {Events: []string{"EventAuthCLIReauthHandoff"}},
 		"http:POST /api/v1/auth/cli-reauth/start":                 {Events: []string{"EventAuthCLIReauthHandoff"}},
-		"http:POST /api/v1/auth/credential/establish":             {Events: []string{"EventAuthCredentialEstablished", "EventAuthAuthorityRefused"}},
+		"http:POST /api/v1/auth/credential/establish":             {Events: []string{"EventAuthCredentialEstablished", "EventAuthAuthorityRefused", "EventPersonalValueDeleted"}},
 		"http:POST /api/v1/auth/identities/link":                  {Events: []string{"EventAuthThrottleCrossed"}},
 		"http:POST /api/v1/auth/local/login":                      {Events: []string{"EventAuthLogin", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},
 		// Login-challenge finish endpoints (#760). A browser password login on an
@@ -170,7 +170,7 @@ var reviewedWireExtras = wireExtras{
 		// Each factor ceremony validates a proof under the per-account backoff, so
 		// a crossed threshold is an event it can emit, declared here so the
 		// audit-completeness contract covers it.
-		"http:PUT /api/v1/auth/password":               {Events: []string{"EventAuthPasswordChanged", "EventDeveloperCredentialRevoked", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},
+		"http:PUT /api/v1/auth/password":               {Events: []string{"EventAuthPasswordChanged", "EventDeveloperCredentialRevoked", "EventAuthSessionCreated", "EventAuthThrottleCrossed", "EventPersonalValueDeleted"}},
 		"http:POST /api/v1/auth/totp/enrol/start":      {Events: []string{"EventAuthThrottleCrossed"}},
 		"http:POST /api/v1/auth/totp/step-up":          {Events: []string{"EventAuthReauthenticated", "EventAuthThrottleCrossed"}},
 		"http:POST /api/v1/auth/webauthn/enrol/finish": {Events: []string{"EventAuthPasskeyAdded", "EventAuthSessionCreated"}},

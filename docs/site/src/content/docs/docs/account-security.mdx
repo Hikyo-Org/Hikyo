@@ -129,6 +129,12 @@ sessions. The holder consumes it with `account establish-credential`.
 Targets holding an instance-scoped capability have no network reset path. Use
 the audited host-only `hikyo admin reset-credential` break-glass command.
 
+Accounts with a linked external identity (OIDC, SAML or OAuth2 sign-in) have
+no network reset path either, even when that identity's provider is disabled.
+The refusal looks the same as for an unknown account. Recover access through
+the identity provider, or use the break-glass command on the host. Issuing an
+authority and consuming it are both refused.
+
 ## Passkeys
 
 Passkey enrolment, listing, and removal are browser-only in the current build.

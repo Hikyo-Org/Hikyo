@@ -150,7 +150,9 @@ func (s *Auth) consumeReauthWindow(ctx context.Context, az *authz.TxAuthorizer, 
 	}
 	// Checked on the very row this decision consumes.
 	if binding.possessionOnly && w.FactorClass != "webauthn" && w.FactorClass != "totp" {
-		return ErrPersonalFactorRequired
+		if err := admitFederatedPersonalWindow(ctx, az, w, now); err != nil {
+			return err
+		}
 	}
 	// Classify all four persisted columns together before applying the mode's
 	// policy. A partial row cannot fall through as an unbound window.
