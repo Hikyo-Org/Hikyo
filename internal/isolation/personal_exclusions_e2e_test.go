@@ -10,6 +10,7 @@ import (
 	"go/token"
 	"io/fs"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -152,6 +153,13 @@ func TestPersonalValueExcludedFromSharedSurfaces(t *testing.T) {
 		if err != nil || carries(t, sentinel, revDiff) {
 			t.Fatalf("revision diff: err=%v", err)
 		}
+		// Positive control: the latest revision published the config key, so
+		// its diff carries the shared plaintext.
+		if !slices.ContainsFunc(revDiff.Items, func(r service.RevisionDiffRow) bool {
+			return r.KeyID == keyID && r.After != nil && *r.After == shared
+		}) {
+			t.Fatal("revision diff lost the shared value")
+		}
 		exported, _, err := revs.ExportWithParameters(ctx, service.LocalPrincipal(custodian), envScope(envA1), 0, true, nil)
 		if err != nil || carries(t, sentinel, exported) {
 			t.Fatalf("values export: err=%v", err)
@@ -187,6 +195,9 @@ func TestPersonalValueExcludedFromSharedSurfaces(t *testing.T) {
 		diff, err := e.values.Diff(ctx, service.LocalPrincipal(custodian), project, string(envA1), clone.ID, true)
 		if err != nil || carries(t, sentinel, diff) {
 			t.Fatalf("environment diff: err=%v", err)
+		}
+		if !slices.ContainsFunc(diff, func(r service.DiffRow) bool { return r.KeyID == keyID && r.Left.Value == shared }) {
+			t.Fatal("environment diff lost the shared value")
 		}
 
 		// Definitions export, both forms.
@@ -279,69 +290,108 @@ func mustHolders(t *testing.T, e personalEnv) []service.PersonalHolder {
 }
 
 // Only the owner's own surfaces and reencrypt open a personal value: the
-// owner-bound readers are called from personal.go (list, set, reveal),
-// delivery_personal.go (the developer-credential overlay) and reencrypt.go,
-// and nowhere else in the product, so no adapter payload or plan, offline
-// receipt, snapshot, diff, copy, clone or export can carry one.
+// personal repo is reached from personal.go (list, set, reveal, member
+// administration), delivery_personal.go (the developer-credential overlay)
+// and reencrypt.go, its owner-bound ciphertext readers only from the first
+// two and reencrypt, and the generated ciphertext queries only from
+// repos_personal.go. So no adapter payload or plan, offline receipt,
+// snapshot, diff, copy, clone or export can carry one.
 func TestPersonalValueCiphertextReadersAreConfined(t *testing.T) {
-	allowed := map[string]map[string]bool{
+	repoCallers := map[string]bool{
+		"internal/service/personal.go":          true,
+		"internal/service/delivery_personal.go": true,
+		"internal/service/reencrypt.go":         true,
+	}
+	readers := map[string]map[string]bool{
 		"GetOwn":           {"internal/service/personal.go": true},
 		"ListOwn":          {"internal/service/personal.go": true, "internal/service/delivery_personal.go": true},
 		"ListForReencrypt": {"internal/service/reencrypt.go": true},
 	}
+	queries := map[string]bool{"GetPersonalValueForOwner": true, "ListPersonalValuesForOwner": true, "ListPersonalValuesForReencrypt": true}
+	const queryCaller = "internal/store/repos_personal.go"
+
 	root := filepath.Join("..", "..")
 	seen := map[string]bool{}
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			switch d.Name() {
-			case "node_modules", ".git", "web", "testdata":
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
-		if err != nil {
-			return err
-		}
-		rel, _ := filepath.Rel(root, path)
-		rel = filepath.ToSlash(rel)
+	inspect := func(rel string, file *ast.File) {
 		ast.Inspect(file, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok || allowed[sel.Sel.Name] == nil {
-				return true
-			}
-			inner, ok := sel.X.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			if repo, ok := inner.Fun.(*ast.SelectorExpr); ok && repo.Sel.Name == "PersonalValues" {
-				if !allowed[sel.Sel.Name][rel] {
-					t.Errorf("%s calls PersonalValues().%s: only the owner's own surfaces may open a personal value", rel, sel.Sel.Name)
+			// A store accessor call, r.PersonalValues(), not a field of that name.
+			if call, ok := n.(*ast.CallExpr); ok && len(call.Args) == 0 {
+				if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "PersonalValues" && !strings.HasPrefix(rel, "internal/store/") {
+					if !repoCallers[rel] {
+						t.Errorf("%s reaches the personal repo: only the owner's own surfaces and reencrypt may", rel)
+					}
+					seen["PersonalValues "+rel] = true
 				}
-				seen[sel.Sel.Name+" "+rel] = true
+			}
+			sel, ok := n.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			name := sel.Sel.Name
+			if queries[name] {
+				if rel != queryCaller {
+					t.Errorf("%s references the ciphertext query %s: only the personal repo may", rel, name)
+				}
+				seen[name+" "+rel] = true
+			}
+			if readers[name] != nil {
+				if inner, ok := sel.X.(*ast.CallExpr); ok {
+					if repo, ok := inner.Fun.(*ast.SelectorExpr); ok && repo.Sel.Name == "PersonalValues" {
+						if !readers[name][rel] {
+							t.Errorf("%s calls PersonalValues().%s: only the owner's own surfaces may open a personal value", rel, name)
+						}
+						seen[name+" "+rel] = true
+					}
+				}
 			}
 			return true
 		})
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
-	for name, files := range allowed {
-		for file := range files {
-			if !seen[name+" "+file] {
-				t.Errorf("pin is stale: %s no longer calls PersonalValues().%s", file, name)
+	for _, dir := range []string{"internal", "cmd"} {
+		err := filepath.WalkDir(filepath.Join(root, dir), func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
 			}
+			if d.IsDir() {
+				// The go tool's own rule, plus fixtures: other checkouts and
+				// worktrees nested under a dot directory are never walked.
+				if n := d.Name(); strings.HasPrefix(n, ".") || strings.HasPrefix(n, "_") || n == "testdata" || n == "node_modules" {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+			file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
+			if err != nil {
+				return err
+			}
+			rel, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			inspect(filepath.ToSlash(rel), file)
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
+	}
+	stale := func(key string) {
+		if !seen[key] {
+			t.Errorf("pin is stale: no %s", key)
+		}
+	}
+	for file := range repoCallers {
+		stale("PersonalValues " + file)
+	}
+	for name, files := range readers {
+		for file := range files {
+			stale(name + " " + file)
+		}
+	}
+	for name := range queries {
+		stale(name + " " + queryCaller)
 	}
 }
