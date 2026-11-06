@@ -316,11 +316,11 @@ func TestLegacyDrillFixtureRefusesProjectCapacityEvidence(t *testing.T) {
 	}
 }
 
-// The runtime-created fixture includes migrations 45 through 84, while the
+// The runtime-created fixture includes migrations 45 through 85, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
-// contact email, issuer CA trust, parameter contract, project capacity policy or
+// contact email, issuer CA trust, parameter contract, project capacity policy, chrome identity or
 // manual-pairing consent and authentication state
 // refuses removal. The subsequent pinned catalog inspection proves the exact
 // legacy schema and migration digest; this test-only surgery adds no runtime
@@ -336,10 +336,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+40 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 84 only")
+	if len(current.Entries) != len(legacy.Entries)+41 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 85 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -388,6 +388,9 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"SELECT COUNT(*) FROM environments WHERE parameters_json <> '{}'",
 		"SELECT COUNT(*) FROM snapshots WHERE parameter_contract <> '{}'",
 		"SELECT COUNT(*) FROM projects WHERE key_limit_override IS NOT NULL OR key_limit_revision <> 0",
+		// 00085: a customised hue, mark or uploaded image is operator evidence.
+		"SELECT COUNT(*) FROM orgs WHERE identity_hue <> 195 OR identity_mark IS NOT NULL OR identity_image IS NOT NULL OR identity_image_type IS NOT NULL OR identity_image_version IS NOT NULL",
+		"SELECT COUNT(*) FROM projects WHERE identity_hue <> 195 OR identity_mark IS NOT NULL OR identity_image IS NOT NULL OR identity_image_type IS NOT NULL OR identity_image_version IS NOT NULL",
 		// 00057 (social sign-in): nothing registration-shaped may be discarded,
 		// and the sqlite sessions restore below cascades into reauth windows.
 		"SELECT COUNT(*) FROM registration_policies",
@@ -441,6 +444,12 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		}
 		if err != nil || evidence != 0 {
 			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate, PKI, temporary-access, file-target, member-access-rule or manual-pairing evidence", query, err)
+		}
+	}
+	// Reverse 00085 only after proving no customised chrome identity is discarded.
+	for _, table := range []string{"orgs", "projects"} {
+		for _, column := range []string{"identity_hue", "identity_mark", "identity_image", "identity_image_type", "identity_image_version"} {
+			drillExec(t, db, "ALTER TABLE "+table+" DROP COLUMN "+column)
 		}
 	}
 	// Reverse 00083: index only.
@@ -660,7 +669,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// the enrolment gate column.
 		"DROP TABLE login_challenges",
 		"ALTER TABLE sessions DROP COLUMN enrolment_required",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85)",
 	} {
 		drillExec(t, db, query)
 	}

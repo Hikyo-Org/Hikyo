@@ -78,13 +78,30 @@ func (q *Queries) DeleteOrg(ctx context.Context, chainOrgID string) (int64, erro
 const getOrg = `-- name: GetOrg :one
 SELECT id, name, active, metadata, created_at,
        retention_mode, retention_age_seconds, retention_revision_count,
-       origin, registration_policy_id
+       origin, registration_policy_id,
+       identity_hue, identity_mark, identity_image_version
 FROM orgs WHERE id = $1
 `
 
-func (q *Queries) GetOrg(ctx context.Context, chainOrgID string) (Org, error) {
+type GetOrgRow struct {
+	ID                     string
+	Name                   string
+	Active                 bool
+	Metadata               string
+	CreatedAt              pgtype.Timestamptz
+	RetentionMode          string
+	RetentionAgeSeconds    int64
+	RetentionRevisionCount int64
+	Origin                 string
+	RegistrationPolicyID   pgtype.Text
+	IdentityHue            int32
+	IdentityMark           pgtype.Text
+	IdentityImageVersion   pgtype.Text
+}
+
+func (q *Queries) GetOrg(ctx context.Context, chainOrgID string) (GetOrgRow, error) {
 	row := q.db.QueryRow(ctx, getOrg, chainOrgID)
-	var i Org
+	var i GetOrgRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -96,6 +113,9 @@ func (q *Queries) GetOrg(ctx context.Context, chainOrgID string) (Org, error) {
 		&i.RetentionRevisionCount,
 		&i.Origin,
 		&i.RegistrationPolicyID,
+		&i.IdentityHue,
+		&i.IdentityMark,
+		&i.IdentityImageVersion,
 	)
 	return i, err
 }
@@ -103,20 +123,37 @@ func (q *Queries) GetOrg(ctx context.Context, chainOrgID string) (Org, error) {
 const listOrgs = `-- name: ListOrgs :many
 SELECT id, name, active, metadata, created_at,
        retention_mode, retention_age_seconds, retention_revision_count,
-       origin, registration_policy_id
+       origin, registration_policy_id,
+       identity_hue, identity_mark, identity_image_version
 FROM orgs WHERE ($1 = 1 OR NOT EXISTS (SELECT 1 FROM self_config_binding b WHERE b.org_id=orgs.id)) ORDER BY name
 `
 
+type ListOrgsRow struct {
+	ID                     string
+	Name                   string
+	Active                 bool
+	Metadata               string
+	CreatedAt              pgtype.Timestamptz
+	RetentionMode          string
+	RetentionAgeSeconds    int64
+	RetentionRevisionCount int64
+	Origin                 string
+	RegistrationPolicyID   pgtype.Text
+	IdentityHue            int32
+	IdentityMark           pgtype.Text
+	IdentityImageVersion   pgtype.Text
+}
+
 // hikyo:instance-scoped
-func (q *Queries) ListOrgs(ctx context.Context, includeSelfConfig interface{}) ([]Org, error) {
+func (q *Queries) ListOrgs(ctx context.Context, includeSelfConfig interface{}) ([]ListOrgsRow, error) {
 	rows, err := q.db.Query(ctx, listOrgs, includeSelfConfig)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Org
+	var items []ListOrgsRow
 	for rows.Next() {
-		var i Org
+		var i ListOrgsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -128,6 +165,9 @@ func (q *Queries) ListOrgs(ctx context.Context, includeSelfConfig interface{}) (
 			&i.RetentionRevisionCount,
 			&i.Origin,
 			&i.RegistrationPolicyID,
+			&i.IdentityHue,
+			&i.IdentityMark,
+			&i.IdentityImageVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -163,6 +203,55 @@ type RenameOrgParams struct {
 
 func (q *Queries) RenameOrg(ctx context.Context, arg RenameOrgParams) (int64, error) {
 	result, err := q.db.Exec(ctx, renameOrg, arg.Name, arg.ChainOrgID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setOrgIdentity = `-- name: SetOrgIdentity :execrows
+UPDATE orgs SET identity_hue = $1, identity_mark = $2
+WHERE id = $3
+`
+
+type SetOrgIdentityParams struct {
+	IdentityHue  int32
+	IdentityMark pgtype.Text
+	ChainOrgID   string
+}
+
+// Chrome identity (hue, short mark, uploaded image). The image bytes are read
+// only by the dedicated image query (GetOrgIdentityImage in authn.sql), so
+// Get/List stay small.
+func (q *Queries) SetOrgIdentity(ctx context.Context, arg SetOrgIdentityParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setOrgIdentity, arg.IdentityHue, arg.IdentityMark, arg.ChainOrgID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setOrgIdentityImage = `-- name: SetOrgIdentityImage :execrows
+UPDATE orgs SET identity_image = $1,
+    identity_image_type = $2,
+    identity_image_version = $3
+WHERE id = $4
+`
+
+type SetOrgIdentityImageParams struct {
+	IdentityImage        []byte
+	IdentityImageType    pgtype.Text
+	IdentityImageVersion pgtype.Text
+	ChainOrgID           string
+}
+
+func (q *Queries) SetOrgIdentityImage(ctx context.Context, arg SetOrgIdentityImageParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setOrgIdentityImage,
+		arg.IdentityImage,
+		arg.IdentityImageType,
+		arg.IdentityImageVersion,
+		arg.ChainOrgID,
+	)
 	if err != nil {
 		return 0, err
 	}

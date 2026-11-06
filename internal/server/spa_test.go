@@ -615,6 +615,10 @@ func staticBaseline(t *testing.T, resp *http.Response) {
 	if !strings.Contains(csp, "default-src 'self'") || !strings.Contains(csp, "frame-ancestors 'none'") {
 		t.Errorf("Content-Security-Policy = %q, want the baseline", csp)
 	}
+	// blob: (never data:) lets the browser rasterise an uploaded SVG avatar.
+	if !strings.Contains(csp, "img-src 'self' blob:;") || strings.Contains(csp, "data:") {
+		t.Errorf("Content-Security-Policy img-src = %q, want exactly self and blob:", csp)
+	}
 	if !strings.Contains(csp, "connect-src 'self';") {
 		t.Errorf("Content-Security-Policy connect-src = %q, want exactly self", csp)
 	}

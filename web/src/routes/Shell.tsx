@@ -44,9 +44,14 @@ import {
   CHROME_IDENTITY_EVENT,
   chromeIdentityMark,
   chromeIdentityStyle,
+  chromeIdentityFromApi,
   chromeMonogram,
   chromeRailIdentityStyle,
+  orgIdentityImageUrl,
+  projectIdentityImageUrl,
   readChromeIdentity,
+  type ApiChromeIdentity,
+  type ChromeIdentity,
 } from './chrome-identity.ts';
 import { isLinkActive, sidebarModel, type SidebarBlock, type SidebarLink } from './sidebar-model.ts';
 import { isDemo } from '../demo/config.ts';
@@ -263,6 +268,19 @@ export function Shell({ session }: { session: WhoAmI }) {
     projectItems.find((project) => project.id === activeProjectId)?.name ?? activeProjectId;
   const accountName = principalName(session);
   const isPrototype = import.meta.env.MODE === 'prototype';
+  // Outside prototype mode identity comes from the API. The rail's orgs are always
+  // this server's; a remote workspace's projects are not, so they keep mark plus hue.
+  const orgIdentityOf = (org: { id: string; identity?: ApiChromeIdentity }): ChromeIdentity =>
+    isPrototype
+      ? readChromeIdentity('org', org.id, true)
+      : chromeIdentityFromApi(org.identity, (version) => orgIdentityImageUrl(org.id, version));
+  const projectIdentityOf = (project: { id: string; identity?: ApiChromeIdentity }): ChromeIdentity =>
+    isPrototype
+      ? readChromeIdentity('project', project.id, true)
+      : chromeIdentityFromApi(
+          project.identity,
+          remote === '' ? (version) => projectIdentityImageUrl(activeOrgId, project.id, version) : null,
+        );
   const visibleRetentionHealth = retentionHealth.data?.health;
   const pruneWarning = retentionBanner(visibleRetentionHealth, retentionHealth.isError);
   const storageWarning = storageBanner(visibleRetentionHealth);
@@ -417,7 +435,7 @@ export function Shell({ session }: { session: WhoAmI }) {
         {items.length < 2 ? null : (
           <ul className="rail__orgs">
             {items.map((org) => {
-              const identity = readChromeIdentity('org', org.id, isPrototype);
+              const identity = orgIdentityOf(org);
               return <li key={org.id}>
                 <button
                   type="button"
@@ -439,7 +457,7 @@ export function Shell({ session }: { session: WhoAmI }) {
             {items.length < 2 ? null : <span className="rail__divider" aria-hidden="true" />}
             <ul className="rail__projects" aria-label="Projects">
               {projectItems.map((project) => {
-                const identity = readChromeIdentity('project', project.id, isPrototype);
+                const identity = projectIdentityOf(project);
                 return <li key={project.id}>
                   <button
                     type="button"
@@ -490,7 +508,7 @@ export function Shell({ session }: { session: WhoAmI }) {
             <h2 id="mobile-organisations-title">Organisations</h2>
             <ul className="sidebar__items">
               {items.map((org) => {
-                const identity = readChromeIdentity('org', org.id, isPrototype);
+                const identity = orgIdentityOf(org);
                 return <li key={org.id}>
                   <button
                     type="button"
@@ -601,7 +619,7 @@ export function Shell({ session }: { session: WhoAmI }) {
             />
             <ul className="sidebar__items">
               {projectItems.map((project) => {
-                const identity = readChromeIdentity('project', project.id, isPrototype);
+                const identity = projectIdentityOf(project);
                 return <li key={project.id}>
                   <button
                     type="button"

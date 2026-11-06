@@ -60,12 +60,15 @@ const preview: Preview = {
     // The separate built-in background toolbar otherwise keeps an !important
     // dark body after a light theme switch, making route text unreadable.
     backgrounds: { disable: true },
-    // The one phone viewport (DESIGN.md, Phone): a story whose phone layout
+    // The phone viewport (DESIGN.md, Phone): a story whose phone layout
     // differs sets `globals: { viewport: { value: 'phone', isRotated: false } }`.
+    // `phoneNarrow` is the narrowest common phone, for a story that guards a
+    // floor the design holds there (the breadcrumb, a revealed value).
     viewport: {
       options: {
         ...MINIMAL_VIEWPORTS,
         phone: { name: 'Phone 390', styles: { width: '390px', height: '844px' }, type: 'mobile' },
+        phoneNarrow: { name: 'Phone 360', styles: { width: '360px', height: '780px' }, type: 'mobile' },
       },
     },
     docs: { container: HikyoDocsContainer, renderer: createDocsRenderer },

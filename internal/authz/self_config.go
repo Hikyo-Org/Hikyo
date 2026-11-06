@@ -13,6 +13,7 @@ import (
 // projects does not silently grant it control over the running instance.
 var selfConfigOperations = map[Operation]bool{
 	OpOrgGet: true, OpOrgRename: true, OpProjectGet: true, OpProjectList: true, OpProjectRename: true,
+	OpOrgIdentitySet: true, OpOrgIdentityImageSet: true, OpOrgIdentityImageClear: true, OpProjectIdentitySet: true, OpProjectIdentityImageSet: true, OpProjectIdentityImageClear: true, OpProjectIdentityImageGet: true,
 	OpEnvRead: true, OpEnvList: true, OpEnvRename: true, OpEnvReorder: true, OpEnvUpdateNote: true,
 	OpKeyGet: true, OpKeyList: true, OpKeyGroupGet: true, OpKeyGroupList: true, OpFolderGet: true, OpFolderList: true,
 	OpValueRead: true, OpValueList: true, OpValueReveal: true, OpRevealWindowRead: true,

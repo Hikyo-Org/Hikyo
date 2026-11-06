@@ -12,7 +12,7 @@ import (
 // filter their results through the proof's selector before returning them.
 func ruleNavigationOperation(op Operation) bool {
 	switch op {
-	case OpOrgGet, OpProjectList, OpProjectGet, OpEnvList, OpKeyList, OpKeyGet, OpFolderList, OpFolderGet, OpKeyGroupList, OpKeyGroupGet, OpDefinitionsSettingsGet:
+	case OpOrgGet, OpProjectList, OpProjectGet, OpProjectIdentityImageGet, OpEnvList, OpKeyList, OpKeyGet, OpFolderList, OpFolderGet, OpKeyGroupList, OpKeyGroupGet, OpDefinitionsSettingsGet:
 		return true
 	default:
 		return false

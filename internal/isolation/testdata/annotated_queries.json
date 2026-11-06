@@ -2038,7 +2038,7 @@
     "engine": "postgres",
     "name": "ListOrgs",
     "annotation": "instance-scoped",
-    "hash": "c3985019d09e03cc0e095c5c111adbb5f96047cc8d76f38e504667b09beebedb"
+    "hash": "0fc62b32466aee46a0ec3a345375c6f9cf35602594602d337c41a9c230cf22f6"
   },
   {
     "engine": "postgres",
@@ -5506,7 +5506,7 @@
     "engine": "sqlite",
     "name": "ListOrgs",
     "annotation": "instance-scoped",
-    "hash": "c3985019d09e03cc0e095c5c111adbb5f96047cc8d76f38e504667b09beebedb"
+    "hash": "0fc62b32466aee46a0ec3a345375c6f9cf35602594602d337c41a9c230cf22f6"
   },
   {
     "engine": "sqlite",
