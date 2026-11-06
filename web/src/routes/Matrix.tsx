@@ -1941,7 +1941,7 @@ function MatrixLegend() {
           <dt className="mono">3 personal</dt>
           <dd>for whoever manages members: how many people hold their own value here</dd>
           <dt className="mono">personal · 11/14</dt>
-          <dd>a personal value is required: how many of the people who can read here hold one</dd>
+          <dd>a personal value is required: how many of the people who can read and reveal here hold one</dd>
         </dl>
         <p>Choose any cell to inspect or edit it.</p>
       </div>

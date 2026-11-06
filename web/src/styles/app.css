@@ -8091,19 +8091,14 @@ label.chk:has(input:disabled) {
   white-space: nowrap;
 }
 
-/* The offboarding report prints without the application chrome. */
+/* The offboarding report prints without the application chrome; every other page prints as it is. */
 @media print {
-  .chrome {
+  :root:has(.offboarding-report) .chrome {
     display: block;
     height: auto;
   }
 
-  .rail,
-  .sidebar,
-  .chrome__account,
-  .nav-scrim,
-  .skip,
-  .no-print {
+  :root:has(.offboarding-report) :is(.rail, .sidebar, .chrome__account, .nav-scrim, .skip, .no-print) {
     display: none;
   }
 
