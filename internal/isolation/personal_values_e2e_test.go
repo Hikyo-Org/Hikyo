@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/delivery"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -147,6 +148,17 @@ func TestPersonalValueOverlayAndAdministratorBlindness(t *testing.T) {
 		if err != nil || len(holders) != 1 || holders[0].Principal != e.admin.boot.PrincipalID || !holders[0].Set {
 			t.Fatalf("members: err=%v holders=%d", err, len(holders))
 		}
+		// The administrator's own value for the same key is theirs alone.
+		e.adminTok = personalReauth(t, e.admin.auth, e.adminTok, e.adminDev, e.keyA)
+		if _, err := e.pv.Set(ctx, service.Bearer(e.adminTok), envScope(envA1), ceremonySecretA, "administrator-own-value"); err != nil {
+			t.Fatal(err)
+		}
+		if mine, err := del.Fetch(ctx, minted.Value, envScope(envA1), "", service.FetchOptions{}); err != nil || !valueIs(deliveredKey(t, mine, ceremonySecretA), personalPlain) {
+			t.Fatalf("administrator set overwrote the owner's value: err=%v", err)
+		}
+		if err := e.pv.Delete(ctx, service.Bearer(e.adminTok), envScope(envA1), ceremonySecretA); err != nil {
+			t.Fatal(err)
+		}
 		e.adminTok = personalReauth(t, e.admin.auth, e.adminTok, e.adminDev, e.keyA)
 		shared, err := e.values.Get(ctx, service.Bearer(e.adminTok), envScope(envA1), ceremonySecretA, true)
 		if err != nil || shared.Value != "plaintext-"+ceremonySecretA {
@@ -200,8 +212,8 @@ func TestPersonalValueOverlayAndAdministratorBlindness(t *testing.T) {
 			t.Fatal("shared value not restored after dismissal")
 		}
 		// The developer credential reaches personal values only through delivery.
-		if _, err := e.pv.List(ctx, service.Bearer(minted.Value), envScope(envA1)); err == nil {
-			t.Fatal("developer credential admitted to the personal surface")
+		if _, err := e.pv.List(ctx, service.Bearer(minted.Value), envScope(envA1)); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("developer credential on the personal surface = %v", err)
 		}
 	})
 }
@@ -231,7 +243,14 @@ func TestPersonalValueWithheldWithoutConsentConfigOnlyOrQualification(t *testing
 		}
 		// A change with no credential write (here the passkey row vanishing
 		// underneath) suspends rather than deletes.
+		before, err := del.Fetch(ctx, consented.Value, envScope(envA1), "", service.FetchOptions{})
+		if err != nil || !valueIs(deliveredKey(t, before, ceremonySecretA), personalPlain) {
+			t.Fatalf("consented delivery: err=%v", err)
+		}
 		execRaw(t, db, `DELETE FROM webauthn_credentials WHERE account_id='`+e.admin.accountID+`'`)
+		if again, err := del.Fetch(ctx, consented.Value, envScope(envA1), before.Cursor, service.FetchOptions{}); err != nil || again.Current {
+			t.Fatalf("suspension answered as current: err=%v", err)
+		}
 		r, err = del.Fetch(ctx, consented.Value, envScope(envA1), "", service.FetchOptions{})
 		if err != nil {
 			t.Fatal(err)
@@ -267,9 +286,10 @@ func TestPersonalValueFactorLossDeletesAndLeavesNotice(t *testing.T) {
 		if queryInt(t, db, `SELECT COUNT(*) FROM audit_instance_events WHERE type='personal_value.deleted'`) != 1 {
 			t.Fatal("factor-loss purge not audited")
 		}
-		// The unqualified owner can no longer set one.
-		if _, err := e.pv.Set(ctx, service.Bearer(removed.SessionToken), envScope(envA1), ceremonySecretA, "x"); err == nil {
-			t.Fatal("unqualified owner set a personal value")
+		// The unqualified owner can no longer set one: the factorless session
+		// is refused for assurance or qualification, both 403 classes.
+		if _, err := e.pv.Set(ctx, service.Bearer(removed.SessionToken), envScope(envA1), ceremonySecretA, "x"); !errors.Is(err, domain.ErrUnauthorized) {
+			t.Fatalf("unqualified owner set = %v", err)
 		}
 	})
 }
@@ -359,7 +379,7 @@ func TestPersonalValueMovedToAnotherOwnerDoesNotOpen(t *testing.T) {
 		execRaw(t, db, `UPDATE personal_values SET owner_principal_id='`+adminPrincipal+`'`)
 		e.adminTok = personalReauth(t, e.admin.auth, e.adminTok, e.adminDev, e.keyA)
 		got, err := e.pv.Reveal(ctx, service.Bearer(e.adminTok), envScope(envA1), ceremonySecretA)
-		if err == nil || got.Value == personalPlain {
+		if !errors.Is(err, crypto.ErrDecrypt) || got.Value == personalPlain {
 			t.Fatal("a moved personal value opened for another owner")
 		}
 	})
@@ -418,6 +438,56 @@ func TestPersonalValueStaysOutOfExport(t *testing.T) {
 		}
 		if !found {
 			t.Fatal("export lost the shared value")
+		}
+	})
+}
+
+// Only the owner's own possession factor opens the gate: a window an identity
+// provider opened does not, and protected environments take no personal value.
+func TestPersonalValueGateRefusesFederatedWindowAndProtectedEnvironment(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		e := personalFixture(t, db, "personal-federated")
+		ctx := t.Context()
+		e.admin.token = personalReauth(t, e.admin.auth, e.admin.token, e.device, e.keyA)
+		execRaw(t, db, `UPDATE reauth_windows SET factor_class='oidc' WHERE environment_id='env_a1'`)
+		if _, err := e.pv.Set(ctx, service.Bearer(e.admin.token), envScope(envA1), ceremonySecretA, personalPlain); !errors.Is(err, service.ErrPersonalFactorRequired) {
+			t.Fatalf("federated window set = %v", err)
+		}
+		execRaw(t, db, `UPDATE environments SET protected=TRUE WHERE id='env_a1'`)
+		e.admin.token = personalReauth(t, e.admin.auth, e.admin.token, e.device, e.keyA)
+		if _, err := e.pv.Set(ctx, service.Bearer(e.admin.token), envScope(envA1), ceremonySecretA, personalPlain); !errors.Is(err, service.ErrPersonalProtected) {
+			t.Fatalf("protected environment set = %v", err)
+		}
+		if queryInt(t, db, `SELECT COUNT(*) FROM personal_values`) != 0 {
+			t.Fatal("a refused set stored a value")
+		}
+	})
+}
+
+// A rename to the same name keeps values; deleting the environment removes
+// them and audits the loss per owner.
+func TestPersonalValueSameNameRenameKeepsAndEnvironmentDeleteAudits(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		e := personalFixture(t, db, "personal-envdelete")
+		ctx := t.Context()
+		e.setOwn(t, ceremonySecretA, e.keyA, personalPlain)
+		keys := &service.Keys{DB: db, Keyring: e.values.Keyring}
+		actor := service.LocalPrincipal(custodian)
+		if _, err := keys.Rename(ctx, actor, scopeProject(orgA, prjA1), e.keyA, ceremonySecretA, nil); err != nil {
+			t.Fatal(err)
+		}
+		if queryInt(t, db, `SELECT COUNT(*) FROM personal_values`) != 1 || queryInt(t, db, `SELECT COUNT(*) FROM personal_value_notices`) != 0 {
+			t.Fatal("a same-name rename removed the personal value")
+		}
+		execRaw(t, db, `DELETE FROM value_entries WHERE environment_id='env_a1'`)
+		if err := (&service.Environments{DB: db, Keyring: e.values.Keyring}).Delete(ctx, actor, envScope(envA1)); err != nil {
+			t.Fatal(err)
+		}
+		if queryInt(t, db, `SELECT COUNT(*) FROM personal_values`) != 0 {
+			t.Fatal("environment delete kept the personal value")
+		}
+		if queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE type='personal_value.deleted'`) != 1 {
+			t.Fatal("environment delete did not audit the personal value loss")
 		}
 	})
 }

@@ -54,7 +54,7 @@ export function CLIReauth() {
         if (target === undefined || target.consent_current_and_future !== true || environment === undefined || handoff.environments.length !== 1 || strategy === 'oidc') {
           throw new Error('The bounded developer delegation decision is unavailable.');
         }
-        const input = { environmentId: environment.environment_id, keyIds: handoff.key_ids, lifetimeSeconds: target.lifetime_seconds, consentCurrentAndFuture: target.consent_current_and_future };
+        const input = { environmentId: environment.environment_id, keyIds: handoff.key_ids, lifetimeSeconds: target.lifetime_seconds, consentCurrentAndFuture: target.consent_current_and_future, personalConsent: target.personal_consent === true };
         if (code.trim() !== '' && !environment.requires_webauthn) {
           await runDeveloperCredentialTOTPCeremony(input, code.trim());
         } else {
@@ -167,7 +167,7 @@ export function CLIReauth() {
             <p className="login__lede">
               {transaction.data.purpose === 'developer-credential' && transaction.data.developer_credential !== undefined ? <>
                 Authorize a developer credential for this one environment. Its fixed lifetime is <strong>{developerCredentialLifetime(transaction.data.developer_credential.lifetime_seconds)}</strong>.
-                Consent covers all current and future published keys until expiry. This credential survives ordinary logout, and security revocation or lost access prevents the next fetch. It cannot renew or deliver offline. Your fresh proof authorizes this exact delegation once.
+                Consent covers all current and future published keys until expiry.{transaction.data.developer_credential.personal_consent === true ? ' It also delivers your own personal values in this environment to this credential.' : ''} This credential survives ordinary logout, and security revocation or lost access prevents the next fetch. It cannot renew or deliver offline. Your fresh proof authorizes this exact delegation once.
               </> : transaction.data.purpose === 'self-config' && transaction.data.self_config !== undefined ? <>Authorize <strong>{transaction.data.self_config.action}</strong> on <code>{transaction.data.self_config.owner_instance_id}</code>, revision r{String(transaction.data.self_config.revision)}, generation {String(transaction.data.self_config.expected_generation)}, schema {transaction.data.self_config.schema_version}. {transaction.data.self_config.to === '' ? '' : `Send to ${transaction.data.self_config.to}.`} {transaction.data.self_config.confirm_restored_credentials ? 'This also confirms reviewed restored credentials and reconciled access grants.' : ''} This decision can be used once.</> : transaction.data.purpose === 'adapter' ? (
                 <>
                   Approve <span className="mono">{transaction.data.operation}</span> for the

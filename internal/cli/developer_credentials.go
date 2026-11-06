@@ -167,7 +167,7 @@ func runDeveloper(ctx context.Context, ios IO, args []string) error {
 	if !ok {
 		return failf(ExitRefused, "developer credential consent declined")
 	}
-	intent := apigen.DeveloperCredentialReauthIntent{LifetimeSeconds: int64(ttl / time.Second), ConsentCurrentAndFuture: true}
+	intent := apigen.DeveloperCredentialReauthIntent{LifetimeSeconds: int64(ttl / time.Second), ConsentCurrentAndFuture: true, PersonalConsent: &personal}
 	if err := freshDeveloperReauth(ctx, client, st, ios, &session, base, env, keys, intent); err != nil {
 		return err
 	}

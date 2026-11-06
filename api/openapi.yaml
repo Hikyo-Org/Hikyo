@@ -18680,6 +18680,10 @@ components:
       properties:
         lifetime_seconds: {type: integer, format: int64, minimum: 1, maximum: 28800}
         consent_current_and_future: {type: boolean, const: true}
+        personal_consent:
+          type: boolean
+          default: false
+          description: The credential will also deliver the minting person's own personal values; bound into the ceremony.
     TotpDeveloperCredentialReauthRequest:
       type: object
       additionalProperties: false

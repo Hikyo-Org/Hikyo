@@ -7304,6 +7304,9 @@ type DeveloperCredentialPolicy struct {
 type DeveloperCredentialReauthIntent struct {
 	ConsentCurrentAndFuture DeveloperCredentialReauthIntentConsentCurrentAndFuture `json:"consent_current_and_future"`
 	LifetimeSeconds         int64                                                  `json:"lifetime_seconds"`
+
+	// PersonalConsent The credential will also deliver the minting person's own personal values; bound into the ceremony.
+	PersonalConsent *bool `json:"personal_consent,omitempty"`
 }
 
 // DeveloperCredentialReauthIntentConsentCurrentAndFuture defines model for DeveloperCredentialReauthIntent.ConsentCurrentAndFuture.

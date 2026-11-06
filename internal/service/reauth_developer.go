@@ -17,6 +17,9 @@ const PurposeDeveloperCredential ReauthPurpose = "developer-credential"
 type DeveloperCredentialReauthTarget struct {
 	Lifetime                time.Duration `json:"lifetime"`
 	ConsentCurrentAndFuture bool          `json:"consent_current_and_future"`
+	// PersonalValues binds the personal-value consent into the ceremony, so
+	// an approval never covers a delivery the person was not shown.
+	PersonalValues bool `json:"personal_values,omitempty"`
 }
 type developerCredentialBinding struct {
 	Purpose       string                          `json:"purpose"`
@@ -26,6 +29,12 @@ type developerCredentialBinding struct {
 }
 
 func NewDeveloperCredentialReauthIntent(environmentID string, keyIDs []string, ttl time.Duration, consent bool) (ReauthIntent, error) {
+	return NewPersonalDeveloperCredentialReauthIntent(environmentID, keyIDs, ttl, consent, false)
+}
+
+// NewPersonalDeveloperCredentialReauthIntent also binds whether the credential
+// will deliver the minting person's personal values.
+func NewPersonalDeveloperCredentialReauthIntent(environmentID string, keyIDs []string, ttl time.Duration, consent, personal bool) (ReauthIntent, error) {
 	if len(keyIDs) > config.MaxKeysPerProjectCeiling || ttl <= 0 || ttl > 8*time.Hour || ttl%time.Second != 0 || !consent {
 		return ReauthIntent{}, domain.ErrInvalid
 	}
@@ -33,7 +42,7 @@ func NewDeveloperCredentialReauthIntent(environmentID string, keyIDs []string, t
 	if err != nil {
 		return ReauthIntent{}, err
 	}
-	raw, err := json.Marshal(developerCredentialBinding{Purpose: string(PurposeDeveloperCredential), EnvironmentID: environmentID, KeyIDs: intent.keyIDs, Target: DeveloperCredentialReauthTarget{ttl, consent}})
+	raw, err := json.Marshal(developerCredentialBinding{Purpose: string(PurposeDeveloperCredential), EnvironmentID: environmentID, KeyIDs: intent.keyIDs, Target: DeveloperCredentialReauthTarget{ttl, consent, personal}})
 	if err != nil {
 		return ReauthIntent{}, err
 	}
@@ -51,7 +60,7 @@ func parseDeveloperCredentialBinding(raw string) (ReauthIntent, error) {
 	if b.Purpose != string(PurposeDeveloperCredential) {
 		return ReauthIntent{}, ErrReauthUnitMismatch
 	}
-	intent, err := NewDeveloperCredentialReauthIntent(b.EnvironmentID, b.KeyIDs, b.Target.Lifetime, b.Target.ConsentCurrentAndFuture)
+	intent, err := NewPersonalDeveloperCredentialReauthIntent(b.EnvironmentID, b.KeyIDs, b.Target.Lifetime, b.Target.ConsentCurrentAndFuture, b.Target.PersonalValues)
 	if err != nil || intent.developerBinding != raw {
 		return ReauthIntent{}, ErrReauthUnitMismatch
 	}

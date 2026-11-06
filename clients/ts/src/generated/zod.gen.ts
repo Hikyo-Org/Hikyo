@@ -1262,7 +1262,8 @@ export const zTotpCodeRequest = z.object({
 
 export const zDeveloperCredentialReauthIntent = z.object({
     lifetime_seconds: z.coerce.bigint().gte(BigInt(1)).lte(BigInt(28800)),
-    consent_current_and_future: z.literal(true)
+    consent_current_and_future: z.literal(true),
+    personal_consent: z.boolean().optional().default(false)
 });
 
 export const zTotpDeveloperCredentialReauthRequest = z.object({

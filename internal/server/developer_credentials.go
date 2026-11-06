@@ -117,5 +117,6 @@ func developerCredentialReauthIntent(environment string, keys []string, value ap
 		return service.ReauthIntent{}, domain.ErrInvalid
 	}
 	ttl := time.Duration(value.LifetimeSeconds) * time.Second
-	return service.NewDeveloperCredentialReauthIntent(environment, keys, ttl, bool(value.ConsentCurrentAndFuture))
+	personal := value.PersonalConsent != nil && *value.PersonalConsent
+	return service.NewPersonalDeveloperCredentialReauthIntent(environment, keys, ttl, bool(value.ConsentCurrentAndFuture), personal)
 }

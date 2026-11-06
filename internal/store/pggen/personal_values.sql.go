@@ -139,10 +139,11 @@ func (q *Queries) DeletePersonalValueNoticesForEnvironment(ctx context.Context, 
 	return result.RowsAffected(), nil
 }
 
-const deletePersonalValuesForEnvironment = `-- name: DeletePersonalValuesForEnvironment :execrows
+const deletePersonalValuesForEnvironment = `-- name: DeletePersonalValuesForEnvironment :many
 DELETE FROM personal_values
 WHERE org_id = $1 AND project_id = $2
   AND environment_id = $3
+RETURNING owner_principal_id
 `
 
 type DeletePersonalValuesForEnvironmentParams struct {
@@ -151,12 +152,24 @@ type DeletePersonalValuesForEnvironmentParams struct {
 	ChainEnvID     string
 }
 
-func (q *Queries) DeletePersonalValuesForEnvironment(ctx context.Context, arg DeletePersonalValuesForEnvironmentParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deletePersonalValuesForEnvironment, arg.ChainOrgID, arg.ChainProjectID, arg.ChainEnvID)
+func (q *Queries) DeletePersonalValuesForEnvironment(ctx context.Context, arg DeletePersonalValuesForEnvironmentParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, deletePersonalValuesForEnvironment, arg.ChainOrgID, arg.ChainProjectID, arg.ChainEnvID)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return result.RowsAffected(), nil
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var owner_principal_id string
+		if err := rows.Scan(&owner_principal_id); err != nil {
+			return nil, err
+		}
+		items = append(items, owner_principal_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const deletePersonalValuesForKey = `-- name: DeletePersonalValuesForKey :execrows

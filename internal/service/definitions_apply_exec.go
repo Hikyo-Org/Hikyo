@@ -714,7 +714,7 @@ func (s *Definitions) deleteEnvironment(ctx context.Context, r store.Repos, az *
 	if err := r.SSH().PurgeEnvironment(ctx, ep); err != nil {
 		return err
 	}
-	if _, err := r.PersonalValues().DeleteForEnvironment(ctx, ep); err != nil {
+	if err := purgePersonalForEnvironment(ctx, r, ep, caller.Principal, envScope.Env); err != nil {
 		return err
 	}
 	if err := releaseEnvironmentGrants(ctx, r, az, ep, caller.Principal, envScope); err != nil {

@@ -125,7 +125,7 @@ var reviewedWireExtras = wireExtras{
 		// mint discharges its audit obligation through the same login/session events
 		// as `local/login`; the webauthn finish also carries the clone event.
 		"http:POST /api/v1/auth/login/challenge/{challenge}/totp":            {Events: []string{"EventAuthLogin", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},
-		"http:POST /api/v1/auth/login/challenge/{challenge}/webauthn/finish": {Events: []string{"EventAuthLogin", "EventAuthSessionCreated", "EventAuthPasskeyCloned", "EventAuthThrottleCrossed"}},
+		"http:POST /api/v1/auth/login/challenge/{challenge}/webauthn/finish": {Events: []string{"EventAuthLogin", "EventAuthSessionCreated", "EventPersonalValueDeleted", "EventAuthPasskeyCloned", "EventAuthThrottleCrossed"}},
 		"http:POST /api/v1/auth/logout":                                      {Events: []string{"EventAuthLogout"}},
 		// whoami resolves a session and reports it. It writes nothing and its
 		// result duplicates what the login event already recorded, so it is the
@@ -144,7 +144,7 @@ var reviewedWireExtras = wireExtras{
 		// rather than acting on a tenant object, and its refusals are uniform.
 		"http:POST /api/v1/auth/reauth/totp":               {Events: []string{"EventAuthReauthenticated", "EventAuthThrottleCrossed"}},
 		"http:POST /api/v1/auth/recovery-codes/regenerate": {Events: []string{"EventAuthRecoveryCodesGenerated", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},
-		"http:POST /api/v1/auth/recovery/begin":            {Events: []string{"EventAuthRecoveryCodeConsumed", "EventAuthAuthorityMinted", "EventAuthThrottleCrossed"}},
+		"http:POST /api/v1/auth/recovery/begin":            {Events: []string{"EventPersonalValueDeleted", "EventAuthRecoveryCodeConsumed", "EventAuthAuthorityMinted", "EventAuthThrottleCrossed"}},
 		"http:POST /api/v1/auth/saml/{provider}/acs":       {Events: []string{"EventSAMLLogin", "EventSAMLReauth", "EventIdentityLinked", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},
 		// SAML SP (#72). Start and ACS are purpose-polymorphic identity-protocol
 		// endpoints: login is pre-auth, while link/reauth bind an existing session;
@@ -190,9 +190,9 @@ var reviewedWireExtras = wireExtras{
 		// (reauthenticated) and can likewise detect a clone; removal removes the
 		// credential and reissues the session.
 		"http:POST /api/v1/auth/webauthn/enrol/start":    {Events: []string{"EventAuthThrottleCrossed"}},
-		"http:POST /api/v1/auth/webauthn/login/finish":   {Events: []string{"EventAuthLogin", "EventAuthSessionCreated", "EventAuthPasskeyCloned", "EventAuthThrottleCrossed"}},
-		"http:POST /api/v1/auth/webauthn/reauth/finish":  {Events: []string{"EventAuthReauthenticated", "EventAuthPasskeyCloned"}},
-		"http:POST /api/v1/auth/webauthn/step-up/finish": {Events: []string{"EventAuthReauthenticated", "EventAuthPasskeyCloned"}},
+		"http:POST /api/v1/auth/webauthn/login/finish":   {Events: []string{"EventAuthLogin", "EventAuthSessionCreated", "EventPersonalValueDeleted", "EventAuthPasskeyCloned", "EventAuthThrottleCrossed"}},
+		"http:POST /api/v1/auth/webauthn/reauth/finish":  {Events: []string{"EventAuthReauthenticated", "EventPersonalValueDeleted", "EventAuthPasskeyCloned"}},
+		"http:POST /api/v1/auth/webauthn/step-up/finish": {Events: []string{"EventAuthReauthenticated", "EventPersonalValueDeleted", "EventAuthPasskeyCloned"}},
 		"http:POST /api/v1/auth/workspace/approve":       {Events: []string{"EventRemoteHandoffFailed"}},
 		// Redeem carries two shapes, because a redemption is two acts: an
 		// establishment ISSUES a workspace session, while a step-up ELEVATES the one
@@ -445,10 +445,10 @@ var reviewedWireExtras = wireExtras{
 		// The server owns the refusal sealer's startup and joined timer worker;
 		// it is not an adapter outbox job or a separate network entry point.
 		"cli:server": {Class: "ClassSystem", Events: []string{"EventBackupExported", "EventBackupExportSkipped", "EventRequestRefused"}},
+		// `personal` reaches only the tenant-scoped personal-value routes.
+		"cli:personal": {Class: "ClassTenant"},
 		// SSH user certificates (#155): client transport for the tenant-scoped
 		// CA, profile and certificate routes and nothing wider.
-		// `personal` reaches only the tenant-scoped personal-value routes.
-		"cli:personal":    {Class: "ClassTenant"},
 		"cli:ssh-ca":      {Class: "ClassTenant"},
 		"cli:ssh-cert":    {Class: "ClassTenant"},
 		"cli:ssh-profile": {Class: "ClassTenant"},

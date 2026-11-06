@@ -32,12 +32,17 @@ const (
 	PersonalCauseKeyDeleted        = "key_deleted"
 	PersonalCauseForbidden         = "forbidden"
 	PersonalCauseQualificationLost = "qualification_lost"
+	PersonalCauseEnvironmentGone   = "environment_deleted"
 )
 
 // ErrPersonalUnqualified refuses set and reveal for an account with no
 // standing possession factor. It is a 403: the caller can reach the
 // environment, and enrolling a factor is the remedy.
 var ErrPersonalUnqualified = fmt.Errorf("%w: personal values need an authenticator app or passkey on this account", domain.ErrUnauthorized)
+
+// ErrPersonalProtected refuses a personal value on a protected environment:
+// personal values are for unprotected environments only (ADR).
+var ErrPersonalProtected = fmt.Errorf("%w: personal values are for unprotected environments only", domain.ErrUnauthorized)
 
 // PersonalValues is the personal value service.
 type PersonalValues struct {
@@ -217,15 +222,32 @@ func (s *PersonalValues) Set(ctx context.Context, actor Actor, scope domain.Scop
 		if err != nil {
 			return PersonalEntry{}, err
 		}
+		settings, err := az.EnvironmentReauthSettings(ctx, string(scope.Env))
+		if err != nil {
+			return PersonalEntry{}, err
+		}
+		if settings.Protected {
+			return PersonalEntry{}, ErrPersonalProtected
+		}
 		if err := s.personalGate(ctx, az, caller, scope, key.ID); err != nil {
+			return PersonalEntry{}, err
+		}
+		// The cap is counted under the project lock, and replacing the caller's
+		// own value never grows the count (as the pending cap in values.go).
+		if err := r.Projects().Lock(ctx, p); err != nil {
+			return PersonalEntry{}, err
+		}
+		_, err = r.PersonalValues().GetOwn(ctx, p, key.ID)
+		replacing := err == nil
+		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			return PersonalEntry{}, err
 		}
 		count, err := r.PersonalValues().CountProject(ctx, p)
 		if err != nil {
 			return PersonalEntry{}, err
 		}
-		if count >= MaxPersonalValuesPerProject {
-			return PersonalEntry{}, invalidDetail("project holds the maximum of %d personal values", MaxPersonalValuesPerProject)
+		if !replacing && count >= MaxPersonalValuesPerProject {
+			return PersonalEntry{}, fmt.Errorf("%w: a project holds at most %d personal values", domain.ErrLimitExceeded, MaxPersonalValuesPerProject)
 		}
 		id, err := newID("pv")
 		if err != nil {
@@ -256,11 +278,27 @@ func (s *PersonalValues) Set(ctx context.Context, actor Actor, scope domain.Scop
 	})
 }
 
-// personalGate consumes the reveal reauthentication window for one key.
+// ErrPersonalFactorRequired refuses a window an identity provider opened: the
+// owner's own possession factor, not federated MFA, guards their value.
+var ErrPersonalFactorRequired = fmt.Errorf("%w: personal values need a passkey or authenticator app reauthentication", ErrReauthUnitMismatch)
+
+// personalGate consumes the reveal reauthentication window for one key. Only
+// a passkey or authenticator window counts (ADR: a standing possession factor
+// is what keeps an identity-provider administrator out).
 func (s *PersonalValues) personalGate(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, scope domain.Scope, keyID string) error {
 	intent, err := NewDisclosureReauthIntent(PurposeReveal, []string{string(scope.Env)}, []string{keyID})
 	if err != nil {
 		return err
+	}
+	w, err := az.ReauthWindowFor(ctx, caller.SessionID, string(scope.Env))
+	if errors.Is(err, domain.ErrNotFound) {
+		return ErrNoReauthWindow
+	}
+	if err != nil {
+		return err
+	}
+	if w.FactorClass != "webauthn" && w.FactorClass != "totp" {
+		return ErrPersonalFactorRequired
 	}
 	return requireCeremony(ctx, s.Auth, az, caller, intent)
 }
@@ -389,24 +427,37 @@ func personalHolders(ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
 	}
 	byOwner := map[domain.PrincipalID]*PersonalHolder{}
 	var order []domain.PrincipalID
-	add := func(owner domain.PrincipalID) *PersonalHolder {
+	// A holder whose account is gone keeps its principal id; any other lookup
+	// failure fails the read.
+	add := func(owner domain.PrincipalID) (*PersonalHolder, error) {
 		if h, ok := byOwner[owner]; ok {
-			return h
+			return h, nil
 		}
 		h := &PersonalHolder{Principal: owner}
-		if account, err := az.AccountByPrincipal(ctx, owner); err == nil {
+		account, err := az.AccountByPrincipal(ctx, owner)
+		switch {
+		case err == nil:
 			h.Username = account.Username
+		case !errors.Is(err, domain.ErrNotFound):
+			return nil, err
 		}
 		byOwner[owner] = h
 		order = append(order, owner)
-		return h
+		return h, nil
 	}
 	for _, v := range values {
-		h := add(v.Owner)
+		h, err := add(v.Owner)
+		if err != nil {
+			return key, nil, err
+		}
 		h.Set, h.UpdatedAt = true, v.UpdatedAt
 	}
 	for _, n := range notices {
-		add(n.Owner).Notice = n.Cause
+		h, err := add(n.Owner)
+		if err != nil {
+			return key, nil, err
+		}
+		h.Notice = n.Cause
 	}
 	out := make([]PersonalHolder, len(order))
 	for i, o := range order {
@@ -417,7 +468,9 @@ func personalHolders(ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
 
 // DeleteMember removes another person's value and leaves them a notice.
 // member names a username or principal id; a person who holds neither a value
-// nor a notice for this key is answered exactly as a nonexistent one.
+// nor a notice for this key is answered exactly as a nonexistent one. A
+// person holding only a notice succeeds with nothing to delete: they hold no
+// value, and their notice stays until they dismiss it.
 func (s *PersonalValues) DeleteMember(ctx context.Context, actor Actor, scope domain.Scope, keyName, member string) error {
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, p, err := s.authorize(ctx, az, actor, authz.OpPersonalValueDeleteMember, scope)
@@ -503,4 +556,32 @@ func cascadePersonalForKey(ctx context.Context, r store.Repos, p authz.Proof, ac
 	}
 	_, err = r.PersonalValues().DeleteForKey(ctx, p, key.ID)
 	return err
+}
+
+// purgePersonalForEnvironment deletes an environment's personal values and
+// notices and audits one deletion per owner, with the count of values lost.
+func purgePersonalForEnvironment(ctx context.Context, r store.Repos, p authz.Proof, actor domain.PrincipalID, env domain.EnvID) error {
+	owners, err := r.PersonalValues().DeleteForEnvironment(ctx, p)
+	if err != nil {
+		return err
+	}
+	counts := map[domain.PrincipalID]int{}
+	var order []domain.PrincipalID
+	for _, o := range owners {
+		if counts[o] == 0 {
+			order = append(order, o)
+		}
+		counts[o]++
+	}
+	for _, o := range order {
+		ev, err := domainEvent(ctx, audit.EventPersonalValueDeleted, actor, audit.Object{Type: "environment", ID: string(env)},
+			audit.Payload{"owner_principal_id": string(o), "cause": PersonalCauseEnvironmentGone, "count": counts[o]})
+		if err != nil {
+			return err
+		}
+		if err := r.Audit().InsertTenant(ctx, p, ev); err != nil {
+			return err
+		}
+	}
+	return nil
 }

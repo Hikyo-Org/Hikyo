@@ -59,10 +59,11 @@ DELETE FROM personal_values
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
   AND key_id = sqlc.arg(key_id);
 
--- name: DeletePersonalValuesForEnvironment :execrows
+-- name: DeletePersonalValuesForEnvironment :many
 DELETE FROM personal_values
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
-  AND environment_id = sqlc.arg(chain_env_id);
+  AND environment_id = sqlc.arg(chain_env_id)
+RETURNING owner_principal_id;
 
 -- name: ListPersonalValuesForReencrypt :many
 SELECT id, environment_id, key_id, owner_principal_id, ciphertext FROM personal_values

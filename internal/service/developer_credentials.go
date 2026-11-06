@@ -41,7 +41,7 @@ func (s *DeveloperCredentials) Mint(ctx context.Context, actor Actor, scope doma
 	if !request.ConsentCurrentAndFuture || request.Lifetime <= 0 || request.Lifetime%time.Second != 0 {
 		return MintedDeveloperCredential{}, domain.ErrInvalid
 	}
-	intent, err := NewDeveloperCredentialReauthIntent(string(scope.Env), request.KeyIDs, request.Lifetime, request.ConsentCurrentAndFuture)
+	intent, err := NewPersonalDeveloperCredentialReauthIntent(string(scope.Env), request.KeyIDs, request.Lifetime, request.ConsentCurrentAndFuture, request.PersonalConsent)
 	if err != nil {
 		return MintedDeveloperCredential{}, err
 	}

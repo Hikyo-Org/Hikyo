@@ -875,8 +875,11 @@ func (s *Keys) Rename(ctx context.Context, actor Actor, scope domain.Scope, id, 
 		if err := publisher.authorizeKeyFanOut(ctx, r, az, caller, p, scope, keyTarget, false, false); err != nil {
 			return err
 		}
-		if err := cascadePersonalForKey(ctx, r, p, caller.Principal, before, PersonalCauseKeyRenamed); err != nil {
-			return err
+		// A rename to the current name is not a rename: personal values stay.
+		if before.Name != name {
+			if err := cascadePersonalForKey(ctx, r, p, caller.Principal, before, PersonalCauseKeyRenamed); err != nil {
+				return err
+			}
 		}
 		if err := concealBeyondRule(p, r.Catalogue().Rename(ctx, p, id, name)); err != nil {
 			return err

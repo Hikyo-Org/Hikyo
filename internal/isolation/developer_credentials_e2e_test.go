@@ -29,7 +29,7 @@ func mintDeveloper(t *testing.T, db *store.DB, f *ceremonyEnv, ttl time.Duration
 	for _, key := range preview.Keys {
 		ids = append(ids, key.KeyID)
 	}
-	intent, err := service.NewDeveloperCredentialReauthIntent(string(scope.Env), ids, ttl, true)
+	intent, err := service.NewPersonalDeveloperCredentialReauthIntent(string(scope.Env), ids, ttl, true, personal)
 	if err != nil {
 		t.Fatal(err)
 	}

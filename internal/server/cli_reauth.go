@@ -97,7 +97,7 @@ func (a *API) ShowCLIReauthTransaction(ctx context.Context, req apigen.ShowCLIRe
 	var developerTarget *apigen.DeveloperCredentialReauthIntent
 	if result.DeveloperCredential != nil {
 		v := result.DeveloperCredential
-		developerTarget = &apigen.DeveloperCredentialReauthIntent{LifetimeSeconds: int64(v.Lifetime / time.Second), ConsentCurrentAndFuture: apigen.DeveloperCredentialReauthIntentConsentCurrentAndFuture(v.ConsentCurrentAndFuture)}
+		developerTarget = &apigen.DeveloperCredentialReauthIntent{LifetimeSeconds: int64(v.Lifetime / time.Second), ConsentCurrentAndFuture: apigen.DeveloperCredentialReauthIntentConsentCurrentAndFuture(v.ConsentCurrentAndFuture), PersonalConsent: &v.PersonalValues}
 	}
 	return apigen.ShowCLIReauthTransaction200JSONResponse{DeveloperCredential: developerTarget, SelfConfig: target, State: result.State, Purpose: apigen.CLIReauthTransactionPurpose(result.Purpose), Operation: apigen.CLIReauthTransactionOperation(result.Operation), Environments: environments, KeyIds: keyIDs, RedirectUri: result.RedirectURI, ExpiresAt: result.ExpiresAt}, nil
 }

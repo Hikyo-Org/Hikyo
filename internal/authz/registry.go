@@ -1914,6 +1914,7 @@ var operationTable = map[Operation]opSpec{
 		},
 		storeOps: map[StoreOp]bool{
 			StoreCatalogueList: true, StorePersonalValuesPut: true, StorePersonalValuesCountProject: true,
+			StoreProjectsLock: true, StorePersonalValuesGetOwn: true,
 			StorePersonalValueNoticesDismiss: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventPersonalValueSet},
@@ -2420,7 +2421,7 @@ var operationTable = map[Operation]opSpec{
 			StoreSSHPurgeEnvironment: true,
 			StoreEnvironmentsDelete:  true, StoreAuditTenantInsert: true,
 		},
-		events: []audit.EventType{audit.EventRuleRevoked, audit.EventEnvDeleted, audit.EventGrantRevoked},
+		events: []audit.EventType{audit.EventRuleRevoked, audit.EventEnvDeleted, audit.EventGrantRevoked, audit.EventPersonalValueDeleted},
 	},
 	OpEnvUpdateNote: {
 		class:    ClassTenant,

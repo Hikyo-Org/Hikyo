@@ -1587,6 +1587,10 @@ export type TotpCodeRequest = {
 export type DeveloperCredentialReauthIntent = {
     lifetime_seconds: number;
     consent_current_and_future: true;
+    /**
+     * The credential will also deliver the minting person's own personal values; bound into the ceremony.
+     */
+    personal_consent?: boolean;
 };
 
 export type TotpDeveloperCredentialReauthRequest = {

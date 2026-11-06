@@ -7,7 +7,9 @@ import (
 )
 
 // MCP never reaches personal values (personal-values ADR, Delivery): no tool
-// is named for them and no tool service can reach the personal surface.
+// is named for them and no tool service field holds the personal service.
+// MCP callers are machines, which every personal operation refuses
+// (internal/service TestRefusePersonalCallerAdmitsOnlyAnOrdinaryHumanSession).
 func TestMCPExposesNoPersonalValueSurface(t *testing.T) {
 	for _, name := range append(ProductionToolNames(), WriteToolNames()...) {
 		if strings.Contains(name, "personal") {

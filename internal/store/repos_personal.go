@@ -64,8 +64,9 @@ type PersonalValueRepo interface {
 	DeleteMember(ctx context.Context, p authz.Proof, keyID string, owner domain.PrincipalID) (int64, error)
 	CellsForKey(ctx context.Context, p authz.Proof, keyID string) ([]PersonalValueCell, error)
 	DeleteForKey(ctx context.Context, p authz.Proof, keyID string) (int64, error)
-	// DeleteForEnvironment removes the proof environment's values and notices.
-	DeleteForEnvironment(ctx context.Context, p authz.Proof) (int64, error)
+	// DeleteForEnvironment removes the proof environment's values and notices
+	// and returns the owner of each deleted value, so the caller can audit it.
+	DeleteForEnvironment(ctx context.Context, p authz.Proof) ([]domain.PrincipalID, error)
 	ListForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptFieldRow, error)
 	Reencrypt(ctx context.Context, p authz.Proof, id string, newCt, oldCt []byte) (bool, error)
 	NoticesOwn(ctx context.Context, p authz.Proof) ([]PersonalValueNotice, error)
@@ -256,19 +257,24 @@ func (r sqlitePersonalValues) DeleteForKey(ctx context.Context, p authz.Proof, k
 	})
 }
 
-func (r sqlitePersonalValues) DeleteForEnvironment(ctx context.Context, p authz.Proof) (int64, error) {
+func (r sqlitePersonalValues) DeleteForEnvironment(ctx context.Context, p authz.Proof) ([]domain.PrincipalID, error) {
 	chain, env, err := envChain(p, authz.StorePersonalValuesDeleteForEnv, r.tok)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	if _, err := r.q.DeletePersonalValueNoticesForEnvironment(ctx, sqlitegen.DeletePersonalValueNoticesForEnvironmentParams{
 		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: env,
 	}); err != nil {
-		return 0, err
+		return nil, err
 	}
-	return r.q.DeletePersonalValuesForEnvironment(ctx, sqlitegen.DeletePersonalValuesForEnvironmentParams{
+	owners, err := r.q.DeletePersonalValuesForEnvironment(ctx, sqlitegen.DeletePersonalValuesForEnvironmentParams{
 		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: env,
 	})
+	out := make([]domain.PrincipalID, len(owners))
+	for i, o := range owners {
+		out[i] = domain.PrincipalID(o)
+	}
+	return out, err
 }
 
 func (r sqlitePersonalValues) ListForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptFieldRow, error) {
@@ -516,19 +522,24 @@ func (r pgPersonalValues) DeleteForKey(ctx context.Context, p authz.Proof, keyID
 	})
 }
 
-func (r pgPersonalValues) DeleteForEnvironment(ctx context.Context, p authz.Proof) (int64, error) {
+func (r pgPersonalValues) DeleteForEnvironment(ctx context.Context, p authz.Proof) ([]domain.PrincipalID, error) {
 	chain, env, err := envChain(p, authz.StorePersonalValuesDeleteForEnv, r.tok)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	if _, err := r.q.DeletePersonalValueNoticesForEnvironment(ctx, pggen.DeletePersonalValueNoticesForEnvironmentParams{
 		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: env,
 	}); err != nil {
-		return 0, err
+		return nil, err
 	}
-	return r.q.DeletePersonalValuesForEnvironment(ctx, pggen.DeletePersonalValuesForEnvironmentParams{
+	owners, err := r.q.DeletePersonalValuesForEnvironment(ctx, pggen.DeletePersonalValuesForEnvironmentParams{
 		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: env,
 	})
+	out := make([]domain.PrincipalID, len(owners))
+	for i, o := range owners {
+		out[i] = domain.PrincipalID(o)
+	}
+	return out, err
 }
 
 func (r pgPersonalValues) ListForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptFieldRow, error) {

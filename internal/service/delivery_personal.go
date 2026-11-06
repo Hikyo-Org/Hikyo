@@ -95,8 +95,15 @@ func personalOverlay(ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
 		if !ok {
 			return nil, nil, fmt.Errorf("service: personal value %s names no declared key", v.ID)
 		}
+		// A value crosses only for a key the projection already serves, so it
+		// never widens the credential's key scope; a withheld row carries none.
+		if _, served := index[key.Name]; !served && reason == "" {
+			continue
+		}
 		held[key.Name] = true
-		manifest = append(manifest, delivery.Row{Key: "personal\x00" + key.Name, Classification: string(schema.Secret), Occurrence: v.ID})
+		// The reason is part of the occurrence, so losing or regaining the
+		// predicate is never answered as current.
+		manifest = append(manifest, delivery.Row{Key: "personal\x00" + key.Name, Classification: string(schema.Secret), Occurrence: v.ID + "/" + reason})
 		out := DeliveredKey{KeyID: key.ID, Name: key.Name, Classification: string(schema.Secret), Presence: delivery.PresenceSet}
 		if reason != "" {
 			out.Personal, out.PersonalReason = PersonalWithheld, reason
