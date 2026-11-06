@@ -16,11 +16,11 @@ import (
 // OffboardingLimits are the report's fixed statements of what it cannot show
 // or undo (personal-values ADR, Offboarding 3 and 4).
 var OffboardingLimits = []string{
-	"Hikyo cannot undo a disclosure. Rotate every value listed here at its source.",
+	"Hikyo cannot undo a disclosure. It cannot revoke a token at its provider or erase what already left the server, so rotate every value listed here at its source.",
 	"Deleted values persist in backups until those backups expire.",
 	"Evidence starts at evidence_from. Audit retention has removed anything older.",
-	"Only recorded disclosures appear. Reads Hikyo does not audit one key at a time, such as config-only exports, are not listed.",
-	"The person's own personal values are not listed. They were never shared with anyone.",
+	"Only audited disclosures appear. Config-only exports are not audited per key, so config values read that way are not listed.",
+	"The person's own personal values are not listed. Hikyo did not deliver them to anyone else.",
 }
 
 // PersonalCount is one key's matrix mark: counts, never values.
