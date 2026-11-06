@@ -213,6 +213,7 @@
   "PendingTOTP": "func(ctx context.Context, accountID string) (TOTPCredential, error)",
   "PersonalEligible": "func(ctx context.Context, p Proof) (int, error)",
   "PersonalOwnerHasAccess": "func(ctx context.Context, owner domain.PrincipalID, scope domain.Scope) (bool, error)",
+  "PersonalValueOwners": "func(ctx context.Context) ([]domain.PrincipalID, error)",
   "PinGeneration": "func(ctx context.Context, p domain.PrincipalID, env domain.EnvID) (int64, error)",
   "PollCLILogin": "func(ctx context.Context, id string, at time.Time, interval int64) error",
   "PrincipalClass": "func(ctx context.Context, p domain.PrincipalID) (domain.PrincipalClass, error)",
