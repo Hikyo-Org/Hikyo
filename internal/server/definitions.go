@@ -151,7 +151,7 @@ func wireDefinitionsSettings(s service.DefinitionsSettings) apigen.DefinitionsSe
 		out.LastApply = &apigen.DefinitionsLastApply{
 			PlanId: s.LastApply.PlanID, AppliedAt: s.LastApply.AppliedAt, AppliedBy: s.LastApply.AppliedBy,
 			Commit: optional(s.LastApply.Commit), Ref: optional(s.LastApply.Ref), Actor: optional(s.LastApply.Actor),
-			Revision: s.LastApply.Revision,
+			Revision: s.LastApply.Revision, AppliedByName: optional(s.LastApply.AppliedByName),
 		}
 	}
 	return out

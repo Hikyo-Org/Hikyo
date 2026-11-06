@@ -202,6 +202,7 @@ func wirePolicyResult(r service.PolicyResult) apigen.CredentialPolicyResult {
 			Id: a.ID, ServiceAccountId: a.ServiceAccountID,
 			Reason: apigen.AffectedCredentialReason(a.Reason),
 		}
+		row.ServiceAccountName = optional(a.ServiceAccountName)
 		row.ExpiresAt = optionalTime(a.ExpiresAt)
 		affected = append(affected, row)
 	}

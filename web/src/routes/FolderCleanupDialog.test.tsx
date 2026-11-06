@@ -137,7 +137,7 @@ describe('FolderCleanupDialog', () => {
     });
     const dialog = openDialog(view.container);
     expect(dialog.textContent).toContain('Move HIKYO_ARGON2_TIME from (no folder) to Argon2/');
-    expect(dialog.textContent).toContain('Dana Ruiz: Reveal (production)');
+    expect(dialog.textContent).toMatch(/Dana Ruiz ID ending …\S{6}: Reveal \(production\)/);
     const confirm = [...dialog.querySelectorAll('button')].find((node) => node.textContent === 'Move and give access');
     if (confirm === undefined) throw new Error('confirm missing');
     await act(async () => confirm.click());

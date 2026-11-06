@@ -293,7 +293,8 @@ export const zDeveloperCredential = z.object({
     created_at: z.iso.datetime(),
     expires_at: z.iso.datetime(),
     revoked_at: z.iso.datetime().optional(),
-    prefix_hint: z.string()
+    prefix_hint: z.string(),
+    authority_principal_name: z.string().min(1).optional()
 });
 
 export const zDeveloperCredentialList = z.object({
@@ -855,6 +856,7 @@ export const zSshCertificate = z.object({
     valid_after: zTimestamp,
     valid_before: zTimestamp,
     requester_principal_id: zId,
+    requester_principal_name: z.string().min(1).optional(),
     requester_class: z.string(),
     status: z.enum([
         'active',
@@ -1363,7 +1365,12 @@ export const zCliReauthApproved = z.object({
     redirect_uri: z.url()
 });
 
+/**
+ * Display policy for one environment. The organisation and project ids are the owning rows, resolved by the server after it authorized the caller for this environment; clients read names through their own authorized endpoints.
+ */
 export const zCliReauthEnvironmentPolicy = z.object({
+    org_id: zId,
+    project_id: zId,
     environment_id: zId,
     effective_window_seconds: z.int().gte(0),
     requires_webauthn: z.boolean()
@@ -2132,6 +2139,7 @@ export const zDefinitionsLastApply = z.object({
     plan_id: zId,
     applied_at: zTimestamp,
     applied_by: z.string(),
+    applied_by_name: z.string().min(1).optional(),
     commit: z.string().max(256).optional(),
     ref: z.string().max(256).optional(),
     actor: z.string().max(256).optional(),
@@ -2688,6 +2696,7 @@ export const zSetCredentialPolicyRequest = z.object({
 export const zAffectedCredential = z.object({
     id: zId,
     service_account_id: zId,
+    service_account_name: z.string().min(1).optional(),
     expires_at: zTimestamp.optional(),
     reason: z.enum(['clamped', 'indefinite-withdrawn'])
 });
@@ -3265,7 +3274,8 @@ export const zValueCell = z.object({
     revealed: z.boolean(),
     value: z.string().optional(),
     updated_at: zTimestamp.optional(),
-    updated_by: z.string().optional()
+    updated_by: z.string().optional(),
+    updated_by_name: z.string().min(1).optional()
 });
 
 export const zValueList = z.object({
@@ -4420,6 +4430,7 @@ export const zInstanceConnection = z.object({
     expires_at: zTimestamp.optional(),
     created_at: zTimestamp,
     created_by: z.string().max(64),
+    created_by_name: z.string().min(1).optional(),
     revoked_at: zTimestamp.optional(),
     last_used_at: zTimestamp.optional(),
     live: z.boolean()
@@ -4533,6 +4544,8 @@ export const zWorkspaceHandoffStepUp = z.object({
         'bypass'
     ]),
     environment: zId,
+    org_id: zId.optional(),
+    project_id: zId.optional(),
     key_ids: z.array(zId),
     expires_at: zTimestamp
 });
@@ -4853,7 +4866,8 @@ export const zTransitKey = z.object({
     created_at: zTimestamp,
     updated_at: zTimestamp,
     versions: z.array(zTransitKeyVersion),
-    callers: z.array(zTransitCaller)
+    callers: z.array(zTransitCaller),
+    principal_names: z.record(z.string(), z.string().min(1)).optional()
 });
 
 export const zTransitKeyList = z.object({
@@ -5597,7 +5611,7 @@ export const zShowCliReauthTransactionPath = z.object({
 });
 
 /**
- * Live transaction metadata without ids, bearers, or verifiers.
+ * Live transaction metadata without bearers or verifiers.
  */
 export const zShowCliReauthTransactionResponse = zCliReauthTransaction;
 

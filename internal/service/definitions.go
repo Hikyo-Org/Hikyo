@@ -147,10 +147,13 @@ type LastApply struct {
 	PlanID    string
 	AppliedAt time.Time
 	AppliedBy string
-	Commit    string
-	Ref       string
-	Actor     string
-	Revision  int64
+	// AppliedByName names AppliedBy, which the settings view already
+	// discloses. Empty when unresolved.
+	AppliedByName string
+	Commit        string
+	Ref           string
+	Actor         string
+	Revision      int64
 }
 
 // DefinitionsSettings is the settings view.
@@ -270,7 +273,8 @@ func (s *Definitions) GetSettings(ctx context.Context, actor Actor, scope domain
 			return err
 		}
 		out.LastApply = lastApplyOf(last)
-		return nil
+		out.LastApply.AppliedByName, err = newPrincipalNames().label(ctx, az, domain.PrincipalID(last.AppliedBy))
+		return err
 	})
 	return out, err
 }
@@ -317,7 +321,8 @@ func (s *Definitions) SetSettings(ctx context.Context, actor Actor, scope domain
 			return err
 		}
 		out.LastApply = lastApplyOf(last)
-		return nil
+		out.LastApply.AppliedByName, err = newPrincipalNames().label(ctx, az, domain.PrincipalID(last.AppliedBy))
+		return err
 	})
 	return out, err
 }

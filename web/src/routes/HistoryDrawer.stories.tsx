@@ -240,6 +240,15 @@ export const Populated: Story = {
   },
 };
 
+// A publisher with no name keeps the end of its ID, which is what tells two
+// principals apart; the head of a UUIDv7 is a shared timestamp.
+export const UnnamedPublisherKeepsTheIdTail: Story = {
+  play: async ({ canvas }) => {
+    await userEvent.selectOptions(await canvas.findByRole('combobox', { name: 'Revision' }), '8');
+    await expect(await canvas.findByText(`prn_…${ADMIN.slice(-8)}`)).toHaveAttribute('title', ADMIN);
+  },
+};
+
 // A per-key filter: the same lineage projected onto one key, with the status
 // line naming it and the way back to every revision.
 export const KeyFilter: Story = {

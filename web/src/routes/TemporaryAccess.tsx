@@ -24,6 +24,7 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
+import { NamedId } from '../ui/NamedId.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
 import { CapabilityTag } from './capabilityTags.tsx';
 import { Ceremony, type CeremonyRequest } from './Ceremony.tsx';
@@ -667,7 +668,7 @@ function AccessRequestRow({
   return (
     <li className="temporary-access__request">
       <div className="temporary-access__request-head">
-        <span className="mono">{request.id}</span>
+        <NamedId id={request.requester} name={request.requester_name} />
         <span className="temporary-access__request-state">
           {state}
           {request.state === 'open' ? <><Sep />{`${request.approvals}/${request.min_approvals} approvals`}</> : null}
@@ -675,8 +676,12 @@ function AccessRequestRow({
       </div>
       <dl className="temporary-access__request-meta">
         <div>
+          <dt>Request ID</dt>
+          <dd className="mono">{request.id}</dd>
+        </div>
+        <div>
           <dt>Requester</dt>
-          <dd title={request.requester}>{request.requester_name ?? request.requester}</dd>
+          <dd><NamedId id={request.requester} name={request.requester_name} tail /></dd>
         </div>
         <div>
           <dt>Capabilities</dt>
@@ -713,7 +718,7 @@ function AccessRequestRow({
         <ul aria-label="Recorded votes">
           {request.votes.map((entry) => (
             <li key={entry.principal_id}>
-              <span title={entry.principal_id}>{entry.principal_name ?? entry.principal_id}</span>: {entry.decision}
+              <NamedId id={entry.principal_id} name={entry.principal_name} tail />: {entry.decision}
             </li>
           ))}
         </ul>

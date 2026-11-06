@@ -119,7 +119,7 @@ func runAudit(ctx context.Context, ios IO, args []string) error {
 	}
 	table := Table{Columns: []string{"SEQ", "OPERATION", "OUTCOME", "ACTOR", "SOURCE IP"}, JSON: page}
 	for _, event := range page.Items {
-		table.Rows = append(table.Rows, []string{strconv.FormatInt(event.Seq, 10), event.Type, event.Outcome, auditOptional(event.ActorId), auditOptional(event.SourceIp)})
+		table.Rows = append(table.Rows, []string{strconv.FormatInt(event.Seq, 10), event.Type, event.Outcome, auditActor(event), auditOptional(event.SourceIp)})
 	}
 	if err := Render(ios.Stdout, output, table); err != nil {
 		return err
@@ -182,6 +182,15 @@ func (c *Client) ExportAudit(ctx context.Context, path string, dst io.Writer) (r
 		return failf(ExitUnavailable, "writing audit export: %v", err)
 	}
 	return nil
+}
+
+// auditActor shows the actor ID, with the current display name when the API
+// supplied one. The ID stays first so a script can still cut it.
+func auditActor(event apigen.AuditEvent) string {
+	if event.ActorId == nil {
+		return ""
+	}
+	return idWithName(*event.ActorId, event.ActorName)
 }
 
 func auditOptional(value *string) string {

@@ -10,6 +10,8 @@ import { useSessionOIDCProvider } from '../api/account.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Login } from './Login.tsx';
+import { NamedId } from '../ui/NamedId.tsx';
+import { ConsentKeys, useConsentNames } from './ConsentScope.tsx';
 import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
 
 function isWorkspaceHandoffStepUp(
@@ -116,6 +118,10 @@ export function WorkspaceApprove() {
   ]);
   const expired = useHandoffExpiry(transaction.data?.expires_at);
   const wrongState = transaction.data !== undefined && transaction.data.state !== state;
+  // Names come from authorized reads keyed by the server-supplied org and
+  // project; without them the IDs show and no request is made.
+  const scope = transaction.data !== undefined && isWorkspaceHandoffStepUp(transaction.data) ? transaction.data : undefined;
+  const names = useConsentNames(scope?.org_id ?? '', scope?.project_id ?? '', true);
 
   const approve = useMutation({
     mutationFn: async ({ task, revision }: { task: CeremonyTask; revision: number }) => {
@@ -238,20 +244,24 @@ export function WorkspaceApprove() {
         {stepUpTransaction !== undefined ? (
           <section className="workspace-consent__scope" aria-label="Requested scope" tabIndex={0}>
             <dl>
+              {stepUpTransaction.org_id === undefined || stepUpTransaction.project_id === undefined ? null : (
+                <>
+                  <dt>Organisation</dt>
+                  <dd><NamedId id={stepUpTransaction.org_id} name={names.org} tail /></dd>
+                  <dt>Project</dt>
+                  <dd><NamedId id={stepUpTransaction.project_id} name={names.project} tail /></dd>
+                </>
+              )}
               <dt>Environment</dt>
-              <dd className="mono">{stepUpTransaction.environment}</dd>
+              <dd>
+                <NamedId id={stepUpTransaction.environment} name={names.environmentName(stepUpTransaction.environment)} tail />
+              </dd>
               <dt>Keys</dt>
               <dd>
                 {stepUpTransaction.key_ids.length === 0 ? (
                   'Entire environment'
                 ) : (
-                  <ul>
-                    {stepUpTransaction.key_ids.map((key) => (
-                      <li className="mono" key={key}>
-                        {key}
-                      </li>
-                    ))}
-                  </ul>
+                  <ConsentKeys keys={names.keys(stepUpTransaction.key_ids)} insideScrollRegion />
                 )}
               </dd>
             </dl>
@@ -260,7 +270,7 @@ export function WorkspaceApprove() {
         <p className="login__lede">
           {isStepUp ? (
             <>
-              Signed in as <span className="mono">{name}</span>. A workspace you have open elsewhere
+              Signed in as <bdi className="mono">{name}</bdi>. A workspace you have open elsewhere
               is asking to <strong>{stepUpTransaction.operation}</strong> over{' '}
               {stepUpTransaction.key_ids.length === 0
                 ? 'this environment'
@@ -270,7 +280,7 @@ export function WorkspaceApprove() {
             </>
           ) : (
             <>
-              Signed in as <span className="mono">{name}</span>. Approving lets the requesting
+              Signed in as <bdi className="mono">{name}</bdi>. Approving lets the requesting
               origin shown above operate this instance <strong>as you</strong>, for as long as the
               session lives or until it is revoked. Everything it does will appear in this
               instance&apos;s audit trail under your name.
@@ -286,6 +296,7 @@ export function WorkspaceApprove() {
             key={auth.state.sessionEpoch}
             onReauthed={authorize}
             approving={approve.isPending}
+            namesPending={!names.settled}
           />
         ) : (
           <>
@@ -325,12 +336,15 @@ function StepUpReauth({
   keyIds,
   onReauthed,
   approving,
+  namesPending,
 }: {
   operation: WorkspaceHandoffStepUp['operation'];
   environmentId: string;
   keyIds: readonly string[];
   onReauthed: () => void;
   approving: boolean;
+  /** Scope names are still loading; hold every control so nobody authorizes a screen showing IDs. */
+  namesPending: boolean;
 }) {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -385,6 +399,7 @@ function StepUpReauth({
   };
 
   const working = busy || approving;
+  const blocked = working || namesPending;
 
   return (
     <>
@@ -393,12 +408,12 @@ function StepUpReauth({
       )}
       <div className="dialog__actions">
         {oidcProvider === null ? null : (
-          <Button variant="primary" type="button" disabled={working}
+          <Button variant="primary" type="button" disabled={blocked}
             onClick={() => void attempt((signal) => runOIDCCeremony(oidcProvider.slug, environmentId, { requirePopup: true, signal }))}>
             {working ? 'Working…' : `Continue with ${oidcProvider.display_name}`}
           </Button>
         )}
-        <Button variant="primary" type="button" onClick={onPasskey} disabled={working}>
+        <Button variant="primary" type="button" onClick={onPasskey} disabled={blocked}>
           {working ? 'Working…' : 'Use a passkey'}
         </Button>
         <Button type="button" onClick={() => globalThis.close()} disabled={working}>
@@ -414,11 +429,11 @@ function StepUpReauth({
             inputMode="numeric"
             autoComplete="one-time-code"
             value={code}
-            disabled={working}
+            disabled={blocked}
             onChange={(e) => setCode(e.target.value)}
           />
         </div>
-        <Button type="submit" disabled={working || code.length < 6}>
+        <Button type="submit" disabled={blocked || code.length < 6}>
           Authorise with a code
         </Button>
       </form>

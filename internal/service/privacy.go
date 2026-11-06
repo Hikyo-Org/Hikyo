@@ -239,6 +239,9 @@ func (s *Auth) CorrectPrivacySubject(ctx context.Context, principal, username, d
 				return PrivacyReceipt{}, errors.New("privacy: identity labels must not contain control characters")
 			}
 		}
+		if hasDirectionControl(value) {
+			return PrivacyReceipt{}, errors.New("privacy: identity labels must not contain text direction controls")
+		}
 	}
 	var out PrivacyReceipt
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {

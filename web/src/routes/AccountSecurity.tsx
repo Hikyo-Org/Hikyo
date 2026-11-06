@@ -423,7 +423,7 @@ export function AccountSecurity() {
                   busy={revokeSession.isPending}
                   onRevoke={(session) =>
                     revokeSession.mutate(session.id, {
-                      onSuccess: () => ok(`Revoked the ${session.artifact} session ${session.id}.`),
+                      onSuccess: () => ok(`Revoked the ${sessionLabel(session)}.`),
                       onError: report,
                     })
                   }
@@ -449,15 +449,15 @@ export function AccountSecurity() {
                       <Badge data-artifact={item.artifact}>
                         {item.artifact}
                       </Badge>
-                      <span className="mono session__id">{item.id}</span>
+                      <span>{sessionDetail(item)}</span>
                     </div>
-                    <p className="session__detail">{sessionDetail(item)}</p>
+                    <p className="session__detail mono">{item.id}</p>
                     <Button
                       type="button"
-                      aria-label={`Revoke the ${item.artifact} session ${item.id}`}
+                      aria-label={`Revoke the ${sessionLabel(item)}`}
                       onClick={() =>
                         revokeSession.mutate(item.id, {
-                          onSuccess: () => ok(`Revoked the ${item.artifact} session ${item.id}.`),
+                          onSuccess: () => ok(`Revoked the ${sessionLabel(item)}.`),
                           onError: report,
                         })
                       }
@@ -824,4 +824,9 @@ function sessionDetail(session: ActiveSession): string {
   }
   const where = session.source_ip === undefined ? '' : ` from ${session.source_ip}`;
   return `Signed in with ${session.auth_method}${where}, ${seen}.`;
+}
+
+/** Reads as the session's own detail; the ID tail keeps two identical-looking sessions apart. */
+function sessionLabel(session: ActiveSession): string {
+  return `${session.artifact} session (${sessionDetail(session).replace(/\.$/, '')}, ID ending ${session.id.slice(-6)})`;
 }

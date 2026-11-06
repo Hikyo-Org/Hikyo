@@ -247,7 +247,7 @@ function CLILoginRequest() {
         <h1 className="login__title">Authorize CLI sign-in</h1>
         <p className="login__lede">
           Signed in as{' '}
-          <strong>{auth.identity?.principal.display_name ?? auth.identity?.principal.id}</strong>.
+          <strong><bdi>{auth.identity?.principal.display_name ?? auth.identity?.principal.id}</bdi></strong>.
           Approve only a sign-in you started in your terminal.
         </p>
         <dl>

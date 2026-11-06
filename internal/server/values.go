@@ -328,6 +328,7 @@ func wireValueCell(c service.ValueCell) apigen.ValueCell {
 		updatedBy := c.UpdatedBy
 		out.UpdatedAt = &updatedAt
 		out.UpdatedBy = &updatedBy
+		out.UpdatedByName = optional(c.UpdatedByName)
 	}
 	return out
 }

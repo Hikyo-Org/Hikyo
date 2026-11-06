@@ -18,7 +18,9 @@ const key = {
   state: 'active', latest_version: 2, min_encrypt_version: 2, min_decrypt_version: 1,
   compromised_through_version: 0, rotation_period_seconds: 86400, rotation_due: true,
   created_by: 'prn_storybook', created_at: at, updated_at: at,
-  versions: [{ version: 1, material: 'sealed', created_at: at }, { version: 2, material: 'sealed', created_at: at }], callers: [],
+  versions: [{ version: 1, material: 'sealed', created_at: at }, { version: 2, material: 'sealed', created_at: at }],
+  callers: [{ principal_id: 'prn_00000000-0000-4000-8000-0000000000a1', operations: ['encrypt', 'decrypt'] }],
+  principal_names: { 'prn_00000000-0000-4000-8000-0000000000a1': 'Storybook Owner' },
 };
 const environments = { url: base, body: { items: [{ id: environment, org_id: org, project_id: project, name: 'production', display_order: 0, created_at: at }], count: 1 } };
 const populated = [environments, { url: keysPath, body: { items: [key] } }, { url: `${keysPath}/${key.name}`, body: key }];
@@ -40,6 +42,7 @@ export const Populated: Story = { play: async ({ canvas }) => {
   const detail = await canvas.findByRole('region', { name: 'Selected Transit key' });
   await expect(await within(detail).findByRole('heading', { name: 'Key versions' })).toBeVisible();
   await expect(within(detail).getByRole('region', { name: 'Cryptographic operations' })).toBeVisible();
+  await expect(within(detail).getByText('Storybook Owner')).toBeVisible();
 } };
 export const Empty: Story = { parameters: { app: { responses: [environments, { url: keysPath, body: { items: [] } }] } }, play: async ({ canvas }) => {
   await expect(await canvas.findByText('No Transit keys in this environment.')).toBeVisible();

@@ -5316,6 +5316,9 @@ type AffectedCredential struct {
 
 	// ServiceAccountId A prefixed UUIDv7, e.g. `org_0198…`.
 	ServiceAccountId ID `json:"service_account_id"`
+
+	// ServiceAccountName Display name of the service account, omitted when it no longer resolves.
+	ServiceAccountName *string `json:"service_account_name,omitempty"`
 }
 
 // AffectedCredentialReason defines model for AffectedCredential.Reason.
@@ -5908,12 +5911,18 @@ type CLIReauthApproved struct {
 	State string `json:"state"`
 }
 
-// CLIReauthEnvironmentPolicy defines model for CLIReauthEnvironmentPolicy.
+// CLIReauthEnvironmentPolicy Display policy for one environment. The organisation and project ids are the owning rows, resolved by the server after it authorized the caller for this environment; clients read names through their own authorized endpoints.
 type CLIReauthEnvironmentPolicy struct {
 	EffectiveWindowSeconds int `json:"effective_window_seconds"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
-	EnvironmentId    ID   `json:"environment_id"`
+	EnvironmentId ID `json:"environment_id"`
+
+	// OrgId A prefixed UUIDv7, e.g. `org_0198…`.
+	OrgId ID `json:"org_id"`
+
+	// ProjectId A prefixed UUIDv7, e.g. `org_0198…`.
+	ProjectId        ID   `json:"project_id"`
 	RequiresWebauthn bool `json:"requires_webauthn"`
 }
 
@@ -6845,7 +6854,10 @@ type DefinitionsLastApply struct {
 	// AppliedAt RFC 3339 UTC, microsecond precision.
 	AppliedAt Timestamp `json:"applied_at"`
 	AppliedBy string    `json:"applied_by"`
-	Commit    *string   `json:"commit,omitempty"`
+
+	// AppliedByName Display name of `applied_by` (a principal id), present only when it can be named.
+	AppliedByName *string `json:"applied_by_name,omitempty"`
+	Commit        *string `json:"commit,omitempty"`
 
 	// PlanId A prefixed UUIDv7, e.g. `org_0198…`.
 	PlanId   ID      `json:"plan_id"`
@@ -7195,8 +7207,11 @@ type DeliveryTargetTombstoneRequest struct {
 // DeveloperCredential defines model for DeveloperCredential.
 type DeveloperCredential struct {
 	// AuthorityPrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
-	AuthorityPrincipalId ID        `json:"authority_principal_id"`
-	CreatedAt            time.Time `json:"created_at"`
+	AuthorityPrincipalId ID `json:"authority_principal_id"`
+
+	// AuthorityPrincipalName Display name of the human who delegated the credential. Omitted when unnamed.
+	AuthorityPrincipalName *string   `json:"authority_principal_name,omitempty"`
+	CreatedAt              time.Time `json:"created_at"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId ID        `json:"environment_id"`
@@ -8167,6 +8182,9 @@ type InstanceConnection struct {
 	// CreatedAt RFC 3339 UTC, microsecond precision.
 	CreatedAt Timestamp `json:"created_at"`
 	CreatedBy string    `json:"created_by"`
+
+	// CreatedByName Display name of `created_by`, present only when it can be named.
+	CreatedByName *string `json:"created_by_name,omitempty"`
 
 	// ExpiresAt RFC 3339 UTC, microsecond precision.
 	ExpiresAt *Timestamp `json:"expires_at,omitempty"`
@@ -10611,9 +10629,12 @@ type SSHCertificate struct {
 	RequesterClass       string `json:"requester_class"`
 
 	// RequesterPrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
-	RequesterPrincipalId ID                              `json:"requester_principal_id"`
-	RevocationReason     *SSHCertificateRevocationReason `json:"revocation_reason,omitempty"`
-	RevokedAt            *time.Time                      `json:"revoked_at,omitempty"`
+	RequesterPrincipalId ID `json:"requester_principal_id"`
+
+	// RequesterPrincipalName Display name of the requester, present only when it can be named.
+	RequesterPrincipalName *string                         `json:"requester_principal_name,omitempty"`
+	RevocationReason       *SSHCertificateRevocationReason `json:"revocation_reason,omitempty"`
+	RevokedAt              *time.Time                      `json:"revoked_at,omitempty"`
 
 	// Serial The certificate serial as a decimal string (64-bit).
 	Serial string `json:"serial"`
@@ -11701,14 +11722,17 @@ type TransitKey struct {
 	Exportable bool `json:"exportable"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
-	Id                    ID              `json:"id"`
-	LatestVersion         int64           `json:"latest_version"`
-	MinDecryptVersion     int64           `json:"min_decrypt_version"`
-	MinEncryptVersion     int64           `json:"min_encrypt_version"`
-	Name                  TransitKeyName  `json:"name"`
-	RotationDue           bool            `json:"rotation_due"`
-	RotationPeriodSeconds int64           `json:"rotation_period_seconds"`
-	State                 TransitKeyState `json:"state"`
+	Id                ID             `json:"id"`
+	LatestVersion     int64          `json:"latest_version"`
+	MinDecryptVersion int64          `json:"min_decrypt_version"`
+	MinEncryptVersion int64          `json:"min_encrypt_version"`
+	Name              TransitKeyName `json:"name"`
+
+	// PrincipalNames Current names for callers who hold a grant in this key's tenant; not a user directory.
+	PrincipalNames        *map[string]string `json:"principal_names,omitempty"`
+	RotationDue           bool               `json:"rotation_due"`
+	RotationPeriodSeconds int64              `json:"rotation_period_seconds"`
+	State                 TransitKeyState    `json:"state"`
 
 	// UpdatedAt RFC 3339 UTC, microsecond precision.
 	UpdatedAt Timestamp           `json:"updated_at"`
@@ -12007,6 +12031,10 @@ type ValueCell struct {
 
 	// UpdatedBy The principal whose act produced this occurrence.
 	UpdatedBy *string `json:"updated_by,omitempty"`
+
+	// UpdatedByName Display name of `updated_by`, present only when it can be named
+	// from a row the caller already reads.
+	UpdatedByName *string `json:"updated_by_name,omitempty"`
 
 	// Value Present only where the reader was authorized to see it: `config`
 	// under `read`, `secret` under `read` AND `reveal`.
@@ -12328,7 +12356,13 @@ type WorkspaceHandoffStepUp struct {
 
 	// Operation The exact decision the reauthentication authorizes.
 	Operation WorkspaceHandoffStepUpOperation `json:"operation"`
-	Purpose   WorkspaceHandoffStepUpPurpose   `json:"purpose"`
+
+	// OrgId Owning organisation of the environment, for display. Present only when the caller may list that environment.
+	OrgId *ID `json:"org_id,omitempty"`
+
+	// ProjectId Owning project of the environment, for display. Present only when the caller may list that environment.
+	ProjectId *ID                           `json:"project_id,omitempty"`
+	Purpose   WorkspaceHandoffStepUpPurpose `json:"purpose"`
 
 	// RequestingOrigin Exact canonical requesting origin from the stored transaction, never from approval-page URL fields.
 	RequestingOrigin string `json:"requesting_origin"`

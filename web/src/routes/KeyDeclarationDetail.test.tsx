@@ -282,6 +282,23 @@ describe('KeyDeclarationDetail', () => {
     await view.unmount();
   });
 
+  it('names the applying principal in git mode, keeping the ID reachable on hover', async () => {
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
+    mocks.definitions.mockReturnValue({
+      data: {
+        definitions_source: 'git',
+        last_apply: { applied_by: 'usr_applier', applied_by_name: 'Dana Jacobs', commit: 'abc123' },
+      },
+    });
+
+    const view = await render();
+
+    expect(textOf(view.container)).toContain('Last applied by Dana Jacobs');
+    expect(view.container.querySelector('[title="usr_applier"]')?.textContent).toBe('Dana Jacobs');
+
+    await view.unmount();
+  });
+
   it('keeps a deleted key recoverable', async () => {
     mocks.key.mockReturnValue({
       isPending: false,
@@ -385,7 +402,7 @@ describe('KeyDeclarationDetail', () => {
       }),
     );
     expect(dialog.textContent).toContain('Move DATABASE_URL from db/ to app/');
-    expect(dialog.textContent).toContain('Dana Ruiz: Reveal (production)');
+    expect(dialog.textContent).toMatch(/Dana Ruiz ID ending …\S{6}: Reveal \(production\)/);
     expect(textOf(view.container)).not.toContain('reload the key and retry');
 
     const confirm = [...dialog.querySelectorAll('button')].find((b) => b.textContent === 'Move and give access');

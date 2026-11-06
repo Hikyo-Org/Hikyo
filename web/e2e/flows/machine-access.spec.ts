@@ -1673,7 +1673,7 @@ test.describe('transit keys', () => {
       });
       expect(configured.min_decrypt_version).toBe(2n);
       expect(configured.rotation_period_seconds).toBe(3600n);
-      await expect(page.getByRole('region', { name: 'Selected Transit key', exact: true })).toContainText(seed.principal);
+      await expect(page.getByRole('region', { name: 'Selected Transit key', exact: true }).locator(`[title="${seed.principal}"]`)).toBeVisible();
       await page.getByRole('region', { name: 'Key management', exact: true }).getByRole('button', { name: 'Trim versions', exact: true }).click();
       const trimDialog = page.getByRole('dialog', { name: 'Trim versions', exact: true });
       await expect(trimDialog.getByRole('button', { name: 'Trim versions', exact: true })).toBeDisabled();

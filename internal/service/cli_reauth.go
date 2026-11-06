@@ -29,6 +29,7 @@ type CLIReauthStart struct {
 }
 
 type CLIReauthEnvironmentPolicy struct {
+	OrgID, ProjectID       string
 	EnvironmentID          string
 	EffectiveWindowSeconds int
 	RequiresWebAuthn       bool
@@ -384,7 +385,7 @@ func (s *Auth) CLIReauthTransaction(ctx context.Context, actor Actor, state stri
 			if err != nil {
 				return err
 			}
-			out.Environments = append(out.Environments, CLIReauthEnvironmentPolicy{EnvironmentID: environmentID, EffectiveWindowSeconds: int(effective / time.Second), RequiresWebAuthn: effective <= 0})
+			out.Environments = append(out.Environments, CLIReauthEnvironmentPolicy{OrgID: string(chain.Org), ProjectID: string(chain.Project), EnvironmentID: environmentID, EffectiveWindowSeconds: int(effective / time.Second), RequiresWebAuthn: effective <= 0})
 		}
 		return recordCLIReauthSuccess(ctx, az, "inspect", detail)
 	})

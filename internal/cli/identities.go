@@ -338,7 +338,7 @@ func runCredentialPolicy(ctx context.Context, ios IO, args []string) error {
 		// script that treated a two-phase tightening as done would believe a
 		// ceiling it never set.
 		for _, a := range out.Affected {
-			fmt.Fprintf(ios.Stderr, "  %s (%s): %s\n", a.Id, a.ServiceAccountId, a.Reason)
+			fmt.Fprintf(ios.Stderr, "  %s (%s): %s\n", a.Id, idWithName(a.ServiceAccountId, a.ServiceAccountName), a.Reason)
 		}
 		return failf(ExitRefused,
 			"this change affects %d live credential(s), listed above. Nothing was written.\n"+

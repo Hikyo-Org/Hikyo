@@ -169,18 +169,18 @@ func runRevision(ctx context.Context, ios IO, args []string) error {
 			fmt.Fprintf(ios.Stderr, "impact preview; publish with: hikyo values publish --versions %s --preview-token %s\n",
 				strings.Join(versions, ","), out.Preview.Token)
 		}
-		return Render(ios.Stdout, f, rollbackTable(out))
+		return Render(ios.Stdout, f, rollbackTable(out, environmentLabeler(ctx, client, project, f)))
 	}
 	// Unreachable: subverb() above admits only the cases enumerated here.
 	return failf(ExitInternal, "hikyo revision: unhandled subverb %q", sub)
 }
 
-func rollbackTable(out apigen.RollbackResult) Table {
+func rollbackTable(out apigen.RollbackResult, environmentLabel func(string) string) Table {
 	rows := make([][]string, 0, len(out.Changes))
 	for _, environment := range out.Preview.Environments {
 		for _, change := range environment.Changes {
 			rows = append(rows, []string{
-				environment.EnvironmentId,
+				environmentLabel(environment.EnvironmentId),
 				strconv.FormatBool(environment.Protected),
 				change.VersionId,
 				change.Name,

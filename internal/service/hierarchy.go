@@ -66,6 +66,19 @@ const (
 // path segment"), so the message reads as a sentence at every call site rather
 // than gaining a stray "name" where the caller's subject is not one.
 func checkName(what, name string) error {
+	if err := checkText(what, name); err != nil {
+		return err
+	}
+	if hasDirectionControl(name) {
+		return fmt.Errorf("%w: %s contains a text direction control", domain.ErrInvalid, what)
+	}
+	return nil
+}
+
+// checkText is the grammar every bounded label shares. Folder paths stop here:
+// rules and new keys resend stored paths, so refusing direction controls would
+// lock those out. Screens that decide access on a folder isolate it instead.
+func checkText(what, name string) error {
 	switch {
 	case name == "":
 		return fmt.Errorf("%w: %s must not be empty", domain.ErrInvalid, what)
@@ -84,13 +97,22 @@ func checkName(what, name string) error {
 	return nil
 }
 
-// checkFolderPath is the folder namespace grammar. A folder is display
-// grouping only, so its path is a plain slash-separated namespace: no leading
-// or trailing separator, no empty segment, no `.`/`..`, bounded in depth to
-// match the import spec's tree-depth bound.
+// hasDirectionControl finds the embedding, override and isolate characters that
+// make displayed text read in a different order than it is stored. A name is what
+// a person approves against, so its letters must appear as written. The LRM, RLM
+// and ALM marks are allowed: right-to-left names legitimately carry them.
+func hasDirectionControl(s string) bool {
+	return strings.ContainsFunc(s, func(r rune) bool {
+		return (r >= '\u202a' && r <= '\u202e') || (r >= '\u2066' && r <= '\u2069')
+	})
+}
+
+// checkFolderPath is the folder namespace grammar. A folder path is a plain
+// slash-separated namespace: no leading or trailing separator, no empty segment,
+// no `.`/`..`, bounded in depth to match the import spec's tree-depth bound.
 //
 // The empty-path and empty-segment cases are one case: splitting "" or "a//b"
-// yields an empty segment either way, and checkName rejects it with the right
+// yields an empty segment either way, and checkText rejects it with the right
 // sentence. There is no separate test for it, because a second test of the same
 // thing is a second thing to keep in agreement.
 func checkFolderPath(path string) error {
@@ -105,7 +127,7 @@ func checkFolderPath(path string) error {
 		if segment == "." || segment == ".." {
 			return fmt.Errorf("%w: folder path segment %q is reserved", domain.ErrInvalid, segment)
 		}
-		if err := checkName("folder path segment", segment); err != nil {
+		if err := checkText("folder path segment", segment); err != nil {
 			return err
 		}
 	}

@@ -46,6 +46,7 @@ import { SidePanel } from '../ui/SidePanel.tsx';
 import { KeyMoveConfirmDialog, type WideningRefusal } from './accessRules/KeyMoveConfirmDialog.tsx';
 import { JsonSchemaBuilder } from './JsonSchemaBuilder.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
+import { NamedId } from '../ui/NamedId.tsx';
 import { TypedNameConfirm } from './Sections.tsx';
 import { selectOption } from './selectOption.ts';
 
@@ -247,7 +248,7 @@ function KeyDeclarationBody({
   permitted: boolean;
   sourceFailed: boolean;
   gitProvenance:
-    | { commit?: string; ref?: string; actor?: string; applied_by: string }
+    | { commit?: string; ref?: string; actor?: string; applied_by: string; applied_by_name?: string }
     | undefined;
   historyPath: string;
   matrixPath: string;
@@ -369,7 +370,7 @@ function KeyDeclarationBody({
           <Alert>{GIT_DEFINITIONS_NOTICE}</Alert>
           {gitProvenance === undefined ? null : (
             <p className="key-detail__provenance">
-              Last applied by <span className="mono">{gitProvenance.applied_by}</span>
+              Last applied by <NamedId id={gitProvenance.applied_by} name={gitProvenance.applied_by_name} />
               {gitProvenance.actor === undefined ? null : <><Sep />actor {gitProvenance.actor}</>}
               {gitProvenance.commit === undefined ? null : <><Sep />commit {gitProvenance.commit}</>}
               {gitProvenance.ref === undefined ? null : <><Sep />ref {gitProvenance.ref}</>}
@@ -528,7 +529,7 @@ function MetadataEditor({
   // write naming the people who gain. `failure` is a refused confirm.
   const [widening, setWidening] = useState<{
     readonly refusal: WideningRefusal;
-    readonly change: string;
+    readonly change: ReactNode;
     readonly confirm: (principals: readonly string[]) => void;
     readonly failure: string | null;
   } | null>(null);
@@ -577,7 +578,7 @@ function MetadataEditor({
           { onSuccess: () => resolve(), onError: (error) => reject(error) },
         );
       });
-    const change = `Move ${record.name} from ${folderLabel(record.folder_path)} to ${folderLabel(folderPath)}`;
+    const change = <>Move {record.name} from <bdi>{folderLabel(record.folder_path)}</bdi> to <bdi>{folderLabel(folderPath)}</bdi></>;
     // A widening refusal opens the move confirmation, wherever it arrives (the
     // first save or a scanner override); confirming resends the same write,
     // with the same acknowledgements, naming the people who gain. Returns

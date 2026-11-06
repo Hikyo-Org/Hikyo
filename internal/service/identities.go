@@ -65,7 +65,7 @@ var (
 	// ErrServiceAccountName refuses a name outside the grammar. It is
 	// ErrInvalid, decided before any tenant resolution, so it discloses
 	// nothing about what exists.
-	ErrServiceAccountName = fmt.Errorf("%w: service: a service-account name must be 1-64 characters", domain.ErrInvalid)
+	ErrServiceAccountName = fmt.Errorf("%w: service: a service-account name must be 1-64 characters without text direction controls", domain.ErrInvalid)
 	// ErrServiceAccountKind refuses a kind outside the closed set. Kind is
 	// immutable after creation, so this is the only gate there is.
 	ErrServiceAccountKind = fmt.Errorf("%w: service: a service account is `workload` or `automation`", domain.ErrInvalid)
@@ -202,7 +202,7 @@ func (s *Identities) CreateServiceAccount(ctx context.Context, actor Actor, scop
 }
 
 func (s *Identities) createServiceAccount(ctx context.Context, write func(context.Context, tx.WriteFn) error, actor Actor, scope domain.Scope, name string, kind domain.PrincipalClass) (ServiceAccountView, error) {
-	if name == "" || len(name) > 64 {
+	if name == "" || len(name) > 64 || hasDirectionControl(name) {
 		return ServiceAccountView{}, ErrServiceAccountName
 	}
 	if !domain.IsServiceAccountKind(kind) {
@@ -672,6 +672,8 @@ type PolicyResult struct {
 type AffectedCredentialView struct {
 	ID               string
 	ServiceAccountID string
+	// ServiceAccountName is empty when the account no longer resolves.
+	ServiceAccountName string
 	// ExpiresAt is the expiry the credential had BEFORE the clamp, so the
 	// actor sees what they are shortening rather than what it becomes.
 	ExpiresAt time.Time
@@ -753,6 +755,22 @@ func (s *Identities) SetPolicy(ctx context.Context, actor Actor, change PolicyCh
 					Reason: ReasonIndefiniteWithdrawn,
 				})
 			}
+		}
+		// The enumeration is already this actor's to read, so naming its
+		// accounts discloses nothing new.
+		saNames := map[string]string{}
+		for i := range affected {
+			id := affected[i].ServiceAccountID
+			name, seen := saNames[id]
+			if !seen {
+				sa, err := az.ServiceAccountByID(ctx, id)
+				if err != nil && !errors.Is(err, domain.ErrNotFound) {
+					return err
+				}
+				name = sa.Name
+				saNames[id] = name
+			}
+			affected[i].ServiceAccountName = name
 		}
 		out.Affected = affected
 		if len(affected) > 0 && !change.Confirm {

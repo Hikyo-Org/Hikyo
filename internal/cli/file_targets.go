@@ -78,6 +78,7 @@ func runFileTarget(ctx context.Context, ios IO, args []string) error {
 		return err
 	}
 	base := adapterBase(org, project) + "/file-targets"
+	environmentLabel := environmentLabeler(ctx, client, adapterBase(org, project), f)
 	var ids *[]apigen.ID
 	if list := splitAdapterKeys(keys); list != nil {
 		converted := make([]apigen.ID, len(list))
@@ -92,7 +93,7 @@ func runFileTarget(ctx context.Context, ios IO, args []string) error {
 		if err := client.Do(ctx, http.MethodGet, base, nil, &out); err != nil {
 			return err
 		}
-		return Render(ios.Stdout, f, fileTargetTable(out.Items, out))
+		return Render(ios.Stdout, f, fileTargetTable(out.Items, out, environmentLabel))
 	case "create":
 		env, err := resolved.Require(DimEnv)
 		if err != nil {
@@ -106,20 +107,20 @@ func runFileTarget(ctx context.Context, ios IO, args []string) error {
 		if err := client.Do(ctx, http.MethodPost, base, body, &out); err != nil {
 			return err
 		}
-		return Render(ios.Stdout, f, fileTargetTable([]apigen.FileTarget{out}, out))
+		return Render(ios.Stdout, f, fileTargetTable([]apigen.FileTarget{out}, out, environmentLabel))
 	case "show":
 		var out apigen.FileTarget
 		if err := client.Do(ctx, http.MethodGet, base+"/"+url.PathEscape(flags.positional()), nil, &out); err != nil {
 			return err
 		}
-		return Render(ios.Stdout, f, fileTargetTable([]apigen.FileTarget{out}, out))
+		return Render(ios.Stdout, f, fileTargetTable([]apigen.FileTarget{out}, out, environmentLabel))
 	case "update":
 		body := apigen.UpdateFileTargetRequest{ExpectedGeneration: expected, KeyIds: ids, KeySelection: selection.body()}
 		var out apigen.FileTarget
 		if err := client.Do(ctx, http.MethodPatch, base+"/"+url.PathEscape(flags.positional()), body, &out); err != nil {
 			return err
 		}
-		return Render(ios.Stdout, f, fileTargetTable([]apigen.FileTarget{out}, out))
+		return Render(ios.Stdout, f, fileTargetTable([]apigen.FileTarget{out}, out, environmentLabel))
 	case "delete":
 		if err := client.Do(ctx, http.MethodDelete, base+"/"+url.PathEscape(flags.positional()), nil, nil); err != nil {
 			return err
@@ -130,7 +131,7 @@ func runFileTarget(ctx context.Context, ios IO, args []string) error {
 	return nil
 }
 
-func fileTargetTable(items []apigen.FileTarget, raw any) Table {
+func fileTargetTable(items []apigen.FileTarget, raw any, environmentLabel func(string) string) Table {
 	rows := make([][]string, 0, len(items))
 	for _, t := range items {
 		names := make([]string, 0, len(t.Keys))
@@ -144,7 +145,7 @@ func fileTargetTable(items []apigen.FileTarget, raw any) Table {
 			reported = r.ReportedAt.UTC().Format(time.RFC3339)
 		}
 		rows = append(rows, []string{
-			string(t.Id), t.Name, string(t.EnvironmentId), string(t.ServiceAccountId),
+			string(t.Id), t.Name, environmentLabel(string(t.EnvironmentId)), string(t.ServiceAccountId),
 			fmt.Sprint(t.Generation), strings.Join(names, ","), state, revision, reported,
 		})
 	}

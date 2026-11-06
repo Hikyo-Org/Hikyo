@@ -186,9 +186,11 @@ type ConnectionView struct {
 	ExpiresAt  time.Time
 	CreatedAt  time.Time
 	CreatedBy  domain.PrincipalID
-	RevokedAt  time.Time
-	LastUsedAt time.Time
-	Live       bool
+	// CreatedByName is the creator's display name, empty when unresolved.
+	CreatedByName string
+	RevokedAt     time.Time
+	LastUsedAt    time.Time
+	Live          bool
 }
 
 // MintConnectionResult carries the one and only disclosure of the value.
@@ -327,8 +329,14 @@ func (s *Workspace) ListConnections(ctx context.Context, actor Actor) ([]Connect
 			return err
 		}
 		out = make([]ConnectionView, 0, len(conns))
+		names := newPrincipalNames()
 		for _, c := range conns {
-			out = append(out, connectionView(c, now, epoch))
+			view := connectionView(c, now, epoch)
+			// The caller may list these connections, so their creators are disclosed.
+			if view.CreatedByName, err = names.label(ctx, az, view.CreatedBy); err != nil {
+				return err
+			}
+			out = append(out, view)
 		}
 		e, err := domainEvent(ctx, audit.EventRemoteCredentialsListed, caller.Principal,
 			audit.Object{Type: "instance_connection", ID: ""}, audit.Payload{"row_count": len(out)})
@@ -358,6 +366,9 @@ func (s *Workspace) ShowConnection(ctx context.Context, actor Actor, id string) 
 			return err
 		}
 		out = connectionView(conn, now, epoch)
+		if out.CreatedByName, err = newPrincipalNames().label(ctx, az, out.CreatedBy); err != nil {
+			return err
+		}
 		e, err := domainEvent(ctx, audit.EventRemoteCredentialsListed, caller.Principal,
 			audit.Object{Type: "instance_connection", ID: id}, audit.Payload{"row_count": 1})
 		if err != nil {
@@ -895,6 +906,9 @@ type HandoffView struct {
 	Purpose          HandoffPurpose
 	Operation        string
 	EnvID            string
+	// OrgID and ProjectID name the environment's owners for display, and are
+	// set only when the caller may list that environment.
+	OrgID, ProjectID string
 	KeySet           []string
 	ExpiresAt        time.Time
 }
@@ -975,6 +989,28 @@ func (s *Workspace) ShowHandoff(ctx context.Context, actor Actor, state string) 
 			}
 			if h.KeySet != "" {
 				out.KeySet = splitKeySet(h.KeySet)
+			}
+			// Owning the handoff does not prove access to its environment, so
+			// the org and project ids are disclosed only to a caller who may
+			// list it; otherwise they are omitted and the read still succeeds.
+			chain, err := az.EnvironmentChainByID(ctx, h.EnvID)
+			if err != nil && !errors.Is(err, domain.ErrNotFound) {
+				return err
+			}
+			// A missing environment still runs the check, against a project no
+			// row can match, so the work done does not say whether the ID exists.
+			missing := err != nil
+			scope := domain.Scope{Org: domain.OrgID(chain.Org), Project: domain.ProjectID(chain.Project)}
+			if missing {
+				scope = domain.Scope{Org: "org_absent", Project: "prj_absent"}
+			}
+			az.SetClock(now)
+			may, err := az.CallerMayListEnvironment(ctx, caller, scope, domain.EnvID(h.EnvID))
+			if err != nil {
+				return err
+			}
+			if may && !missing {
+				out.OrgID, out.ProjectID = chain.Org, chain.Project
 			}
 		default:
 			return ErrHandoffInvalid

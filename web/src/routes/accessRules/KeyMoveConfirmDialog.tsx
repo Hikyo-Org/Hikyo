@@ -1,24 +1,26 @@
 import type { zWideningRefusal } from '@hikyo/zod';
+import { Fragment, type ReactNode } from 'react';
 import type { z } from 'zod';
 
 import { Alert } from '../../ui/Alert.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { Dialog } from '../../ui/Dialog.tsx';
 import { Glyph } from '../../ui/Glyph.tsx';
+import { NamedId } from '../../ui/NamedId.tsx';
 import { label } from './model.ts';
 
 export type WideningRefusal = z.infer<typeof zWideningRefusal>;
 
-/** One line per person: "Dana Ruiz: Reveal (prod), Reveal history (prod)". */
-export function gainerLines(widening: WideningRefusal, envName: (id: string) => string): { id: string; text: string }[] {
-  const byPerson = new Map<string, { name: string; parts: string[] }>();
+/** One line per person: "Dana Ruiz …a1b2c3: Reveal (prod), Reveal history (prod)". */
+export function gainerLines(widening: WideningRefusal, envName: (id: string) => string): { id: string; name: string | undefined; parts: string[] }[] {
+  const byPerson = new Map<string, { name: string | undefined; parts: string[] }>();
   for (const gain of widening.gainers ?? []) {
-    const line = byPerson.get(gain.principal_id) ?? { name: gain.principal_name ?? gain.principal_id, parts: [] };
+    const line = byPerson.get(gain.principal_id) ?? { name: gain.principal_name, parts: [] };
     const envs = gain.environments.map(envName).join(', ');
     line.parts.push(envs === '' ? label(gain.capability) : `${label(gain.capability)} (${envs})`);
     byPerson.set(gain.principal_id, line);
   }
-  return [...byPerson.entries()].map(([id, line]) => ({ id, text: `${line.name}: ${line.parts.join(', ')}` }));
+  return [...byPerson.entries()].map(([id, line]) => ({ id, name: line.name, parts: line.parts }));
 }
 
 /** The principal ids a confirmation must name: exactly the people the refusal named. */
@@ -46,7 +48,7 @@ export function KeyMoveConfirmDialog({
 }: {
   widening: WideningRefusal;
   /** The move in words, e.g. "Move DB_PASSWORD from db/ to app/". */
-  change: string;
+  change: ReactNode;
   envName: (id: string) => string;
   busy?: boolean;
   failure?: string | null;
@@ -60,7 +62,7 @@ export function KeyMoveConfirmDialog({
     <Dialog
       title="This move gives people new access"
       className="access-dialog"
-      lede={`${change}. Rules that left this key out through its old folder, or that pick its new folder, now reach it.`}
+      lede={<>{change}. Rules that left this key out through its old folder, or that pick its new folder, now reach it.</>}
       onCancel={(event) => {
         event.preventDefault();
         if (!busy) onCancel();
@@ -87,7 +89,15 @@ export function KeyMoveConfirmDialog({
         {named ? (
           <ul>
             {lines.map((line) => (
-              <li key={line.id}>{line.text}</li>
+              <li key={line.id}>
+                <NamedId id={line.id} name={line.name} tail />:{' '}
+                {line.parts.map((part, index) => (
+                  <Fragment key={part}>
+                    {index === 0 ? null : ', '}
+                    <bdi>{part}</bdi>
+                  </Fragment>
+                ))}
+              </li>
             ))}
           </ul>
         ) : (

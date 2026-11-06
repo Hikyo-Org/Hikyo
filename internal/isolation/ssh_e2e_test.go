@@ -257,6 +257,10 @@ func runSSHLifecycle(t *testing.T, db *store.DB, full bool) {
 	if view.Status != "revoked" || view.InKRL {
 		t.Fatalf("expired revoked certificate still in KRL: %+v", view)
 	}
+	// The requester is named from the row the reader already sees.
+	if view.RequesterPrincipalName != "ssh-deployer" {
+		t.Fatalf("requester name = %q, want the service account's name", view.RequesterPrincipalName)
+	}
 	if expired, _ := nodeB.svc.GetCertificate(ctx, admin, env, generated.Certificate.ID); expired.Status != "expired" {
 		t.Fatalf("unrevoked certificate past valid_before = %q", expired.Status)
 	}

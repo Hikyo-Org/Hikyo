@@ -1,10 +1,11 @@
 import type { WorkspaceHandoffEstablishment, WorkspaceHandoffStepUp } from '@hikyo/client';
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { zAuthMethods } from '@hikyo/zod';
-import { expect, waitFor } from 'storybook/test';
+import { zAuthMethods, zEnvironmentList, zKeyList, zOrg, zProject } from '@hikyo/zod';
+import { expect, waitFor, within } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
+import { ORG, PRJ } from '../testkit/ids.ts';
 import { withSearchParams } from '../testkit/searchParams.ts';
 import { WorkspaceApprove } from './WorkspaceApprove.tsx';
 
@@ -32,6 +33,8 @@ const stepUp: WorkspaceHandoffStepUp = {
   requesting_origin: 'https://viewer.hikyo.example',
   operation: 'reveal',
   environment: 'env_01989abc-def0-7123-8123-000000000001',
+  org_id: ORG,
+  project_id: PRJ,
   key_ids: [
     'key_01989abc-def0-7123-8123-000000000001',
     'key_01989abc-def0-7123-8123-000000000002',
@@ -39,6 +42,33 @@ const stepUp: WorkspaceHandoffStepUp = {
   ],
   expires_at: '2099-08-23T12:00:00Z',
 };
+
+// The page names the scope through the ordinary authorized reads, never from
+// the transaction. The third bound key is absent from the catalogue.
+const at = '2026-01-01T00:00:00Z';
+const catalogueRow = (id: string, name: string, classification: 'secret' | 'config'): z.input<typeof zKeyList>['items'][number] => ({
+  id, org_id: ORG, project_id: PRJ, name, folder_path: '', classification,
+  description: '', deprecated: false, deprecation_note: '', declaration: {},
+  presence: { required_in: { mode: 'none' }, forbidden_in: { mode: 'none' } }, group_id: '', created_at: at,
+});
+const scopeNames: MockRoute[] = [
+  { url: `/api/v1/orgs/${ORG}`, body: { id: ORG, name: 'Acme', active: true, created_at: at, origin: 'manual' } satisfies z.input<typeof zOrg> },
+  { url: `/api/v1/orgs/${ORG}/projects/${PRJ}`, body: { id: PRJ, org_id: ORG, name: 'Billing', created_at: at } satisfies z.input<typeof zProject> },
+  {
+    url: `/api/v1/orgs/${ORG}/projects/${PRJ}/environments`,
+    body: {
+      count: 1,
+      items: [{ id: stepUp.environment, org_id: ORG, project_id: PRJ, name: 'production', display_order: 0, created_at: at }],
+    } satisfies z.input<typeof zEnvironmentList>,
+  },
+  {
+    url: `/api/v1/orgs/${ORG}/projects/${PRJ}/keys`,
+    body: {
+      count: 2, schema_revision: 1,
+      items: [catalogueRow('key_01989abc-def0-7123-8123-000000000001', 'DATABASE_URL', 'secret'), catalogueRow('key_01989abc-def0-7123-8123-000000000002', 'LOG_LEVEL', 'config')],
+    } satisfies z.input<typeof zKeyList>,
+  },
+];
 
 const transaction = (rest: Partial<MockRoute>): MockRoute => ({
   url: /\/api\/v1\/auth\/workspace\/transactions\//,
@@ -98,15 +128,22 @@ export const Establishment: Story = {
 // reauthentication (passkey or authenticator code) before the approval.
 export const StepUp: Story = {
   beforeEach: withSearchParams({ state: STATE }),
-  parameters: { app: { auth: true, responses: [transaction({ body: stepUp })] } },
+  parameters: { app: { auth: true, responses: [transaction({ body: stepUp }), ...scopeNames] } },
   play: async ({ canvas }) => {
     await expect(
       await canvas.findByRole('heading', { name: /authorize this disclosure/i }),
     ).toBeVisible();
     const scope = canvas.getByRole('region', { name: /requested scope/i });
-    await expect(scope).toHaveTextContent(stepUp.environment);
+    // Names lead and the IDs stay reachable as `title`; the absent key stays listed by its ID.
+    await waitFor(() => expect(scope).toHaveTextContent('Acme'));
+    await expect(within(scope).getByText('Acme')).toHaveAttribute('title', ORG);
+    await expect(within(scope).getByText('Billing')).toHaveAttribute('title', PRJ);
+    await expect(within(scope).getByText('production')).toHaveAttribute('title', stepUp.environment);
+    await expect(within(scope).getByText('DATABASE_URL').closest('li')).toHaveAttribute('title', 'key_01989abc-def0-7123-8123-000000000001');
+    await expect(within(scope).getByText('LOG_LEVEL').closest('li')).toHaveAttribute('title', 'key_01989abc-def0-7123-8123-000000000002');
+    await expect(within(scope).getByText('key_01989abc-def0-7123-8123-000000000003')).toBeVisible();
     await expect(scope.querySelectorAll('li')).toHaveLength(stepUp.key_ids.length);
-    await expect(canvas.getByRole('button', { name: /use a passkey/i })).toBeEnabled();
+    await waitFor(() => expect(canvas.getByRole('button', { name: /use a passkey/i })).toBeEnabled());
     await expect(canvas.getByRole('button', { name: /authorise with a code/i })).toBeDisabled();
   },
 };

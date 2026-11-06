@@ -102,7 +102,10 @@ function deferredResponse() {
 beforeEach(() => {
   settleSessionEpoch();
   fetcher.mockReset();
-  vi.stubGlobal('fetch', fetcher);
+  // Environment names are a best-effort lookup beside the sequenced credential calls.
+  vi.stubGlobal('fetch', (request: Request) => (
+    new URL(request.url).pathname.endsWith('/environments') ? Promise.resolve(json({ items: [], count: 0 })) : fetcher(request)
+  ));
 });
 
 afterEach(async () => {
@@ -123,9 +126,11 @@ describe('project developer credentials', () => {
     expect(requests()).toEqual([{ method: 'GET', path: listPath }]);
     expect(container.querySelector('caption')?.textContent).toContain('including expired and revoked credentials');
     expect(container.querySelectorAll('tbody tr')).toHaveLength(3);
-    for (const value of [credential.id, expired.id, revoked.id, credential.principal_id, credential.authority_principal_id, credential.environment_id]) {
+    for (const value of [credential.principal_id, credential.authority_principal_id, credential.environment_id]) {
       expect(container.querySelector('tbody')?.textContent).toContain(value);
     }
+    expect(container.querySelector('tbody')?.textContent).toContain('hik_1_dev_hint…');
+    for (const { id } of [credential, expired, revoked]) expect(container.querySelector(`tbody [title="${id}"]`)).not.toBeNull();
     expect(container.querySelector(`time[datetime="${credential.created_at}"]`)).not.toBeNull();
     expect(container.querySelector(`time[datetime="${credential.expires_at}"]`)).not.toBeNull();
     expect(container.querySelector(`time[datetime="${revokedAt}"]`)).not.toBeNull();
@@ -144,7 +149,7 @@ describe('project developer credentials', () => {
 
     const confirmation = dialog(container);
     expect(confirmation.textContent).toContain('Revoke developer credential?');
-    for (const value of [credential.id, credential.authority_principal_id, credential.environment_id]) {
+    for (const value of ['hik_1_dev_hint', credential.authority_principal_id, credential.environment_id]) {
       expect(confirmation.textContent).toContain(value);
     }
     expect(confirmation.textContent).toContain('This is permanent.');
