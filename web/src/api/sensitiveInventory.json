@@ -56,7 +56,7 @@
     "routes/Members.tsx": "30c98c8e4222c2ea0cb89dc649af9270ba950f9df3de9348363f2cddafe4afc2",
     "routes/OAuth2ProvidersPanel.tsx": "1b5c2baa154c5a595caa50a63d94a7f265355f74b6bb715bd7fd5285758a4787",
     "routes/OidcProvidersPanel.tsx": "fc148547db559624d02d3f9307b6b8677bbaa4adaa0190f3acb4f93ea3050497",
-    "routes/PersonalValues.tsx": "da8d9906d68cc1a421cdd51f93082028e96e00ed61e34cdd64af4d8d7976c5f9",
+    "routes/PersonalValues.tsx": "d1d0b8e8535a37e54e1dd4e860c2b0ce5ba2ad6206c1f567ce10eb645a68151e",
     "routes/RemotePairing.tsx": "eb1777279a777f7f21e8c0f4cdddc33ffa7bdf4fd5f98e35ec3a6743bfe6ac51",
     "routes/Remotes.tsx": "014ca90f0833802752a643ba026f441e46a11f47d8a0ef5c7c2e9630530dcf87",
     "routes/RevisionDiff.tsx": "ee87acbece3b4605604c06add20829948b9c5eb3a0845197d6bcaa85b474c6db",
