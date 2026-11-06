@@ -95,3 +95,36 @@ func TestSignupArtifactGrammar(t *testing.T) {
 		}
 	}
 }
+
+// The email-invitation token (#1207) rides the one grammar: pinned spelling,
+// round trip, refusal under any other type, and the `hik_` redaction family.
+func TestEmailInvitationArtifactGrammar(t *testing.T) {
+	if string(ArtifactEmailInvitation) != "ei" {
+		t.Fatalf("artifact type %q, pinned spelling %q", ArtifactEmailInvitation, "ei")
+	}
+	v, verifier, err := NewArtifact(ArtifactEmailInvitation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(v, "hik_1_ei_") {
+		t.Fatalf("email invitation token %q does not carry the ei type", v)
+	}
+	if !bytes.Equal(verifier, ArtifactVerifier(v)) {
+		t.Fatal("the stored verifier is not the hash of the value")
+	}
+	if err := ParseArtifact(v, ArtifactEmailInvitation); err != nil {
+		t.Fatalf("a minted ei artifact was refused: %v", err)
+	}
+	for _, other := range []ArtifactType{ArtifactSignup, ArtifactHandoffCode, ArtifactBootstrap} {
+		if ParseArtifact(v, other) == nil {
+			t.Fatalf("an ei artifact parsed as %q", other)
+		}
+		o, _, err := NewArtifact(other)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ParseArtifact(o, ArtifactEmailInvitation) == nil {
+			t.Fatalf("a %q artifact parsed as ei", other)
+		}
+	}
+}

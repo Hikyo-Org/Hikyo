@@ -1162,6 +1162,7 @@ func TestMaxKnownCredentialEpochCoversEveryEpochColumn(t *testing.T) {
 			{"authn.sql", "PostLegacyMaxCredentialEpoch"},
 			{"authn.sql", "DeveloperMaxCredentialEpoch"},
 			{"remote_pairing.sql", "RemotePairingMaxCredentialEpoch"},
+			{"email_invitations.sql", "OrgEmailInvitationMaxCredentialEpoch"},
 		} {
 			src, err := os.ReadFile(filepath.Join("..", "store", "queries", engine, census.file))
 			if err != nil {

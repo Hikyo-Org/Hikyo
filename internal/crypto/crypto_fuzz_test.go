@@ -126,7 +126,7 @@ func FuzzParseArtifact(f *testing.F) {
 		ArtifactCLISession, ArtifactBootstrap, ArtifactBrowserSession, ArtifactRecoveryCode,
 		ArtifactOIDCState, ArtifactOIDCBinding, ArtifactCSRF, ArtifactWorkload,
 		ArtifactAutomation, ArtifactSCIM, ArtifactInstanceConn, ArtifactWorkspaceSession,
-		ArtifactHandoffState, ArtifactHandoffCode, ArtifactSignup,
+		ArtifactHandoffState, ArtifactHandoffCode, ArtifactSignup, ArtifactEmailInvitation,
 	}
 	f.Fuzz(func(t *testing.T, value string) {
 		for _, want := range types {

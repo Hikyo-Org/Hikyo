@@ -223,6 +223,10 @@ func (a *TxAuthorizer) ConsumeOIDCTransaction(ctx context.Context, id string, at
 	return a.r.ConsumeOIDCTransaction(ctx, id, at)
 }
 
+func (a *TxAuthorizer) ConsumeOrgEmailInvitation(ctx context.Context, id string, verifier []byte) (bool, error) {
+	return a.r.ConsumeOrgEmailInvitation(ctx, id, verifier)
+}
+
 // ConsumeOutstandingAuthorities marks every unconsumed authority of an account
 // consumed, in the same transaction as a fresh mint or consumption.
 func (a *TxAuthorizer) ConsumeOutstandingAuthorities(ctx context.Context, accountID string, at time.Time) error {
@@ -276,6 +280,10 @@ func (a *TxAuthorizer) CountExternalIdentitiesForIssuer(ctx context.Context, kin
 // read behind the per-org grant sanity cap.
 func (a *TxAuthorizer) CountGrantsInOrg(ctx context.Context, org string) (int64, error) {
 	return a.r.CountGrantsInOrg(ctx, org)
+}
+
+func (a *TxAuthorizer) CountLiveOrgEmailInvitations(ctx context.Context, org domain.OrgID, at time.Time) (int64, error) {
+	return a.r.CountLiveOrgEmailInvitations(ctx, org, at)
 }
 
 func (a *TxAuthorizer) CountLiveRemotePairingExchanges(ctx context.Context, id string, now time.Time) (int64, error) {
@@ -475,6 +483,10 @@ func (a *TxAuthorizer) DeleteGrantRow(ctx context.Context, grantID string, p dom
 
 func (a *TxAuthorizer) DeleteOAuth2Provider(ctx context.Context, id string) error {
 	return a.r.DeleteOAuth2Provider(ctx, id)
+}
+
+func (a *TxAuthorizer) DeleteOrgEmailInvitationInOrg(ctx context.Context, id string, org domain.OrgID) (bool, error) {
+	return a.r.DeleteOrgEmailInvitationInOrg(ctx, id, org)
 }
 
 // DeleteProvider removes a provider.
@@ -715,6 +727,10 @@ func (a *TxAuthorizer) InvalidateRestoredExternalCredentials(ctx context.Context
 	return a.r.InvalidateRestoredExternalCredentials(ctx, now)
 }
 
+func (a *TxAuthorizer) ListLiveOrgEmailInvitations(ctx context.Context, org domain.OrgID, at time.Time) ([]EmailInvitationListing, error) {
+	return a.r.ListLiveOrgEmailInvitations(ctx, org, at)
+}
+
 func (a *TxAuthorizer) ListOAuth2Providers(ctx context.Context) ([]OAuth2Provider, error) {
 	return a.r.ListOAuth2Providers(ctx)
 }
@@ -860,6 +876,18 @@ func (a *TxAuthorizer) OpenReauthWindow(ctx context.Context, w NewReauthWindow) 
 	return a.r.CreateReauthWindow(ctx, w)
 }
 
+func (a *TxAuthorizer) OrgEmailInvitationByVerifier(ctx context.Context, verifier []byte) (EmailInvitation, error) {
+	return a.r.OrgEmailInvitationByVerifier(ctx, verifier)
+}
+
+func (a *TxAuthorizer) OrgEmailInvitationInOrg(ctx context.Context, id string, org domain.OrgID) (EmailInvitation, error) {
+	return a.r.OrgEmailInvitationInOrg(ctx, id, org)
+}
+
+func (a *TxAuthorizer) OrgEmailInvitationOrgName(ctx context.Context, org domain.OrgID) (string, error) {
+	return a.r.OrgEmailInvitationOrgName(ctx, org)
+}
+
 // PasswordCredentialFor reads an account's verifier row.
 func (a *TxAuthorizer) PasswordCredentialFor(ctx context.Context, accountID string) (PasswordCredential, error) {
 	return a.r.PasswordCredential(ctx, accountID)
@@ -927,6 +955,10 @@ func (a *TxAuthorizer) ProviderForCallback(ctx context.Context, id string) (OIDC
 
 func (a *TxAuthorizer) PruneCLILogins(ctx context.Context, at time.Time) error {
 	return a.r.PruneCLILogins(ctx, at)
+}
+
+func (a *TxAuthorizer) PruneExpiredOrgEmailInvitations(ctx context.Context, at time.Time) (int64, error) {
+	return a.r.PruneExpiredOrgEmailInvitations(ctx, at)
 }
 
 func (a *TxAuthorizer) PruneExpiredRegistrationSignup(ctx context.Context, id string, at time.Time) (bool, error) {
@@ -1269,6 +1301,11 @@ func (a *TxAuthorizer) UpdateRequestRefusals(ctx context.Context, sample *audit.
 // UpdateSAMLProvider compare-and-swaps a provider configuration.
 func (a *TxAuthorizer) UpdateSAMLProvider(ctx context.Context, provider SAMLProviderUpdate) (bool, error) {
 	return a.r.UpdateSAMLProvider(ctx, provider)
+}
+
+// Email invitations of existing accounts (#1207).
+func (a *TxAuthorizer) UpsertOrgEmailInvitation(ctx context.Context, n EmailInvitation) (string, error) {
+	return a.r.UpsertOrgEmailInvitation(ctx, n)
 }
 
 func (a *TxAuthorizer) VerifiedAccountEmailExists(ctx context.Context, email string) (bool, error) {

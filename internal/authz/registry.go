@@ -404,6 +404,14 @@ const (
 	// per depth exactly as grant.create does; each route names one.
 	OpMemberInviteOrg      Operation = "member.invite-org"
 	OpMemberInviteInstance Operation = "member.invite-instance"
+	// Email invitation of an existing account (#1207). Send, list and revoke
+	// are manage-members at the org; accept re-authorizes the INVITER at the
+	// org with the same formula the template operation carries, so the
+	// template writer's events and the acceptance record share one proof.
+	OpEmailInvitationSend   Operation = "email-invitation.send"
+	OpEmailInvitationList   Operation = "email-invitation.list"
+	OpEmailInvitationRevoke Operation = "email-invitation.revoke"
+	OpEmailInvitationAccept Operation = "email-invitation.accept"
 	// Registration policy (#606, #579): one policy per scope, administered by
 	// the scope's manage-members holder. One operation per depth and verb,
 	// the member.invite shape; the mutations are reauth-gated in the service.
@@ -4092,6 +4100,43 @@ var operationTable = map[Operation]opSpec{
 		storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true},
 		events: append([]audit.EventType{
 			audit.EventMemberInvited, audit.EventGrantTemplateApplied,
+			audit.EventGrantCreated, audit.EventGrantModified,
+		}, grantCureEvents...),
+	},
+
+	// Email invitation of an existing account (#1207). The table is class=authn,
+	// so the reads and writes ride the proof-free resolution surface after the
+	// operation authorizes; only the organisation-trail audit write is a store
+	// op. The list is not audited-none: it is administrative information under
+	// manage-members, recorded as the membership-surface read.
+	OpEmailInvitationSend: {
+		class:    ClassTenant,
+		level:    domain.LevelOrg,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventMemberEmailInvited},
+	},
+	OpEmailInvitationList: {
+		class:    ClassTenant,
+		level:    domain.LevelOrg,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventGrantMembershipRead},
+	},
+	OpEmailInvitationRevoke: {
+		class:    ClassTenant,
+		level:    domain.LevelOrg,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventMemberEmailInvitationRevoked},
+	},
+	OpEmailInvitationAccept: {
+		class:    ClassTenant,
+		level:    domain.LevelOrg,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelOrg}},
+		storeOps: withCure(map[StoreOp]bool{StoreAuditTenantInsert: true}),
+		events: append([]audit.EventType{
+			audit.EventMemberEmailInvitationAccepted, audit.EventGrantTemplateApplied,
 			audit.EventGrantCreated, audit.EventGrantModified,
 		}, grantCureEvents...),
 	},

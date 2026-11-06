@@ -8,8 +8,14 @@ import "github.com/Hikyo-Org/hikyo/internal/multicall"
 var reviewedWireExtras = wireExtras{
 	Version: 1,
 	Extensions: map[string]wireRow{
-		"http:POST /api/v1/auth/cli-login/redeem":       {Events: []string{"EventAuthLogin", "EventAuthSessionCreated"}},
-		"http:POST /api/v1/auth/cli-login/device/token": {Events: []string{"EventAuthLogin", "EventAuthSessionCreated"}},
+		// Email invitation of an existing account (#1207). The send route's
+		// background mail intent and outcome ride the instance trail; preview and
+		// accept record their uniform refusal causes there.
+		"http:POST /api/v1/orgs/{org}/email-invitations": {Events: []string{"EventMemberEmailInvitationDispatch", "EventMemberEmailInvitationMailResult"}},
+		"http:POST /api/v1/me/invitations/preview":       {Events: []string{"EventMemberEmailInvitationRefused"}},
+		"http:POST /api/v1/me/invitations/accept":        {Ops: []string{"OpEmailInvitationAccept"}, Events: []string{"EventMemberEmailInvitationRefused"}, NoPrimary: "Acceptance authorizes the INVITER, not the signed-in caller; OpenAPI has no single x-hikyo-operation."},
+		"http:POST /api/v1/auth/cli-login/redeem":        {Events: []string{"EventAuthLogin", "EventAuthSessionCreated"}},
+		"http:POST /api/v1/auth/cli-login/device/token":  {Events: []string{"EventAuthLogin", "EventAuthSessionCreated"}},
 
 		// Self-owned developer lifecycle resolves a human session without a tenant
 		// formula and records these events through RecordAuthEvent.
