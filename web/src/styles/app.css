@@ -2068,6 +2068,19 @@ fieldset.field > legend {
   line-height: 1.45;
 }
 
+/* At 320px the widest term left its description 99px on Linux fonts: floor the
+   description column instead, and let a term wrap to make room. After the base
+   rules so it wins. */
+@media (max-width: 700px) {
+  .matrix__legend-body dl {
+    grid-template-columns: auto minmax(100px, 1fr);
+  }
+
+  .matrix__legend-body dt {
+    white-space: normal;
+  }
+}
+
 .matrix__legend-body p {
   margin: var(--space-2) 0 0;
   padding-top: var(--space-2);
