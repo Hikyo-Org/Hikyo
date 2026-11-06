@@ -322,6 +322,15 @@ func TestPersonalRequiredInDeliversMissing(t *testing.T) {
 			t.Fatal("an unconsented fetch reported missing")
 		}
 
+		// A shared consumer still receives the shared value.
+		r, err = del.FetchAs(ctx, service.LocalPrincipal(custodian), envScope(envA1), "", service.FetchOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if b := deliveredKey(t, r, ceremonySecretB); !valueIs(b, "plaintext-republished") || b.Personal != "" {
+			t.Fatalf("shared delivery of a personal-required key: personal=%q", b.Personal)
+		}
+
 		e.setOwn(t, ceremonySecretB, keyB, personalPlain)
 		r, err = del.Fetch(ctx, consented.Value, envScope(envA1), "", service.FetchOptions{})
 		if err != nil {
