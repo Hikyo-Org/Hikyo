@@ -1071,6 +1071,9 @@ test.describe('scim provisioning', () => {
           const badge = page.locator('.scim-binding .badge').first();
           const administer = page.getByRole('button', { name: 'Administering' }).first();
           const rowDensity = testInfo.project.name === 'mobile' ? '--touch' : '--row';
+          // The page renders before the bindings load, then rebuilds the section
+          // as tabs; asserting in that gap tags controls that are then replaced.
+          await expect(administer).toBeVisible();
 
           await expectPinnedAssertionSet(page, {
             flow: 'scim',

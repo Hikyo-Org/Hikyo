@@ -180,7 +180,7 @@ export function FolderCleanupDialog({
       {reviewing === null || reviewed === undefined || reviewed.widening === null ? null : (
         <KeyMoveConfirmDialog
           widening={reviewed.widening}
-          change={`Move ${reviewed.name} from (no folder) to ${reviewed.folder.trim()}/`}
+          change={<>Move {reviewed.name} from (no folder) to <bdi>{reviewed.folder.trim()}/</bdi></>}
           envName={envName}
           busy={busy}
           failure={reviewing.failure}

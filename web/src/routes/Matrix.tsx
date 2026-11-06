@@ -1435,7 +1435,7 @@ export function Matrix({
             );
             if (degradedChange !== undefined) {
               throw new Error(
-                `cannot apply a change to the degraded environment ${degradedChange.environmentId}`,
+                `cannot apply a change to the degraded environment ${environments.find((candidate) => candidate.id === degradedChange.environmentId)?.name ?? degradedChange.environmentId}`,
               );
             }
             let normalizedCount = 0;

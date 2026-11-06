@@ -47,6 +47,10 @@ kbd,
   font-size: var(--fs-mono);
 }
 
+.id-tail {
+  white-space: nowrap;
+}
+
 /* Focus is never invisible and never removed. A two-tone ring survives both
    themes and forced-colors, where `outline` is repainted by the OS. */
 :focus-visible {
@@ -486,6 +490,11 @@ fieldset.field > legend {
   max-height: min(35dvh, 20rem);
   overflow: auto;
   overflow-wrap: anywhere;
+}
+
+.workspace-consent__scope .ceremony__keys {
+  max-height: none;
+  overflow: visible;
 }
 
 .workspace-consent__scope dl {
@@ -3569,6 +3578,9 @@ fieldset.field > legend {
 }
 
 .ceremony__keys {
+  /* Each named key has a `.visually-hidden` label: keep it inside this scroller
+     so a long list cannot stretch the page with blank space. */
+  position: relative;
   margin: 0;
   padding: 8px 12px 8px 28px;
   border: 1px solid var(--line);
@@ -3576,6 +3588,7 @@ fieldset.field > legend {
   background: var(--bg);
   max-height: 30vh;
   overflow: auto;
+  overflow-wrap: anywhere;
 }
 
 .ceremony__cap {
@@ -3678,6 +3691,9 @@ fieldset.field > legend {
 }
 
 .dialog--pinned .dialog__body {
+  /* Keeps `.visually-hidden` labels inside this scroller. Against the dialog,
+     which hides its overflow, focusing one scrolls the pinned actions away. */
+  position: relative;
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -4650,7 +4666,6 @@ label.chk:has(input:disabled) {
   justify-content: space-between;
 }
 
-.session__id,
 .session__detail {
   overflow-wrap: anywhere;
 }
@@ -6854,6 +6869,7 @@ label.chk:has(input:disabled) {
 }
 
 .change-approvals__request-head {
+  overflow-wrap: anywhere;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
@@ -6879,6 +6895,7 @@ label.chk:has(input:disabled) {
 
 .change-approvals__request-meta dd {
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .change-approvals__bypass {

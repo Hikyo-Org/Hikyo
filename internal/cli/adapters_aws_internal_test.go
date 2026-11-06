@@ -212,6 +212,9 @@ func TestAWSAdapterTargetAddAndKMSMoveDispatch(t *testing.T) {
 								NamePrefix: body.NamePrefix,
 							}},
 						})
+					case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/environments"):
+						// The table's best-effort environment naming.
+						_ = json.NewEncoder(w).Encode(apigen.EnvironmentList{Items: []apigen.Environment{{Id: "env_one", Name: "production"}}})
 					default:
 						t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 						http.NotFound(w, r)

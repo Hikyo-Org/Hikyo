@@ -21,6 +21,8 @@ import {
 } from '../api/values.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { NamedId } from '../ui/NamedId.tsx';
+import { ConsentKeys, useConsentNames } from './ConsentScope.tsx';
 import { Login } from './Login.tsx';
 import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
 
@@ -39,6 +41,23 @@ export function CLIReauth() {
     queryFn: () => loadCLIReauthTransaction(state),
     enabled: state !== '' && auth.state.status === 'authenticated',
   });
+  // Names are read through the authorized endpoints, never taken from the CLI.
+  // Only one project is resolved: a handoff spanning several keeps IDs, which
+  // are the bound values anyway.
+  const environmentPolicies = transaction.data?.environments ?? [];
+  const firstEnvironment = environmentPolicies[0];
+  const owner =
+    firstEnvironment !== undefined &&
+    environmentPolicies.every(
+      (e) => e.org_id === firstEnvironment.org_id && e.project_id === firstEnvironment.project_id,
+    )
+      ? firstEnvironment
+      : undefined;
+  const names = useConsentNames(
+    owner?.org_id ?? '',
+    owner?.project_id ?? '',
+    transaction.data?.purpose !== 'adapter' && transaction.data?.purpose !== 'self-config',
+  );
   const approve = useSensitiveMutation({
     mutationFn: async (strategy: 'factor' | 'oidc') => {
       const code = totp;
@@ -167,7 +186,7 @@ export function CLIReauth() {
             <p className="login__lede">
               {transaction.data.purpose === 'developer-credential' && transaction.data.developer_credential !== undefined ? <>
                 Authorize a developer credential for this one environment. Its fixed lifetime is <strong>{developerCredentialLifetime(transaction.data.developer_credential.lifetime_seconds)}</strong>.
-                Consent covers all current and future published keys until expiry.{transaction.data.developer_credential.personal_consent === true ? ' It also delivers your own personal values in this environment to this credential.' : ''} This credential survives ordinary logout, and security revocation or lost access prevents the next fetch. It cannot renew or deliver offline. Your fresh proof authorizes this exact delegation once.
+                {transaction.data.key_ids.length} {transaction.data.key_ids.length === 1 ? 'key exists' : 'keys exist'} now, listed below. Consent also covers every key published to this environment later, until expiry.{transaction.data.developer_credential.personal_consent === true ? ' It also delivers your own personal values in this environment to this credential.' : ''} This credential survives ordinary logout, and security revocation or lost access prevents the next fetch. It cannot renew or deliver offline. Your fresh proof authorizes this exact delegation once.
               </> : transaction.data.purpose === 'self-config' && transaction.data.self_config !== undefined ? <>Authorize <strong>{transaction.data.self_config.action}</strong> on <code>{transaction.data.self_config.owner_instance_id}</code>, revision r{String(transaction.data.self_config.revision)}, generation {String(transaction.data.self_config.expected_generation)}, schema {transaction.data.self_config.schema_version}. {transaction.data.self_config.to === '' ? '' : `Send to ${transaction.data.self_config.to}.`} {transaction.data.self_config.confirm_restored_credentials ? 'This also confirms reviewed restored credentials and reconciled access grants.' : ''} This decision can be used once.</> : transaction.data.purpose === 'adapter' ? (
                 <>
                   Approve <span className="mono">{transaction.data.operation}</span> for the
@@ -191,23 +210,31 @@ export function CLIReauth() {
             {methodsFailed ? (
               <ProviderDiscoveryAlert onRetry={() => void methods.refetch()} />
             ) : null}
-            {transaction.data.purpose !== 'adapter' ? (
-              <ul className="mono">
-                {transaction.data.key_ids.map((keyId) => (
-                  <li key={keyId}>{keyId}</li>
+            {owner === undefined ? null : (
+              <p>
+                Organisation <NamedId id={owner.org_id} name={names.org} tail />, project{' '}
+                <NamedId id={owner.project_id} name={names.project} tail />
+              </p>
+            )}
+            {transaction.data.environments.length === 0 ? null : (
+              <ul aria-label="Environments this decision covers">
+                {transaction.data.environments.map((environment) => (
+                  <li key={environment.environment_id}>
+                    <NamedId
+                      id={environment.environment_id}
+                      name={owner === undefined ? undefined : names.environmentName(environment.environment_id)}
+                      tail
+                    />{' '}
+                    ({environment.requires_webauthn
+                      ? 'passkey required'
+                      : 'passkey or authenticator code'})
+                  </li>
                 ))}
               </ul>
+            )}
+            {disclosure || developerCredential ? (
+              <ConsentKeys keys={names.keys(transaction.data.key_ids)} />
             ) : null}
-            <ul>
-              {transaction.data.environments.map((environment) => (
-                <li key={environment.environment_id}>
-                  <span className="mono">{environment.environment_id}</span>{' '}
-                  ({environment.requires_webauthn
-                    ? 'passkey required'
-                    : 'passkey or authenticator code'})
-                </li>
-              ))}
-            </ul>
             {noProof ? <Alert>This needs a second factor. Sign in through a provider that asserts one, or add an authenticator or password under <a href="/settings?tab=factors">Settings › Security</a>. {requiresPasskey ? 'This policy requires an enrolled passkey.' : 'Provider sign-in alone cannot authorise this operation.'}</Alert> : null}
             {totpStatus.isError ? <Alert>Your credential inventory could not be loaded. Reload to try again.</Alert> : null}
             {offersTOTP ? (
@@ -219,11 +246,11 @@ export function CLIReauth() {
               </div>
             ) : null}
             {approve.isError ? <Alert>Authorization failed. No CLI credential was disclosed; return to the terminal and try again.</Alert> : null}
-            <Button variant="primary" type="button" disabled={approve.isPending || !canUseFactor || (!hasPasskey && totp.trim() === '')} onClick={() => approve.mutate('factor')}>
+            <Button variant="primary" type="button" disabled={approve.isPending || !names.settled || !canUseFactor || (!hasPasskey && totp.trim() === '')} onClick={() => approve.mutate('factor')}>
               {approve.isPending ? 'Authorizing…' : 'Authorize CLI'}
             </Button>
             {offersOIDC ? (
-              <Button type="button" disabled={approve.isPending || !canUseOIDC} onClick={() => approve.mutate('oidc')}>
+              <Button type="button" disabled={approve.isPending || !names.settled || !canUseOIDC} onClick={() => approve.mutate('oidc')}>
                 {approve.isPending ? 'Authorizing…' : `Re-authenticate with ${oidcProvider.display_name}`}
               </Button>
             ) : null}

@@ -137,6 +137,10 @@ export type DeveloperCredential = {
     revoked_at?: string;
     prefix_hint: string;
     personal_consent?: boolean;
+    /**
+     * Display name of the human who delegated the credential. Omitted when unnamed.
+     */
+    authority_principal_name?: string;
 };
 
 export type DeveloperCredentialList = {
@@ -1028,6 +1032,10 @@ export type SshCertificate = {
     valid_after: Timestamp;
     valid_before: Timestamp;
     requester_principal_id: Id;
+    /**
+     * Display name of the requester, present only when it can be named.
+     */
+    requester_principal_name?: string;
     requester_class: string;
     /**
      * revoked: cryptographically revoked (in_krl says whether the KRL
@@ -1703,7 +1711,12 @@ export type CliReauthApproved = {
     redirect_uri: string;
 };
 
+/**
+ * Display policy for one environment. The organisation and project ids are the owning rows, resolved by the server after it authorized the caller for this environment; clients read names through their own authorized endpoints.
+ */
 export type CliReauthEnvironmentPolicy = {
+    org_id: Id;
+    project_id: Id;
     environment_id: Id;
     effective_window_seconds: number;
     requires_webauthn: boolean;
@@ -2876,6 +2889,12 @@ export type ValueCell = {
      * The principal whose act produced this occurrence.
      */
     updated_by?: string;
+    /**
+     * Display name of `updated_by`, present only when it can be named
+     * from a row the caller already reads.
+     *
+     */
+    updated_by_name?: string;
 };
 
 export type ValueList = {
@@ -3262,6 +3281,10 @@ export type DefinitionsLastApply = {
     plan_id: Id;
     applied_at: Timestamp;
     applied_by: string;
+    /**
+     * Display name of `applied_by` (a principal id), present only when it can be named.
+     */
+    applied_by_name?: string;
     commit?: string;
     ref?: string;
     actor?: string;
@@ -4175,6 +4198,10 @@ export type SetCredentialPolicyRequest = {
 export type AffectedCredential = {
     id: Id;
     service_account_id: Id;
+    /**
+     * Display name of the service account, omitted when it no longer resolves.
+     */
+    service_account_name?: string;
     expires_at?: Timestamp;
     reason: 'clamped' | 'indefinite-withdrawn';
 };
@@ -6000,6 +6027,10 @@ export type InstanceConnection = {
     expires_at?: Timestamp;
     created_at: Timestamp;
     created_by: string;
+    /**
+     * Display name of `created_by`, present only when it can be named.
+     */
+    created_by_name?: string;
     revoked_at?: Timestamp;
     last_used_at?: Timestamp;
     /**
@@ -6191,6 +6222,14 @@ export type WorkspaceHandoffStepUp = {
      * The environment the elevation covers.
      */
     environment: Id;
+    /**
+     * Owning organisation of the environment, for display. Present only when the caller may list that environment.
+     */
+    org_id?: Id;
+    /**
+     * Owning project of the environment, for display. Present only when the caller may list that environment.
+     */
+    project_id?: Id;
     /**
      * The enumerated unit the elevation binds.
      */
@@ -6446,6 +6485,12 @@ export type TransitKey = {
     updated_at: Timestamp;
     versions: Array<TransitKeyVersion>;
     callers: Array<TransitCaller>;
+    /**
+     * Current names for callers who hold a grant in this key's tenant; not a user directory.
+     */
+    principal_names?: {
+        [key: string]: string;
+    };
 };
 
 export type TransitKeyList = {
@@ -8353,7 +8398,7 @@ export type ShowCliReauthTransactionError = ShowCliReauthTransactionErrors[keyof
 
 export type ShowCliReauthTransactionResponses = {
     /**
-     * Live transaction metadata without ids, bearers, or verifiers.
+     * Live transaction metadata without bearers or verifiers.
      */
     200: CliReauthTransaction;
 };

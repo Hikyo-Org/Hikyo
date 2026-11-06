@@ -200,6 +200,23 @@ export const SocialOnlyVerified: Story = {
   },
 };
 
+// A session reads as its own detail; the ID sits in the detail line and its
+// tail names the revoke button, so two look-alike sessions stay apart.
+export const SessionLabels: Story = {
+  play: async ({ canvas }) => {
+    await openTab(canvas, 'Sessions');
+    const workspace = 'ses_123e4567-e89b-12d3-a456-426614174002';
+    const id = await canvas.findByText(workspace);
+    await expect(id).toHaveClass('mono', 'session__detail');
+    await expect(canvas.getByText(/^Issued to https:\/\/hikyo\.went\.io, last seen /)).toBeVisible();
+    await expect(canvas.getByText(/^Signed in with local-password from 192\.0\.2\.11, last seen /)).toBeVisible();
+    await expect(
+      canvas.getByRole('button', { name: /^Revoke the workspace session \(Issued to https:\/\/hikyo\.went\.io, last seen .+, ID ending 174002\)$/ }),
+    ).toBeVisible();
+    await expect(canvas.getByRole('button', { name: /^Revoke the cli session \(.+, ID ending 174001\)$/ })).toBeVisible();
+  },
+};
+
 // The sections are tabs in a fixed order; an old `#account-sessions` link
 // opens the Sessions tab.
 export const TabFromLegacyAnchor: Story = {

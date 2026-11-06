@@ -239,12 +239,8 @@ func ruleTable(list apigen.RuleList) Table {
 				keyItems = append(keyItems, qualify(it.Project, "key:"+*it.Key))
 			}
 		}
-		principal := r.PrincipalId
-		if r.PrincipalName != nil && *r.PrincipalName != "" {
-			principal += " (" + *r.PrincipalName + ")"
-		}
 		rows = append(rows, []string{
-			r.Id, principal, string(r.Capability), projects,
+			r.Id, idWithName(r.PrincipalId, r.PrincipalName), string(r.Capability), projects,
 			ruleAxisText(w.Environments.Mode, envItems), ruleAxisText(w.Keys.Mode, keyItems),
 		})
 	}

@@ -80,7 +80,7 @@ func (a *API) ShowCLIReauthTransaction(ctx context.Context, req apigen.ShowCLIRe
 	}
 	environments := make([]apigen.CLIReauthEnvironmentPolicy, 0, len(result.Environments))
 	for _, environment := range result.Environments {
-		environments = append(environments, apigen.CLIReauthEnvironmentPolicy{EnvironmentId: apigen.ID(environment.EnvironmentID), EffectiveWindowSeconds: environment.EffectiveWindowSeconds, RequiresWebauthn: environment.RequiresWebAuthn})
+		environments = append(environments, apigen.CLIReauthEnvironmentPolicy{OrgId: apigen.ID(environment.OrgID), ProjectId: apigen.ID(environment.ProjectID), EnvironmentId: apigen.ID(environment.EnvironmentID), EffectiveWindowSeconds: environment.EffectiveWindowSeconds, RequiresWebauthn: environment.RequiresWebAuthn})
 	}
 	keyIDs := make([]apigen.ID, 0, len(result.KeyIDs))
 	for _, keyID := range result.KeyIDs {

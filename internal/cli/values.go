@@ -409,7 +409,7 @@ func runValues(ctx context.Context, ios IO, args []string) (returnErr error) {
 			}
 			return Render(ios.Stdout, f, Table{
 				Columns: []string{"REQUEST", "ENVIRONMENT", "STATE", "EXPIRES"},
-				Rows: [][]string{{staged.Id, staged.EnvironmentId, string(staged.State),
+				Rows: [][]string{{staged.Id, environmentLabeler(ctx, client, project, f)(staged.EnvironmentId), string(staged.State),
 					staged.ExpiresAt.UTC().Format(time.RFC3339)}},
 				JSON: staged,
 			})
@@ -417,7 +417,7 @@ func runValues(ctx context.Context, ios IO, args []string) (returnErr error) {
 		if err := json.Unmarshal(payload, &result); err != nil {
 			return failf(ExitInternal, "the server's response did not match the contract: %v", err)
 		}
-		return Render(ios.Stdout, f, publishTable(result))
+		return Render(ios.Stdout, f, publishTable(result, environmentLabeler(ctx, client, project, f)))
 
 	case "pending":
 		// The caller's own working state for one environment, plus the
@@ -565,11 +565,11 @@ func pendingTable(c apigen.PendingChange) Table {
 	}
 }
 
-func publishTable(r apigen.PublishResult) Table {
+func publishTable(r apigen.PublishResult, environmentLabel func(string) string) Table {
 	rows := make([][]string, 0, len(r.Environments))
 	for _, env := range r.Environments {
 		rows = append(rows, []string{
-			env.EnvironmentId,
+			environmentLabel(env.EnvironmentId),
 			strconv.FormatInt(env.Revision, 10),
 			strconv.Itoa(len(env.ChangedKeys)),
 			env.ChangeToken,

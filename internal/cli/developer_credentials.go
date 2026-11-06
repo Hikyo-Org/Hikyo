@@ -74,7 +74,8 @@ func runDeveloper(ctx context.Context, ios IO, args []string) error {
 		if err := client.Do(ctx, http.MethodGet, path, nil, &result); err != nil {
 			return err
 		}
-		return printDeveloperCredentials(ios, result.Items, format)
+		// A user-wide list spans projects, so there is no one project to look names up in.
+		return printDeveloperCredentials(ios, result.Items, format, func(id string) string { return id })
 	case "revoke":
 		if (id == "") == !all {
 			return failf(ExitUsage, "use exactly one of --id or --all")
@@ -199,15 +200,15 @@ func runDeveloper(ctx context.Context, ios IO, args []string) error {
 		return &Error{Code: ExitInternal, Err: fmt.Errorf("developer credential custody failed; server credential revoked: %w", saveErr)}
 	}
 	fmt.Fprintf(ios.Stderr, "Developer credential stored privately. hikyo run will use it for this exact environment until %s.\n", c.ExpiresAt.Format(time.RFC3339))
-	return printDeveloperCredentials(ios, []apigen.DeveloperCredential{c}, format)
+	return printDeveloperCredentials(ios, []apigen.DeveloperCredential{c}, format, environmentLabeler(ctx, client, base, FormatTable))
 }
 
-func printDeveloperCredentials(ios IO, items []apigen.DeveloperCredential, output string) error {
+func printDeveloperCredentials(ios IO, items []apigen.DeveloperCredential, output string, environmentLabel func(string) string) error {
 	if output == "json" {
 		return json.NewEncoder(ios.Stdout).Encode(items)
 	}
 	for _, c := range items {
-		fmt.Fprintf(ios.Stdout, "%s\t%s\t%s\t%s\n", c.Id, c.EnvironmentId, c.ExpiresAt.Format(time.RFC3339), c.AuthorityPrincipalId)
+		fmt.Fprintf(ios.Stdout, "%s\t%s\t%s\t%s\n", c.Id, environmentLabel(string(c.EnvironmentId)), c.ExpiresAt.Format(time.RFC3339), idWithName(string(c.AuthorityPrincipalId), c.AuthorityPrincipalName))
 	}
 	return nil
 }

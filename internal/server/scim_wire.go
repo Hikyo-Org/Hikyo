@@ -103,6 +103,8 @@ func scimError(err error) *scimproto.Error {
 		return scimproto.ErrNoTarget("The members filter names no member of this group.")
 	case errors.Is(err, service.ErrSCIMUserNameRequired):
 		return scimproto.ErrInvalidValue("userName is required.")
+	case errors.Is(err, service.ErrSCIMUserNameDirection):
+		return scimproto.ErrInvalidValue("userName must not contain text direction controls.")
 	case errors.Is(err, service.ErrSCIMPasswordRefused):
 		return scimproto.ErrInvalidValue(
 			"The password attribute is not supported: provisioning never establishes credentials.")

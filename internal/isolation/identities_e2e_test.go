@@ -618,6 +618,9 @@ func runMachineLifetimeControls(t *testing.T, db *store.DB) {
 	}
 	var sawClamp, sawIndefinite bool
 	for _, a := range res.Affected {
+		if a.ServiceAccountID == sa.ID && a.ServiceAccountName != sa.Name {
+			t.Errorf("affected credential %s names its account %q, want %q", a.ID, a.ServiceAccountName, sa.Name)
+		}
 		switch a.Reason {
 		case service.ReasonClamped:
 			sawClamp = true

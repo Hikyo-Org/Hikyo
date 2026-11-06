@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { zCredentialPolicy, zOrgList, zRetentionHealth } from '@hikyo/zod';
+import { zCredentialPolicy, zCredentialPolicyResult, zOrgList, zRetentionHealth } from '@hikyo/zod';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
 import type { z } from 'zod';
 
@@ -195,6 +195,45 @@ export const EditingCredentialPolicy: Story = {
     await expect(canvas.getByRole('checkbox', { name: /no expiry/i })).not.toBeChecked();
     await expect(canvas.getByRole('button', { name: 'Save credential policy' })).toBeEnabled();
     await expect(canvas.getByRole('complementary', { name: 'Edit credential policy' })).toBeVisible();
+  },
+};
+
+// Tightening the policy previews what it would affect before anything changes:
+// each live credential reads as its service account's name, with the tail of
+// its own ID to tell two of them apart.
+export const TighteningNamesAffectedCredentials: Story = {
+  parameters: {
+    app: app([
+      ...populated,
+      {
+        url: POLICY_URL,
+        method: 'PUT',
+        body: {
+          applied: false,
+          policy: { ...policy, max_finite_lifetime_seconds: 3600 },
+          clamped_count: 1,
+          affected: [{
+            id: 'scr_123e4567-e89b-12d3-a456-426614174501',
+            service_account_id: 'sac_123e4567-e89b-12d3-a456-426614174001',
+            service_account_name: 'ci-deployer',
+            reason: 'clamped',
+          }],
+        } satisfies z.input<typeof zCredentialPolicyResult>,
+      },
+    ]),
+  },
+  play: async ({ canvas }) => {
+    await openTab(canvas, 'Policy');
+    await userEvent.click(await canvas.findByRole('button', { name: 'edit' }));
+    const lifetime = canvas.getByLabelText('Maximum finite lifetime (seconds)');
+    await userEvent.clear(lifetime);
+    await userEvent.type(lifetime, '3600');
+    await userEvent.click(canvas.getByRole('button', { name: 'Save credential policy' }));
+    const impact = await canvas.findByRole('alert');
+    const row = within(impact).getByText(/credential ending 174501: clamped/).closest('li');
+    await expect(row).toHaveTextContent('ci-deployer, credential ending 174501: clamped');
+    await expect(row).toHaveAttribute('title', 'scr_123e4567-e89b-12d3-a456-426614174501');
+    await expect(within(impact).getByText('ci-deployer')).toHaveAttribute('title', 'sac_123e4567-e89b-12d3-a456-426614174001');
   },
 };
 

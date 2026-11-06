@@ -1,11 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { zAuthMethods, zCliReauthTransaction, zTotpStatus } from '@hikyo/zod';
+import { zAuthMethods, zCliReauthTransaction, zEnvironmentList, zKeyList, zOrg, zProject, zTotpStatus } from '@hikyo/zod';
 import { expect, waitFor } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
 import type { WhoAmI } from '../app/AuthProvider.tsx';
 import { authenticatedIdentity } from '../testkit/identity.ts';
+import { ORG, PRJ } from '../testkit/ids.ts';
 import { withSearchParams } from '../testkit/searchParams.ts';
 import { CLIReauth } from './CLIReauth.tsx';
 
@@ -20,16 +21,48 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 const STATE = 'txn-195';
 
 const sliding = {
+  org_id: ORG,
+  project_id: PRJ,
   environment_id: 'env_01989abc-def0-7123-8123-000000000001',
   effective_window_seconds: 300,
   requires_webauthn: false,
 };
 const locked = {
+  org_id: ORG,
+  project_id: PRJ,
   environment_id: 'env_01989abc-def0-7123-8123-000000000002',
   effective_window_seconds: 0,
   requires_webauthn: true,
 };
 const keys = ['key_01989abc-def0-7123-8123-000000000001', 'key_01989abc-def0-7123-8123-000000000002'];
+
+// The page names the scope through the ordinary authorized reads, never from
+// the transaction: org, project, environments and the key catalogue.
+const scopeNames: MockRoute[] = [
+  { url: `/api/v1/orgs/${ORG}`, body: { id: ORG, name: 'Acme', active: true, created_at: '2026-01-01T00:00:00Z', origin: 'manual' } satisfies z.input<typeof zOrg> },
+  { url: `/api/v1/orgs/${ORG}/projects/${PRJ}`, body: { id: PRJ, org_id: ORG, name: 'Billing', created_at: '2026-01-01T00:00:00Z' } satisfies z.input<typeof zProject> },
+  {
+    url: `/api/v1/orgs/${ORG}/projects/${PRJ}/environments`,
+    body: {
+      count: 2,
+      items: [
+        { id: sliding.environment_id, org_id: ORG, project_id: PRJ, name: 'staging', display_order: 0, created_at: '2026-01-01T00:00:00Z' },
+        { id: locked.environment_id, org_id: ORG, project_id: PRJ, name: 'production', display_order: 1, created_at: '2026-01-01T00:00:00Z' },
+      ],
+    } satisfies z.input<typeof zEnvironmentList>,
+  },
+  {
+    url: `/api/v1/orgs/${ORG}/projects/${PRJ}/keys`,
+    body: {
+      count: 1, schema_revision: 1,
+      items: [{
+        id: 'key_01989abc-def0-7123-8123-000000000001', org_id: ORG, project_id: PRJ, name: 'DATABASE_URL', folder_path: '',
+        classification: 'secret', description: '', deprecated: false, deprecation_note: '',
+        declaration: {}, presence: { required_in: { mode: 'none' }, forbidden_in: { mode: 'none' } }, group_id: '', created_at: '2026-01-01T00:00:00Z',
+      }],
+    } satisfies z.input<typeof zKeyList>,
+  },
+];
 
 type Transaction = z.input<typeof zCliReauthTransaction>;
 
@@ -104,7 +137,7 @@ const app = (identity: WhoAmI, ...rows: MockRoute[]) => ({
   auth: true,
   identity,
   path: '/reauth/cli',
-  responses: [...rows, totpConfirmed, methods],
+  responses: [...rows, ...scopeNames, totpConfirmed, methods],
 });
 
 const meta = {
@@ -124,6 +157,11 @@ export const Disclosure: Story = {
   beforeEach: withSearchParams({ transaction: STATE }),
   play: async ({ canvas }) => {
     await expect(await canvas.findByText(/the terminal asks to/i)).toBeVisible();
+    // Names come from the authorized reads; a key the catalogue lacks stays listed by its ID.
+    await expect(await canvas.findByText('DATABASE_URL')).toBeVisible();
+    await expect(canvas.getByText('key_01989abc-def0-7123-8123-000000000002')).toBeVisible();
+    await expect(canvas.getByText('production')).toBeVisible();
+    await expect(canvas.getByText('Billing')).toBeVisible();
     await expect(canvas.getByText(/passkey required/)).toBeVisible();
     await expect(canvas.getByText(/passkey or authenticator code/)).toBeVisible();
     await expect(
@@ -132,7 +170,7 @@ export const Disclosure: Story = {
     await expect(
       canvas.getByLabelText(/authenticator code \(optional; leave empty to use a passkey\)/i),
     ).not.toBeRequired();
-    await expect(canvas.getByRole('button', { name: 'Authorize CLI' })).toBeEnabled();
+    await waitFor(() => expect(canvas.getByRole('button', { name: 'Authorize CLI' })).toBeEnabled());
   },
 };
 
@@ -159,7 +197,7 @@ export const Adapter: Story = {
     await expect(
       canvas.getByLabelText(/authenticator code \(optional; leave empty to use a passkey\)/i),
     ).not.toBeRequired();
-    await expect(canvas.getByRole('button', { name: 'Authorize CLI' })).toBeEnabled();
+    await waitFor(() => expect(canvas.getByRole('button', { name: 'Authorize CLI' })).toBeEnabled());
   },
 };
 
@@ -214,9 +252,10 @@ export const DeveloperCredential: Story = {
   } satisfies Transaction })) },
   play: async ({ canvas }) => {
     await expect(await canvas.findByText(/authorize a developer credential/i)).toBeVisible();
-    await expect(canvas.getByText(/all current and future published keys/i)).toBeVisible();
+    await expect(canvas.getByText(/2 keys exist now/i)).toBeVisible();
+    await expect(canvas.getByText(/every key published to this environment later/i)).toBeVisible();
     await expect(canvas.getByText(/8 hours/)).toBeVisible();
-    await expect(canvas.getByRole('button', { name: 'Authorize CLI' })).toBeEnabled();
+    await waitFor(() => expect(canvas.getByRole('button', { name: 'Authorize CLI' })).toBeEnabled());
     await expect(canvas.queryByRole('button', { name: /re-authenticate with/i })).not.toBeInTheDocument();
   },
 };

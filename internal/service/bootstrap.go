@@ -99,6 +99,9 @@ func (s *Auth) BootstrapAdmin(ctx context.Context, username, displayName, delive
 	if displayName == "" {
 		displayName = username
 	}
+	if hasDirectionControl(username) || hasDirectionControl(displayName) {
+		return BootstrapResult{}, errors.New("a username or display name must not contain text direction controls")
+	}
 	var configSeed selfConfigSeed
 	if s.SelfConfig != nil {
 		var err error

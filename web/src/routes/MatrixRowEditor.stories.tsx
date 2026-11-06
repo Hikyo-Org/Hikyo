@@ -159,6 +159,33 @@ async function expectNoHorizontalOverflow(textarea: HTMLElement) {
   );
 }
 
+// The writer reads as a name with the stored ID on hover; without a name the
+// mono ID stands alone.
+export const UpdatedByName: Story = {
+  args: {
+    rows: rows.map((row) => ({
+      ...row,
+      cell: row.cell === undefined ? undefined : { ...row.cell, updated_by: 'usr_01989abc-def0-7123-8123-000000000001', updated_by_name: 'Dana Jacobs' },
+    })),
+  },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText('Updated by').nextElementSibling).toHaveTextContent('Dana Jacobs');
+    await expect(canvas.getByText('Dana Jacobs')).toHaveAttribute('title', 'usr_01989abc-def0-7123-8123-000000000001');
+  },
+};
+
+export const UpdatedByIdOnly: Story = {
+  args: {
+    rows: rows.map((row) => ({
+      ...row,
+      cell: row.cell === undefined ? undefined : { ...row.cell, updated_by: 'usr_01989abc-def0-7123-8123-000000000001' },
+    })),
+  },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText('usr_01989abc-def0-7123-8123-000000000001')).toHaveClass('mono');
+  },
+};
+
 export const LongValue: Story = {
   args: {
     rows: rows.map((row) => ({

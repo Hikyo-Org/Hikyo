@@ -137,7 +137,7 @@ describe('AccountSecurity mutation feedback', () => {
     unmount = rendered.unmount;
 
     const revoke = rendered.container.querySelector(
-      'button[aria-label="Revoke the browser session sess_1"]',
+      'button[aria-label^="Revoke the browser session"][aria-label$="ID ending sess_1)"]',
     );
     if (!(revoke instanceof HTMLButtonElement)) {
       throw new Error('the session has no revoke button');

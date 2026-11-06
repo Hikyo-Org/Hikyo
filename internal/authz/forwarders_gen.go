@@ -1134,6 +1134,13 @@ func (a *TxAuthorizer) ServiceAccountAt(ctx context.Context, scope domain.Scope,
 	return a.r.ServiceAccountAt(ctx, scope, id)
 }
 
+// ServiceAccountByID resolves a service account from an id already
+// disclosed on a row the caller may read, to name it for display. The id
+// must never come from a request.
+func (a *TxAuthorizer) ServiceAccountByID(ctx context.Context, id string) (ServiceAccount, error) {
+	return a.r.ServiceAccountByID(ctx, id)
+}
+
 // ServiceAccountByPrincipal resolves the service account a machine principal
 // is, for the grant surface's subtree confinement.
 func (a *TxAuthorizer) ServiceAccountByPrincipal(ctx context.Context, p domain.PrincipalID) (ServiceAccount, error) {

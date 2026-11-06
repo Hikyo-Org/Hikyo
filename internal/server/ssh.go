@@ -108,6 +108,7 @@ func sshCertificateResponse(v service.SSHCertificateView) (apigen.SSHCertificate
 		KeyOrigin: apigen.SSHCertificateKeyOrigin(v.KeyOrigin), ValidAfter: validAfter, ValidBefore: validBefore,
 		RequesterPrincipalId: apigen.ID(v.RequesterPrincipalID), RequesterClass: v.RequesterClass,
 		Status: apigen.SSHCertificateStatus(v.Status), InKrl: v.InKRL, RevokedAt: revokedAt, CreatedAt: created,
+		RequesterPrincipalName: optional(v.RequesterPrincipalName),
 	}
 	if v.RevocationReason != "" {
 		reason := apigen.SSHCertificateRevocationReason(v.RevocationReason)

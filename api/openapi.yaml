@@ -858,7 +858,7 @@ paths:
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
-        "200": {description: "Live transaction metadata without ids, bearers, or verifiers.", content: {application/json: {schema: {$ref: "#/components/schemas/CLIReauthTransaction"}}}}
+        "200": {description: "Live transaction metadata without bearers or verifiers.", content: {application/json: {schema: {$ref: "#/components/schemas/CLIReauthTransaction"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
@@ -16758,6 +16758,7 @@ components:
         revoked_at: {type: string, format: date-time}
         prefix_hint: {type: string}
         personal_consent: {type: boolean}
+        authority_principal_name: {type: string, minLength: 1, description: Display name of the human who delegated the credential. Omitted when unnamed.}
     DeveloperCredentialList:
       type: object
       additionalProperties: false
@@ -17929,6 +17930,7 @@ components:
         valid_after: {$ref: "#/components/schemas/Timestamp"}
         valid_before: {$ref: "#/components/schemas/Timestamp"}
         requester_principal_id: {$ref: "#/components/schemas/ID"}
+        requester_principal_name: {type: string, minLength: 1, description: "Display name of the requester, present only when it can be named."}
         requester_class: {type: string}
         status:
           type: string
@@ -18831,8 +18833,11 @@ components:
     CLIReauthEnvironmentPolicy:
       type: object
       additionalProperties: false
-      required: [environment_id, effective_window_seconds, requires_webauthn]
+      required: [org_id, project_id, environment_id, effective_window_seconds, requires_webauthn]
+      description: Display policy for one environment. The organisation and project ids are the owning rows, resolved by the server after it authorized the caller for this environment; clients read names through their own authorized endpoints.
       properties:
+        org_id: {$ref: "#/components/schemas/ID"}
+        project_id: {$ref: "#/components/schemas/ID"}
         environment_id: {$ref: "#/components/schemas/ID"}
         effective_window_seconds: {type: integer, minimum: 0}
         requires_webauthn: {type: boolean}
@@ -20431,6 +20436,12 @@ components:
         updated_by:
           type: string
           description: The principal whose act produced this occurrence.
+        updated_by_name:
+          type: string
+          minLength: 1
+          description: |
+            Display name of `updated_by`, present only when it can be named
+            from a row the caller already reads.
 
     ValueList:
       type: object
@@ -21015,6 +21026,7 @@ components:
         plan_id: {$ref: "#/components/schemas/ID"}
         applied_at: {$ref: "#/components/schemas/Timestamp"}
         applied_by: {type: string}
+        applied_by_name: {type: string, minLength: 1, description: "Display name of `applied_by` (a principal id), present only when it can be named."}
         commit: {type: string, maxLength: 256}
         ref: {type: string, maxLength: 256}
         actor: {type: string, maxLength: 256}
@@ -22212,6 +22224,10 @@ components:
           $ref: "#/components/schemas/ID"
         service_account_id:
           $ref: "#/components/schemas/ID"
+        service_account_name:
+          type: string
+          minLength: 1
+          description: Display name of the service account, omitted when it no longer resolves.
         expires_at:
           $ref: "#/components/schemas/Timestamp"
         reason:
@@ -24976,6 +24992,10 @@ components:
         created_by:
           type: string
           maxLength: 64
+        created_by_name:
+          type: string
+          minLength: 1
+          description: Display name of `created_by`, present only when it can be named.
         revoked_at:
           $ref: "#/components/schemas/Timestamp"
         last_used_at:
@@ -25275,6 +25295,12 @@ components:
         environment:
           $ref: "#/components/schemas/ID"
           description: The environment the elevation covers.
+        org_id:
+          $ref: "#/components/schemas/ID"
+          description: Owning organisation of the environment, for display. Present only when the caller may list that environment.
+        project_id:
+          $ref: "#/components/schemas/ID"
+          description: Owning project of the environment, for display. Present only when the caller may list that environment.
         key_ids:
           type: array
           items: {$ref: "#/components/schemas/ID"}
@@ -25603,6 +25629,12 @@ components:
         updated_at: {$ref: "#/components/schemas/Timestamp"}
         versions: {type: array, items: {$ref: "#/components/schemas/TransitKeyVersion"}}
         callers: {type: array, items: {$ref: "#/components/schemas/TransitCaller"}}
+        principal_names:
+          type: object
+          additionalProperties:
+            type: string
+            minLength: 1
+          description: Current names for callers who hold a grant in this key's tenant; not a user directory.
 
     TransitKeyList:
       type: object

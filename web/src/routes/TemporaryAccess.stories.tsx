@@ -1,5 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { zAccessQueue } from '@hikyo/zod';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
+import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
 import { TemporaryAccess } from './TemporaryAccess.tsx';
@@ -154,5 +156,48 @@ export const Loading: Story = {
   play: async ({ canvas }) => {
     await openTab(canvas, 'Policies');
     await waitFor(() => expect(canvas.getByText(/loading policies/i)).toBeVisible());
+  },
+};
+
+// A request card leads with who asked, with the request ID in its own mono row.
+export const RequestLeadsWithRequester: Story = {
+  parameters: {
+    app: {
+      auth: true,
+      path,
+      routePath,
+      responses: [
+        envRoute({ body: environments }),
+        policyRoute({ body: policies }),
+        {
+          url: /\/access-requests(\?|$)/,
+          body: {
+            offer: {
+              policy_id: 'xpol_00000000-0000-0000-0000-000000000001', policy_version: 1, capabilities: ['reveal'],
+              max_duration_seconds: 28800, min_approvals: 1, enabled: true, caller_may_bypass: false,
+            },
+            items: [{
+              id: 'xreq_00000000-0000-0000-0000-000000000001', environment_id: environments.items[0]?.id ?? '',
+              policy_id: 'xpol_00000000-0000-0000-0000-000000000001', policy_version: 1,
+              requester: 'usr_00000000-0000-0000-0000-00000000000b', requester_name: 'Dana Jacobs',
+              capabilities: ['reveal'], duration_seconds: 3600, reason: 'incident 42', bypassed: false, state: 'open',
+              can_approve: true, invalidated_cause: '', min_approvals: 1, approvals: 0, votes: [],
+              created_at: '2026-09-01T00:00:00Z', review_expires_at: '2026-09-02T00:00:00Z',
+            }],
+          } satisfies z.input<typeof zAccessQueue>,
+        },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await openTab(canvas, 'Requests');
+    await canvas.findByRole('option', { name: 'production' });
+    await userEvent.selectOptions(canvas.getByRole('combobox', { name: 'Environment' }), 'production');
+    const head = (await canvas.findAllByText('Dana Jacobs'))[0]?.closest('.temporary-access__request-head');
+    if (head === null || head === undefined) throw new Error('request head missing');
+    await expect(head.firstElementChild).toHaveTextContent('Dana Jacobs');
+    await expect(head.firstElementChild).toHaveAttribute('title', 'usr_00000000-0000-0000-0000-00000000000b');
+    await expect(canvas.getByText('Request ID')).toBeVisible();
+    await expect(canvas.getByText('xreq_00000000-0000-0000-0000-000000000001')).toHaveClass('mono');
   },
 };

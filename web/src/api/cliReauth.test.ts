@@ -7,7 +7,7 @@ describe('CLI reauthentication callback binding', () => {
     state: 'hik_1_hs_opaque',
     operation: 'adapter.sync' as const,
     environments: [
-      { environment_id: 'env_one', effective_window_seconds: 0, requires_webauthn: true },
+      { org_id: 'org_one', project_id: 'prj_one', environment_id: 'env_one', effective_window_seconds: 0, requires_webauthn: true },
     ],
     purpose: 'adapter' as const,
     key_ids: [] as string[],

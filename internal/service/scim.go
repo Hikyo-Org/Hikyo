@@ -111,6 +111,9 @@ var (
 	ErrSCIMPasswordRefused = fmt.Errorf("%w: service: the SCIM password attribute is not supported; provisioning never establishes credentials", domain.ErrInvalid)
 	// ErrSCIMUserNameRequired refuses a create or PUT with no `userName`.
 	ErrSCIMUserNameRequired = fmt.Errorf("%w: service: userName is required", domain.ErrInvalid)
+	// ErrSCIMUserNameDirection refuses a `userName` with text direction controls,
+	// because it becomes the account's display name.
+	ErrSCIMUserNameDirection = fmt.Errorf("%w: service: userName contains a text direction control", domain.ErrInvalid)
 	// ErrSCIMNestedGroup refuses a group-typed member reference (§6): v1 is
 	// flat, and Okta and Entra provision direct user members.
 	ErrSCIMNestedGroup = fmt.Errorf("%w: service: nested group members are not supported", domain.ErrInvalid)

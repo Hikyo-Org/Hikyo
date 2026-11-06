@@ -144,6 +144,9 @@ type TransitKeyView struct {
 	Versions    []store.TransitVersionRecord
 	Callers     []store.TransitCaller
 	RotationDue bool
+	// PrincipalNames names only callers who hold a grant in the key's own
+	// tenant; the roster is caller-authored, so it is never a directory lookup.
+	PrincipalNames map[string]string
 }
 
 // CreateTransitKeyRequest creates a named key (ADR D1-D3, D7).
@@ -497,7 +500,9 @@ func (s *Transit) ListKeys(ctx context.Context, actor Actor, scope domain.Scope)
 		}
 		out = make([]TransitKeyView, 0, len(keys))
 		for _, k := range keys {
-			view, err := s.keyView(ctx, r.Transit(), proof, k, now)
+			// A key's detail names its callers; doing it for every key here would
+			// multiply each roster's lookups by the size of the list.
+			view, err := s.keyView(ctx, r.Transit(), az, nil, scope, proof, k, now)
 			if err != nil {
 				return err
 			}
@@ -526,16 +531,17 @@ func (s *Transit) GetKey(ctx context.Context, actor Actor, scope domain.Scope, n
 		if err != nil {
 			return err
 		}
-		out, err = s.keyView(ctx, r.Transit(), proof, k, now)
+		out, err = s.keyView(ctx, r.Transit(), az, newPrincipalNames(), scope, proof, k, now)
 		return err
 	})
 	return out, err
 }
 
-// keyView loads versions and caller entries and computes rotation status.
+// keyView loads versions and caller entries and computes rotation status. A nil
+// names leaves the callers unnamed.
 // Store errors propagate; an unparseable latest-version timestamp leaves
 // RotationDue false.
-func (s *Transit) keyView(ctx context.Context, r store.TransitReader, proof authz.Proof, k store.TransitKeyRecord, now time.Time) (TransitKeyView, error) {
+func (s *Transit) keyView(ctx context.Context, r store.TransitReader, az *authz.TxAuthorizer, names *principalNames, scope domain.Scope, proof authz.Proof, k store.TransitKeyRecord, now time.Time) (TransitKeyView, error) {
 	versions, err := r.ListVersions(ctx, proof, k.ID)
 	if err != nil {
 		return TransitKeyView{}, err
@@ -544,7 +550,26 @@ func (s *Transit) keyView(ctx context.Context, r store.TransitReader, proof auth
 	if err != nil {
 		return TransitKeyView{}, err
 	}
-	view := TransitKeyView{TransitKeyRecord: k, Versions: versions, Callers: callers}
+	view := TransitKeyView{TransitKeyRecord: k, Versions: versions, Callers: callers, PrincipalNames: map[string]string{}}
+	if names != nil {
+		for _, c := range callers {
+			id := domain.PrincipalID(c.PrincipalID)
+			visible, err := names.visibleInProject(ctx, az, id, scope)
+			if err != nil {
+				return TransitKeyView{}, err
+			}
+			if !visible {
+				continue
+			}
+			name, err := names.label(ctx, az, id)
+			if err != nil {
+				return TransitKeyView{}, err
+			}
+			if name != "" {
+				view.PrincipalNames[c.PrincipalID] = name
+			}
+		}
+	}
 	for _, v := range versions {
 		if v.Version == k.LatestVersion {
 			if created, err := time.Parse(time.RFC3339Nano, v.CreatedAt); err == nil {
@@ -570,7 +595,7 @@ func (s *Transit) viewUnder(ctx context.Context, actor Actor, op authz.Operation
 		if err != nil {
 			return err
 		}
-		out, err = s.keyView(ctx, r.Transit(), proof, k, now)
+		out, err = s.keyView(ctx, r.Transit(), az, newPrincipalNames(), scope, proof, k, now)
 		return err
 	})
 	return out, err

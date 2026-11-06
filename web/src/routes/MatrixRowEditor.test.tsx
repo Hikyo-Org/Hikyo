@@ -100,6 +100,23 @@ describe('MatrixRowEditor draft ownership', () => {
   });
 });
 
+describe('MatrixRowEditor provenance', () => {
+  it('names the writer with the ID on hover, and shows the ID alone when unnamed', async () => {
+    const written = (extra: { updated_by_name?: string }): MatrixRowEditorProps['rows'] =>
+      rows.map((row) => ({
+        ...row,
+        cell: { key_id: keyRecord.id, name: keyRecord.name, classification: 'config', set: true, revealed: true, value: 'published', updated_by: 'usr_writer', ...extra },
+      }));
+    const view = await renderEditor(keyRecord, written({ updated_by_name: 'Dana Jacobs' }));
+    expect(view.container.querySelector('[title="usr_writer"]')?.textContent).toBe('Dana Jacobs');
+    await view.unmount();
+
+    const bare = await renderEditor(keyRecord, written({}));
+    expect(bare.container.querySelector('.matrix-editor__provenance .mono')?.textContent).toBe('usr_writer');
+    await bare.unmount();
+  });
+});
+
 async function renderEditor(record: MatrixRowEditorProps['keyRecord'] = keyRecord, entries: MatrixRowEditorProps['rows'] = rows) {
   const onApply = vi
     .fn<(changes: readonly MatrixEditorChange[]) => Promise<void>>()

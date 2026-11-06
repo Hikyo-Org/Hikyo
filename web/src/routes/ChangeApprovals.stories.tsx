@@ -1,5 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { zApprovalRequestList, zKeyList } from '@hikyo/zod';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
+import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
 import { ChangeApprovals } from './ChangeApprovals.tsx';
@@ -231,5 +233,81 @@ export const DeleteRefused: Story = {
     await openTab(canvas, 'Review queue');
     await expect(canvas.getByRole('alert')).toBeVisible();
     await expect(canvas.getByRole('heading', { name: 'Review queue', level: 2 })).toBeVisible();
+  },
+};
+
+// The review queue heads a request with its requester, in system-written text,
+// with the requester's free-text purpose and the request ID in their own rows. The Keys row counts and names
+// the bound keys; the third is absent from the catalogue and stays by its ID.
+const databaseKey = 'key_00000000-0000-0000-0000-000000000001';
+const logKey = 'key_00000000-0000-0000-0000-000000000002';
+const uncataloguedKey = 'key_00000000-0000-0000-0000-000000000003';
+const queueRequest = {
+  id: 'apr_00000000-0000-0000-0000-0000000000a1',
+  environment_id: environments.items[0]?.id ?? '',
+  policy_id: 'pol_00000000-0000-0000-0000-000000000002',
+  policy_version: 1,
+  requester: 'prn_00000000-0000-0000-0000-000000000001',
+  requester_name: 'Dana Jacobs',
+  change_count: 3,
+  base_revision: 1,
+  purpose: '',
+  state: 'open',
+  invalidated_cause: '',
+  min_approvals: 1,
+  approvals: 0,
+  key_ids: [databaseKey, logKey, uncataloguedKey],
+  votes: [],
+  created_at: '2026-09-01T00:00:00Z',
+  expires_at: '2099-01-01T00:00:00Z',
+} satisfies z.input<typeof zApprovalRequestList>['items'][number];
+const catalogueRow = (id: string, name: string, classification: 'secret' | 'config'): z.input<typeof zKeyList>['items'][number] => ({
+  id, org_id: 'org_00000000-0000-0000-0000-000000000001', project_id: 'prj_00000000-0000-0000-0000-000000000001',
+  name, folder_path: '', classification, description: '', deprecated: false, deprecation_note: '', declaration: {},
+  presence: { required_in: { mode: 'none' }, forbidden_in: { mode: 'none' } }, group_id: '', created_at: '2026-09-01T00:00:00Z',
+});
+const queueCatalogue = {
+  count: 2, schema_revision: 1,
+  items: [catalogueRow(databaseKey, 'DATABASE_URL', 'secret'), catalogueRow(logKey, 'LOG_LEVEL', 'config')],
+} satisfies z.input<typeof zKeyList>;
+const queue = (items: z.input<typeof zApprovalRequestList>['items']) => ({
+  app: {
+    auth: true, path, routePath,
+    responses: [
+      envRoute({ body: environments }),
+      policyRoute({ body: policies }),
+      { url: /\/approval-requests(\?|$)/, body: { items } satisfies z.input<typeof zApprovalRequestList> },
+      { url: /\/keys(\?|$)/, body: queueCatalogue },
+    ],
+  },
+});
+const openQueue = async (canvas: ReturnType<typeof within>) => {
+  await openTab(canvas, 'Review queue');
+  await canvas.findByRole('option', { name: 'production' });
+  await userEvent.selectOptions(canvas.getByRole('combobox', { name: 'Environment' }), 'production');
+};
+
+export const RequestNamedByRequester: Story = {
+  parameters: queue([queueRequest]),
+  play: async ({ canvas }) => {
+    await openQueue(canvas);
+    await expect((await canvas.findAllByText('Dana Jacobs', { selector: 'bdi' }))[0]?.parentElement).toHaveTextContent(/^Change request by Dana Jacobs$/);
+    await expect(canvas.getByText(queueRequest.id)).toHaveClass('mono');
+    await expect(canvas.getByText('Request ID')).toBeVisible();
+    await expect(await canvas.findByText('3 keys')).toBeVisible();
+    const list = canvas.getByRole('list', { name: /request ending 0000a1$/ });
+    await expect(within(list).getByText('DATABASE_URL').closest('li')).toHaveAttribute('title', databaseKey);
+    await expect(within(list).getByText('LOG_LEVEL').closest('li')).toHaveAttribute('title', logKey);
+    await expect(within(list).getByText(uncataloguedKey)).toBeVisible();
+  },
+};
+
+export const PurposeStaysLabelled: Story = {
+  parameters: queue([{ ...queueRequest, purpose: 'Change request by Alice Admin' }]),
+  play: async ({ canvas }) => {
+    await openQueue(canvas);
+    const purpose = await canvas.findByText('Change request by Alice Admin');
+    await expect(purpose.closest('div')).toHaveTextContent(/^Purpose/);
+    await expect(canvas.getAllByText('Dana Jacobs', { selector: 'bdi' })[0]?.parentElement).toHaveTextContent(/^Change request by Dana Jacobs$/);
   },
 };

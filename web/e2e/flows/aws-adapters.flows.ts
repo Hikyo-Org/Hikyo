@@ -356,7 +356,7 @@ export function registerAwsAdapterFlows(): void {
           const effectiveName = kind === 'json-object' ? destination : `${destination}${PREFIX}${KEY}`;
           const selected = artifact.entries.find((entry) => entry.effective_name === effectiveName && entry.surface === 'secret');
           if (selected === undefined) throw new Error('AWS conflict did not preserve the configured destination name');
-          const list = conflicts.getByRole('list', { name: `Conflict artifact ${artifact.id}` });
+          const list = conflicts.getByRole('list', { name: 'Conflicting names', exact: true });
           const adopt = conflicts.getByRole('button', { name: 'Adopt 0 selected', exact: true });
           await expect(adopt).toBeDisabled();
           const choice = list.getByRole('checkbox', { name: `${selected.surface}:${selected.effective_name}`, exact: true });

@@ -62,11 +62,14 @@ OAuth scope additions and edits are refused in every flow rather than only
 
 ## Known limits
 
-The gate still passes some forbidden changes that also passed on oasdiff v1.34.1,
-including a security alternative removed next to `{}`, closed-enum values in
-response headers and request media-type renames. They are listed with reproductions in
-[the follow-up issue](https://github.com/Hikyo-Org/Hikyo/issues/1217), which must be resolved before the first stable
-tag. The freeze guard stays dormant until that tag.
+The guard is live, not dormant: `refs/tags/v1.0.0` exists and
+`scripts/ci/check-api-freeze.sh` diffs every revision against it. The forbidden
+changes this gate still passed on oasdiff v1.35.0 (and v1.34.1), such as a
+security alternative removed next to `{}`, closed-enum values in response
+headers and request media-type renames, were listed in
+[#1217](https://github.com/Hikyo-Org/Hikyo/issues/1217). They are now refused
+by a third, document-coordinate layer; see
+[the #1217 handoff](./1217-api-freeze-contract-layer.md).
 
 ## Regression evidence and local verification
 

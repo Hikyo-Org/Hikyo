@@ -99,10 +99,11 @@ export function useProjectGrants(p: ProjectRef): UseQueryResult<z.infer<typeof z
  * question the warning asks (what exists, of which classification) without
  * ever holding a value of any kind.
  */
-export function useKeyCatalogue(p: ProjectRef): UseQueryResult<z.infer<typeof zKeyList>> {
+export function useKeyCatalogue(p: ProjectRef, enabled = true): UseQueryResult<z.infer<typeof zKeyList>> {
   return useQuery({
     queryKey: ['key-catalogue', p.org, p.project] as const,
     queryFn: () => parsed(listKeysOp, { path: { org: p.org, project: p.project } }),
+    enabled: enabled && p.org !== '' && p.project !== '',
   });
 }
 

@@ -39,6 +39,7 @@ import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { useMintLifecycle, type MintBoundaryFields } from './mintLifecycle.ts';
 import { duration } from '../app/duration.ts';
+import { NamedId } from '../ui/NamedId.tsx';
 
 /**
  * The SSH tab of the machine-access page (#155): an environment's SSH user
@@ -375,7 +376,7 @@ export function SSHCertificatesPanel({
                   <code>{cert.principals.join(', ')}</code>
                 </td>
                 <td className="col-secondary">
-                  <code>{cert.requester_principal_id}</code>
+                  <NamedId id={cert.requester_principal_id} name={cert.requester_principal_name} />
                 </td>
                 <td>{isoDay(cert.valid_before)}</td>
                 <td>
