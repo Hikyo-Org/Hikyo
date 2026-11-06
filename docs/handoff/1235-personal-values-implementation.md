@@ -42,7 +42,7 @@ Tests are in `internal/isolation/personal_values_e2e_test.go` unless noted. Each
 | AAD refuses a moved row; DEK rotation and reencrypt cover rows | Done: `TestPersonalValueMovedToAnotherOwnerDoesNotOpen`, `TestPersonalValueReencryptAfterDEKRotation` |
 | Predicate loss stops delivery; deletion at 14 days; regain restores | Partly: suspension stops delivery and is not answered `current` (withheld test). **Remaining:** 14-day sweep and restore on regain |
 | Notices for restore, rename, delete plus re-declare, `forbidden_in`, lost qualification, administrator deletion | Done for rename and delete plus re-declare through `Keys` (`TestPersonalValueKeyRenameAndDeleteCascade`), lost qualification and administrator deletion; a same-name rename keeps values (`TestPersonalValueSameNameRenameKeepsAndEnvironmentDeleteAudits`). **Remaining:** restore, `forbidden_in`, and tests for the definitions-apply cascades (implemented, untested) |
-| No consent, human session, `--config-only`, suspended: names only and `hikyo run` refuses | Done: server side in the withheld test, CLI refusal in `internal/cli/personal_run_internal_test.go`. **Remaining:** a CLI test against a real local server |
+| No consent, human session, `--config-only`, suspended: names only and `hikyo run` refuses | Done: server side in the withheld test, CLI refusal in `internal/cli/personal_run_internal_test.go` and, through `cli.Run`, `TestRunHumanSessionRefusesAHeldPersonalKey`. **Remaining:** a CLI test against a real local server |
 | Developer credentials, workspace sessions, MCP refused; uniform `--member` answer | Done: `internal/service/personal_internal_test.go`, overlay test, MCP exclusion test |
 | A personal change is never answered `current` | Done: overlay test (administrator deletion and notice dismissal are not answered `current`) |
 | Disclosure report | **Remaining** |
@@ -64,6 +64,13 @@ environment-delete audit, holder lookup errors, consent binding into the ceremon
 test assertions. A fresh-context re-review confirmed ten of the eleven fixes and found a regression in the projection bound
 (personal-only keys dropped under consent), plus a factor check made on a separate read and an inverted lock order; all three are
 fixed, with a test delivering a personal-only key.
+
+A third fresh-context review covered the suite fixes (budget classification, the personal CLI authentication rule, the legacy
+drill's reversal of migration 00086, and the human-session fixture). It found that the reveal budget reasons overstated their
+bound (the reauthentication window slides above a 0 window, and value reveal uses no gate limiter) and that no test drove the
+human-session held-key refusal through `cli.Run`. Both are fixed: `TestRunHumanSessionRefusesAHeldPersonalKey` refuses before the
+confirmation and any export, with and without `--config-only`, and fails if the refusal is removed or moved later. A re-review
+confirmed the fixes.
 
 Known gaps from the reviews, not fixed here:
 
