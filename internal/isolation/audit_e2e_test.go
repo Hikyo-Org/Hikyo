@@ -634,6 +634,7 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// cannot honestly prove readable escrow. Both trails remain actual emitters.
 		// Member access rules: created, move-widening confirmed, revoked.
 		runRuleAuditLifecycle(t, db)
+		runEmailInvitationAuditLifecycle(t, db)
 
 		recovered := runBackupLifecycle(t, db.Engine())
 		managed := runSelfConfigAuditLifecycle(t, db.Engine())

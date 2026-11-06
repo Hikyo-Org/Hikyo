@@ -164,6 +164,13 @@ operations:
   applyOrgTemplate:            {webui: members}
   inviteInstanceMember:        {webui: instance-members}
   inviteOrgMember:             {webui: members}
+  # Email invitation of an existing account (#1207): the CLI and web surfaces
+  # follow the backend.
+  inviteOrgMemberByEmail:      {issue: 1207}
+  listOrgEmailInvitations:     {issue: 1207}
+  revokeOrgEmailInvitation:    {issue: 1207}
+  previewEmailInvitation:      {issue: 1207}
+  acceptEmailInvitation:       {issue: 1207}
   getInstanceRegistrationPolicy:    {webui: instance-members}
   putInstanceRegistrationPolicy:    {webui: instance-members}
   deleteInstanceRegistrationPolicy: {webui: instance-members}
