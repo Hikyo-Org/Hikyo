@@ -15,7 +15,15 @@
  
  import org.json.JSONObject;
  
-@@ -94,6 +101,13 @@
+@@ -60,6 +67,7 @@
+     private static final int FILE_PICKER_REQUEST = 7001;
+ 
+     private WebView webView;
++    private String firstHost;
+     private Uri devServer;
+     private WailsBridge bridge;
+     // Battery: system-event receivers are registered only while the activity is
+@@ -94,6 +102,13 @@
      protected void onCreate(Bundle savedInstanceState) {
          super.onCreate(savedInstanceState);
          setContentView(R.layout.activity_main);
@@ -29,8 +37,19 @@
  
          String devURL = WailsBridge.devServerURL(this);
          if (devURL != null) devServer = Uri.parse(devURL);
-@@ -142,7 +156,7 @@
+@@ -112,6 +127,7 @@
+     @SuppressLint("SetJavaScriptEnabled")
+     private void setupWebView() {
+         webView = findViewById(R.id.webview);
++        firstHost = Connections.start(this, webView);
+         bridge.setWebView(webView);
+ 
+         // Configure WebView settings
+@@ -140,97 +156,72 @@
+             @Nullable
+             @Override
              public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
++                Rig.signal(view, request, "view");
                  // Handle wails.localhost requests
                  if (request.getUrl().getHost() != null &&
 -                        (request.getUrl().getHost().equals(WAILS_HOST) ||
@@ -38,14 +57,79 @@
                           (devServer != null && request.getUrl().getScheme().equals(devServer.getScheme()) &&
                            request.getUrl().getAuthority().equals(devServer.getAuthority())))) {
  
-@@ -211,14 +225,22 @@
+-                    // For wails API calls (runtime, capabilities, etc.) pass the
+-                    // full URL including the query string, because
+-                    // WebViewAssetLoader.PathHandler strips query params
++                    // The Wails runtime and the capture files are native capabilities, and instance code does not get them.
+                     String path = request.getUrl().getPath();
+-                    if (path != null && path.startsWith("/wails/")) {
+-                        String fullPath = path;
+-                        String query = request.getUrl().getQuery();
+-                        if (query != null && !query.isEmpty()) {
+-                            fullPath = path + "?" + query;
+-                        }
+-                        if (DEBUG) Log.d(TAG, "Wails API call: " + fullPath);
+-
+-                        byte[] data = bridge.serveAsset(fullPath, request.getMethod(), "{}");
+-                        if (data != null && data.length > 0) {
+-                            java.io.InputStream inputStream = new java.io.ByteArrayInputStream(data);
+-                            java.util.Map<String, String> headers = new java.util.HashMap<>();
+-                            headers.put("Access-Control-Allow-Origin", "*");
+-                            headers.put("Cache-Control", "no-cache");
+-                            headers.put("Content-Type", "application/json");
+-
+-                            // Detect error envelopes: if the body starts with
+-                            // {"ok":false, return HTTP 500 so the fallback
+-                            // transport's fetch() rejects the promise.
+-                            int status = 200;
+-                            String reason = "OK";
+-                            if (data.length > 12) {
+-                                String prefix = new String(data, 0, Math.min(data.length, 20),
+-                                        java.nio.charset.StandardCharsets.UTF_8);
+-                                if (prefix.contains("\"ok\":false")) {
+-                                    status = 500;
+-                                    reason = "Internal Error";
+-                                }
+-                            }
+-
+-                            return new WebResourceResponse(
+-                                "application/json",
+-                                "UTF-8",
+-                                status,
+-                                reason,
+-                                headers,
+-                                inputStream
+-                            );
+-                        }
+-                        // Return error response if data is null
+-                        return new WebResourceResponse(
+-                            "application/json",
+-                            "UTF-8",
+-                            500,
+-                            "Internal Error",
+-                            new java.util.HashMap<>(),
+-                            new java.io.ByteArrayInputStream("{}".getBytes())
+-                        );
++                    if (path != null && (path.startsWith("/wails/") || path.startsWith("/__capture__/"))) {
++                        return new WebResourceResponse("text/plain", "UTF-8", 403, "Forbidden", new java.util.HashMap<>(),
++                                new java.io.ByteArrayInputStream(new byte[0]));
+                     }
+ 
+-                    // Stream captured photos/videos from the cache with HTTP Range
+-                    // support so <video> can seek/stream a clip of any length.
+-                    if (path != null && path.startsWith("/__capture__/")) {
+-                        return serveCaptureFile(path.substring("/__capture__/".length()), request);
+-                    }
+-
+                     // Vite serves its own HTTP headers and WebSocket endpoint.
+                     if (devServer != null && !request.getUrl().getHost().equals(WAILS_HOST)) {
                          return super.shouldInterceptRequest(view, request);
                      }
  
 -                    // For regular assets, use the asset loader
 -                    return assetLoader.shouldInterceptRequest(request.getUrl());
 +                    // Everything else goes to the Go proxy with its method, query, headers and body.
-+                    return SpikeBridge.fetch(request);
++                    return SpikeBridge.fetch(request, Connections.owner(view));
                  }
  
                  return super.shouldInterceptRequest(view, request);
@@ -54,27 +138,39 @@
              @Override
 +            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
 +                Uri u = request.getUrl();
-+                if ("https".equals(u.getScheme()) && isWailsHost(u.getHost())) return false;
-+                openExternal(u);
++                if ("https".equals(u.getScheme()) && isWailsHost(u.getHost())) return !Connections.allowNavigation(view, request);
++                if (!Rig.external(u, request)) openExternal(u);
 +                return true;
++            }
++
++            @Override
++            public void onReceivedSslError(WebView view, android.webkit.SslErrorHandler handler, android.net.http.SslError error) {
++                if (Rig.trustLoopbackTls(error.getUrl())) handler.proceed(); else handler.cancel();
 +            }
 +
 +            @Override
              public void onPageFinished(WebView view, String url) {
                  super.onPageFinished(view, url);
                  if (DEBUG) Log.d(TAG, "Page loaded: " + url);
-@@ -231,6 +253,20 @@
+                 bridge.onPageFinished(url);
++                Rig.pageFinished(view, url);
+                 // Now that JS listeners are mounted, push a snapshot of the
+                 // current battery / network / theme so the UI starts populated.
+                 emitSystemSnapshot();
+             }
+         });
  
-         // Add JavaScript interface for Go communication
-         webView.addJavascriptInterface(new WailsJSBridge(bridge, webView), "wails");
-+        installBodyChannel();
-+        webView.setDownloadListener((url, ua, disposition, mime, length) -> saveDownload(url, disposition, mime));
+-        // Add JavaScript interface for Go communication
+-        webView.addJavascriptInterface(new WailsJSBridge(bridge, webView), "wails");
++        // No JavaScript interface: the Wails bridge would hand instance code the runtime.
++        if (firstHost != null) installView(webView, firstHost);
 +        settings.setSupportMultipleWindows(true);
 +        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
 +            @Override
 +            public void handleOnBackPressed() {
-+                if (webView.canGoBack()) {
-+                    webView.goBack();
++                WebView front = Connections.active();
++                if (front != null && front.canGoBack()) {
++                    front.goBack();
 +                } else {
 +                    setEnabled(false);
 +                    getOnBackPressedDispatcher().onBackPressed();
@@ -84,7 +180,7 @@
  
          // A WebChromeClient is required for HTML <input type="file"> elements to
          // work; without onShowFileChooser the WebView silently ignores clicks on
-@@ -250,6 +286,23 @@
+@@ -250,6 +241,23 @@
              }
  
              @Override
@@ -108,10 +204,21 @@
              public boolean onShowFileChooser(WebView view,
                                               ValueCallback<Uri[]> filePathCallback,
                                               FileChooserParams fileChooserParams) {
-@@ -272,8 +325,64 @@
-         });
-     }
- 
+@@ -269,11 +277,90 @@
+                 }
+                 return true;
+             }
++        });
++    }
++
++    static boolean isWailsHostPublic(String host) { return isWailsHost(host); }
++
++    /** The parts every connection's WebView needs. A per-view mode restricts the body channel to that view's own origin. */
++    void installView(WebView v, String host) {
++        installBodyChannel(v, host);
++        v.setDownloadListener((url, ua, disposition, mime, length) -> saveDownload(v, url, disposition, mime));
++    }
++
 +    private static boolean isWailsHost(String host) {
 +        return host != null && (host.equals(WAILS_HOST) || host.endsWith("." + WAILS_HOST));
 +    }
@@ -120,6 +227,7 @@
 +    private void openExternal(Uri u) {
 +        String scheme = u.getScheme();
 +        if (!"http".equals(scheme) && !"https".equals(scheme) && !"mailto".equals(scheme)) return;
++        if (isWailsHost(u.getHost())) return; // a connection's own origin is not a web page
 +        try {
 +            startActivity(new Intent(Intent.ACTION_VIEW, u).addCategory(Intent.CATEGORY_BROWSABLE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
 +        } catch (android.content.ActivityNotFoundException e) {
@@ -128,19 +236,19 @@
 +    }
 +
 +    /** A request body reaches the app over a WebMessageListener restricted to this app's origins; spike-shim.js sends it. */
-+    private void installBodyChannel() {
++    private void installBodyChannel(WebView webView, String host) {
 +        if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
 +                || !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
 +                || !WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_ARRAY_BUFFER)) {
 +            Log.e(TAG, "body channel unsupported by this WebView");
 +            return;
 +        }
-+        java.util.Set<String> rules = new java.util.HashSet<>(java.util.Arrays.asList("https://" + WAILS_HOST, "https://*." + WAILS_HOST));
++        java.util.Set<String> rules = new java.util.HashSet<>(java.util.Arrays.asList("https://" + host));
 +        WebViewCompat.addWebMessageListener(webView, "spikeBodies", rules, (view, message, sourceOrigin, isMainFrame, reply) -> {
 +            byte[] data = message.getType() == WebMessageCompat.TYPE_ARRAY_BUFFER ? message.getArrayBuffer() : null;
-+            String id = data == null ? null : SpikeBridge.stash(sourceOrigin.toString(), data);
++            String id = data == null ? null : SpikeBridge.stash(Connections.owner(view), data);
 +            reply.postMessage(id == null ? "refused" : id);
-+        });
+         });
 +        try (InputStream in = getAssets().open("spike-shim.js")) {
 +            ByteArrayOutputStream out = new ByteArrayOutputStream();
 +            byte[] buf = new byte[8192];
@@ -152,25 +260,39 @@
 +    }
 +
 +    /** The WebView cannot fetch a wails origin itself, so the file comes through the Go proxy into the app's download folder. */
-+    private void saveDownload(String url, String disposition, String mime) {
++    private void saveDownload(WebView source, String url, String disposition, String mime) {
++        final String owner = Connections.owner(source);
++        if (owner.isEmpty()) return;
 +        new Thread(() -> {
 +            String name = new File(android.webkit.URLUtil.guessFileName(url, disposition, mime)).getName().replaceAll("[^A-Za-z0-9._-]", "_");
 +            if (name.length() > 100) name = name.substring(0, 100);
-+            File dir = getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS);
-+            File out = new File(dir, name);
++            // Each connection has its own folder, and a name already taken gets a number, so one connection's download never replaces another's.
++            File dir = new File(getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), owner.substring(0, owner.indexOf('.') < 0 ? owner.length() : owner.indexOf('.')));
++            File out = null;
 +            try {
-+                long size = SpikeBridge.download(url, out);
-+                Log.i(TAG, "download saved " + name + " " + size + " bytes");
-+                runOnUiThread(() -> android.widget.Toast.makeText(this, "Saved " + out.getName(), android.widget.Toast.LENGTH_LONG).show());
++                if (!dir.isDirectory() && !dir.mkdirs()) throw new java.io.IOException("no download folder");
++                int dot = name.lastIndexOf('.');
++                String stem = dot > 0 ? name.substring(0, dot) : name, ext = dot > 0 ? name.substring(dot) : "";
++                for (int i = 0; out == null; i++) {
++                    File candidate = new File(dir, i == 0 ? name : stem + "-" + i + ext);
++                    if (candidate.createNewFile()) out = candidate;
++                }
++                long size = SpikeBridge.download(url, out, owner);
++                Log.i(TAG, "download saved " + out.getName() + " " + size + " bytes");
++                final String saved = out.getName();
++                runOnUiThread(() -> android.widget.Toast.makeText(this, "Saved " + saved, android.widget.Toast.LENGTH_LONG).show());
 +            } catch (Exception e) {
++                if (out != null) out.delete();
 +                Log.e(TAG, "download failed", e);
 +            }
 +        }).start();
-+    }
-+
+     }
+ 
      private void loadApplication() {
 -        String url = devServer != null ? devServer.toString() + "/" : WAILS_SCHEME + "://" + WAILS_HOST + "/";
-+        String url = devServer != null ? devServer.toString() + "/" : WAILS_SCHEME + "://" + "conn-0." + WAILS_HOST + "/";
++        if (firstHost == null) return; // the shell has no connection to show
++        Connections.ready();
++        String url = devServer != null ? devServer.toString() + "/" : WAILS_SCHEME + "://" + firstHost + "/";
          if (DEBUG) Log.d(TAG, "Loading URL: " + url);
          webView.loadUrl(url);
      }

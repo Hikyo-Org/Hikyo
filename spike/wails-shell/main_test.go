@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -50,8 +51,8 @@ func TestShellRefusals(t *testing.T) {
 		_, _ = w.Write([]byte(`{"session_token":"hik_1_rotated","session_id":"s"}`))
 	}))
 	defer instance.Close()
-	proxies := map[string]*conn{"conn-0": newConn("conn-0", session{Origin: instance.URL, Token: "hik_1_first"})}
-	handler := shell(proxies, map[string]string{"1": "conn-0", "2": "conn-1"}, false)(http.NotFoundHandler())
+	reg := testRegistry(map[string]*conn{"conn-0": newConn("conn-0", session{Origin: instance.URL, Token: "hik_1_first"})}, map[string]string{"1": "conn-0", "2": "conn-1"})
+	handler := shell(reg, false)(http.NotFoundHandler())
 
 	do := func(method, host, path string, headers map[string]string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, path, nil)
@@ -74,6 +75,7 @@ func TestShellRefusals(t *testing.T) {
 		{"external origin", "conn-0", "/api", map[string]string{"Origin": "https://evil.example"}, 403},
 		{"other connection's window", "conn-0", "/", map[string]string{"x-wails-window-id": "2"}, 403},
 		{"no window", "conn-0", "/", map[string]string{"x-wails-window-id": ""}, 403},
+		{"unknown window", "conn-0", "/", map[string]string{"x-wails-window-id": "99"}, 403},
 		{"wails runtime", "conn-0", "/wails/runtime", nil, 403},
 	}
 	for _, c := range refused {
@@ -189,7 +191,7 @@ func get(target string) int {
 func TestReauthHandoff(t *testing.T) {
 	inst := newFakeInstance(t)
 	c := newConn("conn-0", session{Origin: inst.URL, Token: "hik_1_first"})
-	handler := shell(map[string]*conn{"conn-0": c}, map[string]string{"1": "conn-0"}, false)(http.NotFoundHandler())
+	handler := shell(testRegistry(map[string]*conn{"conn-0": c}, map[string]string{"1": "conn-0"}), false)(http.NotFoundHandler())
 
 	var opened string
 	callbackStatuses := map[string]int{}
@@ -297,7 +299,7 @@ func TestSaveThroughProxy(t *testing.T) {
 		}
 	}))
 	defer instance.Close()
-	connections = map[string]*conn{"conn-0": newConn("conn-0", session{Origin: instance.URL, Token: "hik_1_first"})}
+	connections = testRegistry(map[string]*conn{"conn-0": newConn("conn-0", session{Origin: instance.URL, Token: "hik_1_first"})}, nil)
 	t.Cleanup(func() { connections = nil })
 
 	p, n, err := saveThroughProxy("wails://conn-0/api/export?n=7")
@@ -347,11 +349,118 @@ func TestSaveThroughProxyKeepsTheBearerOnItsOrigin(t *testing.T) {
 		http.Redirect(w, r, other.URL, http.StatusFound)
 	}))
 	defer instance.Close()
-	connections = map[string]*conn{"conn-0": newConn("conn-0", session{Origin: instance.URL, Token: "hik_1_x"})}
+	connections = testRegistry(map[string]*conn{"conn-0": newConn("conn-0", session{Origin: instance.URL, Token: "hik_1_x"})}, nil)
 	if _, _, err := saveThroughProxy("wails://conn-0/export"); err == nil {
 		t.Fatal("a redirect must fail the download")
 	}
 	if leaked.Load() {
 		t.Fatal("the request followed the redirect off the instance")
+	}
+}
+
+func testRegistry(conns map[string]*conn, windows map[string]string) *registry {
+	reg := newRegistry()
+	for host, c := range conns {
+		reg.add(host, c)
+	}
+	for id, host := range windows {
+		reg.bind(id, host)
+	}
+	return reg
+}
+
+func TestBindOwner(t *testing.T) {
+	reg := testRegistry(map[string]*conn{"conn-0": nil, "conn-1": nil}, map[string]string{"1": "conn-0", "2": "conn-1"})
+	for _, c := range []struct {
+		name, owner, sent, want string
+	}{
+		{"the owner's window id is set", "conn-0", "", "1"},
+		{"a page-supplied id for another window is overwritten", "conn-0", "2", "1"},
+		{"a page-supplied id is deleted when there is no owner", "", "1", ""},
+		{"a page-supplied id is deleted when the owner is unknown", "conn-9", "1", ""},
+	} {
+		r := httptest.NewRequest("GET", "/", nil)
+		if c.sent != "" {
+			r.Header.Add("x-wails-window-id", c.sent)
+			r.Header.Add("X-Wails-Window-Id", "2") // a second spelling must not survive either
+		}
+		bindOwner(r, c.owner, reg)
+		if got := r.Header.Values("x-wails-window-id"); c.want == "" && len(got) != 0 || c.want != "" && (len(got) != 1 || got[0] != c.want) {
+			t.Errorf("%s: header %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// A request that names no owner must be refused by the shell, whatever the page claims.
+func TestNoOwnerIsRefused(t *testing.T) {
+	var upstream atomic.Int32
+	instance := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { upstream.Add(1) }))
+	defer instance.Close()
+	reg := testRegistry(map[string]*conn{"conn-0": newConn("conn-0", session{Origin: instance.URL, Token: "hik_1_x"})}, map[string]string{"1": "conn-0"})
+	handler := shell(reg, false)(http.NotFoundHandler())
+	for _, owner := range []string{"", "conn-1"} {
+		r := httptest.NewRequest("GET", "/", nil)
+		r.Host = "conn-0"
+		r.Header.Set("x-wails-window-id", "1") // sent by the page
+		bindOwner(r, owner, reg)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		if w.Code != http.StatusForbidden {
+			t.Errorf("owner %q: status %d, want 403", owner, w.Code)
+		}
+	}
+	if upstream.Load() != 0 {
+		t.Fatalf("%d requests with no owner reached the instance", upstream.Load())
+	}
+}
+
+// Connections are added and removed while requests are being served. Run with -race.
+func TestConnectionsChangeWhileServing(t *testing.T) {
+	instance := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer instance.Close()
+	reg := newRegistry()
+	handler := shell(reg, false)(http.NotFoundHandler())
+	var wg sync.WaitGroup
+	for g := 0; g < 4; g++ {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for i := 0; i < 200; i++ {
+				host := fmt.Sprintf("c%d-%d", g, i)
+				reg.add(host, newConn(host, session{Origin: instance.URL, Token: "hik_1_x"}))
+				reg.bind(fmt.Sprintf("%d-%d", g, i), host)
+				r := httptest.NewRequest("GET", "/", nil)
+				r.Host = host
+				bindOwner(r, host, reg)
+				handler.ServeHTTP(httptest.NewRecorder(), r)
+				reg.hosts()
+				reg.remove(host)
+				// removed means unknown from then on
+				r = httptest.NewRequest("GET", "/", nil)
+				r.Host = host
+				r.Header.Set("x-wails-window-id", fmt.Sprintf("%d-%d", g, i))
+				if w := httptest.NewRecorder(); func() int { handler.ServeHTTP(w, r); return w.Code }() != http.StatusNotFound {
+					t.Errorf("%s still served after removal", host)
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+	if len(reg.hosts()) != 0 {
+		t.Fatalf("hosts left: %v", reg.hosts())
+	}
+}
+
+func TestRandomHosts(t *testing.T) {
+	seen := map[string]bool{}
+	for i := 0; i < 100; i++ {
+		l := randomLabel()
+		if len(l) != 33 || l[0] != 'c' || strings.Trim(l[1:], "0123456789abcdef") != "" || seen[l] {
+			t.Fatalf("bad or repeated label %q", l)
+		}
+		seen[l] = true
+	}
+	if strings.Contains(newHost(), "conn-") {
+		t.Fatal("host is guessable")
 	}
 }

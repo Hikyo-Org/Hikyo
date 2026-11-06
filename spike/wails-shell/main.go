@@ -27,6 +27,9 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
+// shellCSP confines a page's own loads to its connection and leaves everything else to the instance's policy.
+const shellCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; form-action 'self'"
+
 type instances []string
 
 func (i *instances) String() string     { return strings.Join(*i, ",") }
@@ -35,6 +38,7 @@ func (i *instances) Set(v string) error { *i = append(*i, v); return nil }
 type session struct {
 	Origin string `json:"origin"`
 	Token  string `json:"token"`
+	Host   string `json:"host,omitempty"` // only the isorig build honors it, so the rig can name the victim before the attack page loads
 }
 
 // conn is one connection: the instance, its current bearer, and the proxy that spends it.
@@ -78,6 +82,10 @@ func newConn(host string, s session) *conn {
 		},
 		ModifyResponse: func(r *http.Response) error {
 			r.Header.Del("Set-Cookie")
+			// The shell's own CSP adds to the instance's: a browser enforces both, and the instance cannot remove this one.
+			if rigCSP {
+				r.Header.Add("Content-Security-Policy", shellCSP)
+			}
 			log.Printf("%s %s %s -> %d %s", host, r.Request.Method, r.Request.URL.Path, r.StatusCode, r.Header.Get("Content-Type"))
 			if r.Request.Method == http.MethodGet || !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 				return nil
@@ -152,20 +160,21 @@ func remarshal(raw []byte, body map[string]json.RawMessage) []byte {
 }
 
 // shell is outermost in Wails' chain, so instance code never reaches /wails/*.
-func shell(proxies map[string]*conn, windowHosts map[string]string, probing bool) application.Middleware {
+func shell(reg *registry, probing bool) application.Middleware {
 	return func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			c, known := proxies[r.Host]
+			logSignals(r)
+			c := reg.conn(r.Host)
 			switch {
-			case !known:
+			case c == nil:
 				log.Printf("refused unknown host %q %s", r.Host, r.URL.Path)
 				http.NotFound(w, r)
 			case r.Header.Get("Origin") != "" && r.Header.Get("Origin") != pageScheme+"://"+r.Host:
 				// Without this, connection A could spend connection B's session on a blind request.
 				log.Printf("refused cross-connection %s -> %s %s %s", r.Header.Get("Origin"), r.Host, r.Method, r.URL.Path)
 				http.Error(w, "cross-connection request refused", http.StatusForbidden)
-			case windowHeaderSent && windowHosts[r.Header.Get("x-wails-window-id")] != r.Host:
-				// CSP cannot stop a top-level navigation, so a window stays on its own connection here.
+			case windowHeaderSent && !reg.owns(r.Header.Get("x-wails-window-id"), r.Host):
+				// CSP cannot stop a top-level navigation, so a window stays on its own connection here. A request with no window is refused too (D4).
 				log.Printf("refused window %q -> %s %s %s", r.Header.Get("x-wails-window-id"), r.Host, r.Method, r.URL.Path)
 				http.Error(w, "this window belongs to another connection", http.StatusForbidden)
 			case strings.HasPrefix(r.URL.Path, "/wails/"):
@@ -189,12 +198,46 @@ func shell(proxies map[string]*conn, windowHosts map[string]string, probing bool
 	}
 }
 
-// nativeHandler and nativeWindows let a native transport (the Android Java host) call the shell directly instead of going through the Wails asset server.
+// nativeHandler lets a native transport (the Android Java host) call the shell directly instead of going through the Wails asset server.
+// It is set before nativeReady closes, and read only after.
 var (
 	nativeHandler http.Handler
-	nativeWindows map[string]string
-	nativeReady   = make(chan struct{}) // closed once the windows are registered
+	nativeReady   = make(chan struct{}) // closed once the connections and windows are registered
 )
+
+var shellApp *application.App
+
+// openConnection starts a connection: the proxy, its random host, and the window bound to that host. The window is
+// bound before it loads, because a load with no window is refused.
+func openConnection(name string, s session, probe string) (string, error) {
+	host := hostFor(s)
+	if err := validateOrigin(s.Origin); err != nil {
+		return "", fmt.Errorf("%s: %w", name, err)
+	}
+	connections.add(host, newConn(host, s))
+	window := shellApp.Window.NewWithOptions(application.WebviewWindowOptions{
+		Title: "Hikyo Spike: " + name, Width: 1280, Height: 860, URL: pageScheme + "://" + host + "/",
+	})
+	connections.bind(strconv.FormatUint(uint64(window.ID()), 10), host)
+	if probe != "" {
+		window.OnWindowEvent(events.Mac.WebViewDidFinishNavigation, func(*application.WindowEvent) {
+			// ExecJS queues until the Wails runtime reports ready, and this shell never loads that runtime.
+			window.HandleMessage("wails:runtime:ready")
+			window.Focus()
+			window.ExecJS(probe)
+		})
+	}
+	log.Printf("%s = %s (%s)", host, name, s.Origin)
+	return host, nil
+}
+
+func validateOrigin(raw string) error {
+	origin, err := url.Parse(raw)
+	if err != nil || origin.Host == "" {
+		return fmt.Errorf("bad origin %q", raw)
+	}
+	return nil
+}
 
 func main() {
 	var names instances
@@ -209,20 +252,6 @@ func main() {
 	}
 
 	sessions := loadSessions()
-	proxies := map[string]*conn{}
-	hosts := map[string]string{}
-	for i, name := range names {
-		s, ok := sessions[name]
-		if !ok {
-			log.Fatalf("no session named %q; run hikyo login first", name)
-		}
-		host := connHost(i)
-		proxies[host] = newConn(host, s)
-		hosts[name] = host
-		log.Printf("%s = %s (%s)", host, name, s.Origin)
-	}
-
-	connections = proxies
 	var probe string
 	if *probePath != "" {
 		raw, err := os.ReadFile(*probePath)
@@ -232,29 +261,25 @@ func main() {
 		probe = string(raw)
 	}
 
-	windowHosts := map[string]string{}
-	nativeHandler, nativeWindows = shell(proxies, windowHosts, probe != "")(nil), windowHosts
-	app := application.New(application.Options{
+	connections = newRegistry()
+	nativeHandler = shell(connections, probe != "")(nil)
+	shellApp = application.New(application.Options{
 		Name:   "Hikyo Spike",
-		Assets: application.AssetOptions{Handler: http.NotFoundHandler(), Middleware: shell(proxies, windowHosts, probe != "")},
+		Assets: application.AssetOptions{Handler: http.NotFoundHandler(), Middleware: shell(connections, probe != "")},
 		Mac:    application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
 	})
 	for _, name := range names {
-		window := app.Window.NewWithOptions(application.WebviewWindowOptions{
-			Title: "Hikyo Spike: " + name, Width: 1280, Height: 860, URL: pageScheme + "://" + hosts[name] + "/",
-		})
-		windowHosts[strconv.FormatUint(uint64(window.ID()), 10)] = hosts[name]
-		if probe != "" {
-			window.OnWindowEvent(events.Mac.WebViewDidFinishNavigation, func(*application.WindowEvent) {
-				// ExecJS queues until the Wails runtime reports ready, and this shell never loads that runtime.
-				window.HandleMessage("wails:runtime:ready")
-				window.Focus()
-				window.ExecJS(probe)
-			})
+		s, ok := sessions[name]
+		if !ok {
+			log.Fatalf("no session named %q; run hikyo login first", name)
+		}
+		if _, err := openConnection(name, s, probe); err != nil {
+			log.Fatal(err)
 		}
 	}
+	installSwitcher(names)
 	close(nativeReady)
-	if err := app.Run(); err != nil {
+	if err := shellApp.Run(); err != nil {
 		log.Fatal(err)
 	}
 }

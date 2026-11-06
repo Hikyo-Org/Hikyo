@@ -4,6 +4,7 @@ package main
 
 /*
 #cgo CFLAGS: -fobjc-arc
+#cgo isonopolicy CFLAGS: -DISO_NOPOLICY
 #cgo LDFLAGS: -framework Cocoa -framework WebKit
 int spikeInstallDelegates(void);
 */
@@ -17,7 +18,10 @@ import (
 // handling. WebKit caches which methods a delegate has when it is set, so the methods
 // are added to Wails' class here, before app.Run creates any window.
 func init() {
-	log.Printf("native handlers installed: %d of 5", C.spikeInstallDelegates())
+	// A missing handler would leave a window free to navigate to another connection, so the shell does not start without all five.
+	if n := C.spikeInstallDelegates(); n != 5 {
+		log.Fatalf("native handlers installed: %d of 5; Wails' delegate changed, so the shell will not start without its navigation policy", n)
+	}
 }
 
 //export spikeOpenURL

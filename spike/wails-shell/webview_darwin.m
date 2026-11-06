@@ -55,6 +55,9 @@ static void becameDownload(id self, SEL _cmd, WKWebView *webView, id trigger, WK
 
 // Same host as the page's own, so a window cannot be moved to another connection's origin.
 static BOOL sameConnection(WKWebView *webView, NSURL *url) {
+#ifdef ISO_NOPOLICY
+	return YES; // control build: shows what stops a navigation without this check
+#endif
 	return webView.URL.host == nil || [webView.URL.host isEqualToString:url.host];
 }
 
