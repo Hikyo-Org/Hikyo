@@ -1537,6 +1537,45 @@ export type UpdateStatus = {
     apply_error?: string;
 };
 
+/**
+ * `reported` is false when no status file is configured or the coordinator
+ * has not written one. `unreadable` is true when a file exists but cannot be
+ * read, is oversized or fails strict parsing; it is never a healthy state.
+ *
+ */
+export type SecurityMaintenanceStatus = {
+    reported: boolean;
+    unreadable: boolean;
+    status?: SecurityMaintenancePublicStatus;
+};
+
+export type SecurityMaintenancePublicStatus = {
+    mode?: string;
+    channel?: string;
+    enrolled: boolean;
+    phase: string;
+    reason?: string;
+    /**
+     * A known advisory stays unremediated and the installation is stuck, not waiting for a schedule.
+     */
+    protection_gap: boolean;
+    applicable: Array<string>;
+    coverage: Array<string>;
+    covered_components: Array<string>;
+    coverage_through?: string;
+    catalog_sequence: number;
+    last_attempt?: string;
+    last_verified?: string;
+    known_until?: string;
+    running_version?: string;
+    target_version?: string;
+    /**
+     * The exact local command an operator runs to leave a blocked state.
+     */
+    action?: string;
+    detail?: string;
+};
+
 export type InstanceUpdateBackend = 'flux' | 'compose' | 'systemd';
 
 export type InstanceUpdateRequest = {
@@ -19327,6 +19366,71 @@ export type GetUpdateStatusResponses = {
 };
 
 export type GetUpdateStatusResponse = GetUpdateStatusResponses[keyof GetUpdateStatusResponses];
+
+export type GetSecurityMaintenanceData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/security-maintenance';
+};
+
+export type GetSecurityMaintenanceErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type GetSecurityMaintenanceError = GetSecurityMaintenanceErrors[keyof GetSecurityMaintenanceErrors];
+
+export type GetSecurityMaintenanceResponses = {
+    /**
+     * Not reported, unreadable, or the coordinator's last published status.
+     */
+    200: SecurityMaintenanceStatus;
+};
+
+export type GetSecurityMaintenanceResponse = GetSecurityMaintenanceResponses[keyof GetSecurityMaintenanceResponses];
 
 export type RequestInstanceUpdateData = {
     body: InstanceUpdateRequest;

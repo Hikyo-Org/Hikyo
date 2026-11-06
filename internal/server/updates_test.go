@@ -12,6 +12,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/securitystatus"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 	"github.com/Hikyo-Org/hikyo/internal/updater"
@@ -19,12 +20,18 @@ import (
 
 type stubUpdates struct {
 	status     updatecheck.Status
+	report     securitystatus.Report
+	reportErr  error
 	job        updater.Job
 	requestErr error
 }
 
 func (s stubUpdates) GetStatus(context.Context, service.Actor) (updatecheck.Status, error) {
 	return s.status, nil
+}
+
+func (s stubUpdates) GetSecurityMaintenance(context.Context, service.Actor) (securitystatus.Report, error) {
+	return s.report, s.reportErr
 }
 
 func (s stubUpdates) Request(context.Context, service.Actor, string) (updater.Job, error) {
@@ -102,5 +109,49 @@ func TestInstanceUpdateWireCarriesDurableJobState(t *testing.T) {
 	want := "{\"backend\":\"flux\",\"id\":\"upd_0198aa\",\"phase\":\"queued\",\"requested_at\":\"2026-08-24T03:00:00Z\",\"state\":\"queued\",\"version\":\"1.1.0\"}\n"
 	if recorder.Body.String() != want {
 		t.Fatalf("body = %s, want %s", recorder.Body.String(), want)
+	}
+}
+
+func TestSecurityMaintenanceWireStatesAreDistinct(t *testing.T) {
+	checked := time.Date(2026, 11, 4, 11, 30, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name   string
+		report securitystatus.Report
+		want   string
+	}{
+		{"not reported", securitystatus.Report{}, `{"reported":false,"unreadable":false}`},
+		{"unreadable", securitystatus.Report{Unreadable: true}, `{"reported":false,"unreadable":true}`},
+		{"reported", securitystatus.Report{Reported: true, Status: securitystatus.Public{
+			Mode: "automatic", Enrolled: true, Phase: "blocked", Reason: "retry_backoff", ProtectionGap: true,
+			Applicable: []string{"HK-SA-1"}, CatalogSequence: 7, LastAttempt: checked, Action: "hikyo security-maintenance reconcile --confirm abc",
+		}}, `{"reported":true,"status":{"action":"hikyo security-maintenance reconcile --confirm abc","applicable":["HK-SA-1"],"catalog_sequence":7,"coverage":[],"covered_components":[],"enrolled":true,"last_attempt":"2026-11-04T11:30:00Z","mode":"automatic","phase":"blocked","protection_gap":true,"reason":"retry_backoff"},"unreadable":false}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := &API{Updates: stubUpdates{report: tc.report}}
+			response, err := api.GetSecurityMaintenance(t.Context(), apigen.GetSecurityMaintenanceRequestObject{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			recorder := httptest.NewRecorder()
+			if err := response.VisitGetSecurityMaintenanceResponse(recorder); err != nil {
+				t.Fatal(err)
+			}
+			if recorder.Code != http.StatusOK || strings.TrimSpace(recorder.Body.String()) != tc.want {
+				t.Fatalf("status = %d body = %s, want %s", recorder.Code, recorder.Body.String(), tc.want)
+			}
+		})
+	}
+}
+
+func TestSecurityMaintenanceRefusalReachesTheWire(t *testing.T) {
+	api := &API{Updates: stubUpdates{reportErr: domain.ErrUnauthorized}}
+	response, err := api.GetSecurityMaintenance(t.Context(), apigen.GetSecurityMaintenanceRequestObject{})
+	if response != nil || !errors.Is(err, domain.ErrUnauthorized) {
+		t.Fatalf("response=%v error=%v, want the service refusal", response, err)
+	}
+	recorder := httptest.NewRecorder()
+	writeError(recorder, wireErrorFor(err), err.Error())
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("refusal status = %d, want 403", recorder.Code)
 	}
 }

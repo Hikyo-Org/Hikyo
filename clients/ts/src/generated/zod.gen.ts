@@ -1189,6 +1189,39 @@ export const zPrincipalCapabilities = z.object({
     delivery_report_grant: zUnheldGrantReach
 });
 
+export const zSecurityMaintenancePublicStatus = z.object({
+    mode: z.string().optional(),
+    channel: z.string().optional(),
+    enrolled: z.boolean(),
+    phase: z.string(),
+    reason: z.string().optional(),
+    protection_gap: z.boolean(),
+    applicable: z.array(z.string()),
+    coverage: z.array(z.string()),
+    covered_components: z.array(z.string()),
+    coverage_through: z.string().optional(),
+    catalog_sequence: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    last_attempt: z.iso.datetime().optional(),
+    last_verified: z.iso.datetime().optional(),
+    known_until: z.iso.datetime().optional(),
+    running_version: z.string().optional(),
+    target_version: z.string().optional(),
+    action: z.string().optional(),
+    detail: z.string().optional()
+}).strict();
+
+/**
+ * `reported` is false when no status file is configured or the coordinator
+ * has not written one. `unreadable` is true when a file exists but cannot be
+ * read, is oversized or fails strict parsing; it is never a healthy state.
+ *
+ */
+export const zSecurityMaintenanceStatus = z.object({
+    reported: z.boolean(),
+    unreadable: z.boolean(),
+    status: zSecurityMaintenancePublicStatus.optional()
+}).strict();
+
 export const zInstanceUpdateBackend = z.enum([
     'flux',
     'compose',
@@ -7308,6 +7341,11 @@ export const zGetRetentionHealthResponse = zRetentionHealth;
  * Current version and the newest release on the configured channel.
  */
 export const zGetUpdateStatusResponse = zUpdateStatus;
+
+/**
+ * Not reported, unreadable, or the coordinator's last published status.
+ */
+export const zGetSecurityMaintenanceResponse = zSecurityMaintenanceStatus;
 
 export const zRequestInstanceUpdateBody = zInstanceUpdateRequest;
 

@@ -12,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/securitystatus"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
@@ -29,9 +30,11 @@ type Updates struct {
 	Version    string
 	Channel    updatecheck.Channel
 	Control    updater.Control
-	Now        func() time.Time
-	Log        *slog.Logger
-	outcomeMu  sync.Mutex
+	// SecurityStatusFile is the coordinator's public status file, if any.
+	SecurityStatusFile string
+	Now                func() time.Time
+	Log                *slog.Logger
+	outcomeMu          sync.Mutex
 }
 
 // Run reconciles helper-owned terminal outcomes independently of any browser.
@@ -91,24 +94,12 @@ func (s *Updates) GetStatus(ctx context.Context, actor Actor) (updatecheck.Statu
 	if s.Now != nil {
 		now = s.Now
 	}
-	err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now())
-		if err != nil {
-			return err
-		}
-		_, err = az.Authorize(ctx, caller, authz.OpUpdateStatusRead, domain.Scope{})
-		return err
-	})
-	if err != nil {
+	if err := s.authorizeStatusRead(ctx, actor, now); err != nil {
 		return updatecheck.Status{}, err
 	}
-	channel := s.Channel
-	if s.SelfConfig != nil {
-		bundle, captureErr := s.SelfConfig.Capture(ctx)
-		if captureErr != nil {
-			return updatecheck.Status{}, captureErr
-		}
-		channel = updatecheck.Channel(bundle.UpdateChannel())
+	channel, err := s.channel(ctx)
+	if err != nil {
+		return updatecheck.Status{}, err
 	}
 	var status updatecheck.Status
 	if channel == updatecheck.ChannelOff || s.Version == "dev" {
@@ -144,6 +135,62 @@ func (s *Updates) GetStatus(ctx context.Context, actor Actor) (updatecheck.Statu
 		return repos.Audit().InsertInstance(ctx, proof, event)
 	})
 	return status, err
+}
+
+func (s *Updates) authorizeStatusRead(ctx context.Context, actor Actor, now func() time.Time) error {
+	return tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
+		caller, err := actor.resolve(ctx, az, now())
+		if err != nil {
+			return err
+		}
+		_, err = az.Authorize(ctx, caller, authz.OpUpdateStatusRead, domain.Scope{})
+		return err
+	})
+}
+
+func (s *Updates) channel(ctx context.Context) (updatecheck.Channel, error) {
+	if s.SelfConfig == nil {
+		return s.Channel, nil
+	}
+	bundle, err := s.SelfConfig.Capture(ctx)
+	if err != nil {
+		return "", err
+	}
+	return updatecheck.Channel(bundle.UpdateChannel()), nil
+}
+
+// GetSecurityMaintenance has GetStatus's authorization and audit record. The
+// file is read after authorization so an unauthorized caller learns nothing.
+func (s *Updates) GetSecurityMaintenance(ctx context.Context, actor Actor) (securitystatus.Report, error) {
+	now := time.Now
+	if s.Now != nil {
+		now = s.Now
+	}
+	if err := s.authorizeStatusRead(ctx, actor, now); err != nil {
+		return securitystatus.Report{}, err
+	}
+	channel, err := s.channel(ctx)
+	if err != nil {
+		return securitystatus.Report{}, err
+	}
+	err = tx.Write(ctx, s.DB, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
+		caller, proof, err := authorize(ctx, az, actor, authz.OpUpdateStatusRead, domain.Scope{}, now())
+		if err != nil {
+			return err
+		}
+		event, err := domainEvent(ctx, audit.EventUpdateStatusRead, caller.Principal,
+			audit.Object{Type: "update_status", ID: "security_maintenance"}, audit.Payload{
+				"channel": string(channel), "current_version": s.Version,
+			})
+		if err != nil {
+			return err
+		}
+		return repos.Audit().InsertInstance(ctx, proof, event)
+	})
+	if err != nil {
+		return securitystatus.Report{}, err
+	}
+	return securitystatus.Load(s.SecurityStatusFile), nil
 }
 
 // Request preserves authenticated refusal evidence but cannot contact the

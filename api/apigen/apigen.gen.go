@@ -11457,6 +11457,40 @@ type ScimMintResult struct {
 // named refusal.
 type ScimResource map[string]interface{}
 
+// SecurityMaintenancePublicStatus defines model for SecurityMaintenancePublicStatus.
+type SecurityMaintenancePublicStatus struct {
+	// Action The exact local command an operator runs to leave a blocked state.
+	Action            *string    `json:"action,omitempty"`
+	Applicable        []string   `json:"applicable"`
+	CatalogSequence   int64      `json:"catalog_sequence"`
+	Channel           *string    `json:"channel,omitempty"`
+	Coverage          []string   `json:"coverage"`
+	CoverageThrough   *string    `json:"coverage_through,omitempty"`
+	CoveredComponents []string   `json:"covered_components"`
+	Detail            *string    `json:"detail,omitempty"`
+	Enrolled          bool       `json:"enrolled"`
+	KnownUntil        *time.Time `json:"known_until,omitempty"`
+	LastAttempt       *time.Time `json:"last_attempt,omitempty"`
+	LastVerified      *time.Time `json:"last_verified,omitempty"`
+	Mode              *string    `json:"mode,omitempty"`
+	Phase             string     `json:"phase"`
+
+	// ProtectionGap A known advisory stays unremediated and the installation is stuck, not waiting for a schedule.
+	ProtectionGap  bool    `json:"protection_gap"`
+	Reason         *string `json:"reason,omitempty"`
+	RunningVersion *string `json:"running_version,omitempty"`
+	TargetVersion  *string `json:"target_version,omitempty"`
+}
+
+// SecurityMaintenanceStatus `reported` is false when no status file is configured or the coordinator
+// has not written one. `unreadable` is true when a file exists but cannot be
+// read, is oversized or fails strict parsing; it is never a healthy state.
+type SecurityMaintenanceStatus struct {
+	Reported   bool                             `json:"reported"`
+	Status     *SecurityMaintenancePublicStatus `json:"status,omitempty"`
+	Unreadable bool                             `json:"unreadable"`
+}
+
 // SelfConfigReauthIntent defines model for SelfConfigReauthIntent.
 type SelfConfigReauthIntent struct {
 	Action SelfConfigReauthIntentAction `json:"action"`
@@ -15689,6 +15723,9 @@ type ServerInterface interface {
 	// CompromiseRetireSamlSpKey Immediately erase and replace a compromised active SAML SP key.
 	// (POST /api/v1/instance/saml-sp-keys/{fingerprint}/compromise-retire)
 	CompromiseRetireSamlSpKey(w http.ResponseWriter, r *http.Request, fingerprint string)
+	// GetSecurityMaintenance Read the security-maintenance status the coordinator published.
+	// (GET /api/v1/instance/security-maintenance)
+	GetSecurityMaintenance(w http.ResponseWriter, r *http.Request)
 	// RequestInstanceUpdate Refuse legacy remote apply while preserving authenticated audit evidence.
 	// (POST /api/v1/instance/update)
 	RequestInstanceUpdate(w http.ResponseWriter, r *http.Request)
@@ -17381,6 +17418,12 @@ func (_ Unimplemented) RetireSamlSpKey(w http.ResponseWriter, r *http.Request, f
 // CompromiseRetireSamlSpKey Immediately erase and replace a compromised active SAML SP key.
 // (POST /api/v1/instance/saml-sp-keys/{fingerprint}/compromise-retire)
 func (_ Unimplemented) CompromiseRetireSamlSpKey(w http.ResponseWriter, r *http.Request, fingerprint string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetSecurityMaintenance Read the security-maintenance status the coordinator published.
+// (GET /api/v1/instance/security-maintenance)
+func (_ Unimplemented) GetSecurityMaintenance(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -22186,6 +22229,20 @@ func (siw *ServerInterfaceWrapper) CompromiseRetireSamlSpKey(w http.ResponseWrit
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CompromiseRetireSamlSpKey(w, r, fingerprint)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSecurityMaintenance operation middleware
+func (siw *ServerInterfaceWrapper) GetSecurityMaintenance(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSecurityMaintenance(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -35621,6 +35678,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/instance/update-status", wrapper.GetUpdateStatus)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/security-maintenance", wrapper.GetSecurityMaintenance)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/instance/update", wrapper.RequestInstanceUpdate)
@@ -52937,6 +52997,113 @@ func (response CompromiseRetireSamlSpKey500JSONResponse) VisitCompromiseRetireSa
 type CompromiseRetireSamlSpKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response CompromiseRetireSamlSpKey503JSONResponse) VisitCompromiseRetireSamlSpKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSecurityMaintenanceRequestObject struct {
+}
+
+type GetSecurityMaintenanceResponseObject interface {
+	VisitGetSecurityMaintenanceResponse(w http.ResponseWriter) error
+}
+
+type GetSecurityMaintenance200JSONResponse SecurityMaintenanceStatus
+
+func (response GetSecurityMaintenance200JSONResponse) VisitGetSecurityMaintenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSecurityMaintenance401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetSecurityMaintenance401JSONResponse) VisitGetSecurityMaintenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSecurityMaintenance403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetSecurityMaintenance403JSONResponse) VisitGetSecurityMaintenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSecurityMaintenance404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetSecurityMaintenance404JSONResponse) VisitGetSecurityMaintenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSecurityMaintenance429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetSecurityMaintenance429JSONResponse) VisitGetSecurityMaintenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSecurityMaintenance500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetSecurityMaintenance500JSONResponse) VisitGetSecurityMaintenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSecurityMaintenance503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetSecurityMaintenance503JSONResponse) VisitGetSecurityMaintenanceResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -84688,6 +84855,9 @@ type StrictServerInterface interface {
 	// CompromiseRetireSamlSpKey Immediately erase and replace a compromised active SAML SP key.
 	// (POST /api/v1/instance/saml-sp-keys/{fingerprint}/compromise-retire)
 	CompromiseRetireSamlSpKey(ctx context.Context, request CompromiseRetireSamlSpKeyRequestObject) (CompromiseRetireSamlSpKeyResponseObject, error)
+	// GetSecurityMaintenance Read the security-maintenance status the coordinator published.
+	// (GET /api/v1/instance/security-maintenance)
+	GetSecurityMaintenance(ctx context.Context, request GetSecurityMaintenanceRequestObject) (GetSecurityMaintenanceResponseObject, error)
 	// RequestInstanceUpdate Refuse legacy remote apply while preserving authenticated audit evidence.
 	// (POST /api/v1/instance/update)
 	RequestInstanceUpdate(ctx context.Context, request RequestInstanceUpdateRequestObject) (RequestInstanceUpdateResponseObject, error)
@@ -89585,6 +89755,30 @@ func (sh *strictHandler) CompromiseRetireSamlSpKey(w http.ResponseWriter, r *htt
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CompromiseRetireSamlSpKeyResponseObject); ok {
 		if err := validResponse.VisitCompromiseRetireSamlSpKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSecurityMaintenance operation middleware
+func (sh *strictHandler) GetSecurityMaintenance(w http.ResponseWriter, r *http.Request) {
+	var request GetSecurityMaintenanceRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSecurityMaintenance(ctx, request.(GetSecurityMaintenanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSecurityMaintenance")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSecurityMaintenanceResponseObject); ok {
+		if err := validResponse.VisitGetSecurityMaintenanceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -170,6 +170,7 @@ var wireRegistry = map[string]wireEntry{
 	"http:GET /api/v1/instance/saml-providers":                                                                               {Class: ClassInstance, Ops: []Operation{OpSAMLProviderList}},
 	"http:GET /api/v1/instance/saml-providers/{slug}":                                                                        {Class: ClassInstance, Ops: []Operation{OpSAMLProviderGet}},
 	"http:GET /api/v1/instance/saml-sp-keys":                                                                                 {Class: ClassInstance, Ops: []Operation{OpSAMLSPKeyList}},
+	"http:GET /api/v1/instance/security-maintenance":                                                                         {Class: ClassInstance, Ops: []Operation{OpUpdateStatusRead}},
 	"http:GET /api/v1/instance/update-status":                                                                                {Class: ClassInstance, Ops: []Operation{OpUpdateStatusRead}},
 	"http:GET /api/v1/instance/updates/{job}":                                                                                {Class: ClassInstance, Ops: []Operation{OpUpdateJobRead}},
 	"http:GET /api/v1/instance/workspace-origins":                                                                            {Class: ClassInstance, Ops: []Operation{OpWorkspaceOriginList}},
