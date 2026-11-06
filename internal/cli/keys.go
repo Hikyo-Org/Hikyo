@@ -49,7 +49,7 @@ func runKey(ctx context.Context, ios IO, args []string) error {
 		return err
 	}
 
-	var format, name, declaration, classification, folderPath, description, deprecationNote, groupID, requiredIn, forbiddenIn, acknowledge string
+	var format, name, declaration, classification, folderPath, description, deprecationNote, groupID, requiredIn, forbiddenIn, personalRequiredIn, acknowledge string
 	var deprecated bool
 	// `key update` is a PATCH, so it must send only the members the caller
 	// actually typed: sending every flag's zero value would clear the folder
@@ -70,6 +70,8 @@ func runKey(ctx context.Context, ios IO, args []string) error {
 				"the value-dependent rules as a JSON document, e.g. {\"rule\":{\"type\":\"string\"}}")
 			fs.StringVar(&requiredIn, "required-in", "none", "presence: all|none|<env-id,env-id,...>")
 			fs.StringVar(&forbiddenIn, "forbidden-in", "none", "presence: all|none|<env-id,env-id,...>")
+			fs.StringVar(&personalRequiredIn, "personal-required-in", "none",
+				"environments where each developer must hold a personal value: none|<env-id,env-id,...>")
 		}
 		if sub == "create" {
 			fs.StringVar(&classification, "classification", "", "secret or config")
@@ -127,7 +129,7 @@ func runKey(ctx context.Context, ios IO, args []string) error {
 	case sub == "rename" && name == "":
 		return failf(ExitUsage, "usage: hikyo key rename <key> --name <NEW_NAME>")
 	case sub == "declare" && declaration == "":
-		return failf(ExitUsage, "usage: hikyo key declare <key> --declaration <json> [--required-in ...] [--forbidden-in ...]")
+		return failf(ExitUsage, "usage: hikyo key declare <key> --declaration <json> [--required-in ...] [--forbidden-in ...] [--personal-required-in ...]")
 	case sub == "reclassify" && classification == "":
 		return failf(ExitUsage, "usage: hikyo key reclassify <key> --classification secret|config")
 	}
@@ -144,6 +146,15 @@ func runKey(ctx context.Context, ios IO, args []string) error {
 	presence, err := parsePresence(requiredIn, forbiddenIn)
 	if err != nil {
 		return err
+	}
+	// Sent only when set, so a key without one reads and declares as before.
+	// `all` is passed through for the server to refuse.
+	if personalRequiredIn != "" && personalRequiredIn != "none" {
+		personal, err := parsePresenceRule("--personal-required-in", personalRequiredIn)
+		if err != nil {
+			return err
+		}
+		presence.PersonalRequiredIn = &personal
 	}
 
 	client, _, resolved, err := authenticatedTarget(st, ios, flags)

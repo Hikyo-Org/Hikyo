@@ -50,8 +50,10 @@ type Key struct {
 	DeprecationNote string
 	Declaration     schema.Declaration
 	Presence        schema.PresenceRules
-	GroupID         string
-	CreatedAt       time.Time
+	// PersonalRequired is `personal_required_in`: `none` or `explicit`.
+	PersonalRequired schema.Presence
+	GroupID          string
+	CreatedAt        time.Time
 }
 
 // KeySpec is a key creation. It carries no id (server-minted, immutable) and
@@ -65,7 +67,9 @@ type KeySpec struct {
 	DeprecationNote string
 	Declaration     schema.Declaration
 	Presence        schema.PresenceRules
-	GroupID         string
+	// PersonalRequired is `personal_required_in`; the zero value is `none`.
+	PersonalRequired schema.Presence
+	GroupID          string
 }
 
 // KeyMetadataUpdate is the NON-semantic update. It deliberately has no
@@ -97,6 +101,10 @@ type KeyMetadataUpdate struct {
 type KeyDeclarationUpdate struct {
 	Declaration schema.Declaration
 	Presence    schema.PresenceRules
+	// PersonalRequired is replaced too; the zero value is `none`. A change to
+	// it alone moves nothing any environment delivers to a shared consumer, so
+	// it takes definitions-edit alone and no per-environment publish.
+	PersonalRequired schema.Presence
 }
 
 // KeyGroupView is a group with the two derived facts a reader needs: who is in
@@ -286,6 +294,52 @@ func checkPresenceRules(p schema.PresenceRules) error {
 		return fmt.Errorf("%w: %s", domain.ErrInvalid, err)
 	}
 	return nil
+}
+
+// normalPersonal reads an absent personal_required_in as `none`.
+func normalPersonal(p schema.Presence) schema.Presence {
+	if p.Mode == "" {
+		p.Mode = schema.PresenceNone
+	}
+	return p
+}
+
+// checkPersonalRequired validates personal_required_in against the key's
+// final presence rules and group membership.
+func checkPersonalRequired(personal schema.Presence, rules schema.PresenceRules, grouped bool) error {
+	if err := schema.CheckPersonalRequired(personal, rules, grouped); err != nil {
+		return fmt.Errorf("%w: %s", domain.ErrInvalid, err)
+	}
+	return nil
+}
+
+// personalRequiredOf rebuilds one key's personal_required_in from the
+// project's rows: no rows is `none`, rows are `explicit`.
+func personalRequiredOf(keyID string, rows []store.KeyPresence) schema.Presence {
+	out := schema.Presence{Mode: schema.PresenceNone}
+	for _, row := range rows {
+		if row.KeyID == keyID {
+			out.Mode = schema.PresenceExplicit
+			out.Environments = append(out.Environments, row.EnvironmentID)
+		}
+	}
+	return out
+}
+
+// withPersonalRequired attaches personal_required_in to keys read elsewhere.
+func withPersonalRequired(ctx context.Context, r store.CatalogueReader, p authz.Proof, keys ...*Key) error {
+	rows, err := r.PersonalRequired(ctx, p)
+	if err != nil {
+		return err
+	}
+	for _, k := range keys {
+		k.PersonalRequired = personalRequiredOf(k.ID, rows)
+	}
+	return nil
+}
+
+func personalEqual(a, b schema.Presence) bool {
+	return presenceEqual(schema.PresenceRules{Required: normalPersonal(a)}, schema.PresenceRules{Required: normalPersonal(b)})
 }
 
 // keyOf converts a store row plus its presence rows into the service key.
@@ -589,6 +643,10 @@ func (s *Keys) Create(ctx context.Context, actor Actor, scope domain.Scope, spec
 	if err != nil {
 		return Key{}, err
 	}
+	spec.PersonalRequired = normalPersonal(spec.PersonalRequired)
+	if err := checkPersonalRequired(spec.PersonalRequired, spec.Presence, spec.GroupID != ""); err != nil {
+		return Key{}, err
+	}
 	canonical, err := compiled.Canonical()
 	if err != nil {
 		return Key{}, fmt.Errorf("%w: %s", domain.ErrInvalid, err)
@@ -691,6 +749,9 @@ func (s *Keys) Create(ctx context.Context, actor Actor, scope domain.Scope, spec
 		if err := r.Catalogue().ReplacePresence(ctx, p, id, presenceRows(spec.Presence)); err != nil {
 			return err
 		}
+		if err := r.Catalogue().ReplacePersonalRequired(ctx, p, id, spec.PersonalRequired.Environments); err != nil {
+			return err
+		}
 		// § 151 schema-revision rate (60/h per project), charged immediately
 		// before the bump so only a real revision counts — see Keys.UpdateMetadata.
 		if err := bumpSchemaRevision(ctx, r, p, s.Budget, &rateCharged, scope.Project); err != nil {
@@ -719,7 +780,7 @@ func (s *Keys) Create(ctx context.Context, actor Actor, scope domain.Scope, spec
 		Name: spec.Name, FolderPath: spec.FolderPath,
 		Classification: spec.Classification, Description: spec.Description,
 		Deprecated: spec.Deprecated, DeprecationNote: spec.DeprecationNote,
-		Declaration: stored, Presence: spec.Presence,
+		Declaration: stored, Presence: spec.Presence, PersonalRequired: spec.PersonalRequired,
 		GroupID: spec.GroupID, CreatedAt: row.CreatedAt,
 	}, nil
 }
@@ -772,9 +833,11 @@ func (s *Keys) Get(ctx context.Context, actor Actor, scope domain.Scope, id stri
 		if err != nil {
 			return err
 		}
-		out, err = keyOf(row, rows)
+		if out, err = keyOf(row, rows); err != nil {
+			return err
+		}
 		out = systemKeyView(p, out)
-		return err
+		return withPersonalRequired(ctx, r.Catalogue(), p, &out)
 	})
 	return out, err
 }
@@ -811,13 +874,19 @@ func (s *Keys) List(ctx context.Context, actor Actor, scope domain.Scope) ([]Key
 		if err != nil {
 			return err
 		}
+		personal, err := r.Catalogue().PersonalRequired(ctx, p)
+		if err != nil {
+			return err
+		}
 		out = make([]Key, 0, len(rows))
 		presenceByKey := indexPresenceByKey(presence)
+		personalByKey := indexPresenceByKey(personal)
 		for _, row := range rows {
 			key, err := keyOf(row, presenceByKey[row.ID])
 			if err != nil {
 				return err
 			}
+			key.PersonalRequired = personalRequiredOf(row.ID, personalByKey[row.ID])
 			out = append(out, systemKeyView(p, key))
 		}
 		return nil
@@ -1080,7 +1149,11 @@ func readKey(ctx context.Context, r store.Repos, p authz.Proof, row store.Catalo
 	if err != nil {
 		return Key{}, err
 	}
-	return keyOf(row, presence)
+	key, err := keyOf(row, presence)
+	if err != nil {
+		return Key{}, err
+	}
+	return key, withPersonalRequired(ctx, r.Catalogue(), p, &key)
 }
 
 // UpdateDeclaration replaces the value-dependent rules and the presence rules.
@@ -1162,6 +1235,15 @@ func (s *Keys) UpdateDeclaration(ctx context.Context, actor Actor, scope domain.
 		}
 		beforePresence := presenceOf(id, before.RequiredMode, before.ForbiddenMode, presence)
 		presenceChanged := !presenceEqual(beforePresence, u.Presence)
+		personalRows, err := r.Catalogue().PersonalRequired(ctx, p)
+		if err != nil {
+			return err
+		}
+		u.PersonalRequired = normalPersonal(u.PersonalRequired)
+		personalChanged := !personalEqual(personalRequiredOf(id, personalRows), u.PersonalRequired)
+		if err := checkPersonalRequired(u.PersonalRequired, u.Presence, before.GroupID != ""); err != nil {
+			return err
+		}
 
 		members, err := r.Catalogue().List(ctx, p)
 		if err != nil {
@@ -1177,46 +1259,71 @@ func (s *Keys) UpdateDeclaration(ctx context.Context, actor Actor, scope domain.
 		// Re-saving a canonically identical declaration writes NOTHING: it is a
 		// no-op, and a no-op that touched rows would rewrite the presence set
 		// and advance the revision — invalidating every pin for nothing.
-		if !rulesChanged && !presenceChanged {
-			out, err = keyOf(before, presence)
-			return err
+		if !rulesChanged && !presenceChanged && !personalChanged {
+			if out, err = keyOf(before, presence); err != nil {
+				return err
+			}
+			out.PersonalRequired = personalRequiredOf(id, personalRows)
+			return nil
 		}
+		// personal_required_in alone changes nothing a shared consumer is
+		// delivered or validated against, so like a metadata edit it needs
+		// definitions-edit only: no scan (the declaration text is unchanged),
+		// no per-environment publish and no fan-out. It still moves the schema
+		// revision, so a definitions bundle based on the old one sees drift.
+		semantic := rulesChanged || presenceChanged
 		// Surface-2 block (#74): scan the new CANONICAL declaration before it
 		// persists. Placed after the reveal gate and the no-op short-circuit —
 		// scanning declaration TEXT touches no stored value, so it opens no
 		// abort/success channel, and an unchanged declaration is never re-scanned
 		// (no retro-scan, ADR §6.1).
-		if err := applyDeclarationScan(ctx, r, p, az, s.Keyring, s.Scan, caller.Principal, scope, declarationLeaves(compiled.Declaration()), newAckSet(acks), ingressEdit); err != nil {
-			return err
+		if semantic {
+			if err := applyDeclarationScan(ctx, r, p, az, s.Keyring, s.Scan, caller.Principal, scope, declarationLeaves(compiled.Declaration()), newAckSet(acks), ingressEdit); err != nil {
+				return err
+			}
+			if err := publisher.authorizeKeyFanOut(ctx, r, az, caller, p, scope, keyTarget, false, false); err != nil {
+				return err
+			}
+			if err := r.Catalogue().UpdateDeclaration(ctx, p, id, store.KeyDeclaration{
+				Declaration:   string(canonical),
+				RequiredMode:  string(u.Presence.Required.Mode),
+				ForbiddenMode: string(u.Presence.Forbidden.Mode),
+			}); err != nil {
+				return err
+			}
+			// A foreign or deleted environment id lands here as a foreign-key
+			// violation, which surfaces as the uniform conflict — the same answer
+			// whether the environment belongs to another project or to none.
+			if err := r.Catalogue().ReplacePresence(ctx, p, id, presenceRows(u.Presence)); err != nil {
+				return err
+			}
+			if !presenceEqual(schema.PresenceRules{Forbidden: beforePresence.Forbidden}, schema.PresenceRules{Forbidden: u.Presence.Forbidden}) {
+				if err := cascadePersonalForbidden(ctx, r, p, caller.Principal, before, u.Presence.Forbidden); err != nil {
+					return err
+				}
+			}
 		}
-		if err := publisher.authorizeKeyFanOut(ctx, r, az, caller, p, scope, keyTarget, false, false); err != nil {
-			return err
-		}
-		if err := r.Catalogue().UpdateDeclaration(ctx, p, id, store.KeyDeclaration{
-			Declaration:   string(canonical),
-			RequiredMode:  string(u.Presence.Required.Mode),
-			ForbiddenMode: string(u.Presence.Forbidden.Mode),
-		}); err != nil {
-			return err
-		}
-		// A foreign or deleted environment id lands here as a foreign-key
-		// violation, which surfaces as the uniform conflict — the same answer
-		// whether the environment belongs to another project or to none.
-		if err := r.Catalogue().ReplacePresence(ctx, p, id, presenceRows(u.Presence)); err != nil {
-			return err
+		if personalChanged {
+			if err := r.Catalogue().ReplacePersonalRequired(ctx, p, id, u.PersonalRequired.Environments); err != nil {
+				return err
+			}
 		}
 		// § 151 schema-revision rate (see Keys.UpdateMetadata). Placed past this
 		// method's no-op early return, so an unchanged declaration charges nothing.
 		if err := bumpSchemaRevision(ctx, r, p, s.Budget, &rateCharged, scope.Project); err != nil {
 			return err
 		}
-		after := before
-		after.Declaration = string(canonical)
-		after.RequiredMode = string(u.Presence.Required.Mode)
-		after.ForbiddenMode = string(u.Presence.Forbidden.Mode)
-		if out, err = keyOf(after, presenceRowsFor(id, u.Presence)); err != nil {
+		after, afterPresence := before, presence
+		if semantic {
+			after.Declaration = string(canonical)
+			after.RequiredMode = string(u.Presence.Required.Mode)
+			after.ForbiddenMode = string(u.Presence.Forbidden.Mode)
+			afterPresence = presenceRowsFor(id, u.Presence)
+		}
+		if out, err = keyOf(after, afterPresence); err != nil {
 			return err
 		}
+		out.PersonalRequired = u.PersonalRequired
 		revision, err := r.Catalogue().SchemaRevision(ctx, p)
 		if err != nil {
 			return err
@@ -1226,13 +1333,16 @@ func (s *Keys) UpdateDeclaration(ctx context.Context, actor Actor, scope domain.
 				"name":             audit.SanitizeFreeText(before.Name),
 				"schema_revision":  revision,
 				"rules_changed":    rulesChanged,
-				"presence_changed": presenceChanged,
+				"presence_changed": presenceChanged || personalChanged,
 			})
 		if err != nil {
 			return err
 		}
 		if err := r.Audit().InsertTenant(ctx, p, ev); err != nil {
 			return err
+		}
+		if !semantic {
+			return nil
 		}
 		return publisher.fanOut(ctx, r, az, caller, p, scope, "key-declaration")
 	})
@@ -1474,13 +1584,26 @@ func (s *Keys) SetGroup(ctx context.Context, actor Actor, scope domain.Scope, id
 		// operation that refuses its no-op is the reclassification ceremony,
 		// and only because a ceremony that changed nothing would still write a
 		// disclosure-class audit record.
+		personalRows, err := r.Catalogue().PersonalRequired(ctx, p)
+		if err != nil {
+			return err
+		}
+		personal := personalRequiredOf(id, personalRows)
 		if before.GroupID == groupID {
 			presence, err := r.Catalogue().ListPresence(ctx, p)
 			if err != nil {
 				return err
 			}
-			out, err = keyOf(before, presence)
-			return err
+			if out, err = keyOf(before, presence); err != nil {
+				return err
+			}
+			out.PersonalRequired = personal
+			return nil
+		}
+		if groupID != "" {
+			if err := checkPersonalRequired(personal, schema.PresenceRules{}, true); err != nil {
+				return err
+			}
 		}
 		// Changing co-publish membership can expose another member's
 		// presence through schema validation. Prove whole-environment
@@ -1532,6 +1655,7 @@ func (s *Keys) SetGroup(ctx context.Context, actor Actor, scope domain.Scope, id
 		if out, err = keyOf(after, presence); err != nil {
 			return err
 		}
+		out.PersonalRequired = personal
 		ev, err := domainEvent(ctx, audit.EventKeyGroupMembershipChanged, caller.Principal,
 			audit.Object{Type: "key", ID: before.ID}, audit.Payload{
 				"name":              audit.SanitizeFreeText(before.Name),

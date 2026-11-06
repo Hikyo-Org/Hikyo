@@ -315,11 +315,12 @@ hierarchy:
   hikyo key list|show|create|rename|declare|reclassify|update|set-group|delete
   hikyo key create --name <NAME> --classification secret|config --declaration <json>
       [--required-in all|none|<ids>] [--forbidden-in all|none|<ids>] [--group G]
+      [--personal-required-in none|<ids>]
       [--folder P] [--description D] [--deprecated] [--deprecation-note N]
   hikyo key update <key> [--folder P] [--description D] [--deprecated] [--deprecation-note N]
       [--confirm-widening <principal>]...
   hikyo key declare <key> --declaration <json> [--required-in all|none|<ids>]
-      [--forbidden-in all|none|<ids>]
+      [--forbidden-in all|none|<ids>] [--personal-required-in none|<ids>]
   hikyo key reclassify <key> --classification secret|config    the ceremony, never update
   hikyo key group list|show|create|rename|delete
   hikyo key group create --name <name>

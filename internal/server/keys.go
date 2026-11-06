@@ -73,6 +73,9 @@ func (a *API) CreateKey(ctx context.Context, req apigen.CreateKeyRequestObject) 
 		Presence:        domainPresence(req.Body.Presence),
 		GroupID:         deref(req.Body.GroupId),
 	}
+	if req.Body.Presence != nil {
+		spec.PersonalRequired = domainPersonalRequired(req.Body.Presence.PersonalRequiredIn)
+	}
 	key, err := a.Keys.Create(ctx, service.Bearer(bearer(ctx)), projectScope(req.Org, req.Project), spec, derefAcks(req.Body.Acknowledgements))
 	if err != nil {
 		return nil, err
@@ -132,7 +135,8 @@ func (a *API) UpdateKeyDeclaration(ctx context.Context, req apigen.UpdateKeyDecl
 	presence := domainPresence(&req.Body.Presence)
 	key, err := a.Keys.UpdateDeclaration(ctx, service.Bearer(bearer(ctx)),
 		projectScope(req.Org, req.Project), req.Key,
-		service.KeyDeclarationUpdate{Declaration: declaration, Presence: presence}, derefAcks(req.Body.Acknowledgements))
+		service.KeyDeclarationUpdate{Declaration: declaration, Presence: presence,
+			PersonalRequired: domainPersonalRequired(req.Body.Presence.PersonalRequiredIn)}, derefAcks(req.Body.Acknowledgements))
 	if err != nil {
 		return nil, err
 	}
@@ -290,6 +294,15 @@ func domainPresence(p *apigen.KeyPresenceRules) schema.PresenceRules {
 	}
 }
 
+// domainPersonalRequired reads an absent personal_required_in as `none`; the
+// service refuses `all` and every other invalid shape.
+func domainPersonalRequired(p *apigen.KeyPresence) schema.Presence {
+	if p == nil {
+		return schema.Presence{Mode: schema.PresenceNone}
+	}
+	return domainPresenceRule(*p)
+}
+
 func domainPresenceRule(p apigen.KeyPresence) schema.Presence {
 	out := schema.Presence{Mode: schema.PresenceMode(p.Mode)}
 	if p.EnvironmentIds != nil {
@@ -310,7 +323,7 @@ func wireKey(key service.Key) apigen.Key {
 		Deprecated:      key.Deprecated,
 		DeprecationNote: key.DeprecationNote,
 		Declaration:     wireDeclaration(key.Declaration),
-		Presence:        wirePresence(key.Presence),
+		Presence:        wireKeyPresence(key),
 		GroupId:         key.GroupID,
 		CreatedAt:       key.CreatedAt,
 	}
@@ -367,6 +380,17 @@ func wirePresence(p schema.PresenceRules) apigen.KeyPresenceRules {
 		RequiredIn:  wirePresenceRule(p.Required),
 		ForbiddenIn: wirePresenceRule(p.Forbidden),
 	}
+}
+
+// wireKeyPresence adds personal_required_in only when it is set, so a key
+// without one reads exactly as before.
+func wireKeyPresence(key service.Key) apigen.KeyPresenceRules {
+	out := wirePresence(key.Presence)
+	if key.PersonalRequired.Mode == schema.PresenceExplicit {
+		personal := wirePresenceRule(key.PersonalRequired)
+		out.PersonalRequiredIn = &personal
+	}
+	return out
 }
 
 func wirePresenceRule(p schema.Presence) apigen.KeyPresence {

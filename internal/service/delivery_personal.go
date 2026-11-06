@@ -18,6 +18,10 @@ const (
 	PersonalDelivered = "value"
 	PersonalWithheld  = "withheld"
 	PersonalNotice    = "notice"
+	// PersonalMissing is a key personal_required_in this environment where
+	// the owner holds no value and no notice. It carries no value and no
+	// reason, and `hikyo run` refuses it.
+	PersonalMissing = "missing"
 )
 
 // Withheld reasons on DeliveredKey.PersonalReason.
@@ -51,7 +55,17 @@ func personalOverlay(ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
 	if err != nil {
 		return nil, nil, err
 	}
-	if len(values) == 0 && len(notices) == 0 {
+	required, err := r.Catalogue().PersonalRequired(ctx, p)
+	if err != nil {
+		return nil, nil, err
+	}
+	requiredHere := map[string]bool{}
+	for _, row := range required {
+		if row.EnvironmentID == string(scope.Env) {
+			requiredHere[row.KeyID] = true
+		}
+	}
+	if len(values) == 0 && len(notices) == 0 && len(requiredHere) == 0 {
 		return rows, manifest, nil
 	}
 	keys, err := r.Catalogue().List(ctx, p)
@@ -127,9 +141,23 @@ func personalOverlay(ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
 		if held[n.KeyName] || !declared || only != nil && !only[key.ID] {
 			continue
 		}
+		held[n.KeyName] = true
 		manifest = append(manifest, delivery.Row{Key: "personal-notice\x00" + n.KeyName, Occurrence: n.Cause + "@" + n.CreatedAt.String()})
 		put(DeliveredKey{KeyID: key.ID, Name: key.Name, Classification: string(schema.Secret), Presence: delivery.PresenceSet,
 			Personal: PersonalNotice, PersonalReason: n.Cause})
+	}
+	// The owner's checklist: a required key with no value and no notice
+	// replaces the shared value with nothing, so `hikyo run` refuses it. Only
+	// a fetch that would carry personal values reports it; a suspended owner
+	// is still told what is missing.
+	if reason == "" || reason == PersonalReasonSuspended {
+		for _, k := range keys {
+			if !requiredHere[k.ID] || held[k.Name] || only != nil && !only[k.ID] {
+				continue
+			}
+			manifest = append(manifest, delivery.Row{Key: "personal-missing\x00" + k.Name, Occurrence: PersonalMissing})
+			put(DeliveredKey{KeyID: k.ID, Name: k.Name, Classification: k.Classification, Presence: delivery.PresenceSet, Personal: PersonalMissing})
+		}
 	}
 	rendered := 0
 	for _, row := range rows {

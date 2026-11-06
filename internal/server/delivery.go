@@ -89,8 +89,12 @@ func (a *API) FetchDelivery(ctx context.Context, req apigen.FetchDeliveryRequest
 			SnapshotReceipt: k.SnapshotReceipt,
 		})
 		if k.Personal != "" {
-			personal, reason := apigen.DeliveredKeyPersonal(k.Personal), k.PersonalReason
-			keys[len(keys)-1].Personal, keys[len(keys)-1].PersonalReason = &personal, &reason
+			personal := apigen.DeliveredKeyPersonal(k.Personal)
+			keys[len(keys)-1].Personal = &personal
+			// `missing` carries no reason, so the member is absent.
+			if reason := k.PersonalReason; reason != "" {
+				keys[len(keys)-1].PersonalReason = &reason
+			}
 		}
 	}
 	out := apigen.FetchDelivery200JSONResponse{
