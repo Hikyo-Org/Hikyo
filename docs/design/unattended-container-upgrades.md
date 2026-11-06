@@ -90,7 +90,10 @@ is admitted. A changed target cannot steal a pending operation or reuse its proo
 2. Acquire the database's exclusive upgrade authority, drain already admitted
    guarded transactions and persist a `backup-preparing` maintenance fence bound
    to the exact source, target and generation. Invalidate old process admission.
-   Release no path that lets old writers resume while backup is prepared.
+   Release no path that lets old writers resume while backup is prepared, except
+   the journal's own source image once its target has stopped before `write-intent`:
+   nothing but this fence reached the database, and the source's boot check lifts it
+   only under that exact condition.
 3. Under that durable fence, export encrypted source state, restore to a separate
    empty same-engine scratch target and verify root/credential recovery. Produce
    the existing receipt and attestation bound to the exact backup and route.
@@ -156,9 +159,15 @@ retains maintenance. Restart can resume only the same authenticated operation
 using its durable source, target and generation; a partially created backup or
 drill cannot become successful evidence merely because the process restarted.
 
+A target that stops before `write-intent` has written only the fence. It marks its
+journal, removes its backup, evidence and scratch, and idles; a process that finds
+that marker idles instead of retrying, so no retry can cross `write-intent` while the
+source is being put back. The source image then lifts the fence under the gate's lock
+and clears the journal. A coordinator may put the source back on any later run.
+
 Once schema writes begin or their outcome is uncertain, preserve the existing
 `restore-required` behavior. Never restore a database, run reverse migrations or
-restart an older image automatically. Failure may require operator recovery;
+restart an older image automatically, apart from that pre-write case. Failure may require operator recovery;
 unattended successful upgrades do not imply unattended recovery from corruption
 or an ambiguous schema write. Disabling the option or rolling back the manifest
 must not evade this state.

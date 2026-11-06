@@ -98,6 +98,81 @@ func TestSocketAllowsTrustedStickyAncestor(t *testing.T) {
 	}
 }
 
+// Kubelet leaves a volume root group-writable (fsGroup). Only the named volume
+// root is exempt, never another ancestor, and its owner is still checked.
+func TestVolumeRootIsTheOnlyExemptWritableAncestor(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	volume := filepath.Join(base, "volume")
+	state := filepath.Join(volume, "state")
+	for _, dir := range []string{volume, state} {
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	socket := filepath.Join(state, "hikyo.sock")
+	for _, mode := range []os.FileMode{0o2775, 0o775, 0o777} {
+		if err := os.Chmod(volume, mode); err != nil {
+			t.Fatal(err)
+		}
+		if err := ValidatePath(socket); err == nil {
+			t.Fatalf("mode %o volume root accepted without being named", mode)
+		}
+		worldWritable := mode&0o002 != 0
+		if err := ValidatePathOnVolume(socket, volume); worldWritable != (err != nil) {
+			t.Fatalf("mode %o volume root: %v", mode, err)
+		}
+		if err := ValidatePathOnWorldWritableVolume(socket, volume); err != nil {
+			t.Fatalf("mode %o volume root refused despite the override: %v", mode, err)
+		}
+		for _, validate := range []func(string, string) error{ValidatePathOnVolume, ValidatePathOnWorldWritableVolume} {
+			if err := validate(socket, filepath.Join(base, "other")); err == nil {
+				t.Fatal("an unrelated volume name exempted the writable ancestor")
+			}
+		}
+	}
+	if err := os.Chmod(volume, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(base, 0o775); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidatePathOnVolume(socket, volume); err == nil {
+		t.Fatal("a writable ancestor above the volume root was exempted")
+	}
+}
+
+// A world-writable volume root without the sticky bit lets another local user
+// rename the state directory, so it needs the explicit override; sticky does not.
+func TestWorldWritableVolumeRootNeedsTheOverride(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	volume := filepath.Join(base, "volume")
+	state := filepath.Join(volume, "state")
+	for _, dir := range []string{volume, state} {
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	socket := filepath.Join(state, "hikyo.sock")
+	if err := os.Chmod(volume, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidatePathOnVolume(socket, volume); err == nil || !strings.Contains(err.Error(), "accept_world_writable_volume_root") || !strings.Contains(err.Error(), "chmod o-w") {
+		t.Fatalf("world-writable volume root error = %v", err)
+	}
+	if err := os.Chmod(volume, 0o777|os.ModeSticky); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidatePathOnVolume(socket, volume); err != nil {
+		t.Fatalf("sticky world-writable volume root refused: %v", err)
+	}
+}
+
 func TestSocketRefusesHiddenReplaceableSymlinkHop(t *testing.T) {
 	base := t.TempDir()
 	safe := filepath.Join(base, "safe")

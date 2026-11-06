@@ -39,7 +39,7 @@ func readRootKeyFile(path string) ([]byte, error) {
 	if !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("%w: %s is not a regular file", ErrRootKeyPerms, path)
 	}
-	if info.Mode().Perm()&0o077 != 0 {
+	if info.Mode().Perm()&0o077 != 0 && !aclGrantsOnlyCurrentUser(file) {
 		return nil, fmt.Errorf("%w: %s is mode %04o", ErrRootKeyPerms, path, info.Mode().Perm())
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)

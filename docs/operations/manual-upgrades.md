@@ -164,6 +164,12 @@ durability. An ephemeral volume or unrelated per-pod directory is unsuitable.
 
 ## Fresh native installation
 
+This is the manual procedure: the operator key stays on separate custody and updates
+are manual. A new host that should receive automatic security updates follows the
+[Native recipe](security-maintenance.md#native) instead, which keeps a root-wrapped
+local vault. A host installed this way is not adopted by that recipe later, because
+its pinned key is held elsewhere: it stays on this procedure.
+
 Set actual paths and the already configured production datastore. These
 variables contain public paths; the DSN remains in the operator's protected
 environment configuration.
@@ -278,6 +284,9 @@ docker compose --env-file /etc/hikyo/compose.env -f install/compose/server.yaml 
 For populated Compose upgrades set the evidence paths to the container paths
 `/run/hikyo-upgrade/evidence` and `/run/hikyo-upgrade/backup.age`. This is a manual
 sequence; never configure automatic old-image rollback after possible SQL writes.
+The security-maintenance coordinator is the one exception on Compose,
+Kubernetes and native: it restores its own fenced backup, and nothing else (see
+[security maintenance](security-maintenance.md)).
 
 For Helm, prepopulate separate PVCs with the public directory and installation
 state. Provision the state PVC root with group 65532 and mode **2770**, including
