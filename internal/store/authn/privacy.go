@@ -233,6 +233,12 @@ func (r *Resolver) ErasePrivacyAccount(ctx context.Context, account, principal, 
 			return 0, err
 		}
 	}
+	// Pending email invitations bound to the account go with it (#1207).
+	if !r.historicalRecoveryBeforeEmailInvitations {
+		if err := r.eraseOrgEmailInvitations(ctx, account); err != nil {
+			return err
+		}
+	}
 	// Member access rules go with the grants: an erased principal keeps no
 	// standing authority of either kind.
 	if !r.historicalRecoveryBeforeRules {

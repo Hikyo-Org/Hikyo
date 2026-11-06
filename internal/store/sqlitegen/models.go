@@ -1010,6 +1010,19 @@ type Org struct {
 	IdentityImageVersion   sql.NullString
 }
 
+type OrgEmailInvitation struct {
+	ID                 string
+	OrgID              string
+	Email              string
+	Template           string
+	InviterPrincipalID string
+	AccountID          sql.NullString
+	TokenVerifier      []byte
+	CredentialEpoch    int64
+	CreatedAt          string
+	ExpiresAt          string
+}
+
 type PasswordCredential struct {
 	AccountID       string
 	Verifier        []byte

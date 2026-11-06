@@ -397,6 +397,8 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// 00085: a customised hue, mark or uploaded image is operator evidence.
 		"SELECT COUNT(*) FROM orgs WHERE identity_hue <> 195 OR identity_mark IS NOT NULL OR identity_image IS NOT NULL OR identity_image_type IS NOT NULL OR identity_image_version IS NOT NULL",
 		"SELECT COUNT(*) FROM projects WHERE identity_hue <> 195 OR identity_mark IS NOT NULL OR identity_image IS NOT NULL OR identity_image_type IS NOT NULL OR identity_image_version IS NOT NULL",
+		// 00087 (email invitations): a pending invitation is operator evidence.
+		"SELECT COUNT(*) FROM org_email_invitations",
 		// 00057 (social sign-in): nothing registration-shaped may be discarded,
 		// and the sqlite sessions restore below cascades into reauth windows.
 		"SELECT COUNT(*) FROM registration_policies",
@@ -452,6 +454,8 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate, PKI, temporary-access, file-target, member-access-rule or manual-pairing evidence", query, err)
 		}
 	}
+	// Reverse 00087 only after proving no pending email invitation is discarded.
+	drillExec(t, db, "DROP TABLE org_email_invitations")
 	// Reverse 00086 only after proving no personal value or notice is
 	// discarded. Its developer_credentials column goes with that table below.
 	drillExec(t, db, "DROP TABLE key_personal_required_environments")
