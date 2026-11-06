@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"text/template"
 	"time"
 
@@ -27,8 +28,39 @@ import (
 // (docs/spec/email-invitations.md D5, the ops-spec invitation expiry).
 const EmailInvitationLifetime = 7 * 24 * time.Hour
 
-// emailInvitationMailConcurrency bounds the background sends in flight.
-const emailInvitationMailConcurrency = 4
+// emailInvitationOutcomeTimeout bounds the outcome write of one send, which
+// also runs while the process is stopping.
+const emailInvitationOutcomeTimeout = 5 * time.Second
+
+// MailSends is the owner-level home of the background sends. It outlives the
+// generations that start them, so a replaced generation's late send is still
+// joined, cancelled and counted. Concurrency is bounded by the per-organisation
+// send budget, never by a drop.
+type MailSends struct {
+	wg     sync.WaitGroup
+	ctx    context.Context
+	cancel context.CancelFunc
+	failed atomic.Int64
+}
+
+// NewMailSends returns an empty set of background sends.
+func NewMailSends() *MailSends {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &MailSends{ctx: ctx, cancel: cancel}
+}
+
+// Failures is the number of sends that failed or were cancelled.
+func (m *MailSends) Failures() float64 { return float64(m.failed.Load()) }
+
+// Wait blocks until every send started so far has recorded its outcome.
+func (m *MailSends) Wait() { m.wg.Wait() }
+
+// Stop cancels the in-flight mail attempts, then waits for their failure
+// outcomes to be recorded.
+func (m *MailSends) Stop() {
+	m.cancel()
+	m.wg.Wait()
+}
 
 // EmailInvitations owns the email invitation of an existing account (#1207).
 // The send never contacts the mail server inside the request: it writes the
@@ -44,22 +76,28 @@ type EmailInvitations struct {
 	// predicate and the transport.
 	Mail   func(context.Context) (*runtimeconfig.Bundle, error)
 	Budget *Budget
-	// MailFailed counts a lost or failed background send.
-	MailFailed func()
+	// Sends is the owner-level set of background sends; nil uses a private one.
+	Sends *MailSends
 	// Log reports an outcome that could not be recorded; nil uses slog.Default.
 	Log *slog.Logger
 
-	semOnce sync.Once
-	sem     chan struct{}
-	sends   sync.WaitGroup
+	sendsOnce sync.Once
+}
+
+func (s *EmailInvitations) mailSends() *MailSends {
+	s.sendsOnce.Do(func() {
+		if s.Sends == nil {
+			s.Sends = NewMailSends()
+		}
+	})
+	return s.Sends
 }
 
 func (s *EmailInvitations) now() time.Time { return nowOr(s.Now) }
 
 // WaitForMail blocks until every background send started so far has finished
-// and recorded its outcome. The generation calls it on stop, before the
-// database closes; tests use it to observe outcomes.
-func (s *EmailInvitations) WaitForMail() { s.sends.Wait() }
+// and recorded its outcome; tests use it to observe outcomes.
+func (s *EmailInvitations) WaitForMail() { s.mailSends().Wait() }
 
 // EmailInvitationSendSpec is one send.
 type EmailInvitationSendSpec struct {
@@ -232,32 +270,28 @@ var emailInvitationMail = template.Must(template.ParseFS(signupMailTemplates, "m
 // been answered by the time it matters: a lost send is recorded and counted,
 // never reported to the administrator.
 func (s *EmailInvitations) dispatch(ctx context.Context, receipt EmailInvitationReceipt, intent, orgName, token string, matched bool) {
-	s.semOnce.Do(func() { s.sem = make(chan struct{}, emailInvitationMailConcurrency) })
+	sends := s.mailSends()
 	detached := context.WithoutCancel(ctx)
-	var fullErr error
-	if matched {
-		select {
-		case s.sem <- struct{}{}:
-		default:
-			fullErr = errors.New("service: email invitation mail concurrency exhausted")
-		}
-	}
-	s.sends.Add(1)
+	sends.wg.Add(1)
 	go func() {
-		defer s.sends.Done()
+		defer sends.wg.Done()
 		sent := false
-		sendErr := fullErr
-		if matched && fullErr == nil {
+		var sendErr error
+		if matched {
+			// Every send gets its own attempt: a matched send in flight changes
+			// nothing about whether others are attempted. The per-organisation
+			// send budget, charged before the transaction, bounds how many.
 			sendCtx, cancel := context.WithTimeout(detached, mail.SendTimeout)
+			stopCancel := context.AfterFunc(sends.ctx, cancel)
 			sendErr = s.deliver(sendCtx, receipt, orgName, token)
+			stopCancel()
 			cancel()
-			<-s.sem
 			sent = sendErr == nil
 		}
-		if sendErr != nil && s.MailFailed != nil {
-			s.MailFailed()
+		if sendErr != nil {
+			sends.failed.Add(1)
 		}
-		outcomeCtx, stop := context.WithTimeout(detached, mail.SendTimeout)
+		outcomeCtx, stop := context.WithTimeout(detached, emailInvitationOutcomeTimeout)
 		defer stop()
 		err := tx.Write(outcomeCtx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 			status := audit.OutcomeSuccess

@@ -24,6 +24,7 @@ type ownerRuntime struct {
 	selfConfig   *service.SelfConfig
 	budget       *service.Budget
 	refusals     *service.RefusalSignals
+	emailSends   *service.MailSends
 	fakeProvider *devFakeProvider
 	advisory     *service.Advisory
 	haCoord      *store.Coordination
@@ -116,10 +117,11 @@ func (o *ownerRuntime) stop() {
 		<-g.workersDone
 	}
 	g.requests.Wait()
-	// Detached email invitation sends outlive their requests; the database
-	// closes only after they record their outcomes.
-	if g.graph.emailInvitations != nil {
-		g.graph.emailInvitations.WaitForMail()
+	// Detached email invitation sends outlive their requests and their
+	// generation: cancel the in-flight attempts and wait for their failure
+	// outcomes before the database closes.
+	if o.emailSends != nil {
+		o.emailSends.Stop()
 	}
 	g.graph.closeIdleConnections()
 }

@@ -48,7 +48,6 @@ type applicationGeneration struct {
 	sshSweeper                        *sshSweeper
 	pkiWorker                         *pkiWorker
 	updateReconciler                  *service.Updates
-	emailInvitations                  *service.EmailInvitations
 }
 
 // prepareGeneration constructs the graph without serving, starting workers,
@@ -268,9 +267,15 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	}
 	authSvc.EnableLocalSignup(selfConfig.Capture)
 	authSvc.MailFailed = metrics.RecordSignupMailFailure
+	// Sends outlive the generation that started them, so the join, the
+	// cancellation and the failure count are the owner's, like the refusals.
+	if owner.emailSends == nil {
+		owner.emailSends = service.NewMailSends()
+	}
+	metrics.SetEmailInvitationFailureSource(owner.emailSends.Failures)
 	emailInvitationsSvc := &service.EmailInvitations{
 		DB: db, ExternalOrigin: cfg.ExternalOrigin, Mail: selfConfig.Capture,
-		Budget: budget, Log: log, MailFailed: metrics.RecordEmailInvitationMailFailure,
+		Budget: budget, Log: log, Sends: owner.emailSends,
 	}
 	api := &server.API{
 		Mail:     &service.InstanceMail{DB: db, Auth: authSvc, Capture: selfConfig.Capture},
@@ -425,13 +430,12 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	// Construct the complete owner before disarming: future fallible work added
 	// to construction stays inside the guard's protection.
 	srv := &applicationGeneration{
-		cfg:              cfg,
-		auth:             authSvc,
-		limiter:          limiter,
-		retention:        retentionSvc,
-		refusals:         refusals,
-		certificate:      certificate,
-		emailInvitations: emailInvitationsSvc,
+		cfg:         cfg,
+		auth:        authSvc,
+		limiter:     limiter,
+		retention:   retentionSvc,
+		refusals:    refusals,
+		certificate: certificate,
 		closeIdleConnections: func() {
 			updateHTTP.CloseIdleConnections()
 			if postgresStorage != nil {

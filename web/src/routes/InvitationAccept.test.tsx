@@ -62,7 +62,7 @@ describe('InvitationAccept', () => {
       expect(mocks.preview).toHaveBeenCalledWith('eit_secret');
       const text = view.container.textContent ?? '';
       for (const shown of ['Acme', 'editor']) expect(text).toContain(shown);
-      expect(text).toContain('signs you out on every device');
+      expect(text).toContain('you will be signed out on every device');
       expect(text).toContain('developer credentials');
       expect(text).toContain('administrators can reset your sign-in');
       expect(mocks.accept).not.toHaveBeenCalled();
