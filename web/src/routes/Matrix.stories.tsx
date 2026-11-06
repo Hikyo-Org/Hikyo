@@ -672,6 +672,61 @@ export const CellMarks: Story = {
   },
 };
 
+// Shared by the 360px and 320px stories below.
+async function expectLegendStaysOnScreen(canvasElement: HTMLElement): Promise<void> {
+  const toggle = await waitFor(() => {
+    const found = canvasElement.querySelector<HTMLElement>('.matrix__legend-toggle');
+    if (found === null || canvasElement.querySelector('.matrix__table thead th:first-child') === null) throw new Error('matrix not rendered');
+    return found;
+  });
+  // In the demo the head wraps and the toggle lands at the row's left; the story's head does not, so put it there.
+  toggle.closest<HTMLElement>('.matrix__legend')!.style.order = '-1';
+  // The shell pads the page 10px a side (the story has no chrome to do it): the popover anchors to that card and stays inside it.
+  const card = toggle.closest<HTMLElement>('.matrix')!;
+  card.style.marginInline = '10px';
+  await userEvent.click(toggle);
+  const body = canvasElement.querySelector<HTMLElement>('.matrix__legend-body')!;
+  const box = body.getBoundingClientRect();
+  // ... and is still a popover you can read, not squeezed to the toggle's width.
+  await expect(box.width).toBeGreaterThanOrEqual(200);
+  await expect(box.left).toBeGreaterThanOrEqual(card.getBoundingClientRect().left);
+  await expect(box.right).toBeLessThanOrEqual(card.getBoundingClientRect().right);
+  // Every description's text fits its column, not just the box around them.
+  for (const dd of body.querySelectorAll<HTMLElement>('dd')) {
+    const range = document.createRange();
+    range.selectNodeContents(dd);
+    await expect(range.getBoundingClientRect().right).toBeLessThanOrEqual(dd.getBoundingClientRect().right + 0.5);
+    await expect(dd.getBoundingClientRect().width).toBeGreaterThanOrEqual(100);
+  }
+  // Where it sits over the sticky key column, the popover is what is on top.
+  const covered = [...canvasElement.querySelectorAll<HTMLElement>('.matrix__table :is(th, td):first-child')].flatMap((cell) => {
+    const r = cell.getBoundingClientRect();
+    const [left, right, top, bottom] = [Math.max(r.left, box.left), Math.min(r.right, box.right), Math.max(r.top, box.top), Math.min(r.bottom, box.bottom, window.innerHeight - 1)];
+    return left < right && top < bottom ? [{ x: (left + right) / 2, y: (top + bottom) / 2 }] : [];
+  });
+  await expect(covered.length).toBeGreaterThan(0);
+  for (const { x, y } of covered) await expect(body.contains(document.elementFromPoint(x, y))).toBe(true);
+}
+
+// The legend opens as a popover under its toggle. On the narrowest phone the
+// toggle sits at the left of the head, and a popover anchored to it ran off the
+// left edge; it also opened under the sticky key heading it overlaps.
+export const PhoneLegendStaysOnScreen: Story = {
+  globals: { viewport: { value: 'phoneNarrow', isRotated: false } },
+  play: async ({ canvasElement }) => {
+    await expectLegendStaysOnScreen(canvasElement);
+  },
+};
+
+// The narrowest phone (320px) has 40px less room than 360: the same checks.
+export const PhoneLegendStaysOnScreenMinimum: Story = {
+  parameters: { viewport: { options: { phone320: { name: 'Phone 320', styles: { width: '320px', height: '640px' }, type: 'mobile' } } } },
+  globals: { viewport: { value: 'phone320', isRotated: false } },
+  play: async ({ canvasElement }) => {
+    await expectLegendStaysOnScreen(canvasElement);
+  },
+};
+
 // A phone: the sticky key column drops to the touch target, one
 // glyph per key; the name moves into a tap/hover popover anchored to the icon,
 // and the envs picker moves out of the now icon-only header into the head row.

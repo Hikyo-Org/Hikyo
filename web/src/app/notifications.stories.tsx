@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useEffect } from 'react';
 import { expect, userEvent, waitFor } from 'storybook/test';
 
+import { safeArea } from '../../.storybook/layout.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 import {
   ToastViewport,
@@ -70,5 +71,20 @@ export const Dismisses: Story = {
     await expect(canvasElement.querySelector('.toast')).not.toBeNull();
     await userEvent.click(canvas.getByRole('button', { name: /dismiss notification/i }));
     await waitFor(() => expect(canvasElement.querySelector('.toast')).toBeNull());
+  },
+};
+
+// A notched phone: the toast sits below the notch and inside the side strips.
+const NOTCH = { top: 47, right: 20, bottom: 34, left: 30 };
+export const ClearsSafeArea: Story = {
+  render: () => <Emit kind="success" />,
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  beforeEach: () => safeArea(NOTCH),
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(canvasElement.querySelector('.toast')).not.toBeNull());
+    const box = canvasElement.querySelector('.toast')!.getBoundingClientRect();
+    await expect(box.top).toBeGreaterThanOrEqual(NOTCH.top);
+    await expect(window.innerWidth - box.right).toBeGreaterThanOrEqual(NOTCH.right);
+    await expect(box.left).toBeGreaterThanOrEqual(NOTCH.left);
   },
 };
