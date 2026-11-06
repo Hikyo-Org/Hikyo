@@ -207,6 +207,10 @@ func TestInvariant06OperationRegistryCompleteness(t *testing.T) {
 		// an operator rotation uses, behind the same DEK writer fence.
 		authz.StoreTransitVersionsAppend:      true,
 		authz.StoreKeysAssertActiveDEKVersion: true,
+		// Personal values (#1235): the retention sweep leaves the owner a
+		// retention notice through the same names-only door an operator
+		// deletion or a cascade uses.
+		authz.StorePersonalValueNoticesRecord: true,
 	}
 	seenShared := map[authz.StoreOp]bool{}
 	for method := range expected {

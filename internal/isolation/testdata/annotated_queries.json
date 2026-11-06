@@ -867,6 +867,13 @@
   },
   {
     "engine": "postgres",
+    "name": "DeletePersonalValuesForOwner",
+    "annotation": "authn-resolution",
+    "hash": "afa087bcf2664e48cc8d26b858b32c2317488abb60853f6c180a741856af0473",
+    "reason": "Losing qualification through a credential change must delete the owner's values in that same authentication transaction, across every project, before any new factor can be enrolled (personal-values ADR, Which accounts qualify); the statement is keyed on the account's own principal and reads no ciphertext."
+  },
+  {
+    "engine": "postgres",
     "name": "DeletePinGenerationsForPrincipal",
     "annotation": "authn-resolution",
     "hash": "aa40a887b65a58f80f2ca8d3ea60fa87f5d88865b21bcd08c8354b93b8470bcc"
@@ -1051,7 +1058,7 @@
     "engine": "postgres",
     "name": "DeveloperCredentialByVerifier",
     "annotation": "authn-resolution",
-    "hash": "13064116243d31fd5d4fdecce9fdc7696e0b93a65511dc22360abe29354723d2",
+    "hash": "40ed9bca1d6c981168704815c569654b3b86a8224d02c39c7557beb44e4f2e25",
     "reason": "Authentication resolves the presented verifier before any authorization proof can exist."
   },
   {
@@ -1611,7 +1618,7 @@
     "engine": "postgres",
     "name": "InsertDeveloperCredential",
     "annotation": "authn-resolution",
-    "hash": "605f62cca774bfc7e45e4a8a22e259b7e2c9f715bdc8c1b31eec134ab41203ad",
+    "hash": "b33f36b6de47a154a93cdc5d9d401cbff66e6694a0c03c36f7c7535201689330",
     "reason": "Mint authenticated human delegation only after exact scope-bound reauthentication and tenant authorization in this transaction."
   },
   {
@@ -1879,7 +1886,7 @@
     "engine": "postgres",
     "name": "ListDeveloperCredentials",
     "annotation": "authn-resolution",
-    "hash": "5540825ba5ba33f32fdaf7ff60606953829a95de8fbf37a1c1377961e9f0d694",
+    "hash": "1b66c19a1916d1522bcb2179a5107c7d399a5631d225fd6cd6ee9c8554f4bb70",
     "reason": "Transaction-local lifecycle administration filters this metadata after self or project authorization; no bearer can be recovered."
   },
   {
@@ -2857,6 +2864,13 @@
     "name": "ReconcilePrincipal",
     "annotation": "authn-resolution",
     "hash": "ef38161256d15ae1edbe86469e611bdade74d77f20bd74f196fd1fd6370de983"
+  },
+  {
+    "engine": "postgres",
+    "name": "RecordPersonalValueNoticesForOwner",
+    "annotation": "authn-resolution",
+    "hash": "83bb4b9f7bfa66eec477d8f341e91dc163a498dec41dd577a2e7b3c99b664101",
+    "reason": "Losing qualification through a credential change must delete the owner's values in that same authentication transaction, across every project, before any new factor can be enrolled (personal-values ADR, Which accounts qualify); the statement is keyed on the account's own principal and copies names only."
   },
   {
     "engine": "postgres",
@@ -4356,6 +4370,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "DeletePersonalValuesForOwner",
+    "annotation": "authn-resolution",
+    "hash": "afa087bcf2664e48cc8d26b858b32c2317488abb60853f6c180a741856af0473",
+    "reason": "Losing qualification through a credential change must delete the owner's values in that same authentication transaction, across every project, before any new factor can be enrolled (personal-values ADR, Which accounts qualify); the statement is keyed on the account's own principal and reads no ciphertext."
+  },
+  {
+    "engine": "sqlite",
     "name": "DeletePinGenerationsForPrincipal",
     "annotation": "authn-resolution",
     "hash": "d87bf91f91059b8857871595ac328df666b46c58101615c5016cdb74e2f08e12"
@@ -4540,7 +4561,7 @@
     "engine": "sqlite",
     "name": "DeveloperCredentialByVerifier",
     "annotation": "authn-resolution",
-    "hash": "914282a5fb1b3f6b3c74264f51cbf84dd029213b4439842bf8f7b1d9c24d98e2",
+    "hash": "5eb866cf6e0bc61b3c74e4dc2f820abc5c9b92ddbdf688c5a0516538ecda0757",
     "reason": "Authentication resolves the presented verifier before any authorization proof can exist."
   },
   {
@@ -5100,7 +5121,7 @@
     "engine": "sqlite",
     "name": "InsertDeveloperCredential",
     "annotation": "authn-resolution",
-    "hash": "6e4808916e9797910f8a98379345b675f4018f50f1db23abae5054d5d0c5ec01",
+    "hash": "99cb7e356db91e7bdd063905089a4eb78ae93d48c1d0442873d4516c6b77f40e",
     "reason": "Mint authenticated human delegation only after exact scope-bound reauthentication and tenant authorization in this transaction."
   },
   {
@@ -5368,7 +5389,7 @@
     "engine": "sqlite",
     "name": "ListDeveloperCredentials",
     "annotation": "authn-resolution",
-    "hash": "5540825ba5ba33f32fdaf7ff60606953829a95de8fbf37a1c1377961e9f0d694",
+    "hash": "1b66c19a1916d1522bcb2179a5107c7d399a5631d225fd6cd6ee9c8554f4bb70",
     "reason": "Transaction-local lifecycle administration filters this metadata after self or project authorization; no bearer can be recovered."
   },
   {
@@ -6346,6 +6367,13 @@
     "name": "ReconcilePrincipal",
     "annotation": "authn-resolution",
     "hash": "66ba2d7daadf156ad869f16ead2c023b833f5605b1680a7bd13005f13677f30e"
+  },
+  {
+    "engine": "sqlite",
+    "name": "RecordPersonalValueNoticesForOwner",
+    "annotation": "authn-resolution",
+    "hash": "83bb4b9f7bfa66eec477d8f341e91dc163a498dec41dd577a2e7b3c99b664101",
+    "reason": "Losing qualification through a credential change must delete the owner's values in that same authentication transaction, across every project, before any new factor can be enrolled (personal-values ADR, Which accounts qualify); the statement is keyed on the account's own principal and copies names only."
   },
   {
     "engine": "sqlite",

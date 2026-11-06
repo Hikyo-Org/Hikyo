@@ -1254,10 +1254,10 @@ const (
 	StorePersonalValuesDeleteForEnv  StoreOp = "personalvalues.DeleteForEnvironment"
 	StorePersonalValuesReencryptList StoreOp = "personalvalues.ListForReencrypt"
 	StorePersonalValuesReencrypt     StoreOp = "personalvalues.Reencrypt"
-	StorePersonalValueNoticesListOwn StoreOp = "personalvaluenotices.ListOwn"
-	StorePersonalValueNoticesDismiss StoreOp = "personalvaluenotices.DismissOwn"
-	StorePersonalValueNoticesForKey  StoreOp = "personalvaluenotices.ForKeyName"
-	StorePersonalValueNoticesRecord  StoreOp = "personalvaluenotices.Record"
+	StorePersonalValueNoticesListOwn StoreOp = "personalvalues.NoticesOwn"
+	StorePersonalValueNoticesDismiss StoreOp = "personalvalues.DismissNotice"
+	StorePersonalValueNoticesForKey  StoreOp = "personalvalues.NoticesForKeyName"
+	StorePersonalValueNoticesRecord  StoreOp = "personalvalues.RecordNotice"
 	// Matrix counts and the offboarding report (#1235): counts, key names,
 	// environment ids and timestamps, never a value or an audit payload.
 	StorePersonalReportCounts     StoreOp = "personalreport.Counts"

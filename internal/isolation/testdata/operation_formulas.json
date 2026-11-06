@@ -1300,6 +1300,73 @@
     ]
   },
   {
+    "operation": "personal-value.counts",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "manage-members@project"
+    ]
+  },
+  {
+    "operation": "personal-value.delete",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ]
+  },
+  {
+    "operation": "personal-value.delete-member",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "manage-members@project"
+    ]
+  },
+  {
+    "operation": "personal-value.list",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ]
+  },
+  {
+    "operation": "personal-value.members",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "manage-members@project"
+    ]
+  },
+  {
+    "operation": "personal-value.offboarding-report",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-members@project",
+      "audit-read@project"
+    ]
+  },
+  {
+    "operation": "personal-value.reveal",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment",
+      "reveal@environment"
+    ]
+  },
+  {
+    "operation": "personal-value.set",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment",
+      "reveal@environment"
+    ]
+  },
+  {
     "operation": "pin.list",
     "class": "tenant",
     "level": "environment",
