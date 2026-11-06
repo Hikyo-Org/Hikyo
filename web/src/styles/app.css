@@ -3399,28 +3399,29 @@ fieldset.field > legend {
      assistive technology and hidden from sight (it names columns that no
      longer exist), and a table role stays with the element. Scoped by the
      page's own root (`.values`): `machine__table` shares the cell classes and
-     keeps its columns. */
-  .values .values__table {
+     keeps its columns. Another key-per-row table with a row-header key and an
+     Actions cell takes the same card layout with `.table--cards`. */
+  :is(.values .values__table, .table--cards) {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     grid-auto-flow: row dense;
   }
 
-  .values .values__table :is(thead, tbody, tr) {
+  :is(.values .values__table, .table--cards) :is(thead, tbody, tr) {
     display: contents;
   }
 
-  .values .values__table tbody :is(th, td) {
+  :is(.values .values__table, .table--cards) tbody :is(th, td) {
     grid-column: 1 / -1;
   }
 
-  .values .values__table tbody th {
+  :is(.values .values__table, .table--cards) tbody th {
     grid-column: 1;
     border-bottom: 0;
   }
 
   /* `dense` puts the Actions beside the key, in the line the key opened. */
-  .values .values__table tbody td:has(> .actions) {
+  :is(.values .values__table, .table--cards) tbody td:has(> .actions) {
     grid-column: 2;
     border-bottom: 0;
   }
@@ -3455,7 +3456,7 @@ fieldset.field > legend {
 
   /* Reveal and Copy stack, so the Actions track is one button wide and the
      key keeps the rest of the line; a lone Copy fills the same track. */
-  .values .values__table td .actions {
+  :is(.values .values__table, .table--cards) td .actions {
     display: grid;
     grid-template-columns: 1fr;
   }

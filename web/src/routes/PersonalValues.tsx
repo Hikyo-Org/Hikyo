@@ -258,7 +258,7 @@ function PersonalSurface({ env }: { env: EnvRef }) {
       ) : null}
       {entries.length === 0 ? null : (
         <div className="table-scroll">
-          <table className="personal-values__table">
+          <table className="table--cards">
             <caption className="visually-hidden">Your personal values, masked until you reveal one.</caption>
             <thead>
               <tr>

@@ -161,11 +161,17 @@ export const ProtectedEnvironment: Story = {
   },
 };
 
-// The same page on a phone: the table scrolls inside its wrapper, never the page.
+// The same page on a phone: a card per key, as on Values, so every action is in
+// reach without scrolling sideways, and the page never scrolls sideways either.
 export const Phone: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ canvas }) => {
-    await expect(await canvas.findByRole('button', { name: 'Reveal DATABASE_URL' })).toBeVisible();
+    const reveal = await canvas.findByRole('button', { name: 'Reveal DATABASE_URL' });
+    await expect(reveal).toBeVisible();
     await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(document.documentElement.clientWidth);
+    const scroller = reveal.closest('.table-scroll');
+    if (!(scroller instanceof HTMLElement)) throw new Error('table wrapper missing');
+    await expect(scroller.scrollWidth).toBeLessThanOrEqual(scroller.clientWidth);
+    await expect(reveal.getBoundingClientRect().right).toBeLessThanOrEqual(scroller.getBoundingClientRect().right);
   },
 };
