@@ -22,14 +22,16 @@ type ReauthIntent struct {
 	keyIDs            []string
 	keySet            string
 	environmentSet    string
-	// possessionOnly refuses windows an identity provider opened: the
-	// window consumed must come from a passkey or authenticator app.
+	// possessionOnly refuses windows an identity provider opened unless the
+	// account qualifies federatively (admitFederatedPersonalWindow); otherwise
+	// the window consumed must come from a passkey or authenticator app.
 	possessionOnly bool
 }
 
 // requiringPossession returns the intent restricted to passkey and
-// authenticator windows (personal values: a standing possession factor is
-// what keeps an identity-provider administrator out).
+// authenticator windows, plus identity-provider windows of a passwordless,
+// factorless account that qualifies federatively (personal values: a standing
+// possession factor is what keeps an identity-provider administrator out).
 func (i ReauthIntent) requiringPossession() ReauthIntent {
 	i.possessionOnly = true
 	return i
