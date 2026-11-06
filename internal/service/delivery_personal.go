@@ -97,6 +97,8 @@ func personalOverlay(ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
 		}
 		// A file target's selection (#164) bounds the overlay as it bounds the
 		// shared rows. A personal-only key has no shared row and still crosses.
+		// File targets bind service accounts, so for a developer credential
+		// `only` is normally nil; the bound is defensive.
 		if only != nil && !only[key.ID] {
 			continue
 		}

@@ -148,12 +148,12 @@ func (s *Auth) consumeReauthWindow(ctx context.Context, az *authz.TxAuthorizer, 
 	if w.CredentialEpoch != epoch || !now.Before(w.HardExpiresAt) || !now.Before(w.WindowExpiresAt) {
 		return ErrReauthWindowExpired
 	}
-	// Classify all four persisted columns together before applying the mode's
-	// policy. A partial row cannot fall through as an unbound window.
 	// Checked on the very row this decision consumes.
 	if binding.possessionOnly && w.FactorClass != "webauthn" && w.FactorClass != "totp" {
 		return ErrPersonalFactorRequired
 	}
+	// Classify all four persisted columns together before applying the mode's
+	// policy. A partial row cannot fall through as an unbound window.
 	kind, windowBinding, err := windowBindingKind(w)
 	if err != nil {
 		return err
