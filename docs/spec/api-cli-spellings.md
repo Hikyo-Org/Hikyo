@@ -319,6 +319,17 @@ hikyo instance-config oauth2-provider delete  <slug>
 
 REST: `GET|PUT|DELETE /api/v1/instance/oauth2-providers/{slug}`, `GET /api/v1/instance/oauth2-providers`. Put validates the origin (`https`, host only, no path or query) and the profile; runs no discovery.
 
+### Email invitation of an existing account ([email-invitations.md](./email-invitations.md), #1207)
+
+```
+hikyo access invitation send   <email> --template T [--org <org>] [-o table|json]
+hikyo access invitation list   [--org <org>] [-o table|json]
+hikyo access invitation revoke <id> [--org <org>]
+hikyo access invitation accept [--yes] [-o table|json]     # token or full link on standard input
+```
+
+REST: `POST|GET /api/v1/orgs/{org}/email-invitations`, `DELETE /api/v1/orgs/{org}/email-invitations/{invitation}`, `POST /api/v1/me/invitations/preview|accept`. `accept` never takes the token as an argument (argv reaches shell history and process lists); it reads the bare token or the link `.../invitations/accept#token=...` from standard input, previews, and asks for confirmation on the terminal unless `--yes`. When the response has `signed_out: true` it deletes the stored session and tells the person to run `hikyo login`. Human session only.
+
 ### Registration policy (one per scope; `manage-members` at that scope ∧ reauth on write)
 
 ```

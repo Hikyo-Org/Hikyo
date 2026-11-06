@@ -449,6 +449,10 @@ access:
   hikyo access member list [--org O] [--project P] [-o table|json]
   hikyo access member invite <username> [--display-name NAME] [--template T] [--org O | --instance-scope] [--output-file PATH | --dangerously-print]
   hikyo access member remove --principal <id>
+  hikyo access invitation send <email> --template T [--org O] [-o table|json]
+  hikyo access invitation list [--org O] [-o table|json]
+  hikyo access invitation revoke <id> [--org O]
+  hikyo access invitation accept [--yes] [-o table|json]   (token or link on standard input)
   hikyo access registration show [--org O | --instance-scope] [-o table|json]
   hikyo access registration set [--org O | --instance-scope] --file <policy.json>
   hikyo access registration delete [--org O | --instance-scope]
