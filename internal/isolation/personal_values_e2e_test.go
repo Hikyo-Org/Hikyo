@@ -3,6 +3,7 @@ package isolation
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -500,6 +501,39 @@ func TestPersonalValueSameNameRenameKeepsAndEnvironmentDeleteAudits(t *testing.T
 		}
 		if queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE type='personal_value.deleted'`) != 1 {
 			t.Fatal("environment delete did not audit the personal value loss")
+		}
+	})
+}
+
+// The owner's personal values have their own render cap: shared bytes never
+// count against it, and personal bytes over it refuse the fetch with a
+// personal-specific detail.
+func TestPersonalValueRenderCapCountsOnlyPersonalValues(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		e := personalFixture(t, db, "personal-cap")
+		ctx := t.Context()
+		const short = "pv-cap" // shorter than the seeded shared values
+		e.setOwn(t, ceremonySecretA, e.keyA, short)
+		minted, _ := mintDeveloper(t, db, &e.ceremonyEnv, time.Hour, true)
+		del := deliverySvc(t, db)
+		del.MaxPersonalRenderBytes = len(short)
+		got, err := del.Fetch(ctx, minted.Value, envScope(envA1), "", service.FetchOptions{})
+		if err != nil {
+			t.Fatalf("personal bytes at the cap: %v", err)
+		}
+		shared := 0
+		for _, k := range got.Keys {
+			if k.Personal == "" && k.Value != nil {
+				shared += len(*k.Value)
+			}
+		}
+		if shared <= del.MaxPersonalRenderBytes {
+			t.Fatalf("fixture: shared bytes %d must exceed the personal cap to prove they are not counted", shared)
+		}
+		del.MaxPersonalRenderBytes = len(short) - 1
+		if _, err := del.Fetch(ctx, minted.Value, envScope(envA1), "", service.FetchOptions{}); !errors.Is(err, domain.ErrInvalid) ||
+			!strings.Contains(err.Error(), "personal values") {
+			t.Fatalf("personal bytes over the cap = %v", err)
 		}
 	})
 }

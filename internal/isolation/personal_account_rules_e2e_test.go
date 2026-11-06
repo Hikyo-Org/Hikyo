@@ -573,6 +573,9 @@ func TestPersonalAccountPrivacyEraseDeletesValuesAndNotices(t *testing.T) {
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM personal_value_notices WHERE owner_principal_id='`+subject+`'`); n != 0 {
 			t.Fatalf("%d personal value notices survived the erasure", n)
 		}
+		if queryInt(t, db, `SELECT COUNT(*) FROM audit_instance_events WHERE type='personal_value.deleted' AND payload LIKE '%"cause":"erasure"%' AND payload LIKE '%"count":1%'`) != 1 {
+			t.Fatal("the erasure did not audit the personal value it deleted")
+		}
 		if queryInt(t, db, `SELECT COUNT(*) FROM personal_values WHERE owner_principal_id='`+other+`'`) != 1 ||
 			queryInt(t, db, `SELECT COUNT(*) FROM personal_value_notices WHERE owner_principal_id='`+other+`'`) != 1 {
 			t.Fatal("erasure touched another owner's value or notice")

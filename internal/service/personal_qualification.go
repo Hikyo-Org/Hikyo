@@ -39,18 +39,23 @@ func accountQualified(ctx context.Context, az *authz.TxAuthorizer, accountID str
 	if err != nil || len(factors) > 0 {
 		return len(factors) > 0, err
 	}
-	return federatedQualified(ctx, az, accountID, "", now)
+	return federatedQualified(ctx, az, accountID, "")
 }
 
 // federatedQualified reports a passwordless account holding a current-epoch
-// OIDC or SAML identity whose live provider carries an assurance policy, the
-// static half of the reveal gate those providers enforce at reauthentication.
-// A password row in the current credential epoch disqualifies it, and OAuth2
+// OIDC identity whose live provider carries an assurance policy, the static
+// half of the reveal gate that provider enforces at reauthentication. A
+// password row in the current credential epoch disqualifies it, and OAuth2
 // identities never qualify (OAuth2 opens no reauthentication window).
+//
+// shortcut: a SAML identity does not qualify, because no SAML window can open
+// a personal value (see admitFederatedPersonalWindow); a SAML-qualified owner
+// could keep values it can never set or reveal. Count SAML once its windows
+// are admitted.
 //
 // A non-empty oidcProvider names the OIDC provider that opened a window: only
 // an identity through that very provider then counts.
-func federatedQualified(ctx context.Context, az *authz.TxAuthorizer, accountID, oidcProvider string, now time.Time) (bool, error) {
+func federatedQualified(ctx context.Context, az *authz.TxAuthorizer, accountID, oidcProvider string) (bool, error) {
 	inventory, err := localProofInventory(ctx, az, accountID)
 	if err != nil || inventory.password {
 		return false, err
@@ -64,11 +69,11 @@ func federatedQualified(ctx context.Context, az *authz.TxAuthorizer, accountID, 
 		return false, err
 	}
 	for _, identity := range identities {
-		if identity.CredentialEpoch != epoch ||
-			(oidcProvider != "" && (identity.Kind != OIDCKind || identity.ProviderID != oidcProvider)) {
+		if identity.Kind != OIDCKind || identity.CredentialEpoch != epoch ||
+			(oidcProvider != "" && identity.ProviderID != oidcProvider) {
 			continue
 		}
-		ok, err := identityPassesRevealGate(ctx, az, identity, now)
+		ok, err := identityPassesRevealGate(ctx, az, identity)
 		if err != nil || ok {
 			return ok, err
 		}
@@ -76,33 +81,15 @@ func federatedQualified(ctx context.Context, az *authz.TxAuthorizer, accountID, 
 	return false, nil
 }
 
-func identityPassesRevealGate(ctx context.Context, az *authz.TxAuthorizer, identity authz.ExternalIdentity, now time.Time) (bool, error) {
-	switch identity.Kind {
-	case OIDCKind:
-		provider, err := az.ProviderForCallback(ctx, identity.ProviderID)
-		if errors.Is(err, domain.ErrNotFound) {
-			return false, nil
-		}
-		if err != nil {
-			return false, err
-		}
-		return provider.Enabled && provider.Issuer == identity.Issuer && provider.AssurancePolicy != nil, nil
-	case SAMLKind:
-		providers, err := az.ListSAMLProviders(ctx)
-		if err != nil {
-			return false, err
-		}
-		for _, p := range providers {
-			if p.Enabled && p.AssurancePolicy != nil && p.EntityID == identity.Issuer &&
-				(p.MetadataValidUntil == nil || now.Before(*p.MetadataValidUntil)) &&
-				samlStoredSubjectAllowed(identity.Subject, p.AllowEmailNameID) {
-				return true, nil
-			}
-		}
-		return false, nil
-	default:
+func identityPassesRevealGate(ctx context.Context, az *authz.TxAuthorizer, identity authz.ExternalIdentity) (bool, error) {
+	provider, err := az.ProviderForCallback(ctx, identity.ProviderID)
+	if errors.Is(err, domain.ErrNotFound) {
 		return false, nil
 	}
+	if err != nil {
+		return false, err
+	}
+	return provider.Enabled && provider.Issuer == identity.Issuer && provider.AssurancePolicy != nil, nil
 }
 
 // admitFederatedPersonalWindow decides whether a window an identity provider
@@ -140,7 +127,7 @@ func admitFederatedPersonalWindow(ctx context.Context, az *authz.TxAuthorizer, w
 	if session.ProviderID == "" {
 		return ErrPersonalFactorRequired
 	}
-	ok, err := federatedQualified(ctx, az, account.ID, session.ProviderID, now)
+	ok, err := federatedQualified(ctx, az, account.ID, session.ProviderID)
 	if err != nil {
 		return err
 	}

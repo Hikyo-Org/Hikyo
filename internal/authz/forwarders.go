@@ -282,7 +282,7 @@ type txForwarded interface {
 	// EnvironmentsInProject is the universe the mint and widen reachability
 	// formulas range over.
 	EnvironmentsInProject(ctx context.Context, scope domain.Scope) ([]domain.EnvID, error)
-	ErasePrivacyAccount(ctx context.Context, account, p, username string) error
+	ErasePrivacyAccount(ctx context.Context, account, p, username string) (int64, error)
 
 	// ExternalIdentitiesForAccount lists an account's linked identities.
 	ExternalIdentitiesForAccount(ctx context.Context, accountID string) ([]ExternalIdentity, error)

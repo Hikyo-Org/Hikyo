@@ -141,7 +141,7 @@
   "EnvironmentChainByID": "func(ctx context.Context, envID string) (EnvironmentChain, error)",
   "EnvironmentReauthSettings": "func(ctx context.Context, envID string) (EnvSetting, error)",
   "EnvironmentsInProject": "func(ctx context.Context, scope domain.Scope) ([]domain.EnvID, error)",
-  "ErasePrivacyAccount": "func(ctx context.Context, account, p, username string) error",
+  "ErasePrivacyAccount": "func(ctx context.Context, account, p, username string) (int64, error)",
   "ExpiredRegistrationSignups": "func(ctx context.Context, at time.Time) ([]ExpiredRegistrationSignup, error)",
   "ExternalIdentitiesForAccount": "func(ctx context.Context, accountID string) ([]ExternalIdentity, error)",
   "ExternalIdentityByID": "func(ctx context.Context, id string) (ExternalIdentity, error)",

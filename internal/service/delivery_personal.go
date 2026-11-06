@@ -46,7 +46,7 @@ const (
 // and a reason, and `hikyo run` refuses it.
 func personalOverlay(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof,
 	sealer *crypto.ProjectSealer, scope domain.Scope, caller authz.Identity, mode delivery.Mode,
-	only map[string]bool, rows []DeliveredKey, manifest []delivery.Row) ([]DeliveredKey, []delivery.Row, error) {
+	only map[string]bool, limit int, rows []DeliveredKey, manifest []delivery.Row) ([]DeliveredKey, []delivery.Row, error) {
 	values, err := r.PersonalValues().ListOwn(ctx, p)
 	if err != nil {
 		return nil, nil, err
@@ -168,8 +168,8 @@ func personalOverlay(ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
 			rendered += len(*row.Value)
 		}
 	}
-	if rendered > MaxRenderBytesPerTarget {
-		return nil, nil, invalidDetail("resolved environment exceeds the per-target render limit")
+	if rendered > limit {
+		return nil, nil, invalidDetail("your personal values in this environment exceed the per-target render limit; clear some with hikyo personal set --clear")
 	}
 	return rows, manifest, nil
 }

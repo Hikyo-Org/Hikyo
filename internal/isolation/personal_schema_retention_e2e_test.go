@@ -241,6 +241,10 @@ func TestPersonalRequiredInDefinitionsRoundTripAndEnvironmentDelete(t *testing.T
 		if personalRequiredRows(t, db) != 1 {
 			t.Fatal("apply did not store personal_required_in")
 		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE type='settings.key_declaration_changed'
+			AND payload LIKE '%"personal_required_changed":true%' AND payload LIKE '%"presence_changed":false%'`); n != 1 {
+			t.Fatalf("apply audited the personal_required_in change %d times as its own flag, want 1", n)
+		}
 		svc := &service.Definitions{DB: db, Keyring: e.values.Keyring, Advisory: service.NewAdvisory()}
 		raw, err := svc.Export(t.Context(), service.LocalPrincipal(custodian), scopeProject(orgA, prjA1), false)
 		if err != nil {

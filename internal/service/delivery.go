@@ -191,9 +191,19 @@ type Delivery struct {
 	// disables it.
 	Budget *Budget
 	Now    func() time.Time
+	// MaxPersonalRenderBytes caps the owner's delivered personal values per
+	// fetch, apart from the shared rows. Zero means MaxRenderBytesPerTarget.
+	MaxPersonalRenderBytes int
 	// FetchProbe is a conformance-only retry seam. Production leaves it nil;
 	// it is invoked immediately after attempt-local response state is reset.
 	FetchProbe DeliveryConformanceProbe
+}
+
+func (s *Delivery) personalRenderLimit() int {
+	if s.MaxPersonalRenderBytes > 0 {
+		return s.MaxPersonalRenderBytes
+	}
+	return MaxRenderBytesPerTarget
 }
 
 type DeliveryConformanceProbe interface {
@@ -425,7 +435,7 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 			return err
 		}
 		if caller.Class == domain.ClassDeveloper {
-			rows, manifest, err = personalOverlay(ctx, r, az, p, sealer, scope, caller, mode, only, rows, manifest)
+			rows, manifest, err = personalOverlay(ctx, r, az, p, sealer, scope, caller, mode, only, s.personalRenderLimit(), rows, manifest)
 			if err != nil {
 				return err
 			}

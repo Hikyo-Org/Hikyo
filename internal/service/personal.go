@@ -34,6 +34,7 @@ const (
 	PersonalCauseForbidden         = "forbidden"
 	PersonalCauseQualificationLost = "qualification_lost"
 	PersonalCauseEnvironmentGone   = "environment_deleted"
+	PersonalCauseErasure           = "erasure"
 )
 
 // ErrPersonalUnqualified refuses set and reveal for an account that does not

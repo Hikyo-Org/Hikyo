@@ -272,7 +272,9 @@ access retention class under the fetch envelope) and `.deleted` (with actor, own
 or a value fingerprint.
 
 Each value is at most 64 KiB, the existing limit. A project holds at most 100 000 personal values, matching the resolved-cell budget,
-with a loud refusal.
+with a loud refusal. A fetch carries at most 1 MiB of the owner's personal values, a cap of its own apart from the shared rows' 1 MiB
+render limit, so a shared value's length never decides whether a personal value crosses. Over it, the fetch is refused with a detail
+naming the owner's personal values.
 
 ## Rejected
 

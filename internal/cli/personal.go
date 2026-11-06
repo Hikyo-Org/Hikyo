@@ -170,6 +170,7 @@ func runPersonal(ctx context.Context, ios IO, args []string) (returnErr error) {
 		if _, err := sink.WriteOnce("personal value of "+entry.Name, plain); err != nil {
 			return failf(ExitRefused, "disclosing the value: %v", err)
 		}
+		personalWarnings(ios, entry)
 		return nil
 
 	case "set":

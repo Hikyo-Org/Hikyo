@@ -2275,8 +2275,9 @@ export const deleteMyPersonalValue = <ThrowOnError extends boolean = false>(opti
  * Set or replace the caller's own personal value for a declared key.
  *
  * Uses the reveal reauthentication gate and needs an authenticator app
- * or passkey on the account. No schema rule evaluates the value and it
- * is never scanned. Setting a value dismisses a removal notice.
+ * or passkey on the account. Schema rules never refuse the value; the
+ * response names any rule it does not satisfy, as a warning. It is
+ * never scanned. Setting a value dismisses a removal notice.
  *
  */
 export const setMyPersonalValue = <ThrowOnError extends boolean = false>(options: Options<SetMyPersonalValueData, ThrowOnError>) => (options.client ?? client).put<SetMyPersonalValueResponses, SetMyPersonalValueErrors, ThrowOnError>({

@@ -291,7 +291,8 @@ func mustHolders(t *testing.T, e personalEnv) []service.PersonalHolder {
 
 // Only the owner's own surfaces and reencrypt open a personal value: the
 // personal repo is reached from personal.go (list, set, reveal, member
-// administration), delivery_personal.go (the developer-credential overlay)
+// administration, and the metadata-only count a definitions deletion plan
+// shows), delivery_personal.go (the developer-credential overlay)
 // and reencrypt.go, its owner-bound ciphertext readers only from the first
 // two and reencrypt, and the generated ciphertext queries only from
 // repos_personal.go. So no adapter payload or plan, offline receipt,
