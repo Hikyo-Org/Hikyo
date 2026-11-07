@@ -6,6 +6,50 @@ repo_root=$(git rev-parse --show-toplevel)
 zero=0000000000000000000000000000000000000000
 base=refs/remotes/hikyo-upstream/main
 dev=refs/remotes/hikyo-upstream/dev
+# Everything the Storybook suite reads from the repository (see
+# scripts/ci/storybook-suite.sh): web and the client package it aliases,
+# the Node pin, the suite itself and the CSP checker build:demo runs.
+storybook_paths='web clients/ts .nvmrc scripts/ci/storybook-suite.sh docs/site/scripts/test-csp.mjs'
+
+case "${HIKYO_PREPUSH_STORYBOOK:-}" in
+	'' | skip) ;;
+	*)
+		printf 'pre-push: HIKYO_PREPUSH_STORYBOOK must be unset or "skip", got "%s"\n' "$HIKYO_PREPUSH_STORYBOOK" >&2
+		exit 1
+		;;
+esac
+
+# Hash of the pushed bytes of every Storybook input; equal keys mean equal inputs.
+storybook_key() {
+	for path in $storybook_paths; do
+		printf '%s %s\n' "$path" "$(git rev-parse --verify --quiet "$1:$path" || printf absent)"
+	done | git hash-object --stdin
+}
+
+# Require the Storybook suite to have passed for exactly the pushed frontend bytes.
+require_storybook() {
+	key=$(storybook_key "$1")
+	stamps=$(git rev-parse --path-format=absolute --git-common-dir)/hikyo-storybook-passes
+	if [ -f "$stamps" ] && grep -Fx -- "$key" "$stamps" >/dev/null; then
+		return 0
+	fi
+	# shellcheck disable=SC2086 # the paths contain no whitespace or glob characters
+	if [ "$key" != "$(storybook_key HEAD)" ] || [ -n "$(git status --porcelain -- $storybook_paths)" ]; then
+		printf 'pre-push: %s changes the frontend, and the Storybook suite has not passed for those exact bytes.\n' "$1" >&2
+		printf 'pre-push: check out and clean the branch you are pushing (or push from the worktree that has it), then push again.\n' >&2
+		return 1
+	fi
+	printf 'pre-push: running the Storybook suite (about 4 minutes; HIKYO_PREPUSH_STORYBOOK=skip skips it for WIP pushes)\n' >&2
+	(cd "$repo_root" && scripts/ci/storybook-suite.sh </dev/null) || {
+		printf 'pre-push: the Storybook suite failed; fix it before pushing\n' >&2
+		return 1
+	}
+	{
+		grep -Fvx -- "$key" "$stamps" 2>/dev/null || :
+		printf '%s\n' "$key"
+	} | tail -n 50 >"$stamps.$$"
+	mv "$stamps.$$" "$stamps"
+}
 
 git rev-parse --verify "$base^{commit}" >/dev/null 2>&1 || {
 	printf 'pre-push: missing %s; fetch canonical Hikyo main into that reference first\n' "$base" >&2
@@ -26,4 +70,13 @@ while read -r local_ref local_oid _remote_ref _remote_oid; do
 		range_base=$dev
 	fi
 	"$repo_root/scripts/ci/check-commit-signatures.sh" "$range_base" "$local_oid" "$repo_root"
+
+	# shellcheck disable=SC2086 # as above
+	frontend=$(git diff --name-only "$(git merge-base "$range_base" "$local_oid")" "$local_oid" -- $storybook_paths)
+	[ -n "$frontend" ] || continue
+	if [ "${HIKYO_PREPUSH_STORYBOOK:-}" = skip ]; then
+		printf 'pre-push: WARNING: skipping the Storybook suite for %s; CI still runs it in the advisory and full suites\n' "$local_ref" >&2
+		continue
+	fi
+	require_storybook "$local_oid" || exit 1
 done

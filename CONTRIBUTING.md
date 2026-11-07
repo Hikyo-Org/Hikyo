@@ -197,7 +197,10 @@ Before you request review, run the checks for what you touched:
   anything cross-cutting. Add or update tests for the behaviour you change.
   There is no numeric coverage gate, so reviewers, not an automated threshold,
   judge whether the tests cover the change.
-- `web/` changes: `node --run typecheck` and `node --run test` in `web/`.
+- `web/` changes: `node --run typecheck` and `node --run test` in `web/`. Also
+  run the affected Playwright flow specs (`web/e2e/flows/*.spec.ts`, see the
+  browser flow tests below) and list them in the PR Evidence. The pre-push hook
+  runs the Storybook suite for you.
 - Run the formatter and linters so the `lint` gate does not bounce the pull
   request.
 
@@ -229,6 +232,11 @@ command does not install Node dependencies, generate files, or fix source. Go
 checks can download modules/toolchains and populate normal Go caches. See
 [the local feedback contract](scripts/dev/README.md)
 for the checks and limits. The signed-commit pre-push hook remains installed;
+the hook also runs `scripts/ci/storybook-suite.sh` (about 4 minutes the first
+time, then cached per exact `web/`, `clients/ts/` and `.nvmrc` bytes) when a push
+changes them, and refuses unless the pushed branch is checked out and clean.
+Set `HIKYO_PREPUSH_STORYBOOK=skip` to skip only that suite for a WIP push; CI
+still runs it, and signature checks cannot be skipped;
 the local feedback helper is optional and does not authorize merge. Hosted
 useful feedback must pass before queue admission.
 
