@@ -171,7 +171,7 @@ if ! printf '%s\n' "$workflow_gate" | grep -Fx '    if: always() && !cancelled()
 fi
 # The aggregate gate requires every shard matrix directly (no fan-in jobs), and
 # merges shard fuzz reproducers only when a fuzz shard failed.
-for shard_job in test_core isolation_shard race_shard fuzz_shard; do
+for shard_job in test_core test_core_serial isolation_shard race_shard fuzz_shard; do
 	printf '%s\n' "$workflow_gate" | grep -Fx "      - $shard_job" >/dev/null || {
 		printf 'trusted CI scripts fixture failed: ci-required does not gate %s\n' "$shard_job" >&2
 		exit 1

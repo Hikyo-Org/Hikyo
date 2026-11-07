@@ -91,6 +91,7 @@ var singletonJobs = map[string][]string{
 	"web-go":                   {"govulncheck (vulnerabilities reachable from the release-shaped binary)", "Go tests (transport, serving rules, browser session)", "Boot+idle originates zero outbound connections"},
 	"source-artifact-security": {"Native artifact adversarial campaign on both datastores"},
 	"test_core":                {"Build", "Vet", "Test all packages except the sharded isolation suite", "Exercise every benchmark once", "MCP 2026-07-28 upstream conformance"},
+	"test_core_serial":         {"Test internal/app and internal/lint serially"},
 	"k8s-e2e":                  {"Operator kind e2e"},
 	"analysis_shards":          {"Plan complete test, race, and fuzz shards"},
 	"headline-guarantee":       {"Container round-trip, stanza exclusivity and truncation refusal"},

@@ -131,6 +131,9 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	if err := normalizeSnapshotConcurrency(workflow.Jobs["release-snapshot"]); err != nil {
 		return err
 	}
+	if err := normalizeTestCoreSerial(workflow.Jobs); err != nil {
+		return err
+	}
 	// The feedback fixtures execute the real documentation checker. Pin its
 	// owner runtime before the fixtures, and normalize only this exact addition.
 	expectedNode := map[string]any{
@@ -651,8 +654,20 @@ func TestCoverageInventoryRejectsExecutionReductions(t *testing.T) {
 		"skip feedback fixtures":      func(j map[string]map[string]any) { mutateFeedbackFixtureStep(j, "if", "false") },
 		"fail open feedback fixtures": func(j map[string]map[string]any) { mutateFeedbackFixtureStep(j, "continue-on-error", true) },
 		"drop supervisor fixtures":    func(j map[string]map[string]any) { mutateFeedbackFixtureStep(j, "run", "true") },
-		"skip job":                    func(j map[string]map[string]any) { j["test_core"]["if"] = "false" },
-		"job fail open":               func(j map[string]map[string]any) { j["test_core"]["continue-on-error"] = true },
+		"remove serial core job":      func(j map[string]map[string]any) { delete(j, "test_core_serial") },
+		"skip serial core job":        func(j map[string]map[string]any) { j["test_core_serial"]["if"] = "false" },
+		"fail open serial core job":   func(j map[string]map[string]any) { j["test_core_serial"]["continue-on-error"] = true },
+		"serial core is not required": func(j map[string]map[string]any) { removeNeed(j["ci-required"], "test_core_serial") },
+		"serial core loses caller guard": func(j map[string]map[string]any) {
+			j["test_core_serial"]["steps"] = j["test_core_serial"]["steps"].([]any)[1:]
+		},
+		"serial core step fails open": func(j map[string]map[string]any) { mutateSerialCoreStep(j, "continue-on-error", true) },
+		"serial core step is skipped": func(j map[string]map[string]any) { mutateSerialCoreStep(j, "if", "false") },
+		"serial core drops lint": func(j map[string]map[string]any) {
+			mutateSerialCoreStep(j, "run", "./scripts/ci/test-core-packages.sh pool")
+		},
+		"skip job":      func(j map[string]map[string]any) { j["test_core"]["if"] = "false" },
+		"job fail open": func(j map[string]map[string]any) { j["test_core"]["continue-on-error"] = true },
 		"narrow platform matrix": func(j map[string]map[string]any) {
 			j["scan-xplat"]["strategy"] = map[string]any{"matrix": map[string]any{"os": []any{"ubuntu-latest"}}}
 		},
@@ -901,5 +916,23 @@ func TestShardPlanningMutationGuards(t *testing.T) {
 			}()
 			mutation()
 		})
+	}
+}
+
+func removeNeed(job map[string]any, name string) {
+	needs := job["needs"].([]any)
+	for i, need := range needs {
+		if need == name {
+			job["needs"] = append(needs[:i], needs[i+1:]...)
+			return
+		}
+	}
+}
+
+func mutateSerialCoreStep(j map[string]map[string]any, key string, value any) {
+	for _, step := range j["test_core_serial"]["steps"].([]any) {
+		if s := step.(map[string]any); s["name"] == "Test internal/app and internal/lint serially" {
+			s[key] = value
+		}
 	}
 }

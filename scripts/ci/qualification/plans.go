@@ -62,7 +62,11 @@ func bindPlans(i *inventory) error {
 					return fmt.Errorf("criterion test lacks complete planner ownership: %s", r.Name)
 				}
 			} else {
+				// scripts/ci/test-core-packages.sh serial runs these two alone.
 				r.ExecutionJobs = []string{"test_core"}
+				if r.Package == "./internal/app" || r.Package == "./internal/lint" {
+					r.ExecutionJobs = []string{"test_core_serial"}
+				}
 				for shard, packages := range full.Race {
 					for _, assignment := range packages {
 						path, filter, _ := strings.Cut(assignment, "\t")

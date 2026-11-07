@@ -12,7 +12,7 @@ import (
 // after checkout to allow daemon mirror configuration with canonical fallback.
 func TestPostgresFixturesStartAfterCheckout(t *testing.T) {
 	for workflow, jobs := range map[string][]string{
-		"ci":          {"client", "test_core", "isolation_shard", "race_shard", "headline-guarantee"},
+		"ci":          {"client", "test_core", "test_core_serial", "isolation_shard", "race_shard", "headline-guarantee"},
 		"reliability": {"race-isolation", "gitlab-e2e"},
 		"release":     {"build-artifacts"},
 		"nightly":     {"build-artifacts", "publish"},

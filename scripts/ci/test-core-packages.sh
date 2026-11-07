@@ -3,7 +3,20 @@
 # DROP DATABASE waits for the shared PostgreSQL checkpoint/fsync queue.
 # Run repository analysis separately: its cross-platform compiler loads must
 # not compete with all runtime suites for CPU and memory. Every package runs once.
+#
+# Modes (default pool, which the frozen test_core step invokes without arguments):
+#   pool    every package except isolation, app and lint, concurrently
+#   serial  internal/app then internal/lint, alone, in the test_core_serial job
+# Both modes run the same inventory checks, so a package cannot drop out of both.
 set -euo pipefail
+mode=${1:-pool}
+case "$mode" in
+  pool | serial) ;;
+  *)
+    echo "test core: unknown mode '$mode' (want pool or serial)" >&2
+    exit 2
+    ;;
+esac
 # Compile the lint matrix before Go's package-test alarm starts. Do not let
 # cold cross-platform export builds contend with the concurrent test pool.
 go run ./scripts/ci/prepare-lint-cache
@@ -27,8 +40,11 @@ if ! grep -Fvx -e "$isolation_package" -e "$app_package" -e "$lint_package" "$wo
   exit 1
 fi
 status=0
-xargs go test -count=1 <"$work/concurrent" || status=1
-# Run even if another package failed, preserving useful coverage on red runs.
-go test -count=1 "$app_package" || status=1
-go test -count=1 "$lint_package" || status=1
+if [[ "$mode" == pool ]]; then
+  xargs go test -count=1 <"$work/concurrent" || status=1
+else
+  # Run lint even if app failed, preserving useful coverage on red runs.
+  go test -count=1 "$app_package" || status=1
+  go test -count=1 "$lint_package" || status=1
+fi
 exit "$status"
