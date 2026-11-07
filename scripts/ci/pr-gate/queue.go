@@ -396,9 +396,10 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 	var selectedRun *run
 	if policy.Enabled {
 		if p.Base.Ref != q.admissionBranch() {
-			// Dev PRs have their own admission check. Feedback callbacks reach this
-			// main gate too, and must not leave a queue check on their head.
-			if q.checkName == queueCheckName && p.Base.Ref == "dev" {
+			// Only main has a queue. Dev PRs have their own admission check, and
+			// stacked PRs land on a feature branch. Feedback callbacks reach this
+			// main gate for both, and must not leave a queue check on their head.
+			if q.checkName == queueCheckName {
 				return q.reconciliation.retireHead(ctx, false)
 			}
 			result = refused("Only the protected default branch can enter this merge queue.")

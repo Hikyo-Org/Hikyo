@@ -321,6 +321,15 @@ a PR has no dev admission to publish. The skip takes effect for a stack once the
 stack's base branches carry this workflow, since `pull_request_target` reads the
 base branch's copy.
 
+`gate-queue` treats a stacked PR like a dev PR. Only main has a queue, so the
+`ci-feedback` callback publishes no `ci-queue-required` record on a head whose PR
+targets any other branch, and it retires a pending record left by an earlier pass.
+Such a PR holds no queue role: it neither protects a queue record from retirement
+nor makes a main PR on the same commit ambiguous. A refusal published before this
+change stays on its head until the next push, because retirement skips completed
+records. A stack's later retarget to main reruns `ci-feedback`, whose callback
+admits the PR afresh.
+
 Discovery on a push to `dev` selects no PR. A green `ci-dev-required` stays valid
 when `dev` moves: the check is not strict about the base, and GitHub itself refuses
 a merge that now conflicts. It reassesses every open PR only when the push changed
