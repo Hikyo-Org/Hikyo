@@ -1309,11 +1309,12 @@ test.describe('local sign-up', () => {
       expect(result.grants_created).toBeGreaterThan(0);
       await expect(card.getByText(`You joined ${targetName} as ${template}.`)).toBeVisible();
       await expect(page.getByRole('link', { name: 'Sign in', exact: true })).toBeVisible();
-      // The grant ended this session on the server; the page has ended its own.
+      // The grant ended this session on the server.
       expect((await page.request.get(`${BASE_URL}/api/v1/auth/whoami`)).status()).toBe(401);
       await expectNoSeriousAxeViolations(page);
       await page.screenshot({ path: testInfo.outputPath('email-invite-accepted.png'), fullPage: true });
-      // The revoked cookie left in the browser still reaches the sign-in form.
+      // The page has ended its own session: the revoked cookie left in the
+      // browser still reaches the sign-in form.
       await page.getByRole('link', { name: 'Sign in', exact: true }).click();
       await expect(page).toHaveURL(/\/login$/);
       await expect(page.getByRole('heading', { name: 'Sign in to Hikyo', exact: true })).toBeVisible();

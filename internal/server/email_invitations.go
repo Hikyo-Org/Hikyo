@@ -65,7 +65,7 @@ func (a *API) PreviewEmailInvitation(ctx context.Context, req apigen.PreviewEmai
 
 // AcceptEmailInvitation answers a plain 200 even when the acceptance ended the
 // person's sessions, and leaves the browser cookies alone: the browser treats a
-// changed session cookie as a possibly replaced session and keeps the response
+// changed CSRF companion cookie as a possibly replaced session and keeps the response
 // only if whoami still proves the same person, which a revoked session cannot,
 // so the page could not show the outcome. The page ends its own session once it
 // has shown it.

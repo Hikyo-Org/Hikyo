@@ -5,7 +5,8 @@
 An organisation administrator with `manage-members@org` invites an existing
 account by its exact email address. The person accepts while signed in.
 
-- API: `POST/GET/DELETE /api/v1/orgs/{org}/email-invitations` and
+- API: `POST/GET /api/v1/orgs/{org}/email-invitations`,
+  `DELETE /api/v1/orgs/{org}/email-invitations/{invitation}` and
   `POST /api/v1/me/invitations/{preview,accept}`.
 - CLI: the email invitation commands in `internal/cli/access_invitations.go`.
 - Web: "Invite by email" and the pending list on Members, and the
@@ -43,12 +44,14 @@ can be reset only by the instance (spec section 5).
   ./internal/app/...` on SQLite and Postgres, and `./internal/lint`.
 - Web: typecheck, oxlint, the Vitest suites for `src/app`,
   `InvitationAccept` and the sensitive inventory.
-- Browser: the "invites an existing account by email" flow in
-  `web/e2e/flows/login.spec.ts`, desktop and mobile. It covers sign-up, the
+- Browser: the "invites an existing account by email" flow (local run on
+  2026-11-07, both viewports passed) in
+  `web/e2e/flows/login.spec.ts`. It covers sign-up, the
   invite from Members, the mail, enrolment, preview, acceptance, sign-out, the
   sign-in page with the revoked cookie, and the single-use replay refusal.
-- Reviews: independent Standards and Spec reviews in four rounds. All findings
-  were fixed or are listed below. Cross-provider review was waived by the owner.
+- Reviews: independent Standards and Spec reviews in five rounds. Findings were
+  fixed; the timing residuals await the owner (below). Cross-provider review
+  was waived by the owner.
 
 ## Open items
 
@@ -64,5 +67,5 @@ can be reset only by the instance (spec section 5).
 
 1. Get the owner's decision on the residuals in spec section 2 and record it in
    the spec.
-2. After merge, confirm the email invitation browser flow passes in CI on both
+2. Before merge, confirm the email invitation browser flow passes in CI on both
    viewports.
