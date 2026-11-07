@@ -113,12 +113,14 @@ The skill covers signing, local validation, and an optional playground.
 ## Reviewing changes
 
 - Before requesting human review, have a fresh-context agent review the complete
-  PR diff against its issue or decision record and this guide. Answer every
-  finding: fix it, or record why not.
+  PR diff against its issue or decision record and this guide.
 - Tag each finding Important (breaks or risks behaviour), Nit (style or
   preference) or Pre-existing (present before this PR, so not the author's
   regression). Cite a file and line as evidence. Start the report with the count,
   and say plainly when nothing needs fixing.
+- Fix every confirmed finding, Nits included. Record evidence only for a finding
+  you reject as wrong. Fix a Pre-existing finding at its root cause in this PR
+  when it is in scope; otherwise open an issue for it.
 - When a finding is one instance of a class, fix every instance and say how you
   found them.
 - Converge. After the first full review, re-review only the new diff and do not
