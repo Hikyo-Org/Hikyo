@@ -315,6 +315,12 @@ its new base or a fork run awaits approval, the hourly schedule reassesses it.
 Closing and reopening a PR still reruns the workflow that hosts the record, so a
 reopened PR needs a new head. See the [handoff](../handoff/dev-gate-stale-required-check.md).
 
+GitHub has started `gate-dev` for stacked PRs whose base is another branch, even
+with the `branches: [dev]` filter (#1245 to #1247 and #1137 on 2026-11-07). Discovery skips those events, because such
+a PR has no dev admission to publish. The skip takes effect for a stack once the
+stack's base branches carry this workflow, since `pull_request_target` reads the
+base branch's copy.
+
 Discovery on a push to `dev` selects no PR. A green `ci-dev-required` stays valid
 when `dev` moves: the check is not strict about the base, and GitHub itself refuses
 a merge that now conflicts. It reassesses every open PR only when the push changed
