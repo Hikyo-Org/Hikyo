@@ -15,6 +15,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
@@ -114,21 +115,16 @@ func Load(path string) Report {
 func read(path string) (Public, error) {
 	var status Public
 	// Kubernetes projects a ConfigMap as a symlink into its own volume. What matters
-	// is the content reached: a regular file within the size bound, opened as stat'd.
-	info, err := os.Stat(path)
-	if err != nil {
-		return status, err
-	}
-	if !info.Mode().IsRegular() {
-		return status, errors.New("security maintenance status is not a regular file")
-	}
-	f, err := os.Open(path)
+	// is the content reached: a regular file within the size bound. It is opened
+	// without blocking, so a FIFO put in its place cannot hang the request, and the
+	// opened file itself is checked.
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return status, err
 	}
 	defer f.Close()
-	if opened, err := f.Stat(); err != nil || !os.SameFile(info, opened) {
-		return status, errors.New("security maintenance status changed while opening")
+	if info, err := f.Stat(); err != nil || !info.Mode().IsRegular() {
+		return status, errors.New("security maintenance status is not a regular file")
 	}
 	raw, err := io.ReadAll(io.LimitReader(f, MaxBytes+1))
 	if err != nil {
