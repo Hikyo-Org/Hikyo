@@ -3142,7 +3142,7 @@ paths:
       x-hikyo-operation: email-invitation.list
       x-hikyo-formula: [manage-members@org]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 14
+      x-hikyo-min-revision: 16
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -3187,7 +3187,7 @@ paths:
       x-hikyo-operation: email-invitation.send
       x-hikyo-formula: [manage-members@org]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 14
+      x-hikyo-min-revision: 16
       requestBody:
         required: true
         content:
@@ -3228,7 +3228,7 @@ paths:
       x-hikyo-operation: email-invitation.revoke
       x-hikyo-formula: [manage-members@org]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 14
+      x-hikyo-min-revision: 16
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -11275,7 +11275,7 @@ paths:
         nothing else.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 14
+      x-hikyo-min-revision: 16
       requestBody:
         required: true
         content:
@@ -11321,7 +11321,7 @@ paths:
         shown the outcome.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 14
+      x-hikyo-min-revision: 16
       requestBody:
         required: true
         content:

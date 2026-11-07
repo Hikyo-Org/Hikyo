@@ -237,7 +237,7 @@ func (r *Resolver) ErasePrivacyAccount(ctx context.Context, account, principal, 
 	// the row stays listed until it expires and can never validate (#1207).
 	if !r.historicalRecoveryBeforeEmailInvitations {
 		if err := r.eraseOrgEmailInvitations(ctx, account); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	// Member access rules go with the grants: an erased principal keeps no

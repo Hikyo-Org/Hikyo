@@ -13,7 +13,7 @@ import (
 // Compatibility uses pre-47 privacy, pre-50 profile, and pre-66 access
 // projections, omits PKI retention queries only before schema64, and reads no
 // member access rules before schema70 (no rule table exists there) and erases no
-// email invitations before schema86. These
+// email invitations before schema87. These
 // constructors add no login path and preserve restore reconciliation.
 func NewHistoricalRecoverySQLite(db sqlitegen.DBTX, version uint64) *Resolver {
 	r := NewSQLite(db)
@@ -22,7 +22,7 @@ func NewHistoricalRecoverySQLite(db sqlitegen.DBTX, version uint64) *Resolver {
 	r.historicalRecoveryBeforeAccess = version < 66
 	r.historicalRecoveryBeforePKI = version < 64
 	r.historicalRecoveryBeforeRules = version < 70
-	r.historicalRecoveryBeforeEmailInvitations = version < 86
+	r.historicalRecoveryBeforeEmailInvitations = version < 87
 	return r
 }
 
@@ -36,7 +36,7 @@ func NewHistoricalRecoveryPG(db pggen.DBTX, version uint64) *Resolver {
 	r.historicalRecoveryBeforeAccess = version < 66
 	r.historicalRecoveryBeforePKI = version < 64
 	r.historicalRecoveryBeforeRules = version < 70
-	r.historicalRecoveryBeforeEmailInvitations = version < 86
+	r.historicalRecoveryBeforeEmailInvitations = version < 87
 	return r
 }
 func (r *Resolver) recoveryGrantsBeforePrivacy(ctx context.Context, p domain.PrincipalID) ([]domain.Grant, error) {
