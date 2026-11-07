@@ -69,13 +69,18 @@ func (s *Store) publish(state Status) {
 }
 
 // The reader is another user's process and the coordinator's unit sets a 0077
-// umask, so a directory created here is chmodded. An existing one is never
-// touched: it may be shared with private files.
+// umask, so each directory created here is chmodded, parents included. An
+// existing one is never touched: it may be shared with private files.
 func ensurePublicDirectory(dir string) error {
 	if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := ensurePublicDirectory(filepath.Dir(dir)); err != nil {
+		return err
+	}
+	if err := os.Mkdir(dir, 0755); errors.Is(err, fs.ErrExist) {
+		return nil
+	} else if err != nil {
 		return err
 	}
 	return os.Chmod(dir, 0755)

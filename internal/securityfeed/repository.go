@@ -263,6 +263,10 @@ func (r *Repository) Refresh(ctx context.Context) (document Document, returnErr 
 		roles[role] = value
 	}
 	floor.Roles = roles
+	// A floor durable ahead of its cache would, after power loss, refuse the roots between them.
+	if err := syncMetadata(metadataDir); err != nil {
+		return Document{}, err
+	}
 	if err := saveFloor(floorPath, floor); err != nil {
 		return Document{}, err
 	}

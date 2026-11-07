@@ -18,12 +18,15 @@ func TestPublicStatusDirectoryStaysTraversableUnderTheUnitUmask(t *testing.T) {
 		t.Fatal(err)
 	}
 	created := filepath.Join(shared, "status")
-	e.Store.PublicStatusFile = filepath.Join(created, "status.json")
+	// Every missing level is created traversable, not only the last.
+	e.Store.PublicStatusFile = filepath.Join(created, "nested", "status.json")
 	if _, err := e.RunOnce(t.Context(), true); err != nil {
 		t.Fatal(err)
 	}
-	if info, err := os.Stat(created); err != nil || info.Mode().Perm() != 0o755 {
-		t.Fatalf("created directory mode = %v, err = %v", info.Mode(), err)
+	for _, directory := range []string{created, filepath.Join(created, "nested")} {
+		if info, err := os.Stat(directory); err != nil || info.Mode().Perm() != 0o755 {
+			t.Fatalf("created directory %s mode = %v, err = %v", directory, info.Mode(), err)
+		}
 	}
 	// A pre-existing directory is not widened.
 	e.Store.PublicStatusFile = filepath.Join(shared, "status.json")

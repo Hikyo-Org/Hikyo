@@ -532,7 +532,8 @@ func (e *Engine) RunOnce(ctx context.Context, apply bool) (Status, error) {
 					pinned = errors.Join(pinned, restoreErr)
 				}
 			}
-			if reconciler, ok := e.Driver.(Reconciler); ok && !released && untouched(*state.Operation, observed) && state.LastAttempt.Sub(state.Operation.StartedAt) >= operationSettle {
+			// The release clears a journal, so a check leaves it to run.
+			if reconciler, ok := e.Driver.(Reconciler); apply && ok && !released && untouched(*state.Operation, observed) && state.LastAttempt.Sub(state.Operation.StartedAt) >= operationSettle {
 				releaseErr := reconciler.Reconcile(ctx, observed)
 				if errors.Is(releaseErr, ErrRolledBack) {
 					// The release follows a rollback an earlier run did not finish recording: it stopped the

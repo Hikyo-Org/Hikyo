@@ -283,6 +283,36 @@ func TestFeedRejectsRedirectsAndUnboundedDownloads(t *testing.T) {
 	}
 }
 
+// Each response is read to at most one byte past its bound, and every byte and request counts against the refresh.
+func TestFeedDownloadsStayWithinResponseAndRefreshBudgets(t *testing.T) {
+	body := strings.Repeat("a", 1025)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path == "/metadata/snapshot.json" {
+			w.(http.Flusher).Flush() // chunked: no Content-Length to refuse up front
+		}
+		_, _ = w.Write([]byte(body))
+	}))
+	defer server.Close()
+	fetcher := &boundedFetcher{ctx: context.Background(), metadataURL: server.URL + "/metadata/", targetsURL: server.URL + "/targets/", client: server.Client()}
+	if _, err := fetcher.DownloadFile(server.URL+"/metadata/timestamp.json", 1024, 0); err == nil || !strings.Contains(err.Error(), "Content-Length") || fetcher.bytes != 0 {
+		t.Fatalf("declared oversize response: %v after %d bytes", err, fetcher.bytes)
+	}
+	if _, err := fetcher.DownloadFile(server.URL+"/metadata/snapshot.json", 1024, 0); err == nil || !strings.Contains(err.Error(), "exceeds 1024-byte bound") || fetcher.bytes != 1025 {
+		t.Fatalf("chunked oversize response: %v after %d bytes", err, fetcher.bytes)
+	}
+	fetcher.bytes = maxAggregateBytes - 10
+	if _, err := fetcher.DownloadFile(server.URL+"/metadata/root.json", 2048, 0); err == nil || !strings.Contains(err.Error(), "exceeds 10-byte bound") {
+		t.Fatalf("response past the refresh byte budget: %v", err)
+	}
+	if _, err := fetcher.DownloadFile(server.URL+"/metadata/root.json", 2048, 0); err == nil || !strings.Contains(err.Error(), "budget") {
+		t.Fatalf("exhausted byte budget: %v", err)
+	}
+	fetcher.bytes, fetcher.requests = 0, maxRequests
+	if _, err := fetcher.DownloadFile(server.URL+"/metadata/root.json", 2048, 0); err == nil || !strings.Contains(err.Error(), "budget") {
+		t.Fatalf("exhausted request budget: %v", err)
+	}
+}
+
 func TestRefreshRejectsSameVersionTimestampEquivocation(t *testing.T) {
 	f := feedFixture(t)
 	p := f.publication(t, 1, "catalog", nil)

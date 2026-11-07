@@ -88,6 +88,13 @@ func TestDetailRedactsValuesKeepsReasonsAndCutsOnACharacterBoundary(t *testing.T
 	if !strings.Contains(got, "pull") || !strings.Contains(got, "failed") {
 		t.Fatalf("reason lost: %s", got)
 	}
+	// The length bound can cut a quoted value before its closing quote.
+	if got := Redact("refused 'pw"); got != "refused '[redacted]'" {
+		t.Fatalf("unterminated quote kept its value: %s", got)
+	}
+	if got := Redact("can't start\nexit 1"); got != "can't start\nexit 1" {
+		t.Fatalf("apostrophe before a later line redacted: %q", got)
+	}
 	cut := Detail(strings.Repeat("é", 100), 5)
 	if len(cut) > 5 || cut != "éé" {
 		t.Fatalf("cut = %q", cut)

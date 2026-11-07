@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"golang.org/x/sys/unix"
@@ -39,6 +40,9 @@ func TestRootKeyFileAcceptsOnlyAnACLNamingTheCurrentUser(t *testing.T) {
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
+			if err := aclNamesOnlyUser(c.acl, uid); (err == nil) != c.want {
+				t.Fatalf("ACL decision = %v, want accepted=%t", err, c.want)
+			}
 			path := filepath.Join(t.TempDir(), "credential")
 			if err := os.WriteFile(path, []byte(EncodeRootKey(make([]byte, KeySize))), 0o400); err != nil {
 				t.Fatal(err)
@@ -49,15 +53,19 @@ func TestRootKeyFileAcceptsOnlyAnACLNamingTheCurrentUser(t *testing.T) {
 			} else if err != nil {
 				t.Fatal("set ACL fixture:", err)
 			}
-			if info, err := os.Stat(path); err != nil || info.Mode().Perm()&0o077 == 0 {
-				t.Skip("the ACL did not change the group bits", err)
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal("stat ACL fixture:", err)
 			}
-			_, err := readRootKeyFile(path)
+			if info.Mode().Perm()&0o077 == 0 {
+				t.Fatal("the ACL did not change the permission bits")
+			}
+			_, err = readRootKeyFile(path)
 			if c.want && err != nil {
 				t.Fatal("ACL-delivered credential refused:", err)
 			}
-			if !c.want && !errors.Is(err, ErrRootKeyPerms) {
-				t.Fatal("unsafe ACL admitted:", err)
+			if !c.want && (!errors.Is(err, ErrRootKeyPerms) || !strings.Contains(err.Error(), "POSIX ACL")) {
+				t.Fatal("unsafe ACL admitted, or refused without its reason:", err)
 			}
 		})
 	}

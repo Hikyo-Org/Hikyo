@@ -148,10 +148,12 @@ journal's own source image then lifts the freeze, records why in
 `unattended/preparation-abandoned.json`, clears the journal and serves. Any other
 image, or any journal at `write-intent` or later, still refuses. The security
 coordinator on Compose and Kubernetes does this itself on any later run, so you
-need not set the image back. ECS, Compose without the security coordinator (for
-example `server-unattended.yaml` or the Watchtower nightly), and a target that never
-reported (it could not start, or died before writing its marker) need you to set the
-previous image back; until then the target keeps idling, by design. The
+need not set the image back. A target that never reported (it could not start, or
+died before writing its marker) is rolled back there too, once `timeout_seconds` has
+passed; setting the previous image back only ends it sooner. ECS and Compose without
+the security coordinator (for example `server-unattended.yaml` or the Watchtower
+nightly) need you to set the previous image back; until then the target keeps
+idling, by design. The
 [security maintenance runbook](security-maintenance.md#target-stopped-before-writing-the-database)
 lists each case. The failed attempt's encrypted backup, its pinned copy and its
 restore scratch are removed, and any left by an attempt that was killed are removed
