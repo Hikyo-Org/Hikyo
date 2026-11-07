@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -225,6 +226,21 @@ func TestInvitationAcceptReportsCleanupFailureAfterResult(t *testing.T) {
 	code := cli.Run(t.Context(), ios, []string{"access", "invitation", "accept", "--yes", "--instance", "local"})
 	if code == cli.ExitOK || !strings.Contains(stdout.String(), "Acme") || !strings.Contains(stderr.String(), "was accepted, but removing the local session failed") {
 		t.Fatalf("code=%d stdout=%s stderr=%s", code, stdout, stderr)
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("stdout closed") }
+
+func TestInvitationAcceptTellsSignOutWhenRenderFails(t *testing.T) {
+	fake := &invitationFake{t: t, signedOut: true}
+	ios, _, stderr := definitionsTestIO(t, fake)
+	ios.Stdout = failingWriter{}
+	ios.Stdin = strings.NewReader("tok_abc")
+	code := cli.Run(t.Context(), ios, []string{"access", "invitation", "accept", "--yes", "--instance", "local"})
+	if code == cli.ExitOK || len(fake.accepted) != 1 || !strings.Contains(stderr.String(), "signed out on every device and your developer credentials ended") {
+		t.Fatalf("code=%d accepted=%v stderr=%s", code, fake.accepted, stderr)
 	}
 }
 

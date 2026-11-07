@@ -140,8 +140,38 @@ describe('InvitationAccept', () => {
     } finally { await view.unmount(); }
   });
 
+  it.each([
+    ['a retryable failure', new ApiError(429, 'too many requests')],
+    ['a refusal of the earlier token', new ApiError(404, 'not found')],
+  ])('previews a link opened while Accept was pending once it ends in %s', async (_case, failure) => {
+    mocks.preview.mockImplementation((token: string) => Promise.resolve(token === 'eit_secret' ? PREVIEW : { ...PREVIEW, org_name: 'Globex' }));
+    let rejectAccept: (error: unknown) => void = () => undefined;
+    mocks.accept.mockImplementation(() => new Promise((_resolve, reject) => { rejectAccept = reject; }));
+    const view = await renderForm(
+      <MemoryRouter initialEntries={['/invitations/accept#token=eit_secret']}>
+        <SecondLink />
+        <Routes>
+          <Route path="/invitations/accept" element={<InvitationAccept />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    try {
+      await settleTask();
+      await act(async () => button(view.container, 'Accept').click());
+      await act(async () => button(view.container, 'Open second link').click());
+      await settleTask();
+      expect(mocks.preview).not.toHaveBeenCalledWith('eit_second');
+      await act(async () => rejectAccept(failure));
+      await settleTask();
+      expect(mocks.preview).toHaveBeenLastCalledWith('eit_second');
+      expect(view.container.textContent).toContain('Globex');
+      expect(view.container.textContent).not.toContain(acceptanceFailureText(failure));
+    } finally { await view.unmount(); }
+  });
+
   it('previews the same link afresh when it is reopened after a refused Accept', async () => {
-    mocks.preview.mockResolvedValue(PREVIEW);
+    let resolveAgain: (value: typeof PREVIEW) => void = () => undefined;
+    mocks.preview.mockResolvedValueOnce(PREVIEW).mockImplementationOnce(() => new Promise((resolve) => { resolveAgain = resolve; }));
     mocks.accept.mockRejectedValue(new ApiError(404, 'not found'));
     function Reopen() {
       const navigate = useNavigate();
@@ -163,7 +193,13 @@ describe('InvitationAccept', () => {
       await act(async () => button(view.container, 'Reopen link').click());
       await settleTask();
       expect(mocks.preview).toHaveBeenCalledTimes(2);
+      // While the fresh preview is pending, the refused offer is not shown again.
+      expect(view.container.textContent).not.toContain('Acme');
       expect(view.container.textContent).not.toContain(INVALID_INVITATION_TEXT);
+      expect([...view.container.querySelectorAll('button')].map((b) => b.textContent)).not.toContain('Accept');
+      await act(async () => resolveAgain(PREVIEW));
+      await settleTask();
+      expect(view.container.textContent).toContain('Acme');
     } finally { await view.unmount(); }
   });
 

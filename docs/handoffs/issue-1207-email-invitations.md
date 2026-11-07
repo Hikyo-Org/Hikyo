@@ -66,7 +66,8 @@ can be reset only by the instance (spec section 5).
   - Invitation mail has no instance-wide in-flight cap: a shared cap would let
     one organisation's matched sends delay another's mail. The send budget
     allows at most 30 attempts in flight per organisation, so the instance
-    bound is 30 times the number of organisations (ops catalogue Pi-4 fit).
+    bound is 30 times the number of organisations, which also grows through
+    `fresh-org` sign-ups up to `fresh_org_cap` (ops catalogue Pi-4 fit).
 - A crash loses in-flight attempts without an outcome; the administrator can
   send again.
 - The CLI refuses an invitation link whose origin is not the selected
@@ -74,6 +75,11 @@ can be reset only by the instance (spec section 5).
 - The per-organisation send budget is node-local, like every other budget in
   `internal/service/budget.go` (single-node v1 envelope).
 - #1238: verified email for accounts other than local sign-ups.
+- For owner triage, not changed here: under a `fresh-org` registration
+  policy a self-registrant administers their new organisation, so they can
+  send invitation mail to any account with a verified email under an
+  organisation name they choose. The send budget, `fresh_org_cap` and the
+  `signup` budget bound the volume.
 
 ## Next steps
 

@@ -116,7 +116,7 @@ Pi-4 fit: one serial pacer per credential at ≥ 1 s spacing bounds adapter CPU 
 | Failure metric | `hikyo_email_invitation_mail_failures_total` counts failed or cancelled background sends, owner-wide across configuration generations; no address, organisation or SMTP response in labels | fixed |
 | Expired rows | deleted by the existing hourly pruning run | fixed |
 
-Pi-4 fit: each matched send is one goroutine holding one SMTP connection for at most the 15 s mail per-send deadline plus the 5 s outcome write. The send budget allows at most 30 attempts in flight per organisation, so the instance-wide worst case is 30 times the number of organisations, which only the instance-class `org.create` operation grows. An unmatched send holds no connection and only writes its outcome.
+Pi-4 fit: each matched send is one goroutine that lives for at most 20 s: it holds one SMTP connection within the 15 s mail per-send deadline, then makes the outcome write within 5 s. The send budget is charged before the transaction and never refunded, so at most 30 attempts are in flight per organisation, and the instance-wide worst case is 30 times the number of organisations. That number grows through the instance-class `org.create` operation and, under a `fresh-org` registration policy, through self-service sign-ups, bounded by the policy's `fresh_org_cap` and the instance `signup` budget. An unmatched send holds no connection and only writes its outcome.
 
 ## Open registration and social sign-in ([ops-spec.md](../adr/ops-spec.md) amendment 2026-09-03, [#589](https://github.com/Hikyo-Org/Hikyo/issues/589); spec [social-signin.md](./social-signin.md))
 

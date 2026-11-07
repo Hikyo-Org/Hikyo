@@ -66,7 +66,9 @@ export function InvitationAccept() {
 
   useEffect(() => {
     // A pending Accept may already have committed: resetting it would drop its
-    // outcome, so a link that arrives meanwhile is previewed once it settles.
+    // outcome, so nothing is previewed while it is pending. A link that arrives
+    // meanwhile is previewed after the Accept fails; after a success the page
+    // shows that outcome and the new link must be opened again.
     if (!signedIn || token === '' || requested.current === token || accepting.isPending) return;
     requested.current = token;
     // A new token's preview clears an Accept failure that belonged to the previous one.
@@ -151,12 +153,14 @@ export function InvitationAccept() {
           disabled={accepting.isPending}
           aria-busy={accepting.isPending ? true : undefined}
           onClick={() => accepting.mutate(token, {
-            onError: (error) => {
+            onError: (error, refused) => {
               // The uniform 404 is final; anything else (throttle, transport) can be retried.
               if (!(error instanceof ApiError) || error.status !== 404) return;
-              // Reopening the same link must preview it afresh, not show the refused offer.
+              // Reopening the same link must preview it afresh, not show the refused
+              // offer; a link opened while Accept was pending keeps its own token.
               requested.current = '';
-              setToken('');
+              setPreviewed(null);
+              setToken((current) => (current === refused ? '' : current));
               setFailure(acceptanceFailureText(error));
             },
           })}

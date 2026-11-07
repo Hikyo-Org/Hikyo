@@ -233,11 +233,9 @@ func runAccessInvitationAccept(ctx context.Context, ios IO, args []string) error
 	}
 	if out.SignedOut {
 		// The server ended every session, this one included: drop the dead
-		// local artifact the way `hikyo logout` does.
+		// local artifact the way `hikyo logout` does. The notice comes before
+		// the result so a failed render cannot hide it.
 		cleanupErr = st.DeleteSession(session.Instance)
-	}
-	// The notice comes first so a failed render cannot hide it.
-	if out.SignedOut {
 		fmt.Fprintf(ios.Stderr, "You were signed out on every device and your developer credentials ended. Run `hikyo login` again.\n")
 	}
 	if err := Render(ios.Stdout, f, Table{
