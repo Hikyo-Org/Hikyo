@@ -9,6 +9,7 @@ import { ORG, PRJ } from '../testkit/ids.ts';
 import { KeyDeclarationDetail } from './KeyDeclarationDetail.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
+import { tokenPx } from '../../.storybook/tokens.ts';
 
 // The catalogue declaration detail: one key's declaration, presence and
 // organisation facts, plus the editors when the project's definitions source is
@@ -294,5 +295,24 @@ export const PersonalMembers: Story = {
     await expect(dialog.getByText(/leaves them a notice/)).toBeVisible();
     await userEvent.click(dialog.getByRole('button', { name: 'Delete their value' }));
     await expect(await canvas.findByText('The personal value of alex is deleted. They have a notice.')).toBeVisible();
+  },
+};
+
+// On a phone the way to your own values is a control, at the 44px a finger
+// needs. A story's browser has a fine pointer, so it runs at touch size.
+export const PhonePersonalOwnLink: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  parameters: PersonalMembers.parameters,
+  beforeEach: () => {
+    const root = document.documentElement;
+    const saved = root.style.getPropertyValue('--control');
+    root.style.setProperty('--control', 'var(--touch)');
+    return () => root.style.setProperty('--control', saved);
+  },
+  play: async ({ canvas }) => {
+    const own = await canvas.findByRole('link', { name: 'Your own personal values in this environment' });
+    const box = own.getBoundingClientRect();
+    await expect(box.height).toBeGreaterThanOrEqual(tokenPx('--touch'));
+    await expect(box.width).toBeGreaterThanOrEqual(tokenPx('--touch'));
   },
 };
