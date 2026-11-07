@@ -55,6 +55,9 @@ func TestDevGateExecutesOnlyTrustedMainCodeUnderDistinctHeadLease(t *testing.T) 
 	if discover.If != "github.event_name != 'pull_request_target' || github.event.pull_request.base.ref == 'dev'" {
 		t.Fatal("a stacked PR event must skip dev discovery instead of failing it, and every other event must still reach it")
 	}
+	if publish.If != "needs.discover.outputs.work != '[]'" {
+		t.Fatal("dev workers must stay skipped when discovery is skipped or fails")
+	}
 	if !reflect.DeepEqual(discover.Permissions, map[string]string{"contents": "read", "pull-requests": "read"}) {
 		t.Fatal("routing discovery must not write checks")
 	}
