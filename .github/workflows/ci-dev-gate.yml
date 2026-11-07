@@ -28,6 +28,9 @@ permissions:
 
 jobs:
   discover:
+    # GitHub still starts pull_request_target runs for stacked PRs whose base is
+    # another branch. They have no dev admission to publish, so skip them.
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.base.ref == 'dev'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
