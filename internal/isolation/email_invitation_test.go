@@ -58,6 +58,7 @@ func newEmailInvitationRig(t *testing.T, db *store.DB, configured bool) *emailIn
 		DB: db, Now: func() time.Time { return *r.clock }, ExternalOrigin: "https://hikyo.test",
 		Mail:   func(context.Context) (*runtimeconfig.Bundle, error) { return bundle, nil },
 		Budget: service.NewBudgetWithClock(func() time.Time { return *r.clock }),
+		Sends:  service.NewMailSends(),
 	}
 	return r
 }
@@ -111,7 +112,7 @@ func (r *emailInvitationRig) token(n int) string {
 func (r *emailInvitationRig) send(actor domain.PrincipalID, email string) (service.EmailInvitationReceipt, error) {
 	r.t.Helper()
 	res, err := r.svc.Send(r.t.Context(), service.LocalPrincipal(actor), service.EmailInvitationSendSpec{Org: orgA, Email: email, Template: domain.TemplateViewer})
-	r.svc.WaitForMail()
+	r.svc.Sends.Wait()
 	return res, err
 }
 
@@ -656,7 +657,7 @@ func runEmailInvitations(t *testing.T, db *store.DB) {
 		if _, err := rig.svc.Send(ctx, service.LocalPrincipal(root), service.EmailInvitationSendSpec{Org: domain.OrgID(org.ID), Email: "doomed@example.test", Template: domain.TemplateViewer}); err != nil {
 			t.Fatal(err)
 		}
-		rig.svc.WaitForMail()
+		rig.svc.Sends.Wait()
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM org_email_invitations WHERE org_id = '`+string(org.ID)+`'`); n != 1 {
 			t.Fatalf("pending rows = %d, want 1", n)
 		}

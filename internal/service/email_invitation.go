@@ -76,28 +76,13 @@ type EmailInvitations struct {
 	// predicate and the transport.
 	Mail   func(context.Context) (*runtimeconfig.Bundle, error)
 	Budget *Budget
-	// Sends is the owner-level set of background sends; nil uses a private one.
+	// Sends is the owner-level set of background sends; required.
 	Sends *MailSends
 	// Log reports an outcome that could not be recorded; nil uses slog.Default.
 	Log *slog.Logger
-
-	sendsOnce sync.Once
-}
-
-func (s *EmailInvitations) mailSends() *MailSends {
-	s.sendsOnce.Do(func() {
-		if s.Sends == nil {
-			s.Sends = NewMailSends()
-		}
-	})
-	return s.Sends
 }
 
 func (s *EmailInvitations) now() time.Time { return nowOr(s.Now) }
-
-// WaitForMail blocks until every background send started so far has finished
-// and recorded its outcome; tests use it to observe outcomes.
-func (s *EmailInvitations) WaitForMail() { s.mailSends().Wait() }
 
 // EmailInvitationSendSpec is one send.
 type EmailInvitationSendSpec struct {
@@ -154,6 +139,9 @@ func (s *EmailInvitations) Send(ctx context.Context, actor Actor, spec EmailInvi
 	})
 	if err != nil {
 		return EmailInvitationReceipt{}, err
+	}
+	if s.Sends == nil {
+		return EmailInvitationReceipt{}, errors.New("email invitations: no background send set configured")
 	}
 	// The mailer predicate precedes the address so an unconfigured instance
 	// answers every request alike.
@@ -270,7 +258,7 @@ var emailInvitationMail = template.Must(template.ParseFS(signupMailTemplates, "m
 // been answered by the time it matters: a lost send is recorded and counted,
 // never reported to the administrator.
 func (s *EmailInvitations) dispatch(ctx context.Context, receipt EmailInvitationReceipt, intent, orgName, token string, matched bool) {
-	sends := s.mailSends()
+	sends := s.Sends
 	detached := context.WithoutCancel(ctx)
 	sends.wg.Add(1)
 	go func() {
