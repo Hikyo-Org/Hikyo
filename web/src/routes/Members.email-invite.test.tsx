@@ -3,7 +3,7 @@ import { act } from 'react';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { renderForm, typeInto } from '../testkit/renderForm.tsx';
+import { renderForm, settleTask, typeInto } from '../testkit/renderForm.tsx';
 import { Members } from './Members.tsx';
 
 const idle = { data: undefined, error: null, isError: false, isPending: false, isSuccess: false, refetch: vi.fn() };
@@ -22,7 +22,7 @@ vi.mock('../api/settings.ts', async (importActual) => ({
   useOrgTopology: () => ({ projects: [], isError: false, isPending: false, ready: false }),
   useInstanceOrgs: () => ({ data: { items: [], count: 0 }, isError: false, isPending: false, isSuccess: true }),
 }));
-vi.mock('../app/AuthProvider.tsx', () => ({ useAuth: () => ({ identity: { principal: { id: 'usr_current' } } }) }));
+vi.mock('../app/AuthProvider.tsx', () => ({ useAuth: () => ({ identity: { principal: { id: 'prn_22222222-2222-4222-8222-222222222222' } } }) }));
 vi.mock('../ui/useModalDialog.ts', async (importActual) => ({
   ...(await importActual<typeof import('../ui/useModalDialog.ts')>()),
   useModalDialog: () => ({ current: null }),
@@ -60,6 +60,32 @@ describe('Members email invitation dialog', () => {
       expect(email()?.value).toBe('dana@example.com');
       await act(async () => byLabel('Go to beta')?.click());
       expect(email()?.value ?? '').toBe('');
+    } finally { await view.unmount(); }
+  });
+
+  it('names the signed-in administrator "you" in the pending list', async () => {
+    const invitation = {
+      id: 'eiv_33333333-3333-4333-8333-333333333333', email: 'dana@example.com', template: 'editor',
+      invited_by: 'prn_22222222-2222-4222-8222-222222222222',
+      created_at: '2026-11-06T10:00:00Z', expires_at: '2026-11-13T10:00:00Z',
+    };
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const items = url.includes('/email-invitations') ? [invitation] : [];
+      return new Response(JSON.stringify({ items, count: items.length }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }));
+    const view = await renderForm(
+      <MemoryRouter initialEntries={['/orgs/org_acme/members']}>
+        <Routes>
+          <Route path="/orgs/:org/members" element={<Members scope={{ kind: 'org' }} />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    try {
+      await settleTask();
+      const row = [...view.container.querySelectorAll('tr')].find((candidate) => candidate.textContent?.includes('dana@example.com'));
+      expect(row?.textContent).toContain('you');
+      expect(row?.textContent).not.toContain('prn_');
     } finally { await view.unmount(); }
   });
 });
