@@ -2,8 +2,10 @@ package securitydeployment
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -38,6 +40,14 @@ func TestCommandHelperProcess(t *testing.T) {
 	case "success":
 		fmt.Fprint(os.Stdout, `{"result":"ok"}`)
 		os.Exit(0)
+	case "linger":
+		// A descendant keeps stderr open after the command itself succeeded.
+		child := exec.Command("sleep", "3")
+		child.Stderr = os.Stderr
+		if err := child.Start(); err != nil {
+			os.Exit(5)
+		}
+		os.Exit(0)
 	}
 	os.Exit(2)
 }
@@ -63,6 +73,26 @@ func TestCommandRunnerBoundsOutputAndScrubsToolFailures(t *testing.T) {
 				t.Fatalf("tool failure lost its diagnostic: %v", err)
 			}
 		})
+	}
+}
+
+// A command that ran may have changed remote state, so only one that never started
+// may be reported as not started, which ECS reads as "sent nothing".
+func TestCommandRunnerReportsAStartedCommandAsStarted(t *testing.T) {
+	_, err := CommandRunner{}.Run(t.Context(), Command{Path: os.Args[0], Args: []string{"-test.run=^TestCommandHelperProcess$", "--", "linger"}})
+	if !errors.Is(err, exec.ErrWaitDelay) || ecsNeverSent.MatchString(err.Error()) {
+		t.Fatalf("a started command was reported as never sent: %v", err)
+	}
+	_, err = CommandRunner{}.Run(t.Context(), Command{Path: filepath.Join(t.TempDir(), "absent")})
+	if err == nil || !ecsNeverSent.MatchString(err.Error()) {
+		t.Fatalf("a command that never started was not reported so: %v", err)
+	}
+}
+
+// A protected value that prints as nothing must not put a marker between every rune.
+func TestStderrTailIgnoresAValueThatPrintsAsNothing(t *testing.T) {
+	if tail := stderrTail([]byte("compose refused\n"), []string{"\a\a\a\a"}); tail != ": compose refused" {
+		t.Fatalf("empty printed value changed the diagnostic: %q", tail)
 	}
 }
 

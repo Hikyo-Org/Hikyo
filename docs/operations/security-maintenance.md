@@ -644,7 +644,11 @@ Success requires Pod readiness, an independently derived runtime image digest,
 and exact local applied-state/schema evidence. A Deployment update or `/readyz`
 alone does not establish the outcome.
 
-Flux (including HelmRelease), Argo and other GitOps resources refuse. Do not remove
+Flux (including HelmRelease), Argo and other GitOps resources refuse. Argo CD's label
+tracking marks a Deployment only with `app.kubernetes.io/instance`, so that label
+refuses unless both `meta.helm.sh` release annotations are present. Argo tracking
+under a custom `application.instanceLabelKey` cannot be detected: rule out Argo
+ownership before enrolling a directly installed Deployment. Do not remove
 ownership labels/annotations to evade this refusal. A dedicated GitOps adapter
 remains work for the parent issue. Use direct installed manifests, or the chart
 opt-in below, only when no other desired-state controller owns the workload.

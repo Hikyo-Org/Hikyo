@@ -116,6 +116,7 @@ type ecsFakeRunner struct {
 	reorderTags                      bool
 	describes                        int
 	missingJob                       int
+	missingStopped                   int
 	staleDesired                     int
 	staleRestart                     int
 	defTags                          map[string]json.RawMessage
@@ -337,6 +338,10 @@ func (f *ecsFakeRunner) Run(ctx context.Context, command Command) ([]byte, error
 			task, ok := f.tasks[arn]
 			if ok && f.missingJob > 0 && task.StartedBy != "" {
 				f.missingJob--
+				ok = false
+			}
+			if ok && f.missingStopped > 0 && task.DesiredStatus == "STOPPED" && task.StartedBy == "" {
+				f.missingStopped--
 				ok = false
 			}
 			if !ok {
@@ -1156,6 +1161,22 @@ func TestECSSoleWriterWaitsForStoppingFamilyTasks(t *testing.T) {
 	f.tasks[stopping.ARN] = stopping
 	if o, err := e.Observe(t.Context()); err != nil || !o.Ready {
 		t.Fatalf("stopped family tasks blocked qualification: %+v %v", o, err)
+	}
+}
+
+// A stopped task ECS purges between the listing and describe-tasks proves nothing
+// either way, so qualification waits for a fresh listing instead of failing.
+func TestECSSoleWriterRelistsAFamilyTaskReportedMissing(t *testing.T) {
+	e, f := ecsFixture(t)
+	stopped := f.serviceTask(ecsTestPrefix+"task/hikyo/"+strings.Repeat("e", 32), f.service.TaskDefinition, "", strings.Repeat("3", 64))
+	stopped.Group, stopped.LastStatus, stopped.DesiredStatus = "family:hikyo", "STOPPED", "STOPPED"
+	f.tasks[stopped.ARN] = stopped
+	f.missingStopped = 1
+	if _, err := e.Observe(t.Context()); !errors.Is(err, ErrNotReady) || errors.Is(err, ErrConflict) {
+		t.Fatalf("a purged family task did not wait for a fresh listing: %v", err)
+	}
+	if o, err := e.Observe(t.Context()); err != nil || !o.Ready {
+		t.Fatalf("the fresh listing did not qualify: %+v %v", o, err)
 	}
 }
 
