@@ -206,7 +206,13 @@ func TestRetirementProtectsLiveRolesAndAmbiguousIdentity(t *testing.T) {
 				if (err != nil) != failure {
 					t.Fatalf("retirement error=%v want failure=%t", err, failure)
 				}
-				if scenario == "readback" || scenario == "foreign readback" || scenario == "uncertain write" {
+				// Only main has a queue, so a stacked PR, like a dev PR, protects no
+				// queue record. It still protects every other check's record.
+				if scenario == "other base" && name == queueCheckName {
+					if len(f.api.writes) != 1 || f.api.checks[0].Conclusion != "cancelled" {
+						t.Fatalf("a stacked PR kept a queue record alive: %+v", f.api.writes)
+					}
+				} else if scenario == "readback" || scenario == "foreign readback" || scenario == "uncertain write" {
 					if len(f.api.writes) != 1 {
 						t.Fatal("uncertain mutation retried")
 					}

@@ -469,14 +469,30 @@ func TestDevPolicyPathsCoverSourceProof(t *testing.T) {
 	}
 }
 
-func TestQueueGateLeavesDevPullRequestsAlone(t *testing.T) {
-	f := newQueueFixture(t)
-	f.pr.Base.Ref = "dev"
-	f.refresh()
-	if err := f.q.admit(context.Background(), f.pr.Number); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.api.checks) != 0 {
-		t.Fatalf("main queue gate published on a dev PR: %+v", f.api.checks)
+// Only main has a queue. A dev PR and a stacked PR get no queue check, and a
+// pending record left on such a head by an earlier pass is retired, not refused.
+func TestQueueGateLeavesPullRequestsOutsideMainAlone(t *testing.T) {
+	for _, base := range []string{"dev", "feat/stacked-base"} {
+		t.Run(base, func(t *testing.T) {
+			f := newQueueFixture(t)
+			f.pr.Base.Ref = base
+			f.refresh()
+			if err := f.q.admit(context.Background(), f.pr.Number); err != nil {
+				t.Fatal(err)
+			}
+			if len(f.api.checks) != 0 {
+				t.Fatalf("main queue gate published on a PR to %s: %+v", base, f.api.checks)
+			}
+
+			f, _ = retirementFixture(t, queueCheckName)
+			f.pr.Base.Ref = base
+			f.refresh()
+			if err := f.q.admit(context.Background(), f.pr.Number); err != nil {
+				t.Fatal(err)
+			}
+			if len(f.api.checks) != 1 || f.api.checks[0].Status != "completed" || f.api.checks[0].Conclusion != "cancelled" {
+				t.Fatalf("pending queue record on a PR to %s was not retired: %+v", base, f.api.checks)
+			}
+		})
 	}
 }
