@@ -473,7 +473,7 @@ func TestFinalReadbackRefusesChangedProofAndAuthority(t *testing.T) {
 					r.Attempt++
 					return r, true
 				case scenario == "jobs" && strings.Contains(endpoint, "/jobs?") && count == 2:
-					return map[string]any{"total_count": 47, "jobs": f.jobLists[100][1:]}, true
+					return map[string]any{"total_count": 48, "jobs": f.jobLists[100][1:]}, true
 				case scenario == "main" && strings.HasSuffix(endpoint, "git/ref/heads/main") && count == 2:
 					return map[string]any{"ref": "refs/heads/main", "object": map[string]any{"sha": testDev, "type": "commit"}}, true
 				case scenario == "dev-ancestry" && strings.Contains(endpoint, "compare/"+testSource+"..."+testDev) && count == 2:
@@ -547,8 +547,8 @@ func TestSyntheticChecksCannotSupplyJobCoverage(t *testing.T) {
 
 func TestClosedRegistryAndExecutionInventory(t *testing.T) {
 	f := newFixture(t, "dev", devProducer)
-	if len(f.jobLists[100]) != 47 {
-		t.Fatalf("full schema must conserve 47 native executions: %d", len(f.jobLists[100]))
+	if len(f.jobLists[100]) != 48 {
+		t.Fatalf("full schema must conserve 48 native executions: %d", len(f.jobLists[100]))
 	}
 	for _, name := range []string{"validation / web (desktop, 4)", "validation / web (mobile, 4)", "validation / race shard (11)", "validation / isolation shard (2)", "validation / fuzz shard (2)", "validation / floor-bench / measure", "validation / scan-xplat (windows-latest)", "validation / source-artifact-security"} {
 		found := false

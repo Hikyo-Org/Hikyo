@@ -67,6 +67,7 @@ all_success='{
 	"scan-xplat":{"result":"success"},
 	"supply-chain-checks":{"result":"success"},
 	"test_core":{"result":"success"},
+	"test_core_serial":{"result":"success"},
 	"web":{"result":"success"},
 	"web-closure":{"result":"success"},
 	"web-go":{"result":"success"},
@@ -88,6 +89,7 @@ docs_success=$(printf '%s' "$all_success" | jq '
 	.["scan-xplat"].result = "skipped" |
 	.["supply-chain-checks"].result = "skipped" |
 	.test_core.result = "skipped" |
+	.test_core_serial.result = "skipped" |
 	.web.result = "skipped" |
 	.["web-closure"].result = "skipped" |
 	.["web-go"].result = "skipped" |
@@ -113,7 +115,7 @@ for result in failure cancelled skipped; do
 done
 expect_accept 'main push' push "$all_success" "$all_plan"
 
-for job in client compose-demo fuzz_shard isolation_shard preflight race_shard scan-xplat source-artifact-security test_core; do
+for job in client compose-demo fuzz_shard isolation_shard preflight race_shard scan-xplat source-artifact-security test_core test_core_serial; do
 	for result in failure cancelled skipped; do
 		expect_reject "selected $job with $result result" pull_request \
 			"$(printf '%s' "$all_success" | jq --arg job "$job" --arg result "$result" '.[ $job ].result = $result')" \

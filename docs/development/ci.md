@@ -128,6 +128,10 @@ snapshot checks remain mandatory. The frozen conservation baseline rejects
 removed or weakened execution; exact additive demo and benchmark steps are
 checked separately. Benchmark smoke exercises every benchmark in the same five
 packages once, inside `test_core`; a failure fails that required job.
+`internal/app` and `internal/lint` (database drops and cross-platform compiler
+loads that must not contend with the concurrent package pool) run alone, app
+then lint, in the parallel required job `test_core_serial` via
+`scripts/ci/test-core-packages.sh serial`; `test_core` runs every other package.
 
 The trusted queue publisher binds repository, merge-group workflow, run, attempt,
 exact group head, and live main. PR-controlled artifacts are not executable policy. Workflow byte identity normally matches trusted
