@@ -56,7 +56,8 @@ func newEmailInvitationRig(t *testing.T, db *store.DB, configured bool) *emailIn
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := &emailInvitationRig{t: t, db: db, sink: sink, now: time.Now().UTC()}
+	// Sub-microsecond nanoseconds, as Linux clocks give, so receipts must be canonical.
+	r := &emailInvitationRig{t: t, db: db, sink: sink, now: time.Now().UTC().Truncate(time.Microsecond).Add(123 * time.Nanosecond)}
 	r.clock = &r.now
 	r.svc = &service.EmailInvitations{
 		DB: db, Now: func() time.Time { return *r.clock }, ExternalOrigin: "https://hikyo.test", ExternalOriginExplicit: true,
