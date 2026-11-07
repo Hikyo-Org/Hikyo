@@ -2,11 +2,11 @@ package app
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -107,7 +107,7 @@ func RunUnattendedUpgrade(ctx context.Context, cfg *config.Config, options Unatt
 		return cleanup, errors.New("unattended coordinator lock unavailable")
 	}
 	cleanup = lock.Unlock
-	installer, err := selfupdate.NewInstaller(selfupdate.Config{StateDir: filepath.Join(directory, "downloads"), TrustRootBase64: base64.StdEncoding.EncodeToString(pinned.Root), RecoveryKeyBase64: base64.StdEncoding.EncodeToString(pinned.RecoveryPublicKey), TransientBundles: true})
+	installer, err := newSecurityImageInstaller(filepath.Join(directory, "downloads"), pinned)
 	if err != nil {
 		return cleanup, err
 	}
@@ -117,6 +117,9 @@ func RunUnattendedUpgrade(ctx context.Context, cfg *config.Config, options Unatt
 	}
 	source := updatecheck.NewGitHubSource(client)
 	target, cached := cachedUnattendedImage(ctx, cfg, directory, claim, pinned, installer)
+	if !cached {
+		target, cached = cachedSecurityStageImage(ctx, cfg, directory, claim, pinned, installer)
+	}
 	if !cached {
 		release, err := source.ReleaseByVersion(ctx, declaration.Version)
 		if err != nil {
@@ -171,6 +174,16 @@ func RunUnattendedUpgrade(ctx context.Context, cfg *config.Config, options Unatt
 }
 
 func runPreparedUnattended(ctx context.Context, cfg *config.Config, options UnattendedUpgradeOptions, directory string, root []byte, pinned releasetrust.PinnedTrust, installer unattendedInstaller, source automaticReleaseSource, target selfupdate.PreparedNightly) error {
+	// A rollback is rewriting the live database. Before anything reads or writes
+	// it, a restarted target idles until the coordinator replaces it, exactly as
+	// after an abort: the database may not exist yet, and a retry could race the restore.
+	rolling, err := readAutomaticJournal(filepath.Join(directory, "operation.json"))
+	if err != nil {
+		return err
+	}
+	if rolling != nil && rolling.Phase == "rolling-back" && rolling.Target == target.Identity {
+		return fmt.Errorf("%w: rolling back to the fenced snapshot", ErrPreparationAborted)
+	}
 	database := upgrade.Config{Engine: releaseidentity.Engine(cfg.Store.Engine), Path: cfg.Store.Path, DSN: cfg.Store.DSN}
 	state, stateErr := upgrade.InspectControl(ctx, database)
 	if stateErr != nil && !errors.Is(stateErr, upgrade.ErrAbsent) {
@@ -266,9 +279,35 @@ func runPreparedUnattended(ctx context.Context, cfg *config.Config, options Unat
 		return upgradegate.ErrRestoreRequired
 	}
 	if previous != nil && previous.Phase != "complete" && previous.Target != target.Identity {
-		return errors.New("unfinished unattended upgrade requires its original exact image")
+		if !previous.sourceIs(target.Identity) || !previous.preparationNeverWrote(state, stateErr) {
+			return errors.New("unfinished unattended upgrade requires its original exact image")
+		}
+		return abandonUnstartedPreparation(ctx, cfg, root, directory, journalPath, previous, state)
 	}
-	route, err := discoverReleaseRoute(ctx, unattendedRouteInstaller{installer}, source, target, pinned, automaticStore{database}, database.Engine, previous, true)
+	if previous != nil && previous.Phase == "preparing" && previous.Aborted != "" && previous.Target == target.Identity {
+		// The stale marker survives a process restart. Retrying here would race the
+		// coordinator's restore of the source: if this run crossed "write-intent" first,
+		// the source image would refuse to start.
+		applyUnattendedEvidence(cfg, previous.Runtime)
+		var maintenanceErr error
+		if state.Maintenance && options.PreparedConfiguration != nil {
+			maintenanceErr = prepareUnattendedMaintenance(ctx, cfg, root, options)
+		}
+		return errors.Join(fmt.Errorf("%w: %s", ErrPreparationAborted, previous.Aborted), maintenanceErr)
+	}
+	var route automaticRoute
+	if concrete, ok := installer.(*selfupdate.Installer); ok {
+		var staged bool
+		route, staged, err = preparedSecurityImageRoute(ctx, cfg, directory, pinned, concrete, target, previous)
+		if err != nil {
+			return err
+		}
+		if !staged {
+			route, err = discoverReleaseRoute(ctx, unattendedRouteInstaller{installer}, source, target, pinned, automaticStore{database}, database.Engine, previous, true)
+		}
+	} else {
+		route, err = discoverReleaseRoute(ctx, unattendedRouteInstaller{installer}, source, target, pinned, automaticStore{database}, database.Engine, previous, true)
+	}
 	if err != nil {
 		return err
 	}
@@ -297,7 +336,13 @@ func runPreparedUnattended(ctx context.Context, cfg *config.Config, options Unat
 		if err != nil {
 			return err
 		}
-		journal = &automaticJournal{Format: "hikyo.container-upgrade/v1", Phase: "preparing", Target: target.Identity, Source: upgradecompat.InstalledSource{Identity: route.Plan.Source(), Migrations: manifest, SchemaSHA256: route.Plan.SourceSchemaDigest()}, Instance: state.InstanceID, Route: route.Plan.Digest(), Runtime: hostupgrade.RuntimeEvidence{BundleDirectory: route.Directory, OperatorPublicKey: publicPath, TargetManifest: string(target.Identity.ManifestSHA256)}}
+		// The record must exist before the journal that names the completed run's backup is replaced.
+		if previous != nil {
+			if err := retainLastBackup(directory, previous.Runtime); err != nil {
+				return err
+			}
+		}
+		journal = &automaticJournal{Format: containerJournalFormat, Phase: "preparing", Target: target.Identity, Source: upgradecompat.InstalledSource{Identity: route.Plan.Source(), Migrations: manifest, SchemaSHA256: route.Plan.SourceSchemaDigest()}, Instance: state.InstanceID, Route: route.Plan.Digest(), Runtime: hostupgrade.RuntimeEvidence{BundleDirectory: route.Directory, OperatorPublicKey: publicPath, TargetManifest: string(target.Identity.ManifestSHA256)}}
 		if err := writeAutomaticJournal(journalPath, journal); err != nil {
 			return err
 		}
@@ -307,14 +352,20 @@ func runPreparedUnattended(ctx context.Context, cfg *config.Config, options Unat
 	preparedTransport := false
 	if state.Pending.Phase == upgrade.Healthy || state.Pending.Phase == upgrade.BackupPreparing {
 		if journal.Phase == "preparing" || state.Pending.Phase == upgrade.BackupPreparing {
+			// Before "write-intent" only the backup fence reached the live database.
+			abort := func(cause error) error { return abortUnattendedPreparation(journalPath, journal, cause) }
+			// A failed sweep must not turn into a failed preparation.
+			if err := sweepUnattendedAttempts(directory, journal); err != nil {
+				slog.Warn("could not remove earlier unattended preparation copies", "err", err)
+			}
 			scratch, cleanupScratch, err := prepareUnattendedScratch(ctx, cfg, directory, route.Plan.SourceSchemaDigest())
 			if err != nil {
-				return err
+				return abort(err)
 			}
 			defer cleanupScratch()
 			request, closeRequest, err := upgradeRequest(ctx, cfg, root, upgradegate.PrepareBackup)
 			if err != nil {
-				return err
+				return abort(err)
 			}
 			defer closeRequest()
 			var preparedConfig *config.Config
@@ -329,23 +380,31 @@ func runPreparedUnattended(ctx context.Context, cfg *config.Config, options Unat
 				// so a start with nothing pending still boots under a hybrid policy.
 				return requireCustodyMatchesBackupPolicy(preparedConfig.BackupRecipients, vault.Recipient())
 			}
+			// A rollback must be able to rebuild the schema; learn that before the fence.
+			if err := upgrade.PreflightPostgresRollback(ctx, database); err != nil {
+				return abort(err)
+			}
 			if _, err := upgradegate.Run(ctx, request); err != nil {
-				return err
+				return abort(err)
 			}
 			if options.PreparedConfiguration != nil && preparedConfig != nil {
 				if err := options.PreparedConfiguration(preparedConfig); err != nil {
-					return err
+					return abort(err)
 				}
 			}
 			preparedTransport = true
 			// A retry on a frozen source makes fresh bounded proof, including
 			// after an earlier attestation expired while the container was down.
 			if err := prepareUnattendedEvidence(ctx, cfg, options, directory, route, vault, journal, scratch); err != nil {
-				return err
+				return abort(err)
 			}
-			journal.Phase = "write-intent"
+			journal.Phase, journal.Aborted = "write-intent", ""
 			if err := writeAutomaticJournal(journalPath, journal); err != nil {
 				return err
+			}
+			// The journal now names the replacement, so the completed run's backup can go.
+			if err := errors.Join(retainLastBackup(directory, journal.Runtime), sweepUnattendedAttempts(directory, journal)); err != nil {
+				slog.Warn("could not remove the earlier backup", "err", err)
 			}
 			applyUnattendedEvidence(cfg, journal.Runtime)
 			if _, err := databaseGate(ctx, cfg, root, upgradegate.PrepareRoute); err != nil {
@@ -457,4 +516,83 @@ func prepareUnattendedMaintenance(ctx context.Context, cfg *config.Config, root 
 		return errors.New("maintenance transport configuration unavailable")
 	}
 	return options.PreparedConfiguration(preparedConfig)
+}
+
+func (j *automaticJournal) sourceIs(running releaseidentity.Identity) bool {
+	return j.Source.Identity == (releaseidentity.Source{Release: running})
+}
+
+// preparationNeverWrote holds only while the journal is still "preparing" and the
+// control row is the untouched source, fenced for this journal's route or not
+// fenced at all. "write-intent" is written before the first step that can start a
+// migration, so any later journal phase or control phase never qualifies.
+func (j *automaticJournal) preparationNeverWrote(state upgrade.State, stateErr error) bool {
+	if stateErr != nil || j.Phase != "preparing" || state.Pending == nil || state.Pending.Invalidated || state.Applied != j.Source.Identity || state.InstanceID != j.Instance || state.SchemaDigest != j.Source.SchemaSHA256 {
+		return false
+	}
+	if digest, err := j.Source.Migrations.Digest(); err != nil || digest != state.MigrationDigest {
+		return false
+	}
+	switch state.Pending.Phase {
+	case upgrade.Healthy:
+		return !state.Maintenance
+	case upgrade.BackupPreparing:
+		return state.Pending.Preparation != nil && state.Pending.Preparation.Target == j.Target && state.Pending.Preparation.RouteDigest == j.Route
+	}
+	return false
+}
+
+// ErrPreparationAborted marks a target whose journal says it stopped before the
+// live database was written. The process stays up and idle, so the coordinator can
+// ask it and put the source back; a retry here could cross "write-intent" first.
+var ErrPreparationAborted = errors.New("unattended preparation aborted before the live database was written")
+
+// abortUnattendedPreparation lets the coordinator see that this target stopped
+// before the live database was written. A journal past "preparing" is left alone.
+func abortUnattendedPreparation(path string, journal *automaticJournal, cause error) error {
+	if journal.Phase != "preparing" {
+		return cause
+	}
+	journal.Aborted = strings.ToValidUTF8(cause.Error()[:min(len(cause.Error()), 512)], "")
+	if err := writeAutomaticJournal(path, journal); err != nil {
+		return errors.Join(cause, err)
+	}
+	// A journal at "preparing" references none of this attempt's copies.
+	return errors.Join(cause, ErrPreparationAborted, sweepUnattendedAttempts(filepath.Dir(path), journal))
+}
+
+// recordAbandonedPreparation keeps the reason beside the journal it replaces.
+func recordAbandonedPreparation(directory, reason string, journal *automaticJournal) error {
+	raw, err := json.Marshal(struct {
+		Format  string            `json:"format"`
+		Reason  string            `json:"reason"`
+		Journal *automaticJournal `json:"journal"`
+	}{"hikyo.unattended-abandoned/v1", reason, journal})
+	if err != nil {
+		return err
+	}
+	return writeAutomaticFile(filepath.Join(directory, "preparation-abandoned.json"), raw, 0600)
+}
+
+// abandonUnstartedPreparation is the source image's exit from a target that never
+// wrote the live database. The reason is kept beside the journal it replaces. The
+// fence is lifted under the gate's own lock and compare-and-swap, so a state that
+// moved since it was read refuses instead of being released.
+func abandonUnstartedPreparation(ctx context.Context, cfg *config.Config, root []byte, directory, journalPath string, previous *automaticJournal, state upgrade.State) error {
+	if err := recordAbandonedPreparation(directory, "the source image resumed after its target ended before the live database was written", previous); err != nil {
+		return err
+	}
+	if state.Pending.Phase == upgrade.BackupPreparing {
+		if _, err := databaseGate(ctx, cfg, root, upgradegate.ReleasePreparation); err != nil {
+			return err
+		}
+	}
+	if err := restoreAutomaticUnstartedJournal(journalPath, nil); err != nil {
+		return err
+	}
+	// The source is already free to serve, so a leftover copy only costs disk.
+	if err := sweepUnattendedAttempts(directory, nil); err != nil {
+		slog.Warn("could not remove the abandoned preparation's copies", "err", err)
+	}
+	return nil
 }

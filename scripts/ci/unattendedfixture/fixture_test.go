@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -23,12 +24,25 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/selfupdate"
 	"github.com/Hikyo-Org/hikyo/internal/upgradebundle"
 	"github.com/Hikyo-Org/hikyo/internal/upgradecompat"
+	"github.com/google/go-containerregistry/pkg/name"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/empty"
+	"github.com/google/go-containerregistry/pkg/v1/layout"
+	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/tarball"
 )
 
 // TestWriteUnattendedContainerFixture exports three real Linux server binaries
 // and signed archives under ephemeral test trust. The harness seeds only public
 // artifact caches; normal server startup reauthenticates every byte and runs the
 // production unattended coordinator. Nothing is published or signed by a live key.
+//
+// HIKYO_UNATTENDED_FIXTURE_IMAGE_REPOSITORY (a ghcr.io name) and
+// HIKYO_UNATTENDED_FIXTURE_CA (a PEM file) also give each release a signed OCI
+// image artifact, written as an OCI layout under images/LABEL, so that the security
+// feed can name an image target. The image is Dockerfile.release's base plus the
+// release binary and that CA as its trust bundle.
 func TestWriteUnattendedContainerFixture(t *testing.T) {
 	output := os.Getenv("HIKYO_UNATTENDED_FIXTURE_OUTPUT")
 	if output == "" {
@@ -74,6 +88,7 @@ func TestWriteUnattendedContainerFixture(t *testing.T) {
 	put("public/trust-root.json", trust.Pinned.Root, 0644)
 	put("public/recovery.pub", trust.Pinned.RecoveryPublicKey, 0644)
 	var previous releasetrust.VerifiedRelease
+	imageDigests := map[string]string{}
 	var releases []struct {
 		label string
 		id    releaseidentity.Identity
@@ -94,6 +109,7 @@ func TestWriteUnattendedContainerFixture(t *testing.T) {
 		claim := testfixture.JSON(t, declaration)
 		encode := base64.StdEncoding.EncodeToString
 		flags := []string{
+			"-s -w", // Without DWARF the binary is a quarter smaller, which a 2 GiB engine feels.
 			"-X main.version=" + declaration.Version,
 			"-X main.commit=" + declaration.Commit,
 			"-X main.updateChannel=off",
@@ -145,9 +161,20 @@ func TestWriteUnattendedContainerFixture(t *testing.T) {
 			{Name: "binary-provenance.json", Kind: "binary-provenance"},
 			{Name: "checksums.txt", Kind: "checksum"},
 		}
+		if repository := os.Getenv("HIKYO_UNATTENDED_FIXTURE_IMAGE_REPOSITORY"); repository != "" {
+			digest := writeFixtureImage(t, filepath.Join(output, "images", label), binary, arch)
+			imageDigests[label] = digest
+			payloads["image-index.digest"] = []byte(digest + "\n")
+			artifacts = append(artifacts, releasetrust.Artifact{Name: "image-index.digest", Kind: "image", Image: repository, Tag: declaration.Version, Digest: digest})
+		}
 		material := trust.SignNightlyWithPayloads(claim, declaration.Version, declaration.Sequence, payloads, artifacts)
 		directoryName := "public/release-" + label
 		for name, reader := range material.Artifacts {
+			// Platform verification needs the directory to hold only the binary and its
+			// metadata, so the image's digest file is added once every release exists.
+			if name == "image-index.digest" {
+				continue
+			}
 			raw, err := io.ReadAll(reader)
 			if err != nil {
 				t.Fatal(err)
@@ -188,12 +215,84 @@ func TestWriteUnattendedContainerFixture(t *testing.T) {
 		prepared := selfupdate.PreparedNightly{Identity: previous.Identity(), Directory: "/fixtures/release-" + label, BundleDirectory: "/fixtures/bundle-" + label, BinaryPath: "/usr/local/bin/hikyo", BinarySHA256: releaseidentity.Hash(binary)}
 		put("descriptor-"+label+".json", testfixture.JSON(t, prepared), 0644)
 	}
+	// GitHub's asset list must equal the signed inventory, which names the image.
+	for label, digest := range imageDigests {
+		put("public/release-"+label+"/image-index.digest", []byte(digest+"\n"), 0644)
+	}
 	// The assembler intentionally stages private directories/documents. This
 	// exported subtree contains only signed public evidence, and the actual
 	// distroless UID must be able to traverse/read it across a read-only mount.
 	if err := makeFixturePublic(filepath.Join(output, "public")); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// writeFixtureImage writes a one-platform OCI index as a layout and returns its
+// digest, the value a release manifest signs. The harness pushes the layout to a
+// registry unchanged, so the digest is the one the engine pulls.
+func writeFixtureImage(t *testing.T, directory string, binary []byte, arch string) string {
+	t.Helper()
+	dockerfile, err := os.ReadFile("../../../Dockerfile.release")
+	if err != nil {
+		t.Fatal(err)
+	}
+	from := regexp.MustCompile(`(?m)^FROM (\S+)`).FindSubmatch(dockerfile)
+	ca, err := os.ReadFile(os.Getenv("HIKYO_UNATTENDED_FIXTURE_CA"))
+	if from == nil || err != nil {
+		t.Fatalf("image fixture needs Dockerfile.release's base and HIKYO_UNATTENDED_FIXTURE_CA: %v", err)
+	}
+	reference, err := name.ParseReference(string(from[1]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	platform := v1.Platform{OS: "linux", Architecture: arch}
+	base, err := remote.Image(reference, remote.WithContext(t.Context()), remote.WithPlatform(platform))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var files bytes.Buffer
+	tw := tar.NewWriter(&files)
+	for _, file := range []struct {
+		name string
+		mode int64
+		raw  []byte
+	}{{"usr/local/bin/hikyo", 0755, binary}, {"etc/ssl/certs/ca-certificates.crt", 0644, ca}} {
+		if err := tw.WriteHeader(&tar.Header{Name: file.name, Mode: file.mode, Size: int64(len(file.raw)), Uid: 65532, Gid: 65532}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write(file.raw); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	layer, err := tarball.LayerFromReader(&files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, err := mutate.AppendLayers(base, layer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configuration, err := image.ConfigFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	configuration.Config.User, configuration.Config.Entrypoint, configuration.Config.Cmd = "65532:65532", []string{"/usr/local/bin/hikyo"}, []string{"server"}
+	configuration.Config.ExposedPorts = map[string]struct{}{"8080/tcp": {}, "8081/tcp": {}}
+	if image, err = mutate.ConfigFile(image, configuration); err != nil {
+		t.Fatal(err)
+	}
+	index := mutate.AppendManifests(empty.Index, mutate.IndexAddendum{Add: image, Descriptor: v1.Descriptor{Platform: &platform}})
+	digest, err := index.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := layout.Write(directory, index); err != nil {
+		t.Fatal(err)
+	}
+	return digest.String()
 }
 
 func makeFixturePublic(directory string) error {

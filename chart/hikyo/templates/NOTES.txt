@@ -74,3 +74,37 @@ Manual upgrade artifacts:
   Stop all writers and run one verified migrator before replacing an existing release.
   Runbook: https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/manual-upgrades.md
 {{- end }}
+
+{{- $maintenance := .Values.securityMaintenance | default dict }}
+{{- $coordinator := $maintenance.coordinator | default dict }}
+{{- if include "hikyo.coordinator.enabled" . }}
+Security maintenance coordinator: CronJob {{ include "hikyo.coordinator.name" . }}, schedule {{ $coordinator.schedule }}
+{{- if $coordinator.enroll }}
+  Enrollment: installing with unattended upgrades on authorizes automatic replacement of the server image under the configured policy; a hook Job enrolls this installation{{ if $coordinator.enrollOnUpgrade }} on install and on every upgrade{{ else }} on install only{{ end }}. Set securityMaintenance.coordinator.enroll=false to withhold it before enrolling; once enrolled, automatic replacement stops when securityMaintenance.coordinator.enabled=false, securityMaintenance.enabled=false or upgrade.unattended.enabled=false is set, or when no feed root remains; each also deletes the coordinator state, the enrollment included.
+{{- else }}
+  Not enrolled: it reports explicit_enrollment_required. Setting securityMaintenance.coordinator.enroll=true is your consent to automatic image replacement.
+{{- end }}
+  Runbook: https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/security-maintenance.md
+{{- else if and (include "hikyo.maintenance.enabled" .) $coordinator.enabled }}
+
+Automatic security updates are OFF: this chart ships no feed trust root (files/security-feed-root.json) and securityMaintenance.coordinator.feedRoot is empty. The chart never fetches a root from the feed it authorizes. Use a chart release that ships the root, or set securityMaintenance.coordinator.feedRoot, then upgrade.
+{{- else if and $maintenance.enabled (not .Values.upgrade.unattended.enabled) }}
+
+Automatic security updates are off: they need upgrade.unattended.enabled=true.
+{{- end }}
+
+{{- if include "hikyo.maintenance.enabled" . }}
+{{- $requested := printf "%s@%s" .Values.image.repository .Values.image.digest }}
+{{- $kept := include "hikyo.server.image" . }}
+{{- if ne $kept $requested }}
+
+WARNING: image.digest was NOT applied. The security maintenance coordinator replaced
+the server image, and this upgrade keeps the running one:
+  running   {{ $kept }}
+  requested {{ $requested }}
+To move the server to image.digest on purpose, run this one upgrade with
+--set securityMaintenance.keepLiveImage=false, then return to the default. The
+coordinator never installs an older image by itself, so check the direction first.
+Runbook: https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/security-maintenance.md#deliberate-upgrades-and-the-chart-image
+{{- end }}
+{{- end }}

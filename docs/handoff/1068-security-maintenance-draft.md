@@ -140,7 +140,7 @@ execution paths and running real Docker found these defects, now repaired:
 
 ## Evidence added by validation
 
-- Real Compose rehearsal, `scripts/ci/security-compose-rehearsal.sh` (part 2): replacement
+- [Real Compose rehearsal](../../scripts/ci/security-compose-rehearsal.sh): replacement
   through the real executor, real registry, real signed fixtures under ephemeral trust.
   Plain `docker compose up` keeps the target, data and root key survive, kill during
   boot recovers, an older image refuses with the database unchanged, the source

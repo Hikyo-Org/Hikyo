@@ -1,0 +1,213 @@
+{{- if include "hikyo.coordinator.enabled" . }}
+{{- $c := .Values.securityMaintenance.coordinator }}
+{{- $name := include "hikyo.coordinator.name" . }}
+{{- $status := include "hikyo.coordinator.status" . }}
+{{- $stage := include "hikyo.coordinator.stage" . }}
+{{- $volume := "/var/lib/hikyo-security-maintenance" }}
+{{- $feed := trimSuffix "/" $c.feedURL }}
+{{- $kubernetes := dict
+  "namespace" .Release.Namespace
+  "deployment" (include "hikyo.fullname" .)
+  "container" "server"
+  "stage_pod" $stage
+  "binary" "/usr/local/bin/hikyo"
+  "cron_job" $name
+  "status_config_map" $status
+  "volume_root" $volume }}
+{{- if $c.acceptWorldWritableVolumeRoot }}
+{{- $_ := set $kubernetes "accept_world_writable_volume_root" true }}
+{{- end }}
+{{- $config := dict
+  "format" "hikyo.security-maintenance-config/v1"
+  "state_directory" (printf "%s/state" $volume)
+  "status_file" "/run/hikyo-security-status/status.json"
+  "feed" (dict "metadata_url" (printf "%s/metadata/" $feed) "targets_url" (printf "%s/targets/" $feed) "root_file" "/etc/hikyo/security-feed-root.json")
+  "policy" $c.policy
+  "kind" "kubernetes"
+  "deployment" (dict
+    "kind" "kubernetes"
+    "state_directory" (printf "%s/state/deployment" $volume)
+    "image_repository" .Values.image.repository
+    "timeout_seconds" 1800
+    "kubernetes" $kubernetes) }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "hikyo.labels" . | nindent 4 }}
+# The coordinator, not the server, holds a Kubernetes token.
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "hikyo.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: [{{ include "hikyo.fullname" . | quote }}]
+    verbs: ["get", "update"]
+  # RBAC cannot name-scope list or create, and the source Pod's name is not known in
+  # advance. These three rules are therefore namespace-wide: keep Hikyo in a
+  # dedicated namespace and add admission policy, as the runbook describes.
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["list"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list", "create"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create", "get"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    resourceNames: [{{ $stage | quote }}]
+    verbs: ["get", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    resourceNames: [{{ $stage | quote }}]
+    verbs: ["get"]
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
+    resourceNames: [{{ $name | quote }}]
+    verbs: ["get", "patch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: [{{ $status | quote }}]
+    verbs: ["get", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "hikyo.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}-state
+  labels:
+    {{- include "hikyo.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with $c.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $c.stateSize | quote }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "hikyo.labels" . | nindent 4 }}
+data:
+  security-maintenance.json: |
+    {{- $config | toPrettyJson | nindent 4 }}
+  security-feed-root.json: |
+    {{- include "hikyo.coordinator.feedRoot" . | trim | nindent 4 }}
+---
+# Created here so the coordinator's Role needs only get and update on this one name.
+# The coordinator fills it; the server mounts it read-only.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $status }}
+  labels:
+    {{- include "hikyo.labels" . | nindent 4 }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "hikyo.labels" . | nindent 4 }}
+spec:
+  schedule: {{ $c.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            {{- include "hikyo.coordinator.podLabels" . | nindent 12 }}
+        spec:
+          {{- include "hikyo.coordinator.podSpec" (dict "root" . "args" (list "run" "--once")) | nindent 10 }}
+{{- if $c.enroll }}
+---
+# Enrollment is the owner's consent, given by installing with unattended upgrades on.
+# Helm runs this after the Deployment exists, and it retries because the server may not
+# be healthy yet. It runs on install only: a failed hook on upgrade fails the release,
+# and a release being upgraded did not consent through the default. enrollOnUpgrade
+# also runs it on upgrade; an enrolled installation then succeeds at once, so this does
+# not block an upgrade made during recovery, unless its pin was removed and has to be
+# recorded again.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}-enroll
+  labels:
+    {{- include "hikyo.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: {{ if $c.enrollOnUpgrade }}post-install,post-upgrade{{ else }}post-install{{ end }}
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        {{- include "hikyo.coordinator.podLabels" . | nindent 8 }}
+    spec:
+      {{- include "hikyo.coordinator.podSpec" (dict "root" . "args" (list "enroll")) | nindent 6 }}
+{{- end }}
+{{- if (((.Values.networkPolicy | default dict).egress | default dict).restricted) }}
+{{- $dns := .Values.networkPolicy.egress.dns }}
+---
+# The server's policy selects server pods only. This one gives the coordinator the
+# destinations it needs and nothing inbound.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "hikyo.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "hikyo.coordinator.podLabels" . | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    {{- if $dns.to }}
+    - to:
+        {{- toYaml $dns.to | nindent 8 }}
+      ports:
+        {{- toYaml $dns.ports | nindent 8 }}
+    {{- end }}
+    {{- range $destination := list $c.egress.apiServer $c.egress.internet }}
+    {{- if $destination.to }}
+    - to:
+        {{- toYaml $destination.to | nindent 8 }}
+      ports:
+        {{- toYaml $destination.ports | nindent 8 }}
+    {{- end }}
+    {{- end }}
+{{- end }}
+{{- end }}
