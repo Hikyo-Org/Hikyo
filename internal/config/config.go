@@ -84,11 +84,15 @@ type Config struct {
 	OperationalListen     string
 	// CLISocket is an optional same-user Unix socket for credential-bearing
 	// local CLI traffic. It is bootstrap-only and never a managed runtime path.
-	CLISocket               string
-	TLSCertFile             string
-	TLSKeyFile              string
-	ConfigRolloutEnrollment string
-	ConfigRolloutSigningKey string
+	CLISocket string
+	// SecurityMaintenanceStatusFile is an optional public file the separate
+	// maintenance coordinator writes. Nothing reads it until the status API that
+	// ships with the coordinator; it is validated now so that release accepts it.
+	SecurityMaintenanceStatusFile string
+	TLSCertFile                   string
+	TLSKeyFile                    string
+	ConfigRolloutEnrollment       string
+	ConfigRolloutSigningKey       string
 	// TLS PEM contents are consumed only after managed node activation. Runtime
 	// callers must never reopen the original bootstrap file paths.
 	TLSCertPEM        string
@@ -293,73 +297,74 @@ const (
 
 // knownEnv is the closed set of HIKYO_* keys this build understands.
 var knownEnv = map[string]bool{
-	"HIKYO_AUDIT_ACCESS_RETAIN_DAYS":       true,
-	"HIKYO_AUDIT_SECURITY_RETAIN_DAYS":     true,
-	"HIKYO_DB":                             true,
-	"HIKYO_PG_STORAGE_KUBELET_URL":         true,
-	"HIKYO_PG_STORAGE_NAMESPACE":           true,
-	"HIKYO_PG_STORAGE_PVC":                 true,
-	"HIKYO_PG_STORAGE_NODE":                true,
-	"HIKYO_PG_POOL_MAX":                    true,
-	"HIKYO_LISTEN":                         true,
-	"HIKYO_OPERATIONAL_LISTEN":             true,
-	"HIKYO_CLI_SOCKET":                     true,
-	"HIKYO_TLS_CERT_FILE":                  true,
-	"HIKYO_TLS_KEY_FILE":                   true,
-	"HIKYO_TLS_PROFILE":                    true,
-	"HIKYO_EXTERNAL_ORIGIN":                true,
-	"HIKYO_MCP_ENABLED":                    true,
-	"HIKYO_MCP_WRITE_ENABLED":              true,
-	"HIKYO_SECOND_FACTOR":                  true,
-	"HIKYO_MAX_KEYS_PER_PROJECT":           true,
-	"HIKYO_DEFAULT_KEYS_PER_PROJECT":       true,
-	"HIKYO_MCP_ALLOWED_ORIGINS":            true,
-	"HIKYO_TRUSTED_PROXY_CIDRS":            true,
-	"HIKYO_ROOT_KEY_FILE":                  true,
-	"HIKYO_ROOT_KEY":                       true,
-	"HIKYO_UPGRADE_BUNDLE":                 true,
-	"HIKYO_UPGRADE_UNATTENDED":             true,
-	"HIKYO_UPGRADE_SCRATCH_POSTGRES_DSN":   true,
-	"HIKYO_UPGRADE_STATE_DIR":              true,
-	"HIKYO_UPGRADE_EVIDENCE":               true,
-	"HIKYO_UPGRADE_BACKUP":                 true,
-	"HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY":    true,
-	"HIKYO_UPGRADE_OPERATOR_INSTANCE":      true,
-	"HIKYO_UPGRADE_TARGET_MANIFEST":        true,
-	"HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED": true,
-	"HIKYO_NEW_ROOT_KEY_FILE":              true,
-	"HIKYO_DIRECTORY_PROXY":                true,
-	"HIKYO_PAIRING_SPKI_PIN":               true,
-	"HIKYO_ARGON2_MEMORY_KIB":              true,
-	"HIKYO_ARGON2_TIME":                    true,
-	"HIKYO_ARGON2_PARALLELISM":             true,
-	"HIKYO_ADMISSION_BUDGET_MIB":           true,
-	"HIKYO_BACKUP_RECIPIENTS":              true,
-	"HIKYO_BACKUP_DIR":                     true,
-	"HIKYO_BACKUP_INTERVAL":                true,
-	"HIKYO_BACKUP_RPO":                     true,
-	"HIKYO_BACKUP_RETAIN_COUNT":            true,
-	"HIKYO_BACKUP_RETAIN_DAYS":             true,
-	"HIKYO_BACKUP_RTO_TARGET":              true,
-	"HIKYO_ADAPTER_EGRESS_POLICY_FILE":     true,
-	"HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY":  true,
-	"HIKYO_OIDC_EGRESS_POLICY_FILE":        true,
-	"HIKYO_DYNAMIC_EGRESS_POLICY_FILE":     true,
-	"HIKYO_SEALED_WEBHOOK_FILE":            true,
-	"HIKYO_REAUTH_WINDOW_SECONDS":          true,
-	"HIKYO_UPDATE_CHANNEL":                 true,
-	"HIKYO_MAIL_ADDR":                      true,
-	"HIKYO_MAIL_TLS":                       true,
-	"HIKYO_MAIL_USER":                      true,
-	"HIKYO_MAIL_PASSWORD":                  true,
-	"HIKYO_MAIL_PASSWORD_FILE":             true,
-	"HIKYO_MAIL_FROM":                      true,
-	"HIKYO_MAIL_EHLO":                      true,
-	"HIKYO_MAIL_ALLOWED_CIDRS":             true,
-	"HIKYO_MAIL_CA_FILE":                   true,
-	"HIKYO_UPDATER_SOCKET":                 true,
-	"HIKYO_HA":                             true,
-	"HIKYO_NODE_ID":                        true,
+	"HIKYO_AUDIT_ACCESS_RETAIN_DAYS":         true,
+	"HIKYO_AUDIT_SECURITY_RETAIN_DAYS":       true,
+	"HIKYO_DB":                               true,
+	"HIKYO_PG_STORAGE_KUBELET_URL":           true,
+	"HIKYO_PG_STORAGE_NAMESPACE":             true,
+	"HIKYO_PG_STORAGE_PVC":                   true,
+	"HIKYO_PG_STORAGE_NODE":                  true,
+	"HIKYO_PG_POOL_MAX":                      true,
+	"HIKYO_LISTEN":                           true,
+	"HIKYO_OPERATIONAL_LISTEN":               true,
+	"HIKYO_CLI_SOCKET":                       true,
+	"HIKYO_TLS_CERT_FILE":                    true,
+	"HIKYO_TLS_KEY_FILE":                     true,
+	"HIKYO_SECURITY_MAINTENANCE_STATUS_FILE": true,
+	"HIKYO_TLS_PROFILE":                      true,
+	"HIKYO_EXTERNAL_ORIGIN":                  true,
+	"HIKYO_MCP_ENABLED":                      true,
+	"HIKYO_MCP_WRITE_ENABLED":                true,
+	"HIKYO_SECOND_FACTOR":                    true,
+	"HIKYO_MAX_KEYS_PER_PROJECT":             true,
+	"HIKYO_DEFAULT_KEYS_PER_PROJECT":         true,
+	"HIKYO_MCP_ALLOWED_ORIGINS":              true,
+	"HIKYO_TRUSTED_PROXY_CIDRS":              true,
+	"HIKYO_ROOT_KEY_FILE":                    true,
+	"HIKYO_ROOT_KEY":                         true,
+	"HIKYO_UPGRADE_BUNDLE":                   true,
+	"HIKYO_UPGRADE_UNATTENDED":               true,
+	"HIKYO_UPGRADE_SCRATCH_POSTGRES_DSN":     true,
+	"HIKYO_UPGRADE_STATE_DIR":                true,
+	"HIKYO_UPGRADE_EVIDENCE":                 true,
+	"HIKYO_UPGRADE_BACKUP":                   true,
+	"HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY":      true,
+	"HIKYO_UPGRADE_OPERATOR_INSTANCE":        true,
+	"HIKYO_UPGRADE_TARGET_MANIFEST":          true,
+	"HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED":   true,
+	"HIKYO_NEW_ROOT_KEY_FILE":                true,
+	"HIKYO_DIRECTORY_PROXY":                  true,
+	"HIKYO_PAIRING_SPKI_PIN":                 true,
+	"HIKYO_ARGON2_MEMORY_KIB":                true,
+	"HIKYO_ARGON2_TIME":                      true,
+	"HIKYO_ARGON2_PARALLELISM":               true,
+	"HIKYO_ADMISSION_BUDGET_MIB":             true,
+	"HIKYO_BACKUP_RECIPIENTS":                true,
+	"HIKYO_BACKUP_DIR":                       true,
+	"HIKYO_BACKUP_INTERVAL":                  true,
+	"HIKYO_BACKUP_RPO":                       true,
+	"HIKYO_BACKUP_RETAIN_COUNT":              true,
+	"HIKYO_BACKUP_RETAIN_DAYS":               true,
+	"HIKYO_BACKUP_RTO_TARGET":                true,
+	"HIKYO_ADAPTER_EGRESS_POLICY_FILE":       true,
+	"HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY":    true,
+	"HIKYO_OIDC_EGRESS_POLICY_FILE":          true,
+	"HIKYO_DYNAMIC_EGRESS_POLICY_FILE":       true,
+	"HIKYO_SEALED_WEBHOOK_FILE":              true,
+	"HIKYO_REAUTH_WINDOW_SECONDS":            true,
+	"HIKYO_UPDATE_CHANNEL":                   true,
+	"HIKYO_MAIL_ADDR":                        true,
+	"HIKYO_MAIL_TLS":                         true,
+	"HIKYO_MAIL_USER":                        true,
+	"HIKYO_MAIL_PASSWORD":                    true,
+	"HIKYO_MAIL_PASSWORD_FILE":               true,
+	"HIKYO_MAIL_FROM":                        true,
+	"HIKYO_MAIL_EHLO":                        true,
+	"HIKYO_MAIL_ALLOWED_CIDRS":               true,
+	"HIKYO_MAIL_CA_FILE":                     true,
+	"HIKYO_UPDATER_SOCKET":                   true,
+	"HIKYO_HA":                               true,
+	"HIKYO_NODE_ID":                          true,
 
 	// Development-only. Named so the deployment it does not belong in is
 	// obvious at a glance, and refused at boot outside --dev regardless.
@@ -502,6 +507,10 @@ func loadWithOptions(subcommand string, args []string, getenv func(string) strin
 		}
 		if cfg.CLISocket != "" && (!filepath.IsAbs(cfg.CLISocket) || filepath.Clean(cfg.CLISocket) != cfg.CLISocket) {
 			return nil, nil, errors.New("HIKYO_CLI_SOCKET must be an absolute canonical path")
+		}
+		cfg.SecurityMaintenanceStatusFile = strings.TrimSpace(getenv("HIKYO_SECURITY_MAINTENANCE_STATUS_FILE"))
+		if file := cfg.SecurityMaintenanceStatusFile; file != "" && (!filepath.IsAbs(file) || filepath.Clean(file) != file) {
+			return nil, nil, errors.New("HIKYO_SECURITY_MAINTENANCE_STATUS_FILE must be an absolute canonical path")
 		}
 		cfg.UpdaterSocket = strings.TrimSpace(getenv("HIKYO_UPDATER_SOCKET"))
 		if cfg.UpdaterSocket != "" {

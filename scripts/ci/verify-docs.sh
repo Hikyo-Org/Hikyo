@@ -44,3 +44,5 @@ pnpm --dir "$repo_root/docs/site" run verify
 "$repo_root/scripts/ci/check-oss-policy_test.sh"
 "$repo_root/scripts/ci/check-docs-live_test.sh"
 "$repo_root/scripts/ci/check-fallback-channel-test_test.sh"
+"$repo_root/scripts/ci/merge-security-feed_test.sh"
+"$repo_root/scripts/ci/check-security-feed-freshness_test.sh"

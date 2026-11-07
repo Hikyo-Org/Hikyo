@@ -66,6 +66,12 @@ image's release and refuses an unsupported route. Do not run a second writer
 against the SQLite file or configure automatic old-image rollback. A restart
 policy can restart the same image; it is not permission to restore a database.
 
+Installations enrolled in [security maintenance](security-maintenance.md) are
+different on Compose and Kubernetes: its coordinator, not an external updater, rolls
+an unfinished replacement back to the encrypted backup it took first. A target that
+may have passed the final gate, or whose rollback is refused, stays pinned until a
+person decides; see [automatic rollback](security-maintenance.md#automatic-rollback-to-the-fenced-snapshot).
+
 ## Kubernetes with PostgreSQL
 
 The first supported topology is non-HA with one replica. The chart renders
@@ -133,7 +139,36 @@ With no ready Kubernetes backend, a fresh navigation may receive an ingress
 unavailable page before the application loads. The browser maintenance screen
 does not replace an external ingress error page.
 
+A target that fails before the database is written leaves the source frozen under
+`backup-preparing` with the journal at `preparing`: only the control row changed,
+at the same generation and schema. The target marks the journal and idles without
+serving; after a restart it finds the marker and idles again instead of retrying,
+because a retry could pass `write-intent` before the source is back. Starting the
+journal's own source image then lifts the freeze, records why in
+`unattended/preparation-abandoned.json`, clears the journal and serves. Any other
+image, or any journal at `write-intent` or later, still refuses. The security
+coordinator on Compose and Kubernetes does this itself on any later run, so you
+need not set the image back. A target that never reported (it could not start, or
+died before writing its marker) is rolled back there too, once `timeout_seconds` has
+passed; setting the previous image back only ends it sooner. ECS and Compose without
+the security coordinator (for example `server-unattended.yaml` or the Watchtower
+nightly) need you to set the previous image back; until then the target keeps
+idling, by design. The
+[security maintenance runbook](security-maintenance.md#target-stopped-before-writing-the-database)
+lists each case. The failed attempt's encrypted backup, its pinned copy and its
+restore scratch are removed, and any left by an attempt that was killed are removed
+when the next preparation starts, so repeated failures do not fill the state volume.
+The backup of the last completed upgrade stays, recorded in
+`unattended/retained-backup.json`, through failed and abandoned attempts. It is
+removed only once a new attempt has written its replacement and journaled it at
+`write-intent`, because the new backup describes the installation as it is now. At
+that point the volume briefly holds two encrypted backups; no capacity check runs
+beforehand, and a full volume fails the attempt, which then removes only its own
+copies.
+
 If a schema write fails or its outcome is uncertain, preserve the journal and
 backup and use explicit operator recovery. The service remains fenced and can
 show recovery-required status. Never delete the state directory, switch to an
-older image or restore the database automatically to make readiness green.
+older image or restore the database automatically to make readiness green. The one
+older image that may start is the source of a journal still at `preparing`, as
+described above.

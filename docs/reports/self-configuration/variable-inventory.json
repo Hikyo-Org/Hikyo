@@ -494,6 +494,14 @@
     "import": "value"
   },
   {
+    "key": "HIKYO_SECURITY_MAINTENANCE_STATUS_FILE",
+    "audience": "server",
+    "scope": "node",
+    "activation": "bootstrap",
+    "secret": false,
+    "import": "external"
+  },
+  {
     "key": "HIKYO_STATE_DIR",
     "audience": "client",
     "scope": "node",
