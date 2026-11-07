@@ -75,7 +75,7 @@ func TestEmailInvitationDispatchOutcomes(t *testing.T) {
 			// A failed send records a failure and counts it.
 			svc := newSvc(failing)
 			svc.dispatch(t.Context(), receipt, "intent-failed", "Org", "tok", true)
-			svc.WaitForMail()
+			svc.Sends.Wait()
 			if got := last(); !strings.HasPrefix(got, "failure ") || !strings.Contains(got, `"mail_sent":false`) || dials.Load() != 1 || svc.Sends.Failures() != 1 {
 				t.Fatalf("failed send: %s dials=%d failures=%v", got, dials.Load(), svc.Sends.Failures())
 			}
@@ -105,7 +105,7 @@ func TestEmailInvitationDispatchOutcomes(t *testing.T) {
 				t.Fatalf("dials with one send in flight = %d, want %d", got, 1+others)
 			}
 			close(unblock)
-			svc.WaitForMail()
+			svc.Sends.Wait()
 			if got := svc.Sends.Failures(); got != 1+others {
 				t.Fatalf("failures = %v, want %d", got, 1+others)
 			}
@@ -119,8 +119,10 @@ func TestEmailInvitationDispatchOutcomes(t *testing.T) {
 			dials.Store(0)
 			before := len(dispatchOutcomes(t, db))
 			svc.dispatch(t.Context(), receipt, "intent-stopped", "Org", "tok", true)
-			for dials.Load() != 1 {
-				time.Sleep(5 * time.Millisecond)
+			for deadline := time.Now().Add(10 * time.Second); dials.Load() != 1; time.Sleep(5 * time.Millisecond) {
+				if time.Now().After(deadline) {
+					t.Fatal("the blocked send never dialled")
+				}
 			}
 			stopped := make(chan struct{})
 			go func() { svc.Sends.Stop(); close(stopped) }()
@@ -137,12 +139,12 @@ func TestEmailInvitationDispatchOutcomes(t *testing.T) {
 			svc = newSvc(failing)
 			dials.Store(0)
 			svc.dispatch(t.Context(), receipt, "intent-unmatched", "Org", "tok", false)
-			svc.WaitForMail()
+			svc.Sends.Wait()
 			if got := last(); !strings.HasPrefix(got, "success ") || !strings.Contains(got, `"mail_sent":false`) || !strings.Contains(got, "intent-unmatched") || dials.Load() != 0 || svc.Sends.Failures() != 0 {
 				t.Fatalf("unmatched send: %s dials=%d failures=%v", got, dials.Load(), svc.Sends.Failures())
 			}
 
-			// WaitForMail (the generation's stop join) waits for an in-flight send.
+			// Wait waits for an in-flight send.
 			entered, release := make(chan struct{}), make(chan struct{})
 			svc = newSvc(func(context.Context) (*runtimeconfig.Bundle, error) {
 				close(entered)
@@ -153,17 +155,17 @@ func TestEmailInvitationDispatchOutcomes(t *testing.T) {
 			svc.dispatch(t.Context(), receipt, "intent-inflight", "Org", "tok", true)
 			<-entered
 			joined := make(chan struct{})
-			go func() { svc.WaitForMail(); close(joined) }()
+			go func() { svc.Sends.Wait(); close(joined) }()
 			select {
 			case <-joined:
-				t.Fatal("WaitForMail returned while a send was in flight")
+				t.Fatal("Wait returned while a send was in flight")
 			case <-time.After(100 * time.Millisecond):
 			}
 			close(release)
 			select {
 			case <-joined:
 			case <-time.After(10 * time.Second):
-				t.Fatal("WaitForMail never returned")
+				t.Fatal("Wait never returned")
 			}
 			if len(dispatchOutcomes(t, db)) != before+1 {
 				t.Fatal("the in-flight send did not record its outcome before the join returned")

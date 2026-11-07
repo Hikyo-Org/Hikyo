@@ -66,11 +66,19 @@ administrator, who can send again. Stopping the application cancels the
 in-flight mail attempts, records their failure outcomes (the outcome write has
 a short timeout of its own), and only then lets the database close.
 
-Accepted residuals. After the response, a matched send's mail transport and
-its later outcome write, a few milliseconds of extra work at different moments
-than an unmatched send's outcome, and the foreign-key check on a matched row are
-not visible in any response, list or organisation trail, and are accepted. The
-mail relay is shared infrastructure.
+Known residuals, not closed by this design:
+
+- Inside the request, a matched row adds one indexed foreign-key check against
+  `accounts`; its timing cost is negligible.
+- After the response, a matched send dials the relay and records its outcome at
+  a different moment than an unmatched send records its own. This never appears
+  in a response body, the pending list or the organisation trail, but on a
+  single-writer database it can shift the latency of a concurrent request by one
+  small write.
+- A relay that throttles per client can delay or refuse later sends while an
+  earlier matched send holds a connection, so an administrator who mails their
+  own address can observe the earlier match through what arrives. The mail relay
+  is shared infrastructure outside this design.
 
 Uniformity rules:
 
@@ -164,4 +172,4 @@ Afterwards the inviting organisation is part of the person's footprint:
 | Use | single use; bound to the account matched at send |
 | Send budget | 30 per hour per organisation |
 | Live pending invitations | 200 per organisation |
-| Mail attempts | one per send, within the mail per-send deadline |
+| Mail attempts | one per matched send, within the mail per-send deadline; none for an unknown address |
