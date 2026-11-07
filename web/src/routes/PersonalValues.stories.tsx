@@ -4,6 +4,7 @@ import { expect, spyOn, userEvent, waitFor, within } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
+import { tokenPx } from '../../.storybook/tokens.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 import { PERSONAL_STATEMENT } from '../api/personal.ts';
 import { ORG, PRJ, STAGING as ENV } from '../testkit/ids.ts';
@@ -156,7 +157,8 @@ export const NeedsAFactor: Story = {
 };
 
 // A passwordless account that signs in only through its identity provider
-// qualifies through it: no remedy, and Set is on.
+// qualifies through it: no remedy, and Set is on. Running locally still needs
+// a passkey or authenticator app (O9), and the page says where to add one.
 export const FederatedQualified: Story = {
   parameters: app({ totp: factors({ has_password: false, has_passkey: false, confirmed: false, can_reauth_oidc: true }) }),
   play: async ({ canvas }) => {
@@ -164,6 +166,51 @@ export const FederatedQualified: Story = {
     await expect(await canvas.findByRole('button', { name: 'Reveal DATABASE_URL' })).toBeEnabled();
     await waitFor(() => expect(canvas.getByRole('button', { name: 'Set a value' })).toBeEnabled());
     await expect(canvas.queryByRole('link', { name: 'Settings › Security' })).toBeNull();
+    await expect(canvas.getByText(/Running a program locally with them needs a passkey or authenticator app/)).toBeVisible();
+    await expect(canvas.getByRole('link', { name: 'Add a passkey or authenticator' })).toHaveAttribute('href', '/settings?tab=factors');
+  },
+};
+
+const federated = factors({ has_password: false, has_passkey: false, confirmed: false, can_reauth_oidc: true });
+
+// A zero reauthentication window takes only a passkey, so the remedy names only that.
+export const FederatedZeroWindow: Story = {
+  parameters: app({ totp: federated, window: { ...window, effective_window_seconds: 0, totp_offered: false } }),
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByText(/Running a program locally with them needs a passkey on your account/)).toBeVisible();
+    await expect(canvas.getByRole('link', { name: 'Add a passkey' })).toHaveAttribute('href', '/settings?tab=factors');
+  },
+};
+
+// A protected environment takes no personal values and mints no developer
+// credential, so there is no running locally to explain.
+export const FederatedProtected: Story = {
+  parameters: app({ totp: federated, window: { ...window, protected: true } }),
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByText(/Personal values are for unprotected environments only/)).toBeVisible();
+    await expect(canvas.queryByText(/Running a program locally/)).toBeNull();
+  },
+};
+
+// The same remedy on the narrowest phone: a control at the 44px a finger needs
+// (a story's browser has a fine pointer, so it runs at touch size), and a
+// button does not wrap, so its label must still fit.
+export const PhoneFederatedRunLocally: Story = {
+  globals: { viewport: { value: 'phoneNarrow', isRotated: false } },
+  parameters: FederatedQualified.parameters,
+  beforeEach: () => {
+    const root = document.documentElement;
+    const saved = root.style.getPropertyValue('--control');
+    root.style.setProperty('--control', 'var(--touch)');
+    return () => root.style.setProperty('--control', saved);
+  },
+  play: async ({ canvas }) => {
+    const add = await canvas.findByRole('link', { name: 'Add a passkey or authenticator' });
+    const box = add.getBoundingClientRect();
+    await expect(box.height).toBeGreaterThanOrEqual(tokenPx('--touch'));
+    await expect(box.width).toBeGreaterThanOrEqual(tokenPx('--touch'));
+    await expect(box.right).toBeLessThanOrEqual(add.closest('.notice')!.getBoundingClientRect().right + 0.5);
+    await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(document.documentElement.clientWidth);
   },
 };
 

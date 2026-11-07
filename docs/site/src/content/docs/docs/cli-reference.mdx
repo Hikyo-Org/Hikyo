@@ -335,6 +335,14 @@ its key is named in `--allow-override`. Command-not-found exits 127 and a found
 but non-executable command exits 126. For local runs from scripts and coding
 agents, see [local development and coding agents](/docs/local-development/).
 
+`run` also uses a developer credential minted with `hikyo dev session`, and
+with `--personal` it delivers your own personal values. Minting needs a passkey
+or authenticator app on your account. An account that signs in only through an
+identity provider can manage its personal values with `hikyo personal` or in the
+browser, but `hikyo dev session` refuses it and prints where to add a factor:
+**Settings → Security**. See
+[personal values](/docs/local-development/#personal-values).
+
 `values export` writes a whole environment. `--format` selects the payload:
 `table` (default), `json`, or `dotenv`. The dotenv encoding matches the Compose
 renderer's. Secrets appear only under `--reveal`; without it they are omitted and

@@ -97,6 +97,8 @@ function PersonalSurface({ env }: { env: EnvRef }) {
 
   const environmentName = environments.data?.items.find((item) => item.id === env.environment)?.name ?? env.environment;
   const protectedEnvironment = guard.data?.protected === true;
+  // A zero reauthentication window takes only a passkey, at mint as everywhere.
+  const passkeyOnly = guard.data?.effective_window_seconds === 0;
   // A passwordless account with no passkey or authenticator qualifies through its
   // identity provider, so its provider approval opens set and reveal (the server
   // still checks the provider's assurance policy).
@@ -244,6 +246,20 @@ function PersonalSurface({ env }: { env: EnvRef }) {
           Setting or revealing a personal value needs an authenticator app or passkey on your account, or sign-in only
           through an identity provider with no password. Add a factor under{' '}
           <Link to="/settings?tab=factors">Settings › Security</Link>.
+        </Alert>
+      ) : null}
+      {federatedQualified && !protectedEnvironment ? (
+        <Alert
+          tone="info"
+          action={(
+            <Link className="btn btn--quiet" to="/settings?tab=factors">
+              {passkeyOnly ? 'Add a passkey' : 'Add a passkey or authenticator'}
+            </Link>
+          )}
+        >
+          Your identity-provider sign-in lets you manage personal values here. Running a program locally with them
+          needs {passkeyOnly ? 'a passkey' : 'a passkey or authenticator app'} on your account,
+          because <code>hikyo dev session</code> cannot mint a developer credential without one.
         </Alert>
       ) : null}
       {refusal === null ? null : (
