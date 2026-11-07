@@ -218,7 +218,8 @@ func runEmailInvitations(t *testing.T, db *store.DB) {
 			t.Fatalf("rows = %d, want 1", rig.rows())
 		}
 		list, err := rig.svc.List(ctx, service.LocalPrincipal(admin), orgA)
-		if err != nil || len(list) != 1 || list[0].Email != "Nobody@example.test" || list[0].InvitedBy != admin {
+		if err != nil || len(list) != 1 || list[0].Email != "Nobody@example.test" || list[0].InvitedBy != admin ||
+			!list[0].CreatedAt.Equal(res.CreatedAt) || !list[0].ExpiresAt.Equal(res.ExpiresAt) {
 			t.Fatalf("list = %+v, %v", list, err)
 		}
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'member.email_invited' AND org_id = 'org_a' AND payload NOT LIKE '%account%' AND payload NOT LIKE '%matched%'`); n != 1 {
