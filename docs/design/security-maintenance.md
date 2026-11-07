@@ -337,7 +337,9 @@ configurations and dictionaries. The database identity recorded at `rolling-back
 the cluster's system identifier, so an absent database on a repointed DSN is not mistaken for the one that was
 being restored. This is not one transaction with the import, so `rolling-back` covers the gap and repeats it.
 Preparation refuses before the fence unless the role can read `pg_control_system()` and `current_schema()` is `public` and the role owns every object there, because that failure
-must not first appear during a rollback.
+must not first appear during a rollback. It also refuses while anything outside `public` depends on an object in it, such as a
+view, foreign key, column or default in another schema: the reset's `CASCADE` drops would remove it without an owner check, and
+the archive restores only `public`. The reset checks this again inside its transaction, before the first drop.
 
 **What triggers it.** The driver's wait for the target ends in `restore-required`, in a target report,
 or at its deadline (`timeout_seconds`, at most 24 hours). A later run does the same for a pinned
