@@ -30,7 +30,7 @@ func (q *queueController) runInitialReads(ctx context.Context, p pull, readRoles
 	if readRoles {
 		reads = append(reads, func(ctx context.Context) { r.roles, r.rolesErr = q.roles(ctx, p.Head.SHA) })
 	}
-	if p.Base.Ref == q.admissionBranch() {
+	if p.admission().Ref == q.admissionBranch() {
 		reads = append(reads,
 			func(ctx context.Context) { r.route, r.routeErr = q.mainRouteRefusal(ctx, p) },
 			func(ctx context.Context) { r.contractErr = q.devPublisherContract(ctx, p) },

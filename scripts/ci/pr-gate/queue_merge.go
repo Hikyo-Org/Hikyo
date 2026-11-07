@@ -31,10 +31,10 @@ func checkQueueMerge(ctx context.Context, repoName string, p pull, repo string) 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if !repoPattern.MatchString(repoName) || !shaPattern.MatchString(p.Base.SHA) || !shaPattern.MatchString(p.Head.SHA) {
+	if !repoPattern.MatchString(repoName) || !shaPattern.MatchString(p.admission().SHA) || !shaPattern.MatchString(p.Head.SHA) {
 		return errors.New("invalid immutable queue conflict range")
 	}
-	args := append(queueDCOMetadataArgs(repoName, repo), "merge-tree", "--write-tree", p.Base.SHA, p.Head.SHA)
+	args := append(queueDCOMetadataArgs(repoName, repo), "merge-tree", "--write-tree", p.admission().SHA, p.Head.SHA)
 	cmd := gateCommand(ctx, "git", args...)
 	cmd.Env = queueDCOEnvironment()
 	var output queueMergeOutput

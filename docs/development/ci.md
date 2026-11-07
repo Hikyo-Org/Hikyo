@@ -315,11 +315,45 @@ its new base or a fork run awaits approval, the hourly schedule reassesses it.
 Closing and reopening a PR still reruns the workflow that hosts the record, so a
 reopened PR needs a new head. See the [handoff](../handoff/dev-gate-stale-required-check.md).
 
-GitHub has started `gate-dev` for stacked PRs whose base is another branch, even
-with the `branches: [dev]` filter (#1245 to #1247 and #1137 on 2026-11-07). Discovery skips those events, because such
-a PR has no dev admission to publish. The skip takes effect for a stack once the
-stack's base branches carry this workflow, since `pull_request_target` reads the
-base branch's copy.
+GitHub judges every PR of a stack by the rules of the stack base, so each layer of
+a stack based on `dev` waits for `ci-dev-required` (#1245 to #1247 and #1137 on
+2026-11-07), although its own base is a lower layer's branch. The dev publisher
+reads the `stack` field GitHub adds to such a PR. A layer whose `stack.base.ref` is
+`dev` is discovered, assessed and published like a dev PR, against the live `dev`
+tip. The PR keeps its real base for everything GitHub itself identifies: the
+`ci-feedback` run association, role matching and movement checks. The result binds
+to the real base as well as the `dev` tip, so retargeting the layer to `dev` is a
+new tuple. A stack on `main` or any other branch gets nothing from dev admission.
+A malformed `stack` field makes dev admission refuse that PR, and discovery does not
+select a PR through its stack, so one bad stack affects neither other PRs nor the
+main queue.
+
+A layer's own file list starts at the layer below, so it would hide a lower layer's
+CI definition edits that the layer carries into `dev`. For a stacked layer, both the
+dev CI-definition check and the `.github/` maintainer-review gate read the compare of
+the resolved `dev` tip against the head instead. The publisher passes that tip to
+`scripts/ci/check-fork-validation.sh` as `PR_GATE_FILES_BASE`, so both judge one
+tuple. A compare that omits its file list, or lists 300 files or more, fails closed,
+and the BDFL exemption applies unchanged. Direct dev PRs keep the pull request file list. The DCO and
+publisher-contract checks cover the same `dev...head` range. Signature
+verification belongs to the GitHub ruleset, not to this gate.
+
+Discovery lists every open PR and selects those whose base or stack base is `dev`.
+The `gate-dev` `discover` job still skips `pull_request_target` events for these
+PRs, because the publisher contract requires that workflow file to be identical on
+main, the base and the head, so it cannot change in a PR. The `ci-feedback`
+callback, the hourly schedule and manual dispatch run main's tooling and assess the
+stacked heads. A stacked PR that shares its head with another PR is ambiguous,
+exactly as two dev PRs would be.
+
+`gate-queue` treats a stacked PR like a dev PR. Only main has a queue, so the
+`ci-feedback` callback publishes no `ci-queue-required` record on a head whose PR
+targets any other branch, and it retires a pending record left by an earlier pass.
+Such a PR holds no queue role: it neither protects a queue record from retirement
+nor makes a main PR on the same commit ambiguous. A refusal that an older publisher
+left on a stacked head stays until the next push, because retirement skips
+completed records. A stack's later retarget to main reruns `ci-feedback`, whose callback
+admits the PR afresh.
 
 Discovery on a push to `dev` selects no PR. A green `ci-dev-required` stays valid
 when `dev` moves: the check is not strict about the base, and GitHub itself refuses

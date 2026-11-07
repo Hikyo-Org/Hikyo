@@ -53,7 +53,7 @@ func fetchQueueDCO(ctx context.Context, repoName string, p pull) (string, string
 	if err := ctx.Err(); err != nil {
 		return "", "", err
 	}
-	if !repoPattern.MatchString(repoName) || !shaPattern.MatchString(p.Base.SHA) || !shaPattern.MatchString(p.Head.SHA) {
+	if !repoPattern.MatchString(repoName) || !shaPattern.MatchString(p.admission().SHA) || !shaPattern.MatchString(p.Head.SHA) {
 		return "", "", errors.New("invalid immutable queue DCO range")
 	}
 	dir, err := os.MkdirTemp("", "hikyo-queue-dco-")
@@ -72,7 +72,7 @@ func fetchQueueDCO(ctx context.Context, repoName string, p pull) (string, string
 	if err := init.Run(); err != nil {
 		return "", "", errors.New("cannot initialize queue DCO metadata repository")
 	}
-	args := append(queueDCOMetadataArgs(repoName, repo), "fetch", "--quiet", "--no-tags", "--no-recurse-submodules", "--filter=blob:none", "origin", p.Base.SHA, p.Head.SHA)
+	args := append(queueDCOMetadataArgs(repoName, repo), "fetch", "--quiet", "--no-tags", "--no-recurse-submodules", "--filter=blob:none", "origin", p.admission().SHA, p.Head.SHA)
 	cmd := gateCommand(ctx, "git", args...)
 	cmd.Env = queueDCOEnvironment()
 	if err := cmd.Run(); err != nil {
@@ -85,7 +85,7 @@ func checkQueueDCO(ctx context.Context, repoName string, p pull, repo string) (i
 	if p.User.ID <= 0 || p.User.Login == "" {
 		return 0, errors.New("missing authenticated PR actor for DCO policy")
 	}
-	cmd := gateCommand(ctx, "sh", "scripts/ci/check-dco.sh", p.Base.SHA, p.Head.SHA, repo)
+	cmd := gateCommand(ctx, "sh", "scripts/ci/check-dco.sh", p.admission().SHA, p.Head.SHA, repo)
 	cmd.Env = queueDCOEnvironment()
 	// Promotions and backmerges carry Dependabot commits a human did not open,
 	// which passed actor-checked dev admission. A fork or feature branch cannot
@@ -123,7 +123,7 @@ func admissionDCOVerifier(repoName string) (queueDCOVerifier, func()) {
 		if p.Base.Repo.ID <= 0 || p.Head.Repo.ID <= 0 || !strings.EqualFold(p.Base.Repo.FullName, repoName) || !repoPattern.MatchString(p.Head.Repo.FullName) || p.User.ID <= 0 || p.User.Login == "" {
 			return 0, errors.New("invalid authenticated queue DCO metadata identity")
 		}
-		if captured != nil && (p.Number != captured.Number || p.State != captured.State || p.Head != captured.Head || p.Base != captured.Base || p.User != captured.User) {
+		if captured != nil && (p.Number != captured.Number || p.State != captured.State || p.Head != captured.Head || !p.sameBase(*captured) || p.User != captured.User) {
 			return 0, errors.New("queue DCO metadata identity changed within admission")
 		}
 		reused := captured != nil

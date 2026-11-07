@@ -395,10 +395,11 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 	}
 	var selectedRun *run
 	if policy.Enabled {
-		if p.Base.Ref != q.admissionBranch() {
-			// Dev PRs have their own admission check. Feedback callbacks reach this
-			// main gate too, and must not leave a queue check on their head.
-			if q.checkName == queueCheckName && p.Base.Ref == "dev" {
+		if p.admission().Ref != q.admissionBranch() {
+			// Only main has a queue. Dev PRs have their own admission check, and
+			// stacked PRs land on a feature branch. Feedback callbacks reach this
+			// main gate for both, and must not leave a queue check on their head.
+			if q.checkName == queueCheckName {
 				return q.reconciliation.retireHead(ctx, false)
 			}
 			result = refused("Only the protected default branch can enter this merge queue.")
@@ -412,7 +413,7 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 			if initial.contractErr != nil {
 				return initial.contractErr
 			}
-			decision, err := q.verify(ctx, p.Number, p.Head.SHA)
+			decision, err := q.verifyPR(ctx, p)
 			if err != nil {
 				return err
 			}
@@ -529,7 +530,7 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 	if policyErr != nil {
 		return policyErr
 	}
-	if final.Head.SHA != p.Head.SHA || final.Base.SHA != p.Base.SHA || final.Base.Ref != p.Base.Ref || finalPolicy != policy {
+	if final.Head.SHA != p.Head.SHA || !final.sameBase(p) || finalPolicy != policy {
 		return q.queueMovement(ctx, number)
 	}
 	if result.Conclusion == "success" {
@@ -550,7 +551,7 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 			feedErr   error
 		)
 		settle(ctx,
-			func(ctx context.Context) { decision, verifyErr = q.verify(ctx, p.Number, p.Head.SHA) },
+			func(ctx context.Context) { decision, verifyErr = q.verifyPR(ctx, p) },
 			func(ctx context.Context) {
 				if p.Head.Repo.ID != q.repo.ID {
 					vouched, vouchErr = q.currentVouch(ctx, p)

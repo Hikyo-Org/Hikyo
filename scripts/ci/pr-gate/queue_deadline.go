@@ -159,13 +159,13 @@ func (q *queueController) refuseAdmission(ctx context.Context, t *admissionTrace
 	}
 	// A timeout belongs to the captured invocation, not a newly pushed head,
 	// retargeted PR or advanced main. Its existing pending barrier stays safe.
-	if p.State != "open" || p.Head != t.PR.Head || p.Base != t.PR.Base {
+	if p.State != "open" || p.Head != t.PR.Head || !p.sameBase(t.PR) {
 		return errors.New("current PR moved during admission failure publication; refusing a different tuple")
 	}
-	// Dev PRs hold no queue role. A pending record here is retired by the next pass;
-	// retirement skips completed records, so a refusal would stay red on this head.
-	if q.checkName == queueCheckName && p.Base.Ref == "dev" {
-		return errors.New("a dev PR holds no queue role; no refusal is published, and its pending record stays until the next pass retires it")
+	// PRs to dev or a stacked base hold no queue role. A pending record here is retired
+	// by the next pass; retirement skips completed records, so a refusal would stay red.
+	if q.checkName == queueCheckName && p.Base.Ref != q.repo.DefaultBranch {
+		return errors.New("a PR outside the default branch holds no queue role; no refusal is published, and its pending record stays until the next pass retires it")
 	}
 	policy, err := q.policy(ctx)
 	if err != nil {
@@ -192,7 +192,7 @@ func (q *queueController) refuseAdmission(ctx context.Context, t *admissionTrace
 	if err != nil {
 		return err
 	}
-	if final.State != "open" || final.Head != p.Head || final.Base != p.Base {
+	if final.State != "open" || final.Head != p.Head || !final.sameBase(p) {
 		return errors.New("current PR moved in the admission publication reserve")
 	}
 	finalPolicy, err := q.policy(ctx)
