@@ -523,7 +523,7 @@ func TestStorybookAdvisoryWorkflowIsNotARequiredContext(t *testing.T) {
 // advisory invariants workflow), not as a ci.yml step: coverage-conservation
 // tests freeze the steps of the supply-chain-checks job.
 func TestPrePushHookFixture(t *testing.T) {
-	output, err := exec.Command("sh", filepath.Join(repositoryRoot(t), "scripts/git/pre-push_test.sh")).CombinedOutput()
+	output, err := exec.CommandContext(t.Context(), "sh", filepath.Join(repositoryRoot(t), "scripts/git/pre-push_test.sh")).CombinedOutput()
 	if err != nil {
 		t.Fatalf("pre-push hook fixture failed: %v\n%s", err, output)
 	}

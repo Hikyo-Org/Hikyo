@@ -248,6 +248,16 @@ needs the pinned Chromium: run `pnpm --dir web run e2e:install` once. Set
 `HIKYO_PREPUSH_STORYBOOK=skip` to skip only that suite for a WIP push; CI still
 runs it, and signature checks cannot be skipped.
 
+The hook also runs `scripts/ci/golangci-lint-new.sh` when a push changes Go code
+(the first run builds the pinned golangci-lint; later runs take well under a
+minute). It applies the rules in `.golangci.yml`, chosen from findings that kept
+recurring in review (unchecked errors, `==` on errors, `http.Get` without a
+context, ignored `json.Marshal` errors, unsafe integer narrowing, subprocess
+arguments, file modes), and reports only issues on lines you changed since the
+merge base. Run it by hand with `scripts/ci/golangci-lint-new.sh hikyo-upstream/main`.
+Set `HIKYO_PREPUSH_GOLANGCI=skip` to skip it for a WIP push; the advisory
+`ci-advisory-golangci` check still runs it on the pull request.
+
 ## Continuous integration
 
 Each pushed commit receives fast `ci-feedback` using selected package checks.

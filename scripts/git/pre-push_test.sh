@@ -1,7 +1,8 @@
 #!/bin/sh
 # Fixture for .githooks/pre-push: the signature check stays first, and a push
-# that changes frontend inputs needs a Storybook pass for exactly those bytes.
-# The signature check and the suite are stubs in a throwaway repository.
+# that changes frontend inputs needs a Storybook pass for exactly those bytes,
+# and one that changes Go inputs runs the golangci-lint ratchet.
+# The signature check, the suite and the ratchet are stubs in a throwaway repository.
 set -eu
 
 hook=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)/.githooks/pre-push
@@ -37,6 +38,11 @@ cat >scripts/ci/storybook-suite.sh <<STUB
 echo suite >>"$logs/suite.log"
 [ ! -f "$logs/suite-edit" ] || echo edited >>web/a.txt
 [ ! -f "$logs/suite-fail" ] || { echo 'stub: suite red' >&2; exit 1; }
+STUB
+cat >scripts/ci/golangci-lint-new.sh <<STUB
+#!/bin/sh
+echo "\$*" >>"$logs/golangci.log"
+[ ! -f "$logs/golangci-fail" ] || { echo 'stub: new issue' >&2; exit 1; }
 STUB
 chmod +x .githooks/pre-push scripts/ci/*.sh
 echo 26.0.0 >.nvmrc
@@ -79,6 +85,8 @@ commit_change internal/x.go
 expect_ok go
 expect_count sig 1
 expect_count suite 0
+expect_count golangci 1
+[ "$(cat "$logs/golangci.log")" = refs/remotes/hikyo-upstream/main ] || fail 'ratchet was not given the signature range base'
 
 # 2. A frontend push runs the suite once and records the pass; the same bytes skip it.
 git switch -q -c fe "$base"
@@ -256,4 +264,36 @@ expect_refused 'storybook-suite.sh as an executable file' mode-ignored
 git config --unset core.fileMode
 expect_count suite "$before"
 
-printf 'pre-push fixture: signatures run first; the suite runs once per frontend key and is skipped on stamps, branch deletions, non-frontend pushes and explicit opt-out; dirty, foreign or failing runs refuse\n'
+# 17. The golangci-lint ratchet runs on Go changes only, and failure, opt-out
+# and an invalid opt-out behave like the Storybook gate.
+git switch -q go
+before=$(count golangci)
+git switch -q -c gl "$base"
+commit_change go.mod
+expect_ok gl
+expect_count golangci $((before + 1))
+git switch -q pkg
+expect_ok pkg
+expect_count golangci $((before + 1))
+git switch -q gl
+commit_change internal/x.go
+: >"$logs/golangci-fail"
+expect_refused 'scripts/ci/golangci-lint-new.sh refs/remotes/hikyo-upstream/main' gl
+expect_count golangci $((before + 2))
+rm "$logs/golangci-fail"
+(HIKYO_PREPUSH_GOLANGCI=skip && export HIKYO_PREPUSH_GOLANGCI && push gl) || fail 'golangci skip push was refused'
+grep -F 'skipping the golangci-lint ratchet' "$out" >/dev/null || fail 'golangci skip warning missing'
+expect_count golangci $((before + 2))
+if (HIKYO_PREPUSH_GOLANGCI=1 && export HIKYO_PREPUSH_GOLANGCI && push gl); then fail 'invalid HIKYO_PREPUSH_GOLANGCI accepted'; fi
+grep -F 'must be unset or "skip"' "$out" >/dev/null || fail 'invalid golangci value message missing'
+: >"$logs/sig-fail"
+if (HIKYO_PREPUSH_GOLANGCI=skip && export HIKYO_PREPUSH_GOLANGCI && push gl); then fail 'golangci skip bypassed the signature check'; fi
+rm "$logs/sig-fail"
+git switch -q pkg
+expect_refused 'lints the checked-out tree' gl
+expect_count golangci $((before + 2))
+git switch -q gl
+expect_ok gl
+expect_count golangci $((before + 3))
+
+printf 'pre-push fixture: signatures run first; the suite runs once per frontend key and is skipped on stamps, branch deletions, non-frontend pushes and explicit opt-out; dirty, foreign or failing runs refuse; the golangci-lint ratchet runs on Go changes only and honours its own opt-out\n'
