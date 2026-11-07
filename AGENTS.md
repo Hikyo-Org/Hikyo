@@ -124,9 +124,9 @@ The skill covers signing, local validation, and an optional playground.
 - When a finding is one instance of a class, fix every instance and say how you
   found them.
 - Converge. After the first full review, re-review only the new diff and do not
-  repeat findings already answered. After three review-and-fix rounds without a
-  clean result, stop and reconsider the approach, or ask the maintainer, instead
-  of starting a fourth round.
+  repeat findings already fixed or rejected. After three review-and-fix rounds
+  without a clean result, stop and reconsider the approach, or ask the
+  maintainer, instead of starting a fourth round.
 - When the same finding recurs across PRs, fix it at the source: the code first,
   then a check in `internal/lint` or `scripts/ci`, and this guide last.
 - When a `Dev integration is red` issue closes, add its regression to the
