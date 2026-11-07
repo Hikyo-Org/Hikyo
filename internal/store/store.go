@@ -200,6 +200,8 @@ type OrgReader interface {
 // closures (internal/store/tx) ever hold one.
 type OrgRepo interface {
 	OrgReader
+	// ListIDs skips the self-config filter so recovery classification runs on older source schemas.
+	ListIDs(ctx context.Context, p authz.Proof) ([]domain.OrgID, error)
 	Create(ctx context.Context, p authz.Proof, org Org) error
 	// Rename and Delete address the org through the proof's chain. Rename
 	// touches the mutable name only — identity is the immutable id, so a
@@ -1334,7 +1336,7 @@ func openPostgres(ctx context.Context, dsn string, configuredMax int32) (*DB, er
 	} else if !postgresDSNHasPoolMax(dsn) {
 		poolConfig.MaxConns = postgresPoolDefaultMaxConnections
 	}
-	poolConfig.AfterConnect = func(_ context.Context, conn *pgx.Conn) error {
+	poolConfig.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		// Normalize at the decoding boundary for both binary and text queries.
 		// A session TimeZone alone does not change pgx's binary use of time.Local.
 		timestamp := &pgtype.Type{
@@ -1348,7 +1350,7 @@ func openPostgres(ctx context.Context, dsn string, configuredMax int32) (*DB, er
 			Name: "_timestamptz", OID: pgtype.TimestamptzArrayOID,
 			Codec: &pgtype.ArrayCodec{ElementType: timestamp},
 		})
-		return nil
+		return upgrade.SetPostgresSessionTimeouts(ctx, conn)
 	}
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {

@@ -120,6 +120,32 @@ func (q *Queries) GetOrg(ctx context.Context, chainOrgID string) (GetOrgRow, err
 	return i, err
 }
 
+const listOrgIDs = `-- name: ListOrgIDs :many
+SELECT id FROM orgs ORDER BY id
+`
+
+// hikyo:reason Recovery classification reads only org ids, without later-migration columns or the self-config binding join, so it runs on any verified source schema.
+// hikyo:instance-scoped
+func (q *Queries) ListOrgIDs(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, listOrgIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOrgs = `-- name: ListOrgs :many
 SELECT id, name, active, metadata, created_at,
        retention_mode, retention_age_seconds, retention_revision_count,

@@ -2050,6 +2050,13 @@
   },
   {
     "engine": "postgres",
+    "name": "ListOrgIDs",
+    "annotation": "instance-scoped",
+    "hash": "a7e3d1b63df6431c0e23223ffe3d6bc460fd9f86d1f326eb96f77e6e82911426",
+    "reason": "Recovery classification reads only org ids, without later-migration columns or the self-config binding join, so it runs on any verified source schema."
+  },
+  {
+    "engine": "postgres",
     "name": "ListOrgs",
     "annotation": "instance-scoped",
     "hash": "0fc62b32466aee46a0ec3a345375c6f9cf35602594602d337c41a9c230cf22f6"
@@ -5564,6 +5571,13 @@
     "name": "ListOidcProvidersForReencrypt",
     "annotation": "authn-resolution",
     "hash": "0df9d463d9a4c8cd88e4f194352647544bdd81502c21186a90b2698efaf9a331"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListOrgIDs",
+    "annotation": "instance-scoped",
+    "hash": "a7e3d1b63df6431c0e23223ffe3d6bc460fd9f86d1f326eb96f77e6e82911426",
+    "reason": "Recovery classification reads only org ids, without later-migration columns or the self-config binding join, so it runs on any verified source schema."
   },
   {
     "engine": "sqlite",

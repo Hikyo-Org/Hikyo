@@ -109,9 +109,116 @@ func (h *Host) Environment() map[string]string {
 	return result
 }
 
+// CheckRunning verifies the configured binary and the active systemd process
+// against an independently authenticated digest. It only reads identity and
+// health; it never starts, stops or fences the service.
+func (h *Host) CheckRunning(ctx context.Context, digest string) error {
+	if h == nil || !validDigest(digest) {
+		return errors.New("running release proof requires an exact binary SHA-256")
+	}
+	if err := trustedFile(h.config.Binary); err != nil {
+		return err
+	}
+	actual, err := fileDigest(h.config.Binary)
+	if err != nil || actual != digest {
+		return errors.Join(err, errors.New("installed binary differs from authenticated source release"))
+	}
+	if err := h.checkCandidate(ctx, digest, true); err != nil {
+		return err
+	}
+	actual, err = fileDigest(h.config.Binary)
+	if err != nil || actual != digest {
+		return errors.Join(err, errors.New("installed binary changed during running release proof"))
+	}
+	return nil
+}
+
+// PrepareCacheDirectory confines executable preparation to root-owned private
+// storage outside the serving application's writable data and custody paths.
+// It creates directories only; no service or database operation is performed.
+func (h *Host) PrepareCacheDirectory(path string) error {
+	if h == nil || !safePath(path) {
+		return errors.New("security download cache requires a clean absolute path")
+	}
+	for _, protected := range []string{h.config.WorkingDirectory, h.config.PublicDirectory, h.config.InstallationDirectory, h.config.CustodyDirectory} {
+		if within(protected, path) || within(path, protected) {
+			return errors.New("security download cache overlaps runtime data or upgrade custody")
+		}
+	}
+	parent := path
+	for {
+		if _, err := os.Lstat(parent); err == nil {
+			if err := trustedDirectory(parent); err != nil {
+				return err
+			}
+			break
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		parent = filepath.Dir(parent)
+	}
+	if err := os.MkdirAll(path, 0700); err != nil {
+		return err
+	}
+	if err := trustedDirectory(path); err != nil {
+		return err
+	}
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode().Perm() != 0700 {
+		return errors.Join(err, errors.New("security download cache must have owner-only directory permissions"))
+	}
+	return nil
+}
+
+// LocalBundleDirectory reads the installed deployment's existing evidence
+// locator. The returned path is not authority; callers independently verify the
+// signed bundle against their pinned root and installed rollback floor.
+func (h *Host) LocalBundleDirectory() (string, error) {
+	bundle := h.env["HIKYO_UPGRADE_BUNDLE"]
+	runtimeFile := filepath.Join(h.config.StateDirectory, "runtime.env")
+	if _, err := os.Lstat(runtimeFile); err == nil {
+		if err := trustedFile(runtimeFile); err != nil {
+			return "", err
+		}
+		info, err := os.Stat(runtimeFile)
+		if err != nil || info.Size() > 1<<20 {
+			return "", errors.Join(err, errors.New("native runtime evidence environment exceeds 1 MiB"))
+		}
+		data, err := os.ReadFile(runtimeFile)
+		if err != nil {
+			return "", err
+		}
+		values, err := ParseEnvironmentFile(data)
+		if err != nil {
+			return "", err
+		}
+		if value, present := values["HIKYO_UPGRADE_BUNDLE"]; present {
+			bundle = value
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	if bundle == "" {
+		return "", errors.New("native source proof unavailable: installed deployment has no local signed upgrade bundle")
+	}
+	if !safePath(bundle) || !within(h.config.PublicDirectory, bundle) || bundle == h.config.PublicDirectory {
+		return "", errors.New("native source bundle must be inside the configured public upgrade directory")
+	}
+	if err := trustedDirectory(filepath.Join(h.config.StateDirectory, "downloads")); err != nil {
+		return "", fmt.Errorf("native source proof unavailable: retain the installed release's trusted offline archive cache: %w", err)
+	}
+	return bundle, nil
+}
+
 // Preflight is read-only and must run before maintenance. PostgreSQL and HA
 // require a deployment-wide writer proof this single-unit adapter cannot give.
-func (h *Host) Preflight(ctx context.Context) error {
+func (h *Host) Preflight(ctx context.Context) error { return h.preflight(ctx, false) }
+
+// PreflightNewInstallation is Preflight for a service that has never booted, so
+// its SQLite file does not exist yet. Every other check is the same.
+func (h *Host) PreflightNewInstallation(ctx context.Context) error { return h.preflight(ctx, true) }
+
+func (h *Host) preflight(ctx context.Context, newInstallation bool) error {
 	for _, p := range []string{h.config.EnvironmentFile, h.config.RootKeyFile, h.config.Binary, "/usr/bin/systemctl"} {
 		if err := trustedFile(p); err != nil {
 			return err
@@ -136,10 +243,10 @@ func (h *Host) Preflight(ctx context.Context) error {
 		return errors.New("SQLite database must be a plain file under the configured working directory")
 	}
 	infoDB, err := os.Lstat(dbPath)
-	if err != nil {
+	if err != nil && !(newInstallation && errors.Is(err, os.ErrNotExist)) {
 		return err
 	}
-	if !infoDB.Mode().IsRegular() {
+	if err == nil && !infoDB.Mode().IsRegular() {
 		return errors.New("SQLite database must be a regular file without symlinks")
 	}
 	h.databasePath = dbPath
@@ -335,9 +442,22 @@ func (h *Host) Maintenance() (bool, error) {
 
 // FenceAndStop first records maintenance and a persistent systemd condition,
 // then stops the whole control group. Reboot cannot resurrect the old writer.
+// A fence that cannot be installed still withdraws the start permission and
+// stops the writer; every failure is returned.
 func (h *Host) FenceAndStop(ctx context.Context) error {
-	fence := h.fenceConfiguration()
-	if err := h.writeDropin("90-hikyo-upgrade-fence.conf", []byte(fence)); err != nil {
+	fenceErr := h.fence(ctx)
+	permissionErr := os.Remove(h.startPermission())
+	if errors.Is(permissionErr, os.ErrNotExist) {
+		permissionErr = nil
+	}
+	if _, err := h.systemctl(ctx, "stop", h.config.Unit); err != nil {
+		return errors.Join(fenceErr, permissionErr, err)
+	}
+	return errors.Join(fenceErr, permissionErr, h.verifyStopped(ctx))
+}
+
+func (h *Host) fence(ctx context.Context) error {
+	if err := h.writeDropin("90-hikyo-upgrade-fence.conf", []byte(h.fenceConfiguration())); err != nil {
 		return err
 	}
 	if _, err := h.systemctl(ctx, "daemon-reload"); err != nil {
@@ -346,16 +466,7 @@ func (h *Host) FenceAndStop(ctx context.Context) error {
 	// Install the boot condition before publishing its maintenance marker.
 	// A crash before this point has not changed the database or stopped the
 	// source. A crash after it cannot reboot an unfenced writer.
-	if err := atomicWrite(h.maintenanceFile(), []byte("upgrade in progress\n"), 0600); err != nil {
-		return err
-	}
-	if err := os.Remove(h.startPermission()); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	if _, err := h.systemctl(ctx, "stop", h.config.Unit); err != nil {
-		return err
-	}
-	return h.verifyStopped(ctx)
+	return atomicWrite(h.maintenanceFile(), []byte("upgrade in progress\n"), 0600)
 }
 
 func (h *Host) verifyStopped(ctx context.Context) error {
@@ -675,6 +786,47 @@ func (h *Host) StartCandidate(ctx context.Context, digest string, requireReady b
 	}
 }
 
+// BootNewInstallation brings a never-booted service up under the runtime evidence
+// ConfigureRuntime wrote. With migrate set it first runs the DDL-only migrate as
+// the runtime user, as the fresh-installation runbook does; the exact-target boot
+// then completes the installation. It waits for the exact binary to answer ready.
+// No maintenance fence exists to set or lift: nothing has ever served from this database.
+func (h *Host) BootNewInstallation(ctx context.Context, digest string, migrate bool, timeout time.Duration, stdout, stderr io.Writer) error {
+	if !validDigest(digest) || timeout <= 0 || timeout > 10*time.Minute {
+		return errors.New("invalid new installation boot parameters")
+	}
+	if err := h.PreflightNewInstallation(ctx); err != nil {
+		return err
+	}
+	// The configured binary runs migrate before the boot proves its identity.
+	if actual, err := fileDigest(h.config.Binary); err != nil || actual != digest {
+		return errors.Join(err, errors.New("configured binary does not match the authenticated release"))
+	}
+	if migrate {
+		if err := h.runOperator(ctx, []string{"migrate"}, nil, stdout, stderr); err != nil {
+			return fmt.Errorf("migrate the new installation: %w", err)
+		}
+	}
+	if _, err := h.systemctl(ctx, "start", h.config.Unit); err != nil {
+		return err
+	}
+	check, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		err := h.checkCandidate(check, digest, true)
+		if err == nil {
+			return nil
+		}
+		select {
+		case <-check.Done():
+			return fmt.Errorf("new installation health check: %w: %w", check.Err(), err)
+		case <-ticker.C:
+		}
+	}
+}
+
 func (h *Host) checkCandidate(ctx context.Context, digest string, requireReady bool) error {
 	p, err := h.show(ctx, "ActiveState", "MainPID")
 	if err != nil {
@@ -808,6 +960,10 @@ func (h *Host) RunOperator(ctx context.Context, args []string, stdin io.Reader, 
 	if err := h.Preflight(ctx); err != nil {
 		return err
 	}
+	return h.runOperator(ctx, args, stdin, stdout, stderr)
+}
+
+func (h *Host) runOperator(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	values := h.Environment()
 	runtimeEnv := filepath.Join(h.config.StateDirectory, "runtime.env")
 	if err := trustedFile(runtimeEnv); err == nil {

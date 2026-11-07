@@ -2027,6 +2027,10 @@
       "hash": "7c326493d4200f9d8502ed750215ea8b6860e6ae6927036d24ad5c542766176c",
       "reason": "Upgrade exclusion protocol owns PostgreSQL session locks/shared runtime-drain locks or SQLite process exclusion on its dedicated database/sql connection; lock settlement must preserve that connection identity across historical schema transitions."
     },
+    "internal/store/upgrade/lock.go:SetPostgresSessionTimeouts": {
+      "hash": "9bac4740ed23105dec2790695dd89da8047186adca6e02eeb7c4dd0d704f1e2a",
+      "reason": "Session keepalive protocol sets only this session's tcp_user_timeout and TCP keepalive settings through set_config after connecting, so the server drops the session soon after its client dies and a rollback is not held off by it; it reads and writes no data."
+    },
     "internal/store/upgrade/lock.go:WithLock": {
       "hash": "c26d7dd4d4d3d7902ea061bdfec33038d5f9def003c5baed9e018ed59cdf39a6",
       "reason": "Upgrade exclusion protocol owns PostgreSQL session locks/shared runtime-drain locks or SQLite process exclusion on its dedicated database/sql connection; lock settlement must preserve that connection identity across historical schema transitions.",
@@ -2483,6 +2487,24 @@
         "internal/store/upgrade/schema.go:inspectCatalogWith",
         "internal/store/upgrade/schema.go:inspectSQLCatalog",
         "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog"
+      ]
+    },
+    "internal/store/upgrade/rollback.go:PreflightPostgresRollback": {
+      "hash": "ef562ca892f2e94ae901913a762a1d7272a31992845827a094926acd78831a16",
+      "reason": "Rollback preflight protocol runs before the backup fence, under migration exclusion: read-only catalog queries that check the cluster system identifier is readable, the current schema, the owner of every object in public, and that nothing outside public depends on it, so an install a rollback could not identify or rebuild, or whose reset would drop objects elsewhere, is refused while nothing has changed.",
+      "dependencies": [
+        "internal/store/upgrade/rollback.go:outsideDependents"
+      ]
+    },
+    "internal/store/upgrade/rollback.go:Rollback.Identity": {
+      "hash": "6debc9a5229570354cdb4202d586e6c1a1c8bd3bf1217a14fc0de31ba9b15456",
+      "reason": "Rollback identity protocol reads the actual PostgreSQL database name and cluster system identifier under migration exclusion, so a resumed rollback can tell an emptied database it started from a same-named one elsewhere; no application table is queried."
+    },
+    "internal/store/upgrade/rollback.go:RollbackAdmission.ResetPostgres": {
+      "hash": "daca582ad7a29efe9ed101afad95283bd93959a886ee20418af86d848e8fd502",
+      "reason": "Rollback reset protocol runs only under the rollback admission: it refuses while any other client session of any role stays connected or any object outside public depends on it, bounds lock waits, drops the objects in the owned public schema in one transaction, and refuses to commit if any object remains, leaving the schema and its grants; it is recovery lifecycle DDL, never a runtime database reset.",
+      "dependencies": [
+        "internal/store/upgrade/rollback.go:outsideDependents"
       ]
     },
     "internal/store/upgrade/runtime_snapshot.go:ReadPostgresSnapshot": {
@@ -3023,7 +3045,7 @@
     "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
     "internal/store/upgrade/lock.go:canonicalSQLite": "f89b56750e0b6cff94f8060893f1f2dc69eaf3290d0be240bd671e6f7f72e7ee",
     "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
-    "internal/store/upgrade/lock.go:open": "14627d65f77b206adfab245cf59e0eade3df578b4c1c94a09802424032d43516",
+    "internal/store/upgrade/lock.go:open": "e6be6794a9ed06bbad5305c2176a44ece617f18a6e06eabbcd7800a974358439",
     "internal/store/upgrade/maintenance_leases.go:Session.invalidateSingletonLeases": "a5e73031022d0cc51faeed7cd4199b75ba333c44f755f71e5304d7b37f71f3ed",
     "internal/store/upgrade/operator_rotation.go:Session.OperatorCredentialEpoch": "810ce5a96a5a50da46ab3229c178aba40e0738fe5f14a621a05fd1ecd697920f",
     "internal/store/upgrade/preparation.go:PreparationAdmission.Valid": "1a969335e21e3be6e90af3da2f02aaf65906009f684027eb9c64a92e610337a9",
@@ -3032,6 +3054,7 @@
     "internal/store/upgrade/recovery_admission.go:RecoveryAdmission.Valid": "46be22a6320dad35f082fbe0a9704f6003e7d251c151f12ec6f2ab0da23cbc19",
     "internal/store/upgrade/recovery_admission.go:RecoveryAdmission.checkRows": "633c45be26d761b381f78da585c185c9cc091c4b80d0297cf4695f2a3f8aa7d3",
     "internal/store/upgrade/restore.go:reconcileRestore": "f2b1b7269251540b7955077a30159f90356e8ba93cc3a3b157d0597490b792ef",
+    "internal/store/upgrade/rollback.go:outsideDependents": "1fc188ad4124f193b56c443af62958cd2eada7f6d3fea57e0a4fafcfd8904779",
     "internal/store/upgrade/restore_schema.go:prepareRestoreSchema": "ef32c202ae0f3d7689fcd0e014569b031a12f6553bb42736649c1ce9726a6816",
     "internal/store/upgrade/schema.go:Catalog.Digest": "54ada04ae98ce42277ee4d2ec0698ec8a060fcb2c0801d9dd4b77589b014a57b",
     "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19",

@@ -44,3 +44,30 @@ func (s *Session) FenceBackup(ctx context.Context, expected State, preparation B
 	}
 	return next, nil
 }
+
+// ReleaseBackupFence undoes only FenceBackup. Nothing but the control row changed
+// while the fence stood, so the frozen source returns to its completed state at
+// the same generation. The caller must have proved that no migration was begun:
+// any later phase is refused here and never released.
+func (s *Session) ReleaseBackupFence(ctx context.Context, expected State) (State, error) {
+	if expected.Validate() != nil || expected.Pending.Invalidated || expected.Pending.Phase != BackupPreparing {
+		return State{}, ErrConflict
+	}
+	next := expected
+	pending := *expected.Pending
+	pending.Phase, pending.Preparation = Healthy, nil
+	next.Pending, next.Maintenance = &pending, false
+	if next.Validate() != nil {
+		return State{}, ErrConflict
+	}
+	err := s.transaction(ctx, func() error {
+		if err := s.compare(ctx, expected); err != nil {
+			return err
+		}
+		return s.persist(ctx, next, false)
+	})
+	if err != nil {
+		return State{}, err
+	}
+	return next, nil
+}

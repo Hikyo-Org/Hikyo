@@ -22,6 +22,12 @@ type operatorFile struct {
 }
 
 func openOperatorFile(ctx context.Context, directory string, initial []byte, allowCreate bool) (*operatorFile, error) {
+	return openOperatorFileOwnedBy(ctx, directory, os.Geteuid(), initial, allowCreate)
+}
+
+// openOperatorFileOwnedBy lets the root-run native rollback read the custody the
+// service user owns. Callers that may write must own the files themselves.
+func openOperatorFileOwnedBy(ctx context.Context, directory string, owner int, initial []byte, allowCreate bool) (*operatorFile, error) {
 	if directory == "" {
 		return nil, errors.New("HIKYO_UPGRADE_STATE_DIR must name persistent installation custody")
 	}
@@ -35,15 +41,20 @@ func openOperatorFile(ctx context.Context, directory string, initial []byte, all
 	}
 	f := &operatorFile{directory: os.NewFile(uintptr(fd), canonical)}
 	fail := func(err error) (*operatorFile, error) { f.close(); return nil, err }
-	if err := operatorSecure(f.directory, true); err != nil {
+	if err := operatorSecureOwnedBy(f.directory, true, owner); err != nil {
 		return fail(err)
 	}
-	lockfd, err := unix.Openat(fd, ".operator-custody.lock", unix.O_CREAT|unix.O_RDWR|unix.O_NOFOLLOW|unix.O_CLOEXEC|unix.O_NONBLOCK, 0600)
+	// Only the owner creates the lock: root creating it would leave the service a root-owned file in its own directory.
+	lockFlags := unix.O_RDWR | unix.O_NOFOLLOW | unix.O_CLOEXEC | unix.O_NONBLOCK
+	if owner == os.Geteuid() {
+		lockFlags |= unix.O_CREAT
+	}
+	lockfd, err := unix.Openat(fd, ".operator-custody.lock", lockFlags, 0600)
 	if err != nil {
 		return fail(err)
 	}
 	f.lock = os.NewFile(uintptr(lockfd), ".operator-custody.lock")
-	if err := operatorSecure(f.lock, false); err != nil {
+	if err := operatorSecureOwnedBy(f.lock, false, owner); err != nil {
 		return fail(err)
 	}
 	for {
@@ -76,7 +87,7 @@ func openOperatorFile(ctx context.Context, directory string, initial []byte, all
 	}
 	rawfile := os.NewFile(uintptr(rawfd), operatorCustodyName)
 	defer rawfile.Close()
-	if err := operatorSecure(rawfile, false); err != nil {
+	if err := operatorSecureOwnedBy(rawfile, false, owner); err != nil {
 		return fail(err)
 	}
 	raw, err := io.ReadAll(io.LimitReader(rawfile, 4<<20))
@@ -100,6 +111,10 @@ func openOperatorFile(ctx context.Context, directory string, initial []byte, all
 	return f, nil
 }
 func operatorSecure(file *os.File, directory bool) error {
+	return operatorSecureOwnedBy(file, directory, os.Geteuid())
+}
+
+func operatorSecureOwnedBy(file *os.File, directory bool, owner int) error {
 	var stat unix.Stat_t
 	if err := unix.Fstat(int(file.Fd()), &stat); err != nil {
 		return err
@@ -110,7 +125,7 @@ func operatorSecure(file *os.File, directory bool) error {
 		kind = unix.S_IFDIR
 		mode = 0700
 	}
-	if uint32(stat.Mode)&unix.S_IFMT != kind || uint32(stat.Mode)&0777 != mode || int(stat.Uid) != os.Geteuid() || (!directory && stat.Nlink != 1) {
+	if uint32(stat.Mode)&unix.S_IFMT != kind || uint32(stat.Mode)&0777 != mode || int(stat.Uid) != owner || (!directory && stat.Nlink != 1) {
 		return errors.New("operator custody requires owned 0700 directory and single-link 0600 files")
 	}
 	return nil

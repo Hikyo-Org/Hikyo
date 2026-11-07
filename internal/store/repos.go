@@ -321,6 +321,21 @@ func (o sqliteOrgs) List(ctx context.Context, p authz.Proof) ([]Org, error) {
 	return out, nil
 }
 
+func (o sqliteOrgs) ListIDs(ctx context.Context, p authz.Proof) ([]domain.OrgID, error) {
+	if _, err := authz.Verify(p, authz.StoreOrgsListIDs, o.tok); err != nil {
+		return nil, err
+	}
+	ids, err := o.q.ListOrgIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.OrgID, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, domain.OrgID(id))
+	}
+	return out, nil
+}
+
 func (o sqliteOrgs) Count(ctx context.Context, p authz.Proof) (int64, error) {
 	if _, err := authz.Verify(p, authz.StoreOrgsCount, o.tok); err != nil {
 		return 0, err
@@ -1075,6 +1090,21 @@ func (o pgOrgs) List(ctx context.Context, p authz.Proof) ([]Org, error) {
 			return nil, err
 		}
 		out = append(out, org)
+	}
+	return out, nil
+}
+
+func (o pgOrgs) ListIDs(ctx context.Context, p authz.Proof) ([]domain.OrgID, error) {
+	if _, err := authz.Verify(p, authz.StoreOrgsListIDs, o.tok); err != nil {
+		return nil, err
+	}
+	ids, err := o.q.ListOrgIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.OrgID, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, domain.OrgID(id))
 	}
 	return out, nil
 }
