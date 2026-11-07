@@ -191,7 +191,8 @@ func (s *EmailInvitations) Send(ctx context.Context, actor Actor, spec EmailInvi
 		orgName string
 	)
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		now := s.now()
+		// Canonical so the receipt equals what the store keeps and lists.
+		now := store.CanonTime(s.now())
 		caller, p, err := authorize(ctx, az, actor, authz.OpEmailInvitationSend, scope, now)
 		if err != nil {
 			return err

@@ -1903,7 +1903,7 @@ test.describe('browser-only lifecycle', () => {
       // 5. HUMAN ACCESS: invite a member with a template. The display-once
       // authority is shown in the dialog and nowhere else.
       await page.goto(`/orgs/${org.id}/members`);
-      await page.getByRole('button', { name: 'Invite' }).click();
+      await page.getByRole('button', { name: 'Invite', exact: true }).click();
       const invite = page.getByRole('dialog');
       await invite.getByLabel('Username').fill(`lc-viewer-${tag}`);
       await invite.getByLabel('Role template').selectOption('viewer');

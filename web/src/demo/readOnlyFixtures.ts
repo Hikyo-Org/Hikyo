@@ -141,6 +141,7 @@ export function createReadOnlyFixtures(role: DemoRole, sessionTime: string) {
     inert: false, created_at: sessionTime, capabilities: ['read'],
   };
   const bindingRoot = `${orgRoot}/scim-bindings/${binding.id}`;
+  responses.set(`${orgRoot}/email-invitations`, list([]));
   responses.set(`${orgRoot}/scim-bindings`, list([binding]));
   responses.set(bindingRoot, binding);
   responses.set(`${bindingRoot}/mappings`, list([mapping]));
