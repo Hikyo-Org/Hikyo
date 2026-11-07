@@ -380,7 +380,11 @@ func errorFromResponse(status int, header http.Header, payload []byte) error {
 		apigen.ErrorCodeConflict, apigen.ErrorCodeLimitExceeded,
 		// A vocabulary or size refusal is the same: the server answered.
 		apigen.ErrorCodeUnprocessable, apigen.ErrorCodePayloadTooLarge:
-		return failf(ExitRefused, "%s", message)
+		refusal := &Error{Code: ExitRefused, Err: fmt.Errorf("%s", message)}
+		if body.Error.Detail != nil {
+			refusal.Detail = *body.Error.Detail
+		}
+		return refusal
 	case apigen.ErrorCodeNotFound:
 		return failf(ExitNotFound, "%s", message)
 	case apigen.ErrorCodeInternal:

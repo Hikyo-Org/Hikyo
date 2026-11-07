@@ -59,6 +59,7 @@ export type StreamOperation<TCall extends StreamCall, TSchema extends ZodType> =
   GeneratedStreamOperation<TCall, TSchema>;
 
 import {
+  acceptEmailInvitation,
   addAdapterTarget,
   addRemote,
   addWorkspaceOrigin,
@@ -209,6 +210,7 @@ import {
   installPkiIssuerCertificate,
   inviteInstanceMember,
   inviteOrgMember,
+  inviteOrgMemberByEmail,
   issueCertificate,
   issueSshCertificate,
   linkIdentity,
@@ -240,6 +242,7 @@ import {
   listMySessions,
   listOauth2Providers,
   listOidcProviders,
+  listOrgEmailInvitations,
   listOrgGrants,
   listOrgRules,
   listOrgs,
@@ -294,6 +297,7 @@ import {
   planAdapterTarget,
   pollCliDevice,
   prepareRemotePairing,
+  previewEmailInvitation,
   previewInstanceConfigAdoption,
   publishPendingChanges,
   publishPkiIssuerCrl,
@@ -362,6 +366,7 @@ import {
   revokeMachineCredential,
   revokeMyDeveloperCredential,
   revokeMySession,
+  revokeOrgEmailInvitation,
   revokeOrgGrant,
   revokePkiIssuer,
   revokeProjectDeveloperCredential,
@@ -479,6 +484,7 @@ import {
   whoami,
 } from './sdk.gen.ts';
 import type {
+  AcceptEmailInvitationData,
   AddAdapterTargetData,
   AddRemoteData,
   AddWorkspaceOriginData,
@@ -628,6 +634,7 @@ import type {
   InitializeValueData,
   InstallPkiIssuerCertificateData,
   InviteInstanceMemberData,
+  InviteOrgMemberByEmailData,
   InviteOrgMemberData,
   IssueCertificateData,
   IssueSshCertificateData,
@@ -660,6 +667,7 @@ import type {
   ListMySessionsData,
   ListOauth2ProvidersData,
   ListOidcProvidersData,
+  ListOrgEmailInvitationsData,
   ListOrgGrantsData,
   ListOrgRulesData,
   ListOrgsData,
@@ -714,6 +722,7 @@ import type {
   PlanAdapterTargetData,
   PollCliDeviceData,
   PrepareRemotePairingData,
+  PreviewEmailInvitationData,
   PreviewInstanceConfigAdoptionData,
   PublishPendingChangesData,
   PublishPkiIssuerCrlData,
@@ -782,6 +791,7 @@ import type {
   RevokeMachineCredentialData,
   RevokeMyDeveloperCredentialData,
   RevokeMySessionData,
+  RevokeOrgEmailInvitationData,
   RevokeOrgGrantData,
   RevokePkiIssuerData,
   RevokeProjectDeveloperCredentialData,
@@ -899,6 +909,7 @@ import type {
   WhoamiData,
 } from './types.gen.ts';
 import {
+  zAcceptEmailInvitationResponse,
   zAddAdapterTargetResponse,
   zAddRemoteResponse,
   zAddWorkspaceOriginResponse,
@@ -1025,6 +1036,7 @@ import {
   zInitializeValueResponse,
   zInstallPkiIssuerCertificateResponse,
   zInviteInstanceMemberResponse,
+  zInviteOrgMemberByEmailResponse,
   zInviteOrgMemberResponse,
   zIssueCertificateResponse,
   zIssueSshCertificateResponse,
@@ -1057,6 +1069,7 @@ import {
   zListMySessionsResponse,
   zListOauth2ProvidersResponse,
   zListOidcProvidersResponse,
+  zListOrgEmailInvitationsResponse,
   zListOrgGrantsResponse,
   zListOrgRulesResponse,
   zListOrgsResponse,
@@ -1110,6 +1123,7 @@ import {
   zPlanAdapterTargetResponse,
   zPollCliDeviceResponse,
   zPrepareRemotePairingResponse,
+  zPreviewEmailInvitationResponse,
   zPreviewInstanceConfigAdoptionResponse,
   zPublishPendingChangesResponse,
   zPublishPkiIssuerCrlResponse,
@@ -1268,6 +1282,7 @@ import {
   zWhoamiResponse,
 } from './zod.gen.ts';
 
+export const acceptEmailInvitationOp: BodyOperation<AcceptEmailInvitationData, typeof zAcceptEmailInvitationResponse> = /* @__PURE__ */ new GeneratedBodyOperation(acceptEmailInvitation, [200], zAcceptEmailInvitationResponse);
 export const addAdapterTargetOp: BodyOperation<AddAdapterTargetData, typeof zAddAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(addAdapterTarget, [201], zAddAdapterTargetResponse);
 export const addRemoteOp: BodyOperation<AddRemoteData, typeof zAddRemoteResponse> = /* @__PURE__ */ new GeneratedBodyOperation(addRemote, [201], zAddRemoteResponse);
 export const addWorkspaceOriginOp: BodyOperation<AddWorkspaceOriginData, typeof zAddWorkspaceOriginResponse> = /* @__PURE__ */ new GeneratedBodyOperation(addWorkspaceOrigin, [201], zAddWorkspaceOriginResponse);
@@ -1395,6 +1410,7 @@ export const initializeValueOp: BodyOperation<InitializeValueData, typeof zIniti
 export const installPkiIssuerCertificateOp: BodyOperation<InstallPkiIssuerCertificateData, typeof zInstallPkiIssuerCertificateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(installPkiIssuerCertificate, [200], zInstallPkiIssuerCertificateResponse);
 export const inviteInstanceMemberOp: BodyOperation<InviteInstanceMemberData, typeof zInviteInstanceMemberResponse> = /* @__PURE__ */ new GeneratedBodyOperation(inviteInstanceMember, [201], zInviteInstanceMemberResponse);
 export const inviteOrgMemberOp: BodyOperation<InviteOrgMemberData, typeof zInviteOrgMemberResponse> = /* @__PURE__ */ new GeneratedBodyOperation(inviteOrgMember, [201], zInviteOrgMemberResponse);
+export const inviteOrgMemberByEmailOp: BodyOperation<InviteOrgMemberByEmailData, typeof zInviteOrgMemberByEmailResponse> = /* @__PURE__ */ new GeneratedBodyOperation(inviteOrgMemberByEmail, [202], zInviteOrgMemberByEmailResponse);
 export const issueCertificateOp: BodyOperation<IssueCertificateData, typeof zIssueCertificateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(issueCertificate, [200], zIssueCertificateResponse);
 export const issueSshCertificateOp: BodyOperation<IssueSshCertificateData, typeof zIssueSshCertificateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(issueSshCertificate, [200], zIssueSshCertificateResponse);
 export const linkIdentityOp: BodyOperation<LinkIdentityData, typeof zLinkIdentityResponse> = /* @__PURE__ */ new GeneratedBodyOperation(linkIdentity, [200], zLinkIdentityResponse);
@@ -1426,6 +1442,7 @@ export const listMyPersonalValuesOp: BodyOperation<ListMyPersonalValuesData, typ
 export const listMySessionsOp: BodyOperation<ListMySessionsData, typeof zListMySessionsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listMySessions, [200], zListMySessionsResponse);
 export const listOauth2ProvidersOp: BodyOperation<ListOauth2ProvidersData, typeof zListOauth2ProvidersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listOauth2Providers, [200], zListOauth2ProvidersResponse);
 export const listOidcProvidersOp: BodyOperation<ListOidcProvidersData, typeof zListOidcProvidersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listOidcProviders, [200], zListOidcProvidersResponse);
+export const listOrgEmailInvitationsOp: BodyOperation<ListOrgEmailInvitationsData, typeof zListOrgEmailInvitationsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listOrgEmailInvitations, [200], zListOrgEmailInvitationsResponse);
 export const listOrgGrantsOp: BodyOperation<ListOrgGrantsData, typeof zListOrgGrantsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listOrgGrants, [200], zListOrgGrantsResponse);
 export const listOrgRulesOp: BodyOperation<ListOrgRulesData, typeof zListOrgRulesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listOrgRules, [200], zListOrgRulesResponse);
 export const listOrgsOp: BodyOperation<ListOrgsData, typeof zListOrgsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listOrgs, [200], zListOrgsResponse);
@@ -1479,6 +1496,7 @@ export const pauseAdapterTargetOp: BodyOperation<PauseAdapterTargetData, typeof 
 export const planAdapterTargetOp: BodyOperation<PlanAdapterTargetData, typeof zPlanAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(planAdapterTarget, [200], zPlanAdapterTargetResponse);
 export const pollCliDeviceOp: BodyOperation<PollCliDeviceData, typeof zPollCliDeviceResponse> = /* @__PURE__ */ new GeneratedBodyOperation(pollCliDevice, [200], zPollCliDeviceResponse);
 export const prepareRemotePairingOp: BodyOperation<PrepareRemotePairingData, typeof zPrepareRemotePairingResponse> = /* @__PURE__ */ new GeneratedBodyOperation(prepareRemotePairing, [201], zPrepareRemotePairingResponse);
+export const previewEmailInvitationOp: BodyOperation<PreviewEmailInvitationData, typeof zPreviewEmailInvitationResponse> = /* @__PURE__ */ new GeneratedBodyOperation(previewEmailInvitation, [200], zPreviewEmailInvitationResponse);
 export const previewInstanceConfigAdoptionOp: BodyOperation<PreviewInstanceConfigAdoptionData, typeof zPreviewInstanceConfigAdoptionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(previewInstanceConfigAdoption, [200], zPreviewInstanceConfigAdoptionResponse);
 export const publishPendingChangesOp: BodyOperation<PublishPendingChangesData, typeof zPublishPendingChangesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(publishPendingChanges, [200, 202], zPublishPendingChangesResponse);
 export const publishPkiIssuerCrlOp: BodyOperation<PublishPkiIssuerCrlData, typeof zPublishPkiIssuerCrlResponse> = /* @__PURE__ */ new GeneratedBodyOperation(publishPkiIssuerCrl, [200], zPublishPkiIssuerCrlResponse);
@@ -1671,6 +1689,7 @@ export const revokeInstanceGrantOp: BodylessOperation<RevokeInstanceGrantData> =
 export const revokeMachineCredentialOp: BodylessOperation<RevokeMachineCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeMachineCredential, [204]);
 export const revokeMyDeveloperCredentialOp: BodylessOperation<RevokeMyDeveloperCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeMyDeveloperCredential, [204]);
 export const revokeMySessionOp: BodylessOperation<RevokeMySessionData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeMySession, [204]);
+export const revokeOrgEmailInvitationOp: BodylessOperation<RevokeOrgEmailInvitationData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeOrgEmailInvitation, [204]);
 export const revokeOrgGrantOp: BodylessOperation<RevokeOrgGrantData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeOrgGrant, [204]);
 export const revokeProjectDeveloperCredentialOp: BodylessOperation<RevokeProjectDeveloperCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeProjectDeveloperCredential, [204]);
 export const revokeProjectGrantOp: BodylessOperation<RevokeProjectGrantData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeProjectGrant, [204]);

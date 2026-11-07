@@ -558,6 +558,38 @@
     ]
   },
   {
+    "operation": "email-invitation.accept",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
+    ]
+  },
+  {
+    "operation": "email-invitation.list",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
+    ]
+  },
+  {
+    "operation": "email-invitation.revoke",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
+    ]
+  },
+  {
+    "operation": "email-invitation.send",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
+    ]
+  },
+  {
     "operation": "environment.create",
     "class": "tenant",
     "level": "project",

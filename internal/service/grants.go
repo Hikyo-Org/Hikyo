@@ -124,6 +124,11 @@ type Grants struct {
 	// manual. Only the registration sign-up (#607) sets it, to registration,
 	// with the policy's authority principal as the granting caller.
 	originKind domain.OriginKind
+	// invitee is the one account an email invitation is bound to (#1207). Only
+	// the acceptance path sets it, from the row the session's own account
+	// resolved: a grant to exactly that target skips the organisation
+	// footprint gate. Every other grant rule still applies.
+	invitee domain.PrincipalID
 }
 
 func (s *Grants) now() time.Time {
@@ -295,8 +300,10 @@ func (s *Grants) grantOneWithInvalidation(
 	if err != nil {
 		return zero, nil, err
 	}
-	if err := checkTargetFootprint(ctx, az, grantorGrants, grantor, spec.Target, spec.Scope.Org); err != nil {
-		return zero, nil, err
+	if spec.Target != s.invitee || s.invitee == "" {
+		if err := checkTargetFootprint(ctx, az, grantorGrants, grantor, spec.Target, spec.Scope.Org); err != nil {
+			return zero, nil, err
+		}
 	}
 
 	class, err := lockAndClassify(ctx, az, spec.Target, spec.Capability, spec.Scope, s.now)

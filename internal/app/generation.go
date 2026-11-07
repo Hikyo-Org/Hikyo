@@ -267,6 +267,16 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	}
 	authSvc.EnableLocalSignup(selfConfig.Capture)
 	authSvc.MailFailed = metrics.RecordSignupMailFailure
+	// Sends outlive the generation that started them, so the join, the
+	// cancellation and the failure count are the owner's, like the refusals.
+	if owner.emailSends == nil {
+		owner.emailSends = service.NewMailSends()
+	}
+	metrics.SetEmailInvitationFailureSource(owner.emailSends.Failures)
+	emailInvitationsSvc := &service.EmailInvitations{
+		DB: db, ExternalOrigin: cfg.ExternalOrigin, ExternalOriginExplicit: cfg.ExternalOriginExplicit, Mail: selfConfig.Capture,
+		Budget: budget, Log: log, Sends: owner.emailSends,
+	}
 	api := &server.API{
 		Mail:     &service.InstanceMail{DB: db, Auth: authSvc, Capture: selfConfig.Capture},
 		Runtime:  &service.System{DB: db, Store: sc},
@@ -302,6 +312,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		// carries is the SAME window machinery human disclosure consumes, so
 		// they cannot come from two configurations.
 		Grants:               &service.Grants{DB: db, Auth: authSvc},
+		EmailInvitations:     emailInvitationsSvc,
 		Rules:                &service.Rules{DB: db},
 		Registration:         registrationSvc,
 		Identities:           &service.Identities{DB: db, Auth: authSvc},

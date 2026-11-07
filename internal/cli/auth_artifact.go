@@ -98,6 +98,7 @@ var authRuleRows = []authRuleRow{
 		"access request list", "access request create", "access request approve", "access request reject",
 		"access request cancel", "access request revoke", "access request emergency",
 		"access member list", "access member invite", "access member remove",
+		"access invitation send", "access invitation list", "access invitation revoke", "access invitation accept",
 		"access registration show", "access registration set", "access registration delete",
 		"project-settings get", "project-settings set",
 		"project-settings machine-reveal get", "project-settings machine-reveal set",

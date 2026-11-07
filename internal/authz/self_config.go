@@ -27,6 +27,7 @@ var selfConfigOperations = map[Operation]bool{
 	OpAuditQueryOrg: true, OpAuditQueryProject: true, OpAuditQueryEnv: true, OpAuditExportOrg: true, OpAuditExportProject: true, OpAuditExportEnv: true,
 	OpGrantCreateOrg: true, OpGrantCreateProject: true, OpGrantCreateEnv: true, OpGrantRevokeOrg: true, OpGrantRevokeProject: true, OpGrantRevokeEnv: true,
 	OpGrantListOrg: true, OpGrantListProject: true, OpTemplateApplyOrg: true, OpTemplateApplyProject: true, OpTemplateApplyEnv: true, OpMemberInviteOrg: true,
+	OpEmailInvitationSend: true, OpEmailInvitationList: true, OpEmailInvitationRevoke: true, OpEmailInvitationAccept: true,
 	OpSelfConfigApply: true, OpSelfConfigTest: true, OpReencryptProject: true,
 }
 
@@ -48,7 +49,8 @@ func (a *TxAuthorizer) selfConfigProfile(ctx context.Context, caller Identity, o
 	}
 	f := Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}}
 	switch op {
-	case OpGrantCreateOrg, OpGrantCreateProject, OpGrantCreateEnv, OpGrantRevokeOrg, OpGrantRevokeProject, OpGrantRevokeEnv, OpGrantListOrg, OpGrantListProject, OpTemplateApplyOrg, OpTemplateApplyProject, OpTemplateApplyEnv, OpMemberInviteOrg:
+	case OpGrantCreateOrg, OpGrantCreateProject, OpGrantCreateEnv, OpGrantRevokeOrg, OpGrantRevokeProject, OpGrantRevokeEnv, OpGrantListOrg, OpGrantListProject, OpTemplateApplyOrg, OpTemplateApplyProject, OpTemplateApplyEnv, OpMemberInviteOrg,
+		OpEmailInvitationSend, OpEmailInvitationList, OpEmailInvitationRevoke, OpEmailInvitationAccept:
 		f = append(f, Atom{Cap: domain.CapManageMembers, At: domain.LevelNone})
 	}
 	return true, evaluate(f, chain, grants), nil
