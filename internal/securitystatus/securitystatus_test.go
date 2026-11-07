@@ -95,6 +95,18 @@ func TestDetailRedactsValuesKeepsReasonsAndCutsOnACharacterBoundary(t *testing.T
 	if got := Redact("can't start\nexit 1"); got != "can't start\nexit 1" {
 		t.Fatalf("apostrophe before a later line redacted: %q", got)
 	}
+	// A multiline value cut before its closing quote is redacted to the end.
+	for text, want := range map[string]string{
+		"refused 'hunter2\nsecond":          "refused '[redacted]'",
+		"refused 'hunter2\nsecond' and 'x'": "refused '[redacted]'",
+		"refused 'hunter2\nsecond 'tail'":   "refused '[redacted]'",
+		"env \"hunter2\nsecond":             "env \"[redacted]\"",
+		"line 'a'\nnext \"b\"\ncan't stop":  "line '[redacted]'\nnext \"[redacted]\"\ncan't stop",
+	} {
+		if got := Redact(text); got != want {
+			t.Fatalf("Redact(%q) = %q", text, got)
+		}
+	}
 	// An apostrophe earlier on the line must not pair with the value's opening quote.
 	for _, text := range []string{"can't apply: refused 'hunter2 x'", "can't apply: refused 'hunter2 x"} {
 		if got := Redact(text); got != "can't apply: refused '[redacted]'" {
