@@ -7,11 +7,14 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net/http"
+	"net/http/httptest"
 	"net/mail"
 	"net/url"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,6 +25,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/mailtest"
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
+	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -55,7 +59,7 @@ func newEmailInvitationRig(t *testing.T, db *store.DB, configured bool) *emailIn
 	r := &emailInvitationRig{t: t, db: db, sink: sink, now: time.Now().UTC()}
 	r.clock = &r.now
 	r.svc = &service.EmailInvitations{
-		DB: db, Now: func() time.Time { return *r.clock }, ExternalOrigin: "https://hikyo.test",
+		DB: db, Now: func() time.Time { return *r.clock }, ExternalOrigin: "https://hikyo.test", ExternalOriginExplicit: true,
 		Mail:   func(context.Context) (*runtimeconfig.Bundle, error) { return bundle, nil },
 		Budget: service.NewBudgetWithClock(func() time.Time { return *r.clock }),
 		Sends:  service.NewMailSends(),
@@ -241,6 +245,9 @@ func runEmailInvitations(t *testing.T, db *store.DB) {
 			t.Fatal("no delivered-mail outcome recorded")
 		}
 		before := rig.grantsOf(invitee)
+		// A live developer credential of the person must not outlive the
+		// acceptance, which advances their generation.
+		developer := seedSecurityDeveloper(t, db, sessionWithWindows(t, db, invitee), envScope(envA1), "invitee")
 		var gen0 int64
 		_ = tx.Read(ctx, db, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
 			var e error
@@ -296,6 +303,9 @@ func runEmailInvitations(t *testing.T, db *store.DB) {
 		if gen1 <= gen0 {
 			t.Fatalf("generation %d -> %d: sessions were not ended", gen0, gen1)
 		}
+		if authenticateCaller(t, db, developer).Principal != "" {
+			t.Fatal("the person's developer credential survived the acceptance")
+		}
 		_, err = rig.svc.Accept(ctx, service.LocalPrincipal(invitee), token)
 		wantNotFound(t, "second accept", err)
 		if rig.refusals("unknown") == 0 {
@@ -320,6 +330,74 @@ func runEmailInvitations(t *testing.T, db *store.DB) {
 		if rig.grantsOf(bob) == 0 {
 			t.Fatal("no grant landed")
 		}
+	})
+
+	t.Run("a_failed_send_is_counted_in_the_scrape_across_a_generation_replacement", func(t *testing.T) {
+		sends := service.NewMailSends()
+		var calls atomic.Int64
+		gate := make(chan struct{})
+		replacement := *rig.svc
+		replacement.Sends = sends
+		// The first call per send is the configured-mailer predicate; the
+		// second is the background delivery, which fails once released.
+		replacement.Mail = func(ctx context.Context) (*runtimeconfig.Bundle, error) {
+			if calls.Add(1)%2 == 1 {
+				return rig.svc.Mail(ctx)
+			}
+			<-gate
+			return nil, errors.New("smtp down")
+		}
+		scrape := func(m *server.Metrics) string {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/metrics", nil)
+			req.RemoteAddr = "127.0.0.1:1234"
+			server.NewOperational(nil, mcpOperationalHealth{}, m).ServeHTTP(rec, req)
+			for _, line := range strings.Split(rec.Body.String(), "\n") {
+				if strings.HasPrefix(line, "hikyo_email_invitation_mail_failures_total ") {
+					return strings.TrimPrefix(line, "hikyo_email_invitation_mail_failures_total ")
+				}
+			}
+			t.Fatal("the failure counter is absent from the scrape")
+			return ""
+		}
+		first := server.NewMetrics(nil)
+		first.SetEmailInvitationFailureSource(sends.Failures)
+
+		if _, err := replacement.Send(ctx, service.LocalPrincipal(admin), service.EmailInvitationSendSpec{Org: orgA, Email: "other@example.test", Template: domain.TemplateViewer}); err != nil {
+			t.Fatal(err)
+		}
+		// The generation that started the send is replaced while it is in flight.
+		second := server.NewMetrics(nil)
+		second.SetEmailInvitationFailureSource(sends.Failures)
+		if got := scrape(second); got != "0" {
+			t.Fatalf("failures before the send finished = %s", got)
+		}
+		close(gate)
+		sends.Wait()
+		if got := scrape(second); got != "1" {
+			t.Fatalf("failures after a late failure on a replaced generation = %s, want 1", got)
+		}
+		if got := scrape(first); got != "1" {
+			t.Fatalf("the replaced generation's scrape = %s, want 1", got)
+		}
+		execRaw(t, db, `DELETE FROM org_email_invitations`)
+	})
+
+	t.Run("an_unverified_address_is_unmatched", func(t *testing.T) {
+		execRaw(t, db, `INSERT INTO principals (id, kind, created_at) VALUES ('usr_ei_unverified', 'human', `+ts+`)`)
+		execRaw(t, db, `INSERT INTO accounts (id, principal_id, username, display_name, email, created_at) VALUES ('acc_usr_ei_unverified', 'usr_ei_unverified', 'ei-unverified', 'ei-unverified', 'unverified@example.test', `+tsMicro+`)`)
+		before := len(rig.sink.Messages())
+		if _, err := rig.send(admin, "unverified@example.test"); err != nil {
+			t.Fatal(err)
+		}
+		rig.svc.Sends.Wait()
+		if len(rig.sink.Messages()) != before {
+			t.Fatal("an unverified address was mailed")
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM org_email_invitations WHERE email = 'unverified@example.test' AND account_id IS NOT NULL`); n != 0 {
+			t.Fatalf("an unverified address bound %d invitations to its account", n)
+		}
+		execRaw(t, db, `DELETE FROM org_email_invitations`)
 	})
 
 	t.Run("an_unmatched_row_never_validates", func(t *testing.T) {
@@ -691,6 +769,26 @@ func runEmailInvitations(t *testing.T, db *store.DB) {
 		_, err = rig.svc.Accept(ctx, service.LocalPrincipal(victim), token)
 		wantNotFound(t, "accept after erasure", err)
 		execRaw(t, db, `DELETE FROM org_email_invitations`)
+	})
+
+	t.Run("an_unstated_origin_refuses_before_anything_is_written_or_sent", func(t *testing.T) {
+		derived := newEmailInvitationRig(t, db, true)
+		derived.svc.ExternalOriginExplicit = false
+		derived.account("usr_ei_derived", "derived@example.test")
+		for _, addr := range []string{"derived@example.test", "nobody@example.test", "not an address"} {
+			_, err := derived.send(admin, addr)
+			var detail interface{ SafeDetail() string }
+			if !errors.As(err, &detail) || detail.SafeDetail() != "no-public-origin" || !errors.Is(err, domain.ErrInvalid) {
+				t.Fatalf("send(%q) without a stated origin = %v", addr, err)
+			}
+		}
+		if _, err := derived.send(reader, "derived@example.test"); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("authorization precedes the predicate: %v", err)
+		}
+		derived.svc.Sends.Wait()
+		if derived.rows() != 0 || len(derived.sink.Messages()) != 0 {
+			t.Fatalf("a refused send wrote %d rows and mailed %d", derived.rows(), len(derived.sink.Messages()))
+		}
 	})
 
 	t.Run("an_unconfigured_mailer_refuses_before_reading_the_address", func(t *testing.T) {

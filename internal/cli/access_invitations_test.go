@@ -3,6 +3,8 @@ package cli_test
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +26,10 @@ type invitationFake struct {
 	mailer    bool
 	// mailerDetail makes the send refuse with this detail instead.
 	mailerDetail string
+	// wantToken is the token the preview must carry; "" skips the check.
+	wantToken string
+	// onAccept runs once the accept request arrives, before the response.
+	onAccept func()
 }
 
 func (f *invitationFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +50,12 @@ func (f *invitationFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var body apigen.EmailInvitationSendRequest
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			f.t.Errorf("send body: %v", err)
+		}
+		if body.Email != "dana@example.test" || body.Template != "viewer" {
+			f.t.Errorf("send body = %+v, want dana@example.test as viewer", body)
+		}
 		w.WriteHeader(http.StatusAccepted)
 		_ = json.NewEncoder(w).Encode(apigen.EmailInvitation{Id: "inv_1", Email: body.Email, Template: body.Template, ExpiresAt: invitationExpiry})
 	case r.Method == http.MethodGet && r.URL.Path == base:
@@ -54,6 +65,13 @@ func (f *invitationFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/me/invitations/preview":
 		f.previews++
+		var pbody apigen.EmailInvitationTokenRequest
+		if err := json.NewDecoder(r.Body).Decode(&pbody); err != nil {
+			f.t.Errorf("preview body: %v", err)
+		}
+		if f.wantToken != "" && pbody.Token != f.wantToken {
+			f.t.Errorf("preview token = %q, want %q", pbody.Token, f.wantToken)
+		}
 		if f.notFound {
 			fail(404, "not_found", "")
 			return
@@ -63,6 +81,9 @@ func (f *invitationFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var body apigen.EmailInvitationTokenRequest
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		f.accepted = append(f.accepted, body.Token)
+		if f.onAccept != nil {
+			f.onAccept()
+		}
 		_ = json.NewEncoder(w).Encode(apigen.EmailInvitationAcceptance{Org: invitationOrg, OrgName: "Acme", Template: "viewer", GrantsCreated: 2, SignedOut: f.signedOut})
 	default:
 		http.NotFound(w, r)
@@ -111,17 +132,27 @@ func TestInvitationSendMailerUnconfigured(t *testing.T) {
 	}
 }
 
+func TestInvitationSendNoPublicOrigin(t *testing.T) {
+	ios, _, stderr := definitionsTestIO(t, &invitationFake{t: t, mailerDetail: "no-public-origin"})
+	code := cli.Run(t.Context(), ios, []string{"access", "invitation", "send", "a@example.test", "--template", "viewer", "--instance", "local", "--org", invitationOrg})
+	for _, want := range []string{"public origin", "access member invite", "SCIM"} {
+		if code != cli.ExitRefused || !strings.Contains(stderr.String(), want) {
+			t.Fatalf("code=%d missing %q in %s", code, want, stderr)
+		}
+	}
+}
+
 func TestInvitationAccept(t *testing.T) {
 	for _, tc := range []struct {
 		name, stdin string
 	}{
 		{"raw token", "tok_abc\n"},
-		{"full link", "https://hikyo.example/invitations/accept#token=tok_abc\n"},
+		{"full link", "%s/invitations/accept#token=tok_abc\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			fake := &invitationFake{t: t, signedOut: true}
+			fake := &invitationFake{t: t, signedOut: true, wantToken: "tok_abc"}
 			ios, stdout, stderr := definitionsTestIO(t, fake)
-			ios.Stdin = strings.NewReader(tc.stdin)
+			ios.Stdin = strings.NewReader(strings.ReplaceAll(tc.stdin, "%s", instanceOrigin(t, ios)))
 			ios.TerminalSession, _ = terminalSession(t, "y\n")
 			if code := cli.Run(t.Context(), ios, []string{"access", "invitation", "accept", "--instance", "local"}); code != cli.ExitOK {
 				t.Fatalf("code=%d stderr=%s", code, stderr)
@@ -140,6 +171,60 @@ func TestInvitationAccept(t *testing.T) {
 				t.Fatalf("stored session survived signed_out: %v %v", sessions, err)
 			}
 		})
+	}
+}
+
+func instanceOrigin(t *testing.T, ios cli.IO) string {
+	t.Helper()
+	st, err := cli.NewState(ios.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessions, err := st.Sessions()
+	if err != nil || sessions["local"].Origin == "" {
+		t.Fatalf("no local session: %v %v", sessions, err)
+	}
+	return sessions["local"].Origin
+}
+
+func TestInvitationAcceptRefusesForeignLinkOrigin(t *testing.T) {
+	for _, link := range []string{
+		"https://evil.example/invitations/accept#token=tok_abc",
+		"/invitations/accept#token=tok_abc",
+		"invitations/accept#token=tok_abc",
+	} {
+		fake := &invitationFake{t: t}
+		ios, _, stderr := definitionsTestIO(t, fake)
+		ios.Stdin = strings.NewReader(link)
+		code := cli.Run(t.Context(), ios, []string{"access", "invitation", "accept", "--yes", "--instance", "local"})
+		if code != cli.ExitUsage || fake.previews != 0 || len(fake.accepted) != 0 || !strings.Contains(stderr.String(), "does not belong") {
+			t.Fatalf("%q: code=%d previews=%d accepted=%v stderr=%s", link, code, fake.previews, fake.accepted, stderr)
+		}
+	}
+}
+
+func TestInvitationAcceptReportsCleanupFailureAfterResult(t *testing.T) {
+	fake := &invitationFake{t: t, signedOut: true}
+	ios, stdout, stderr := definitionsTestIO(t, fake)
+	st, err := cli.NewState(ios.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Acceptance commits server-side; a sessions file that stopped being a
+	// regular file makes the local session removal fail afterwards.
+	fake.onAccept = func() {
+		path := filepath.Join(st.Dir(), "sessions.json")
+		if err := os.Remove(path); err != nil {
+			t.Error(err)
+		}
+		if err := os.Mkdir(path, 0o700); err != nil {
+			t.Error(err)
+		}
+	}
+	ios.Stdin = strings.NewReader("tok_abc")
+	code := cli.Run(t.Context(), ios, []string{"access", "invitation", "accept", "--yes", "--instance", "local"})
+	if code == cli.ExitOK || !strings.Contains(stdout.String(), "Acme") || !strings.Contains(stderr.String(), "was accepted, but removing the local session failed") {
+		t.Fatalf("code=%d stdout=%s stderr=%s", code, stdout, stderr)
 	}
 }
 

@@ -36,9 +36,11 @@ export function InvitationAccept() {
   const navigate = useNavigate();
   const auth = useAuth();
   const [token, setToken] = useSensitiveState('');
-  const [preview, setPreview] = useState<EmailInvitationPreview | null>(null);
+  // The preview keeps the token it was fetched for: Accept submits that token,
+  // so the organisation on screen is always the one being accepted.
+  const [previewed, setPreviewed] = useState<{ token: string; offer: EmailInvitationPreview } | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
-  const requested = useRef(false);
+  const requested = useRef('');
   const ending = useRef<ReturnType<typeof auth.captureTransition> | null>(null);
   const signedIn = auth.state.status === 'authenticated';
   const login = surfaceById('login').path;
@@ -63,17 +65,29 @@ export function InvitationAccept() {
   }, [location.hash, location.pathname, location.search, navigate, setToken]);
 
   useEffect(() => {
-    if (!signedIn || token === '' || requested.current) return;
-    requested.current = true;
+    // A pending Accept may already have committed: resetting it would drop its
+    // outcome, so a link that arrives meanwhile is previewed once it settles.
+    if (!signedIn || token === '' || requested.current === token || accepting.isPending) return;
+    requested.current = token;
+    // A new token's preview clears an Accept failure that belonged to the previous one.
+    accepting.reset();
     previewing.mutate(token, {
-      onSuccess: setPreview,
+      onSuccess: (offer) => {
+        setFailure(null);
+        setPreviewed({ token, offer });
+      },
       onError: (error) => {
+        // Forget the refused token so opening the same link again is previewed afresh.
+        requested.current = '';
         setToken('');
         setFailure(acceptanceFailureText(error));
       },
     });
-  }, [signedIn, token, previewing, setToken]);
+  }, [signedIn, token, previewing, accepting, setToken]);
 
+  const preview = previewed?.token === token ? previewed.offer : null;
+  // Every refusal retires the token, so a failure belongs to the empty token only.
+  const shownFailure = token === '' ? failure : null;
   const outcome = zJoined.safeParse(location.state);
   // End the session only once the router holds the outcome: ending it remounts
   // the whole tree, router included, and drops a navigation not yet committed.
@@ -93,9 +107,9 @@ export function InvitationAccept() {
         <Link className="btn btn--primary" to={login}>Sign in</Link>
       </> : <Link className="btn btn--primary" to={surfaceById('projects').path}>Go to projects</Link>}
     </>;
-  } else if (failure !== null) {
+  } else if (shownFailure !== null) {
     body = <>
-      <Alert>{failure}</Alert>
+      <Alert>{shownFailure}</Alert>
       <Link className="btn" to={signedIn ? surfaceById('projects').path : login}>{signedIn ? 'Go to projects' : 'Go to sign in'}</Link>
     </>;
   } else if (!signedIn) {
@@ -140,6 +154,8 @@ export function InvitationAccept() {
             onError: (error) => {
               // The uniform 404 is final; anything else (throttle, transport) can be retried.
               if (!(error instanceof ApiError) || error.status !== 404) return;
+              // Reopening the same link must preview it afresh, not show the refused offer.
+              requested.current = '';
               setToken('');
               setFailure(acceptanceFailureText(error));
             },

@@ -30,6 +30,9 @@ func dispatchOutcomes(t *testing.T, db *store.DB) []string {
 			}
 			out = append(out, s)
 		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
 		return out
 	}
 	rows, err := db.SQLiteRead().QueryContext(t.Context(), q)
@@ -43,6 +46,9 @@ func dispatchOutcomes(t *testing.T, db *store.DB) []string {
 			t.Fatal(err)
 		}
 		out = append(out, s)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
 	}
 	return out
 }
@@ -82,7 +88,8 @@ func TestEmailInvitationDispatchOutcomes(t *testing.T) {
 
 			// A matched send in flight does not change whether, or how many,
 			// other sends are attempted.
-			const others = 8
+			// More than any small cap: no instance-wide bound delays a send.
+			const others = 12
 			blocked, unblock := make(chan struct{}), make(chan struct{})
 			dials.Store(0)
 			svc = newSvc(func(context.Context) (*runtimeconfig.Bundle, error) {
@@ -110,7 +117,8 @@ func TestEmailInvitationDispatchOutcomes(t *testing.T) {
 				t.Fatalf("failures = %v, want %d", got, 1+others)
 			}
 
-			// Stopping cancels a blocked send and records its failure outcome.
+			// Stopping cancels every blocked send and records each failure outcome.
+			const stoppedSends = 3
 			svc = newSvc(func(ctx context.Context) (*runtimeconfig.Bundle, error) {
 				dials.Add(1)
 				<-ctx.Done()
@@ -118,10 +126,12 @@ func TestEmailInvitationDispatchOutcomes(t *testing.T) {
 			})
 			dials.Store(0)
 			before := len(dispatchOutcomes(t, db))
-			svc.dispatch(t.Context(), receipt, "intent-stopped", "Org", "tok", true)
-			for deadline := time.Now().Add(10 * time.Second); dials.Load() != 1; time.Sleep(5 * time.Millisecond) {
+			for i := range stoppedSends {
+				svc.dispatch(t.Context(), receipt, "intent-stopped-"+string(rune('a'+i)), "Org", "tok", true)
+			}
+			for deadline := time.Now().Add(10 * time.Second); dials.Load() != stoppedSends; time.Sleep(5 * time.Millisecond) {
 				if time.Now().After(deadline) {
-					t.Fatal("the blocked send never dialled")
+					t.Fatalf("only %d of %d blocked sends dialled", dials.Load(), stoppedSends)
 				}
 			}
 			stopped := make(chan struct{})
@@ -131,8 +141,14 @@ func TestEmailInvitationDispatchOutcomes(t *testing.T) {
 			case <-time.After(10 * time.Second):
 				t.Fatal("Stop did not cancel the blocked send")
 			}
-			if got := last(); !strings.HasPrefix(got, "failure ") || !strings.Contains(got, "intent-stopped") || len(dispatchOutcomes(t, db)) != before+1 || svc.Sends.Failures() != 1 {
-				t.Fatalf("stopped send: %s", got)
+			outcomes := dispatchOutcomes(t, db)
+			if len(outcomes) != before+stoppedSends || svc.Sends.Failures() != stoppedSends {
+				t.Fatalf("stopped sends: %d new outcomes, %v failures, want %d each", len(outcomes)-before, svc.Sends.Failures(), stoppedSends)
+			}
+			for _, got := range outcomes[before:] {
+				if !strings.HasPrefix(got, "failure ") || !strings.Contains(got, "intent-stopped-") {
+					t.Fatalf("stopped send: %s", got)
+				}
 			}
 
 			// An unmatched send never dials and states that no mail was sent.
