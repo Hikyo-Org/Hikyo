@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 import { ApiError } from '../api/client.ts';
 import {
@@ -26,9 +26,11 @@ const instant = (value: string | undefined) =>
  * maintenance coordinator publishes it; this server holds no deployment
  * credentials, so nothing here can change the installation.
  */
-export function SecurityMaintenancePanel({ now = new Date() }: { now?: Date }) {
+export function SecurityMaintenancePanel({ now: fixed }: { now?: Date }) {
   const report = useSecurityMaintenance();
-  const data = report.data;
+  // A failed refresh must not leave the last report on screen as if it still held.
+  const data = report.isError ? undefined : report.data;
+  const now = useExpiryClock(data?.status?.known_until, fixed);
   return (
     <Panel id="instance-security-maintenance" title="Security maintenance">
       <p>
@@ -62,6 +64,26 @@ export function SecurityMaintenancePanel({ now = new Date() }: { now?: Date }) {
       {data?.status !== undefined ? <Reported status={data.status} now={now} /> : null}
     </Panel>
   );
+}
+
+/**
+ * The current time, re-read when the status expires: an unchanged poll does not
+ * re-render, so without this an open panel would keep calling expired metadata current.
+ */
+function useExpiryClock(knownUntil: string | undefined, fixed: Date | undefined): Date {
+  const [clock, setClock] = useState(() => Date.now());
+  const deadline = knownUntil === undefined ? Number.NaN : Date.parse(knownUntil);
+  useEffect(() => {
+    if (fixed !== undefined || !Number.isFinite(deadline) || clock > deadline) return;
+    // Capped at setTimeout's limit; the clock dependency reschedules a capped wait.
+    const timer = globalThis.setTimeout(
+      () => setClock(Date.now()),
+      Math.min(2_147_483_647, deadline - Date.now() + 1),
+    );
+    return () => globalThis.clearTimeout(timer);
+  }, [fixed, deadline, clock]);
+  // A report that arrives already expired fires the timer at once, which advances the clock.
+  return fixed ?? new Date(clock);
 }
 
 function Reported({ status, now }: { status: SecurityMaintenancePublicStatus; now: Date }) {
@@ -150,7 +172,7 @@ function Headline({ status, stale }: { status: SecurityMaintenancePublicStatus; 
       </Alert>
     );
   }
-  if (current.includes(status.phase) && !stale) {
+  if (current.includes(status.phase) && !stale && count === 0) {
     return <Alert tone="done">Enrolled and current. No applicable advisory is outstanding.</Alert>;
   }
   return null;
