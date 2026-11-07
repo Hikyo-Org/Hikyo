@@ -1,0 +1,68 @@
+# Issue 1207: invite an existing account by email
+
+## Result
+
+An organisation administrator with `manage-members@org` invites an existing
+account by its exact email address. The person accepts while signed in.
+
+- API: `POST/GET/DELETE /api/v1/orgs/{org}/email-invitations` and
+  `POST /api/v1/me/invitations/{preview,accept}`.
+- CLI: the email invitation commands in `internal/cli/access_invitations.go`.
+- Web: "Invite by email" and the pending list on Members, and the
+  `/invitations/accept` page.
+- Store: migration `00086_org_email_invitations` on SQLite and Postgres.
+- Design: `docs/spec/email-invitations.md`, plus the 2026-11-06 #1207 banners
+  in `docs/adr/human-auth.md`, `permission-model.md`, `tenant-isolation.md` and
+  `audit-model.md`.
+
+Owner decisions (2026-11-06) are table D1 onward in spec section 1. Invitations
+last 7 days. Only an account with a verified email is reachable; reaching other
+accounts is the follow-up #1238. After acceptance a multi-organisation account
+can be reset only by the instance (spec section 5).
+
+## Behaviour to keep
+
+- The send answers the same status and body whether or not the address has an
+  account. Only a matched address is mailed, from a background send per
+  request, owned by `service.MailSends` (required; `Send` refuses without it).
+- A pending invitation changes nothing for the target account.
+- Acceptance needs the person's own signed-in human session and the
+  single-use token. The footprint exemption is the narrow `invitee` case, and
+  the inviter's authority is re-checked inside the acceptance transaction.
+  Every refusal is one uniform `404`.
+- Accepting a grant ends every session of the person. The response is a plain
+  `200` that leaves the browser cookies alone: the browser's session fence
+  discards a response whose session cookie changed unless whoami still proves
+  the same person. The page shows the outcome, then ends its own session.
+- A sign-in redirect from a public page (`mode: 'public'` surface) drops the
+  URL fragment, so a fragment token never enters the `returnTo` query.
+
+## Evidence
+
+- Go: `./internal/server/... ./internal/service/... ./internal/isolation/...
+  ./internal/app/...` on SQLite and Postgres, and `./internal/lint`.
+- Web: typecheck, oxlint, the Vitest suites for `src/app`,
+  `InvitationAccept` and the sensitive inventory.
+- Browser: the "invites an existing account by email" flow in
+  `web/e2e/flows/login.spec.ts`, desktop and mobile. It covers sign-up, the
+  invite from Members, the mail, enrolment, preview, acceptance, sign-out, the
+  sign-in page with the revoked cookie, and the single-use replay refusal.
+- Reviews: independent Standards and Spec reviews in four rounds. All findings
+  were fixed or are listed below. Cross-provider review was waived by the owner.
+
+## Open items
+
+- Spec section 2 lists timing residuals that are not yet accepted by the owner:
+  the foreign-key check, the immediate unmatched outcome write on a
+  single-writer database, and relay throttling. Each needs an owner decision on
+  #1207 (accept, or redesign the outcome write).
+- No instance-wide cap limits concurrent invitation mail sends. Each send gets
+  its own attempt within the mail per-send deadline.
+- #1238: verified email for accounts other than local sign-ups.
+
+## Next steps
+
+1. Get the owner's decision on the residuals in spec section 2 and record it in
+   the spec.
+2. After merge, confirm the email invitation browser flow passes in CI on both
+   viewports.
