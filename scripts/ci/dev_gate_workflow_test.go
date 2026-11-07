@@ -21,6 +21,7 @@ func TestDevGateExecutesOnlyTrustedMainCodeUnderDistinctHeadLease(t *testing.T) 
 		On          map[string]yaml.Node `yaml:"on"`
 		Permissions map[string]string    `yaml:"permissions"`
 		Jobs        map[string]struct {
+			If          string            `yaml:"if"`
 			Timeout     int               `yaml:"timeout-minutes"`
 			Permissions map[string]string `yaml:"permissions"`
 			Concurrency struct {
@@ -51,6 +52,9 @@ func TestDevGateExecutesOnlyTrustedMainCodeUnderDistinctHeadLease(t *testing.T) 
 		t.Fatal("dev target publisher must listen only to dev PRs")
 	}
 	discover, publish := workflow.Jobs["discover"], workflow.Jobs["publish"]
+	if discover.If != "github.event_name != 'pull_request_target' || github.event.pull_request.base.ref == 'dev'" {
+		t.Fatal("a stacked PR event must skip dev discovery instead of failing it, and every other event must still reach it")
+	}
 	if !reflect.DeepEqual(discover.Permissions, map[string]string{"contents": "read", "pull-requests": "read"}) {
 		t.Fatal("routing discovery must not write checks")
 	}
