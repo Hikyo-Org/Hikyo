@@ -28,9 +28,9 @@ const status = {
   running_version: '1.4.2',
 };
 
-async function render(body: unknown, init?: ResponseInit): Promise<HTMLElement> {
+async function render(body: unknown, init?: ResponseInit, at: Date | null = now): Promise<HTMLElement> {
   vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(Response.json(body, init))));
-  const { container, unmount } = await renderForm(<SecurityMaintenancePanel now={now} />);
+  const { container, unmount } = await renderForm(<SecurityMaintenancePanel now={at ?? undefined} />);
   cleanups.push(unmount);
   await settleTask();
   return container;
@@ -102,4 +102,35 @@ it.each([403, 404])('treats a %i refusal as nondisclosure, never as a status', a
   const container = await render({ error: { code: 'not_found', message: 'Not found' } }, { status });
   expect(container.textContent).toContain('not disclosed to this session');
   expect(container.textContent).not.toContain('Enrolled and current');
+});
+
+it('withholds "current" while advisories remain applicable', async () => {
+  const container = await render(reported({ applicable: ['HK-SA-1'] }));
+  expect(container.textContent).not.toContain('Enrolled and current');
+  expect(container.textContent).toContain('HK-SA-1');
+});
+
+it('turns stale when the metadata expires while the panel is open', async () => {
+  const knownUntil = new Date(Date.now() + 200).toISOString();
+  const container = await render(reported({ last_verified: new Date().toISOString(), known_until: knownUntil }), undefined, null);
+  expect(container.textContent).toContain('Enrolled and current');
+  await vi.waitFor(() => expect(container.textContent).toContain('Security metadata is stale'), { timeout: 2_000 });
+  expect(container.textContent).not.toContain('Enrolled and current');
+});
+
+it('hides the last report when a refresh fails', async () => {
+  let fail = false;
+  vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(
+    fail ? Response.json({ error: { code: 'internal', message: 'boom' } }, { status: 500 }) : Response.json(reported({ action: 'hikyo security-maintenance reconcile --confirm abc' })),
+  )));
+  const { container, unmount, client } = await renderForm(<SecurityMaintenancePanel now={now} />);
+  cleanups.push(unmount);
+  await settleTask();
+  expect(container.textContent).toContain('Enrolled and current');
+  fail = true;
+  await client.refetchQueries({ queryKey: ['security-maintenance'] });
+  await settleTask();
+  expect(container.textContent).toContain('could not be read');
+  expect(container.textContent).not.toContain('Enrolled and current');
+  expect(container.textContent).not.toContain('reconcile --confirm abc');
 });
