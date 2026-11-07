@@ -110,6 +110,26 @@ The skill covers signing, local validation, and an optional playground.
 - Keep commit messages in the Conventional Commits style already used in the
   history (`feat(web): …`, `fix(app): …`, `test(web): …`).
 
+## Reviewing changes
+
+- Before requesting human review, have a fresh-context agent review the complete
+  PR diff against its issue or decision record and this guide. Answer every
+  finding: fix it, or record why not.
+- Tag each finding Important (breaks or risks behaviour), Nit (style or
+  preference) or Pre-existing (present before this PR, so not the author's
+  regression). Cite a file and line as evidence. Start the report with the count,
+  and say plainly when nothing needs fixing.
+- When a finding is one instance of a class, fix every instance and say how you
+  found them.
+- Converge. After the first full review, re-review only the new diff and do not
+  repeat findings already answered. After three review-and-fix rounds without a
+  clean result, stop and reconsider the approach, or ask the maintainer, instead
+  of starting a fourth round.
+- When the same finding recurs across PRs, fix it at the source: the code first,
+  then a check in `internal/lint` or `scripts/ci`, and this guide last.
+- When a `Dev integration is red` issue closes, add its regression to the
+  [review eval corpus](docs/development/review-evals.md).
+
 ## graphify
 
 Use `rg`, `rg --files`, and focused source reads by default. Graphify is optional
