@@ -66,9 +66,15 @@ export function InvitationAccept() {
   }, [location.hash, location.pathname, location.search, navigate, setToken]);
 
   useEffect(() => {
-    // Forget a cleared token (a refusal, a decline or a session retirement), so
-    // opening the same link again is previewed afresh.
-    if (token === '') requested.current = '';
+    // Forget every copy of a cleared token (a refusal, an acceptance, a link
+    // without one or a session retirement), and revoke a preview still pending
+    // for it, so opening the same link again is previewed afresh.
+    if (token === '') {
+      requested.current = '';
+      setPreviewed(null);
+      // Only while pending: the effect runs every render and a reset re-renders.
+      if (previewing.isPending) previewing.reset();
+    }
     // A pending Accept may already have committed: resetting it would drop its
     // outcome, so nothing is previewed while it is pending. A link that arrives
     // meanwhile is previewed after the Accept fails; after a success the page

@@ -248,6 +248,57 @@ describe('InvitationAccept', () => {
     } finally { await view.unmount(); }
   });
 
+  it.each([
+    ['an Accept that kept the session', 'accept'],
+    ['a link without a token opened while its preview is pending', 'tokenless'],
+  ])('shows no stale offer when the same link is reopened after %s', async (_after, trigger) => {
+    let resolveFirst: (value: typeof PREVIEW) => void = () => undefined;
+    let resolveAgain: (value: typeof PREVIEW) => void = () => undefined;
+    mocks.preview
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveAgain = resolve; }));
+    mocks.accept.mockResolvedValue({ org: PREVIEW.org, org_name: 'Globex', template: 'viewer', grants_created: 1, signed_out: false });
+    function Links() {
+      const navigate = useNavigate();
+      return <>
+        <button type="button" onClick={() => void navigate('/invitations/accept#token=eit_secret')}>Reopen link</button>
+        <button type="button" onClick={() => void navigate('/invitations/accept#other')}>Open tokenless link</button>
+      </>;
+    }
+    const view = await renderForm(
+      <MemoryRouter initialEntries={['/invitations/accept#token=eit_secret']}>
+        <Links />
+        <Routes>
+          <Route path="/invitations/accept" element={<InvitationAccept />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    try {
+      await settleTask();
+      if (trigger === 'accept') {
+        await act(async () => resolveFirst(PREVIEW));
+        await settleTask();
+        await act(async () => button(view.container, 'Accept').click());
+        await settleTask();
+        expect(view.container.textContent).toContain('You joined Globex');
+      } else {
+        await act(async () => button(view.container, 'Open tokenless link').click());
+        await settleTask();
+        // The preview answered after its token cleared restores nothing.
+        await act(async () => resolveFirst(PREVIEW));
+        await settleTask();
+        expect(view.container.textContent).not.toContain('Acme');
+      }
+      await act(async () => button(view.container, 'Reopen link').click());
+      await settleTask();
+      expect(mocks.preview).toHaveBeenCalledTimes(2);
+      expect(view.container.textContent).not.toContain('Acme');
+      await act(async () => resolveAgain(PREVIEW));
+      await settleTask();
+      expect(view.container.textContent).toContain('Acme');
+    } finally { await view.unmount(); }
+  });
+
   it('reads the fragment token, clears it from the address and previews with it', async () => {
     mocks.preview.mockResolvedValue(PREVIEW);
     const view = await mount();
