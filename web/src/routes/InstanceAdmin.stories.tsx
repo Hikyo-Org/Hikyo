@@ -11,10 +11,10 @@ import { openTab } from '../../.storybook/openTab.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 
 // The instance settings page owns three reads (the organisation directory, the
-// credential policy and retention health) and mounts four child panels with a
+// credential policy and retention health) and mounts five child panels with a
 // list read each. On this page an unmatched fetch does NOT fail loud: the
 // harness 404 renders as the honest "not disclosed" status, so every state
-// answers all seven rows explicitly. The route is `surfaceById('instance-admin')`.
+// answers all eight rows explicitly. The route is `surfaceById('instance-admin')`.
 const ORGS_URL = '/api/v1/orgs';
 const POLICY_URL = '/api/v1/instance/credential-policy';
 const HEALTH_URL = '/api/v1/instance/retention-health';
@@ -23,6 +23,7 @@ const PANEL_URLS: readonly string[] = [
   '/api/v1/instance/federation-issuers',
   '/api/v1/instance/saml-providers',
   '/api/v1/instance/saml-sp-keys',
+  '/api/v1/instance/security-maintenance',
 ];
 
 const orgs = {
@@ -79,6 +80,7 @@ const populated: readonly MockRoute[] = [
   { url: '/api/v1/instance/federation-issuers', body: { count: 0, items: [] } },
   { url: '/api/v1/instance/saml-providers', body: { providers: [] } },
   { url: '/api/v1/instance/saml-sp-keys', body: { keys: [] } },
+  { url: '/api/v1/instance/security-maintenance', body: { reported: false, unreadable: false } },
 ];
 
 // Every read answered the same way: the page-wide states.
@@ -121,7 +123,7 @@ export const SectionTabs: Story = {
     await expect((await canvas.findAllByRole('tab')).map((tab) => tab.textContent)).toEqual([
       'Hikyo configuration', 'Mailer', 'Organisations', 'Members', 'Policy', 'Audit', 'Developer credentials',
       'Identity providers', 'GitHub sign-in', 'SAML', 'Federation', 'Certificates',
-      'Retention health', 'Keys & crypto',
+      'Retention health', 'Security maintenance', 'Keys & crypto',
     ]);
     await expect(canvas.getByRole('tab', { name: 'Certificates' })).toHaveAttribute('aria-selected', 'true');
     await expect(canvas.getAllByRole('tab', { selected: true })).toHaveLength(1);

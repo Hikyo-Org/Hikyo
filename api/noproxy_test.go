@@ -423,6 +423,9 @@ var pinnedContractSurface = map[string]bool{
 	// Reads the fixed Hikyo release authority only; no request member selects
 	// or relays an arbitrary upstream, and the response is public metadata.
 	"GET /api/v1/instance/update-status": true,
+	// Reads one operator-configured local file; no request member selects the
+	// path or relays anything on a caller's behalf.
+	"GET /api/v1/instance/security-maintenance": true,
 	// The public API controls only this instance's local Unix-socket helper.
 	// A remote WebUI reaches its remote Hikyo origin directly; no Hikyo server
 	// fetches or forwards an update request on a caller's behalf.

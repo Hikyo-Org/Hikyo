@@ -20,6 +20,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/operation"
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
+	"github.com/Hikyo-Org/hikyo/internal/securitystatus"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 	"github.com/Hikyo-Org/hikyo/internal/updater"
@@ -265,6 +266,7 @@ type OperationalRetentionHealthService interface {
 
 type UpdateService interface {
 	GetStatus(ctx context.Context, actor service.Actor) (updatecheck.Status, error)
+	GetSecurityMaintenance(ctx context.Context, actor service.Actor) (securitystatus.Report, error)
 	Request(ctx context.Context, actor service.Actor, version string) (updater.Job, error)
 	GetJob(ctx context.Context, actor service.Actor, id string) (updater.Job, error)
 }

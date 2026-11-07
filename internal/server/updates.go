@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"math"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -36,6 +37,25 @@ func (a *API) GetUpdateStatus(ctx context.Context, _ apigen.GetUpdateStatusReque
 	}
 	if !status.PublishedAt.IsZero() {
 		response.PublishedAt = &status.PublishedAt
+	}
+	return response, nil
+}
+
+func (a *API) GetSecurityMaintenance(ctx context.Context, _ apigen.GetSecurityMaintenanceRequestObject) (apigen.GetSecurityMaintenanceResponseObject, error) {
+	report, err := a.Updates.GetSecurityMaintenance(ctx, service.Bearer(bearer(ctx)))
+	if err != nil {
+		return nil, err
+	}
+	response := apigen.GetSecurityMaintenance200JSONResponse{Reported: report.Reported, Unreadable: report.Unreadable}
+	if report.Reported {
+		s := report.Status
+		response.Status = &apigen.SecurityMaintenancePublicStatus{
+			Mode: optional(s.Mode), Channel: optional(s.Channel), Enrolled: s.Enrolled, Phase: s.Phase, Reason: optional(s.Reason),
+			ProtectionGap: s.ProtectionGap, Applicable: nonNil(s.Applicable), Coverage: nonNil(s.Coverage), CoveredComponents: nonNil(s.CoveredComponents),
+			CoverageThrough: optional(s.CoverageThrough), CatalogSequence: int64(min(s.CatalogSequence, math.MaxInt64)),
+			LastAttempt: optionalTime(s.LastAttempt), LastVerified: optionalTime(s.LastVerified), KnownUntil: optionalTime(s.KnownUntil),
+			RunningVersion: optional(s.RunningVersion), TargetVersion: optional(s.TargetVersion), Action: optional(s.Action), Detail: optional(s.Detail),
+		}
 	}
 	return response, nil
 }

@@ -19,6 +19,7 @@ warning, while malformed security settings stop startup.
 | `--auto-migrate=BOOL` | `true` | Apply pending migrations before serving. |
 | `--upgrade-unattended` | off | Run explicitly enrolled unattended container upgrade preparation before serving; see [container upgrades](/docs/container-upgrades/). |
 | `--cli-socket PATH` | `HIKYO_CLI_SOCKET` | Same-user Unix socket for local CLI traffic. |
+| `HIKYO_SECURITY_MAINTENANCE_STATUS_FILE` | none | Environment only. Absolute path of the public status file the separate security-maintenance coordinator writes; the server reads it to show maintenance state to instance administrators. |
 | `--config-rollout-enrollment PATH` | none | Operator-installed Kubernetes rollout enrollment JSON. |
 | `--config-rollout-signing-key PATH` | none | Separate private deployment-authorization signer; see [configuration rollouts](/docs/configuration-rollouts/). |
 | `--dev` | off | Evaluation datastore, root key, and text logs. |

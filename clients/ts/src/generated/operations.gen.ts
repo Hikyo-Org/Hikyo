@@ -199,6 +199,7 @@ import {
   getSamlProvider,
   getScimBinding,
   getScimCredential,
+  getSecurityMaintenance,
   getSshKrl,
   getSshTrustedKeys,
   getTotpStatus,
@@ -619,6 +620,7 @@ import type {
   GetSamlProviderData,
   GetScimBindingData,
   GetScimCredentialData,
+  GetSecurityMaintenanceData,
   GetSshKrlData,
   GetSshTrustedKeysData,
   GetTotpStatusData,
@@ -1016,6 +1018,7 @@ import {
   zGetSamlProviderResponse,
   zGetScimBindingResponse,
   zGetScimCredentialResponse,
+  zGetSecurityMaintenanceResponse,
   zGetSshKrlResponse,
   zGetSshTrustedKeysResponse,
   zGetTotpStatusResponse,
@@ -1385,6 +1388,7 @@ export const getRuntimeStatusOp: BodyOperation<GetRuntimeStatusData, typeof zGet
 export const getSamlProviderOp: BodyOperation<GetSamlProviderData, typeof zGetSamlProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getSamlProvider, [200], zGetSamlProviderResponse);
 export const getScimBindingOp: BodyOperation<GetScimBindingData, typeof zGetScimBindingResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getScimBinding, [200], zGetScimBindingResponse);
 export const getScimCredentialOp: BodyOperation<GetScimCredentialData, typeof zGetScimCredentialResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getScimCredential, [200], zGetScimCredentialResponse);
+export const getSecurityMaintenanceOp: BodyOperation<GetSecurityMaintenanceData, typeof zGetSecurityMaintenanceResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getSecurityMaintenance, [200], zGetSecurityMaintenanceResponse);
 export const getSshKrlOp: BodyOperation<GetSshKrlData, typeof zGetSshKrlResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getSshKrl, [200], zGetSshKrlResponse);
 export const getSshTrustedKeysOp: BodyOperation<GetSshTrustedKeysData, typeof zGetSshTrustedKeysResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getSshTrustedKeys, [200], zGetSshTrustedKeysResponse);
 export const getTotpStatusOp: BodyOperation<GetTotpStatusData, typeof zGetTotpStatusResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getTotpStatus, [200], zGetTotpStatusResponse);
