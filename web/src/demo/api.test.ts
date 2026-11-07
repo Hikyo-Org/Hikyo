@@ -10,7 +10,7 @@ import {
 import {
   zAccessPolicyList, zAccessQueue, zAccountProfile, zAdapterList, zAdapterTargetDetail, zApprovalPolicyList,
   zApprovalRequestList, zAuditPage, zCertificateList, zDeliveryTargetList, zDeveloperCredentialList,
-  zDirectoryListing, zDynamicLeaseList, zDynamicProviderList, zFileTarget, zFileTargetList, zIdentityList,
+  zDirectoryListing, zDynamicLeaseList, zDynamicProviderList, zEmailInvitationList, zFileTarget, zFileTargetList, zIdentityList,
   zInstanceConnectionList, zMachineCredentialList, zPasskeyList, zRemoteList, zRemotePairingInviteList, zScimBindingList,
   zScimCredentialList, zScimDirectoryGroupList, zScimDirectoryUserList, zScimMappingList, zServiceAccountList,
   zSessionList, zSshcaList, zSshCertificateList, zSshProfileList, zWorkspaceOriginList,
@@ -115,6 +115,7 @@ describe('browser demo API', () => {
       { path: `${project}/file-targets`, schema: zFileTargetList },
       { path: `${project}/file-targets/ftg_aaaaaaaa-aaaa-4aaa-8aaa-000000000001`, schema: zFileTarget },
       { path: `${project}/developer-credentials`, schema: zDeveloperCredentialList },
+      { path: `${org}/email-invitations`, schema: zEmailInvitationList },
       { path: `${org}/scim-bindings`, schema: zScimBindingList },
       { path: `${binding}/mappings`, schema: zScimMappingList },
       { path: `${binding}/credentials`, schema: zScimCredentialList },
@@ -151,6 +152,8 @@ describe('browser demo API', () => {
       const reports = zDeliveryTargetList.parse(await (await fetch(`${env(environment)}/delivery-targets`)).json());
       expect(reports).toEqual({ principals: [], targets: [] });
     }
+    const invitations = zEmailInvitationList.parse(await (await fetch(`${org}/email-invitations`)).json());
+    expect(invitations).toEqual({ items: [], count: 0 });
     const passkeys = zPasskeyList.parse(await (await fetch('/api/v1/auth/webauthn/credentials')).json());
     expect(passkeys.passkeys.map((passkey) => passkey.label)).toEqual(['Sample security key']);
     const accounts = zServiceAccountList.parse(await (await fetch(`${project}/service-accounts`)).json());
@@ -201,7 +204,7 @@ describe('browser demo API', () => {
       `${project}/service-accounts`, `${project}/approval-policies`, `${env()}/approval-requests`,
       `${project}/access-policies`, `${env()}/access-requests`, `${project}/adapters`, `${env()}/delivery-targets`,
       `${project}/file-targets`, `${project}/file-targets/ftg_aaaaaaaa-aaaa-4aaa-8aaa-000000000001`,
-      `${project}/developer-credentials`, `${org}/scim-bindings`, '/api/v1/instance/remotes',
+      `${project}/developer-credentials`, `${org}/email-invitations`, `${org}/scim-bindings`, '/api/v1/instance/remotes',
       '/api/v1/instance/connections', '/api/v1/me/profile',
     ];
     for (const path of paths) {
