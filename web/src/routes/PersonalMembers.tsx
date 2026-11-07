@@ -54,7 +54,7 @@ export function PersonalMembers({
       <TabPanel idPrefix="key-detail-personal" selected={selected}>
         <Holders key={selected} refData={refData} environment={selected} keyName={keyName} />
         <p>
-          <Link to={ownPath}>Your own personal values in this environment</Link>
+          <Link className="btn btn--quiet" to={ownPath}>Your own personal values in this environment</Link>
         </p>
       </TabPanel>
     </section>
