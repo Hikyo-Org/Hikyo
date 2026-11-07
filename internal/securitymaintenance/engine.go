@@ -594,8 +594,8 @@ func (e *Engine) RunOnce(ctx context.Context, apply bool) (Status, error) {
 			// No window, urgency or backoff reopens this: the same target has already
 			// interrupted the service repeatedly, so only a person or a new target may.
 			state.Action = reconcileAction(string(target.Identity.ManifestSHA256))
-			state.Detail = strings.ToValidUTF8(fmt.Sprintf("automatic attempts at %s stopped after %d failures that reached the running service; last failure: %s", target.Identity.Version, state.RetryDisruptive, state.RetryCause), "")
-			state.Detail = state.Detail[:min(len(state.Detail), maxDetailBytes)]
+			detail := fmt.Sprintf("automatic attempts at %s stopped after %d failures that reached the running service; last failure: %s", target.Identity.Version, state.RetryDisruptive, state.RetryCause)
+			state.Detail = strings.ToValidUTF8(detail[:min(len(detail), maxDetailBytes)], "")
 			return saveFailure("blocked", "retry_exhausted", nil)
 		}
 		state.Phase, state.Reason = "applicable", ""
