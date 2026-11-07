@@ -152,6 +152,8 @@ describe('browser demo API', () => {
       const reports = zDeliveryTargetList.parse(await (await fetch(`${env(environment)}/delivery-targets`)).json());
       expect(reports).toEqual({ principals: [], targets: [] });
     }
+    const invitations = zEmailInvitationList.parse(await (await fetch(`${org}/email-invitations`)).json());
+    expect(invitations).toEqual({ items: [], count: 0 });
     const passkeys = zPasskeyList.parse(await (await fetch('/api/v1/auth/webauthn/credentials')).json());
     expect(passkeys.passkeys.map((passkey) => passkey.label)).toEqual(['Sample security key']);
     const accounts = zServiceAccountList.parse(await (await fetch(`${project}/service-accounts`)).json());
