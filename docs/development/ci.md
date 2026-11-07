@@ -325,9 +325,9 @@ base branch's copy.
 `ci-feedback` callback publishes no `ci-queue-required` record on a head whose PR
 targets any other branch, and it retires a pending record left by an earlier pass.
 Such a PR holds no queue role: it neither protects a queue record from retirement
-nor makes a main PR on the same commit ambiguous. A refusal published before this
-change stays on its head until the next push, because retirement skips completed
-records. A stack's later retarget to main reruns `ci-feedback`, whose callback
+nor makes a main PR on the same commit ambiguous. A refusal that an older publisher
+left on a stacked head stays until the next push, because retirement skips
+completed records. A stack's later retarget to main reruns `ci-feedback`, whose callback
 admits the PR afresh.
 
 Discovery on a push to `dev` selects no PR. A green `ci-dev-required` stays valid

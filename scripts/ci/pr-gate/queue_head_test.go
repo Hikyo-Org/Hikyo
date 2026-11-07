@@ -260,6 +260,34 @@ func TestQueueSharedHeadOutsideMainIsNotAmbiguous(t *testing.T) {
 	}
 }
 
+// The other PR's own pass cannot judge a head whose queue role belongs to the main
+// PR. It retires nothing and grants nothing; at most it leaves a blocking record
+// until the main PR's next pass republishes its verdict.
+func TestQueueSharedHeadPassOutsideMainGrantsNothing(t *testing.T) {
+	for _, base := range []string{"dev", "feat/stacked-base"} {
+		t.Run(base, func(t *testing.T) {
+			f := newQueueFixture(t)
+			other := f.pr
+			other.Number = 8
+			other.Base.Ref = base
+			f.api.responses[f.c.endpoint("pulls?state=open&per_page=100&page=1")] = []pull{f.pr, other}
+			f.api.responses[f.c.endpoint("pulls/8")] = other
+			if err := f.admit(); err != nil {
+				t.Fatal(err)
+			}
+			writes := len(f.api.writes)
+			if err := f.q.admit(context.Background(), other.Number); err != nil {
+				t.Fatal(err)
+			}
+			for _, w := range f.api.writes[writes:] {
+				if w["conclusion"] == "success" || w["conclusion"] == "cancelled" {
+					t.Fatalf("a PR to %s judged the main PR's head: %+v", base, w)
+				}
+			}
+		})
+	}
+}
+
 func TestQueueFinalRoleSnapshotRetainsExactGroupMembership(t *testing.T) {
 	for _, change := range []string{"removed", "changed member"} {
 		t.Run(change, func(t *testing.T) {
