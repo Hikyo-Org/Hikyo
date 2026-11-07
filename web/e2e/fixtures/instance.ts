@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createHash, X509Certificate } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import { createServer as createHttpsServer, type Server } from 'node:https';
 import { connect } from 'node:net';
@@ -718,6 +718,9 @@ export function fixtureEnvironment(
   };
 }
 
+/** Each started instance's complete output, kept after teardown for CI upload. */
+export const SERVER_LOG_DIR = fileURLToPath(new URL('../.runs/servers/', import.meta.url));
+
 async function startInstanceAt(
   host: string,
   port: number,
@@ -788,9 +791,15 @@ async function startInstanceAt(
   // else, the suite has been killed by an undiagnosable ERR_CONNECTION_REFUSED
   // before. stdout gets the same treatment so a full pipe can never block the
   // server either.
+  // The full output also streams to a file CI uploads when a spec fails: a
+  // hung request never exits the server, so the tail above is never printed.
+  const serverLog = join(SERVER_LOG_DIR, `${profile}-${String(port)}.log`);
+  mkdirSync(SERVER_LOG_DIR, { recursive: true });
+  appendFileSync(serverLog, `\n=== instance ${base} started ${new Date().toISOString()} ===\n`);
   const tail: Buffer[] = [];
   let tailBytes = 0;
   const keep = (chunk: Buffer): void => {
+    appendFileSync(serverLog, chunk);
     tail.push(chunk);
     tailBytes += chunk.length;
     while (tailBytes > 64 * 1024 && tail.length > 1) {

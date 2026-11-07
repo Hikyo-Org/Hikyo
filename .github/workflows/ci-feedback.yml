@@ -1,6 +1,7 @@
 # Per-commit feedback is separate from the mandatory full merge-queue gate.
 # The four-minute runner deadline includes setup; queue time is measured
 # separately and is not guaranteed by GitHub's shared hosted runner pool.
+# Dev PRs also run the browser lanes in the separate web job below.
 name: ci-feedback
 
 on:
@@ -169,3 +170,22 @@ jobs:
           FEEDBACK_LANE: ${{ fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].lane }}
           FEEDBACK_GO_SCOPE: ${{ fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].goScope }}
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh" --lane="$FEEDBACK_LANE" --go-scope="$FEEDBACK_GO_SCOPE"
+
+  # The browser lanes ci-dev runs after a merge, for a dev PR before admission.
+  # ci-dev-required waits for this run and requires web-closure when the trusted
+  # classifier selects web or web-go for the PR's files. The main-to-dev
+  # backmerge skips it: main's queue already ran these lanes on that head.
+  web:
+    name: web
+    if: >-
+      github.event.pull_request.base.ref == 'dev' &&
+      (github.event.action != 'edited' || github.event.changes.base.ref.from != '') &&
+      !(github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'main')
+    uses: ./.github/workflows/ci.yml
+    with:
+      revision: ${{ github.sha }}
+      dev-admission: true
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read

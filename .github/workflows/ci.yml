@@ -26,6 +26,11 @@ on:
         required: false
         default: false
         type: boolean
+      dev-admission:
+        description: Browser validation of a dev PR before ci-dev-required admits it
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   actions: read
@@ -55,6 +60,8 @@ jobs:
           EVENT_REPOSITORY_ID: ${{ github.event.repository.id }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           DEVELOPMENT: ${{ inputs.development }}
+          DEV_ADMISSION: ${{ inputs.dev-admission }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           MERGE_GROUP_SHA: ${{ github.event.merge_group.head_sha }}
           TAG_DELETED: ${{ github.event.deleted }}
         shell: bash
@@ -72,6 +79,16 @@ jobs:
               test "$TAG_DELETED" = false
               ;;
             *) echo 'Unknown development validation mode.' >&2; exit 1 ;;
+          esac
+          case "${DEV_ADMISSION:-false}" in
+            false) ;;
+            true)
+              test "$DEVELOPMENT" = false
+              test "$DEFAULT_BRANCH" = main
+              test "$GITHUB_EVENT_NAME" = pull_request
+              test "$PR_BASE_REF" = dev
+              ;;
+            *) echo 'Unknown dev admission mode.' >&2; exit 1 ;;
           esac
           case "$GITHUB_EVENT_NAME" in
             merge_group)
@@ -95,6 +112,11 @@ jobs:
               test "$GITHUB_REF" = refs/heads/main
               test "$SOURCE_REVISION" = "$GITHUB_SHA"
               ;;
+            # A dev PR's synthetic merge, for its browser lanes only.
+            pull_request)
+              [ "${DEV_ADMISSION:-false}" = true ] || { echo 'Validation refuses this source context.' >&2; exit 1; }
+              test "$SOURCE_REVISION" = "$GITHUB_SHA"
+              ;;
             *) echo 'Validation refuses this source context.' >&2; exit 1 ;;
           esac
       - name: Check out the validated immutable revision
@@ -109,11 +131,26 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           SOURCE_REVISION: ${{ inputs.revision }}
           DEVELOPMENT: ${{ inputs.development }}
+          DEV_ADMISSION: ${{ inputs.dev-admission }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           BASE_SHA: ${{ github.event.merge_group.base_sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" = push ]; then
+          if [ "$EVENT_NAME" = pull_request ]; then
+            test "$DEV_ADMISSION" = true
+            # The merge's first parent is dev. Its classifier and registry are
+            # policy paths that dev admission keeps identical to main's.
+            base=$(git rev-parse "$SOURCE_REVISION^1")
+            test "$(git rev-parse "$SOURCE_REVISION^2")" = "$PR_HEAD_SHA"
+            git show "$base:scripts/ci/classify-changed-paths.sh" >"$RUNNER_TEMP/classify-changed-paths.sh"
+            git show "$base:scripts/ci/ci-job-registry.json" >"$RUNNER_TEMP/ci-job-registry.json"
+            # The PR's own files, as GitHub lists them for ci-dev-required. The
+            # browser lanes need app-build, which web and web-go both select.
+            selected=$(git diff --no-renames --name-only "$base...$PR_HEAD_SHA" |
+              CI_JOB_REGISTRY="$RUNNER_TEMP/ci-job-registry.json" sh "$RUNNER_TEMP/classify-changed-paths.sh" --files)
+            plan=$(jq -ce '(.web or .["web-go"]) as $web | map_values(false) | .web = $web' <<<"$selected")
+          elif [ "$EVENT_NAME" = push ]; then
             # checkout has the complete canonical tag and branch history. Bind
             # the peeled tag, not release.target_commitish (which may be main).
             if [ "$DEVELOPMENT" = true ]; then
@@ -871,7 +908,7 @@ jobs:
     timeout-minutes: 25
     strategy:
       fail-fast: false
-      max-parallel: ${{ inputs.development && 4 || 256 }}
+      max-parallel: ${{ (inputs.development || inputs.dev-admission) && 4 || 256 }}
       matrix:
         project: [desktop, mobile]
         group: [1, 2, 3, 4]
@@ -980,10 +1017,14 @@ jobs:
           retention-days: 1
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: failure()
+        # A hung leg can end at the job timeout, which cancels rather than fails.
+        if: failure() || cancelled()
         with:
           name: playwright-traces-${{ matrix.project }}-${{ matrix.group }}
-          path: web/test-results/
+          # Server logs survive a hung request, where the server never exits.
+          path: |
+            web/test-results/
+            web/e2e/.runs/servers/
           retention-days: 7
   # Flow-registry EXECUTION closure, enforced once over every leg. Splitting the
   # flows across legs means no single leg runs them all, so the per-leg teardown
@@ -2017,7 +2058,8 @@ jobs:
       pull-requests: read
     # Keep failure aggregation, but do not queue an obsolete aggregate job for
     # a workflow GitHub already cancelled in favor of a newer PR head.
-    if: always() && !cancelled()
+    # A dev PR's browser run is judged by ci-dev-required, which requires web-closure.
+    if: always() && !cancelled() && !inputs.dev-admission
     needs:
       - changes
       - client
