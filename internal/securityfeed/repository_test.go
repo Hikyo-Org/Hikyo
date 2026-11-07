@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -285,10 +286,12 @@ func TestFeedRejectsRedirectsAndUnboundedDownloads(t *testing.T) {
 
 // Each response is read to at most one byte past its bound, and every byte and request counts against the refresh.
 func TestFeedDownloadsStayWithinResponseAndRefreshBudgets(t *testing.T) {
-	body := strings.Repeat("a", 1025)
+	body := strings.Repeat("a", 4096)
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.Path == "/metadata/snapshot.json" {
 			w.(http.Flusher).Flush() // chunked: no Content-Length to refuse up front
+		} else {
+			w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 		}
 		_, _ = w.Write([]byte(body))
 	}))
@@ -301,15 +304,16 @@ func TestFeedDownloadsStayWithinResponseAndRefreshBudgets(t *testing.T) {
 		t.Fatalf("chunked oversize response: %v after %d bytes", err, fetcher.bytes)
 	}
 	fetcher.bytes = maxAggregateBytes - 10
-	if _, err := fetcher.DownloadFile(server.URL+"/metadata/root.json", 2048, 0); err == nil || !strings.Contains(err.Error(), "exceeds 10-byte bound") {
-		t.Fatalf("response past the refresh byte budget: %v", err)
+	if _, err := fetcher.DownloadFile(server.URL+"/metadata/snapshot.json", 2048, 0); err == nil || !strings.Contains(err.Error(), "exceeds 10-byte bound") || fetcher.bytes != maxAggregateBytes+1 {
+		t.Fatalf("response past the refresh byte budget: %v after %d bytes", err, fetcher.bytes)
 	}
-	if _, err := fetcher.DownloadFile(server.URL+"/metadata/root.json", 2048, 0); err == nil || !strings.Contains(err.Error(), "budget") {
-		t.Fatalf("exhausted byte budget: %v", err)
+	// An exhausted budget refuses before any response byte is read.
+	if _, err := fetcher.DownloadFile(server.URL+"/metadata/root.json", 2048, 0); err == nil || !strings.Contains(err.Error(), "budget") || fetcher.bytes != maxAggregateBytes+1 {
+		t.Fatalf("exhausted byte budget: %v after %d bytes", err, fetcher.bytes)
 	}
 	fetcher.bytes, fetcher.requests = 0, maxRequests
-	if _, err := fetcher.DownloadFile(server.URL+"/metadata/root.json", 2048, 0); err == nil || !strings.Contains(err.Error(), "budget") {
-		t.Fatalf("exhausted request budget: %v", err)
+	if _, err := fetcher.DownloadFile(server.URL+"/metadata/root.json", 2048, 0); err == nil || !strings.Contains(err.Error(), "budget") || fetcher.bytes != 0 {
+		t.Fatalf("exhausted request budget: %v after %d bytes", err, fetcher.bytes)
 	}
 }
 

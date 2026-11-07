@@ -95,6 +95,12 @@ func TestDetailRedactsValuesKeepsReasonsAndCutsOnACharacterBoundary(t *testing.T
 	if got := Redact("can't start\nexit 1"); got != "can't start\nexit 1" {
 		t.Fatalf("apostrophe before a later line redacted: %q", got)
 	}
+	// An apostrophe earlier on the line must not pair with the value's opening quote.
+	for _, text := range []string{"can't apply: refused 'hunter2 x'", "can't apply: refused 'hunter2 x"} {
+		if got := Redact(text); got != "can't apply: refused '[redacted]'" {
+			t.Fatalf("Redact(%q) = %q", text, got)
+		}
+	}
 	cut := Detail(strings.Repeat("é", 100), 5)
 	if len(cut) > 5 || cut != "éé" {
 		t.Fatalf("cut = %q", cut)

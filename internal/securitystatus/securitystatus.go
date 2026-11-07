@@ -77,8 +77,9 @@ var scrubbers = []struct {
 	replacement string
 }{
 	{regexp.MustCompile(`"[^"\n]*"?`), `"[redacted]"`},
-	// A quote left open at the end is a value the length bound cut short.
-	{regexp.MustCompile(`'[^'\n]*(?:'|$)`), `'[redacted]'`},
+	// An apostrophe follows a letter or digit, so it never opens a value. A quote left
+	// open at the end is a value the length bound cut short.
+	{regexp.MustCompile(`(^|[^\pL\pN])'[^'\n]*(?:'|$)`), `${1}'[redacted]'`},
 	{regexp.MustCompile(`://[^/\s]*@`), `://[redacted]@`},
 	{regexp.MustCompile(`(?i)\b(bearer|basic)\s+\S+`), `$1 [redacted]`},
 	{regexp.MustCompile(`(?i)\b([a-z0-9_.-]*(?:key|token|secret|password|passwd|pwd|credential|dsn)[a-z0-9_.-]*)\s*[=:]\s*\S+`), `$1=[redacted]`},

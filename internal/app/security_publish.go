@@ -568,8 +568,9 @@ func runSecurityFeedAdvisory(ctx context.Context, args []string, out io.Writer, 
 			return err
 		}
 	}
-	// A new advisory can be fixed by targets already listed, so they gain it too. Fixes are
-	// only added: an earlier fix stays listed until its target is withdrawn.
+	// Every active target gains each advisory it fixes, including new targets and targets
+	// already listed. Fixes are only added: an earlier fix stays listed until its target
+	// is withdrawn.
 	for i := range next.Targets {
 		if !next.Targets[i].Withdrawn {
 			for _, fix := range next.FixesFor(next.Targets[i]) {
@@ -642,7 +643,8 @@ func publicationReleaseTargets(release publicationVerifiedRelease, platforms []s
 }
 
 // mergePublicationTargets adds the records or extends an existing record of the
-// same release, then computes fixes so a hurried maintainer cannot omit one.
+// same release. Fixes are computed afterwards for every active target, so a
+// hurried maintainer cannot omit one.
 func mergePublicationTargets(next *securitymaintenance.Catalog, records []securitymaintenance.Target) error {
 	for _, record := range records {
 		index := -1
@@ -682,7 +684,6 @@ func mergePublicationTargets(next *securitymaintenance.Catalog, records []securi
 				existing.AvailableAt, existing.RolloutMinutes = record.AvailableAt, record.RolloutMinutes
 			}
 		}
-		next.Targets[index].Fixes = next.FixesFor(next.Targets[index])
 	}
 	return nil
 }
