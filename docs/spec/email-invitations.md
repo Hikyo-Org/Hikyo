@@ -34,6 +34,9 @@ timing residuals of section 2 on 2026-11-07.
 `POST /api/v1/orgs/{org}/email-invitations` with `{email, template}`, formula
 `manage-members@org`.
 
+A body that does not match the request schema is refused by request
+validation before these steps, alike for every address.
+
 1. Authorize the operation. Then, before the address is read, require an
    explicitly configured public origin (the link is built from it), answering
    the uniform `no-public-origin` precondition refusal as local sign-up does,
