@@ -3175,10 +3175,12 @@ paths:
         address gets no mail. A send to an address that already has a pending
         invitation replaces it and the earlier link stops working.
 
-        An instance whose operator never stated its public origin refuses every
-        request with `400` naming the `no-public-origin` precondition, and one
-        without a configured mailer with `mailer-unconfigured`, both before the
-        address is read. A malformed address or an unknown template is `400`. Sends are
+        A body that does not match the request schema is refused by request
+        validation first, alike for every address. For a body that does, an
+        instance whose operator never stated its public origin answers `400`
+        naming the `no-public-origin` precondition, and one without a configured
+        mailer `mailer-unconfigured`, both before the address is read. A
+        malformed address or an unknown template is `400`. Sends are
         bounded at 30 per hour per organisation and 200 live pending
         invitations, both the uniform `429`.
       x-hikyo-class: tenant
