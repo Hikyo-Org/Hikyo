@@ -207,6 +207,7 @@ export type DeveloperCredentialCeremonyInput = {
   keyIds: readonly string[];
   lifetimeSeconds: bigint;
   consentCurrentAndFuture: true;
+  personalConsent?: boolean;
 };
 
 function developerCredentialCeremonyBody(input: DeveloperCredentialCeremonyInput) {
@@ -216,6 +217,7 @@ function developerCredentialCeremonyBody(input: DeveloperCredentialCeremonyInput
   return {
     lifetime_seconds: Number(input.lifetimeSeconds),
     consent_current_and_future: input.consentCurrentAndFuture,
+    personal_consent: input.personalConsent === true,
   };
 }
 

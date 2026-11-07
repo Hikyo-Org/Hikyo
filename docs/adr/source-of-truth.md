@@ -1,5 +1,7 @@
 # Hikyo source of truth & the role of Git (ADR, locked 2026-07-30)
 
+> **Proposed declared amendment (2026-11-03, owner decisions O5 to O8 on 2026-11-06, [personal-values.md](./personal-values.md), operative when its implementation PR merges; cross-provider review waived by the owner on 2026-11-06, did not run and is not CLEAN; the amended tickets are not reopened yet):** the definitions bundle carries `personal_required_in` and never carries personal values. Personal values do not count as live occurrences that refuse environment deletion, and a deletion plan reports how many it removes.
+
 > **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** definitions apply needs keys for affected environments, in Sealed orgs. See its supersession register.
 
 > **Amended by the flat-model ADR ([flat-model.md](./flat-model.md), 2026-08-06, [#40](https://github.com/Hikyo-Org/Hikyo/issues/40), per the [oss-mechanics.md](./oss-mechanics.md) amendment procedure):** the definitions bundle drops the per-environment `base` field (closed schema rejects it at parse); `apply` runs no cycle check; plans pin `(bundle digest, schema revision, per-environment value revisions)`; the database-authority sentence covers environment value entries; the reveal escalation reads per that ADR's re-delivery gate. Detail in its ripple register.

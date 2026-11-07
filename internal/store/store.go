@@ -508,6 +508,9 @@ type Repos interface {
 	// dismissal, so a read-only twin would have no caller — the shape SCIM took
 	// for the same reason.
 	ScanningDismissals() ScanningDismissalRepo
+	// PersonalValues is the per-developer value surface (#1235). The read
+	// bundle carries only the owner's masked list (PersonalValueReader).
+	PersonalValues() PersonalValueRepo
 	// Reencrypt is the instance-credential reencrypt surface (#75/#187).
 	Reencrypt() ReencryptRepo
 	// Approvals is the policy-bound secret-change approval engine (#151). It is
@@ -525,6 +528,9 @@ type Repos interface {
 	Transit() TransitRepo
 	// FileTargets is the generic file-destination surface (#164).
 	FileTargets() FileTargetRepo
+	// PersonalReport is the personal-values matrix counts and offboarding
+	// report surface (#1235): counts and names, never a value.
+	PersonalReport() PersonalReportRepo
 }
 
 // ScanningDismissalRepo is the proof-bound dismissal-row surface (#74,
@@ -580,6 +586,8 @@ type ReadRepos interface {
 	Definitions() DefinitionsReader
 	DeliveryTargets() DeliveryTargetReader
 	FileTargets() FileTargetReader
+	// PersonalValues is the owner's own masked list (#1235).
+	PersonalValues() PersonalValueReader
 }
 
 // DefinitionsPlan is a stored plan row (#70). Bundle holds the canonical bundle

@@ -24,6 +24,9 @@ func (a *API) MintDeveloperCredential(ctx context.Context, req apigen.MintDevelo
 		return nil, domain.ErrInvalid
 	}
 	want := service.MintDeveloperCredentialRequest{ConsentCurrentAndFuture: bool(req.Body.ConsentCurrentAndFuture)}
+	if req.Body.PersonalConsent != nil {
+		want.PersonalConsent = *req.Body.PersonalConsent
+	}
 	for _, id := range req.Body.KeyIds {
 		want.KeyIDs = append(want.KeyIDs, string(id))
 	}
@@ -39,7 +42,7 @@ func (a *API) MintDeveloperCredential(ctx context.Context, req apigen.MintDevelo
 	return apigen.MintDeveloperCredential200JSONResponse{Value: result.Value, Credential: wireDeveloperCredential(service.NamedDeveloperCredential{DeveloperCredential: result.Credential})}, nil
 }
 func wireDeveloperCredential(c service.NamedDeveloperCredential) apigen.DeveloperCredential {
-	out := apigen.DeveloperCredential{Id: c.ID, PrincipalId: string(c.PrincipalID), AuthorityPrincipalId: string(c.AuthorityPrincipal), OrgId: string(c.Scope.Org), ProjectId: string(c.Scope.Project), EnvironmentId: string(c.Scope.Env), CreatedAt: c.CreatedAt, ExpiresAt: c.ExpiresAt, PrefixHint: c.PrefixHint}
+	out := apigen.DeveloperCredential{Id: c.ID, PrincipalId: string(c.PrincipalID), AuthorityPrincipalId: string(c.AuthorityPrincipal), OrgId: string(c.Scope.Org), ProjectId: string(c.Scope.Project), EnvironmentId: string(c.Scope.Env), CreatedAt: c.CreatedAt, ExpiresAt: c.ExpiresAt, PrefixHint: c.PrefixHint, PersonalConsent: &c.PersonalConsent}
 	if !c.RevokedAt.IsZero() {
 		t := c.RevokedAt
 		out.RevokedAt = &t
@@ -115,5 +118,6 @@ func developerCredentialReauthIntent(environment string, keys []string, value ap
 		return service.ReauthIntent{}, domain.ErrInvalid
 	}
 	ttl := time.Duration(value.LifetimeSeconds) * time.Second
-	return service.NewDeveloperCredentialReauthIntent(environment, keys, ttl, bool(value.ConsentCurrentAndFuture))
+	personal := value.PersonalConsent != nil && *value.PersonalConsent
+	return service.NewPersonalDeveloperCredentialReauthIntent(environment, keys, ttl, bool(value.ConsentCurrentAndFuture), personal)
 }

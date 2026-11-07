@@ -11,7 +11,7 @@ account by its exact email address. The person accepts while signed in.
 - CLI: the email invitation commands in `internal/cli/access_invitations.go`.
 - Web: "Invite by email" and the pending list on Members, and the
   `/invitations/accept` page.
-- Store: migration `00086_org_email_invitations` on SQLite and Postgres.
+- Store: migration `00087_org_email_invitations` on SQLite and Postgres.
 - Design: `docs/spec/email-invitations.md`, plus the 2026-11-06 #1207 banners
   in `docs/adr/human-auth.md`, `permission-model.md`, `tenant-isolation.md` and
   `audit-model.md`.

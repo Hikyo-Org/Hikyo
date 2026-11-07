@@ -291,6 +291,8 @@ const surfaceChecks = {
   history: { mode: 'interactive', heading: 'Revision history', sample: 'current r1' },
   'key-detail': { mode: 'interactive', heading: 'LOG_LEVEL', sample: 'Application log verbosity.' },
   values: { mode: 'interactive', heading: 'Values', sample: 'LOG_LEVEL' },
+  'personal-values': { mode: 'excluded', result: 'unavailable' },
+  'offboarding-report': { mode: 'excluded', result: 'unavailable' },
   'machine-access': { mode: 'read-only', heading: 'Machine access', sample: 'payments-api' },
   'change-approvals': { mode: 'read-only', heading: 'Change approvals', sample: 'Sample review: rotate the payment provider credential.', tab: 'Review queue', environment: DEMO_IDS.staging },
   'temporary-access': { mode: 'read-only', heading: 'Temporary access', sample: 'Sample request: investigate a checkout error.', environment: DEMO_IDS.staging },
@@ -384,7 +386,7 @@ test('read-only details and filters work while management actions stay disabled'
   // one, with revocation closed to the preview.
   await page.goto(`./?account=admin#${projectPath}/settings`);
   await page.getByRole('tab', { name: 'Developer credentials', exact: true }).click();
-  await expect(page.getByRole('main').getByText('Developer principal:').first()).toBeVisible();
+  await expect(page.getByRole('main').getByText('Developer:').first()).toBeVisible();
   await expect(page.getByRole('main').getByText(/^Revoked/).first()).toBeVisible();
   await expect(page.getByRole('button', { name: /^Revoke / }).first()).toBeDisabled();
   // Re-reading is not a change: the refresh stays available in the preview.

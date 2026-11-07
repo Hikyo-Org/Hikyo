@@ -111,132 +111,133 @@ func (r *Resolver) RestrictPrivacyPrincipal(ctx context.Context, principal, stat
 
 // ErasePrivacyAccount deletes authentication custody and direct account identity.
 // Historical content and audit records retain pseudonymous references, not names.
-func (r *Resolver) ErasePrivacyAccount(ctx context.Context, account, principal, username string) error {
+// It returns how many personal values it deleted, so the caller can audit the loss.
+func (r *Resolver) ErasePrivacyAccount(ctx context.Context, account, principal, username string) (int64, error) {
 	if err := r.LockPrincipalRow(ctx, domain.PrincipalID(principal)); err != nil {
-		return err
+		return 0, err
 	}
 	if r.sq != nil {
 		if err := r.sq.PrivacyEraseHandoffs(ctx, principal); err != nil {
-			return err
+			return 0, err
 		}
 	} else {
 		if err := r.pg.PrivacyEraseHandoffs(ctx, principal); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	if r.sq != nil {
 		if err := r.sq.PrivacyEraseAuthorities(ctx, account); err != nil {
-			return err
+			return 0, err
 		}
 	} else {
 		if err := r.pg.PrivacyEraseAuthorities(ctx, account); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	if r.sq != nil {
 		if err := r.sq.PrivacyErasePasswords(ctx, account); err != nil {
-			return err
+			return 0, err
 		}
 	} else {
 		if err := r.pg.PrivacyErasePasswords(ctx, account); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	if r.sq != nil {
 		if err := r.sq.PrivacyEraseTOTPChallenges(ctx, account); err != nil {
-			return err
+			return 0, err
 		}
 	} else {
 		if err := r.pg.PrivacyEraseTOTPChallenges(ctx, account); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	if r.sq != nil {
 		if err := r.sq.PrivacyEraseTOTP(ctx, account); err != nil {
-			return err
+			return 0, err
 		}
 	} else {
 		if err := r.pg.PrivacyEraseTOTP(ctx, account); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	if r.sq != nil {
 		if err := r.sq.PrivacyEraseRecoveryCodes(ctx, account); err != nil {
-			return err
+			return 0, err
 		}
 	} else {
 		if err := r.pg.PrivacyEraseRecoveryCodes(ctx, account); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	if r.sq != nil {
 		if err := r.sq.PrivacyEraseCeremonies(ctx, nullString(account)); err != nil {
-			return err
+			return 0, err
 		}
 	} else {
 		if err := r.pg.PrivacyEraseCeremonies(ctx, pgText(account)); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	if r.sq != nil {
 		if err := r.sq.PrivacyEraseWebAuthn(ctx, account); err != nil {
-			return err
+			return 0, err
 		}
 	} else {
 		if err := r.pg.PrivacyEraseWebAuthn(ctx, account); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	if r.sq != nil {
 		if err := r.sq.PrivacyEraseOIDCTransactions(ctx, nullString(account)); err != nil {
-			return err
+			return 0, err
 		}
 	} else {
 		if err := r.pg.PrivacyEraseOIDCTransactions(ctx, pgText(account)); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	if r.sq != nil {
 		if err := r.sq.PrivacyEraseSAMLTransactions(ctx, nullString(account)); err != nil {
-			return err
+			return 0, err
 		}
 	} else {
 		if err := r.pg.PrivacyEraseSAMLTransactions(ctx, pgText(account)); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	if r.sq != nil {
 		if err := r.sq.PrivacyEraseExternalIdentities(ctx, account); err != nil {
-			return err
+			return 0, err
 		}
 	} else {
 		if err := r.pg.PrivacyEraseExternalIdentities(ctx, account); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	if r.sq != nil {
 		if err := r.sq.PrivacyEraseSCIMMembers(ctx, account); err != nil {
-			return err
+			return 0, err
 		}
 	} else {
 		if err := r.pg.PrivacyEraseSCIMMembers(ctx, account); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	if r.sq != nil {
 		if err := r.sq.PrivacyEraseSCIMUsers(ctx, account); err != nil {
-			return err
+			return 0, err
 		}
 	} else {
 		if err := r.pg.PrivacyEraseSCIMUsers(ctx, account); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	// Pending email invitations bound to the account are unbound, not deleted:
 	// the row stays listed until it expires and can never validate (#1207).
 	if !r.historicalRecoveryBeforeEmailInvitations {
 		if err := r.eraseOrgEmailInvitations(ctx, account); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	// Member access rules go with the grants: an erased principal keeps no
@@ -244,42 +245,66 @@ func (r *Resolver) ErasePrivacyAccount(ctx context.Context, account, principal, 
 	if !r.historicalRecoveryBeforeRules {
 		if r.sq != nil {
 			if err := r.sq.PrivacyEraseRuleItems(ctx, principal); err != nil {
-				return err
+				return 0, err
 			}
 			if err := r.sq.PrivacyEraseRules(ctx, principal); err != nil {
-				return err
+				return 0, err
 			}
 		} else {
 			if err := r.pg.PrivacyEraseRuleItems(ctx, principal); err != nil {
-				return err
+				return 0, err
 			}
 			if err := r.pg.PrivacyEraseRules(ctx, principal); err != nil {
-				return err
+				return 0, err
 			}
 		}
 	}
 	if r.sq != nil {
 		if err := r.sq.PrivacyEraseGrantOrigins(ctx, principal); err != nil {
-			return err
+			return 0, err
 		}
 	} else {
 		if err := r.pg.PrivacyEraseGrantOrigins(ctx, principal); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	if r.sq != nil {
 		if err := r.sq.PrivacyEraseGrants(ctx, principal); err != nil {
-			return err
+			return 0, err
 		}
 	} else {
 		if err := r.pg.PrivacyEraseGrants(ctx, principal); err != nil {
-			return err
+			return 0, err
+		}
+	}
+	// Personal values and their notices go with the subject: an erased owner
+	// keeps neither a value nor a key name (personal-values ADR).
+	var deleted int64
+	var err error
+	if r.sq != nil {
+		if deleted, err = r.sq.DeletePersonalValuesForOwner(ctx, principal); err != nil {
+			return 0, err
+		}
+		if err := r.sq.DeletePersonalValueNoticesForOwner(ctx, principal); err != nil {
+			return 0, err
+		}
+	} else {
+		if deleted, err = r.pg.DeletePersonalValuesForOwner(ctx, principal); err != nil {
+			return 0, err
+		}
+		if err := r.pg.DeletePersonalValueNoticesForOwner(ctx, principal); err != nil {
+			return 0, err
 		}
 	}
 	if r.sq != nil {
-		return r.sq.PrivacyEraseAccount(ctx, sqlitegen.PrivacyEraseAccountParams{Username: username, AccountID: account})
+		err = r.sq.PrivacyEraseAccount(ctx, sqlitegen.PrivacyEraseAccountParams{Username: username, AccountID: account})
+	} else {
+		err = r.pg.PrivacyEraseAccount(ctx, pggen.PrivacyEraseAccountParams{Username: username, AccountID: account})
 	}
-	return r.pg.PrivacyEraseAccount(ctx, pggen.PrivacyEraseAccountParams{Username: username, AccountID: account})
+	if err != nil {
+		return 0, err
+	}
+	return deleted, nil
 }
 
 type PrivacySession struct {

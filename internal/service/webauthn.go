@@ -581,6 +581,9 @@ func (s *Auth) respondToClone(ctx context.Context, az *authz.TxAuthorizer, accou
 	if err != nil {
 		return err
 	}
+	if err := purgePersonalIfUnqualified(ctx, az, account, now); err != nil {
+		return err
+	}
 	if err := az.AdvanceGeneration(ctx, account.PrincipalID); err != nil {
 		return err
 	}
@@ -1119,6 +1122,9 @@ func (s *Auth) RemovePasskey(ctx context.Context, presented, credentialID, passw
 		}
 		// Post-state invariant, re-evaluated against the committed inventory (B4).
 		if err := s.assertPasskeyOnlyInvariant(ctx, az, account.ID); err != nil {
+			return err
+		}
+		if err := purgePersonalIfUnqualified(ctx, az, account, now); err != nil {
 			return err
 		}
 		*result, err = s.reissueAccountSecurity(ctx, az, account, proofClass, live, now)

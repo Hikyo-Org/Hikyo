@@ -67,8 +67,9 @@ func CheckReencryptCoverage(sqliteMigrationsDir string) []string {
 var reencryptCovered = map[string]string{
 	"remote_pairing_invites.pake_sealed":    "remote_pairing_invites",
 	"remote_pairing_exchanges.state_sealed": "remote_pairing_exchanges",
-	// project scope (8)
+	// project scope (9)
 	"value_entries.ciphertext":                          "value",
+	"personal_values.ciphertext":                        "personal_value",
 	"snapshot_entries.ciphertext":                       "snapshot",
 	"pending_changes.ciphertext":                        "pending",
 	"adapters.credential_ciphertext":                    "adapter",

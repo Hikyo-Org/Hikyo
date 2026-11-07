@@ -620,6 +620,7 @@ type DeveloperCredential struct {
 	CreatedAt            pgtype.Timestamptz
 	ExpiresAt            pgtype.Timestamptz
 	RevokedAt            pgtype.Timestamptz
+	PersonalConsent      int32
 }
 
 type DeveloperCredentialPolicy struct {
@@ -829,6 +830,13 @@ type KeyGroup struct {
 	ProjectID string
 	Name      string
 	CreatedAt pgtype.Timestamptz
+}
+
+type KeyPersonalRequiredEnvironment struct {
+	OrgID         string
+	ProjectID     string
+	KeyID         string
+	EnvironmentID string
 }
 
 type KeyPresenceEnvironment struct {
@@ -1044,6 +1052,29 @@ type PendingChange struct {
 	Source             string
 	Secret             bool
 	MaterialSecret     bool
+}
+
+type PersonalValue struct {
+	ID               string
+	OrgID            string
+	ProjectID        string
+	EnvironmentID    string
+	KeyID            string
+	OwnerPrincipalID string
+	Ciphertext       []byte
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	SuspendedAt      pgtype.Timestamptz
+}
+
+type PersonalValueNotice struct {
+	OrgID            string
+	ProjectID        string
+	EnvironmentID    string
+	KeyName          string
+	OwnerPrincipalID string
+	Cause            string
+	CreatedAt        pgtype.Timestamptz
 }
 
 type PinGeneration struct {

@@ -1,6 +1,6 @@
 import { CeremonyNotice } from '../ui/CeremonyNotice.tsx';
 import { useId, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router';
+import { generatePath, Link, useParams, useSearchParams } from 'react-router';
 
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import {
@@ -43,6 +43,7 @@ import { useCeremonyTask } from './useCeremonyTask.ts';
 import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
+import { surfaceById } from '../app/navigation.ts';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
@@ -591,6 +592,14 @@ export function Members({ scope }: { scope: MembersScope }) {
                               >
                                 {resetPending === person.id ? 'Resetting…' : 'Reset credential'}
                               </Button>
+                            ) : null}
+                            {projectId !== '' && person.kind === 'person' ? (
+                              <Link
+                                className="btn btn--quiet"
+                                to={`${generatePath(surfaceById('offboarding-report').path, { org, project: projectId })}?member=${encodeURIComponent(person.id)}`}
+                              >
+                                Offboarding report<span className="visually-hidden"> for {person.name}</span>
+                              </Link>
                             ) : null}
                           </>
                         )}

@@ -22,7 +22,7 @@ import (
 // restored-incarnation fencing, host recovery and reauthenticated resumption.
 func runSelfConfigAuditLifecycle(t *testing.T, engine store.Engine) *store.DB {
 	t.Helper()
-	db := openSelfConfigAuditDB(t, engine)
+	db := openSelfConfigAuditDB(t, engine, "_selfconfigaudit")
 	auth := authService(t, db)
 	auth.ExternalOrigin = "https://self-config-audit.hikyo.test"
 	var clock atomic.Int64

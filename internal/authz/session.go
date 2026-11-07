@@ -37,6 +37,9 @@ type Identity struct {
 	Principal          domain.PrincipalID
 	AuthorityPrincipal domain.PrincipalID
 	DeveloperScope     domain.Scope
+	// PersonalConsent is a developer credential's recorded opt-in to deliver
+	// its human's personal values (#1235). False on every other identity.
+	PersonalConsent bool
 	// Class is what this identity authenticated AS. It is set on every
 	// resolution path, never inferred from an empty field: the ADR requires
 	// machine principals to be visibly distinct from humans everywhere they

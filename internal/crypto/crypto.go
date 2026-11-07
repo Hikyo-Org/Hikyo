@@ -37,6 +37,10 @@ const (
 	// ADR § Offline behaviour). It is outside the server key hierarchy but uses
 	// the same envelope primitive; its AAD schema is SnapshotAAD in client.go.
 	KindComposeSnapshot Kind = 7
+	// KindPersonalValue seals one developer's personal value (personal-values
+	// ADR). Its AAD schema is PersonalValueAAD. Kind 8 is KindTransit in
+	// transit.go. Kind bytes are persisted format: never renumber.
+	KindPersonalValue Kind = 9
 )
 
 const (

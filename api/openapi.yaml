@@ -3142,7 +3142,7 @@ paths:
       x-hikyo-operation: email-invitation.list
       x-hikyo-formula: [manage-members@org]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 14
+      x-hikyo-min-revision: 16
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -3184,7 +3184,7 @@ paths:
       x-hikyo-operation: email-invitation.send
       x-hikyo-formula: [manage-members@org]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 14
+      x-hikyo-min-revision: 16
       requestBody:
         required: true
         content:
@@ -3225,7 +3225,7 @@ paths:
       x-hikyo-operation: email-invitation.revoke
       x-hikyo-formula: [manage-members@org]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 14
+      x-hikyo-min-revision: 16
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -5197,6 +5197,306 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValueCell"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    get:
+      operationId: listMyPersonalValues
+      tags: [values]
+      summary: List the caller's own personal values and notices, masked.
+      description: |
+        Only the caller's own values and removal notices in this environment,
+        plus the checklist of keys required here (`personal_required_in`).
+        No grant reaches another person's personal value. The owner may list
+        and delete their own values whatever their grants: holding a value or
+        notice in the environment admits the caller when `read` does not.
+      x-hikyo-class: tenant
+      x-hikyo-operation: personal-value.list
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 15
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The caller's personal entries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonalValueList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/ValueKeyName"
+    put:
+      operationId: setMyPersonalValue
+      tags: [values]
+      summary: Set or replace the caller's own personal value for a declared key.
+      description: |
+        Uses the reveal reauthentication gate and needs an authenticator app
+        or passkey on the account. Schema rules never refuse the value; the
+        response names any rule it does not satisfy, as a warning. It is
+        never scanned. Setting a value dismisses a removal notice.
+      x-hikyo-class: tenant
+      x-hikyo-operation: personal-value.set
+      x-hikyo-formula: [read@environment, reveal@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 15
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetPersonalValueRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The stored entry. It never echoes the value back.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonalValueEntry"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    delete:
+      operationId: deleteMyPersonalValue
+      tags: [values]
+      summary: Delete the caller's own personal value and dismiss its notice.
+      description: |
+        Admitted whatever the caller's grants while they hold a value or
+        notice in the environment.
+      x-hikyo-class: tenant
+      x-hikyo-operation: personal-value.delete
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 15
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204":
+          description: Deleted or dismissed.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/reveal:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/ValueKeyName"
+    post:
+      operationId: revealMyPersonalValue
+      tags: [values]
+      summary: Read the caller's own personal value in plaintext.
+      x-hikyo-class: tenant
+      x-hikyo-operation: personal-value.reveal
+      x-hikyo-formula: [read@environment, reveal@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 15
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The entry, plaintext included.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonalValueEntry"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-value-counts:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    get:
+      operationId: listPersonalValueCounts
+      tags: [values]
+      summary: Count personal values and notices per key, for the matrix marks.
+      description: Counts only. No route returns another person's value.
+      x-hikyo-class: tenant
+      x-hikyo-operation: personal-value.counts
+      x-hikyo-formula: [manage-members@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 15
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonalValueCounts"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/personal-offboarding-report/{member}:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - name: member
+        in: path
+        required: true
+        description: A username or principal id.
+        schema: {type: string, minLength: 1, maxLength: 256}
+    get:
+      operationId: getPersonalOffboardingReport
+      tags: [values]
+      summary: List what to rotate after someone leaves the project.
+      description: |
+        Shared keys the person is recorded as receiving, by environment,
+        whether each changed since, and the service accounts they created.
+        Names only. Limited to the audit evidence window it states.
+      x-hikyo-class: tenant
+      x-hikyo-operation: personal-value.offboarding-report
+      x-hikyo-formula: [manage-members@project, audit-read@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 15
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonalOffboardingReport"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/ValueKeyName"
+    get:
+      operationId: listPersonalValueMembers
+      tags: [values]
+      summary: List who holds a personal value or notice for one key.
+      description: Metadata only. No route returns another person's value.
+      x-hikyo-class: tenant
+      x-hikyo-operation: personal-value.members
+      x-hikyo-formula: [manage-members@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 15
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The holders.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonalValueHolderList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members/{member}:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/ValueKeyName"
+      - name: member
+        in: path
+        required: true
+        description: A username or principal id holding a value or notice for this key.
+        schema: {type: string, minLength: 1, maxLength: 256}
+    delete:
+      operationId: deletePersonalValueMember
+      tags: [values]
+      summary: Delete another person's personal value and leave them a notice.
+      description: |
+        A person holding neither a value nor a notice for this key is answered
+        exactly as a nonexistent one.
+      x-hikyo-class: tenant
+      x-hikyo-operation: personal-value.delete-member
+      x-hikyo-formula: [manage-members@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 15
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204":
+          description: Deleted.
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
@@ -10972,7 +11272,7 @@ paths:
         nothing else.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 14
+      x-hikyo-min-revision: 16
       requestBody:
         required: true
         content:
@@ -11018,7 +11318,7 @@ paths:
         shown the outcome.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 14
+      x-hikyo-min-revision: 16
       requestBody:
         required: true
         content:
@@ -16725,6 +17025,13 @@ components:
           type: boolean
           const: true
           description: Explicit consent to every current and future published key in this environment until expiry.
+        personal_consent:
+          type: boolean
+          default: false
+          description: |
+            Explicit consent to deliver the minting person's current and future
+            personal values in this environment through this credential. Without
+            it, delivery names those keys only and `hikyo run` refuses them.
         lifetime_seconds:
           type: integer
           format: int64
@@ -16745,6 +17052,7 @@ components:
         expires_at: {type: string, format: date-time}
         revoked_at: {type: string, format: date-time}
         prefix_hint: {type: string}
+        personal_consent: {type: boolean}
         authority_principal_name: {type: string, minLength: 1, description: Display name of the human who delegated the credential. Omitted when unnamed.}
     DeveloperCredentialList:
       type: object
@@ -18669,6 +18977,10 @@ components:
       properties:
         lifetime_seconds: {type: integer, format: int64, minimum: 1, maximum: 28800}
         consent_current_and_future: {type: boolean, const: true}
+        personal_consent:
+          type: boolean
+          default: false
+          description: The credential will also deliver the minting person's own personal values; bound into the ceremony.
     TotpDeveloperCredentialReauthRequest:
       type: object
       additionalProperties: false
@@ -20563,6 +20875,145 @@ components:
       items:
         type: string
 
+    SetPersonalValueRequest:
+      type: object
+      additionalProperties: false
+      required: [value]
+      properties:
+        value:
+          type: string
+          maxLength: 65536
+          description: The plaintext, sealed to this key, environment and owner. Never echoed back.
+    PersonalValueEntry:
+      type: object
+      additionalProperties: false
+      required: [name, set]
+      properties:
+        key_id: {$ref: "#/components/schemas/ID"}
+        name: {type: string, maxLength: 256}
+        set: {type: boolean}
+        updated_at: {type: string, format: date-time}
+        notice:
+          $ref: "#/components/schemas/PersonalValueNoticeCause"
+        required:
+          type: boolean
+          description: The key is `personal_required_in` this environment (the owner's checklist).
+        suspended:
+          type: boolean
+          description: |
+            The owner lost read, reveal or qualification without a credential
+            change. The value is kept but not delivered, and the retention
+            sweep deletes it 14 days after `suspended_at` unless access returns.
+        suspended_at: {type: string, format: date-time}
+        warnings:
+          type: array
+          maxItems: 32
+          items: {type: string, maxLength: 512}
+          description: |
+            Schema rules this value does not satisfy, returned by set and
+            reveal only (a list never decrypts). A warning to the owner only:
+            no rule ever refuses a personal value, at write or delivery.
+        value:
+          type: string
+          description: Present only on reveal.
+    PersonalValueNoticeCause:
+      type: string
+      description: Why a personal value disappeared other than by its owner.
+      enum: [administrator, retention, restore, key_renamed, key_deleted, forbidden, qualification_lost]
+    PersonalValueList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/PersonalValueEntry"}
+    PersonalValueHolder:
+      type: object
+      additionalProperties: false
+      required: [principal_id, set]
+      properties:
+        principal_id: {$ref: "#/components/schemas/ID"}
+        username: {type: string}
+        set: {type: boolean}
+        updated_at: {type: string, format: date-time}
+        notice:
+          $ref: "#/components/schemas/PersonalValueNoticeCause"
+    PersonalValueCount:
+      type: object
+      additionalProperties: false
+      required: [key_id, name, holders, notices, required]
+      properties:
+        key_id: {$ref: "#/components/schemas/ID"}
+        name: {type: string, maxLength: 256}
+        holders: {type: integer, minimum: 0, description: People holding a personal value for this key here.}
+        notices: {type: integer, minimum: 0, description: People with an unacknowledged removal notice.}
+        required: {type: boolean, description: The key is personal_required_in this environment.}
+    PersonalValueCounts:
+      type: object
+      additionalProperties: false
+      required: [eligible, items]
+      properties:
+        eligible:
+          type: integer
+          minimum: 0
+          description: The denominator of `11/14`, humans currently holding both read and reveal here.
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/PersonalValueCount"}
+    PersonalOffboardingReceipt:
+      type: object
+      additionalProperties: false
+      required: [environment_id, environment_name, key_name, last_received_at, changed_since]
+      properties:
+        environment_id: {$ref: "#/components/schemas/ID"}
+        environment_name: {type: string, maxLength: 256}
+        key_name: {type: string, maxLength: 256}
+        last_received_at: {type: string, format: date-time}
+        changed_since:
+          type: boolean
+          description: The shared value was published again after the person last received it.
+    PersonalOffboardingServiceAccount:
+      type: object
+      additionalProperties: false
+      required: [id, name, created_at]
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        name: {type: string, maxLength: 256}
+        created_at: {type: string, format: date-time}
+    PersonalOffboardingReport:
+      type: object
+      additionalProperties: false
+      required: [principal_id, username, evidence_from, generated_at, received, service_accounts, limits]
+      description: Names only, never values. What to rotate after someone leaves.
+      properties:
+        principal_id: {$ref: "#/components/schemas/ID"}
+        username: {type: string}
+        evidence_from:
+          type: string
+          format: date-time
+          description: The oldest audit record the report could read. Disclosures before it, or never audited, do not appear.
+        generated_at: {type: string, format: date-time}
+        received:
+          type: array
+          items: {$ref: "#/components/schemas/PersonalOffboardingReceipt"}
+          description: Shared keys the person is recorded as receiving, through their own session or a developer credential.
+        service_accounts:
+          type: array
+          items: {$ref: "#/components/schemas/PersonalOffboardingServiceAccount"}
+        limits:
+          type: array
+          items: {type: string, maxLength: 512}
+          description: Fixed statements of what the report cannot show or undo.
+    PersonalValueHolderList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/PersonalValueHolder"}
+
     SetValueRequest:
       type: object
       additionalProperties: false
@@ -20931,6 +21382,7 @@ components:
         declaration: {$ref: "#/components/schemas/KeyDeclaration"}
         required_in: {$ref: "#/components/schemas/DefinitionsBundlePresence"}
         forbidden_in: {$ref: "#/components/schemas/DefinitionsBundlePresence"}
+        personal_required_in: {$ref: "#/components/schemas/DefinitionsBundlePresence"}
 
     DefinitionsRename:
       type: object
@@ -20995,6 +21447,14 @@ components:
       properties:
         name: {type: string}
         occurrences: {type: integer, format: int64, minimum: 0}
+        personal_values:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >-
+            Personal values the deletion would remove, counted when the plan
+            was made. Apply removes whatever the environment holds then.
+            Absent from servers older than revision 15.
 
     DefinitionsPlanDiff:
       type: object
@@ -21741,6 +22201,22 @@ components:
             delivers (#51 -- values landed, and the change token moves with
             them); the other three are the declared presence rules for keys
             the snapshot does not carry.
+        personal:
+          type: string
+          enum: [value, withheld, notice, missing]
+          x-enum-varnames: [DeliveredKeyPersonalValue, DeliveredKeyPersonalWithheld, DeliveredKeyPersonalNotice, DeliveredKeyPersonalMissing]
+          description: |
+            Developer-credential delivery only (#1235). `value`: the value is
+            the credential's human's own personal value. `withheld`: they hold
+            one this fetch does not carry (see `personal_reason`). `notice`:
+            their value was removed and not yet acknowledged. `missing`: the
+            key is `personal_required_in` this environment and they hold no
+            value (consenting fetches only). A withheld, notice or missing key
+            never carries the shared value, and `hikyo run` refuses it.
+        personal_reason:
+          type: string
+          maxLength: 64
+          description: For `withheld`, one of consent, config_only, suspended. For `notice`, the cause. Absent for `missing`.
 
     DeliveryResponse:
       type: object
@@ -23005,6 +23481,14 @@ components:
           $ref: "#/components/schemas/KeyPresence"
         forbidden_in:
           $ref: "#/components/schemas/KeyPresence"
+        personal_required_in:
+          $ref: "#/components/schemas/KeyPresence"
+          description: |
+            Environments where each developer must hold their own personal
+            value. `none` or `explicit` only: `all` is refused because it would
+            reach environments created later. Refused where the key is also
+            required or forbidden, and for a key in a group. Absent means `none`
+            on create; on a declaration update, absent keeps the stored setting.
 
     Key:
       type: object

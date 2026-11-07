@@ -570,7 +570,7 @@ func (a *TxAuthorizer) EnvironmentsInProject(ctx context.Context, scope domain.S
 	return a.r.EnvironmentsInProject(ctx, scope)
 }
 
-func (a *TxAuthorizer) ErasePrivacyAccount(ctx context.Context, account, p, username string) error {
+func (a *TxAuthorizer) ErasePrivacyAccount(ctx context.Context, account, p, username string) (int64, error) {
 	return a.r.ErasePrivacyAccount(ctx, account, p, username)
 }
 

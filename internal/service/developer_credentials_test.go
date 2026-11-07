@@ -48,7 +48,7 @@ func developerLifecycleFixture(t *testing.T) (*DeveloperCredentials, Actor, stri
 }
 func openDeveloperMintWindow(t *testing.T, s *DeveloperCredentials, scope domain.Scope, ttl time.Duration) {
 	t.Helper()
-	intent, err := NewDeveloperCredentialReauthIntent(string(scope.Env), nil, ttl, true)
+	intent, err := NewPersonalDeveloperCredentialReauthIntent(string(scope.Env), nil, ttl, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestDeveloperReauthFullCatalogueBinding(t *testing.T) {
 	for i := range keys {
 		keys[i] = fmt.Sprintf("key_%04d", i)
 	}
-	intent, err := NewDeveloperCredentialReauthIntent("env_catalogue", keys, time.Hour, true)
+	intent, err := NewPersonalDeveloperCredentialReauthIntent("env_catalogue", keys, time.Hour, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,11 +202,11 @@ func TestDeveloperReauthFullCatalogueBinding(t *testing.T) {
 	}
 	changed := append([]string(nil), keys...)
 	changed[9999] = "key_changed"
-	other, err := NewDeveloperCredentialReauthIntent("env_catalogue", changed, time.Hour, true)
+	other, err := NewPersonalDeveloperCredentialReauthIntent("env_catalogue", changed, time.Hour, true, false)
 	if err != nil || other.keySet == intent.keySet {
 		t.Fatal("10000th key was omitted from exact ceremony binding")
 	}
-	if _, err := NewDeveloperCredentialReauthIntent("env_catalogue", append(keys, "key_overflow"), time.Hour, true); !errors.Is(err, domain.ErrInvalid) {
+	if _, err := NewPersonalDeveloperCredentialReauthIntent("env_catalogue", append(keys, "key_overflow"), time.Hour, true, false); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("catalogue overflow admitted: %v", err)
 	}
 }

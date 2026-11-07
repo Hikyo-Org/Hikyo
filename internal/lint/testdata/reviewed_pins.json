@@ -970,7 +970,7 @@
     },
     "internal/store/authn/email_invitations.go:Resolver.restoreEmailInvitationNextEpoch": {
       "hash": "f61d11a673282caa8808196aa60400ad7f2bd727402f3b0bb0594c398cb07fa6",
-      "reason": "Historical authenticated-archive catalog probe checks only the one fixed org_email_invitations table name introduced in migration 00086 before a generated credential-epoch maximum. An archive without the table remains supported; no tenant rows, request-selected identifiers, invitation tokens or addresses are read by handwritten SQL. nextEpoch preserves the sane-range and overflow guard.",
+      "reason": "Historical authenticated-archive catalog probe checks only the one fixed org_email_invitations table name introduced in migration 00087 before a generated credential-epoch maximum. An archive without the table remains supported; no tenant rows, request-selected identifiers, invitation tokens or addresses are read by handwritten SQL. nextEpoch preserves the sane-range and overflow guard.",
       "callers": {
         "internal/store/authn/remote_pairing.go:Resolver.restorePairingNextEpoch": "e77222e3043f8bf91e594f57871c7a0b3ebce052ad1b2a5f38200e6197a71fbf"
       },

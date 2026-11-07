@@ -280,6 +280,7 @@ export const zId = z.string().min(3).max(64).regex(/^[a-z]{2,8}_[0-9a-fA-F-]{36}
 export const zMintDeveloperCredentialRequest = z.object({
     key_ids: z.array(zId).max(10000),
     consent_current_and_future: z.literal(true),
+    personal_consent: z.boolean().optional().default(false),
     lifetime_seconds: z.coerce.bigint().gte(BigInt(1)).lte(BigInt(28800))
 });
 
@@ -294,6 +295,7 @@ export const zDeveloperCredential = z.object({
     expires_at: z.iso.datetime(),
     revoked_at: z.iso.datetime().optional(),
     prefix_hint: z.string(),
+    personal_consent: z.boolean().optional(),
     authority_principal_name: z.string().min(1).optional()
 });
 
@@ -1262,7 +1264,8 @@ export const zTotpCodeRequest = z.object({
 
 export const zDeveloperCredentialReauthIntent = z.object({
     lifetime_seconds: z.coerce.bigint().gte(BigInt(1)).lte(BigInt(28800)),
-    consent_current_and_future: z.literal(true)
+    consent_current_and_future: z.literal(true),
+    personal_consent: z.boolean().optional().default(false)
 });
 
 export const zTotpDeveloperCredentialReauthRequest = z.object({
@@ -2040,6 +2043,92 @@ export const zCloneEnvironmentRequest = z.object({
     acknowledgements: zAcknowledgements.optional()
 });
 
+export const zSetPersonalValueRequest = z.object({
+    value: z.string().max(65536)
+});
+
+/**
+ * Why a personal value disappeared other than by its owner.
+ */
+export const zPersonalValueNoticeCause = z.enum([
+    'administrator',
+    'retention',
+    'restore',
+    'key_renamed',
+    'key_deleted',
+    'forbidden',
+    'qualification_lost'
+]);
+
+export const zPersonalValueEntry = z.object({
+    key_id: zId.optional(),
+    name: z.string().max(256),
+    set: z.boolean(),
+    updated_at: z.iso.datetime().optional(),
+    notice: zPersonalValueNoticeCause.optional(),
+    required: z.boolean().optional(),
+    suspended: z.boolean().optional(),
+    suspended_at: z.iso.datetime().optional(),
+    warnings: z.array(z.string().max(512)).max(32).optional(),
+    value: z.string().optional()
+});
+
+export const zPersonalValueList = z.object({
+    items: z.array(zPersonalValueEntry)
+});
+
+export const zPersonalValueHolder = z.object({
+    principal_id: zId,
+    username: z.string().optional(),
+    set: z.boolean(),
+    updated_at: z.iso.datetime().optional(),
+    notice: zPersonalValueNoticeCause.optional()
+});
+
+export const zPersonalValueCount = z.object({
+    key_id: zId,
+    name: z.string().max(256),
+    holders: z.int().gte(0),
+    notices: z.int().gte(0),
+    required: z.boolean()
+});
+
+export const zPersonalValueCounts = z.object({
+    eligible: z.int().gte(0),
+    items: z.array(zPersonalValueCount)
+});
+
+export const zPersonalOffboardingReceipt = z.object({
+    environment_id: zId,
+    environment_name: z.string().max(256),
+    key_name: z.string().max(256),
+    last_received_at: z.iso.datetime(),
+    changed_since: z.boolean()
+});
+
+export const zPersonalOffboardingServiceAccount = z.object({
+    id: zId,
+    name: z.string().max(256),
+    created_at: z.iso.datetime()
+});
+
+/**
+ * Names only, never values. What to rotate after someone leaves.
+ */
+export const zPersonalOffboardingReport = z.object({
+    principal_id: zId,
+    username: z.string(),
+    evidence_from: z.iso.datetime(),
+    generated_at: z.iso.datetime(),
+    received: z.array(zPersonalOffboardingReceipt),
+    service_accounts: z.array(zPersonalOffboardingServiceAccount),
+    limits: z.array(z.string().max(512))
+});
+
+export const zPersonalValueHolderList = z.object({
+    items: z.array(zPersonalValueHolder)
+});
+
 export const zSetValueRequest = z.object({
     value: z.string().max(65536),
     acknowledgements: zAcknowledgements.optional()
@@ -2104,7 +2193,8 @@ export const zDefinitionsKeyDeletion = z.object({
 
 export const zDefinitionsEnvironmentDeletion = z.object({
     name: z.string(),
-    occurrences: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+    occurrences: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    personal_values: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional()
 });
 
 export const zDefinitionsPlanDiff = z.object({
@@ -3400,7 +3490,14 @@ export const zDeliveredKey = z.object({
         'forbidden',
         'optional',
         'set'
-    ])
+    ]),
+    personal: z.enum([
+        'value',
+        'withheld',
+        'notice',
+        'missing'
+    ]).optional(),
+    personal_reason: z.string().max(64).optional()
 });
 
 /**
@@ -3567,7 +3664,8 @@ export const zDefinitionsBundleKey = z.object({
     group: z.string().max(128),
     declaration: zKeyDeclaration,
     required_in: zDefinitionsBundlePresence,
-    forbidden_in: zDefinitionsBundlePresence
+    forbidden_in: zDefinitionsBundlePresence,
+    personal_required_in: zDefinitionsBundlePresence.optional()
 });
 
 export const zDefinitionsBundle = z.object({
@@ -3602,7 +3700,8 @@ export const zKeyPresence = z.object({
  */
 export const zKeyPresenceRules = z.object({
     required_in: zKeyPresence,
-    forbidden_in: zKeyPresence
+    forbidden_in: zKeyPresence,
+    personal_required_in: zKeyPresence.optional()
 });
 
 export const zKey = z.object({
@@ -6872,6 +6971,102 @@ export const zRevealValuePath = z.object({
  * The cell, plaintext included.
  */
 export const zRevealValueResponse = zValueCell;
+
+export const zListMyPersonalValuesPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * The caller's personal entries.
+ */
+export const zListMyPersonalValuesResponse = zPersonalValueList;
+
+export const zDeleteMyPersonalValuePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    key: zKeyName
+});
+
+/**
+ * Deleted or dismissed.
+ */
+export const zDeleteMyPersonalValueResponse = z.void();
+
+export const zSetMyPersonalValueBody = zSetPersonalValueRequest;
+
+export const zSetMyPersonalValuePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    key: zKeyName
+});
+
+/**
+ * The stored entry. It never echoes the value back.
+ */
+export const zSetMyPersonalValueResponse = zPersonalValueEntry;
+
+export const zRevealMyPersonalValuePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    key: zKeyName
+});
+
+/**
+ * The entry, plaintext included.
+ */
+export const zRevealMyPersonalValueResponse = zPersonalValueEntry;
+
+export const zListPersonalValueCountsPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * The counts.
+ */
+export const zListPersonalValueCountsResponse = zPersonalValueCounts;
+
+export const zGetPersonalOffboardingReportPath = z.object({
+    org: zId,
+    project: zId,
+    member: z.string().min(1).max(256)
+});
+
+/**
+ * The report.
+ */
+export const zGetPersonalOffboardingReportResponse = zPersonalOffboardingReport;
+
+export const zListPersonalValueMembersPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    key: zKeyName
+});
+
+/**
+ * The holders.
+ */
+export const zListPersonalValueMembersResponse = zPersonalValueHolderList;
+
+export const zDeletePersonalValueMemberPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    key: zKeyName,
+    member: z.string().min(1).max(256)
+});
+
+/**
+ * Deleted.
+ */
+export const zDeletePersonalValueMemberResponse = z.void();
 
 export const zRevealValueDiffBody = zRevealDiffRequest;
 

@@ -315,6 +315,26 @@ export const SURFACES = defineSurfaceRegistry([
     mode: 'authenticated',
     chrome: 'shell',
   },
+  // The owner's own personal values in one environment (personal-values ADR,
+  // O3). Like `values`, it addresses one environment, so it has no sidebar entry.
+  {
+    id: 'personal-values',
+    path: '/orgs/:org/projects/:project/environments/:environment/personal-values',
+    label: 'My personal values',
+    section: null,
+    mode: 'authenticated',
+    chrome: 'shell',
+  },
+  // The offboarding report for one member of a project: names only, opened
+  // from the project's members view.
+  {
+    id: 'offboarding-report',
+    path: '/orgs/:org/projects/:project/offboarding-report',
+    label: 'Offboarding report',
+    section: null,
+    mode: 'authenticated',
+    chrome: 'shell',
+  },
   // The machine-access surface (#67). Project-scoped (#567): the sidebar's
   // project context block fills `:org` and `:project` from the route, so the
   // entry is no longer static and the earlier "could not know which project"

@@ -28,6 +28,8 @@ export const DEMO_SURFACE_POLICIES = {
   history: { mode: 'interactive' },
   'key-detail': { mode: 'interactive' },
   values: { mode: 'interactive' },
+  'personal-values': { mode: 'excluded', reason: 'Personal values need your own passkey or authenticator app on a full Hikyo installation.' },
+  'offboarding-report': { mode: 'excluded', reason: 'The offboarding report reads audit evidence from a full Hikyo installation.' },
   'machine-access': { mode: 'read-only' },
   'transit-keys': { mode: 'excluded', reason: 'Managed cryptographic keys require a full Hikyo installation.' },
   'change-approvals': { mode: 'read-only' },

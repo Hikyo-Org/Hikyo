@@ -57,6 +57,7 @@
     "cli:scan": "entirely client-local secret scanning of local files and the local Git repository (#153): it constructs no client, reaches no Hikyo server operation, and emits findings only to the invoking terminal or pipe, never any matched text",
     "cli:scim": "client transport for the /scim-bindings routes, whose operations carry the audit mapping (scim.binding_* / scim.mapping_* / scim.credential_* / scim.directory_read)",
     "cli:update": "client-local read and write of public Hikyo release metadata and the chosen local channel; it reaches no Hikyo server operation and holds no secret or tenant material",
+    "cli:personal": "client transport for the tenant-scoped personal-value routes, whose operations carry the personal_value.* audit mapping; a revealed value leaves through the print triad on the operator's terminal, holding no separate server-side record",
     "cli:values": "client transport for the tenant-scoped value routes, whose operations carry the audit mapping",
     "cli:version": "local build-metadata print: no server, no store",
     "cli:welcome": "local first-contact and build-version print: no server, no store",

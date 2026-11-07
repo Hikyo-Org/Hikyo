@@ -340,9 +340,12 @@ var ResolutionSurfaceWriters = map[string]bool{
 	"InsertDeveloperCredential":      true,
 	"RevokeDeveloperCredential":      true,
 	"ClampDeveloperCredentialExpiry": true,
-	"SetCredentialPolicy":            true,
-	"ClampCredentialExpiry":          true,
-	"ClampIndefiniteCredentials":     true,
+	// #1235: losing qualification purges the owner's personal values in the
+	// same authentication transaction as the credential change.
+	"PurgePersonalValuesForOwner": true,
+	"SetCredentialPolicy":         true,
+	"ClampCredentialExpiry":       true,
+	"ClampIndefiniteCredentials":  true,
 	// Registration policy (#606). The policy tables are class=authn: the
 	// sign-up legs (#607, #608) resolve them before any principal exists.
 	// Administration is authorized at the chokepoint (registration-policy.*)

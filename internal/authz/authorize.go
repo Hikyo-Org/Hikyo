@@ -264,6 +264,15 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 			}
 		}
 	}
+	if !held && personalOwnerFallback(op, caller) {
+		// The owner lists masked and deletes their own personal values
+		// whatever their grants (personal-values ADR, Who can do what). The
+		// proof owner is the caller; set and reveal never reach this.
+		held, err = a.r.PersonalOwnerHolds(ctx, chain, principal)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if !held {
 		// Resolvable, unauthorized: the truthful resolved chain, tenant
 		// trail.
@@ -346,7 +355,7 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 		a.captureDenial(ctx, principal, op, spec, resolutionResolvable, chain, domain.Scope{})
 		return nil, domain.ErrUnauthorized
 	}
-	return &proof{kind: kindTenant, op: op, chain: chain, tok: a.tok, selfConfig: protected, key: bound, navigation: navigation}, nil
+	return &proof{kind: kindTenant, op: op, chain: chain, tok: a.tok, owner: grantPrincipal, selfConfig: protected, key: bound, navigation: navigation}, nil
 }
 
 // missingScopeRefusalWork equalizes application-controlled query work with a
@@ -358,19 +367,32 @@ func (a *TxAuthorizer) missingScopeRefusalWork(ctx context.Context, caller Ident
 	if _, err := a.r.Grants(ctx, caller.Principal); err != nil {
 		return err
 	}
-	if !rulesApply(caller) || (!ruleSatisfiable(spec.formula) && targetRule == nil && !ruleNavigationOperation(op)) {
-		return nil
+	if rulesApply(caller) && (ruleSatisfiable(spec.formula) || targetRule != nil || ruleNavigationOperation(op)) {
+		if _, err := a.r.Rules(ctx, caller.Principal); err != nil {
+			return err
+		}
+		if key != nil {
+			_, err := a.resolveKeyTarget(ctx, domain.Scope{}, *key, caller.Principal)
+			if err != nil && !errors.Is(err, domain.ErrNotFound) {
+				return err
+			}
+		}
 	}
-	if _, err := a.r.Rules(ctx, caller.Principal); err != nil {
-		return err
-	}
-	if key != nil {
-		_, err := a.resolveKeyTarget(ctx, domain.Scope{}, *key, caller.Principal)
-		if err != nil && !errors.Is(err, domain.ErrNotFound) {
+	if personalOwnerFallback(op, caller) {
+		// The decoy owner read against an empty scope, which holds nothing.
+		if _, err := a.r.PersonalOwnerHolds(ctx, domain.Scope{}, caller.Principal); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// personalOwnerFallback names the two operations an owner may perform on
+// their own personal values without the formula: list masked and delete.
+// One predicate serves the resolvable denial and the missing-chain decoy, so
+// the two refusals cannot drift apart in work.
+func personalOwnerFallback(op Operation, caller Identity) bool {
+	return (op == OpPersonalValueList || op == OpPersonalValueDelete) && caller.Class == domain.ClassHuman
 }
 
 // machineRevealWithdrawn reports whether a machine caller is reaching for a
