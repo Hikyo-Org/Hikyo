@@ -24,16 +24,19 @@ git config user.email 'fixture@example.com'
 git config commit.gpgsign false
 mkdir -p .githooks scripts/ci docs/site/scripts web clients/ts internal
 cp "$hook" .githooks/pre-push
-# The stubs record each call in the repository's untracked-by-hook logs under .git.
-cat >scripts/ci/check-commit-signatures.sh <<'STUB'
+# The stubs record each call, and take their switches, in $logs outside the repository.
+logs=$root/logs
+mkdir -p "$logs"
+cat >scripts/ci/check-commit-signatures.sh <<STUB
 #!/bin/sh
-echo sig >>"$(git rev-parse --git-dir)/sig.log"
-[ ! -f "$(git rev-parse --git-dir)/sig-fail" ] || { echo 'stub: unsigned commit' >&2; exit 1; }
+echo sig >>"$logs/sig.log"
+[ ! -f "$logs/sig-fail" ] || { echo 'stub: unsigned commit' >&2; exit 1; }
 STUB
-cat >scripts/ci/storybook-suite.sh <<'STUB'
+cat >scripts/ci/storybook-suite.sh <<STUB
 #!/bin/sh
-echo suite >>"$(git rev-parse --git-dir)/suite.log"
-[ ! -f "$(git rev-parse --git-dir)/suite-fail" ] || { echo 'stub: suite red' >&2; exit 1; }
+echo suite >>"$logs/suite.log"
+[ ! -f "$logs/suite-edit" ] || echo edited >>web/a.txt
+[ ! -f "$logs/suite-fail" ] || { echo 'stub: suite red' >&2; exit 1; }
 STUB
 chmod +x .githooks/pre-push scripts/ci/*.sh
 echo 26.0.0 >.nvmrc
@@ -41,6 +44,8 @@ echo one >web/a.txt
 echo one >clients/ts/b.txt
 echo one >docs/site/scripts/test-csp.mjs
 echo one >internal/x.go
+echo '.env*' >.gitignore
+echo one >package.json
 git add -A
 git commit -q -m base
 git update-ref refs/remotes/hikyo-upstream/main HEAD
@@ -65,7 +70,7 @@ expect_refused() { # MESSAGE BRANCH [dir]
 	if push "$@"; then fail "push of $1 was accepted"; fi
 	grep -F -- "$message" "$out" >/dev/null || fail "expected refusal containing: $message"
 }
-count() { if [ -f "$gitdir/$1.log" ]; then wc -l <"$gitdir/$1.log" | tr -d ' '; else echo 0; fi; }
+count() { if [ -f "$logs/$1.log" ]; then wc -l <"$logs/$1.log" | tr -d ' '; else echo 0; fi; }
 expect_count() { [ "$(count "$1")" = "$2" ] || fail "$1 ran $(count "$1") times, want $2"; }
 
 # 1. A non-frontend push checks signatures and never runs the suite.
@@ -108,12 +113,12 @@ git switch -q fe-new
 expect_count suite 2
 
 # 5. A failing suite blocks the push and records nothing; a pass then clears it.
-: >"$gitdir/suite-fail"
+: >"$logs/suite-fail"
 expect_refused 'the Storybook suite failed' fe-new
 expect_count suite 3
 expect_refused 'the Storybook suite failed' fe-new
 expect_count suite 4
-rm "$gitdir/suite-fail"
+rm "$logs/suite-fail"
 expect_ok fe-new
 expect_count suite 5
 
@@ -124,22 +129,22 @@ grep -F 'skipping the Storybook suite' "$out" >/dev/null || fail 'skip warning m
 expect_count suite 5
 if (HIKYO_PREPUSH_STORYBOOK=1 && export HIKYO_PREPUSH_STORYBOOK && push fe-new); then fail 'invalid HIKYO_PREPUSH_STORYBOOK accepted'; fi
 grep -F 'must be unset or "skip"' "$out" >/dev/null || fail 'invalid value message missing'
-: >"$gitdir/sig-fail"
+: >"$logs/sig-fail"
 if (HIKYO_PREPUSH_STORYBOOK=skip && export HIKYO_PREPUSH_STORYBOOK && push fe-new); then fail 'skip bypassed the signature check'; fi
 grep -F 'unsigned commit' "$out" >/dev/null || fail 'signature failure missing under skip'
-rm "$gitdir/sig-fail"
+rm "$logs/sig-fail"
 
 # 7. Signatures run first: an unsigned frontend push never reaches the suite.
 before=$(count suite)
-: >"$gitdir/sig-fail"
+: >"$logs/sig-fail"
 expect_refused 'unsigned commit' fe-new
-rm "$gitdir/sig-fail"
+rm "$logs/sig-fail"
 expect_count suite "$before"
 
 # 8. Branch deletions are ignored entirely, even with a failing signature stub.
-: >"$gitdir/sig-fail"
-printf 'refs/heads/gone %s refs/heads/gone %s\n' "$zero" "$base" | sh .githooks/pre-push origin url >"$out" 2>&1 || fail 'deletion was refused'
-rm "$gitdir/sig-fail"
+: >"$logs/sig-fail"
+printf '(delete) %s refs/heads/gone %s\n' "$zero" "$base" | sh .githooks/pre-push origin url >"$out" 2>&1 || fail 'deletion was refused'
+rm "$logs/sig-fail"
 
 # 9. Linked worktrees share the stamps and need their own clean checkout.
 expect_ok fe-new
@@ -159,5 +164,69 @@ expect_ok fe-new
 [ "$(grep -c . "$gitdir/hikyo-storybook-passes")" = 50 ] || fail 'stamp file not bounded to 50'
 expect_ok fe-new
 expect_count suite 7
+
+# 11. Pushing HEAD or a bare SHA is classified by the remote ref, so both are checked.
+git switch -q go
+: >"$logs/sig-fail"
+printf 'HEAD %s refs/heads/go %s\n' "$(git rev-parse HEAD)" "$zero" | sh .githooks/pre-push origin url >"$out" 2>&1 && fail 'HEAD push skipped the signature check'
+printf '%s %s refs/heads/go %s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD)" "$zero" | sh .githooks/pre-push origin url >"$out" 2>&1 && fail 'SHA push skipped the signature check'
+rm "$logs/sig-fail"
+git switch -q fe-new
+commit_change web/a.txt
+before=$(count suite)
+printf 'HEAD %s refs/heads/fe-new %s\n' "$(git rev-parse HEAD)" "$zero" | sh .githooks/pre-push origin url >"$out" 2>&1 || fail 'HEAD frontend push refused'
+expect_count suite $((before + 1))
+commit_change web/a.txt
+before=$(count suite)
+printf '%s %s refs/heads/fe-new %s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD)" "$zero" | sh .githooks/pre-push origin url >"$out" 2>&1 || fail 'SHA frontend push refused'
+expect_count suite $((before + 1))
+# Tags are not branch pushes.
+printf 'refs/tags/v1 %s refs/tags/v1 %s\n' "$(git rev-parse HEAD)" "$zero" | sh .githooks/pre-push origin url >"$out" 2>&1 || fail 'tag push refused'
+
+# 12. Edits made while the suite runs are never stamped.
+commit_change web/a.txt
+before=$(count suite)
+: >"$logs/suite-edit"
+expect_refused 'changed while the Storybook suite ran' fe-new
+rm "$logs/suite-edit"
+git checkout -q -- web/a.txt
+expect_count suite $((before + 1))
+expect_ok fe-new
+expect_count suite $((before + 2))
+
+# 13. Untracked files in new directories and ignored .env files refuse.
+commit_change web/a.txt
+mkdir -p web/newdir
+echo stray >web/newdir/file
+expect_refused 'check out and clean the branch' fe-new
+rm -r web/newdir
+echo SECRET=1 >web/.env.local
+expect_refused 'check out and clean the branch' fe-new
+rm web/.env.local
+mkdir -p clients/ts/sub
+echo SECRET=1 >clients/ts/sub/.env
+expect_refused 'check out and clean the branch' fe-new
+rm -r clients/ts/sub
+expect_ok fe-new
+
+# 14. An inner failure (an unwritable stamp file) fails the hook, not just the suite.
+commit_change web/a.txt
+chmod a-w "$gitdir"
+if [ -w "$gitdir" ]; then
+	chmod u+w "$gitdir"
+	printf 'pre-push fixture: skipping the unwritable-stamp case (running as a user who ignores permissions)\n' >&2
+else
+	if push fe-new; then chmod u+w "$gitdir"; fail 'unwritable stamp file did not fail the hook'; fi
+	chmod u+w "$gitdir"
+	grep -F 'Permission denied' "$out" >/dev/null || fail 'expected the stamp write error'
+fi
+
+# 15. The root package.json is a frontend input.
+git switch -q go
+before=$(count suite)
+git switch -q -c pkg "$base"
+commit_change package.json
+expect_ok pkg
+expect_count suite $((before + 1))
 
 printf 'pre-push fixture: signatures run first; the suite runs once per frontend key and is skipped on stamps, branch deletions, non-frontend pushes and explicit opt-out; dirty, foreign or failing runs refuse\n'

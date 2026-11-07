@@ -231,14 +231,17 @@ checks. Prepare the pinned tools and frozen client/web dependencies first; this
 command does not install Node dependencies, generate files, or fix source. Go
 checks can download modules/toolchains and populate normal Go caches. See
 [the local feedback contract](scripts/dev/README.md)
-for the checks and limits. The signed-commit pre-push hook remains installed;
-the hook also runs `scripts/ci/storybook-suite.sh` (about 4 minutes the first
-time, then cached per exact `web/`, `clients/ts/` and `.nvmrc` bytes) when a push
-changes them, and refuses unless the pushed branch is checked out and clean.
-Set `HIKYO_PREPUSH_STORYBOOK=skip` to skip only that suite for a WIP push; CI
-still runs it, and signature checks cannot be skipped;
-the local feedback helper is optional and does not authorize merge. Hosted
+for the checks and limits. The signed-commit pre-push hook remains installed.
+The local feedback helper is optional and does not authorize merge. Hosted
 useful feedback must pass before queue admission.
+
+The pre-push hook also runs `scripts/ci/storybook-suite.sh` (about 4 minutes the
+first time, then cached per exact input bytes) when a push changes `web/`,
+`clients/ts/`, `.nvmrc`, the root `package.json`, that script or
+`docs/site/scripts/test-csp.mjs`. It refuses unless the pushed branch is checked
+out and clean (no modified, untracked or `.env*` files under `web/` and
+`clients/ts/`). Set `HIKYO_PREPUSH_STORYBOOK=skip` to skip only that suite for a
+WIP push; CI still runs it, and signature checks cannot be skipped.
 
 ## Continuous integration
 

@@ -7,9 +7,11 @@ zero=0000000000000000000000000000000000000000
 base=refs/remotes/hikyo-upstream/main
 dev=refs/remotes/hikyo-upstream/dev
 # Everything the Storybook suite reads from the repository (see
-# scripts/ci/storybook-suite.sh): web and the client package it aliases,
-# the Node pin, the suite itself and the CSP checker build:demo runs.
-storybook_paths='web clients/ts .nvmrc scripts/ci/storybook-suite.sh docs/site/scripts/test-csp.mjs'
+# scripts/ci/storybook-suite.sh): web and the client package it aliases, the
+# Node and pnpm pins, the suite itself and the CSP checker build:demo runs.
+# ci-storybook.yml triggers on exactly this list (plus its own file); a Go test
+# keeps them equal.
+storybook_paths='web clients/ts .nvmrc package.json scripts/ci/storybook-suite.sh docs/site/scripts/test-csp.mjs'
 
 case "${HIKYO_PREPUSH_STORYBOOK:-}" in
 	'' | skip) ;;
@@ -19,36 +21,51 @@ case "${HIKYO_PREPUSH_STORYBOOK:-}" in
 		;;
 esac
 
-# Hash of the pushed bytes of every Storybook input; equal keys mean equal inputs.
+# Hash of the bytes of every Storybook input at REV; equal keys mean equal inputs.
 storybook_key() {
 	for path in $storybook_paths; do
 		printf '%s %s\n' "$path" "$(git rev-parse --verify --quiet "$1:$path" || printf absent)"
 	done | git hash-object --stdin
 }
 
+# Succeed only when the working tree holds exactly the bytes with key $1.
+# Every failure is explicit: set -e is off inside functions run as `f || ...`.
+worktree_has_key() {
+	[ "$1" = "$(storybook_key HEAD)" ] || return 1
+	# shellcheck disable=SC2086 # the paths contain no whitespace or glob characters
+	[ -z "$(git status --porcelain --untracked-files=all -- $storybook_paths)" ] || return 1
+	# Ignored .env files change the build without changing any tree OID.
+	[ -z "$(find web clients/ts -name node_modules -prune -o -name '.env*' -print 2>/dev/null)" ] || return 1
+}
+
 # Require the Storybook suite to have passed for exactly the pushed frontend bytes.
 require_storybook() {
-	key=$(storybook_key "$1")
-	stamps=$(git rev-parse --path-format=absolute --git-common-dir)/hikyo-storybook-passes
+	key=$(storybook_key "$1") || return 1
+	stamps=$(git rev-parse --path-format=absolute --git-common-dir) || return 1
+	stamps=$stamps/hikyo-storybook-passes
 	if [ -f "$stamps" ] && grep -Fx -- "$key" "$stamps" >/dev/null; then
 		return 0
 	fi
-	# shellcheck disable=SC2086 # the paths contain no whitespace or glob characters
-	if [ "$key" != "$(storybook_key HEAD)" ] || [ -n "$(git status --porcelain -- $storybook_paths)" ]; then
+	worktree_has_key "$key" || {
 		printf 'pre-push: %s changes the frontend, and the Storybook suite has not passed for those exact bytes.\n' "$1" >&2
-		printf 'pre-push: check out and clean the branch you are pushing (or push from the worktree that has it), then push again.\n' >&2
+		printf 'pre-push: check out and clean the branch you are pushing (no modified, untracked or .env files under web/ and clients/ts/), or push from the worktree that has it, then push again.\n' >&2
 		return 1
-	fi
+	}
 	printf 'pre-push: running the Storybook suite (about 4 minutes; HIKYO_PREPUSH_STORYBOOK=skip skips it for WIP pushes)\n' >&2
 	(cd "$repo_root" && scripts/ci/storybook-suite.sh </dev/null) || {
 		printf 'pre-push: the Storybook suite failed; fix it before pushing\n' >&2
 		return 1
 	}
+	# Edits made while the suite ran must not be stamped.
+	worktree_has_key "$key" || {
+		printf 'pre-push: the frontend files changed while the Storybook suite ran; push again once they are stable\n' >&2
+		return 1
+	}
 	{
 		grep -Fvx -- "$key" "$stamps" 2>/dev/null || :
 		printf '%s\n' "$key"
-	} | tail -n 50 >"$stamps.$$"
-	mv "$stamps.$$" "$stamps"
+	} | tail -n 50 >"$stamps.$$" || return 1
+	mv "$stamps.$$" "$stamps" || return 1
 }
 
 git rev-parse --verify "$base^{commit}" >/dev/null 2>&1 || {
@@ -56,8 +73,10 @@ git rev-parse --verify "$base^{commit}" >/dev/null 2>&1 || {
 	exit 1
 }
 
-while read -r local_ref local_oid _remote_ref _remote_oid; do
-	case "$local_ref:$local_oid" in
+while read -r local_ref local_oid remote_ref _remote_oid; do
+	# Classify by the remote ref so `git push origin HEAD` and SHA pushes are
+	# checked; an all-zero local object is a deletion.
+	case "$remote_ref:$local_oid" in
 		refs/heads/*:"$zero") continue ;;
 		refs/heads/*:*) ;;
 		*) continue ;;

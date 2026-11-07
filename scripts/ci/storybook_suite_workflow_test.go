@@ -2,11 +2,13 @@ package ci_test
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -92,54 +94,155 @@ func nonBlankTrimmed(text string) []string {
 	return lines
 }
 
-// storybookScriptCommands extracts the script's `step DIR COMMAND...` lines and
-// its trailing design image loop.
-func storybookScriptCommands(script string) (commands, loop []string) {
-	stepLine := regexp.MustCompile(`^step (\S+) (.+)$`)
-	lines := nonBlankTrimmed(script)
-	for index, line := range lines {
-		if match := stepLine.FindStringSubmatch(line); match != nil {
-			commands = append(commands, match[1]+": "+match[2])
-		}
-		if strings.HasPrefix(line, "for png in ") {
-			loop = lines[index:]
-			break
-		}
-	}
-	return commands, loop
+// storybookStepFunction is the pinned body of the script's step() helper.
+var storybookStepFunction = []string{
+	"step() {",
+	"dir=$1",
+	"shift",
+	`printf '==> %s: %s\n' "$dir" "$*" >&2`,
+	`(cd "$dir" && "$@")`,
+	"}",
 }
 
-func TestStorybookSuiteScriptMatchesCIJob(t *testing.T) {
+const storybookLoopBanner = `printf '==> web: every linked design image ships in the static build\n' >&2`
+
+func scriptCodeLines(script string) []string {
+	var lines []string
+	for _, line := range nonBlankTrimmed(script) {
+		if !strings.HasPrefix(line, "#") {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+// storybookScriptProblems requires everything from the step() helper on to be
+// exactly: the pinned helper, one `step DIR COMMAND...` line per ci.yml command
+// and the closing design image loop. Only the prelude (toolchain and
+// environment checks) before the helper is free, and it may not run suite
+// commands.
+func storybookScriptProblems(script string, wantCommands, wantLoop []string) []string {
+	var problems []string
+	lines := scriptCodeLines(script)
+	start := slices.Index(lines, storybookStepFunction[0])
+	if start < 0 {
+		return []string{"script has no step() helper"}
+	}
+	for _, line := range lines[:start] {
+		if strings.HasPrefix(line, "step ") || strings.HasPrefix(line, "pnpm ") || strings.HasPrefix(line, "(cd ") {
+			problems = append(problems, "the prelude runs a suite command: "+line)
+		}
+	}
+	rest := lines[start:]
+	if len(rest) < len(storybookStepFunction) || !slices.Equal(rest[:len(storybookStepFunction)], storybookStepFunction) {
+		problems = append(problems, "the step() helper differs from the pinned body")
+		return problems
+	}
+	rest = rest[len(storybookStepFunction):]
+	stepLine := regexp.MustCompile(`^step (\S+) (.+)$`)
+	var gotCommands []string
+	for len(rest) > 0 {
+		match := stepLine.FindStringSubmatch(rest[0])
+		if match == nil {
+			break
+		}
+		gotCommands = append(gotCommands, match[1]+": "+match[2])
+		rest = rest[1:]
+	}
+	if !slices.Equal(gotCommands, wantCommands) {
+		problems = append(problems, fmt.Sprintf("script steps\n  %v\ndiffer from the ci.yml storybook job\n  %v", gotCommands, wantCommands))
+	}
+	wantTail := append([]string{storybookLoopBanner, "cd web"}, wantLoop...)
+	if len(wantLoop) == 0 || !slices.Equal(rest, wantTail) {
+		problems = append(problems, fmt.Sprintf("script ends with\n  %v\nbut ci.yml's design image check needs\n  %v", rest, wantTail))
+	}
+	return problems
+}
+
+// storybookCIStrict rejects anything on the mirrored suite steps that the
+// script cannot reproduce: env, if, shell, continue-on-error, timeouts, a
+// custom shell, or any other key but name, run and working-directory.
+func storybookCIStrict(ci []byte) error {
+	var document struct {
+		Jobs map[string]yaml.Node `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(ci, &document); err != nil {
+		return err
+	}
+	node, ok := document.Jobs["storybook"]
+	if !ok {
+		return fmt.Errorf("ci.yml has no storybook job")
+	}
+	var job struct {
+		Steps []yaml.Node `yaml:"steps"`
+	}
+	if err := node.Decode(&job); err != nil {
+		return err
+	}
+	type suiteStep struct {
+		Name             string `yaml:"name"`
+		Run              string `yaml:"run"`
+		WorkingDirectory string `yaml:"working-directory"`
+	}
+	inSuite := false
+	for _, stepNode := range job.Steps {
+		var probe struct {
+			Name string `yaml:"name"`
+		}
+		if err := stepNode.Decode(&probe); err != nil {
+			return err
+		}
+		if probe.Name == storybookInstallClient {
+			inSuite = true
+		}
+		if !inSuite {
+			continue
+		}
+		raw, err := yaml.Marshal(&stepNode)
+		if err != nil {
+			return err
+		}
+		decoder := yaml.NewDecoder(bytes.NewReader(raw))
+		decoder.KnownFields(true)
+		var step suiteStep
+		if err := decoder.Decode(&step); err != nil {
+			return fmt.Errorf("suite step %q has settings the script cannot mirror: %w", probe.Name, err)
+		}
+		if probe.Name == storybookDesignImages {
+			return nil
+		}
+	}
+	return fmt.Errorf("ci.yml storybook job has no %q step", storybookDesignImages)
+}
+
+func readStorybookInputs(t *testing.T) (ci, script []byte) {
+	t.Helper()
 	root := repositoryRoot(t)
 	ci, err := os.ReadFile(filepath.Join(root, ".github/workflows/ci.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	script, err := os.ReadFile(filepath.Join(root, storybookSuiteScript))
+	script, err = os.ReadFile(filepath.Join(root, storybookSuiteScript))
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantCommands, wantLoop := storybookCICommands(t, storybookCISteps(t, ci))
-	gotCommands, gotLoop := storybookScriptCommands(string(script))
-	if !reflect.DeepEqual(gotCommands, wantCommands) {
-		t.Errorf("%s runs\n  %v\nbut the ci.yml storybook job runs\n  %v", storybookSuiteScript, gotCommands, wantCommands)
+	return ci, script
+}
+
+func TestStorybookSuiteScriptMatchesCIJob(t *testing.T) {
+	ci, script := readStorybookInputs(t)
+	if err := storybookCIStrict(ci); err != nil {
+		t.Fatal(err)
 	}
-	if len(wantLoop) == 0 || !reflect.DeepEqual(gotLoop, wantLoop) {
-		t.Errorf("%s ends with\n  %v\nbut the ci.yml design image check is\n  %v", storybookSuiteScript, gotLoop, wantLoop)
+	wantCommands, wantLoop := storybookCICommands(t, storybookCISteps(t, ci))
+	for _, problem := range storybookScriptProblems(string(script), wantCommands, wantLoop) {
+		t.Error(problem)
 	}
 }
 
 func TestStorybookSuiteScriptDriftIsDetected(t *testing.T) {
-	root := repositoryRoot(t)
-	ci, err := os.ReadFile(filepath.Join(root, ".github/workflows/ci.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	script, err := os.ReadFile(filepath.Join(root, storybookSuiteScript))
-	if err != nil {
-		t.Fatal(err)
-	}
-	want, _ := storybookCICommands(t, storybookCISteps(t, ci))
+	ci, script := readStorybookInputs(t)
+	wantCommands, wantLoop := storybookCICommands(t, storybookCISteps(t, ci))
 	for name, mutate := range map[string]func(string) string{
 		"dropped light run": func(s string) string { return strings.Replace(s, "step web pnpm run test-storybook:light\n", "", 1) },
 		"reordered builds": func(s string) string {
@@ -148,13 +251,45 @@ func TestStorybookSuiteScriptDriftIsDetected(t *testing.T) {
 		"wrong directory": func(s string) string {
 			return strings.Replace(s, "step web pnpm run test:demo", "step . pnpm run test:demo", 1)
 		},
+		"extra command between steps": func(s string) string {
+			return strings.Replace(s, "step web pnpm run design:export\n", "step web pnpm run design:export\nrm -rf web/node_modules\n", 1)
+		},
+		"extra command after the loop": func(s string) string { return s + "true\n" },
+		"suite command in the prelude": func(s string) string {
+			return strings.Replace(s, "step() {", "pnpm run lint\nstep() {", 1)
+		},
+		"altered helper": func(s string) string {
+			return strings.Replace(s, `(cd "$dir" && "$@")`, `(cd "$dir" && "$@" || true)`, 1)
+		},
+		"altered loop": func(s string) string { return strings.Replace(s, "exit 1; }", "true; }", 1) },
+		"dropped loop": func(s string) string { return strings.Replace(s, "cd web\n", "", 1) },
+		"inline suppress": func(s string) string {
+			return strings.Replace(s, "step web pnpm run test:demo", "step web pnpm run test:demo || true", 1)
+		},
 	} {
 		mutated := mutate(string(script))
 		if mutated == string(script) {
 			t.Fatalf("%s: mutation did not change the script", name)
 		}
-		if got, _ := storybookScriptCommands(mutated); reflect.DeepEqual(got, want) {
+		if len(storybookScriptProblems(mutated, wantCommands, wantLoop)) == 0 {
 			t.Errorf("%s: drift went undetected", name)
+		}
+	}
+
+	// The reference side: settings the script cannot reproduce are refused.
+	for name, extra := range map[string]string{
+		"env":               "        env:\n          CI: ''\n",
+		"if":                "        if: always()\n",
+		"shell":             "        shell: sh\n",
+		"continue-on-error": "        continue-on-error: true\n",
+	} {
+		anchor := "      - name: Storybook story tests (light)\n        working-directory: web\n"
+		if !strings.Contains(string(ci), anchor) {
+			t.Fatalf("anchor missing from ci.yml")
+		}
+		mutated := strings.Replace(string(ci), anchor, anchor+extra, 1)
+		if storybookCIStrict([]byte(mutated)) == nil {
+			t.Errorf("%s on a mirrored step was accepted", name)
 		}
 	}
 }
@@ -202,7 +337,7 @@ func TestStorybookAdvisoryWorkflow(t *testing.T) {
 	if !reflect.DeepEqual(trigger.Types, []string{"opened", "synchronize", "reopened"}) {
 		t.Errorf("pull_request types %v", trigger.Types)
 	}
-	wantPaths := []string{"web/**", "clients/ts/**", ".nvmrc", "docs/site/scripts/test-csp.mjs", storybookSuiteScript, storybookAdvisoryPath}
+	wantPaths := []string{"web/**", "clients/ts/**", ".nvmrc", "package.json", "docs/site/scripts/test-csp.mjs", storybookSuiteScript, storybookAdvisoryPath}
 	if !reflect.DeepEqual(trigger.Paths, wantPaths) {
 		t.Errorf("pull_request paths %v, want %v", trigger.Paths, wantPaths)
 	}
@@ -294,11 +429,51 @@ func TestStorybookAdvisoryWorkflowIsNotARequiredContext(t *testing.T) {
 	}
 }
 
-// The pre-push hook fixture runs here, in the Go suite every PR already runs,
-// rather than as a step in ci.yml's frozen supply-chain-checks job.
+// The pre-push hook fixture runs with the ./scripts/ci tests (test_core and the
+// advisory invariants workflow), not as a ci.yml step: coverage-conservation
+// tests freeze the steps of the supply-chain-checks job.
 func TestPrePushHookFixture(t *testing.T) {
 	output, err := exec.Command("sh", filepath.Join(repositoryRoot(t), "scripts/git/pre-push_test.sh")).CombinedOutput()
 	if err != nil {
 		t.Fatalf("pre-push hook fixture failed: %v\n%s", err, output)
+	}
+}
+
+// The hook keys on, and the advisory workflow triggers on, the same inputs.
+func TestPrePushKeyPathsMatchAdvisoryTriggerPaths(t *testing.T) {
+	root := repositoryRoot(t)
+	hook, err := os.ReadFile(filepath.Join(root, ".githooks/pre-push"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	match := regexp.MustCompile(`(?m)^storybook_paths='([^']+)'$`).FindSubmatch(hook)
+	if match == nil {
+		t.Fatal("pre-push hook has no storybook_paths list")
+	}
+	raw, err := os.ReadFile(filepath.Join(root, storybookAdvisoryPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow struct {
+		On struct {
+			PullRequest struct {
+				Paths []string `yaml:"paths"`
+			} `yaml:"pull_request"`
+		} `yaml:"on"`
+	}
+	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	var triggers []string
+	for _, path := range workflow.On.PullRequest.Paths {
+		if path != storybookAdvisoryPath {
+			triggers = append(triggers, strings.TrimSuffix(path, "/**"))
+		}
+	}
+	keyed := strings.Fields(string(match[1]))
+	slices.Sort(triggers)
+	slices.Sort(keyed)
+	if !slices.Equal(keyed, triggers) {
+		t.Errorf("hook keys on %v but %s triggers on %v", keyed, storybookAdvisoryPath, triggers)
 	}
 }

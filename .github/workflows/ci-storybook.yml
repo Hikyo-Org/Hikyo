@@ -15,6 +15,7 @@ on:
       - 'web/**'
       - 'clients/ts/**'
       - .nvmrc
+      - package.json
       - docs/site/scripts/test-csp.mjs
       - scripts/ci/storybook-suite.sh
       - .github/workflows/ci-storybook.yml

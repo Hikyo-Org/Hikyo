@@ -20,6 +20,18 @@ expected_pnpm=$(sed -n 's/^[[:space:]]*"packageManager":[[:space:]]*"pnpm@\([^"]
 pnpm_version=$(pnpm --version) || fail 'cannot determine pnpm version'
 [ "$pnpm_version" = "$expected_pnpm" ] || fail "pnpm $pnpm_version differs from packageManager $expected_pnpm; select the pinned contributor toolchain"
 
+# The configs read these; a set value would change what the suite proves, so a
+# run that expected it to apply must fail rather than silently differ from CI.
+for name in STORYBOOK_THEME STORYBOOK_STATIC_DIR STORYBOOK_INTERACTION_PASS HIKYO_DEMO_BASE POSTHOG_REQUIRED; do
+	eval "[ -z \"\${$name+x}\" ]" || fail "$name is set; unset it so the suite matches CI"
+done
+if env | grep -q '^PUBLIC_POSTHOG_'; then
+	fail 'PUBLIC_POSTHOG_* is set; unset it so the suite matches CI'
+fi
+# Playwright's forbidOnly and other CI-only behaviour key off CI being set.
+CI=true
+export CI
+
 # step DIR COMMAND...: one ci.yml step, run from DIR under the repository root.
 step() {
 	dir=$1
