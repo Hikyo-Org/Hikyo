@@ -152,6 +152,7 @@ scratch databases:
 ```sh
 go vet -p 2 ./...
 GOFLAGS=-p=2 bash scripts/ci/test-core-packages.sh
+GOFLAGS=-p=2 bash scripts/ci/test-core-packages.sh serial
 go test -p 2 ./internal/lint ./internal/store/upgrade -count=1
 go test -p 2 -timeout 20m ./internal/isolation -count=1
 go test -race -p 2 ./internal/service ./internal/store ./internal/mail ./internal/runtimeconfig -count=1

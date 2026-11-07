@@ -95,14 +95,16 @@ readiness, and set `HIKYO_TEST_POSTGRES_DSN` only in the test environment. Inspe
 the harness for further variables. Record the container ID; clean up only task
 resources, never all volumes.
 
-Existing core wrapper:
+Existing core wrapper, in its two CI modes:
 
 ```sh
 HIKYO_TEST_POSTGRES_DSN="${HIKYO_TEST_POSTGRES_DSN:?set a disposable test database DSN first}" scripts/ci/test-core-packages.sh
+HIKYO_TEST_POSTGRES_DSN="${HIKYO_TEST_POSTGRES_DSN:?set a disposable test database DSN first}" scripts/ci/test-core-packages.sh serial
 ```
 
-It excludes `internal/isolation` and serializes `internal/app` to prevent
-database-drop contention. Run affected isolation tests separately with the
+The default pool mode runs every package except `internal/isolation`,
+`internal/app` and `internal/lint`. Serial mode runs `internal/app` and then
+`internal/lint` alone, to prevent database-drop contention. Run affected isolation tests separately with the
 disposable PostgreSQL setup. Do not add parallelism to accelerate bootstrap.
 Race, fuzz, vulnerability, Kubernetes, no-egress, and release checks are distinct
 evidence. Run what the contribution needs; authoritative exact-head CI proves
