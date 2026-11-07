@@ -14,7 +14,7 @@ if [ "$1" = api ] && [ "${2#repos/owner/repo/compare/}" != "$2" ]; then
   exit 0
 fi
 [ "$1" = api ] && [ "$2" = --paginate ] && [ "$3" = --slurp ]
-[ "$4" = 'repos/owner/repo/pulls?state=open&base=dev&per_page=100' ]
+[ "$4" = 'repos/owner/repo/pulls?state=open&per_page=100' ]
 cat "$DEV_DISCOVERY_FIXTURE/pulls.json"
 GH
 chmod +x "$work/bin/gh"
@@ -96,7 +96,7 @@ selects 'main push' all
 [ ! -e "$work/compare.calls" ] || { printf 'main push must not consult compare\n' >&2; exit 1; }
 GITHUB_EVENT_NAME=schedule
 reset
-for mutation in '.[0][0].number=0' '.[0][0].base.ref="main"' '.[0][0].head.sha="bad"' '.[0] += .[0]' '. + [.[0]]'; do
+for mutation in '.[0][0].number=0' '.[0][0].base.ref=null' '.[0][0].base.repo.full_name="other/repo"' '.[0][0].head.sha="bad"' '.[0] += .[0]' '. + [.[0]]'; do
   reset
   jq "$mutation" "$work/pulls.json" >"$work/new.json"
   mv "$work/new.json" "$work/pulls.json"
@@ -108,4 +108,41 @@ if run >/dev/null 2>&1; then printf 'dev discovery accepted nonterminal short pa
 reset
 jq -n --arg head "$head" '[[range(1; 101) | {number:., state:"open", base:{ref:"dev",repo:{full_name:"owner/repo"}}, head:{sha:$head}}]]' >"$work/pulls.json"
 run | jq -e --arg head "$head" '. == [{pr:1,head:$head}]' >/dev/null || { printf 'dev discovery mishandled a final page of exactly 100\n' >&2; exit 1; }
-printf 'dev discovery fixtures: exact current heads, superseded-head cleanup, dev-push scoping with every fail-open case, and malformed pagination refusals passed\n'
+# Stacked PRs: GitHub judges every layer by the stack base, so a layer of a stack
+# based on dev is discovered, a layer of any other stack is not, and a malformed
+# stack is refused wherever it appears.
+stk() { jq -n --arg ref "$1" --arg sha "$2" '{base:{ref:$ref,sha:$sha}}'; }
+dev_tip=dddddddddddddddddddddddddddddddddddddddd
+layer=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+other=ffffffffffffffffffffffffffffffffffffffff
+stack_pulls() { # $1 stack base ref for #8, $2 stack base ref for #9
+  jq -n --arg head "$head" --arg layer "$layer" --arg other "$other" --argjson a "$(stk "$1" "$dev_tip")" --argjson b "$(stk "$2" "$dev_tip")" '[[
+    {number:7,state:"open",base:{ref:"dev",repo:{full_name:"owner/repo"}},head:{sha:$head},stack:$a},
+    {number:8,state:"open",base:{ref:"feat/lower",repo:{full_name:"owner/repo"}},head:{sha:$layer},stack:$a},
+    {number:9,state:"open",base:{ref:"feat/other",repo:{full_name:"owner/repo"}},head:{sha:$other},stack:$b},
+    {number:10,state:"open",base:{ref:"main",repo:{full_name:"owner/repo"}},head:{sha:"1111111111111111111111111111111111111111"}}
+  ]]' >"$work/pulls.json"
+}
+GITHUB_EVENT_NAME=schedule
+reset
+stack_pulls dev main
+run | jq -e --arg head "$head" --arg layer "$layer" 'sort_by(.pr) == [{pr:7,head:$head},{pr:8,head:$layer}]' >/dev/null || { printf 'dev discovery must include stacked-on-dev layers and exclude other stacks\n' >&2; exit 1; }
+GITHUB_EVENT_NAME=workflow_run
+jq -n --arg head "$layer" '{repository:{full_name:"owner/repo"},workflow_run:{event:"pull_request",path:".github/workflows/ci-feedback.yml",head_sha:$head}}' >"$work/event.json"
+run | jq -e --arg layer "$layer" '. == [{pr:8,head:$layer}]' >/dev/null || { printf 'dev feedback callback must reach a stacked-on-dev layer\n' >&2; exit 1; }
+jq -n --arg head "$other" '{repository:{full_name:"owner/repo"},workflow_run:{event:"pull_request",path:".github/workflows/ci-feedback.yml",head_sha:$head}}' >"$work/event.json"
+run | jq -e '. == []' >/dev/null || { printf 'dev feedback callback must not reach a stack on another base\n' >&2; exit 1; }
+GITHUB_EVENT_NAME=pull_request_target
+jq -n --arg head "$layer" --argjson s "$(stk dev "$dev_tip")" '{repository:{full_name:"owner/repo"},number:8,action:"opened",pull_request:{number:8,base:{ref:"feat/lower"},head:{sha:$head},stack:$s}}' >"$work/event.json"
+run | jq -e --arg layer "$layer" '. == [{pr:8,head:$layer}]' >/dev/null || { printf 'dev PR event must accept a stacked-on-dev layer\n' >&2; exit 1; }
+jq '.pull_request.stack.base.ref="main"' "$work/event.json" >"$work/new.json"; mv "$work/new.json" "$work/event.json"
+if run >/dev/null 2>&1; then printf 'dev PR event accepted a stack on another base\n' >&2; exit 1; fi
+GITHUB_EVENT_NAME=schedule
+for mutation in '.[0][1].stack.base.sha="bad"' '.[0][1].stack.base.ref=""' '.[0][1].stack.base.ref=5' '.[0][1].stack.base=null' '.[0][2].stack="x"' '.[0][2].stack.base.sha=null' '.[0][2].stack={}'; do
+  reset
+  stack_pulls dev main
+  jq "$mutation" "$work/pulls.json" >"$work/new.json"
+  mv "$work/new.json" "$work/pulls.json"
+  if run >/dev/null 2>&1; then printf 'dev discovery accepted malformed stack: %s\n' "$mutation" >&2; exit 1; fi
+done
+printf 'dev discovery fixtures: exact current heads, superseded-head cleanup, dev-push scoping with every fail-open case, stacked-on-dev admission, and malformed pagination and stack refusals passed\n'

@@ -45,6 +45,7 @@ if [ "$url" = repos/o/r/pulls/7 ] && [ "${MALFORMED_API:-false}" = true ]; then
 	exit 0
 fi
 case $url in
+*/compare/*) fixture=compare ;;
 */pulls/7/files*) fixture=files ;;
 */pulls/7/reviews*)
 	[ "${REVIEWS_ERROR:-false}" = false ] || exit 1
@@ -603,6 +604,57 @@ mv "$work/pr-new.json" "$work/pr.json"
 expect_policy_stdout 'policy-only authority is independent of asynchronous mergeability' '{"workflow_change_authorized":false}'
 expect_reject 'policy-only superseded head' fedcba9876543210fedcba9876543210fedcba98
 expect_policy_silent
+
+# A layer of a stack on dev is judged over dev-tip...head, which carries the lower
+# layers. Its own file list (pulls/N/files) starts at the layer below and would hide
+# a lower layer's .github edit. The publisher names the tip in PR_GATE_FILES_BASE.
+tip=dddddddddddddddddddddddddddddddddddddddd
+compare() { printf '{"status":"%s","files":%s}\n' "$1" "$2" >"$work/compare.json"; }
+lower='[{"filename":".github/workflows/lower.yml"},{"filename":"docs/site/index.mdx"}]'
+export PR_GATE_FILES_BASE=$tip
+fixture 1 "$docs" '{"workflow_runs":[]}' success
+same_repo
+compare ahead "$docs"
+expect_policy_stdout 'a stacked layer whose dev range is docs only' '{"workflow_change_authorized":false}'
+compare ahead "$lower"
+expect_reject 'a lower layer .github edit that only the dev range lists'
+grep -F 'workflow edits require an independent current maintainer approval' "$work/stderr" >/dev/null
+expect_policy_silent
+approval
+expect_policy_stdout 'a lower layer .github edit with independent approval' '{"workflow_change_authorized":true}'
+fixture 1 "$docs" '{"workflow_runs":[]}' success
+same_repo
+bdfl_author
+compare ahead "$lower"
+expect_policy_stdout 'the BDFL exemption on a stacked layer' '{"workflow_change_authorized":true}'
+fixture 1 "$docs" '{"workflow_runs":[]}' success
+same_repo
+compare diverged "$docs"
+expect_accept 'a diverged dev range, as any PR on a moved dev has'
+compare identical '[]'
+expect_accept 'an identical dev range'
+jq -n '[range(0; 300) | {filename: "docs/f\(.).md"}]' >"$work/many.json"
+compare ahead "$(cat "$work/many.json")"
+expect_reject 'a dev range at the compare file limit'
+compare ahead "$(jq -c '.[1:]' "$work/many.json")"
+expect_accept 'a dev range just under the compare file limit'
+compare behind "$docs"
+expect_reject 'a dev range whose compare is behind'
+printf '{"status":"ahead"}\n' >"$work/compare.json"
+expect_accept 'a compare without a file list is an empty list'
+printf '{"status":"ahead","files":"x"}\n' >"$work/compare.json"
+expect_reject 'a compare with a malformed file list'
+compare ahead '[{"filename":""}]'
+expect_reject 'a compare entry without a file name'
+compare ahead "$docs"
+( PR_GATE_FILES_BASE=main expect_reject 'a non-SHA stacked file-list base' )
+( PR_GATE_FILES_BASE=DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD expect_reject 'an upper-case stacked file-list base' )
+unset PR_GATE_FILES_BASE
+# Without the base, a PR is judged by its own file list, unchanged.
+fixture 1 "$docs" '{"workflow_runs":[]}' success
+same_repo
+expect_policy_stdout 'a direct PR keeps the pulls files list' '{"workflow_change_authorized":false}'
+
 unset PR_GATE_ONCE PR_GATE_POLICY_ONLY
 
 printf 'PR gate fixture: exact-head validation, independent workflow authority, and runner-free pending decisions\n'

@@ -48,6 +48,9 @@ type pull struct {
 	State          string    `json:"state"`
 	Head           reference `json:"head"`
 	Base           reference `json:"base"`
+	Stack          stack     `json:"stack,omitzero"`
+	StackInvalid   bool      `json:"-"`
+	DevTip         string    `json:"-"`
 	MergeCommitSHA string    `json:"merge_commit_sha"`
 	Mergeable      *bool     `json:"mergeable"`
 	User           struct {
@@ -55,6 +58,68 @@ type pull struct {
 		Login string `json:"login"`
 	} `json:"user"`
 }
+
+// GitHub evaluates every PR of a stack against the rules of the stack base, so
+// a layer's own base is a lower layer's branch. stack.base names the branch the
+// stack merges into.
+type stack struct {
+	Base struct {
+		Ref string `json:"ref"`
+		SHA string `json:"sha"`
+	} `json:"base"`
+}
+
+// UnmarshalJSON keeps the real GitHub base and records a stack beside it. A
+// malformed stack is not an error here, so it cannot stall the main queue, which
+// never reads it; dev admission refuses a PR whose StackInvalid is set.
+func (p *pull) UnmarshalJSON(data []byte) error {
+	type plain pull
+	var raw struct {
+		plain
+		Stack json.RawMessage `json:"stack"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*p = pull(raw.plain)
+	if len(raw.Stack) == 0 || string(raw.Stack) == "null" {
+		return nil
+	}
+	var s stack
+	if err := json.Unmarshal(raw.Stack, &s); err != nil || s.Base.Ref == "" || !shaPattern.MatchString(s.Base.SHA) {
+		p.StackInvalid = true
+		return nil
+	}
+	p.Stack = s
+	return nil
+}
+
+// stackedOnDev is a layer above the bottom of a stack that merges into dev. GitHub
+// judges it by dev's rules although its own base is a lower layer's branch. The
+// bottom layer is a plain dev PR.
+func (p pull) stackedOnDev() bool { return p.Stack.Base.Ref == "dev" && p.Base.Ref != "dev" }
+
+// admission is the one place dev admission reads a PR's base: dev and the live dev
+// tip for a stacked layer, the PR's own base otherwise. GitHub-identity checks
+// (run association, role matching, movement) use Base itself.
+func (p pull) admission() reference {
+	if p.stackedOnDev() {
+		return reference{Ref: "dev", SHA: p.DevTip, Repo: p.Base.Repo}
+	}
+	return p.Base
+}
+
+func (p *pull) setLiveBase(sha string) {
+	if p.stackedOnDev() {
+		p.DevTip = sha
+	} else {
+		p.Base.SHA = sha
+	}
+}
+
+// sameBase compares the whole base tuple, including a stacked layer's dev tip.
+func (p pull) sameBase(q pull) bool { return p.Base == q.Base && p.DevTip == q.DevTip }
+
 type workflow struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
@@ -569,15 +634,30 @@ type policyDecision struct {
 
 type verifier func(context.Context, int, string) (policyDecision, error)
 
+type policyFilesBase struct{}
+
+// verifyPR runs the policy verifier for one PR. A stacked layer's file list is
+// judged over dev-tip...head, the tuple the Go policy reads, passed to the shell
+// verifier as PR_GATE_FILES_BASE.
+func (c *controller) verifyPR(ctx context.Context, p pull) (policyDecision, error) {
+	if p.stackedOnDev() {
+		ctx = context.WithValue(ctx, policyFilesBase{}, p.admission().SHA)
+	}
+	return c.verify(ctx, p.Number, p.Head.SHA)
+}
+
 func verifyPolicy(ctx context.Context, pr int, head string) (policyDecision, error) {
 	cmd := gateCommand(ctx, "sh", "scripts/ci/check-fork-validation.sh")
 	// Override only the controller-owned settings, retaining gh authentication.
 	for _, value := range os.Environ() {
-		if !strings.HasPrefix(value, "PR_NUMBER=") && !strings.HasPrefix(value, "HEAD_SHA=") && !strings.HasPrefix(value, "PR_GATE_ONCE=") && !strings.HasPrefix(value, "PR_GATE_POLICY_ONLY=") {
+		if !strings.HasPrefix(value, "PR_NUMBER=") && !strings.HasPrefix(value, "HEAD_SHA=") && !strings.HasPrefix(value, "PR_GATE_ONCE=") && !strings.HasPrefix(value, "PR_GATE_POLICY_ONLY=") && !strings.HasPrefix(value, "PR_GATE_FILES_BASE=") {
 			cmd.Env = append(cmd.Env, value)
 		}
 	}
 	cmd.Env = append(cmd.Env, "PR_NUMBER="+strconv.Itoa(pr), "HEAD_SHA="+head, "PR_GATE_ONCE=1", "PR_GATE_POLICY_ONLY=1")
+	if base, ok := ctx.Value(policyFilesBase{}).(string); ok {
+		cmd.Env = append(cmd.Env, "PR_GATE_FILES_BASE="+base)
+	}
 	var output bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &output, os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -650,7 +730,10 @@ func (c *controller) readPR(ctx context.Context, number int) (pull, error) {
 	// REST pull.base.sha may remain the branch divergence commit after main
 	// advances. Resolve the authenticated branch ref on every read, including
 	// final publication, instead of treating that PR metadata as the live tip.
-	if p.State == "open" && p.Base.Ref == c.admissionBranch() {
+	if c.checkName == devCheckName && p.StackInvalid {
+		return p, errors.New("malformed PR stack; dev admission refuses it")
+	}
+	if p.State == "open" && p.admission().Ref == c.admissionBranch() {
 		var ref struct {
 			Ref    string `json:"ref"`
 			Object struct {
@@ -664,7 +747,7 @@ func (c *controller) readPR(ctx context.Context, number int) (pull, error) {
 		if ref.Ref != "refs/heads/"+c.admissionBranch() || ref.Object.Type != "commit" || !shaPattern.MatchString(ref.Object.SHA) {
 			return p, errors.New("invalid live default-branch ref")
 		}
-		p.Base.SHA = ref.Object.SHA
+		p.setLiveBase(ref.Object.SHA)
 	}
 	return p, nil
 }
@@ -796,7 +879,14 @@ type snapshot struct {
 }
 
 func (s snapshot) binding(repoID int64) binding {
-	b := binding{RepoID: repoID, PR: s.PR.Number, Head: s.PR.Head.SHA, BaseRef: sha256.Sum256([]byte(s.PR.Base.Ref)), Base: s.PR.Base.SHA}
+	// A stacked layer binds to dev's tip and to the base it really has, so
+	// retargeting it to dev itself is a new tuple.
+	base := s.PR.admission()
+	ref := base.Ref
+	if s.PR.stackedOnDev() {
+		ref += "\x00stacked-on:" + s.PR.Base.Ref
+	}
+	b := binding{RepoID: repoID, PR: s.PR.Number, Head: s.PR.Head.SHA, BaseRef: sha256.Sum256([]byte(ref)), Base: base.SHA}
 	if s.Run != nil {
 		b.Run, b.Attempt = s.Run.ID, s.Run.Attempt
 	}
@@ -926,7 +1016,7 @@ func (c *controller) blockMovement(ctx context.Context, number int, phase string
 	if current.State != "open" {
 		return nil
 	}
-	if current.Head != p.Head || current.Base != p.Base {
+	if current.Head != p.Head || !current.sameBase(p) {
 		return errors.New("PR changed during pending recovery; current identity could not be confirmed blocked")
 	}
 	_, err = fmt.Fprintf(c.output, "PR #%d: pending after authenticated state movement during %s\n", number, phase)
