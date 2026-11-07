@@ -301,7 +301,7 @@ export const PersonalMembers: Story = {
 // On a phone the way to your own values is a control, at the 44px a finger
 // needs. A story's browser has a fine pointer, so it runs at touch size.
 export const PhonePersonalOwnLink: Story = {
-  globals: { viewport: { value: 'phone', isRotated: false } },
+  globals: { viewport: { value: 'phoneNarrow', isRotated: false } },
   parameters: PersonalMembers.parameters,
   beforeEach: () => {
     const root = document.documentElement;
@@ -314,5 +314,7 @@ export const PhonePersonalOwnLink: Story = {
     const box = own.getBoundingClientRect();
     await expect(box.height).toBeGreaterThanOrEqual(tokenPx('--touch'));
     await expect(box.width).toBeGreaterThanOrEqual(tokenPx('--touch'));
+    // A button does not wrap, so its label must still fit the narrowest phone.
+    await expect(box.right).toBeLessThanOrEqual(own.parentElement!.getBoundingClientRect().right + 0.5);
   },
 };
