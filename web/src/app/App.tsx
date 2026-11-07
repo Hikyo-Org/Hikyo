@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ReactElement } from 'react';
-import { BrowserRouter, HashRouter, Navigate, Route, Routes, useLocation } from 'react-router';
+import { BrowserRouter, HashRouter, matchPath, Navigate, Route, Routes, useLocation } from 'react-router';
 
 import { NotFound, Overview } from '../routes/Placeholder.tsx';
 import { Shell } from '../routes/Shell.tsx';
@@ -177,6 +177,7 @@ const shellSurfaces = SURFACES.filter((surface) => surface.chrome === 'shell');
  * session would break the one arc where the human has no session yet.
  */
 const anonymousSurfaces = SURFACES.filter(allowsAnonymousSession);
+const publicSurfaces = SURFACES.filter((surface) => surface.mode === 'public');
 
 /**
  * Every chromeless route that still renders after sign-in. The sign-in and
@@ -241,8 +242,11 @@ export function AppRoutes() {
       }
   }
 
+  // A public page's fragment is its own bearer material (a sign-up or
+  // invitation token), never a destination to carry into a query string.
+  const bearerFragment = publicSurfaces.some((surface) => matchPath(surface.path, location.pathname) !== null);
   const loginPath = `${surfaceById('login').path}?${new URLSearchParams({
-    returnTo: `${location.pathname}${location.search}${location.hash}`,
+    returnTo: `${location.pathname}${location.search}${bearerFragment ? '' : location.hash}`,
   })}`;
   const returnTo = loginReturnTarget(new URLSearchParams(location.search).get('returnTo'));
 

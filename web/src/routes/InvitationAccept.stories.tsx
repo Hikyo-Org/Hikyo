@@ -75,7 +75,7 @@ export const NotValid: Story = {
 export const MissingLink: Story = {
   parameters: { app: { path: '/invitations/accept' } },
   play: async ({ canvas }) => {
-    await expect(await canvas.findByText('This invitation is not valid for this account or has expired.')).toBeVisible();
+    await expect(await canvas.findByText(/needs the link from your invitation email/)).toBeVisible();
   },
 };
 

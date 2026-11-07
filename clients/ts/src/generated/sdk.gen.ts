@@ -4505,7 +4505,9 @@ export const previewEmailInvitation = <ThrowOnError extends boolean = false>(opt
  * Accepting is an ordinary privilege increase: when the template creates
  * a grant, the person's generation advances, every session of theirs ends
  * (the current one included) and their developer credentials are revoked.
- * `signed_out` reports that, and a browser session's cookies are cleared.
+ * `signed_out` reports that. The response leaves a browser session's
+ * cookies untouched; the browser page ends its own session once it has
+ * shown the outcome.
  *
  */
 export const acceptEmailInvitation = <ThrowOnError extends boolean = false>(options: Options<AcceptEmailInvitationData, ThrowOnError>) => (options.client ?? client).post<AcceptEmailInvitationResponses, AcceptEmailInvitationErrors, ThrowOnError>({

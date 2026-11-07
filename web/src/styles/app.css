@@ -4621,18 +4621,19 @@ label.chk:has(input:disabled) {
 .remote__facts,
 .connection__facts,
 .scim-binding__facts,
-.scim-credential__facts {
+.scim-credential__facts,
+.invitation__facts {
   display: grid;
   grid-template-columns: max-content 1fr;
   gap: 2px 12px;
   margin: 0 0 var(--space-2);
 }
 
-:is(.remote__facts, .connection__facts, .scim-binding__facts, .scim-credential__facts) dt {
+:is(.remote__facts, .connection__facts, .scim-binding__facts, .scim-credential__facts, .invitation__facts) dt {
   color: var(--tx-dim);
 }
 
-:is(.remote__facts, .connection__facts, .scim-binding__facts, .scim-credential__facts) dd {
+:is(.remote__facts, .connection__facts, .scim-binding__facts, .scim-credential__facts, .invitation__facts) dd {
   margin: 0;
   overflow-wrap: anywhere;
 }

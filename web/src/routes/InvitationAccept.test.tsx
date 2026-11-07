@@ -83,16 +83,30 @@ describe('InvitationAccept', () => {
     mocks.preview.mockResolvedValue(PREVIEW);
     mocks.accept.mockResolvedValue({ org: PREVIEW.org, org_name: 'Acme', template: 'editor', grants_created: 3, signed_out: true });
     const view = await mount();
+    // Ending the session remounts the router: the outcome must already be in it.
+    let shownAtEnd = '';
+    mocks.endSession.mockImplementation(() => { shownAtEnd = view.container.textContent ?? ''; });
     try {
       await settleTask();
       await act(async () => button(view.container, 'Accept').click());
       await settleTask();
       expect(mocks.accept).toHaveBeenCalledWith('eit_secret');
       expect(mocks.endSession).toHaveBeenCalledTimes(1);
+      expect(shownAtEnd).toContain('You joined Acme as editor');
       const text = view.container.textContent ?? '';
       expect(text).toContain('You joined Acme as editor');
       expect(text).toContain('sign in again');
       expect(view.container.querySelector('a[href="/login"]')).not.toBeNull();
+    } finally { await view.unmount(); }
+  });
+
+  it('asks for the emailed link again when the page opens without a token', async () => {
+    const view = await mount('/invitations/accept');
+    try {
+      await settleTask();
+      expect(view.container.textContent).toContain('This page needs the link from your invitation email.');
+      expect(view.container.querySelector('[role="alert"]')).toBeNull();
+      expect(mocks.preview).not.toHaveBeenCalled();
     } finally { await view.unmount(); }
   });
 

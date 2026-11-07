@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -64,39 +63,19 @@ func (a *API) PreviewEmailInvitation(ctx context.Context, req apigen.PreviewEmai
 	}, nil
 }
 
-// acceptEmailInvitationResponse clears the browser cookies alongside the 200
-// when the acceptance ended the person's sessions: the row is gone, so a kept
-// cookie could only be refused.
-type acceptEmailInvitationResponse struct {
-	body    apigen.EmailInvitationAcceptance
-	cookies []*http.Cookie
-}
-
-func (r acceptEmailInvitationResponse) VisitAcceptEmailInvitationResponse(w http.ResponseWriter) error {
-	return writeJSONWithCookies(w, r.cookies, http.StatusOK, r.body)
-}
-
+// AcceptEmailInvitation answers a plain 200 even when the acceptance ended the
+// person's sessions, and leaves the browser cookies alone: the browser treats a
+// changed session cookie as a possibly replaced session and keeps the response
+// only if whoami still proves the same person, which a revoked session cannot,
+// so the page could not show the outcome. The page ends its own session once it
+// has shown it.
 func (a *API) AcceptEmailInvitation(ctx context.Context, req apigen.AcceptEmailInvitationRequestObject) (apigen.AcceptEmailInvitationResponseObject, error) {
 	res, err := a.EmailInvitations.Accept(ctx, service.Bearer(bearer(ctx)), req.Body.Token)
 	if err != nil {
 		return nil, err
 	}
-	return acceptEmailInvitationResult(ctx, res), nil
-}
-
-// acceptEmailInvitationResult decides whether the 200 also clears the browser
-// cookies: only when sessions ended and the request carried a browser session.
-func acceptEmailInvitationResult(ctx context.Context, res service.EmailInvitationAcceptance) apigen.AcceptEmailInvitationResponseObject {
-	body := apigen.EmailInvitationAcceptance{
+	return apigen.AcceptEmailInvitation200JSONResponse{
 		Org: string(res.Org), OrgName: res.OrgName, Template: apigen.RoleTemplate(res.Template),
 		GrantsCreated: res.GrantsCreated, SignedOut: res.SignedOut,
-	}
-	if res.SignedOut {
-		if r := requestFrom(ctx); r != nil {
-			if c, cerr := r.Cookie(browserSessionCookie); cerr == nil && c.Value != "" {
-				return acceptEmailInvitationResponse{body: body, cookies: expiredBrowserCookies()}
-			}
-		}
-	}
-	return apigen.AcceptEmailInvitation200JSONResponse(body)
+	}, nil
 }

@@ -132,6 +132,10 @@ type EmailInvitationAcceptance struct {
 
 // Send records an invitation and, for a matched account, schedules one mail.
 func (s *EmailInvitations) Send(ctx context.Context, actor Actor, spec EmailInvitationSendSpec) (EmailInvitationReceipt, error) {
+	// A wiring fault, refused before anything is read or written.
+	if s.Sends == nil {
+		return EmailInvitationReceipt{}, errors.New("email invitations: no background send set configured")
+	}
 	scope := domain.Scope{Org: spec.Org}
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
 		_, _, err := authorize(ctx, az, actor, authz.OpEmailInvitationSend, scope, s.now())
@@ -139,9 +143,6 @@ func (s *EmailInvitations) Send(ctx context.Context, actor Actor, spec EmailInvi
 	})
 	if err != nil {
 		return EmailInvitationReceipt{}, err
-	}
-	if s.Sends == nil {
-		return EmailInvitationReceipt{}, errors.New("email invitations: no background send set configured")
 	}
 	// The mailer predicate precedes the address so an unconfigured instance
 	// answers every request alike.
