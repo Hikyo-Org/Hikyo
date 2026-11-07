@@ -1049,8 +1049,9 @@ hosts also need their upgrade journal finished through `hikyo upgrade`, except a
 source back by hand and it serves unfenced.
 
 `run --once` exits nonzero while an applicable advisory stays blocked by anything
-other than an expected wait (window, staged rollout, backoff), so the unit shows as
-failed in `systemctl --failed` and ordinary host monitoring. The timer keeps firing
+other than an expected wait (window, staged rollout, manual mode, or a retry backoff
+before its third failed attempt), and while a pinned operation waits on a command for
+a person, so the unit shows as failed in `systemctl --failed` and ordinary host monitoring. The timer keeps firing
 after a failed run. Failed staging output reaches the journal after exact and
 pattern redaction of secrets.
 
