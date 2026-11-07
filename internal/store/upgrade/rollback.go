@@ -223,9 +223,32 @@ const publicObjects = `
 const publicLeftovers = `SELECT count(*) FROM pg_depend d WHERE d.refclassid = 'pg_namespace'::regclass AND d.refobjid = 'public'::regnamespace AND d.deptype = 'n'
  AND NOT EXISTS (SELECT 1 FROM pg_depend x WHERE x.classid = d.classid AND x.objid = d.objid AND x.objsubid = d.objsubid AND x.deptype IN ('i','a','e'))`
 
+// publicDependents names, in one string, the objects outside "public" that the reset's CASCADE
+// drops would take with it: views, foreign keys, columns, defaults, triggers and policies
+// elsewhere that depend on something in "public". PostgreSQL drops those without checking their
+// owner. Rules, defaults, triggers and policies are placed by their table; an object whose place
+// is unknown counts as outside.
+const publicDependents = `SELECT coalesce(string_agg(DISTINCT (pg_identify_object(d.classid, d.objid, d.objsubid)).identity, ', '), '')
+ FROM pg_depend d WHERE d.deptype IN ('n','a') AND (pg_identify_object(d.refclassid, d.refobjid, 0)).schema = 'public'
+ AND coalesce(CASE d.classid
+  WHEN 'pg_rewrite'::regclass THEN (SELECT c.relnamespace FROM pg_rewrite r JOIN pg_class c ON c.oid = r.ev_class WHERE r.oid = d.objid)
+  WHEN 'pg_attrdef'::regclass THEN (SELECT c.relnamespace FROM pg_attrdef a JOIN pg_class c ON c.oid = a.adrelid WHERE a.oid = d.objid)
+  WHEN 'pg_trigger'::regclass THEN (SELECT c.relnamespace FROM pg_trigger g JOIN pg_class c ON c.oid = g.tgrelid WHERE g.oid = d.objid)
+  WHEN 'pg_policy'::regclass THEN (SELECT c.relnamespace FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid WHERE p.oid = d.objid)
+  END, to_regnamespace(quote_ident((pg_identify_object(d.classid, d.objid, d.objsubid)).schema))::oid, 0) <> 'public'::regnamespace`
+
+// outsideDependents refuses a rollback whose reset would drop the objects publicDependents named.
+func outsideDependents(names string) error {
+	if names == "" {
+		return nil
+	}
+	return errors.New("upgrade: automatic rollback would also drop objects outside the public schema that depend on it: " + names)
+}
+
 // ResetPostgres empties the public schema so the source migrations and the
 // archive import can run again. It refuses while any other session is connected
-// to the database, bounds every lock wait, and leaves the schema and its grants.
+// to the database or while objects outside "public" depend on it, bounds every
+// lock wait, and leaves the schema and its grants.
 // It is not part of one transaction with the import: "rolling-back" repeats it.
 func (a RollbackAdmission) ResetPostgres(ctx context.Context) error {
 	if a.rollback == nil || !a.rollback.active || a.rollback.cfg.Engine != releaseidentity.Postgres {
@@ -258,6 +281,13 @@ func (a RollbackAdmission) ResetPostgres(ctx context.Context) error {
 	defer tx.Rollback()
 	// Local to this transaction: the session goes on to import the archive afterwards.
 	if _, err := tx.ExecContext(ctx, "SET LOCAL lock_timeout = '5s'"); err != nil {
+		return err
+	}
+	var dependents string
+	if err := tx.QueryRowContext(ctx, publicDependents).Scan(&dependents); err != nil {
+		return err
+	}
+	if err := outsideDependents(dependents); err != nil {
 		return err
 	}
 	// Extension members go with their extension, which the source schema never has.
@@ -329,6 +359,10 @@ func PreflightPostgresRollback(ctx context.Context, cfg Config) error {
 		if schema != "public" || foreign != 0 {
 			return errors.New("upgrade: automatic rollback needs the public schema and every object in it owned by the database role")
 		}
-		return nil
+		var dependents string
+		if err := s.conn.QueryRowContext(ctx, publicDependents).Scan(&dependents); err != nil {
+			return err
+		}
+		return outsideDependents(dependents)
 	})
 }

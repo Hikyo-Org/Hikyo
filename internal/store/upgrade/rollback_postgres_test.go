@@ -82,6 +82,13 @@ func TestPostgresRollbackAsAnUnprivilegedRole(t *testing.T) {
 	if _, err := owner.ExecContext(t.Context(), `DROP AGGREGATE foreign_total(int)`); err != nil {
 		t.Fatal(err)
 	}
+	// A view elsewhere over a public table would go with the reset's CASCADE drops, unchecked.
+	if _, err := owner.ExecContext(t.Context(), `CREATE SCHEMA reporting; CREATE VIEW reporting.ids AS SELECT a FROM public.t`); err != nil {
+		t.Fatal(err)
+	}
+	if err := PreflightPostgresRollback(t.Context(), rbCfg); err == nil || !strings.Contains(err.Error(), "reporting.ids") {
+		t.Fatalf("preflight accepted a view outside public over a public table: %v", err)
+	}
 
 	// Only the other role's session may remain connected.
 	if err := errors.Join(owner.Close(), rbDB.Close()); err != nil {
@@ -113,6 +120,19 @@ func TestPostgresRollbackAsAnUnprivilegedRole(t *testing.T) {
 			t.Fatalf("a reset ran beside another role's session: %v", err)
 		}
 		if err := otherDB.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := admission.ResetPostgres(t.Context()); err == nil || !strings.Contains(err.Error(), "reporting.ids") {
+			t.Fatalf("a reset would have dropped a view outside public: %v", err)
+		}
+		dropper, err := sql.Open("pgx", cfg.DSN)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := dropper.ExecContext(t.Context(), `DROP SCHEMA reporting CASCADE`); err != nil {
+			t.Fatal(err)
+		}
+		if err := dropper.Close(); err != nil {
 			t.Fatal(err)
 		}
 		return admission.ResetPostgres(t.Context())
