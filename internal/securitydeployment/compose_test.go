@@ -1419,6 +1419,21 @@ func TestDockerClientIsVettedBeforeCompose(t *testing.T) {
 			}
 			return ""
 		}, named: "/writable-compose"},
+		"a plugin linked through a writable directory": {change: func(t *testing.T, root string) string {
+			directory(t, root+"/trusted", 0755)
+			put(t, root+"/trusted/docker-compose", "plugin", 0755)
+			directory(t, root+"/writable", 0777)
+			link(t, root+"/trusted/docker-compose", root+"/writable/docker-compose")
+			link(t, root+"/writable/docker-compose", root+"/docker/cli-plugins/docker-compose")
+			return ""
+		}, named: "/writable"},
+		"a plugin linked through trusted directories": {change: func(t *testing.T, root string) string {
+			directory(t, root+"/trusted/bin", 0755)
+			put(t, root+"/trusted/bin/docker-compose", "plugin", 0755)
+			link(t, "bin/docker-compose", root+"/trusted/current")
+			link(t, root+"/trusted/current", root+"/docker/cli-plugins/docker-compose")
+			return ""
+		}},
 		"a writable extra plugin directory searched first": {change: func(t *testing.T, root string) string {
 			directory(t, root+"/extra", 0777)
 			put(t, root+"/docker/config.json", `{"cliPluginsExtraDirs":["`+root+`/extra"],"credsStore":"vault"}`, 0600)
@@ -1479,6 +1494,17 @@ func directory(t *testing.T, path string, perm os.FileMode) {
 		t.Fatal(err)
 	}
 	mode(t, path, perm)
+}
+
+// link replaces path with a symbolic link to target.
+func link(t *testing.T, target, path string) {
+	t.Helper()
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, path); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func put(t *testing.T, path, content string, perm os.FileMode) {

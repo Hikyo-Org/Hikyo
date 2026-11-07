@@ -833,13 +833,37 @@ func vetFirstExecutable(directories []string, name string, lookPath bool) error 
 		if err != nil {
 			return err
 		}
-		resolved, err := filepath.EvalSymlinks(candidate)
+		return vetLinkChain(candidate)
+	}
+	return fmt.Errorf("%w: %s was not found in %s", ErrInvalid, name, strings.Join(directories, ", "))
+}
+
+// vetLinkChain follows path one symbolic link at a time. The directory holding each link must pass
+// installedDirectory, so no account the coordinator distrusts can repoint a hop, and the file at the
+// end must pass installedAuthority. Resolving the whole chain first would check only its end.
+func vetLinkChain(path string) error {
+	for range 40 {
+		if err := installedDirectory(filepath.Dir(path)); err != nil {
+			return err
+		}
+		info, err := os.Lstat(path)
 		if err != nil {
 			return err
 		}
-		return installedAuthority(resolved, true, false)
+		if info.Mode()&os.ModeSymlink == 0 {
+			return installedAuthority(path, true, false)
+		}
+		target, err := os.Readlink(path)
+		if err != nil {
+			return err
+		}
+		if !filepath.IsAbs(target) {
+			// The vetted directory has no linked component, so joining lexically resolves "..".
+			target = filepath.Join(filepath.Dir(path), target)
+		}
+		path = filepath.Clean(target)
 	}
-	return fmt.Errorf("%w: %s was not found in %s", ErrInvalid, name, strings.Join(directories, ", "))
+	return fmt.Errorf("%w: %s follows too many symbolic links", ErrInvalid, path)
 }
 
 // installedLocation vets a directory, or, while it is absent, the nearest ancestor that could create it.
