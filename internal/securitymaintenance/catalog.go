@@ -244,16 +244,26 @@ func (c Catalog) Validate(now time.Time) error {
 	return nil
 }
 
-// FixesFor lists every active advisory the target is not affected by, so an
-// authored target cannot leave out a fix that it actually contains.
+// FixesFor lists every active advisory within the target's profile, delivery and
+// platforms that the target is not affected by, so an authored target cannot leave
+// out a fix that it actually contains, nor claim one for another artifact.
 func (c Catalog) FixesFor(target Target) []string {
 	fixes := []string{}
 	for _, advisory := range c.Advisories {
-		if !advisory.Withdrawn && !advisory.affectsTarget(target) {
+		if !advisory.Withdrawn && advisory.scopes(target) && !advisory.affectsTarget(target) {
 			fixes = append(fixes, advisory.ID)
 		}
 	}
 	return fixes
+}
+
+// scopes reports whether any affected range names the target's profile, delivery and a platform of it.
+func (a Advisory) scopes(target Target) bool {
+	image := target.Image != ""
+	return slices.ContainsFunc(a.Affected, func(affected Affected) bool {
+		return affected.Profile == target.Identity.Profile && (affected.Delivery == "" || (affected.Delivery == "image") == image) &&
+			slices.ContainsFunc(target.Platforms, func(platform string) bool { return slices.Contains(affected.Platforms, platform) })
+	})
 }
 
 func (a Advisory) affectsTarget(target Target) bool {

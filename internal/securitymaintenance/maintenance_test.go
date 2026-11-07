@@ -377,6 +377,12 @@ func TestSecurityPinnedOperationReleasesOnlyForUntouchedSourceAfterSettling(t *t
 		t.Fatalf("pin dropped despite journal refusal: %+v %v", state, err)
 	}
 	r.refuse = nil
+	// A check never clears the journal, however long the source has been settled.
+	attempts := r.released
+	state, err = e.RunOnce(t.Context(), false)
+	if err == nil || state.Operation == nil || r.released != attempts {
+		t.Fatalf("a check released the pin: %+v %v", state, err)
+	}
 	// Released, but the failed target backs off instead of stopping writers again.
 	state, err = e.RunOnce(t.Context(), true)
 	if err != nil || state.Operation != nil || state.Reason != "retry_backoff" || d.applies() != 1 || state.RetryAttempts != 1 || state.RetryDisruptive != 0 {
@@ -732,6 +738,27 @@ func TestSecurityCatalogAcceptsMaximumLifetimeRolloutAndWithdrawnBadFix(t *testi
 	}
 	if fixes := decoded.FixesFor(decoded.Targets[0]); len(fixes) != 0 {
 		t.Fatalf("withdrawn advisory state or range ignored: %v", fixes)
+	}
+}
+
+// A target is credited only with advisories naming its profile, delivery and a platform of it.
+func TestSecurityFixesForStaysWithinTheTargetScope(t *testing.T) {
+	c := fixtureCatalog()
+	scoped := func(id, delivery string, profile releaseidentity.Profile, platform string) Advisory {
+		advisory := c.Advisories[0]
+		advisory.ID, advisory.Affected = id, []Affected{{Profile: profile, Fixed: "1.3.1", Platforms: []string{platform}, Delivery: delivery}}
+		return advisory
+	}
+	c.Advisories = append(c.Advisories, scoped("binary", "binary", releaseidentity.StableV1, "linux/amd64"), scoped("image", "image", releaseidentity.StableV1, "linux/amd64"),
+		scoped("darwin", "", releaseidentity.StableV1, "darwin/arm64"), scoped("nightly", "", releaseidentity.NightlyV1, "linux/amd64"))
+	binary := c.Targets[0]
+	image := binary
+	image.Image = "ghcr.io/example/hikyo@sha256:" + strings.Repeat("a", 64)
+	if fixes := c.FixesFor(binary); !slices.Equal(fixes, []string{"HK-SA-EXAMPLE", "binary"}) {
+		t.Fatalf("native fixes = %v", fixes)
+	}
+	if fixes := c.FixesFor(image); !slices.Equal(fixes, []string{"HK-SA-EXAMPLE", "image"}) {
+		t.Fatalf("image fixes = %v", fixes)
 	}
 }
 

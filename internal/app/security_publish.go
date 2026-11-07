@@ -542,6 +542,10 @@ func runSecurityFeedAdvisory(ctx context.Context, args []string, out io.Writer, 
 		}
 		advisory := securitymaintenance.Advisory{ID: *id, Summary: *summary, Severity: securitymaintenance.Severity(*severity), Components: components, Affected: []securitymaintenance.Affected{{Profile: release.Identity.Profile, Introduced: *introduced, Fixed: *fixedVersion, Platforms: platforms}}}
 		if index := slices.IndexFunc(next.Advisories, func(existing securitymaintenance.Advisory) bool { return existing.ID == *id }); index >= 0 {
+			// Replacing the record would silently clear a withdrawal, including one this run requested.
+			if next.Advisories[index].Withdrawn {
+				return fmt.Errorf("feed advisory %s is withdrawn and cannot be extended; publish a new ID", *id)
+			}
 			// Rerunning for the nightly profile must not erase the stable range.
 			for _, previous := range next.Advisories[index].Affected {
 				if previous.Profile != release.Identity.Profile {
@@ -562,6 +566,17 @@ func runSecurityFeedAdvisory(ctx context.Context, args []string, out io.Writer, 
 		}
 		if err := mergePublicationTargets(&next, records); err != nil {
 			return err
+		}
+	}
+	// A new advisory can be fixed by targets already listed, so they gain it too. Fixes are
+	// only added: an earlier fix stays listed until its target is withdrawn.
+	for i := range next.Targets {
+		if !next.Targets[i].Withdrawn {
+			for _, fix := range next.FixesFor(next.Targets[i]) {
+				if !slices.Contains(next.Targets[i].Fixes, fix) {
+					next.Targets[i].Fixes = append(next.Targets[i].Fixes, fix)
+				}
+			}
 		}
 	}
 	raw, err := json.MarshalIndent(next, "", "  ")

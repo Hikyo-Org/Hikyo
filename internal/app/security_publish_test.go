@@ -673,6 +673,22 @@ func TestSecurityFeedAdvisoryDerivesTargetsAndComputesFixes(t *testing.T) {
 	}
 }
 
+// An advisory fixed by an older release is also fixed by the newer targets already listed.
+func TestSecurityFeedAdvisoryAddsNewFixesToExistingTargets(t *testing.T) {
+	f := newFeedRepositoryFixture(t)
+	newer := f.advisory(t, "newer.json", "--id", "CVE-2099-0002", "--summary", "Later flaw", "--severity", "high", "--component", "hikyo", "--platform", "linux/amd64", "--fixed-version", "1.0.2")
+	catalog := readFeedCatalog(t, f.advisory(t, "older.json", append([]string{"--previous-catalog", newer}, append(slices.Clone(criticalAdvisoryArgs), "--fixed-version", "1.0.1")...)...))
+	for _, target := range catalog.Targets {
+		want := []string{"CVE-2099-0001"}
+		if target.Identity.Version == "1.0.2" {
+			want = []string{"CVE-2099-0002", "CVE-2099-0001"}
+		}
+		if !slices.Equal(target.Fixes, want) {
+			t.Fatalf("target %s image=%t fixes %v, want %v", target.Identity.Version, target.Image != "", target.Fixes, want)
+		}
+	}
+}
+
 func TestSecurityFeedAdvisoryRerunKeepsOtherProfiles(t *testing.T) {
 	f := newFeedRepositoryFixture(t)
 	first := f.advisory(t, "catalog-1.json", append(slices.Clone(criticalAdvisoryArgs), "--fixed-version", "1.0.1", "--introduced", "1.0.0")...)
@@ -725,6 +741,8 @@ func TestSecurityFeedAdvisoryErrorsAreSpecific(t *testing.T) {
 		{append(without("--platform"), "--platform", "windows/arm64"), "no signed binary for windows/arm64"},
 		{append(without("--fixed-version"), "--fixed-version", "1.0.1", "--previous-catalog", withdrawn), "withdrawn and cannot be a fix"},
 		{append(without("--fixed-version"), "--fixed-version", "1.0.2", "--introduced", "not-a-version"), "next security catalog"},
+		{append(slices.Clone(criticalAdvisoryArgs), "--fixed-version", "1.0.2", "--cache", f.cache, "--previous-catalog", first, "--withdraw-advisory", "CVE-2099-0001"), "CVE-2099-0001 is withdrawn and cannot be extended"},
+		{append(slices.Clone(criticalAdvisoryArgs), "--fixed-version", "1.0.2", "--cache", f.cache, "--previous-catalog", f.advisory(t, "retracted-again.json", "--previous-catalog", first, "--withdraw-advisory", "CVE-2099-0001")), "CVE-2099-0001 is withdrawn and cannot be extended"},
 	} {
 		output := filepath.Join(f.directory, "refused.json")
 		err := runSecurityFeedAdvisory(context.Background(), append([]string{"--output", output}, tc.args...), io.Discard, feedFixtureResolver)

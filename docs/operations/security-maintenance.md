@@ -820,11 +820,13 @@ files must be visible before `metadata/timestamp.json`. `publish.lock` is a loca
 in the output directory and is not part of the repository. Publish refuses a lower or
 equal catalog sequence with different bytes. Publish and refresh then run the real
 client against the output, so a repository a client would reject fails before upload.
-If a first publication fails after writing `metadata/1.targets.json` and
-`metadata/1.snapshot.json` but before `metadata/timestamp.json`, delete whichever of
-those two files exist before retrying: rebuilt files differ whenever the signature,
-expiry or catalog changes, and publish refuses to replace them. The workflow starts from a fresh clone each run, so only manual runs
-leave them.
+If a publication fails before writing `metadata/timestamp.json`, no client can
+reach the versioned files it wrote (for example `metadata/N.targets.json` and
+`metadata/N.snapshot.json`). Rebuilt files differ whenever the signature, expiry or
+catalog changes, and publish refuses to replace them, so remove them before retrying
+with `git -C "$FEED" clean -f -- metadata targets`, which deletes only files that
+were never committed. The workflow starts from a fresh clone each run, so only manual
+runs leave them.
 
 If a run fails, start a fresh dispatch or use "Re-run all jobs". "Re-run failed jobs"
 cannot find the earlier attempt's binary. A GitHub API rate limit is a known cause
