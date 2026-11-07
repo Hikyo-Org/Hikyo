@@ -50,31 +50,29 @@ func (e *Executor) ownedECSJob(task ecsTask, intent ecsJobIntent) bool {
 }
 
 // ecsJobSettle outlasts the AWS CLI's own retries and the lag of an ECS listing, so an
-// empty read after it shows a task that was never created, not one not yet visible.
+// empty read after it shows a task (or a registration) that was never created, not
+// one not yet visible.
 const ecsJobSettle = 5 * time.Minute
 
 func (e *Executor) ecsJobSettled(intent ecsJobIntent) bool {
 	return e.now().Sub(intent.CreatedAt) > ecsJobSettle
 }
 
-// ecsJobTasks lists by desired status because list-tasks returns only RUNNING tasks
-// by default, which hides a job that has already stopped.
+// ecsJobTasks lists by startedBy alone: ListTasks requires it to be the only filter.
+// That lists desired-RUNNING tasks only; a stopped job needs no cleanup and its
+// record clears once settled.
 func (e *Executor) ecsJobTasks(ctx context.Context, intent ecsJobIntent) ([]string, error) {
-	var arns []string
-	for _, status := range []string{"RUNNING", "STOPPED"} {
-		var found struct {
-			ARNs []string `json:"taskArns"`
-			Next string   `json:"nextToken"`
-		}
-		if err := e.aws(ctx, "ecs", "list-tasks", map[string]any{"cluster": e.c.ECS.ClusterARN, "startedBy": "hs-" + intent.Nonce, "desiredStatus": status, "maxResults": 100}, &found); err != nil {
-			return nil, err
-		}
-		if found.Next != "" {
-			return nil, ErrRecoveryRequired
-		}
-		arns = append(arns, found.ARNs...)
+	var found struct {
+		ARNs []string `json:"taskArns"`
+		Next string   `json:"nextToken"`
 	}
-	return arns, nil
+	if err := e.aws(ctx, "ecs", "list-tasks", map[string]any{"cluster": e.c.ECS.ClusterARN, "startedBy": "hs-" + intent.Nonce, "maxResults": 100}, &found); err != nil {
+		return nil, err
+	}
+	if found.Next != "" {
+		return nil, ErrRecoveryRequired
+	}
+	return found.ARNs, nil
 }
 
 func (e *Executor) recoverECSJob(ctx context.Context) error {
@@ -94,8 +92,10 @@ func (e *Executor) recoverECSJob(ctx context.Context) error {
 			return ErrRecoveryRequired
 		}
 		if len(arns) == 0 {
+			// Listing by startedBy shows only running tasks, so a job that already stopped is
+			// absent too; it clears itself once the window passes.
 			if !e.ecsJobSettled(intent) {
-				return ErrRecoveryRequired
+				return ErrNotReady
 			}
 			return removeECSRecord(e.ecsJobPath())
 		}
@@ -216,6 +216,10 @@ func (e *Executor) ecsJob(ctx context.Context, service ecsService, definition, r
 	var finished ecsTask
 	if err := e.waitECS(ctx, func(wait context.Context) (bool, error) {
 		tasks, err := e.ecsTasks(wait, []string{intent.TaskARN})
+		// ECS is eventually consistent: a just-launched task can be MISSING until indexed.
+		if errors.Is(err, errECSTaskMissing) && !e.ecsJobSettled(intent) {
+			return false, nil
+		}
 		if err != nil {
 			return false, err
 		}

@@ -8,9 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/filedurability"
+	"github.com/Hikyo-Org/hikyo/internal/multicall"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securefile"
 	appsv1 "k8s.io/api/apps/v1"
@@ -107,7 +110,43 @@ func (e *Executor) PinIdentity(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return securefile.WriteAtomic(filepath.Join(e.c.StateDirectory, identityFile), raw, 0600)
+	return e.publishIdentity(raw, string(d.UID))
+}
+
+// publishIdentity writes the pin only where none exists: a link of a complete file never replaces
+// one, so of two enrollments that both read no pin, the second compares against the first's.
+func (e *Executor) publishIdentity(raw []byte, uid string) error {
+	temp, err := os.CreateTemp(e.c.StateDirectory, ".kubernetes-identity-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(temp.Name())
+	_, err = temp.Write(raw)
+	if err == nil {
+		err = temp.Chmod(0600)
+	}
+	if err == nil {
+		err = temp.Sync()
+	}
+	if closeErr := temp.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	if err := os.Link(temp.Name(), filepath.Join(e.c.StateDirectory, identityFile)); errors.Is(err, os.ErrExist) {
+		pinned, err := e.pinnedUID()
+		if err != nil {
+			return err
+		}
+		if pinned != uid {
+			return ErrConflict
+		}
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return filedurability.SyncDirectory(e.c.StateDirectory)
 }
 
 func managedDesiredState(d *appsv1.Deployment) bool {
@@ -171,6 +210,17 @@ func (e *Executor) supportedDeploymentAt(d *appsv1.Deployment, replicas int32) e
 	if server == nil || !strings.HasPrefix(server.Image, e.c.ImageRepository+"@sha256:") || imageDigest(server.Image) == "" {
 		return ErrUnsupported
 	}
+	// The stage and rollback Pods run init containers again while the source serves, with its
+	// credentials. Only the chart's stagers are known to do nothing there but copy a key or certificate.
+	for _, init := range d.Spec.Template.Spec.InitContainers {
+		if !e.knownStager(init) {
+			return fmt.Errorf("%w: init container %q is not one of the chart's stagers (%s or %s, image %s); staging would run it again while the source serves, so remove it or move its work into the server container", ErrUnsupported, init.Name, multicall.RootKeyStage, multicall.TLSStage, e.c.ImageRepository)
+		}
+	}
+	// A wrapper command could pass the server any flags, so only the binary's own entrypoint qualifies.
+	if len(server.Command) != 0 && !slices.Equal(server.Command, []string{p.Binary}) {
+		return ErrUnsupported
+	}
 	unattended, postgres, scratch, persistent := false, false, false, false
 	stateDirectory := ""
 	seen := map[string]bool{}
@@ -198,18 +248,27 @@ func (e *Executor) supportedDeploymentAt(d *appsv1.Deployment, replicas int32) e
 			stateDirectory = v.Value
 		}
 	}
+	// Kubernetes lets an explicit env entry override EnvFrom, whose sources this adapter cannot read.
+	if len(server.EnvFrom) != 0 && !seen["HIKYO_HA"] {
+		return fmt.Errorf("%w: the server container imports environment through envFrom, which could enable HIKYO_HA; set HIKYO_HA=false in its env", ErrUnsupported)
+	}
 	for _, arg := range server.Args {
-		if strings.HasPrefix(arg, "--config-rollout-enrollment") || strings.HasPrefix(arg, "--ha") || arg == "--upgrade-unattended=false" || arg == "--auto-migrate=false" {
+		if serverFlagDisables(arg) {
 			return ErrUnsupported
 		}
 	}
+	// The state directory is on the most specific mount covering it, which must be a writable claim.
+	var stateMount *corev1.VolumeMount
+	for i := range server.VolumeMounts {
+		mount := &server.VolumeMounts[i]
+		path := filepath.Clean(mount.MountPath)
+		if stateDirectory != "" && (stateDirectory == path || strings.HasPrefix(stateDirectory, strings.TrimSuffix(path, "/")+"/")) && (stateMount == nil || len(path) > len(filepath.Clean(stateMount.MountPath))) {
+			stateMount = mount
+		}
+	}
 	for _, v := range d.Spec.Template.Spec.Volumes {
-		if v.PersistentVolumeClaim != nil {
-			for _, mount := range server.VolumeMounts {
-				if mount.Name == v.Name && !mount.ReadOnly && stateDirectory != "" && (stateDirectory == mount.MountPath || strings.HasPrefix(stateDirectory, mount.MountPath+"/")) {
-					persistent = true
-				}
-			}
+		if stateMount != nil && v.Name == stateMount.Name && v.PersistentVolumeClaim != nil && !v.PersistentVolumeClaim.ReadOnly && !stateMount.ReadOnly {
+			persistent = true
 		}
 		if v.HostPath != nil {
 			return ErrUnsupported
@@ -233,6 +292,29 @@ func (e *Executor) supportedDeploymentAt(d *appsv1.Deployment, replicas int32) e
 		return ErrUnsupported
 	}
 	return nil
+}
+
+// serverFlagDisables reports whether a server argument may turn off unattended upgrades or enable
+// what they exclude. The server parses flags with Go's flag package: one or two dashes, a bare
+// boolean flag is true, and =value takes strconv.ParseBool. Matching too much only refuses.
+func serverFlagDisables(arg string) bool {
+	name, value, hasValue := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(arg, "-"), "-"), "=")
+	switch {
+	case name == "upgrade-unattended" || name == "auto-migrate":
+		on, err := strconv.ParseBool(value)
+		return hasValue && (err != nil || !on)
+	case strings.HasPrefix(name, "config-rollout-enrollment") || strings.HasPrefix(name, "ha"):
+		return true
+	}
+	return false
+}
+
+// knownStager is one of the chart's init containers, root-key-stage or tls-stage: this repository's
+// image running only its copy, which reads a Secret volume and writes an in-memory one.
+func (e *Executor) knownStager(c corev1.Container) bool {
+	return e.ourImage(c.Image) && len(c.Command) == 0 &&
+		(c.Name == "root-key-stage" && slices.Equal(c.Args, []string{multicall.RootKeyStage}) ||
+			c.Name == "tls-stage" && slices.Equal(c.Args, []string{multicall.TLSStage, "--once"}))
 }
 
 func (e *Executor) sourcePod(ctx context.Context, d *appsv1.Deployment) (*corev1.Pod, error) {
@@ -411,7 +493,32 @@ func stageSpecMatches(expected, actual *corev1.Pod) bool {
 	// must also have the exact preparation process and mounted inputs. Extra
 	// containers, credentials or command mutations cannot impersonate a stage.
 	a, b := expected.Spec, actual.Spec
-	return b.AutomountServiceAccountToken != nil && !*b.AutomountServiceAccountToken && !b.HostNetwork && !b.HostPID && !b.HostIPC && b.NodeName == a.NodeName && b.ServiceAccountName == a.ServiceAccountName && b.RestartPolicy == corev1.RestartPolicyNever && len(b.EphemeralContainers) == 0 && apiequality.Semantic.DeepEqual(a.Containers, b.Containers) && apiequality.Semantic.DeepEqual(a.InitContainers, b.InitContainers) && apiequality.Semantic.DeepEqual(a.Volumes, b.Volumes) && apiequality.Semantic.DeepEqual(a.SecurityContext, b.SecurityContext)
+	return b.AutomountServiceAccountToken != nil && !*b.AutomountServiceAccountToken && !b.HostNetwork && !b.HostPID && !b.HostIPC && b.NodeName == a.NodeName && b.ServiceAccountName == a.ServiceAccountName && b.RestartPolicy == corev1.RestartPolicyNever && len(b.EphemeralContainers) == 0 && apiequality.Semantic.DeepEqual(a.Containers, admittedResources(a.Containers, b.Containers)) && apiequality.Semantic.DeepEqual(a.InitContainers, admittedResources(a.InitContainers, b.InitContainers)) && apiequality.Semantic.DeepEqual(a.Volumes, b.Volumes) && apiequality.Semantic.DeepEqual(a.SecurityContext, b.SecurityContext)
+}
+
+// admittedResources is actual without the resource keys expected leaves unset. Admission fills those in
+// on a Pod but never on its template: requests from limits, and LimitRange defaults. A key the
+// template sets must still match exactly.
+func admittedResources(expected, actual []corev1.Container) []corev1.Container {
+	if len(expected) != len(actual) {
+		return actual
+	}
+	only := func(set, admitted corev1.ResourceList) corev1.ResourceList {
+		kept := corev1.ResourceList{}
+		for name, quantity := range admitted {
+			if _, ok := set[name]; ok {
+				kept[name] = quantity
+			}
+		}
+		return kept
+	}
+	out := make([]corev1.Container, len(actual))
+	for i := range actual {
+		out[i] = *actual[i].DeepCopy()
+		out[i].Resources.Limits = only(expected[i].Resources.Limits, actual[i].Resources.Limits)
+		out[i].Resources.Requests = only(expected[i].Resources.Requests, actual[i].Resources.Requests)
+	}
+	return out
 }
 
 func (e *Executor) prepareKubernetes(ctx context.Context, target Target) (result Observation, returnErr error) {
@@ -446,7 +553,7 @@ func (e *Executor) prepareKubernetes(ctx context.Context, target Target) (result
 		return Observation{}, err
 	}
 	var staged Observation
-	if decode(raw, &staged) != nil || !validObservation(staged) {
+	if decode(lastLine(raw), &staged) != nil || !validObservation(staged) {
 		return Observation{}, ErrInvalid
 	}
 	staged.Image = source.Image
@@ -785,17 +892,26 @@ func (e *Executor) rollBackKubernetes(ctx context.Context, j *deploymentJournal)
 	if err != nil {
 		return false, err
 	}
+	if err := e.refuseKubernetesRollback(ctx, j); err != nil {
+		return false, err
+	}
 	if err := e.stopKubernetesTarget(ctx, &prepared, j.Target); err != nil {
 		return false, err
 	}
 	if err := e.markRollingBack(j); err != nil {
 		return false, err
 	}
-	d, err := e.deploymentAt(ctx, 0)
-	if err != nil {
-		return false, err
-	}
+	_, appliedZero := e.appliedSpecs(&prepared, j.Target)
 	oneShot := func() (bool, error) {
+		// Read here, after the stop is proven, so a failed read still gets the source write-back.
+		d, err := e.deploymentAt(ctx, 0)
+		if err != nil {
+			return false, err
+		}
+		// The one-shot is built from this read, so it must still be the stop that was proven.
+		if !apiequality.Semantic.DeepEqual(d.Spec, appliedZero.Spec) {
+			return false, fmt.Errorf("%w: the Deployment changed after the target was stopped", ErrConflict)
+		}
 		stage, err := e.stagePod(d, j.Node, j.Target.Image, targetArgs("rollback", j.Target))
 		if err != nil {
 			return false, err
@@ -813,6 +929,44 @@ func (e *Executor) rollBackKubernetes(ctx context.Context, j *deploymentJournal)
 	writeBack, cancel := e.writeBackContext(ctx)
 	defer cancel()
 	return restored, errors.Join(oneShotErr, e.restoreKubernetes(writeBack, j))
+}
+
+// refuseKubernetesRollback leaves alone what is not a stopped or failing target: a source image
+// serving again has nothing to roll back, whatever its generation; a target past its final gate is a
+// person's decision; and a Pod running neither the target nor the source is an operator's. A
+// workload that cannot be observed, such as a crashed or stopped target, proceeds.
+func (e *Executor) refuseKubernetesRollback(ctx context.Context, j *deploymentJournal) error {
+	if live, err := e.observeKubernetes(ctx); err == nil {
+		if live.Image == j.Source.Image && live.Phase == "healthy" && !live.Maintenance && live.Ready {
+			return fmt.Errorf("%w: the source image is serving again; nothing was stopped", ErrConflict)
+		}
+		if live.PastFinalGate(j.Source.Identity) {
+			return fmt.Errorf("%w: the Deployment is healthy at a release past its final gate; nothing was stopped", ErrConflict)
+		}
+	}
+	d, err := e.deploymentEither(ctx)
+	if err != nil {
+		return err
+	}
+	selector, err := metav1.LabelSelectorAsSelector(d.Spec.Selector)
+	if err != nil || selector.Empty() {
+		return ErrUnsupported
+	}
+	pods, err := e.client.CoreV1().Pods(d.Namespace).List(ctx, metav1.ListOptions{LabelSelector: selector.String()})
+	if err != nil {
+		return err
+	}
+	for _, pod := range pods.Items {
+		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+			continue
+		}
+		for _, c := range pod.Spec.Containers {
+			if c.Name == e.c.Kubernetes.Container && c.Image != j.Source.Image && !isTargetImage(c.Image, "", j.Target) {
+				return fmt.Errorf("%w: Pod %s runs %s, neither the target nor the source; nothing was stopped", ErrConflict, pod.Name, c.Image)
+			}
+		}
+	}
+	return nil
 }
 
 // inspectKubernetes reads the control row through a stage Pod of the source image on the node the
@@ -973,20 +1127,37 @@ func (e *Executor) FollowCoordinator(ctx context.Context, image string) error {
 	if err != nil {
 		return err
 	}
-	var stale []map[string]string
-	for _, c := range cron.Spec.JobTemplate.Spec.Template.Spec.Containers {
-		if e.ourImage(c.Image) && c.Image != image {
-			stale = append(stale, map[string]string{"name": c.Name, "image": image})
-		}
+	if cron.ResourceVersion == "" {
+		return ErrConflict
 	}
-	if len(stale) == 0 {
+	stale := func(containers []corev1.Container) []map[string]string {
+		var out []map[string]string
+		for _, c := range containers {
+			if e.ourImage(c.Image) && c.Image != image {
+				out = append(out, map[string]string{"name": c.Name, "image": image})
+			}
+		}
+		return out
+	}
+	spec := map[string]any{}
+	if containers := stale(cron.Spec.JobTemplate.Spec.Template.Spec.Containers); containers != nil {
+		spec["containers"] = containers
+	}
+	if containers := stale(cron.Spec.JobTemplate.Spec.Template.Spec.InitContainers); containers != nil {
+		spec["initContainers"] = containers
+	}
+	if len(spec) == 0 {
 		return nil
 	}
-	patch, err := json.Marshal(map[string]any{"spec": map[string]any{"jobTemplate": map[string]any{"spec": map[string]any{"template": map[string]any{"spec": map[string]any{"containers": stale}}}}}})
+	// The resourceVersion makes the patch conditional on the read: a concurrent change refuses it.
+	patch, err := json.Marshal(map[string]any{"metadata": map[string]any{"resourceVersion": cron.ResourceVersion}, "spec": map[string]any{"jobTemplate": map[string]any{"spec": map[string]any{"template": map[string]any{"spec": spec}}}}})
 	if err != nil {
 		return err
 	}
 	_, err = e.client.BatchV1().CronJobs(p.Namespace).Patch(ctx, p.CronJob, types.StrategicMergePatchType, patch, metav1.PatchOptions{})
+	if apierrors.IsConflict(err) {
+		return errors.Join(ErrConflict, err)
+	}
 	return err
 }
 

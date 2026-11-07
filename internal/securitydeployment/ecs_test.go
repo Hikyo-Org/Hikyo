@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -108,8 +109,18 @@ type ecsFakeRunner struct {
 	runTaskLateErr  error
 	runTaskRunning  bool
 	registerLateErr error
-	listTasksFail   string
-	listDefsFail    bool
+	listTasksFail   bool
+	// deregisterErr fails before committing, deregisterLateErr after; unreadableInactive makes ECS refuse to describe INACTIVE revisions.
+	deregisterErr, deregisterLateErr error
+	unreadableInactive               bool
+	reorderTags                      bool
+	describes                        int
+	missingJob                       int
+	staleDesired                     int
+	staleRestart                     int
+	defTags                          map[string]json.RawMessage
+	definitionBefore                 string
+	listDefsFail                     bool
 	// emptyFirstLogPage puts an empty page before the event; secondLogPage a second event after it.
 	emptyFirstLogPage, secondLogPage bool
 }
@@ -243,14 +254,36 @@ func (f *ecsFakeRunner) Run(ctx context.Context, command Command) ([]byte, error
 	respond := func(value any) ([]byte, error) { return json.Marshal(value) }
 	switch service + "/" + action {
 	case "ecs/describe-services":
-		return respond(map[string]any{"services": []ecsService{f.service}, "failures": []any{}})
+		s := f.service
+		f.describes++
+		if f.reorderTags && f.describes%2 == 0 {
+			s.Tags = slices.Clone(s.Tags)
+			slices.Reverse(s.Tags)
+		}
+		if f.staleDesired > 0 && s.Desired == 0 {
+			f.staleDesired--
+			s.Desired = 1
+		}
+		if f.staleRestart > 0 && s.Desired == 1 && len(f.updates) == 2 {
+			f.staleRestart--
+			s.Desired, s.Running, s.TaskDefinition = 0, 0, f.definitionBefore
+			f.finishDeploymentOn(&s)
+		}
+		return respond(map[string]any{"services": []ecsService{s}, "failures": []any{}})
 	case "ecs/describe-task-definition":
 		arn := ecsInputString(input, "taskDefinition")
 		definition, ok := f.definitions[arn]
 		if !ok {
 			return nil, errors.New("unknown task definition")
 		}
-		return respond(map[string]any{"taskDefinition": definition, "tags": []any{}})
+		if f.unreadableInactive && string(definition["status"]) == `"INACTIVE"` {
+			return nil, errors.New("security deployment: installed command exited with status 254: An error occurred (ClientException) when calling the DescribeTaskDefinition operation: Unable to describe task definition.")
+		}
+		tags := json.RawMessage("[]")
+		if raw, ok := f.defTags[arn]; ok {
+			tags = raw
+		}
+		return respond(map[string]any{"taskDefinition": definition, "tags": tags})
 	case "ecs/list-tasks":
 		started := ecsInputString(input, "startedBy")
 		family := ecsInputString(input, "family")
@@ -258,7 +291,11 @@ func (f *ecsFakeRunner) Run(ctx context.Context, command Command) ([]byte, error
 		if status == "" {
 			status = "RUNNING"
 		}
-		if started != "" && status == f.listTasksFail {
+		// AWS: when startedBy is the filter, it must be the only one.
+		if started != "" && (family != "" || len(input["desiredStatus"]) != 0 || len(input["serviceName"]) != 0) {
+			return nil, ecsExit(254)
+		}
+		if started != "" && f.listTasksFail {
 			return nil, errors.New("list-tasks unavailable")
 		}
 		arns := []string{}
@@ -267,20 +304,41 @@ func (f *ecsFakeRunner) Run(ctx context.Context, command Command) ([]byte, error
 				if task.StartedBy == started && task.DesiredStatus == status {
 					arns = append(arns, arn)
 				}
-			} else if family != "" && strings.HasPrefix(task.Definition, ecsTestPrefix+"task-definition/"+family+":") && task.DesiredStatus == "RUNNING" {
+			} else if family != "" && strings.HasPrefix(task.Definition, ecsTestPrefix+"task-definition/"+family+":") && task.DesiredStatus == status {
 				arns = append(arns, arn)
-			} else if family == "" && task.Group == "service:"+f.config.ECS.serviceName() && task.DesiredStatus == "RUNNING" {
+			} else if family == "" && task.Group == "service:"+f.config.ECS.serviceName() && task.DesiredStatus == status {
 				arns = append(arns, arn)
 			}
 		}
-		return respond(map[string]any{"taskArns": arns})
+		slices.Sort(arns)
+		var limit int
+		_ = json.Unmarshal(input["maxResults"], &limit)
+		start := 0
+		if token := ecsInputString(input, "nextToken"); token != "" {
+			start, _ = strconv.Atoi(strings.TrimPrefix(token, "n/"))
+		}
+		next := ""
+		if limit > 0 && len(arns)-start > limit {
+			next = "n/" + strconv.Itoa(start+limit)
+			arns = arns[start : start+limit]
+		} else {
+			arns = arns[start:]
+		}
+		return respond(map[string]any{"taskArns": arns, "nextToken": next})
 	case "ecs/describe-tasks":
 		var arns []string
 		_ = json.Unmarshal(input["tasks"], &arns)
+		if len(arns) > 100 {
+			return nil, ecsExit(254)
+		}
 		tasks := []ecsTask{}
 		failures := []any{}
 		for _, arn := range arns {
 			task, ok := f.tasks[arn]
+			if ok && f.missingJob > 0 && task.StartedBy != "" {
+				f.missingJob--
+				ok = false
+			}
 			if !ok {
 				failures = append(failures, map[string]string{"arn": arn, "reason": "MISSING"})
 				continue
@@ -338,6 +396,10 @@ func (f *ecsFakeRunner) Run(ctx context.Context, command Command) ([]byte, error
 			definition["taskRoleArn"] = ecsRaw("arn:aws:iam::" + ecsTestAccount + ":role/other")
 		}
 		f.definitions[arn] = definition
+		if f.defTags == nil {
+			f.defTags = map[string]json.RawMessage{}
+		}
+		f.defTags[arn] = input["tags"]
 		if f.registerLateErr != nil {
 			return nil, f.registerLateErr
 		}
@@ -348,8 +410,14 @@ func (f *ecsFakeRunner) Run(ctx context.Context, command Command) ([]byte, error
 		if !ok {
 			return nil, errors.New("unknown deregistration")
 		}
+		if f.deregisterErr != nil {
+			return nil, f.deregisterErr
+		}
 		definition["status"] = ecsRaw("INACTIVE")
 		f.deregistered = append(f.deregistered, arn)
+		if f.deregisterLateErr != nil {
+			return nil, f.deregisterLateErr
+		}
 		return respond(map[string]any{"taskDefinition": definition})
 	case "ecs/run-task":
 		if f.runTaskErr != nil {
@@ -525,10 +593,14 @@ func TestECSPrepareReplacesOnlyImageAndStagesBeforeFullStop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected, err := sourceDefinition.withImage(f.target.Image)
-	if err != nil {
-		t.Fatal(err)
+	// Built independently of withImage: the source registration with only the image replaced.
+	expected := maps.Clone(sourceDefinition.Registration)
+	var containers []map[string]any
+	if err := json.Unmarshal(expected["containerDefinitions"], &containers); err != nil || len(containers) != 1 {
+		t.Fatal("source container definitions", err)
 	}
+	containers[0]["image"] = f.target.Image
+	expected["containerDefinitions"] = ecsRaw(containers)
 	registered, err := e.validateECSDefinition(after)
 	if err != nil {
 		t.Fatal(err)
@@ -767,7 +839,8 @@ func TestECSLostRunTaskReplyRetainsRecoveryIntent(t *testing.T) {
 				t.Fatal("lost reply reported healthy")
 			}
 			f.runTaskErr = nil
-			if _, err := e.Observe(t.Context()); !errors.Is(err, ErrRecoveryRequired) {
+			// Unlisted until the window passes, the possible task is waited for, not cleared.
+			if _, err := e.Observe(t.Context()); !errors.Is(err, ErrNotReady) {
 				t.Fatalf("lost reply forgot a possible task: %v", err)
 			}
 		})
@@ -807,6 +880,8 @@ func TestECSLostOrRefusedRegisterReplyIsSettledByReadingTheRevision(t *testing.T
 			}
 			committed := f.registered
 			f.registerErr, f.registerLateErr = nil, nil
+			// Absence of the revision proves nothing until the listing has settled.
+			ecsLaterThanSettle(e)
 			if _, err := e.Prepare(t.Context(), f.target); err != nil {
 				t.Fatalf("next run did not settle the registration: %v", err)
 			}
@@ -920,39 +995,41 @@ func TestECSRefusedOrLostRunTaskIsSettledByReadingTheTask(t *testing.T) {
 	}
 }
 
-func TestECSFoundStoppedJobNeedsNoWaiting(t *testing.T) {
+func TestECSFoundStoppedJobClearsOnceSettled(t *testing.T) {
 	e, f := ecsFixture(t)
 	f.runTaskLateErr = ecsExit(255)
 	if _, err := e.Observe(t.Context()); err == nil {
 		t.Fatal("lost reply reported healthy")
 	}
 	f.runTaskLateErr = nil
+	// A startedBy listing shows only desired-RUNNING tasks, so a stopped job is
+	// indistinguishable from one not yet visible until the settle window passes.
+	if _, err := e.Observe(t.Context()); !errors.Is(err, ErrNotReady) {
+		t.Fatalf("an unlisted job cleared before it settled: %v", err)
+	}
+	ecsLaterThanSettle(e)
 	if o, err := e.Observe(t.Context()); err != nil || !o.Ready {
-		t.Fatalf("a stopped task found by startedBy did not clear the record: %+v %v", o, err)
+		t.Fatalf("a settled stopped job did not clear the record: %+v %v", o, err)
 	}
 }
 
 func TestECSJobRecoveryStaysPinnedWithoutConclusiveReads(t *testing.T) {
-	for _, status := range []string{"RUNNING", "STOPPED"} {
-		t.Run("list "+status+" fails", func(t *testing.T) {
-			e, f := ecsFixture(t)
-			f.runTaskErr = ecsExit(255)
-			if _, err := e.Observe(t.Context()); err == nil {
-				t.Fatal("lost reply reported healthy")
-			}
-			f.runTaskErr, f.listTasksFail = nil, status
-			ecsLaterThanSettle(e)
-			if _, err := e.Observe(t.Context()); err == nil {
-				t.Fatal("one failed listing treated as absence")
-			}
-			if _, err := os.Stat(e.ecsJobPath()); err != nil {
-				t.Fatal("job intent cleared without proof", err)
-			}
-			f.listTasksFail = ""
-			if o, err := e.Observe(t.Context()); err != nil || !o.Ready {
-				t.Fatalf("recovery did not resume: %+v %v", o, err)
-			}
-		})
+	e, f := ecsFixture(t)
+	f.runTaskErr = ecsExit(255)
+	if _, err := e.Observe(t.Context()); err == nil {
+		t.Fatal("lost reply reported healthy")
+	}
+	f.runTaskErr, f.listTasksFail = nil, true
+	ecsLaterThanSettle(e)
+	if _, err := e.Observe(t.Context()); err == nil {
+		t.Fatal("a failed listing treated as absence")
+	}
+	if _, err := os.Stat(e.ecsJobPath()); err != nil {
+		t.Fatal("job intent cleared without proof", err)
+	}
+	f.listTasksFail = false
+	if o, err := e.Observe(t.Context()); err != nil || !o.Ready {
+		t.Fatalf("recovery did not resume: %+v %v", o, err)
 	}
 }
 
@@ -986,5 +1063,230 @@ func TestECSTimeoutKeepsItsOwnBound(t *testing.T) {
 	c.TimeoutSeconds++
 	if err := Validate(c); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("ECS accepted more than an hour: %v", err)
+	}
+}
+
+func TestECSServiceTagOrderIsNotSourceDrift(t *testing.T) {
+	e, f := ecsFixture(t)
+	f.service.Tags = append(f.service.Tags, ecsTag{Key: "team", Value: "db"})
+	f.reorderTags = true
+	if o, err := e.Observe(t.Context()); err != nil || !o.Ready {
+		t.Fatalf("reordered tags reported as drift: %v", err)
+	}
+}
+
+func TestECSJobTaskNotYetIndexedAfterRunTaskIsAwaited(t *testing.T) {
+	e, f := ecsFixture(t)
+	f.missingJob = 1
+	if o, err := e.Observe(t.Context()); err != nil || !o.Ready {
+		t.Fatalf("not-yet-indexed job task aborted: %v", err)
+	}
+}
+
+func TestECSStaleDesiredCountAfterScaleDownIsAwaited(t *testing.T) {
+	e, f := ecsFixture(t)
+	if _, err := e.Prepare(t.Context(), f.target); err != nil {
+		t.Fatal(err)
+	}
+	f.staleDesired = 1
+	if err := e.Apply(t.Context(), f.target); err != nil {
+		t.Fatalf("stale desiredCount aborted apply: %v", err)
+	}
+}
+
+func (f *ecsFakeRunner) finishDeploymentOn(s *ecsService) {
+	saved := f.service
+	f.service = *s
+	f.finishDeployment()
+	*s = f.service
+	f.service = saved
+}
+
+func TestECSStaleScaledDownReadAfterRestartIsAwaited(t *testing.T) {
+	e, f := ecsFixture(t)
+	if _, err := e.Prepare(t.Context(), f.target); err != nil {
+		t.Fatal(err)
+	}
+	f.definitionBefore, f.staleRestart = f.service.TaskDefinition, 1
+	if err := e.Apply(t.Context(), f.target); err != nil {
+		t.Fatalf("stale restart read aborted apply: %v", err)
+	}
+}
+
+func TestECSRegistrationRecoveryRetiresOnlyItsOwnNonce(t *testing.T) {
+	e, f := ecsFixture(t)
+	f.registerErr = ecsExit(255)
+	if _, err := e.Prepare(t.Context(), f.target); err == nil {
+		t.Fatal("lost register succeeded")
+	}
+	source, err := e.ecsDefinition(t.Context(), f.service.TaskDefinition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := source.withImage(f.target.Image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign := ecsTestPrefix + "task-definition/hikyo:9"
+	reg["taskDefinitionArn"], reg["revision"], reg["status"] = ecsRaw(foreign), ecsRaw(9), ecsRaw("ACTIVE")
+	f.definitions[foreign] = reg
+	f.registerErr = nil
+	ecsLaterThanSettle(e)
+	_, _ = e.Prepare(t.Context(), f.target)
+	if slices.Contains(f.deregistered, foreign) {
+		t.Fatal("recovery retired a foreign revision with no registration nonce")
+	}
+}
+
+func TestECSSoleWriterWaitsForStoppingFamilyTasks(t *testing.T) {
+	e, f := ecsFixture(t)
+	// More stopped tasks than one page or one describe batch holds, sorted before the stopping one.
+	for i := 0; i < 150; i++ {
+		task := f.serviceTask(ecsTestPrefix+fmt.Sprintf("task/hikyo/%032x", 0x100+i), f.service.TaskDefinition, "", strings.Repeat("3", 64))
+		task.Group, task.LastStatus, task.DesiredStatus = "family:hikyo", "STOPPED", "STOPPED"
+		f.tasks[task.ARN] = task
+	}
+	stopping := f.serviceTask(ecsTestPrefix+"task/hikyo/"+strings.Repeat("f", 32), f.service.TaskDefinition, "", strings.Repeat("3", 64))
+	stopping.Group, stopping.DesiredStatus = "family:hikyo", "STOPPED"
+	f.tasks[stopping.ARN] = stopping
+	if _, err := e.Observe(t.Context()); !errors.Is(err, ErrNotReady) {
+		t.Fatalf("a family task still shutting down qualified as sole writer: %v", err)
+	}
+	stopping.LastStatus = "STOPPED"
+	f.tasks[stopping.ARN] = stopping
+	if o, err := e.Observe(t.Context()); err != nil || !o.Ready {
+		t.Fatalf("stopped family tasks blocked qualification: %+v %v", o, err)
+	}
+}
+
+func TestECSLostDeregisterReplyDoesNotBlockLaterPrepare(t *testing.T) {
+	for name, set := range map[string]func(*ecsFakeRunner){
+		"lost before committing":                    func(f *ecsFakeRunner) { f.deregisterErr = ecsExit(255) },
+		"lost after committing":                     func(f *ecsFakeRunner) { f.deregisterLateErr = ecsExit(255) },
+		"lost after committing, no longer readable": func(f *ecsFakeRunner) { f.deregisterLateErr, f.unreadableInactive = ecsExit(255), true },
+	} {
+		t.Run(name, func(t *testing.T) {
+			e, f := ecsFixture(t)
+			// A failed stage job retires its never-selected revision.
+			f.badRuntime = true
+			set(f)
+			if _, err := e.Prepare(t.Context(), f.target); err == nil {
+				t.Fatal("failed stage prepared")
+			}
+			intent, err := e.readECSRegistration()
+			if err != nil || intent.Definition != ecsTestPrefix+"task-definition/hikyo:2" {
+				t.Fatalf("retirement not recorded before deregistering: %+v %v", intent, err)
+			}
+			f.badRuntime, f.deregisterErr, f.deregisterLateErr = false, nil, nil
+			if _, err := e.Prepare(t.Context(), f.target); err != nil {
+				t.Fatalf("lost deregister reply blocked the next Prepare: %v", err)
+			}
+			if !slices.Contains(f.deregistered, ecsTestPrefix+"task-definition/hikyo:2") {
+				t.Fatal("abandoned revision left ACTIVE", f.deregistered)
+			}
+		})
+	}
+}
+
+// A revision ECS reports INACTIVE is retired whoever deregistered it, so its record cannot block.
+func TestECSInactiveRevisionClearsARecordWithoutTheRetiringMarker(t *testing.T) {
+	e, f := ecsFixture(t)
+	f.badRuntime, f.deregisterErr = true, ecsExit(255)
+	if _, err := e.Prepare(t.Context(), f.target); err == nil {
+		t.Fatal("failed stage prepared")
+	}
+	intent, err := e.readECSRegistration()
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent.Retiring = false
+	if err := e.writeECSRecord(e.ecsRegistrationPath(), intent); err != nil {
+		t.Fatal(err)
+	}
+	// Deregistered by another hand before this record sent its call.
+	f.definitions[intent.Definition]["status"] = json.RawMessage(`"INACTIVE"`)
+	f.badRuntime, f.deregisterErr = false, nil
+	if _, err := e.Prepare(t.Context(), f.target); err != nil {
+		t.Fatalf("an INACTIVE revision blocked Prepare: %v", err)
+	}
+}
+
+func TestECSRetiringRecordKeepsOwnershipChecksWhileActive(t *testing.T) {
+	e, f := ecsFixture(t)
+	f.badRuntime, f.deregisterErr = true, ecsExit(255)
+	if _, err := e.Prepare(t.Context(), f.target); err == nil {
+		t.Fatal("failed stage prepared")
+	}
+	intent, err := e.readECSRegistration()
+	if err != nil || !intent.Retiring {
+		t.Fatalf("retiring marker not durable before the call: %+v %v", intent, err)
+	}
+	f.defTags[intent.Definition] = ecsRaw([]ecsTag{{Key: "hikyo.dev/security-registration", Value: strings.Repeat("0", 32)}})
+	f.badRuntime, f.deregisterErr = false, nil
+	if _, err := e.Prepare(t.Context(), f.target); !errors.Is(err, ErrConflict) {
+		t.Fatalf("a still-ACTIVE revision with another nonce was retired: %v", err)
+	}
+	if len(f.deregistered) != 0 {
+		t.Fatal("deregistered a revision this record does not own", f.deregistered)
+	}
+}
+
+func TestECSAmbiguousRegistrationWaitsForTheSettleWindow(t *testing.T) {
+	e, f := ecsFixture(t)
+	f.registerErr = ecsExit(255)
+	if _, err := e.Prepare(t.Context(), f.target); err == nil {
+		t.Fatal("lost registration prepared")
+	}
+	f.registerErr = nil
+	if _, err := e.Prepare(t.Context(), f.target); !errors.Is(err, ErrNotReady) {
+		t.Fatalf("an unlisted registration counted as never created: %v", err)
+	}
+	if _, err := os.Stat(e.ecsRegistrationPath()); err != nil || f.registered != 0 {
+		t.Fatal("intent cleared or another revision registered inside the window", err, f.registered)
+	}
+	ecsLaterThanSettle(e)
+	if _, err := e.Prepare(t.Context(), f.target); err != nil || f.registered != 1 {
+		t.Fatalf("settled absence did not release the intent: %v %d", err, f.registered)
+	}
+}
+
+func TestECSRegistrationRecordWithoutCreatedAtStartsItsWindow(t *testing.T) {
+	e, f := ecsFixture(t)
+	if err := e.writeECSRecord(e.ecsRegistrationPath(), map[string]any{"format": ecsRegistrationFormat, "nonce": strings.Repeat("d", 32), "target": f.target, "registration_sha256": strings.Repeat("e", 64)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Prepare(t.Context(), f.target); !errors.Is(err, ErrNotReady) {
+		t.Fatalf("a record of unknown age was cleared at once: %v", err)
+	}
+	if intent, err := e.readECSRegistration(); err != nil || intent.CreatedAt.IsZero() {
+		t.Fatalf("settle window not started: %+v %v", intent, err)
+	}
+	ecsLaterThanSettle(e)
+	if _, err := e.Prepare(t.Context(), f.target); err != nil {
+		t.Fatalf("settled old record kept Prepare blocked: %v", err)
+	}
+}
+
+func TestECSUpgradeStateDirMustResolveOntoTheUpgradeVolume(t *testing.T) {
+	for name, dir := range map[string]string{
+		"traversal out of the volume": "/var/lib/hikyo-upgrade/../../../tmp/state",
+		"relative":                    "var/lib/hikyo-upgrade/state",
+		"on the temporary volume":     "/tmp/state",
+	} {
+		t.Run(name, func(t *testing.T) {
+			e, f := ecsFixture(t)
+			definition := f.definitions[f.service.TaskDefinition]
+			var containers []map[string]any
+			_ = json.Unmarshal(definition["containerDefinitions"], &containers)
+			for _, value := range containers[0]["environment"].([]any) {
+				if variable := value.(map[string]any); variable["name"] == "HIKYO_UPGRADE_STATE_DIR" {
+					variable["value"] = dir
+				}
+			}
+			definition["containerDefinitions"] = ecsRaw(containers)
+			if _, err := e.Observe(t.Context()); !errors.Is(err, ErrUnsupported) {
+				t.Fatalf("state directory %q accepted: %v", dir, err)
+			}
+		})
 	}
 }

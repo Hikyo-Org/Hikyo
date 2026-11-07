@@ -1,6 +1,7 @@
 package securitydeployment
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -89,12 +90,58 @@ type composeFixtureRunner struct {
 	restoreErr    error
 	// hardcodedImage is a Compose file naming the image itself, so the variable does not reach it.
 	hardcodedImage bool
+	// renderedImage, when set, is what the environment file selects instead of the running image.
+	renderedImage string
+	// oneShotLeft is a rollback one-shot container that exists by name; outlive leaves it behind when
+	// the one-shot's command fails, as a killed CLI does, and oneShotStuck keeps it after removal.
+	oneShotLeft, outlive, oneShotStuck bool
+	// manifest is the platform manifest a multi-platform image store reports for the container.
+	manifest string
+	// stateDirectory, mounts and tmpfs change the rendered service's state directory and add mounts.
+	stateDirectory string
+	mounts         []map[string]string
+	tmpfs          []string
+	command        []string
+}
+
+// selectedImage is the image the last of a command's Compose files names, as Compose merges them.
+func (f *composeFixtureRunner) selectedImage(args []string) string {
+	image := ""
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] != "--file" {
+			continue
+		}
+		raw, err := os.ReadFile(args[i+1])
+		if err != nil {
+			f.t.Fatal(err)
+		}
+		var file composeConfig
+		if err := json.Unmarshal(raw, &file); err != nil {
+			f.t.Fatal(err)
+		}
+		if service := file.Services["server"]; service.Image != "" {
+			image = service.Image
+		}
+	}
+	return image
 }
 
 func (f *composeFixtureRunner) Run(ctx context.Context, command Command) ([]byte, error) {
 	f.commands = append(f.commands, command)
 	args := command.Args
 	joined := strings.Join(args, " ")
+	if len(args) > 1 && args[0] == "container" && args[1] == "ls" {
+		if !f.oneShotLeft {
+			return nil, nil
+		}
+		name, _ := strings.CutPrefix(args[slices.Index(args, "--filter")+1], "name=")
+		return []byte(name + "\n"), nil
+	}
+	if len(args) > 1 && args[0] == "container" && args[1] == "rm" {
+		f.events = append(f.events, "clear")
+		f.oneShotLeft = f.oneShotLeft && f.oneShotStuck
+		return nil, nil
+	}
 	if len(args) > 0 && args[0] == "pull" {
 		f.events = append(f.events, "pull")
 		return nil, nil
@@ -117,7 +164,7 @@ func (f *composeFixtureRunner) Run(ctx context.Context, command Command) ([]byte
 		if f.containerImage != "" {
 			started = f.containerImage
 		}
-		return encoded(f.t, composeContainer{ID: strings.Repeat("a", 64), Image: started, ImageID: "sha256:config", Running: f.running, Health: f.health, Labels: map[string]string{"com.docker.compose.project": "hikyo", "com.docker.compose.service": "server"}}), nil
+		return encoded(f.t, composeContainer{ID: strings.Repeat("a", 64), Image: started, ImageID: "sha256:config", Running: f.running, Health: f.health, Labels: map[string]string{"com.docker.compose.project": "hikyo", "com.docker.compose.service": "server"}, Manifest: f.manifest}), nil
 	}
 	if len(args) > 0 && args[0] == "exec" {
 		return f.targetOutput(f.observation), nil
@@ -148,17 +195,23 @@ func (f *composeFixtureRunner) Run(ctx context.Context, command Command) ([]byte
 		if f.afterRender != nil {
 			f.afterRender()
 		}
-		image := f.image
+		image := cmp.Or(f.renderedImage, f.image)
 		for _, variable := range command.Env {
 			if value, ok := strings.CutPrefix(variable, composeImageVariable+"="); ok && !f.hardcodedImage {
 				image = value
 			}
 		}
-		return encoded(f.t, map[string]any{"services": map[string]any{"server": map[string]any{"image": image, "environment": environment, "volumes": []map[string]string{{"type": "bind", "source": "/srv/hikyo/data", "target": "/var/lib/hikyo"}, {"type": "bind", "source": "/srv/hikyo/upgrade", "target": "/var/lib/hikyo-upgrade"}}}}}), nil
+		environment["HIKYO_UPGRADE_STATE_DIR"] = cmp.Or(f.stateDirectory, environment["HIKYO_UPGRADE_STATE_DIR"])
+		volumes := append([]map[string]string{{"type": "bind", "source": "/srv/hikyo/data", "target": "/var/lib/hikyo"}, {"type": "bind", "source": "/srv/hikyo/upgrade", "target": "/var/lib/hikyo-upgrade"}}, f.mounts...)
+		return encoded(f.t, map[string]any{"services": map[string]any{"server": map[string]any{"image": image, "environment": environment, "volumes": volumes, "tmpfs": f.tmpfs, "command": f.command}}}), nil
 	}
 	if strings.Contains(joined, " security-maintenance rollback --expected-manifest "+string(f.target.Identity.ManifestSHA256)) {
 		f.events = append(f.events, "rollback")
+		if f.oneShotLeft && slices.Contains(args, "--name") {
+			return nil, errors.New("the container name is already in use")
+		}
 		if f.failRollback {
+			f.oneShotLeft = f.outlive
 			return nil, errors.New("rollback one-shot failed")
 		}
 		if f.afterRollback != nil {
@@ -205,7 +258,7 @@ func (f *composeFixtureRunner) Run(ctx context.Context, command Command) ([]byte
 		f.events = append(f.events, "restore")
 		f.restoreErr = ctx.Err()
 		f.running, f.removed = true, false
-		f.image = f.sourceImage
+		f.image = f.selectedImage(args)
 		return nil, nil
 	}
 	if strings.Contains(joined, " up --detach --no-deps --force-recreate ") {
@@ -842,9 +895,10 @@ func TestComposeRollsBackInOrderAndWritesTheSourceBack(t *testing.T) {
 	}{
 		"restored": {events: []string{"rm", "rollback", "restore"}},
 		"an exited one-off container left by a crash": {setup: func(r *composeFixtureRunner) { r.exitedOneOff = true }, events: []string{"rm", "rollback", "restore"}},
-		"stop proof fails":          {setup: func(r *composeFixtureRunner) { r.stuck = true }, events: []string{"rm"}, fails: true},
-		"one-shot fails":            {setup: func(r *composeFixtureRunner) { r.failRollback = true }, events: []string{"rm", "rollback", "restore"}, fails: true},
-		"one-shot prints no report": {setup: func(r *composeFixtureRunner) { r.reportless = true }, events: []string{"rm", "rollback", "restore"}, fails: true},
+		"stop proof fails":           {setup: func(r *composeFixtureRunner) { r.stuck = true }, events: []string{"rm"}, fails: true},
+		"one-shot fails":             {setup: func(r *composeFixtureRunner) { r.failRollback = true }, events: []string{"rm", "rollback", "restore"}, fails: true},
+		"one-shot prints no report":  {setup: func(r *composeFixtureRunner) { r.reportless = true }, events: []string{"rm", "rollback", "restore"}, fails: true},
+		"target past its final gate": {setup: func(r *composeFixtureRunner) { r.observation.Phase = "healthy" }, events: []string{}, fails: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			e, runner, target := newComposeFixture(t)
@@ -857,6 +911,7 @@ func TestComposeRollsBackInOrderAndWritesTheSourceBack(t *testing.T) {
 			if err := e.Apply(t.Context(), target); err != nil {
 				t.Fatal(err)
 			}
+			runner.observation.Phase = "migrating"
 			if test.setup != nil {
 				test.setup(runner)
 			}
@@ -963,6 +1018,8 @@ func applyOnCompose(t *testing.T) (*Executor, *composeFixtureRunner) {
 	if err := e.Apply(t.Context(), target); err != nil {
 		t.Fatal(err)
 	}
+	// A target that never reported healthy: one that did is past its final gate and is not rolled back.
+	runner.observation.Phase = "migrating"
 	return e, runner
 }
 
@@ -1085,7 +1142,7 @@ func TestReconcileAfterARollbackKeepsSayingSoUntilTheNextPrepare(t *testing.T) {
 		t.Fatalf("the marker answered after the rollback ended: %t %v", proven, err)
 	}
 	runner.inspectRow = row
-	runner.running = true
+	runner.running, runner.observation = true, fixtureObservation()
 	if _, err := e.Prepare(t.Context(), target); err != nil {
 		t.Fatal(err)
 	}
@@ -1164,5 +1221,317 @@ func TestTargetImageIsMatchedByDigest(t *testing.T) {
 		if got := isTargetImage(c.reference, c.id, target); got != c.want {
 			t.Errorf("%s %s: got %t", c.reference, c.id, got)
 		}
+	}
+}
+
+// Generation moves with ordinary writes, so a serving source image is left alone at any generation.
+func TestComposeRollbackLeavesTheSourceImageServingAtAnotherGeneration(t *testing.T) {
+	e, runner := applyOnCompose(t)
+	runner.image, runner.observation = runner.sourceImage, fixtureObservation()
+	runner.observation.Generation++
+	before := len(runner.events)
+	if _, err := e.RollBack(t.Context()); !errors.Is(err, ErrConflict) || len(runner.events) != before {
+		t.Fatalf("a serving source was removed: %v %v", err, runner.events[before:])
+	}
+}
+
+// Ownership is read from the image, not the application, so a container that cannot be observed is
+// removed only when it runs the target or the source.
+func TestComposeRollbackRemovesOnlyTheTargetOrTheSource(t *testing.T) {
+	for name, test := range map[string]struct {
+		image   func(target string) string
+		removed bool
+	}{
+		"another repository":               {image: func(string) string { return "docker.io/library/nginx@sha256:" + strings.Repeat("e", 64) }},
+		"a third image that is restarting": {image: func(string) string { return fixtureRepository + "@sha256:" + strings.Repeat("e", 64) }},
+		"the target restarting":            {image: func(target string) string { return target }, removed: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e, runner := applyOnCompose(t)
+			runner.image = test.image(runner.target.Image)
+			runner.running = name == "another repository"
+			before := len(runner.events)
+			_, err := e.RollBack(t.Context())
+			if test.removed && (err != nil || !slices.Equal(runner.events[before:], []string{"rm", "rollback", "restore"})) {
+				t.Fatalf("a restarting target was not rolled back: %v %v", err, runner.events[before:])
+			}
+			if !test.removed && (!errors.Is(err, ErrConflict) || len(runner.events) != before) {
+				t.Fatalf("a container that is neither target nor source was removed: %v %v", err, runner.events[before:])
+			}
+		})
+	}
+}
+
+// A rollback ended the attempt; replacing again needs a fresh Prepare, not the old proof and marker.
+func TestApplyRefusesARolledBackJournal(t *testing.T) {
+	e, runner, target := newComposeFixture(t)
+	if _, err := e.Prepare(t.Context(), target); err != nil {
+		t.Fatal(err)
+	}
+	runner.failUp = true
+	if err := e.Apply(t.Context(), target); err == nil {
+		t.Fatal("a lost reply was reported as success")
+	}
+	runner.failUp, runner.notNeeded = false, true
+	if _, err := e.RollBack(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Reconcile(t.Context(), fixtureObservation()); !errors.Is(err, ErrFollowsRollback) {
+		t.Fatalf("reconcile: %v", err)
+	}
+	before := len(runner.events)
+	if err := e.Apply(t.Context(), target); !errors.Is(err, ErrConflict) || len(runner.events) != before {
+		t.Fatalf("a rolled-back journal was applied again: %v %v", err, runner.events[before:])
+	}
+}
+
+// The snapshot names the image as the environment file did; recovery starts the journaled source digest.
+func TestComposeRecoveryStartsTheJournaledSourceImage(t *testing.T) {
+	for name, selected := range map[string]string{
+		"a mismatched digest": fixtureRepository + "@sha256:" + strings.Repeat("c", 64),
+		"a moved tag":         fixtureRepository + ":1.0.0",
+	} {
+		for _, recovery := range []string{"rollback", "restore"} {
+			t.Run(name+" "+recovery, func(t *testing.T) {
+				e, runner, target := newComposeFixture(t)
+				raw, err := os.ReadFile(e.c.Compose.EnvironmentFile)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(e.c.Compose.EnvironmentFile, []byte(strings.ReplaceAll(string(raw), runner.sourceImage, selected)), 0600); err != nil {
+					t.Fatal(err)
+				}
+				runner.renderedImage = selected
+				if _, err := e.Prepare(t.Context(), target); err != nil {
+					t.Fatal(err)
+				}
+				if err := e.Apply(t.Context(), target); err != nil {
+					t.Fatal(err)
+				}
+				runner.observation.Phase = "migrating"
+				if recovery == "rollback" {
+					_, err = e.RollBack(t.Context())
+				} else {
+					aborted := fixtureObservation()
+					aborted.Phase, aborted.Maintenance, aborted.Ready, aborted.AbortedBeforeMutation = "backup-preparing", true, false, true
+					err = e.RestoreSource(t.Context(), aborted)
+				}
+				if err != nil || runner.image != runner.sourceImage {
+					t.Fatalf("recovery started %s, not the source %s: %v", runner.image, runner.sourceImage, err)
+				}
+			})
+		}
+	}
+}
+
+// A timed-out one-shot keeps running in the daemon: the source starts only once it is proven gone.
+func TestComposeRollbackRemovesAOneShotThatOutlivedItsCommand(t *testing.T) {
+	for name, test := range map[string]struct {
+		stuck  bool
+		events []string
+	}{
+		"removed":           {events: []string{"rm", "rollback", "clear", "restore"}},
+		"cannot be removed": {stuck: true, events: []string{"rm", "rollback", "clear"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e, runner := applyOnCompose(t)
+			runner.failRollback, runner.outlive, runner.oneShotStuck = true, true, test.stuck
+			before := len(runner.events)
+			_, err := e.RollBack(t.Context())
+			if err == nil || test.stuck != errors.Is(err, ErrRecoveryRequired) || !slices.Equal(runner.events[before:], test.events) {
+				t.Fatalf("err=%v events=%v, want %v", err, runner.events[before:], test.events)
+			}
+		})
+	}
+}
+
+// A retried rollback removes the one-shot an earlier attempt left before it runs its own under the same name.
+func TestComposeRollbackRetryClearsTheEarlierOneShot(t *testing.T) {
+	e, runner := applyOnCompose(t)
+	runner.oneShotLeft = true
+	before := len(runner.events)
+	if _, err := e.RollBack(t.Context()); err != nil || !slices.Equal(runner.events[before:], []string{"rm", "clear", "rollback", "restore"}) {
+		t.Fatalf("err=%v events=%v", err, runner.events[before:])
+	}
+}
+
+// Where the image store records the platform manifest, completion requires the verified one.
+func TestComposeObserveVerifiesThePlatformManifest(t *testing.T) {
+	for name, test := range map[string]struct {
+		manifest string
+		healthy  bool
+	}{
+		"the verified manifest":             {manifest: "sha256:" + strings.Repeat("d", 64), healthy: true},
+		"another manifest of the index":     {manifest: "sha256:" + strings.Repeat("e", 64)},
+		"a classic store that records none": {healthy: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e, runner, target := newComposeFixture(t)
+			target.RuntimeImageSHA256 = strings.Repeat("d", 64)
+			runner.target = target
+			runner.manifest = "sha256:" + strings.Repeat("f", 64) // the source's own platform manifest
+			if _, err := e.Prepare(t.Context(), target); err != nil {
+				t.Fatal(err)
+			}
+			if err := e.Apply(t.Context(), target); err != nil {
+				t.Fatal(err)
+			}
+			runner.manifest = test.manifest
+			_, err := e.Observe(t.Context())
+			j, journalErr := e.journal()
+			if journalErr != nil || (j.Phase == "healthy") != test.healthy || (err == nil) != test.healthy || (!test.healthy && !errors.Is(err, ErrConflict)) {
+				t.Fatalf("phase=%s err=%v", j.Phase, err)
+			}
+			environment, readErr := os.ReadFile(e.c.Compose.EnvironmentFile)
+			if readErr != nil || strings.Contains(string(environment), target.Image) != test.healthy {
+				t.Fatalf("desired state published %t, want %t", strings.Contains(string(environment), target.Image), test.healthy)
+			}
+		})
+	}
+}
+
+// The Docker CLI runs its compose plugin and credential helpers with the coordinator's authority, so
+// each, and every directory searched before it, is held to the docker executable's rules.
+func TestDockerClientIsVettedBeforeCompose(t *testing.T) {
+	for name, test := range map[string]struct {
+		change func(t *testing.T, root string) (path string)
+		named  string
+	}{
+		"an installed client":                {change: func(*testing.T, string) string { return "" }},
+		"a writable plugin directory":        {change: func(t *testing.T, root string) string { mode(t, root+"/docker/cli-plugins", 0775); return "" }, named: "/docker/cli-plugins"},
+		"a writable configuration":           {change: func(t *testing.T, root string) string { mode(t, root+"/docker/config.json", 0620); return "" }, named: "/docker/config.json"},
+		"a writable configuration directory": {change: func(t *testing.T, root string) string { mode(t, root+"/docker", 0777); return "" }, named: "/docker"},
+		"a malformed configuration": {change: func(t *testing.T, root string) string {
+			put(t, root+"/docker/config.json", `{"credsStore":1}`, 0600)
+			return ""
+		}, named: "/docker/config.json"},
+		"a writable plugin": {change: func(t *testing.T, root string) string {
+			mode(t, root+"/docker/cli-plugins/docker-compose", 0757)
+			return ""
+		}, named: "docker-compose"},
+		"a plugin linked to a writable file": {change: func(t *testing.T, root string) string {
+			put(t, root+"/writable-compose", "plugin", 0777)
+			if err := os.Remove(root + "/docker/cli-plugins/docker-compose"); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(root+"/writable-compose", root+"/docker/cli-plugins/docker-compose"); err != nil {
+				t.Fatal(err)
+			}
+			return ""
+		}, named: "/writable-compose"},
+		"a writable extra plugin directory searched first": {change: func(t *testing.T, root string) string {
+			directory(t, root+"/extra", 0777)
+			put(t, root+"/docker/config.json", `{"cliPluginsExtraDirs":["`+root+`/extra"],"credsStore":"vault"}`, 0600)
+			return ""
+		}, named: "/extra"},
+		"a writable system plugin directory holding compose": {change: func(t *testing.T, root string) string {
+			if err := os.Remove(root + "/docker/cli-plugins/docker-compose"); err != nil {
+				t.Fatal(err)
+			}
+			directory(t, root+"/system/cli-plugins", 0777)
+			put(t, root+"/system/cli-plugins/docker-compose", "plugin", 0755)
+			return ""
+		}, named: "/system/cli-plugins"},
+		"no compose plugin": {change: func(t *testing.T, root string) string {
+			if err := os.Remove(root + "/docker/cli-plugins/docker-compose"); err != nil {
+				t.Fatal(err)
+			}
+			return ""
+		}, named: "docker-compose"},
+		"a writable PATH directory searched before the helper": {change: func(t *testing.T, root string) string {
+			directory(t, root+"/early", 0777)
+			return root + "/early:" + root + "/bin"
+		}, named: "/early"},
+		"a writable credential helper": {change: func(t *testing.T, root string) string { mode(t, root+"/bin/docker-credential-vault", 0775); return "" }, named: "docker-credential-vault"},
+		"a missing credential helper": {change: func(t *testing.T, root string) string {
+			if err := os.Remove(root + "/bin/docker-credential-vault"); err != nil {
+				t.Fatal(err)
+			}
+			return ""
+		}, named: "docker-credential-vault"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := privateDirectory(t)
+			directory(t, root+"/docker/cli-plugins", 0755)
+			mode(t, root+"/docker", 0700)
+			put(t, root+"/docker/cli-plugins/docker-compose", "plugin", 0755)
+			put(t, root+"/docker/config.json", `{"auths":{"registry.example":{"auth":"c2VjcmV0"}},"credsStore":"vault","credHelpers":{"registry.example":"vault"}}`, 0600)
+			directory(t, root+"/bin", 0755)
+			put(t, root+"/bin/docker-credential-vault", "helper", 0755)
+			system := dockerSystemPluginDirs
+			dockerSystemPluginDirs = []string{root + "/system/cli-plugins"}
+			t.Cleanup(func() { dockerSystemPluginDirs = system })
+			path := cmp.Or(test.change(t, root), root+"/bin")
+			err := vetDockerClient(root+"/docker", path)
+			if test.named == "" && err != nil {
+				t.Fatalf("an installed client was refused: %v", err)
+			}
+			if test.named != "" && (!errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), test.named)) {
+				t.Fatalf("refusal does not name %s: %v", test.named, err)
+			}
+		})
+	}
+}
+
+func directory(t *testing.T, path string, perm os.FileMode) {
+	t.Helper()
+	if err := os.MkdirAll(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	mode(t, path, perm)
+}
+
+func put(t *testing.T, path, content string, perm os.FileMode) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	mode(t, path, perm)
+}
+
+func mode(t *testing.T, path string, perm os.FileMode) {
+	t.Helper()
+	if err := os.Chmod(path, perm); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The service command is parsed the way the server parses its flags, as on Kubernetes.
+func TestComposeRefusesACommandThatDisablesUnattendedUpgrades(t *testing.T) {
+	for _, command := range [][]string{{"server", "--upgrade-unattended=0"}, {"server", "-auto-migrate=false"}, {"server", "--ha"}} {
+		e, runner, target := newComposeFixture(t)
+		runner.command = command
+		if _, err := e.Prepare(t.Context(), target); !errors.Is(err, ErrUnsupported) {
+			t.Fatalf("command %q qualified: %v", command, err)
+		}
+	}
+	e, runner, target := newComposeFixture(t)
+	runner.command = []string{"server", "--upgrade-unattended"}
+	if _, err := e.Prepare(t.Context(), target); err != nil {
+		t.Fatalf("an enabling flag was refused: %v", err)
+	}
+}
+
+// The most specific mount decides: a tmpfs or anonymous volume under a persistent bind shadows it.
+func TestComposeStateMustBeOnItsMostSpecificMountPersistently(t *testing.T) {
+	for name, test := range map[string]struct {
+		mounts    []map[string]string
+		tmpfs     []string
+		supported bool
+	}{
+		"nested in the persistent data bind": {supported: true},
+		"shadowed by a tmpfs mount":          {mounts: []map[string]string{{"type": "tmpfs", "target": "/var/lib/hikyo/upgrade"}}},
+		"shadowed by a service tmpfs":        {tmpfs: []string{"/var/lib/hikyo/upgrade:size=64m"}},
+		"shadowed by an anonymous volume":    {mounts: []map[string]string{{"type": "volume", "target": "/var/lib/hikyo/upgrade/"}}},
+		"a persistent bind under a tmpfs":    {mounts: []map[string]string{{"type": "tmpfs", "target": "/var/lib/hikyo/upgrade"}, {"type": "bind", "source": "/srv/hikyo/state", "target": "/var/lib/hikyo/upgrade/current"}}, supported: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e, runner, target := newComposeFixture(t)
+			runner.stateDirectory, runner.mounts, runner.tmpfs = "/var/lib/hikyo/upgrade/current", test.mounts, test.tmpfs
+			_, err := e.Prepare(t.Context(), target)
+			if test.supported != (err == nil) || !test.supported && !errors.Is(err, ErrUnsupported) {
+				t.Fatalf("supported=%t err=%v", test.supported, err)
+			}
+		})
 	}
 }

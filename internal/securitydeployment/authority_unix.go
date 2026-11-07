@@ -16,6 +16,29 @@ import (
 // a less privileged account. Installers supply resolved paths, not search names
 // or symlinks through application-writable directories.
 func installedAuthority(path string, executable, private bool) error {
+	return ownedPath(path, func(info os.FileInfo) error {
+		if !info.Mode().IsRegular() || info.Mode().Perm()&0022 != 0 || (private && info.Mode().Perm() != 0600) || (executable && info.Mode().Perm()&0111 == 0) {
+			return fmt.Errorf("%w: %s must be a regular file with %s, found mode %04o", ErrInvalid, path, installedMode(executable, private), info.Mode().Perm())
+		}
+		return nil
+	})
+}
+
+// installedDirectory applies the same rules to a directory the Docker CLI loads code or
+// configuration from, which only its owner may write.
+func installedDirectory(path string) error {
+	return ownedPath(path, func(info os.FileInfo) error {
+		if !info.IsDir() || info.Mode().Perm()&0022 != 0 {
+			return fmt.Errorf("%w: %s, which the Docker CLI loads from, must be a directory that only its owner can write", ErrInvalid, path)
+		}
+		return nil
+	})
+}
+
+// ownedPath walks path from the root. Every component must be owned by root or the coordinator
+// and not be a symbolic link, and every parent a directory only its owner can write unless it is
+// sticky; final judges the last component.
+func ownedPath(path string, final func(os.FileInfo) error) error {
 	if !safePath(path) {
 		return ErrInvalid
 	}
@@ -31,14 +54,11 @@ func installedAuthority(path string, executable, private bool) error {
 		if !ok || (stat.Uid != 0 && int(stat.Uid) != os.Geteuid()) || info.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("%w: %s must be owned by root and not be a symbolic link", ErrInvalid, current)
 		}
-		if index < len(components)-1 {
-			if !info.IsDir() || (info.Mode().Perm()&0022 != 0 && info.Mode()&os.ModeSticky == 0) {
-				return fmt.Errorf("%w: parent %s of %s must be a directory that only its owner can write", ErrInvalid, current, path)
-			}
-			continue
+		if index == len(components)-1 {
+			return final(info)
 		}
-		if !info.Mode().IsRegular() || info.Mode().Perm()&0022 != 0 || (private && info.Mode().Perm() != 0600) || (executable && info.Mode().Perm()&0111 == 0) {
-			return fmt.Errorf("%w: %s must be a regular file with %s, found mode %04o", ErrInvalid, path, installedMode(executable, private), info.Mode().Perm())
+		if !info.IsDir() || (info.Mode().Perm()&0022 != 0 && info.Mode()&os.ModeSticky == 0) {
+			return fmt.Errorf("%w: parent %s of %s must be a directory that only its owner can write", ErrInvalid, current, path)
 		}
 	}
 	return nil

@@ -26,21 +26,22 @@ type Runner interface {
 }
 
 // CommandRunner runs installed tools. Secrets lists exact values to remove from
-// diagnostics, read when a command fails so a rotated value is still covered. An
-// error from it withholds the diagnostics, because they could then carry a value.
+// diagnostics, read before a command runs and again when it fails, so a value
+// rotated while it ran is covered either way. An error from either read withholds
+// the diagnostics, because they could then carry a value.
 type CommandRunner struct {
 	Secrets func() ([]string, error)
 }
 
-func (r CommandRunner) diagnostics(raw []byte) string {
+func (r CommandRunner) diagnostics(raw []byte, before []string, beforeErr error) string {
 	if r.Secrets == nil {
 		return stderrTail(raw, nil)
 	}
-	secrets, err := r.Secrets()
-	if err != nil {
+	after, err := r.Secrets()
+	if err != nil || beforeErr != nil {
 		return ": diagnostics withheld, the installation's protected values could not be read"
 	}
-	return stderrTail(raw, secrets)
+	return stderrTail(raw, append(before, after...))
 }
 
 type boundedOutput struct {
@@ -116,6 +117,11 @@ func (r CommandRunner) Run(ctx context.Context, command Command) ([]byte, error)
 	}
 	out, stderr := &boundedOutput{cancel: cancel}, &boundedOutput{cancel: cancel}
 	cmd.Stdout, cmd.Stderr = out, stderr
+	var before []string
+	var beforeErr error
+	if r.Secrets != nil {
+		before, beforeErr = r.Secrets()
+	}
 	err := cmd.Run()
 	if out.exceeded || stderr.exceeded {
 		return nil, errors.New("security deployment: command output exceeds limit")
@@ -124,11 +130,11 @@ func (r CommandRunner) Run(ctx context.Context, command Command) ([]byte, error)
 		// Stdout carries structured workload data and is never returned. Stderr
 		// reaches the journal, so only its scrubbed final lines are.
 		if ctx.Err() != nil {
-			return nil, fmt.Errorf("%w%s", ctx.Err(), r.diagnostics(stderr.buffer.Bytes()))
+			return nil, fmt.Errorf("%w%s", ctx.Err(), r.diagnostics(stderr.buffer.Bytes(), before, beforeErr))
 		}
 		var exit *exec.ExitError
 		if errors.As(err, &exit) {
-			return nil, fmt.Errorf("security deployment: installed command exited with status %d%s", exit.ExitCode(), r.diagnostics(stderr.buffer.Bytes()))
+			return nil, fmt.Errorf("security deployment: installed command exited with status %d%s", exit.ExitCode(), r.diagnostics(stderr.buffer.Bytes(), before, beforeErr))
 		}
 		return nil, errors.New("security deployment: installed command could not start")
 	}
