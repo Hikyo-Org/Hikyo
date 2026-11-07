@@ -139,7 +139,7 @@ func TestEmailInvitationDispatchOutcomes(t *testing.T) {
 			select {
 			case <-stopped:
 			case <-time.After(10 * time.Second):
-				t.Fatal("Stop did not cancel the blocked send")
+				t.Fatal("Stop did not cancel the blocked sends")
 			}
 			outcomes := dispatchOutcomes(t, db)
 			if len(outcomes) != before+stoppedSends || svc.Sends.Failures() != stoppedSends {

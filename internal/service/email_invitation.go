@@ -35,7 +35,8 @@ const emailInvitationOutcomeTimeout = 5 * time.Second
 // MailSends is the owner-level home of the background sends. It outlives the
 // generations that start them, so a replaced generation's late send is still
 // joined, cancelled and counted. Concurrency is bounded by the per-organisation
-// send budget (so at most budget times organisations instance-wide), never by a
+// send budget (so at most budget times organisations instance-wide; see the ops
+// catalogue Pi-4 fit for what grows the organisation count), never by a
 // drop, and deliberately by no instance-wide cap: a shared cap would let one
 // organisation's matched sends delay another's mail.
 type MailSends struct {
