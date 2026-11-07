@@ -488,7 +488,7 @@ func TestKubernetesUncertainUpdateKeepsApplyingFence(t *testing.T) {
 func TestKubernetesAcceptsOnlyOptedInHelmRelease(t *testing.T) {
 	f := newKubernetesFixture(t)
 	d := f.deployment()
-	d.Labels = map[string]string{helmOwnerOptIn: "helm", "app.kubernetes.io/managed-by": "Helm"}
+	d.Labels = map[string]string{helmOwnerOptIn: "helm", "app.kubernetes.io/managed-by": "Helm", "app.kubernetes.io/instance": "hikyo"}
 	d.Annotations = map[string]string{"meta.helm.sh/release-name": "hikyo", "meta.helm.sh/release-namespace": "hikyo"}
 	if err := f.client.Tracker().Update(appsv1.SchemeGroupVersion.WithResource("deployments"), d, d.Namespace); err != nil {
 		t.Fatal(err)
@@ -499,7 +499,7 @@ func TestKubernetesAcceptsOnlyOptedInHelmRelease(t *testing.T) {
 }
 
 func TestKubernetesRefusesCompetingOwnersAndUnsupportedTopology(t *testing.T) {
-	for _, change := range []string{"flux", "flux-opt-in", "flux-helm-opt-in", "helm", "helm-other-label", "opt-in-rendered-only", "argocd", "argocd-opt-in", "replicas", "rolling", "token", "scratch", "persistent", "init-writes-claim", "init-writes-claim-explicitly", "init-attaches-claim-device", "init-unknown", "init-hikyo-migrate", "init-stager-other-image", "init-stager-command", "envfrom-could-enable-ha", "unattended-single-dash", "unattended-zero", "unattended-capital-false", "auto-migrate-f", "wrapper-command", "state-dir-shadowed-by-scratch", "state-claim-read-only"} {
+	for _, change := range []string{"flux", "flux-opt-in", "flux-helm-opt-in", "helm", "helm-other-label", "opt-in-rendered-only", "argocd", "argocd-opt-in", "argocd-label-tracking", "replicas", "rolling", "token", "scratch", "persistent", "init-writes-claim", "init-writes-claim-explicitly", "init-attaches-claim-device", "init-unknown", "init-hikyo-migrate", "init-stager-other-image", "init-stager-command", "envfrom-could-enable-ha", "unattended-single-dash", "unattended-zero", "unattended-capital-false", "auto-migrate-f", "wrapper-command", "state-dir-shadowed-by-scratch", "state-claim-read-only"} {
 		t.Run(change, func(t *testing.T) {
 			f := newKubernetesFixture(t)
 			d := f.deployment()
@@ -524,6 +524,9 @@ func TestKubernetesRefusesCompetingOwnersAndUnsupportedTopology(t *testing.T) {
 			case "argocd-opt-in":
 				d.Labels = map[string]string{helmOwnerOptIn: "helm"}
 				d.Annotations = map[string]string{"meta.helm.sh/release-name": "r", "meta.helm.sh/release-namespace": "hikyo", "argocd.argoproj.io/tracking-id": "another-owner"}
+			case "argocd-label-tracking":
+				// Argo CD's label tracking adds only this label; Helm would add its annotations too.
+				d.Labels = map[string]string{"app.kubernetes.io/instance": "hikyo"}
 			case "replicas":
 				n := int32(2)
 				d.Spec.Replicas = &n

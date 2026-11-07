@@ -80,6 +80,10 @@ func stderrTail(raw []byte, secrets []string) string {
 	values := make([]string, 0, len(secrets))
 	for _, secret := range secrets {
 		value := printableText(secret)
+		if value == "" {
+			// Replacing "" would put a marker between every rune.
+			continue
+		}
 		values = append(values, value)
 		if len(value) >= 8 || strings.ContainsAny(value, " \"'=:/") {
 			text = strings.ReplaceAll(text, value, "[redacted]")
@@ -136,7 +140,11 @@ func (r CommandRunner) Run(ctx context.Context, command Command) ([]byte, error)
 		if errors.As(err, &exit) {
 			return nil, fmt.Errorf("security deployment: installed command exited with status %d%s", exit.ExitCode(), r.diagnostics(stderr.buffer.Bytes(), before, beforeErr))
 		}
-		return nil, errors.New("security deployment: installed command could not start")
+		if cmd.Process == nil {
+			return nil, errors.New("security deployment: installed command could not start")
+		}
+		// It ran, so it may have had an effect (exec.ErrWaitDelay after a held pipe, for one).
+		return nil, fmt.Errorf("security deployment: installed command ended abnormally: %w%s", err, r.diagnostics(stderr.buffer.Bytes(), before, beforeErr))
 	}
 	return append([]byte(nil), out.buffer.Bytes()...), nil
 }

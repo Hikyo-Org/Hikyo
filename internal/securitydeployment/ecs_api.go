@@ -150,7 +150,11 @@ func (e *Executor) ecsTasks(ctx context.Context, arns []string) ([]ecsTask, erro
 		return nil, err
 	}
 	if len(response.Failures) != 0 || len(response.Tasks) != len(arns) {
-		if len(arns) == 1 && len(response.Tasks) == 0 && len(response.Failures) == 1 && response.Failures[0].ARN == arns[0] && response.Failures[0].Reason == "MISSING" {
+		missing := len(response.Tasks)+len(response.Failures) == len(arns)
+		for _, failure := range response.Failures {
+			missing = missing && failure.Reason == "MISSING" && contains(arns, failure.ARN)
+		}
+		if missing {
 			return nil, errors.Join(ErrConflict, errECSTaskMissing)
 		}
 		return nil, ErrConflict
@@ -165,7 +169,7 @@ func (e *Executor) ecsTasks(ctx context.Context, arns []string) ([]ecsTask, erro
 	return response.Tasks, nil
 }
 
-// errECSTaskMissing marks the one requested task as absent from describe-tasks, which
+// errECSTaskMissing marks requested tasks as absent from describe-tasks, which
 // is how ECS reports a task it no longer retains and also one it has not yet indexed.
 var errECSTaskMissing = errors.New("security deployment: ECS does not report the task")
 
@@ -242,8 +246,12 @@ func (e *Executor) ecsOnlyServiceWriter(ctx context.Context, sourceTask string) 
 		if err := e.aws(ctx, "ecs", "list-tasks", input, &stopping); err != nil {
 			return err
 		}
-		// shortcut: a task reaped between the list and the describe fails closed as a conflict; retry the observation.
 		tasks, err := e.ecsTasks(ctx, stopping.ARNs)
+		if errors.Is(err, errECSTaskMissing) {
+			// Reaped after the listing, or not yet indexed: neither proves it stopped,
+			// so a fresh listing decides.
+			return ErrNotReady
+		}
 		if err != nil {
 			return err
 		}

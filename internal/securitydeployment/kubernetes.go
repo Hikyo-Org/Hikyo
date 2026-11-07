@@ -164,7 +164,10 @@ func managedDesiredState(d *appsv1.Deployment) bool {
 	if d.Labels[helmOwnerOptIn] == "helm" {
 		return release == "" || namespace == ""
 	}
-	return release != "" || namespace != ""
+	// Argo CD's label tracking marks a resource only with app.kubernetes.io/instance,
+	// which Helm also sets, so the label refuses unless a Helm release explains it.
+	// shortcut: a custom application.instanceLabelKey is undetectable; the runbook has operators rule Argo out.
+	return release != "" || namespace != "" || d.Labels["app.kubernetes.io/instance"] != ""
 }
 
 func (e *Executor) deployment(ctx context.Context) (*appsv1.Deployment, error) {
