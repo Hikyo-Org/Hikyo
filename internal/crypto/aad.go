@@ -63,6 +63,23 @@ func (a ValueAAD) fields() [][]byte {
 	}
 }
 
+// PersonalValueAAD binds a personal value ciphertext to its owner's row: kind
+// `personal_value`, fields org_id, project_id, env_id, key_id,
+// owner_principal_id (personal-values ADR § Encryption). A row is unique per
+// (environment, key, owner), so binding the owner is what stops a ciphertext
+// moved onto another person's row from opening.
+type PersonalValueAAD struct {
+	OrgID, ProjectID, EnvID, KeyID, OwnerPrincipalID string
+}
+
+func (a PersonalValueAAD) kind() Kind { return KindPersonalValue }
+func (a PersonalValueAAD) fields() [][]byte {
+	return [][]byte{
+		[]byte(a.OrgID), []byte(a.ProjectID), []byte(a.EnvID),
+		[]byte(a.KeyID), []byte(a.OwnerPrincipalID),
+	}
+}
+
 // WrappedDEKAAD covers tier-3 keys wrapped by the master key: project DEKs,
 // the instance DEK (empty org/project), and — per the secret-scanning
 // amendment — the future scanning-fingerprint key. Fields org_id, project_id,

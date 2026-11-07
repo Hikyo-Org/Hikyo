@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router";
+import { generatePath, Link, useParams } from "react-router";
 
 import { isDemo, demoRole, demoCanEdit } from '../demo/config.ts';
 import { useSensitiveState } from "../api/sensitiveMutation.ts";
@@ -18,7 +18,8 @@ import {
   type ValueCell,
 } from "../api/values.ts";
 import type { EnvRef } from "../api/keys.ts";
-import { useTransport } from "../api/transport.tsx";
+import { useTransport, useWorkspaceContext, withRemote } from "../api/transport.tsx";
+import { surfaceById } from "../app/navigation.ts";
 import {
   writeExpiringClipboard,
 } from "../app/clipboard.ts";
@@ -125,6 +126,8 @@ function ValuesSurface({
   );
 
   const transport = useTransport();
+  const remote = useWorkspaceContext()?.remote ?? "";
+  const personalPath = withRemote(generatePath(surfaceById("personal-values").path, env), remote);
   const values = useValues(env);
   const environmentsQuery = useEnvironments(env);
   const revealGuard = useRevealWindow(env);
@@ -591,6 +594,7 @@ function ValuesSurface({
         >
           Reveal every secret
         </Button>
+        {isDemo ? null : <Link className="btn btn--quiet" to={personalPath}>My personal values</Link>}
         <div className="field field--inline">
           <label htmlFor="publish-destination">Publish into</label>
           <select

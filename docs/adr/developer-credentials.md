@@ -1,5 +1,7 @@
 # Bounded developer credentials (#807, locked 2026-10-09)
 
+> **Proposed declared amendment (2026-11-03, owner decisions O5 to O8 on 2026-11-06, [personal-values.md](./personal-values.md), operative when its implementation PR merges; cross-provider review waived by the owner on 2026-11-06, did not run and is not CLEAN; the amended tickets are not reopened yet):** a developer credential's consent extends to the delegating human's current and future personal values in its one environment, and the mint prompt says so. A credential minted without that consent gets only the names of keys where its owner holds a value or notice, and `hikyo run` refuses those keys. Delivery rules are otherwise unchanged.
+
 > **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** `dev` credentials must present a holder secret separately, in Sealed orgs. See its supersession register.
 
 Status: **owner-locked on 2026-10-09; operative when this implementation PR merges**.

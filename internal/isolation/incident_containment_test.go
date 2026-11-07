@@ -284,7 +284,7 @@ func TestCredentialResetConcurrentDeveloperMint(t *testing.T) {
 		for _, key := range preview.Keys {
 			ids = append(ids, key.KeyID)
 		}
-		intent, err := service.NewDeveloperCredentialReauthIntent(string(envA1), ids, time.Hour, true)
+		intent, err := service.NewPersonalDeveloperCredentialReauthIntent(string(envA1), ids, time.Hour, true, false)
 		if err != nil {
 			t.Fatal(err)
 		}

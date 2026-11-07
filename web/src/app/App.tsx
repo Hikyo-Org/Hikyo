@@ -47,6 +47,8 @@ const Matrix = lazy(() => loadWorkspaceRoutes().then((routes) => ({ default: rou
 const Projects = lazy(() => loadWorkspaceRoutes().then((routes) => ({ default: routes.Projects })));
 const Remotes = lazy(() => loadWorkspaceRoutes().then((routes) => ({ default: routes.Remotes })));
 const Values = lazy(() => loadWorkspaceRoutes().then((routes) => ({ default: routes.Values })));
+const PersonalValues = lazy(() => loadWorkspaceRoutes().then((routes) => ({ default: routes.PersonalValues })));
+const OffboardingReport = lazy(() => loadWorkspaceRoutes().then((routes) => ({ default: routes.OffboardingReport })));
 const WorkspaceScope = lazy(() => loadWorkspaceRoutes().then((routes) => ({ default: routes.WorkspaceScope })));
 
 // Settings screens have independent lazy boundaries; shared dependencies remain
@@ -137,6 +139,16 @@ const ELEMENTS: Record<SurfaceId, ReactElement> = {
   values: withRouteFallback(
     <WorkspaceScope>
       <Values />
+    </WorkspaceScope>
+  ),
+  'personal-values': withRouteFallback(
+    <WorkspaceScope>
+      <PersonalValues />
+    </WorkspaceScope>
+  ),
+  'offboarding-report': withRouteFallback(
+    <WorkspaceScope>
+      <OffboardingReport />
     </WorkspaceScope>
   ),
   'machine-access': withRouteFallback(<MachineAccess />),

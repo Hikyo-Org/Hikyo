@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"maps"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/compose"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
@@ -240,6 +242,9 @@ func runHumanSession(ctx context.Context, ios IO, st *State, flags commonFlags, 
 	}
 	slices.Sort(names)
 	if err := refuseLoaderControl(names, runLoaderControlAck(cfg)); err != nil {
+		return err
+	}
+	if err := refuseHumanPersonalKeys(ctx, client, project, env, names); err != nil {
 		return err
 	}
 	prompt := fmt.Sprintf("About to inject %d value(s) into environment %s and exec %q:\n  %s\nProceed",
@@ -555,6 +560,9 @@ func runDeveloperOnline(ctx context.Context, ios IO, stack *composeStack, childA
 	if err != nil {
 		return err
 	}
+	if err := refusePersonalKeys(ios, response.Keys); err != nil {
+		return err
+	}
 	if !stack.configOnly && len(unrevealedSecrets(response.Keys)) > 0 {
 		return failf(ExitRefused, "developer credential cannot reveal the entire delivered secret set")
 	}
@@ -616,4 +624,107 @@ func executeRunChild(ios IO, childArgs, merged []string) error {
 	// Unreachable on a real unix exec (the process image is replaced); reached
 	// only through the injected test seam, which returns nil to signal capture.
 	return nil
+}
+
+// refusePersonalKeys applies the personal-values ADR's no-silent-fallback rule
+// to a developer delivery: a key the owner holds a value or notice for, but
+// which arrived without that value, refuses the run naming the cause. Keys
+// served the owner's own value are named on stderr, never their values.
+func refusePersonalKeys(ios IO, keys []apigen.DeliveredKey) error {
+	var refused, overridden []string
+	for _, k := range keys {
+		if k.Personal == nil {
+			continue
+		}
+		switch *k.Personal {
+		case apigen.DeliveredKeyPersonalValue:
+			overridden = append(overridden, k.Name)
+		default:
+			reason := ""
+			if k.PersonalReason != nil {
+				reason = *k.PersonalReason
+			}
+			if *k.Personal == apigen.DeliveredKeyPersonalMissing {
+				reason = "required"
+			}
+			refused = append(refused, fmt.Sprintf("%s (%s)", k.Name, personalRefusalCause(reason)))
+		}
+	}
+	slices.Sort(refused)
+	if len(refused) > 0 {
+		return failf(ExitRefused, "hikyo run: refusing key(s) you hold a personal value or notice for, rather than serving the shared value: %s",
+			strings.Join(refused, ", "))
+	}
+	if len(overridden) > 0 {
+		slices.Sort(overridden)
+		fmt.Fprintf(ios.Stderr, "hikyo run: using your personal value for %s\n", strings.Join(overridden, ", "))
+	}
+	return nil
+}
+
+func personalRefusalCause(reason string) string {
+	switch reason {
+	case "consent":
+		return "this developer credential was minted without --personal; mint a new one with hikyo dev session --personal"
+	case "config_only":
+		return "--config-only delivers no personal values"
+	case "suspended":
+		return "your personal value is suspended while your account does not qualify"
+	case "required":
+		return "a personal value is required here and you have none; set it with hikyo personal set"
+	case "":
+		return "personal value withheld"
+	default:
+		return "removal notice: " + reason + "; set a new value or dismiss it with hikyo personal set --clear"
+	}
+}
+
+// refuseHumanPersonalKeys is the human-session path's half of that rule: the
+// export it uses never carries personal values, so a key the caller holds a
+// value or notice for (by hikyo personal list) refuses the run. A checklist
+// row for a required key the caller holds nothing for does not: this path
+// skips the requirement check, so the shared value flows. Only a server older
+// than the personal-values revision holds none; any other lookup failure fails.
+func refuseHumanPersonalKeys(ctx context.Context, client *Client, project, env string, names []string) error {
+	meta, err := client.Meta(ctx)
+	if err != nil {
+		return err
+	}
+	ops, err := api.Operations()
+	if err != nil {
+		return err
+	}
+	if serves, err := servesPersonalList(meta, ops); err != nil || !serves {
+		return err
+	}
+	var list apigen.PersonalValueList
+	if err := client.Do(ctx, http.MethodGet, project+"/environments/"+url.PathEscape(env)+"/personal-values", nil, &list); err != nil {
+		return err
+	}
+	injected := map[string]bool{}
+	for _, n := range names {
+		injected[n] = true
+	}
+	var refused []string
+	for _, e := range list.Items {
+		if injected[e.Name] && (e.Set || e.Notice != nil) {
+			refused = append(refused, e.Name)
+		}
+	}
+	if len(refused) > 0 {
+		slices.Sort(refused)
+		return failf(ExitRefused, "hikyo run --use-human-session: refusing key(s) %s: you hold a personal value or removal notice for them (see hikyo personal list), and only a developer credential (hikyo dev session --personal) delivers personal values",
+			strings.Join(refused, ", "))
+	}
+	return nil
+}
+
+// servesPersonalList reports whether the server is new enough to list the
+// caller's personal values. A missing contract entry is an error, never "old".
+func servesPersonalList(meta apigen.Meta, ops map[string]api.Operation) (bool, error) {
+	op, ok := ops["listMyPersonalValues"]
+	if !ok {
+		return false, failf(ExitInternal, "this client has no contract entry for %q", "listMyPersonalValues")
+	}
+	return meta.ApiRevision >= op.MinRevision, nil
 }

@@ -27,7 +27,7 @@ func (q *Queries) ClampDeveloperCredentialExpiry(ctx context.Context, arg ClampD
 }
 
 const developerCredentialByVerifier = `-- name: DeveloperCredentialByVerifier :one
-SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at FROM developer_credentials WHERE verifier = ?
+SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at,personal_consent FROM developer_credentials WHERE verifier = ?
 `
 
 // hikyo:reason Authentication resolves the presented verifier before any authorization proof can exist.
@@ -54,6 +54,7 @@ func (q *Queries) DeveloperCredentialByVerifier(ctx context.Context, verifier []
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.RevokedAt,
+		&i.PersonalConsent,
 	)
 	return i, err
 }
@@ -72,7 +73,7 @@ func (q *Queries) GetDeveloperCredentialPolicy(ctx context.Context) (int64, erro
 }
 
 const insertDeveloperCredential = `-- name: InsertDeveloperCredential :exec
-INSERT INTO developer_credentials (id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+INSERT INTO developer_credentials (id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at,personal_consent) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 `
 
 type InsertDeveloperCredentialParams struct {
@@ -94,6 +95,7 @@ type InsertDeveloperCredentialParams struct {
 	CreatedAt            string
 	ExpiresAt            string
 	RevokedAt            sql.NullString
+	PersonalConsent      int64
 }
 
 // hikyo:reason Mint authenticated human delegation only after exact scope-bound reauthentication and tenant authorization in this transaction.
@@ -118,12 +120,13 @@ func (q *Queries) InsertDeveloperCredential(ctx context.Context, arg InsertDevel
 		arg.CreatedAt,
 		arg.ExpiresAt,
 		arg.RevokedAt,
+		arg.PersonalConsent,
 	)
 	return err
 }
 
 const listDeveloperCredentials = `-- name: ListDeveloperCredentials :many
-SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at FROM developer_credentials ORDER BY created_at,id
+SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at,personal_consent FROM developer_credentials ORDER BY created_at,id
 `
 
 // hikyo:reason Transaction-local lifecycle administration filters this metadata after self or project authorization; no bearer can be recovered.
@@ -156,6 +159,7 @@ func (q *Queries) ListDeveloperCredentials(ctx context.Context) ([]DeveloperCred
 			&i.CreatedAt,
 			&i.ExpiresAt,
 			&i.RevokedAt,
+			&i.PersonalConsent,
 		); err != nil {
 			return nil, err
 		}

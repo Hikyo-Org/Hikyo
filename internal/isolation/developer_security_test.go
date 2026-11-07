@@ -342,7 +342,7 @@ func prepareSecurityDeveloperMint(t *testing.T, db *store.DB, fixture *ceremonyE
 		t.Fatal(err)
 	}
 	login.SessionToken = stepped.SessionToken
-	intent, err := service.NewDeveloperCredentialReauthIntent(string(envA1), ids, time.Hour, true)
+	intent, err := service.NewPersonalDeveloperCredentialReauthIntent(string(envA1), ids, time.Hour, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -483,7 +483,7 @@ func TestDeveloperZeroWindowRequiresPasskeyAtOpeningAndMint(t *testing.T) {
 		for _, key := range preview.Keys {
 			keys = append(keys, key.KeyID)
 		}
-		intent, err := service.NewDeveloperCredentialReauthIntent(string(envA1), keys, time.Hour, true)
+		intent, err := service.NewPersonalDeveloperCredentialReauthIntent(string(envA1), keys, time.Hour, true, false)
 		if err != nil {
 			t.Fatal(err)
 		}

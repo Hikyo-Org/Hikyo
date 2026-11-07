@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { zDefinitionsSettings, zKey, zKeyGroupList } from '@hikyo/zod';
+import { zDefinitionsSettings, zKey, zKeyGroupList, zPersonalValueHolderList } from '@hikyo/zod';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
 import type { z } from 'zod';
 
@@ -260,5 +260,39 @@ export const Failed: Story = {
   parameters: app({ key: { status: 500, body: { error: { code: 'internal', message: 'boom' } } } }),
   play: async ({ canvas }) => {
     await expect(await canvas.findByText('The key could not be loaded (error 500).')).toBeVisible();
+  },
+};
+
+// Personal values for this key, as someone who manages members sees them: who
+// holds a value or a notice in the chosen environment and when each changed.
+// Deleting a value asks first and leaves its owner a notice.
+const members = {
+  items: [
+    { principal_id: 'prn_123e4567-e89b-12d3-a456-426614174101', username: 'alex', set: true, updated_at: '2026-10-02T09:30:00Z' },
+    { principal_id: 'prn_123e4567-e89b-12d3-a456-426614174102', username: 'sam', set: false, notice: 'administrator', updated_at: '2026-10-05T14:00:00Z' },
+  ],
+} satisfies z.input<typeof zPersonalValueHolderList>;
+const MEMBERS_URL = `${PROJECT_URL}/environments/${DEV}/personal-values/DATABASE_URL/members`;
+
+export const PersonalMembers: Story = {
+  parameters: {
+    app: {
+      ...app().app,
+      responses: [
+        ...app().app.responses,
+        { url: MEMBERS_URL, body: members },
+        { url: `${MEMBERS_URL}/prn_123e4567-e89b-12d3-a456-426614174101`, method: 'DELETE', status: 204 },
+      ],
+    },
+  },
+  play: async ({ canvas, userEvent }) => {
+    const list = await canvas.findByRole('list', { name: 'Personal values for DATABASE_URL' });
+    await expect(within(list).getByText('alex')).toBeVisible();
+    await expect(within(list).getByText(/notice: an administrator deleted it/)).toBeVisible();
+    await userEvent.click(canvas.getByRole('button', { name: 'Delete the personal value of alex' }));
+    const dialog = within(await canvas.findByRole('dialog', { name: 'Delete the personal value of alex?' }));
+    await expect(dialog.getByText(/leaves them a notice/)).toBeVisible();
+    await userEvent.click(dialog.getByRole('button', { name: 'Delete their value' }));
+    await expect(await canvas.findByText('The personal value of alex is deleted. They have a notice.')).toBeVisible();
   },
 };

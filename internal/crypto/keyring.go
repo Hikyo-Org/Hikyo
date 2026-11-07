@@ -1094,6 +1094,8 @@ func (s *ProjectSealer) checkAADScope(a AAD) error {
 		return s.checkScope(v.OrgID, v.ProjectID)
 	case ProjectFieldAAD:
 		return s.checkScope(v.OrgID, v.ProjectID)
+	case PersonalValueAAD:
+		return s.checkScope(v.OrgID, v.ProjectID)
 	default:
 		return fmt.Errorf("crypto: project sealer cannot handle AAD kind %d", a.kind())
 	}
@@ -1112,6 +1114,14 @@ func (s *ProjectSealer) OpenValue(a ValueAAD, record []byte) ([]byte, error) {
 		return nil, err
 	}
 	return s.openVersioned(a, record)
+}
+
+func (s *ProjectSealer) SealPersonalValue(a PersonalValueAAD, plaintext []byte) ([]byte, error) {
+	return s.Seal(a, plaintext)
+}
+
+func (s *ProjectSealer) OpenPersonalValue(a PersonalValueAAD, record []byte) ([]byte, error) {
+	return s.Open(a, record)
 }
 
 func (s *ProjectSealer) SealField(a ProjectFieldAAD, plaintext []byte) ([]byte, error) {

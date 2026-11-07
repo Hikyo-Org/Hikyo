@@ -1,5 +1,7 @@
 # Hikyo audit logging & event model (ADR, locked 2026-08-02)
 
+> **Proposed declared amendment (2026-11-03, owner decisions O5 to O8 on 2026-11-06, [personal-values.md](./personal-values.md), operative when its implementation PR merges; cross-provider review waived by the owner on 2026-11-06, did not run and is not CLEAN; the amended tickets are not reopened yet):** new events `personal_value.set`, `.revealed`, `.delivered` (access class, under the fetch envelope) and `.deleted` (security class, with cause). None carry plaintext or a value fingerprint.
+
 > **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** the tenant trail's commit order spanning orgs, for all PostgreSQL deployments, and the visibility of instance actions and placement of org-owned issuer events, for Sealed orgs. See its supersession register.
 
 > **Owner-approved amendment (2026-10-28, #1034, operative when its implementation PR merges):** bounded `auth.request_refused` summaries replace generic invalid-artifact silence for the covered paths. The exact staging, sampling, attribution, sink-loss and health contract is [auth-refusal-signals.md](./auth-refusal-signals.md). The owner explicitly approved that contract and waived cross-provider review for #1034 only. Maintainer security review and the human merge gate remain. Earlier MCP silence is superseded only at this scope; dedicated refusals and `grant.denied` remain unchanged.
@@ -22,9 +24,7 @@
 > justified periods and manage separately controlled copies. Earlier unlimited
 > security-default language below is historical where it conflicts.
 
-
 > **Operative pre-freeze amendment (2026-09-05, #617, implementing #579 and #589):** Remove `auth.jit_provisioned` and the `jit-refused` cause of `auth.oidc_refused` before 1.0, together with OIDC automatic account creation. Unknown login identities emit the existing `unknown-identity` refusal. Registration must not repeat these removals. Earlier references to that provisioning event or its removal during registration are historical.
-
 
 > **Declared amendment (2026-09-04, [mcp-server.md](./mcp-server.md), [#627](https://github.com/Hikyo-Org/Hikyo/issues/627), per the [oss-mechanics.md](./oss-mechanics.md) amendment procedure; operative):** the event envelope's closed `origin` enum gains `mcp`. It marks events emitted while an existing service operation is reached through `POST /mcp`; it does not create an event type, change an operation's existing `audited: none` disposition, or permit request arguments/results in the trail. The phase-1 tools are the existing proof-scoped pure reads `key.list`, `environment.list`, `value.list`, `value.pending-list`, and `revision.list`: successful calls remain `audited: none`; missing, invalid, expired, or revoked bearer authentication retains the existing silent non-enumerating disposition; a valid disallowed artifact remains `auth.artifact_class_refused`; and an authenticated authorization refusal remains `grant.denied` with its existing exact operation and formula. Emitted refusals carry `origin=mcp`. The unauthenticated-class `mcp:server/discover` and `mcp:tools/list` entry points join the closed audited-exemption fixture by exact name: both return the same static tenant-free protocol metadata, resolve no bearer, and change no state. Bearer values, tool arguments, results, tenant-controlled prose, and model content never enter the envelope. SQLite and PostgreSQL forward/rollback migrations and closed-enum tests must land with the first MCP event emitter.
 
@@ -208,7 +208,6 @@ Pruning is the licensed deleter above: policy-driven, per-class, per retention u
 ## Binds
 
 This ADR binds **[#25](https://github.com/Hikyo-Org/Hikyo/issues/25)**, **[#28](https://github.com/Hikyo-Org/Hikyo/issues/28)**, **[#32](https://github.com/Hikyo-Org/Hikyo/issues/32)**, **[#26](https://github.com/Hikyo-Org/Hikyo/issues/26)**, **[#29](https://github.com/Hikyo-Org/Hikyo/issues/29)** and the synthesis (**[#27](https://github.com/Hikyo-Org/Hikyo/issues/27)**) as propagated above. It **amends [#15](https://github.com/Hikyo-Org/Hikyo/issues/15), [#16](https://github.com/Hikyo-Org/Hikyo/issues/16) and [#23](https://github.com/Hikyo-Org/Hikyo/issues/23)** in five declared parts: `audit-read` joins the capability set with `admin`-template seeding, joins the MFA-mandatory list, and joins the `automation` machine allowlist; the enumerated authorization interface gains the denial writer; and the audit tables are the composite-FK rule's single declared exception. Every other upstream constraint it touches is restated, not changed.
-
 
 ## Public parameter export amendment (#723)
 

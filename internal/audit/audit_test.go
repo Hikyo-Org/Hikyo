@@ -415,7 +415,7 @@ func TestValidateRefusesValuesOutsideClosedTaxonomies(t *testing.T) {
 			[]string{"login", "link", "reauth", "claim", "establish"}},
 		{"authority refusal cause", EventAuthAuthorityRefused, OutcomeFailure, TrailInstance, domain.Scope{}, "cause",
 			Payload{"cause": "purpose"},
-			[]string{"malformed", "unknown", "consumed", "expired", "epoch-superseded", "purpose"}},
+			[]string{"malformed", "unknown", "consumed", "expired", "epoch-superseded", "purpose", "linked-identity"}},
 		{"established credential kind", EventAuthCredentialEstablished, OutcomeSuccess, TrailInstance, domain.Scope{}, "established_credential_kind",
 			Payload{"authority_id": "cea_a", "account_id": "acc_a", "credential": "oidc", "established_credential_kind": "oidc"},
 			[]string{"password", "oidc", "oauth2"}},

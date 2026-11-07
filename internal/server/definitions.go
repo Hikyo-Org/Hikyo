@@ -125,7 +125,7 @@ func wireDefinitionsPlanDiff(d service.PlanDiff) apigen.DefinitionsPlanDiff {
 	}
 	envs := make([]apigen.DefinitionsEnvironmentDeletion, 0, len(d.EnvDeletions))
 	for _, e := range d.EnvDeletions {
-		envs = append(envs, apigen.DefinitionsEnvironmentDeletion{Name: e.Name, Occurrences: e.Occurrences})
+		envs = append(envs, apigen.DefinitionsEnvironmentDeletion{Name: e.Name, Occurrences: e.Occurrences, PersonalValues: &e.PersonalValues})
 	}
 	return apigen.DefinitionsPlanDiff{
 		Environments: wireDefinitionsKindDiff(d.Environments), KeyGroups: wireDefinitionsKindDiff(d.KeyGroups),

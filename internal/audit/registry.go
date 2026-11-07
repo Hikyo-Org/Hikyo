@@ -459,6 +459,18 @@ const (
 	// Ordinary config exports remain unaudited; per-key export disclosure records
 	// remain exclusive to secrets.
 	EventValuesExported EventType = "disclosure.values_exported"
+	// Personal values (#1235, personal-values ADR, Audit and limits). None
+	// carries plaintext or a fingerprint. `owner_principal_id` names whose
+	// value it was; the actor is the event's principal.
+	EventPersonalValueSet         EventType = "personal_value.set"
+	EventPersonalValueRevealed    EventType = "personal_value.revealed"
+	EventPersonalValueDelivered   EventType = "personal_value.delivered"
+	EventPersonalValueDeleted     EventType = "personal_value.deleted"
+	EventPersonalValueHoldersRead EventType = "personal_value.holders_read"
+	// counts_read and offboarding_report_read are metadata reads under
+	// manage-members (and audit-read for the report): names and counts only.
+	EventPersonalValueCountsRead       EventType = "personal_value.counts_read"
+	EventPersonalOffboardingReportRead EventType = "personal_value.offboarding_report_read"
 	// value.staged records an edit landing in the actor's own WORKING STATE
 	// (#51). It is deliberately its own type rather than a `value.set` with a
 	// flag: a draft delivers nothing, so an investigator asking "when did this
@@ -1186,7 +1198,7 @@ var registry = map[EventType]TypeSpec{
 			// oracle the response deliberately is not. `purpose` is a claim
 			// refusal (#610): a recovery-issued authority, or an account that
 			// already holds a credential.
-			"cause": {Kind: KindString, Required: true, Enum: []string{"malformed", "unknown", "consumed", "expired", "epoch-superseded", "purpose"}},
+			"cause": {Kind: KindString, Required: true, Enum: []string{"malformed", "unknown", "consumed", "expired", "epoch-superseded", "purpose", "linked-identity"}},
 		},
 	},
 	EventAuthThrottleCrossed: {
@@ -1641,6 +1653,9 @@ var registry = map[EventType]TypeSpec{
 		"schema_revision":  {Kind: KindInt, Required: true},
 		"rules_changed":    {Kind: KindBool, Required: true},
 		"presence_changed": {Kind: KindBool, Required: true},
+		// The `personal_required_in` setting (#1235). Optional: events
+		// recorded before it existed carry only `presence_changed`.
+		"personal_required_changed": {Kind: KindBool},
 	}),
 	EventKeyMetadataChanged: hierarchyEvent(Schema{
 		"name":      {Kind: KindFreeText, Required: true},
@@ -1741,6 +1756,85 @@ var registry = map[EventType]TypeSpec{
 		"name":           {Kind: KindFreeText, Required: true},
 		"classification": {Kind: KindString, Required: true},
 	}),
+	EventPersonalValueSet: hierarchyEvent(Schema{
+		"key_id":             {Kind: KindString, Required: true},
+		"name":               {Kind: KindFreeText, Required: true},
+		"owner_principal_id": {Kind: KindString, Required: true},
+	}),
+	EventPersonalValueRevealed: {
+		SchemaVersion: 1,
+		Retention:     RetentionAccess,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"key_id":             {Kind: KindString, Required: true},
+			"name":               {Kind: KindFreeText, Required: true},
+			"owner_principal_id": {Kind: KindString, Required: true},
+		},
+	},
+	// Who holds a personal value for a key is metadata an administrator reads
+	// under manage-members, so the read is on the tenant trail like grant lists.
+	EventPersonalValueHoldersRead: {
+		SchemaVersion: 1,
+		Retention:     RetentionAccess,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"key_id": {Kind: KindString, Required: true},
+			"name":   {Kind: KindFreeText, Required: true},
+			"count":  {Kind: KindInt, Required: true},
+		},
+	},
+	EventPersonalValueCountsRead: {
+		SchemaVersion: 1,
+		Retention:     RetentionAccess,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"keys": {Kind: KindInt, Required: true},
+		},
+	},
+	EventPersonalOffboardingReportRead: {
+		SchemaVersion: 1,
+		Retention:     RetentionAccess,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"subject_principal_id": {Kind: KindString, Required: true},
+			"received":             {Kind: KindInt, Required: true},
+			"service_accounts":     {Kind: KindInt, Required: true},
+		},
+	},
+	// One per key per delivery, under the fetch envelope's correlation.
+	EventPersonalValueDelivered: {
+		SchemaVersion: 1,
+		Retention:     RetentionAccess,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"key":                {Kind: KindFreeText, Required: true},
+			"owner_principal_id": {Kind: KindString, Required: true},
+			"credential_id":      {Kind: KindString, Required: true},
+			"scope":              {Kind: KindString, Required: true},
+		},
+	},
+	// cause is `owner` when the owner removed it, else the notice cause. A
+	// tenant record names one key; the instance record of a qualification
+	// purge or a privacy erasure (cause `erasure`) counts every value the
+	// owner lost across projects instead.
+	EventPersonalValueDeleted: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true, TrailInstance: true},
+		Schema: Schema{
+			"key_id":             {Kind: KindString},
+			"name":               {Kind: KindFreeText},
+			"count":              {Kind: KindInt},
+			"owner_principal_id": {Kind: KindString, Required: true},
+			"cause":              {Kind: KindString, Required: true},
+		},
+	},
 	// cell | diff | copy | clone | export | delivery | offline-serve — where
 	// the plaintext went. Never what it was. Offline-only provenance fields
 	// preserve the serving credential even when it has since been revoked.

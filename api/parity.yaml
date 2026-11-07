@@ -549,6 +549,14 @@ operations:
   transitHMAC:            {webui: transit-keys}
   transitVerifyHMAC:      {webui: transit-keys}
 
+  listMyPersonalValues: {webui: personal-values}
+  setMyPersonalValue: {webui: personal-values}
+  deleteMyPersonalValue: {webui: personal-values}
+  revealMyPersonalValue: {webui: personal-values}
+  listPersonalValueMembers: {webui: key-detail}
+  deletePersonalValueMember: {webui: key-detail}
+  listPersonalValueCounts: {webui: matrix}
+  getPersonalOffboardingReport: {webui: offboarding-report}
   mintDeveloperCredential: {exception: bounded-developer-delegation}
   listMyDeveloperCredentials: {exception: bounded-developer-delegation}
   revokeAllMyDeveloperCredentials: {exception: bounded-developer-delegation}

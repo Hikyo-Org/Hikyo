@@ -145,6 +145,11 @@ type CatalogueReader interface {
 	// property of a SET of keys, and one read is both cheaper and impossible
 	// to get half-right.
 	ListPresence(ctx context.Context, p authz.Proof) ([]KeyPresence, error)
+	// PersonalRequired returns every personal_required_in row in the project:
+	// a key and an environment where each developer is expected to hold a
+	// personal value. Only KeyID and EnvironmentID are set. It is a presence
+	// rule, so it rides the presence store ops.
+	PersonalRequired(ctx context.Context, p authz.Proof) ([]KeyPresence, error)
 	// SchemaRevision is the project's monotonic key-catalogue revision.
 	SchemaRevision(ctx context.Context, p authz.Proof) (int64, error)
 }
@@ -182,6 +187,10 @@ type CatalogueRepo interface {
 	// proof's chain, so it runs in the same transaction as the delete that
 	// earned it.
 	DeletePresenceForEnvironment(ctx context.Context, p authz.Proof) error
+
+	// ReplacePersonalRequired rewrites one key's personal_required_in set
+	// whole; an empty set is `none`.
+	ReplacePersonalRequired(ctx context.Context, p authz.Proof, keyID string, environmentIDs []string) error
 
 	// BumpSchemaRevision advances the project's key-catalogue revision. It is
 	// called exactly where a SEMANTIC declaration change commits: metadata

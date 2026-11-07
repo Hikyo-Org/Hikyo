@@ -176,6 +176,9 @@ func compileCanonical(b Bundle) (CompiledBundle, error) {
 			return CompiledBundle{}, err
 		}
 		k.RequiredIn, k.ForbiddenIn = req, forb
+		if k.PersonalRequiredIn, err = normalizePersonalRequired(k, req, forb); err != nil {
+			return CompiledBundle{}, err
+		}
 		out.Keys[i] = k
 		declarations[k.Name] = compiled
 	}
@@ -188,6 +191,32 @@ func compileCanonical(b Bundle) (CompiledBundle, error) {
 	}
 	canonical := CanonicalBundle{encoded: encoded, additive: out.Additive(), valid: true}
 	return CompiledBundle{canonical: canonical, declarations: declarations}, nil
+}
+
+// normalizePersonalRequired validates personal_required_in and returns it in
+// canonical form: nil for `none`, a sorted `explicit` set otherwise. `all` and
+// an overlap with required_in or forbidden_in are refused, as is a key in a
+// group. Environment names stand in for ids: names are unique in a bundle.
+func normalizePersonalRequired(k Key, req, forb Presence) (*Presence, error) {
+	if k.PersonalRequiredIn == nil {
+		return nil, nil
+	}
+	// schema.CheckPersonalRequired below refuses mode `all`.
+	p, err := normalizePresence("personal_required_in", k.Name, *k.PersonalRequiredIn)
+	if err != nil {
+		return nil, err
+	}
+	if schema.PresenceMode(p.Mode) == schema.PresenceNone {
+		return nil, nil
+	}
+	named := func(p Presence) schema.Presence {
+		return schema.Presence{Mode: schema.PresenceMode(p.Mode), Environments: p.Environments}
+	}
+	rules := schema.PresenceRules{Required: named(req), Forbidden: named(forb)}
+	if err := schema.CheckPersonalRequired(named(p), rules, k.Group != ""); err != nil {
+		return nil, invalidDetail("key %q: %v", k.Name, err)
+	}
+	return &p, nil
 }
 
 // normalizePresence validates a bundle presence rule's mode/shape and returns

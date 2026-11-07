@@ -72,7 +72,10 @@ var SpecYAML []byte
 // Revision 13 adds instance audit trail query and export.
 // Revision 14 adds the editable org and project identity. Revision 13 had
 // already shipped in v1.0.0 without it.
-const Revision = 14
+// Revision 15 adds per-developer personal values (#1235): the owner's list,
+// set, reveal and delete, the members list and member delete, the delivery
+// overlay fields and developer-credential personal consent.
+const Revision = 15
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
 // explicitly does not plan one.

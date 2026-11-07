@@ -207,6 +207,17 @@ func (s *Reencrypt) ReencryptProject(ctx context.Context, actor Actor, orgID, pr
 			func(ctx context.Context, r store.Repos, p authz.Proof, id string, newCt, oldCt []byte) (bool, error) {
 				return r.Pending().Reencrypt(ctx, p, id, newCt, oldCt)
 			}},
+		{"personal_value",
+			func(ctx context.Context, r store.Repos, p authz.Proof, cursor string) ([]projectFieldRow, error) {
+				rows, err := r.PersonalValues().ListForReencrypt(ctx, p, cursor, s.chunkSize())
+				return fieldRows(rows), err
+			},
+			func(row projectFieldRow) crypto.AAD {
+				return crypto.PersonalValueAAD{OrgID: orgID, ProjectID: projectID, EnvID: row.env, KeyID: row.key, OwnerPrincipalID: row.owner}
+			},
+			func(ctx context.Context, r store.Repos, p authz.Proof, id string, newCt, oldCt []byte) (bool, error) {
+				return r.PersonalValues().Reencrypt(ctx, p, id, newCt, oldCt)
+			}},
 		{"adapter",
 			func(ctx context.Context, r store.Repos, p authz.Proof, cursor string) ([]projectFieldRow, error) {
 				rows, err := r.Adapters().ListAdaptersForReencrypt(ctx, p, cursor, s.chunkSize())

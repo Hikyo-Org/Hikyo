@@ -125,3 +125,33 @@ export const Refused: Story = {
     await expect(canvas.getByRole('button', { name: 'Use a passkey' })).toBeEnabled();
   },
 };
+
+// A personal value from an OIDC session: only the account's own passkey or
+// authenticator app may approve it, so the identity provider is not offered
+// and the dialog says why.
+export const PersonalPossessionOnly: Story = {
+  args: { request: { ...codeOffered, purpose: 'personal', possessionOnly: true, keys: [production.keys[0]!] } },
+  parameters: { app: { auth: true, identity: oidcIdentity, responses: [methods, inventory] } },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('dialog', { name: 'set your personal value in · production' })).toBeVisible();
+    await expect(await canvas.findByLabelText(/or a code from your authenticator/i)).toBeVisible();
+    await expect(canvas.getByText(/An identity provider approval cannot authorise them/)).toBeVisible();
+    await expect(canvas.queryByRole('button', { name: 'Re-authenticate with Corporate IdP' })).toBeNull();
+  },
+};
+
+// A personal value on an account with no passkey and no authenticator app: the remedy.
+export const PersonalNeedsAFactor: Story = {
+  args: { request: { ...codeOffered, purpose: 'personal', possessionOnly: true, keys: [production.keys[0]!] } },
+  parameters: {
+    app: {
+      auth: true,
+      identity: oidcIdentity,
+      responses: [methods, { url: '/api/v1/auth/totp', body: { confirmed: false, pending: false, has_password: false, has_passkey: false, can_reauth_oidc: true } }],
+    },
+  },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByText(/This needs an authenticator app or passkey on your account/)).toBeVisible();
+    await expect(canvas.getByRole('link', { name: 'Settings › Security' })).toBeVisible();
+  },
+};

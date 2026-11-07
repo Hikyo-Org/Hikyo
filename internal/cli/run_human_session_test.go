@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
@@ -45,6 +46,10 @@ func runHumanServer(t *testing.T, windowLive bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
+		case strings.HasSuffix(r.URL.Path, "/meta"):
+			_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture", ApiRevision: api.Revision})
+		case strings.HasSuffix(r.URL.Path, "/personal-values"):
+			_ = json.NewEncoder(w).Encode(apigen.PersonalValueList{Items: []apigen.PersonalValueEntry{}})
 		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
 			_ = json.NewEncoder(w).Encode(apigen.RevealWindow{Live: windowLive})
 		case strings.HasSuffix(r.URL.Path, "/revisions/latest"):
@@ -289,6 +294,37 @@ func TestRunHumanSessionRefusesAnUndeliveredConfirmedKey(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "did not deliver confirmed key(s) API_TOKEN") {
 		t.Errorf("refusal does not name the secret: %s", stderr.String())
+	}
+}
+
+// A key the caller holds a personal value or notice for is refused before the
+// confirmation and before any export, with or without --config-only.
+func TestRunHumanSessionRefusesAHeldPersonalKey(t *testing.T) {
+	for _, extra := range [][]string{nil, {"--config-only"}} {
+		fixture := runHumanServer(t, true)
+		exports, listed := 0, 0
+		ios, _, stderr := definitionsTestIO(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case strings.HasSuffix(r.URL.Path, "/environments/env_70/personal-values"):
+				listed++
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(apigen.PersonalValueList{Items: []apigen.PersonalValueEntry{{Name: "LOG_LEVEL", Set: true}}})
+			case strings.HasSuffix(r.URL.Path, "/values/export"):
+				exports++
+				fixture.ServeHTTP(w, r)
+			default:
+				fixture.ServeHTTP(w, r)
+			}
+		}))
+		ios.StderrIsTerminal = func() bool { return true }
+		// A decline: a refusal placed after the confirmation reports "declined" instead.
+		ios.TerminalSession, _ = terminalSession(t, "n\n")
+		execed := false
+		ios.Exec = func(string, []string, []string) error { execed = true; return nil }
+		code := cli.Run(t.Context(), ios, runArgs(extra...))
+		if code != cli.ExitRefused || execed || exports != 0 || listed != 1 || !strings.Contains(stderr.String(), "refusing key(s) LOG_LEVEL") {
+			t.Fatalf("%v: exit=%d exec=%v exports=%d listed=%d stderr=%s", extra, code, execed, exports, listed, stderr.String())
+		}
 	}
 }
 

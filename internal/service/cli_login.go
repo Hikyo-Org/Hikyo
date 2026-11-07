@@ -54,7 +54,7 @@ func (s *Auth) requireCLILoginAssurance(ctx context.Context, az *authz.TxAuthori
 	if assurance.Method != MethodLocalPassword || authz.AdequateAssurance(assurance) {
 		return nil
 	}
-	factors, err := s.enrolledFactors(ctx, az, accountID)
+	factors, err := enrolledFactors(ctx, az, accountID)
 	if err != nil {
 		return err
 	}

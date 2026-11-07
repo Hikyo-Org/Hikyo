@@ -125,8 +125,10 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpSelfConfigStatus, authz.OpSelfConfigPreview, authz.OpSelfConfigAdopt, authz.OpSelfConfigProvisionProject)
 	add(budgetClassExempt, "SSE admission caps (§10, 4/32/128) own concurrency; per-event authz must not be budgeted",
 		authz.OpAdvisoryWatch, authz.OpAdvisoryEvent)
-	add(budgetClassExempt, "reveal ceremony + per-key gate limiter (GateAttemptsPerMinute) bound it",
+	add(budgetClassExempt, "reveal ceremony (a live reauthentication window per environment, single-decision only at a 0 window) + §10 authenticated API bound it",
 		authz.OpValueReveal)
+	add(budgetClassExempt, "personal set/reveal: one own cell behind the reveal ceremony (a live possession-only reauthentication window per environment, single-decision only at a 0 window) + §10 authenticated API",
+		authz.OpPersonalValueSet, authz.OpPersonalValueReveal)
 	add(budgetClassExempt, "delivery-target list: one environment, at most 100 rows per reporting principal (§10 authenticated API)",
 		authz.OpDeliveryTargetList)
 	add(budgetClassExempt, "file-target configuration and inspection: project-scoped admin metadata, one row per workload service account (§10 authenticated API)",
@@ -168,6 +170,10 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		// values (non-export, non-copy, non-import, non-publish): single-cell reads/writes
 		authz.OpValueRead, authz.OpValueList, authz.OpValueSet, authz.OpValueClear,
 		authz.OpValueStage, authz.OpValueInitialize, authz.OpValueValidate, authz.OpValuePendingList, authz.OpRevealWindowRead,
+		// personal values: the caller's own names, one own cell, or one key's holder metadata
+		authz.OpPersonalValueList, authz.OpPersonalValueDelete, authz.OpPersonalValueMembers, authz.OpPersonalValueDeleteMember,
+		// personal counts: one environment's per-key counts; offboarding report: one person's retained audit trail in one project
+		authz.OpPersonalValueCounts, authz.OpPersonalOffboardingReport,
 		// revisions / pins: paged reads and single-revision restores
 		authz.OpRevisionList, authz.OpRevisionShow, authz.OpRevisionSignals,
 		authz.OpRevisionRestore, authz.OpRevisionRestoreHistory, authz.OpRevisionRestoreCurrent,

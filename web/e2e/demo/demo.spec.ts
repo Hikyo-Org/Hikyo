@@ -290,6 +290,8 @@ const surfaceChecks = {
   history: { mode: 'interactive', heading: 'Revision history', sample: 'current r1' },
   'key-detail': { mode: 'interactive', heading: 'LOG_LEVEL', sample: 'Application log verbosity.' },
   values: { mode: 'interactive', heading: 'Values', sample: 'LOG_LEVEL' },
+  'personal-values': { mode: 'excluded', result: 'unavailable' },
+  'offboarding-report': { mode: 'excluded', result: 'unavailable' },
   'machine-access': { mode: 'read-only', heading: 'Machine access', sample: 'payments-api' },
   'change-approvals': { mode: 'read-only', heading: 'Change approvals', sample: 'Sample review: rotate the payment provider credential.', tab: 'Review queue', environment: DEMO_IDS.staging },
   'temporary-access': { mode: 'read-only', heading: 'Temporary access', sample: 'Sample request: investigate a checkout error.', environment: DEMO_IDS.staging },

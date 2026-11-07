@@ -28,6 +28,8 @@ type CurrentKey struct {
 	Declaration     schema.Declaration
 	Required        schema.Presence
 	Forbidden       schema.Presence
+	// PersonalRequired is `none` or `explicit` by environment id.
+	PersonalRequired schema.Presence
 }
 
 func envEntities(envs []Environment) []entity {

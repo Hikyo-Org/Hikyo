@@ -642,7 +642,7 @@ func environmentValuesBase(project string, resolved Resolved, flags commonFlags,
 func readValue(ios IO, stdin bool, valueFile, keyName string) (string, error) {
 	switch {
 	case stdin && valueFile != "":
-		return "", failf(ExitUsage, "hikyo values set takes --stdin or --value-file, not both")
+		return "", failf(ExitUsage, "--stdin and --value-file are exclusive: give one")
 	case stdin:
 		raw, err := io.ReadAll(ios.Stdin)
 		if err != nil {

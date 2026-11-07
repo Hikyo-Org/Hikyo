@@ -49,6 +49,7 @@ func TestKindBytesPinned(t *testing.T) {
 		WrappedTokenKeyAAD{}.kind(): 4,
 		ProjectFieldAAD{}.kind():    5,
 		InstanceFieldAAD{}.kind():   6,
+		PersonalValueAAD{}.kind():   9,
 	}
 	for kind, want := range pinned {
 		if byte(kind) != want {

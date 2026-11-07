@@ -228,6 +228,9 @@ func (c *countingGroupIndexCatalogue) ListPresence(context.Context, authz.Proof)
 	c.presenceCalls++
 	return c.presence, nil
 }
+func (c *countingGroupIndexCatalogue) PersonalRequired(context.Context, authz.Proof) ([]store.KeyPresence, error) {
+	return nil, errors.New("unexpected PersonalRequired")
+}
 func (c *countingGroupIndexCatalogue) SchemaRevision(context.Context, authz.Proof) (int64, error) {
 	return 0, errors.New("unexpected SchemaRevision")
 }

@@ -638,6 +638,7 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		recovered := runBackupLifecycle(t, db.Engine())
 		managed := runSelfConfigAuditLifecycle(t, db.Engine())
 		migrated := runManagedMigrationAuditLifecycle(t, db.Engine())
+		personal := runPersonalAuditLifecycle(t, db.Engine())
 
 		for _, typ := range audit.Types() {
 			spec, _ := audit.Spec(typ)
@@ -646,6 +647,7 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 				seen += queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
 				seen += queryInt(t, recovered, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
 				seen += queryInt(t, managed, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
+				seen += queryInt(t, personal, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
 			}
 			if spec.Trails[audit.TrailInstance] {
 				seen += queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type = '"+string(typ)+"'")
@@ -1426,14 +1428,15 @@ func runCatalogueLifecycle(t *testing.T, db *store.DB, actor service.Actor, scop
 	}
 }
 
-// openSelfConfigAuditDB owns a separate engine-matched instance. Its reset
-// cannot erase the main audit corpus or the backup lifecycle's restored trail.
-func openSelfConfigAuditDB(t *testing.T, engine store.Engine) *store.DB {
+// openSelfConfigAuditDB owns a separate engine-matched instance, named by
+// suffix. Its reset cannot erase the main audit corpus or the backup
+// lifecycle's restored trail.
+func openSelfConfigAuditDB(t *testing.T, engine store.Engine, suffix string) *store.DB {
 	t.Helper()
 	if engine == store.EngineSQLite {
 		return openSQLite(t)
 	}
-	dsn := derivedDatabase(t, postgresTestDSN(t), "_selfconfigaudit")
+	dsn := derivedDatabase(t, postgresTestDSN(t), suffix)
 	reset, err := pgx.Connect(t.Context(), dsn)
 	if err != nil {
 		t.Fatal(err)
@@ -1498,7 +1501,7 @@ func runDeveloperAuditLifecycle(t *testing.T, db *store.DB) {
 	if _, err := credentials.Mint(ctx, service.Bearer(token), scope, request); !errors.Is(err, service.ErrNoReauthWindow) {
 		t.Fatalf("mint without fresh intent = %v", err)
 	}
-	intent, err := service.NewDeveloperCredentialReauthIntent(string(scope.Env), request.KeyIDs, request.Lifetime, true)
+	intent, err := service.NewPersonalDeveloperCredentialReauthIntent(string(scope.Env), request.KeyIDs, request.Lifetime, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}

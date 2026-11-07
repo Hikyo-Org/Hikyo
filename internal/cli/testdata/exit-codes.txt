@@ -51,6 +51,7 @@ hikyo key create --name A --classification config --declaration {"rule":{"type":
 hikyo key create --name A --classification config --declaration {"rule":{"type":"string","patern":"^A"}} --instance unknown-ref -> 2 usage
 hikyo key declare key_x --declaration {"rule":{"type":"string"}} {"rule":{"type":"integer"}} --instance unknown-ref -> 2 usage
 hikyo key declare key_x --declaration {} --required-in env_a,,env_b --instance unknown-ref -> 2 usage
+hikyo key declare key_x --declaration {} --personal-required-in env_a,,env_b --instance unknown-ref -> 2 usage
 hikyo key list stray --instance unknown-ref -> 2 usage
 hikyo key delete key_x typo --instance unknown-ref -> 2 usage
 hikyo revision rollback 12 typo --instance unknown-ref -> 2 usage

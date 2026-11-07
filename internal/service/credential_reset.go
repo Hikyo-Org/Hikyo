@@ -30,7 +30,8 @@ import (
 // not enumerate the target's grant shape: an unknown principal, a machine
 // principal with no account, and — collapsed here so it is indistinguishable on
 // the wire (B2) — a target holding an instance capability, which has no network
-// reset path at all (ADR - Recovery), break-glass only. The operator learns to
+// reset path at all (ADR - Recovery), break-glass only, and a target with any
+// linked external identity (personal-values ADR). The operator learns to
 // use break-glass from the docs, not from a differential response; the durable
 // audit still records the true cause (see stageResetRefusal).
 var ErrNoResetTarget = errors.New("service: no such account to reset")
@@ -142,6 +143,22 @@ func (s *Auth) ResetCredential(ctx context.Context, actor Actor, targetPrincipal
 		} else if _, err := az.Authorize(ctx, caller, authz.OpCredentialResetInstance, domain.Scope{}); err != nil {
 			return err
 		}
+		// Any linked identity, even under a disabled provider, puts the
+		// account out of network reach: a reset could otherwise set a password
+		// and enrol a factor unseen by a developer who signs in through SSO.
+		// Checked after authorization so only a holder reaches this refusal,
+		// and before the mint so the target's sessions survive it.
+		linked, err := az.ExternalIdentitiesForAccount(ctx, account.ID)
+		if err != nil {
+			return err
+		}
+		if len(linked) > 0 {
+			if aerr := s.stageResetRefusal(ctx, az, caller.Principal, targetPrincipal, account.ID, causeLinkedIdentity); aerr != nil {
+				return aerr
+			}
+			refused = ErrNoResetTarget
+			return nil
+		}
 		out, err = s.mintResetAuthority(ctx, az, caller.Principal, account, "credential-reset", "network", delivery, authorityID, verifier, now)
 		return err
 	})
@@ -159,6 +176,7 @@ func (s *Auth) ResetCredential(ctx context.Context, actor Actor, targetPrincipal
 const (
 	causeInstanceTarget = "instance-capability-target"
 	causeUnknownTarget  = "unknown-target"
+	causeLinkedIdentity = "linked-identity"
 )
 
 // stageResetRefusal records a refused network reset in the caller's transaction

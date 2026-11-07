@@ -193,16 +193,18 @@ type API struct {
 	Registration         RegistrationService
 	Identities           IdentityService
 	DeveloperCredentials DeveloperCredentialService
-	Federation           FederationService
-	Delivery             DeliveryService
-	Settings             SettingsService
-	Retention            RetentionSettingsService
-	RetentionHealth      OperationalRetentionHealthService
-	Updates              UpdateService
-	Providers            ProviderService
-	OAuth2Providers      OAuth2ProviderService
-	SAMLProviders        SAMLProviderService
-	Adapters             *service.Adapters
+	// PersonalValues is the per-developer value surface (#1235).
+	PersonalValues  PersonalValueService
+	Federation      FederationService
+	Delivery        DeliveryService
+	Settings        SettingsService
+	Retention       RetentionSettingsService
+	RetentionHealth OperationalRetentionHealthService
+	Updates         UpdateService
+	Providers       ProviderService
+	OAuth2Providers OAuth2ProviderService
+	SAMLProviders   SAMLProviderService
+	Adapters        *service.Adapters
 	// FileTargets is the generic file-destination administration (#164).
 	FileTargets *service.FileTargets
 	// Dynamic is the dynamic-secret provider + lease surface (#147). Concrete

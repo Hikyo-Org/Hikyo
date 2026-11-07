@@ -57,6 +57,7 @@ for its ripple register.
 | ops-spec ADR | [ops-spec.md](./ops-spec.md) |
 | oss-mechanics ADR | [oss-mechanics.md](./oss-mechanics.md) |
 | permission-model ADR | [permission-model.md](./permission-model.md) |
+| personal-values ADR (accepted) | [personal-values.md](./personal-values.md) |
 | revision-model ADR | [revision-model.md](./revision-model.md) |
 | saml-sp ADR | [saml-sp.md](./saml-sp.md) |
 | schema-model ADR | [schema-model.md](./schema-model.md) |

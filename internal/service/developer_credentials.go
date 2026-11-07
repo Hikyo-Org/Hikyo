@@ -26,7 +26,10 @@ type NamedDeveloperCredential struct {
 type MintDeveloperCredentialRequest struct {
 	Lifetime                time.Duration
 	ConsentCurrentAndFuture bool
-	KeyIDs                  []string
+	// PersonalConsent opts this credential into delivering the minting
+	// person's personal values (#1235). Never inferred; defaults to false.
+	PersonalConsent bool
+	KeyIDs          []string
 }
 type MintedDeveloperCredential struct {
 	Credential DeveloperCredential
@@ -46,7 +49,7 @@ func (s *DeveloperCredentials) Mint(ctx context.Context, actor Actor, scope doma
 	if !request.ConsentCurrentAndFuture || request.Lifetime <= 0 || request.Lifetime%time.Second != 0 {
 		return MintedDeveloperCredential{}, domain.ErrInvalid
 	}
-	intent, err := NewDeveloperCredentialReauthIntent(string(scope.Env), request.KeyIDs, request.Lifetime, request.ConsentCurrentAndFuture)
+	intent, err := NewPersonalDeveloperCredentialReauthIntent(string(scope.Env), request.KeyIDs, request.Lifetime, request.ConsentCurrentAndFuture, request.PersonalConsent)
 	if err != nil {
 		return MintedDeveloperCredential{}, err
 	}
@@ -143,7 +146,7 @@ func (s *DeveloperCredentials) Mint(ctx context.Context, actor Actor, scope doma
 		if err != nil {
 			return err
 		}
-		c := DeveloperCredential{ID: id, PrincipalID: domain.PrincipalID(principal), AuthorityPrincipal: caller.Principal, Scope: scope, PrefixHint: value[:15], ParentSessionID: caller.SessionID, ProviderID: caller.ProviderID, OAuth2ProviderID: caller.OAuth2ProviderID, SAMLProviderID: caller.SAMLProviderID, AuthMethod: caller.Assurance.Method, AuthorityGeneration: generation, CredentialEpoch: epoch, CreatedAt: now, ExpiresAt: now.Add(ttl)}
+		c := DeveloperCredential{ID: id, PrincipalID: domain.PrincipalID(principal), AuthorityPrincipal: caller.Principal, Scope: scope, PrefixHint: value[:15], ParentSessionID: caller.SessionID, ProviderID: caller.ProviderID, OAuth2ProviderID: caller.OAuth2ProviderID, SAMLProviderID: caller.SAMLProviderID, AuthMethod: caller.Assurance.Method, AuthorityGeneration: generation, CredentialEpoch: epoch, CreatedAt: now, ExpiresAt: now.Add(ttl), PersonalConsent: request.PersonalConsent}
 		if err := az.CreateDeveloperCredential(ctx, c, verifier); err != nil {
 			return err
 		}

@@ -115,6 +115,13 @@ export type MintDeveloperCredentialRequest = {
      * Explicit consent to every current and future published key in this environment until expiry.
      */
     consent_current_and_future: true;
+    /**
+     * Explicit consent to deliver the minting person's current and future
+     * personal values in this environment through this credential. Without
+     * it, delivery names those keys only and `hikyo run` refuses them.
+     *
+     */
+    personal_consent?: boolean;
     lifetime_seconds: number;
 };
 
@@ -129,6 +136,7 @@ export type DeveloperCredential = {
     expires_at: string;
     revoked_at?: string;
     prefix_hint: string;
+    personal_consent?: boolean;
     /**
      * Display name of the human who delegated the credential. Omitted when unnamed.
      */
@@ -1587,6 +1595,10 @@ export type TotpCodeRequest = {
 export type DeveloperCredentialReauthIntent = {
     lifetime_seconds: number;
     consent_current_and_future: true;
+    /**
+     * The credential will also deliver the minting person's own personal values; bound into the ceremony.
+     */
+    personal_consent?: boolean;
 };
 
 export type TotpDeveloperCredentialReauthRequest = {
@@ -2906,6 +2918,129 @@ export type ValueList = {
  */
 export type Acknowledgements = Array<string>;
 
+export type SetPersonalValueRequest = {
+    /**
+     * The plaintext, sealed to this key, environment and owner. Never echoed back.
+     */
+    value: string;
+};
+
+export type PersonalValueEntry = {
+    key_id?: Id;
+    name: string;
+    set: boolean;
+    updated_at?: string;
+    notice?: PersonalValueNoticeCause;
+    /**
+     * The key is `personal_required_in` this environment (the owner's checklist).
+     */
+    required?: boolean;
+    /**
+     * The owner lost read, reveal or qualification without a credential
+     * change. The value is kept but not delivered, and the retention
+     * sweep deletes it 14 days after `suspended_at` unless access returns.
+     *
+     */
+    suspended?: boolean;
+    suspended_at?: string;
+    /**
+     * Schema rules this value does not satisfy, returned by set and
+     * reveal only (a list never decrypts). A warning to the owner only:
+     * no rule ever refuses a personal value, at write or delivery.
+     *
+     */
+    warnings?: Array<string>;
+    /**
+     * Present only on reveal.
+     */
+    value?: string;
+};
+
+/**
+ * Why a personal value disappeared other than by its owner.
+ */
+export type PersonalValueNoticeCause = 'administrator' | 'retention' | 'restore' | 'key_renamed' | 'key_deleted' | 'forbidden' | 'qualification_lost';
+
+export type PersonalValueList = {
+    items: Array<PersonalValueEntry>;
+};
+
+export type PersonalValueHolder = {
+    principal_id: Id;
+    username?: string;
+    set: boolean;
+    updated_at?: string;
+    notice?: PersonalValueNoticeCause;
+};
+
+export type PersonalValueCount = {
+    key_id: Id;
+    name: string;
+    /**
+     * People holding a personal value for this key here.
+     */
+    holders: number;
+    /**
+     * People with an unacknowledged removal notice.
+     */
+    notices: number;
+    /**
+     * The key is personal_required_in this environment.
+     */
+    required: boolean;
+};
+
+export type PersonalValueCounts = {
+    /**
+     * The denominator of `11/14`, humans currently holding both read and reveal here.
+     */
+    eligible: number;
+    items: Array<PersonalValueCount>;
+};
+
+export type PersonalOffboardingReceipt = {
+    environment_id: Id;
+    environment_name: string;
+    key_name: string;
+    last_received_at: string;
+    /**
+     * The shared value was published again after the person last received it.
+     */
+    changed_since: boolean;
+};
+
+export type PersonalOffboardingServiceAccount = {
+    id: Id;
+    name: string;
+    created_at: string;
+};
+
+/**
+ * Names only, never values. What to rotate after someone leaves.
+ */
+export type PersonalOffboardingReport = {
+    principal_id: Id;
+    username: string;
+    /**
+     * The oldest audit record the report could read. Disclosures before it, or never audited, do not appear.
+     */
+    evidence_from: string;
+    generated_at: string;
+    /**
+     * Shared keys the person is recorded as receiving, through their own session or a developer credential.
+     */
+    received: Array<PersonalOffboardingReceipt>;
+    service_accounts: Array<PersonalOffboardingServiceAccount>;
+    /**
+     * Fixed statements of what the report cannot show or undo.
+     */
+    limits: Array<string>;
+};
+
+export type PersonalValueHolderList = {
+    items: Array<PersonalValueHolder>;
+};
+
 export type SetValueRequest = {
     /**
      * The plaintext. It is validated against the key's declaration
@@ -3135,6 +3270,7 @@ export type DefinitionsBundleKey = {
     declaration: KeyDeclaration;
     required_in: DefinitionsBundlePresence;
     forbidden_in: DefinitionsBundlePresence;
+    personal_required_in?: DefinitionsBundlePresence;
 };
 
 export type DefinitionsRename = {
@@ -3181,6 +3317,10 @@ export type DefinitionsKeyDeletion = {
 export type DefinitionsEnvironmentDeletion = {
     name: string;
     occurrences: number;
+    /**
+     * Personal values the deletion would remove, counted when the plan was made. Apply removes whatever the environment holds then. Absent from servers older than revision 15.
+     */
+    personal_values?: number;
 };
 
 export type DefinitionsPlanDiff = {
@@ -3744,6 +3884,21 @@ export type DeliveredKey = {
      *
      */
     presence: 'required' | 'forbidden' | 'optional' | 'set';
+    /**
+     * Developer-credential delivery only (#1235). `value`: the value is
+     * the credential's human's own personal value. `withheld`: they hold
+     * one this fetch does not carry (see `personal_reason`). `notice`:
+     * their value was removed and not yet acknowledged. `missing`: the
+     * key is `personal_required_in` this environment and they hold no
+     * value (consenting fetches only). A withheld, notice or missing key
+     * never carries the shared value, and `hikyo run` refuses it.
+     *
+     */
+    personal?: 'value' | 'withheld' | 'notice' | 'missing';
+    /**
+     * For `withheld`, one of consent, config_only, suspended. For `notice`, the cause. Absent for `missing`.
+     */
+    personal_reason?: string;
 };
 
 /**
@@ -4664,6 +4819,15 @@ export type KeyPresence = {
 export type KeyPresenceRules = {
     required_in: KeyPresence;
     forbidden_in: KeyPresence;
+    /**
+     * Environments where each developer must hold their own personal
+     * value. `none` or `explicit` only: `all` is refused because it would
+     * reach environments created later. Refused where the key is also
+     * required or forbidden, and for a key in a group. Absent means `none`
+     * on create; on a declaration update, absent keeps the stored setting.
+     *
+     */
+    personal_required_in?: KeyPresence;
 };
 
 export type Key = {
@@ -16012,6 +16176,651 @@ export type RevealValueResponses = {
 };
 
 export type RevealValueResponse = RevealValueResponses[keyof RevealValueResponses];
+
+export type ListMyPersonalValuesData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values';
+};
+
+export type ListMyPersonalValuesErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListMyPersonalValuesError = ListMyPersonalValuesErrors[keyof ListMyPersonalValuesErrors];
+
+export type ListMyPersonalValuesResponses = {
+    /**
+     * The caller's personal entries.
+     */
+    200: PersonalValueList;
+};
+
+export type ListMyPersonalValuesResponse = ListMyPersonalValuesResponses[keyof ListMyPersonalValuesResponses];
+
+export type DeleteMyPersonalValueData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        /**
+         * The key's NAME, not its id. Values are addressed the way an operator
+         * holds them - `values set DATABASE_URL` - and the id is server
+         * vocabulary that appears only in responses and audit records.
+         *
+         */
+        key: KeyName;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}';
+};
+
+export type DeleteMyPersonalValueErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type DeleteMyPersonalValueError = DeleteMyPersonalValueErrors[keyof DeleteMyPersonalValueErrors];
+
+export type DeleteMyPersonalValueResponses = {
+    /**
+     * Deleted or dismissed.
+     */
+    204: void;
+};
+
+export type DeleteMyPersonalValueResponse = DeleteMyPersonalValueResponses[keyof DeleteMyPersonalValueResponses];
+
+export type SetMyPersonalValueData = {
+    body: SetPersonalValueRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        /**
+         * The key's NAME, not its id. Values are addressed the way an operator
+         * holds them - `values set DATABASE_URL` - and the id is server
+         * vocabulary that appears only in responses and audit records.
+         *
+         */
+        key: KeyName;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}';
+};
+
+export type SetMyPersonalValueErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type SetMyPersonalValueError = SetMyPersonalValueErrors[keyof SetMyPersonalValueErrors];
+
+export type SetMyPersonalValueResponses = {
+    /**
+     * The stored entry. It never echoes the value back.
+     */
+    200: PersonalValueEntry;
+};
+
+export type SetMyPersonalValueResponse = SetMyPersonalValueResponses[keyof SetMyPersonalValueResponses];
+
+export type RevealMyPersonalValueData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        /**
+         * The key's NAME, not its id. Values are addressed the way an operator
+         * holds them - `values set DATABASE_URL` - and the id is server
+         * vocabulary that appears only in responses and audit records.
+         *
+         */
+        key: KeyName;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/reveal';
+};
+
+export type RevealMyPersonalValueErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type RevealMyPersonalValueError = RevealMyPersonalValueErrors[keyof RevealMyPersonalValueErrors];
+
+export type RevealMyPersonalValueResponses = {
+    /**
+     * The entry, plaintext included.
+     */
+    200: PersonalValueEntry;
+};
+
+export type RevealMyPersonalValueResponse = RevealMyPersonalValueResponses[keyof RevealMyPersonalValueResponses];
+
+export type ListPersonalValueCountsData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-value-counts';
+};
+
+export type ListPersonalValueCountsErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListPersonalValueCountsError = ListPersonalValueCountsErrors[keyof ListPersonalValueCountsErrors];
+
+export type ListPersonalValueCountsResponses = {
+    /**
+     * The counts.
+     */
+    200: PersonalValueCounts;
+};
+
+export type ListPersonalValueCountsResponse = ListPersonalValueCountsResponses[keyof ListPersonalValueCountsResponses];
+
+export type GetPersonalOffboardingReportData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * A username or principal id.
+         */
+        member: string;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/personal-offboarding-report/{member}';
+};
+
+export type GetPersonalOffboardingReportErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type GetPersonalOffboardingReportError = GetPersonalOffboardingReportErrors[keyof GetPersonalOffboardingReportErrors];
+
+export type GetPersonalOffboardingReportResponses = {
+    /**
+     * The report.
+     */
+    200: PersonalOffboardingReport;
+};
+
+export type GetPersonalOffboardingReportResponse = GetPersonalOffboardingReportResponses[keyof GetPersonalOffboardingReportResponses];
+
+export type ListPersonalValueMembersData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        /**
+         * The key's NAME, not its id. Values are addressed the way an operator
+         * holds them - `values set DATABASE_URL` - and the id is server
+         * vocabulary that appears only in responses and audit records.
+         *
+         */
+        key: KeyName;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members';
+};
+
+export type ListPersonalValueMembersErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListPersonalValueMembersError = ListPersonalValueMembersErrors[keyof ListPersonalValueMembersErrors];
+
+export type ListPersonalValueMembersResponses = {
+    /**
+     * The holders.
+     */
+    200: PersonalValueHolderList;
+};
+
+export type ListPersonalValueMembersResponse = ListPersonalValueMembersResponses[keyof ListPersonalValueMembersResponses];
+
+export type DeletePersonalValueMemberData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        /**
+         * The key's NAME, not its id. Values are addressed the way an operator
+         * holds them - `values set DATABASE_URL` - and the id is server
+         * vocabulary that appears only in responses and audit records.
+         *
+         */
+        key: KeyName;
+        /**
+         * A username or principal id holding a value or notice for this key.
+         */
+        member: string;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members/{member}';
+};
+
+export type DeletePersonalValueMemberErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type DeletePersonalValueMemberError = DeletePersonalValueMemberErrors[keyof DeletePersonalValueMemberErrors];
+
+export type DeletePersonalValueMemberResponses = {
+    /**
+     * Deleted.
+     */
+    204: void;
+};
+
+export type DeletePersonalValueMemberResponse = DeletePersonalValueMemberResponses[keyof DeletePersonalValueMemberResponses];
 
 export type RevealValueDiffData = {
     body: RevealDiffRequest;

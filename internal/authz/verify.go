@@ -29,6 +29,20 @@ func Verify(p Proof, op StoreOp, tok *TxToken) (domain.Scope, error) {
 	return c.chain, nil
 }
 
+// VerifyOwner is Verify for owner-bound rows (personal values): it also
+// returns the principal the tenant proof was authorized for. A system or
+// instance proof carries no owner and is refused.
+func VerifyOwner(p Proof, op StoreOp, tok *TxToken) (domain.Scope, domain.PrincipalID, error) {
+	c, err := verifyProof(p, op, tok)
+	if err != nil {
+		return domain.Scope{}, "", err
+	}
+	if c.kind != kindTenant || c.owner == "" {
+		return domain.Scope{}, "", fmt.Errorf("authz: %q needs a principal-bound tenant proof", op)
+	}
+	return c.chain, c.owner, nil
+}
+
 // verifyProof is the canonical proof boundary shared by store and audit checks.
 func verifyProof(p Proof, op StoreOp, tok *TxToken) (*proof, error) {
 	if p == nil {

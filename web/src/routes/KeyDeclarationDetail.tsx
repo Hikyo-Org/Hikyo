@@ -45,6 +45,7 @@ import { Sep } from '../ui/Sep.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
 import { KeyMoveConfirmDialog, type WideningRefusal } from './accessRules/KeyMoveConfirmDialog.tsx';
 import { JsonSchemaBuilder } from './JsonSchemaBuilder.tsx';
+import { PersonalMembers } from './PersonalMembers.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 import { NamedId } from '../ui/NamedId.tsx';
 import { TypedNameConfirm } from './Sections.tsx';
@@ -306,6 +307,8 @@ function KeyDeclarationBody({
           {presenceText(record.presence.forbidden_in, environmentName)}
         </p>
       </section>
+
+      <PersonalMembers refData={refData} keyName={record.name} environments={environments} />
 
       {record.findings === undefined || record.findings.length === 0 ? null : (
         <section className="key-detail__section" aria-labelledby="key-detail-findings">
