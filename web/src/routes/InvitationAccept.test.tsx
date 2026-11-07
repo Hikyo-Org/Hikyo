@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-rou
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../api/client.ts';
+import { retireSensitiveOperations } from '../api/sensitiveMutation.ts';
 import { renderForm, settleTask } from '../testkit/renderForm.tsx';
 import { INVALID_INVITATION_TEXT, acceptanceFailureText } from '../api/emailInvitations.ts';
 import { InvitationAccept } from './InvitationAccept.tsx';
@@ -197,6 +198,50 @@ describe('InvitationAccept', () => {
       expect(view.container.textContent).not.toContain('Acme');
       expect(view.container.textContent).not.toContain(INVALID_INVITATION_TEXT);
       expect([...view.container.querySelectorAll('button')].map((b) => b.textContent)).not.toContain('Accept');
+      await act(async () => resolveAgain(PREVIEW));
+      await settleTask();
+      expect(view.container.textContent).toContain('Acme');
+    } finally { await view.unmount(); }
+  });
+
+  it.each([
+    ['while its preview is pending', false],
+    ['after its offer is shown', true],
+  ])('previews the same link afresh when it is reopened after a session retirement %s', async (_when, previewShown) => {
+    let resolveFirst: (value: typeof PREVIEW) => void = () => undefined;
+    let resolveAgain: (value: typeof PREVIEW) => void = () => undefined;
+    mocks.preview
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveAgain = resolve; }));
+    function Reopen() {
+      const navigate = useNavigate();
+      return <button type="button" onClick={() => void navigate('/invitations/accept#token=eit_secret')}>Reopen link</button>;
+    }
+    const view = await renderForm(
+      <MemoryRouter initialEntries={['/invitations/accept#token=eit_secret']}>
+        <Reopen />
+        <Routes>
+          <Route path="/invitations/accept" element={<InvitationAccept />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    try {
+      await settleTask();
+      expect(mocks.preview).toHaveBeenCalledTimes(1);
+      if (previewShown) {
+        await act(async () => resolveFirst(PREVIEW));
+        await settleTask();
+        expect(view.container.textContent).toContain('Acme');
+      }
+      await act(async () => retireSensitiveOperations(view.client));
+      // A preview answered after the retirement restores nothing.
+      await act(async () => resolveFirst(PREVIEW));
+      await settleTask();
+      expect(view.container.textContent).not.toContain('Acme');
+      await act(async () => button(view.container, 'Reopen link').click());
+      await settleTask();
+      expect(mocks.preview).toHaveBeenCalledTimes(2);
+      expect(view.container.textContent).not.toContain('Acme');
       await act(async () => resolveAgain(PREVIEW));
       await settleTask();
       expect(view.container.textContent).toContain('Acme');

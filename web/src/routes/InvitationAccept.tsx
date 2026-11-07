@@ -37,8 +37,9 @@ export function InvitationAccept() {
   const auth = useAuth();
   const [token, setToken] = useSensitiveState('');
   // The preview keeps the token it was fetched for: Accept submits that token,
-  // so the organisation on screen is always the one being accepted.
-  const [previewed, setPreviewed] = useState<{ token: string; offer: EmailInvitationPreview } | null>(null);
+  // so the organisation on screen is always the one being accepted. It holds
+  // the token, so a session retirement clears it like the token itself.
+  const [previewed, setPreviewed] = useSensitiveState<{ token: string; offer: EmailInvitationPreview } | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const requested = useRef('');
   const ending = useRef<ReturnType<typeof auth.captureTransition> | null>(null);
@@ -65,6 +66,9 @@ export function InvitationAccept() {
   }, [location.hash, location.pathname, location.search, navigate, setToken]);
 
   useEffect(() => {
+    // Forget a cleared token (a refusal, a decline or a session retirement), so
+    // opening the same link again is previewed afresh.
+    if (token === '') requested.current = '';
     // A pending Accept may already have committed: resetting it would drop its
     // outcome, so nothing is previewed while it is pending. A link that arrives
     // meanwhile is previewed after the Accept fails; after a success the page
@@ -79,13 +83,11 @@ export function InvitationAccept() {
         setPreviewed({ token, offer });
       },
       onError: (error) => {
-        // Forget the refused token so opening the same link again is previewed afresh.
-        requested.current = '';
         setToken('');
         setFailure(acceptanceFailureText(error));
       },
     });
-  }, [signedIn, token, previewing, accepting, setToken]);
+  }, [signedIn, token, previewing, accepting, setToken, setPreviewed]);
 
   const preview = previewed?.token === token ? previewed.offer : null;
   // Every refusal retires the token, so a failure belongs to the empty token only.
@@ -158,7 +160,6 @@ export function InvitationAccept() {
               if (!(error instanceof ApiError) || error.status !== 404) return;
               // Reopening the same link must preview it afresh, not show the refused
               // offer; a link opened while Accept was pending keeps its own token.
-              requested.current = '';
               setPreviewed(null);
               setToken((current) => (current === refused ? '' : current));
               setFailure(acceptanceFailureText(error));
