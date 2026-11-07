@@ -19,10 +19,14 @@ elif [[ "$1" == list ]]; then
     *) exit 90 ;;
   esac
 elif [[ "$1" == test && "$2" == -count=1 ]]; then
-  [[ -f "$CORE_TEST_PREPARED" ]] || exit 96
   shift 2
   printf '%s\n' "$@" >>"$CORE_TEST_EXECUTED"
   printf 'call\n' >>"$CORE_TEST_CALLS"
+  if [[ "$*" == *internal/app* || "$*" == *internal/lint* ]]; then
+    [[ -f "$CORE_TEST_PREPARED" ]] || exit 96
+  elif [[ -f "$CORE_TEST_PREPARED" ]]; then
+    exit 97 # the pool must not pay for the lint cache
+  fi
   if [[ "$*" == *internal/app* ]]; then
     [[ "$#" == 1 && $(wc -l <"$CORE_TEST_CALLS") -eq 1 ]] || exit 91
     [[ "$CORE_TEST_FAIL" != app ]] || exit 92
@@ -71,15 +75,17 @@ if "$root/scripts/ci/test-core-packages.sh" bogus >"$work/log" 2>&1; then
   exit 1
 fi
 export CORE_TEST_FAIL=prepare
-for mode in pool serial; do
-  rm -f "$CORE_TEST_PREPARED"
-  : >"$CORE_TEST_EXECUTED"
-  if "$root/scripts/ci/test-core-packages.sh" "$mode" >"$work/log" 2>&1; then
-    echo "test core fixture: failed lint preparation accepted in $mode" >&2
-    exit 1
-  fi
-  [[ ! -s "$CORE_TEST_EXECUTED" ]]
-done
+rm -f "$CORE_TEST_PREPARED"
+: >"$CORE_TEST_EXECUTED"
+if "$root/scripts/ci/test-core-packages.sh" serial >"$work/log" 2>&1; then
+  echo 'test core fixture: failed lint preparation accepted' >&2
+  exit 1
+fi
+[[ ! -s "$CORE_TEST_EXECUTED" ]]
+# The pool never prepares the lint cache, so that failure cannot affect it.
+rm -f "$CORE_TEST_PREPARED"
+"$root/scripts/ci/test-core-packages.sh" pool >"$work/log" 2>&1
+[[ ! -e "$CORE_TEST_PREPARED" ]]
 export CORE_TEST_FAIL=''
 for inventory in missing-app missing-lint missing-isolation duplicate empty-concurrent; do
   printf '%s\n' example/internal/service example/internal/app example/internal/lint example/internal/isolation >"$CORE_TEST_INVENTORY"

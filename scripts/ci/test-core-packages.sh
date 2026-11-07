@@ -3,10 +3,14 @@
 # DROP DATABASE waits for the shared PostgreSQL checkpoint/fsync queue.
 # Run repository analysis separately: its cross-platform compiler loads must
 # not compete with all runtime suites for CPU and memory. Every package runs once.
+# Only internal/lint needs the compiled lint matrix; internal/boundary just runs
+# `go list -json` (no export data) and internal/isolation is sharded elsewhere,
+# so the pool skips the multi-minute prepare-lint-cache compile.
 #
 # Modes (default pool, which the frozen test_core step invokes without arguments):
 #   pool    every package except isolation, app and lint, concurrently
-#   serial  internal/app then internal/lint, alone, in the test_core_serial job
+#   serial  prepare the lint cache, then internal/app and internal/lint, alone,
+#           in the test_core_serial job
 # Both modes run the same inventory checks, so a package cannot drop out of both.
 set -euo pipefail
 mode=${1:-pool}
@@ -17,9 +21,11 @@ case "$mode" in
     exit 2
     ;;
 esac
-# Compile the lint matrix before Go's package-test alarm starts. Do not let
-# cold cross-platform export builds contend with the concurrent test pool.
-go run ./scripts/ci/prepare-lint-cache
+# Compile the lint matrix before Go's package-test alarm starts, in serial mode
+# only (the sole consumer is internal/lint, which runs alone on its own runner).
+if [[ "$mode" == serial ]]; then
+  go run ./scripts/ci/prepare-lint-cache
+fi
 work=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/hikyo-test-core.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 isolation_package=$(go list ./internal/isolation)

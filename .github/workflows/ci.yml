@@ -1471,7 +1471,7 @@ jobs:
     needs: changes
     if: ${{ fromJSON(needs.changes.outputs.plan).test }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - *validate-revision
       - name: Check out the validated immutable revision
@@ -1506,8 +1506,8 @@ jobs:
       - name: Populate Go module cache
         run: go mod download
       # Never replays results: PostgreSQL conformance must exercise this run's
-      # fresh service container. The script prepares the lint compiler cache,
-      # then runs app and lint alone, lint even when app failed.
+      # fresh service container. The script prepares the lint compiler cache
+      # (only this job needs it), then runs app and lint alone, lint even when app failed.
       - name: Test internal/app and internal/lint serially
         env:
           HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test
@@ -2193,6 +2193,8 @@ jobs:
           ' "$trusted_registry" >/dev/null; then
             NEEDS_JSON=$(jq -ce 'del(.["source-artifact-security"])' <<<"$NEEDS_JSON")
           fi
+          # Switches itself off once the base registry contains test_core_serial;
+          # then delete this block and the predates-serial test cases together.
           # Candidate-local workflows can add test_core_serial before the
           # protected base registry owns it. Validate its live outcome in every
           # mode, then adapt only this known addition for the older base.

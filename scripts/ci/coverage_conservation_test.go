@@ -663,7 +663,7 @@ func TestCoverageInventoryRejectsExecutionReductions(t *testing.T) {
 		},
 		"serial core step fails open": func(j map[string]map[string]any) { mutateSerialCoreStep(j, "continue-on-error", true) },
 		"serial core step is skipped": func(j map[string]map[string]any) { mutateSerialCoreStep(j, "if", "false") },
-		"serial core drops lint": func(j map[string]map[string]any) {
+		"serial core step replaced by pool mode (drops app and lint, runs pool twice)": func(j map[string]map[string]any) {
 			mutateSerialCoreStep(j, "run", "./scripts/ci/test-core-packages.sh pool")
 		},
 		"skip job":      func(j map[string]map[string]any) { j["test_core"]["if"] = "false" },
