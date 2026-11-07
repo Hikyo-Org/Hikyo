@@ -99,7 +99,9 @@ Isolation tests are in `internal/isolation/` and run on SQLite and PostgreSQL.
 ## Limitations
 
 - **Federated-only developers.** They can set and reveal values, but minting a developer credential still needs a local factor
-  (developer-credentials ADR), so they must enrol a factor before `hikyo run` can deliver them.
+  (developer-credentials ADR), so they must enrol a factor before `hikyo run` can deliver them. Owner decision O9 (2026-11-07)
+  keeps that rule; the `hikyo dev session` refusal, the personal values page and the docs now state it and point to
+  Settings > Security.
 - **SAML.** A SAML identity does not qualify an account, and no SAML window opens a personal value; the ADR now says so. SAML
   reauthentication does not bind the opening provider, and `reauth_windows.factor_class` cannot store `saml`
   (migration 00006, both engines), so no SAML window can exist today. That constraint mismatch predates this PR. Counting SAML would
@@ -162,5 +164,5 @@ compose-integration) and #760 (human-auth). None were reopened, as instructed.
 
 1. Fix the `reauth_windows.factor_class` constraint so a SAML window can be stored, bind the SAML window to its provider, then count
    SAML qualification again with a SAML seed helper and test.
-2. Decide whether a federated-only developer may mint a developer credential with an identity-provider window. That needs an
-   amendment to the developer-credentials ADR.
+2. Decided by O9 (2026-11-07): a federated-only developer may not mint a developer credential with an identity-provider window.
+   Revisiting it needs an amendment to the developer-credentials ADR.

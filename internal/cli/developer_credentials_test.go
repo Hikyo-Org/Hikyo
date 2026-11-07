@@ -238,6 +238,47 @@ func TestDeveloperMintRefusalExplainsLoginAssuranceStepUp(t *testing.T) {
 	testDeveloperMint(t, false, false, true)
 }
 
+// O9: an account that signs in only through an identity provider can manage
+// personal values but cannot mint. The server's refusal reaches the person
+// with the address to enrol a factor, before any browser opens.
+func TestDeveloperMintWithoutLocalFactorPointsToSecuritySettings(t *testing.T) {
+	const detail = "this sign-in cannot satisfy step-up: running a program locally with your personal values needs a developer credential, and minting one needs a passkey or authenticator app enrolled on your account; an identity-provider sign-in cannot mint one. Add one under Settings > Security"
+	ceilingSeconds := int64(8 * 60 * 60)
+	starts, opens := 0, 0
+	ios, _, stderr := definitionsTestIO(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/revisions/latest"):
+			_ = json.NewEncoder(w).Encode(apigen.RevisionDetail{Keys: []apigen.SnapshotKey{{KeyId: "key_01989abc-def0-7123-8123-000000000006", Name: "DEV_807_SECRET"}}})
+		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
+			_ = json.NewEncoder(w).Encode(apigen.RevealWindow{CanReveal: true, EffectiveWindowSeconds: 300, TotpOffered: true, DeveloperCredentialMaxLifetimeSeconds: &ceilingSeconds})
+		case r.URL.Path == "/api/v1/auth/totp":
+			_ = json.NewEncoder(w).Encode(apigen.TotpStatus{})
+		case r.URL.Path == "/api/v1/auth/cli-reauth/start":
+			starts++
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]map[string]string{"error": {"code": "bad_request", "message": "the request does not satisfy the API contract", "detail": detail}})
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	ios.TerminalSession, _ = terminalSession(t, "y\n")
+	ios.OpenURL = func(string) error { opens++; return nil }
+	code := cli.Run(t.Context(), ios, []string{"dev", "session", "--instance", "local", "--org", developerOrg, "--project", developerProject, "--env", developerEnv, "--ttl", "1h"})
+	origin := ""
+	if st, err := cli.NewState(ios.Env); err == nil {
+		if sessions, err := st.Sessions(); err == nil {
+			origin = sessions["local"].Origin
+		}
+	}
+	if code != cli.ExitRefused || starts != 1 || opens != 0 || origin == "" ||
+		!strings.Contains(stderr.String(), detail) ||
+		!strings.Contains(stderr.String(), "; add it at "+origin+"/settings?tab=factors, then run the same `hikyo dev session` command again") {
+		t.Fatalf("code=%d starts=%d opens=%d stderr=%s", code, starts, opens, stderr.String())
+	}
+}
+
 func testDeveloperMint(t *testing.T, failPersistence, failCleanup, refuseMint bool) {
 	t.Helper()
 	testDeveloperMintLifetime(t, failPersistence, failCleanup, refuseMint, time.Hour, 0, false)

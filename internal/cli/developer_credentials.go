@@ -234,7 +234,14 @@ func freshDeveloperReauth(ctx context.Context, client *Client, st *State, ios IO
 		for i, id := range keys {
 			ids[i] = string(id)
 		}
-		return runCLIReauthHandoffIntents(ctx, client, st, *session, "developer-credential", "developer-credential.mint", []string{env}, ids, nil, &intent, ios.OpenURL)
+		err := runCLIReauthHandoffIntents(ctx, client, st, *session, "developer-credential", "developer-credential.mint", []string{env}, ids, nil, &intent, ios.OpenURL)
+		// The server refuses a sign-in that cannot mint, such as an identity
+		// provider alone (O9), and names Settings > Security; give its address.
+		var failure *Error
+		if errors.As(err, &failure) && strings.Contains(failure.Error(), "cannot satisfy step-up") {
+			return &Error{Code: failure.Code, Err: fmt.Errorf("%w; add it at %s, then run the same `hikyo dev session` command again", failure.Err, accountSecurityURL(client))}
+		}
+		return err
 	}
 	code, err := ios.readPassword("Fresh developer credential authorization: enter your authenticator code: ")
 	if err != nil {

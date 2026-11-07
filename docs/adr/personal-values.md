@@ -45,6 +45,15 @@ On 2026-11-06 the owner accepted the remaining recommendations:
 - **O8. Review waiver.** Cross-provider review is waived. The other provider is unavailable, and the owner's current policy makes
   cross-provider review optional. It did not run and is not CLEAN.
 
+On 2026-11-07 the owner decided:
+
+- **O9. Running locally needs a local factor.** The developer-credentials rule stands: minting a developer credential needs a
+  passkey or authenticator app ([developer-credentials.md](./developer-credentials.md)), even for an account that
+  [qualifies](#which-accounts-qualify) through a federated identity. Such a developer manages personal values in the browser or
+  the CLI but cannot run a program locally with them until they enrol one. Who can mint does not change. The gap is explicit
+  instead: the `hikyo dev session` refusal and the personal values page say that running locally needs an enrolled passkey or
+  authenticator app and point to Settings > Security, and the CLI reference and the local development documentation state it.
+
 The requirement behind them: an administrator must not be able to see a developer's personal secrets, such as a GitHub
 token. [What this guarantee is](#what-this-guarantee-is) states how far that holds.
 

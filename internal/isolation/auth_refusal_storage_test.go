@@ -63,6 +63,61 @@ func runRefusalAuditLifecycle(t *testing.T, db *store.DB) {
 	waitForRefusalSeal(t, db, service.NewRefusalSignals(db), before+1)
 }
 
+// confirmedRefusal serves a refused request until its runtime accounting
+// confirms, and returns that attempt. Record has an approved 100 ms budget and
+// may report an unconfirmed result, visible only in health (auth refusal
+// signals ADR); TestAuthenticationRefusalWireUnconfirmedAccounting owns that
+// outcome. A test that then asserts the retained sample must know the sample
+// was staged, so an unconfirmed attempt is logged and served again.
+func confirmedRefusal[T any](t *testing.T, signals *service.RefusalSignals, serve func() T) T {
+	t.Helper()
+	for attempt := 1; ; attempt++ {
+		before := signals.RefusalHealth().Failures
+		result := serve()
+		health := signals.RefusalHealth()
+		if health.Failures == before {
+			return result
+		}
+		if attempt == 3 {
+			t.Fatalf("refusal accounting stayed unconfirmed: %+v", health)
+		}
+		t.Logf("refusal accounting attempt %d unconfirmed within its budget; serving again", attempt)
+	}
+}
+
+// sealRefusals seals expired staging through the runtime writer, which shares
+// Record's approved budget: a missed deadline is logged and sealed again, and
+// any other error fails at once. A retry after a lost receipt seals nothing.
+func sealRefusals(t *testing.T, signals *service.RefusalSignals) {
+	t.Helper()
+	for attempt := 1; ; attempt++ {
+		err := signals.Seal(t.Context())
+		if err == nil {
+			return
+		}
+		if !errors.Is(err, context.DeadlineExceeded) || attempt == 3 {
+			t.Fatalf("refusal seal failed: %v", err)
+		}
+		t.Logf("refusal seal attempt %d missed its budget; sealing again", attempt)
+	}
+}
+
+// stagedRefusalCount is the exact committed count in the pending window. A
+// served-again request can stage twice when a Postgres commit landed but its
+// receipt was lost, so exact-count checks compare against this, not one.
+func stagedRefusalCount(t *testing.T, db *store.DB) int64 {
+	t.Helper()
+	var window audit.RefusalWindow
+	if err := json.Unmarshal([]byte(queryString(t, db, "SELECT state FROM auth_refusal_window WHERE id=1")), &window); err != nil {
+		t.Fatal(err)
+	}
+	var total int64
+	for _, count := range window.Counts {
+		total += count
+	}
+	return total
+}
+
 func assertRetainedRefusalRequest(t *testing.T, db *store.DB, requestID, source string) {
 	t.Helper()
 	if requestID == "" {
@@ -101,14 +156,19 @@ func TestRequestRefusalRevokedReplayIsRetainedAndCorrelated(t *testing.T) {
 		signals := service.NewRefusalSignals(db)
 		handler := server.New(&server.API{Auth: auth, Refusals: signals}, nil)
 		token := refusalSession(t, db, crypto.ArtifactCLISession, "revoked")
-		r := httptest.NewRequest(http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
-		r.RemoteAddr = "192.0.2.103:12345"
-		r.Header.Set("Authorization", "Bearer "+token)
-		r.Header.Set("X-Forwarded-For", "198.51.100.100")
-		r.Header.Set(server.RefusalRequestIDHeader, "spoofed-request")
-		r.Header.Set("X-Request-ID", "spoofed-request")
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, r)
+		attempts := int64(0)
+		w := confirmedRefusal(t, signals, func() *httptest.ResponseRecorder {
+			attempts++
+			r := httptest.NewRequest(http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
+			r.RemoteAddr = "192.0.2.103:12345"
+			r.Header.Set("Authorization", "Bearer "+token)
+			r.Header.Set("X-Forwarded-For", "198.51.100.100")
+			r.Header.Set(server.RefusalRequestIDHeader, "spoofed-request")
+			r.Header.Set("X-Request-ID", "spoofed-request")
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			return w
+		})
 		if w.Code != http.StatusUnauthorized {
 			t.Fatalf("replay: %d", w.Code)
 		}
@@ -116,12 +176,15 @@ func TestRequestRefusalRevokedReplayIsRetainedAndCorrelated(t *testing.T) {
 		if _, err := uuid.Parse(requestID); err != nil || requestID == "spoofed-request" {
 			t.Fatal("untrusted correlation")
 		}
+		// One count per served attempt at most; exactly one when served once.
+		staged := stagedRefusalCount(t, db)
+		if staged < 1 || staged > attempts {
+			t.Fatalf("revoked replay staged %d counts over %d attempts", staged, attempts)
+		}
 		expireRefusalWindow(t, db)
 		// A fresh service object recovers durable pending data without a replay.
 		restarted := service.NewRefusalSignals(db)
-		if err := restarted.Seal(t.Context()); err != nil {
-			t.Fatal(err)
-		}
+		sealRefusals(t, restarted)
 		page, err := (&service.Audits{DB: db}).InstanceQuery(t.Context(), root, store.AuditFilter{Limit: 100})
 		if err != nil {
 			t.Fatal(err)
@@ -142,7 +205,7 @@ func TestRequestRefusalRevokedReplayIsRetainedAndCorrelated(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, sample := range p.Samples {
-				if sample.RequestID == requestID && sample.SourceIP == "192.0.2.103" && p.Count == 1 {
+				if sample.RequestID == requestID && sample.SourceIP == "192.0.2.103" && p.Count == staged {
 					found = true
 				}
 			}
@@ -150,6 +213,48 @@ func TestRequestRefusalRevokedReplayIsRetainedAndCorrelated(t *testing.T) {
 		if !found {
 			t.Fatal("revoked replay missing from supported instance reader")
 		}
+	})
+}
+
+// TestConfirmedRefusalServesAgainAfterUnconfirmedAccounting holds the staging
+// writer past Record's budget for the first attempt only, as a loaded runner
+// can. The helper must see that attempt unconfirmed and return the next one,
+// whose sample the reader then retains.
+func TestConfirmedRefusalServesAgainAfterUnconfirmedAccounting(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		signals := service.NewRefusalSignals(db)
+		h := server.New(&server.API{Auth: authService(t, db), Workspace: &service.Workspace{DB: db}, Refusals: signals}, nil)
+		token, _, err := crypto.NewArtifact(crypto.ArtifactWorkspaceSession)
+		if err != nil {
+			t.Fatal(err)
+		}
+		attempts := 0
+		w := confirmedRefusal(t, signals, func() *httptest.ResponseRecorder {
+			attempts++
+			if attempts == 1 {
+				defer holdRefusalWriter(t, db)()
+			}
+			r := httptest.NewRequest(http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
+			r.RemoteAddr = "192.0.2.103:1234"
+			r.Header.Set("Authorization", "Bearer "+token)
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			return w
+		})
+		// Only the held attempt is certain to miss; a later one may too on a loaded runner.
+		if w.Code != http.StatusUnauthorized || attempts < 2 || signals.RefusalHealth().Failures != uint64(attempts-1) {
+			t.Fatalf("unconfirmed attempt not served again: %d attempts=%d %+v", w.Code, attempts, signals.RefusalHealth())
+		}
+		// A confirmed attempt is returned at once, never served again. This
+		// serve records nothing, so health cannot change and the check is exact.
+		served := 0
+		confirmedRefusal(t, signals, func() int { served++; return served })
+		if served != 1 {
+			t.Fatalf("confirmed attempt served %d times", served)
+		}
+		expireRefusalWindow(t, db)
+		sealRefusals(t, signals)
+		assertRetainedRefusalRequest(t, db, w.Header().Get(server.RefusalRequestIDHeader), "192.0.2.103")
 	})
 }
 
@@ -169,11 +274,14 @@ func TestRequestRefusalFailedDedicatedCommitDoesNotSuppressFallback(t *testing.T
 			return nil
 		})
 		path := api.PathPrefix + "/orgs/org_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fee/projects/prj_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fdd/environments/env_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fcc/settings"
-		r := httptest.NewRequest(http.MethodGet, path, nil)
-		r.RemoteAddr = "192.0.2.103:1234"
-		r.Header.Set("Authorization", "Bearer "+token)
-		w := httptest.NewRecorder()
-		h.ServeHTTP(w, r)
+		w := confirmedRefusal(t, signals, func() *httptest.ResponseRecorder {
+			r := httptest.NewRequest(http.MethodGet, path, nil)
+			r.RemoteAddr = "192.0.2.103:1234"
+			r.Header.Set("Authorization", "Bearer "+token)
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			return w
+		})
 		fail()
 		// The dedicated owner still fails closed. A tentative capture cannot
 		// suppress the independently durable generic fallback on that response.
@@ -184,9 +292,7 @@ func TestRequestRefusalFailedDedicatedCommitDoesNotSuppressFallback(t *testing.T
 			t.Fatalf("failed dedicated event appeared committed: %d", got)
 		}
 		expireRefusalWindow(t, db)
-		if err := signals.Seal(t.Context()); err != nil {
-			t.Fatal(err)
-		}
+		sealRefusals(t, signals)
 		assertRetainedRefusalRequest(t, db, w.Header().Get(server.RefusalRequestIDHeader), "192.0.2.103")
 	})
 }

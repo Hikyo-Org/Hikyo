@@ -717,6 +717,9 @@ developer credentials:
   dev session revoke --all ends your delegations on this instance.
   --personal also delivers your own personal values; without it, hikyo
   run refuses keys you hold one for rather than serving the shared value.
+  Mint needs a passkey or authenticator app on your account: signing in
+  only through an identity provider manages personal values but cannot
+  mint, so add one under Settings > Security to run locally with them.
 
 personal values:
   hikyo personal list --env E [-o table|json]      your values (presence only) and notices

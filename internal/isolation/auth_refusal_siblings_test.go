@@ -127,7 +127,7 @@ func TestSCIMRefusalOwnershipAcrossRealWire(t *testing.T) {
 		if err := svc.RevokeCredential(t.Context(), service.LocalPrincipal(orgAdmin), wireOrg, binding.ID, mint.Credential.ID); err != nil {
 			t.Fatal(err)
 		}
-		revoked := call(binding.ID, mint.Token)
+		revoked := confirmedRefusal(t, signals, func() *httptest.ResponseRecorder { return call(binding.ID, mint.Token) })
 		if miss.Code != http.StatusUnauthorized || revoked.Code != miss.Code || revoked.Body.String() != miss.Body.String() {
 			t.Fatal("SCIM artifact state enumerated")
 		}
@@ -157,9 +157,7 @@ func TestSCIMRefusalOwnershipAcrossRealWire(t *testing.T) {
 			t.Fatal("silent SCIM failure was not staged")
 		}
 		expireRefusalWindow(t, db)
-		if err := signals.Seal(t.Context()); err != nil {
-			t.Fatal(err)
-		}
+		sealRefusals(t, signals)
 		assertRetainedRefusalRequest(t, db, revoked.Header().Get(server.RefusalRequestIDHeader), "192.0.2.103")
 	})
 }
@@ -188,8 +186,11 @@ func TestRequestRefusalConnectionAndWorkspaceWire(t *testing.T) {
 				r.Header.Set("Authorization", "DPoP "+token)
 				r.Header.Set("DPoP", "CANARY-RAW-PROOF")
 			}
-			w := httptest.NewRecorder()
-			h.ServeHTTP(w, r)
+			w := confirmedRefusal(t, signals, func() *httptest.ResponseRecorder {
+				w := httptest.NewRecorder()
+				h.ServeHTTP(w, r.Clone(r.Context()))
+				return w
+			})
 			if w.Code != http.StatusUnauthorized {
 				t.Fatalf("%s: %d %s", kind, w.Code, w.Body)
 			}
@@ -198,9 +199,7 @@ func TestRequestRefusalConnectionAndWorkspaceWire(t *testing.T) {
 			}
 		}
 		expireRefusalWindow(t, db)
-		if err := signals.Seal(t.Context()); err != nil {
-			t.Fatal(err)
-		}
+		sealRefusals(t, signals)
 		assertRetainedRefusalRequest(t, db, proofID, "192.0.2.103")
 	})
 }
