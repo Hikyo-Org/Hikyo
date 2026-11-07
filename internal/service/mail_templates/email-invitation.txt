@@ -1,0 +1,7 @@
+You have been invited to join the organisation {{.Org}} on Hikyo.
+
+Sign in to the account that holds this email address, then open this link to review and accept the invitation:
+
+{{.Link}}
+
+The link works once and expires on {{.Expires}}. If you did not expect this email, ignore it.

@@ -102,6 +102,22 @@ Pi-4 fit: one serial pacer per credential at ≥ 1 s spacing bounds adapter CPU 
 | Username collision | `409 conflict`; the transaction leaves no principal, account or grant behind | fixed |
 | Delivery | out of band (HTTP response to the inviter, or the CLI print triad); no email channel | fixed |
 
+## Email invitation of an existing account ([email-invitations.md](./email-invitations.md), #1207)
+
+| Entry | Default | Scope |
+|---|---|---|
+| Invitation lifetime | 7 d (the [ops-spec](../adr/ops-spec.md) invitation expiry) | fixed |
+| Invitation use | single use; bound to the account matched at send; uniform `404` otherwise | fixed |
+| Send budget | 30/hour per organisation; overflow is the uniform `429` | fixed |
+| Live pending invitations | 200 per organisation; overflow is the uniform `429` | fixed |
+| Public origin | an explicitly configured origin is required; without it every send is the uniform `no-public-origin` refusal | fixed |
+| Mailer | required; without it every send is the uniform `mailer-unconfigured` refusal | fixed |
+| Mail attempts | one background attempt per matched send, within the mail per-send deadline; none for an unknown address; sends are never dropped and are bounded only by the send budget (no instance-wide cap, which would couple organisations' mail timing); stopping cancels in-flight attempts and records their failure | fixed |
+| Failure metric | `hikyo_email_invitation_mail_failures_total` counts failed or cancelled background sends, owner-wide across configuration generations; no address, organisation or SMTP response in labels | fixed |
+| Expired rows | deleted by the existing hourly pruning run | fixed |
+
+Pi-4 fit: each matched send is one goroutine that lives for at most 20 s: it holds one SMTP connection within the 15 s mail per-send deadline, then makes the outcome write within 5 s. The send budget is charged before the transaction and never refunded, so at most 30 attempts are in flight per organisation, and the instance-wide worst case is 30 times the number of organisations. That number grows through the instance-class `org.create` operation and, under a `fresh-org` registration policy, through self-service sign-ups, bounded by the policy's `fresh_org_cap` and the instance `signup` budget. An unmatched send holds no connection and only writes its outcome.
+
 ## Open registration and social sign-in ([ops-spec.md](../adr/ops-spec.md) amendment 2026-09-03, [#589](https://github.com/Hikyo-Org/Hikyo/issues/589); spec [social-signin.md](./social-signin.md))
 
 | Entry | Default | Scope |

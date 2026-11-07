@@ -296,6 +296,13 @@
   },
   {
     "engine": "postgres",
+    "name": "ConsumeOrgEmailInvitation",
+    "annotation": "authn-resolution",
+    "hash": "b88d0b0cca57782f42d3c70f2bc57418e0748e14eb2ac48feaa0440cd37954e8",
+    "reason": "Acceptance CAS-consumes the verified row by id and verifier inside the grant transaction."
+  },
+  {
+    "engine": "postgres",
     "name": "ConsumeOutstandingAuthoritiesForAccount",
     "annotation": "authn-resolution",
     "hash": "5b7148c41eb4adca7ce1a134eb83c646fd65b8355615883c53db8030677c89f5"
@@ -610,6 +617,13 @@
   },
   {
     "engine": "postgres",
+    "name": "CountLiveOrgEmailInvitations",
+    "annotation": "authn-resolution",
+    "hash": "a0449a38adcbb325b3ac7daade83b25b5e27580aed21819b72f1d5460ecdc596",
+    "reason": "The send charges the per-organisation pending cap after authorizing manage-members at that org."
+  },
+  {
+    "engine": "postgres",
     "name": "CountLiveRemotePairingExchanges",
     "annotation": "authn-resolution",
     "hash": "23f6b6b0afefb41caa48a640f309546cc05c82f3de4bb804301aa7b87f4874fb",
@@ -838,6 +852,13 @@
     "name": "DeleteOIDCProvider",
     "annotation": "authn-resolution",
     "hash": "a8b2b6eb1ab32d1f11670662f3694a84b269f8dea9b3b78f466cb37facbfb68e"
+  },
+  {
+    "engine": "postgres",
+    "name": "DeleteOrgEmailInvitationInOrg",
+    "annotation": "authn-resolution",
+    "hash": "4456747c850556dd28bad89f4b8b00f44079bcea8b3878d217d7bdef5062a6a7",
+    "reason": "Revocation deletes the addressed org's own row after authorizing manage-members at that org."
   },
   {
     "engine": "postgres",
@@ -1321,6 +1342,20 @@
     "name": "GetOpsDiagnostics",
     "annotation": "instance-scoped",
     "hash": "a802e9ed5095b702172266766e4e06b874a5533c361ae6482cbd8fadcb9f44c3"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetOrgEmailInvitationByVerifier",
+    "annotation": "authn-resolution",
+    "hash": "2a6d77314548a5928a6961e8b1c14b9d7311cb450b74cb88e9a9d1f1ef1aff1e",
+    "reason": "Preview and acceptance resolve an opaque single-use bearer verifier for the caller's own session before any org authority exists."
+  },
+  {
+    "engine": "postgres",
+    "name": "GetOrgEmailInvitationInOrg",
+    "annotation": "authn-resolution",
+    "hash": "223e0dd2cded828df38d9cf5558b311bb70de35c93732c61c0c13ad110e8e82e",
+    "reason": "Revocation reads the addressed org's own row after authorizing manage-members at that org."
   },
   {
     "engine": "postgres",
@@ -1995,6 +2030,13 @@
   },
   {
     "engine": "postgres",
+    "name": "ListLiveOrgEmailInvitations",
+    "annotation": "authn-resolution",
+    "hash": "046088a27c73681965c73ccd239c4f525ded1778f6f3b6ec4f8b6e2d376d674a",
+    "reason": "The pending list is read after authorizing manage-members at the addressed org and never selects the matched account."
+  },
+  {
+    "engine": "postgres",
     "name": "ListLockoutRetentionOrigins",
     "annotation": "authn-resolution",
     "hash": "0ea3a89bd963a49290e9754d3a80305083fd49525fdcb5de4ba5a7e7184be6f4"
@@ -2399,6 +2441,13 @@
   },
   {
     "engine": "postgres",
+    "name": "OrgEmailInvitationMaxCredentialEpoch",
+    "annotation": "authn-resolution",
+    "hash": "98d9fd2defecd7e60525d79584d7fe0562077d89b3c6047aaaf3e3f3f420b86c",
+    "reason": "restore must outrun every attacker-controlled email invitation epoch stamp"
+  },
+  {
+    "engine": "postgres",
     "name": "PKIActiveIssuer",
     "annotation": "instance-scoped",
     "hash": "69a3dfa8ab1e939527eeedfea8da04406e60a93fbfb2a62ccdc2d1cef65cbdef",
@@ -2701,6 +2750,13 @@
   },
   {
     "engine": "postgres",
+    "name": "PrivacyEraseOrgEmailInvitations",
+    "annotation": "authn-resolution",
+    "hash": "34703dcc0114e0161318e6428a9d268297d93c7c78aeb5720a4babd585c9ec43",
+    "reason": "Account erasure unbinds every invitation bound to the erased account; the row stays listed until it expires and can never validate."
+  },
+  {
+    "engine": "postgres",
     "name": "PrivacyErasePasswords",
     "annotation": "authn-resolution",
     "hash": "0a368ed3cb800554d13eed2a8e935e80d4220c30a5ff6c25660a186ba183d11b"
@@ -2783,6 +2839,13 @@
     "annotation": "authn-resolution",
     "hash": "291b0cd11d27ed0eebdce16b341f3dded7c766813c65d3cbec707292af37dd8c",
     "reason": "expired first-party login transaction metadata is removed opportunistically at issuance"
+  },
+  {
+    "engine": "postgres",
+    "name": "PruneExpiredOrgEmailInvitations",
+    "annotation": "authn-resolution",
+    "hash": "c1e8cffaba714e352920d4d678ce25c0d12bdefb109dc43c4a16822fccb59515",
+    "reason": "The hourly pruning run deletes only rows already past their expiry."
   },
   {
     "engine": "postgres",
@@ -3543,6 +3606,13 @@
   },
   {
     "engine": "postgres",
+    "name": "UpsertOrgEmailInvitation",
+    "annotation": "authn-resolution",
+    "hash": "2fd1d32cc8f97baf533f1b1bc84a203f15521806780891244d666b0d72a8983e",
+    "reason": "A send writes or replaces the one pending row of an organisation and address; the operation authorized manage-members at that org."
+  },
+  {
+    "engine": "postgres",
     "name": "VerifiedAccountEmailExists",
     "annotation": "authn-resolution",
     "hash": "6d9ddf5a71405ca0230c9e26125844eaaeb6dc92ee15d4a73abbebc5361f3158",
@@ -3841,6 +3911,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "ConsumeOrgEmailInvitation",
+    "annotation": "authn-resolution",
+    "hash": "ae52839e352deaca2a0c5b565d83acd57eaa76a95fa3687df271342fae55e373",
+    "reason": "Acceptance CAS-consumes the verified row by id and verifier inside the grant transaction."
+  },
+  {
+    "engine": "sqlite",
     "name": "ConsumeOutstandingAuthoritiesForAccount",
     "annotation": "authn-resolution",
     "hash": "f1bbdcf248a4111592adc73223aec7342356e7c234ba27117f41d7358562edc9"
@@ -4127,6 +4204,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "CountLiveOrgEmailInvitations",
+    "annotation": "authn-resolution",
+    "hash": "3336a6e7812bd3d822995a857404c83264fa4ea6e97e1552adf6ed39f6e8f162",
+    "reason": "The send charges the per-organisation pending cap after authorizing manage-members at that org."
+  },
+  {
+    "engine": "sqlite",
     "name": "CountLiveRemotePairingExchanges",
     "annotation": "authn-resolution",
     "hash": "23f6b6b0afefb41caa48a640f309546cc05c82f3de4bb804301aa7b87f4874fb",
@@ -4355,6 +4439,13 @@
     "name": "DeleteOIDCProvider",
     "annotation": "authn-resolution",
     "hash": "a8581402ffe370d677fb4878795de71b58fbf59e0bf01696ce6a41334ff85b9d"
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeleteOrgEmailInvitationInOrg",
+    "annotation": "authn-resolution",
+    "hash": "914df871adfc747c37f83fb89a22a0e15527915507d4ffd19174ff50cf2a96a0",
+    "reason": "Revocation deletes the addressed org's own row after authorizing manage-members at that org."
   },
   {
     "engine": "sqlite",
@@ -4838,6 +4929,20 @@
     "name": "GetOpsDiagnostics",
     "annotation": "instance-scoped",
     "hash": "02e196d1a8a8e6e0deaba49cd10fe2169a6fd1d83eb44a2c69bd258413afc2f6"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetOrgEmailInvitationByVerifier",
+    "annotation": "authn-resolution",
+    "hash": "0a6f771d28965d8486c73f3e4effa20de4ac5544ba56a9e2847e9ad9dbd29f75",
+    "reason": "Preview and acceptance resolve an opaque single-use bearer verifier for the caller's own session before any org authority exists."
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetOrgEmailInvitationInOrg",
+    "annotation": "authn-resolution",
+    "hash": "9539ca691010e5dfb65d046ed19528bb6c14d46b68f1c33c089c1f2829aa7b61",
+    "reason": "Revocation reads the addressed org's own row after authorizing manage-members at that org."
   },
   {
     "engine": "sqlite",
@@ -5512,6 +5617,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "ListLiveOrgEmailInvitations",
+    "annotation": "authn-resolution",
+    "hash": "c164b0b3805416b88a189ad0c160fe797f59a60d735fe97ea9bcd0154de82f51",
+    "reason": "The pending list is read after authorizing manage-members at the addressed org and never selects the matched account."
+  },
+  {
+    "engine": "sqlite",
     "name": "ListLockoutRetentionOrigins",
     "annotation": "authn-resolution",
     "hash": "0ea3a89bd963a49290e9754d3a80305083fd49525fdcb5de4ba5a7e7184be6f4"
@@ -5916,6 +6028,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "OrgEmailInvitationMaxCredentialEpoch",
+    "annotation": "authn-resolution",
+    "hash": "98d9fd2defecd7e60525d79584d7fe0562077d89b3c6047aaaf3e3f3f420b86c",
+    "reason": "restore must outrun every attacker-controlled email invitation epoch stamp"
+  },
+  {
+    "engine": "sqlite",
     "name": "PKIActiveIssuer",
     "annotation": "instance-scoped",
     "hash": "69a3dfa8ab1e939527eeedfea8da04406e60a93fbfb2a62ccdc2d1cef65cbdef",
@@ -6218,6 +6337,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "PrivacyEraseOrgEmailInvitations",
+    "annotation": "authn-resolution",
+    "hash": "e02dbe7696a1988739456acb913d6d1ec74abe2c0869ab677488c0370b204add",
+    "reason": "Account erasure unbinds every invitation bound to the erased account; the row stays listed until it expires and can never validate."
+  },
+  {
+    "engine": "sqlite",
     "name": "PrivacyErasePasswords",
     "annotation": "authn-resolution",
     "hash": "0a368ed3cb800554d13eed2a8e935e80d4220c30a5ff6c25660a186ba183d11b"
@@ -6300,6 +6426,13 @@
     "annotation": "authn-resolution",
     "hash": "e0bb4d38a7e966dabec66e9b999fa11603f5e86383d98019c54cb6e978043706",
     "reason": "expired first-party login transaction metadata is removed opportunistically at issuance"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PruneExpiredOrgEmailInvitations",
+    "annotation": "authn-resolution",
+    "hash": "90bbaa9e8d15568cff3684ff8d346a74233ff348bda36883839499a1e6715a41",
+    "reason": "The hourly pruning run deletes only rows already past their expiry."
   },
   {
     "engine": "sqlite",
@@ -7043,6 +7176,13 @@
     "name": "UpdateSelfConfigRollout",
     "annotation": "instance-scoped",
     "hash": "4b23597f5cfc5d4fa2d483a4d9dfe9016efc240d557f7f00d4c059f9d8d8668c"
+  },
+  {
+    "engine": "sqlite",
+    "name": "UpsertOrgEmailInvitation",
+    "annotation": "authn-resolution",
+    "hash": "9e4935e9a0ed9122177dcad8c762fc9381538631a89905be70992b449119cd48",
+    "reason": "A send writes or replaces the one pending row of an organisation and address; the operation authorized manage-members at that org."
   },
   {
     "engine": "sqlite",

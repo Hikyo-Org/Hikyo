@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -158,5 +159,24 @@ func TestGrantResultRowRendersEveryOutcome(t *testing.T) {
 				t.Fatalf("row = %q", got)
 			}
 		})
+	}
+}
+
+func TestNormalizedOriginDropsDefaultPorts(t *testing.T) {
+	for raw, want := range map[string]string{
+		"https://Hikyo.Example:443/x": "https://hikyo.example",
+		"http://hikyo.example:80":     "http://hikyo.example",
+		"https://hikyo.example:8443":  "https://hikyo.example:8443",
+		"http://hikyo.example:443":    "http://hikyo.example:443",
+		"https://[::1]:443":           "https://[::1]",
+		"https://[::1]:9000":          "https://[::1]:9000",
+	} {
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := normalizedOrigin(u); got != want {
+			t.Errorf("%s: got %s, want %s", raw, got, want)
+		}
 	}
 }

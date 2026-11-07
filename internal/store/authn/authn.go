@@ -36,14 +36,15 @@ import (
 // Resolver answers the two questions authorize() asks, inside the same
 // transaction the eventual store calls run in.
 type Resolver struct {
-	historicalRecoveryBeforePrivacy    bool
-	historicalRecoveryBeforeSelfConfig bool
-	historicalRecoveryBeforeAccess     bool
-	historicalRecoveryBeforePKI        bool
-	historicalRecoveryBeforeRules      bool
-	selfConfigOrgID                    domain.OrgID
-	sq                                 *sqlitegen.Queries
-	pg                                 *pggen.Queries
+	historicalRecoveryBeforePrivacy          bool
+	historicalRecoveryBeforeSelfConfig       bool
+	historicalRecoveryBeforeAccess           bool
+	historicalRecoveryBeforePKI              bool
+	historicalRecoveryBeforeRules            bool
+	historicalRecoveryBeforeEmailInvitations bool
+	selfConfigOrgID                          domain.OrgID
+	sq                                       *sqlitegen.Queries
+	pg                                       *pggen.Queries
 	// The raw handles behind sq/pg, for the one catalog probe no sqlc query
 	// can express (restoredPostLegacyTables).
 	sqdb sqlitegen.DBTX

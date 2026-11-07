@@ -164,6 +164,14 @@ operations:
   applyOrgTemplate:            {webui: members}
   inviteInstanceMember:        {webui: instance-members}
   inviteOrgMember:             {webui: members}
+  # Email invitation of an existing account (#1207): sent, listed and revoked
+  # from the Members page; previewed and accepted on the public
+  # /invitations/accept page, which needs the person's own signed-in session.
+  inviteOrgMemberByEmail:      {webui: members}
+  listOrgEmailInvitations:     {webui: members}
+  revokeOrgEmailInvitation:    {webui: members}
+  previewEmailInvitation:      {webui: invitation-accept}
+  acceptEmailInvitation:       {webui: invitation-accept}
   getInstanceRegistrationPolicy:    {webui: instance-members}
   putInstanceRegistrationPolicy:    {webui: instance-members}
   deleteInstanceRegistrationPolicy: {webui: instance-members}

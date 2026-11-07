@@ -3127,6 +3127,124 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/orgs/{org}/email-invitations:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+    get:
+      operationId: listOrgEmailInvitations
+      tags: [access]
+      summary: List the organisation's live pending email invitations.
+      description: |
+        Unexpired rows only, each as the administrator typed it. The answer never
+        names the account an address matched or whether it matched at all.
+        Recorded as a membership-surface read.
+      x-hikyo-class: tenant
+      x-hikyo-operation: email-invitation.list
+      x-hikyo-formula: [manage-members@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 16
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The pending invitations.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailInvitationList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      operationId: inviteOrgMemberByEmail
+      tags: [access]
+      summary: Invite the existing account holding an email address into this organisation.
+      description: |
+        Records one pending invitation for the address and a role template. The
+        request writes the same rows and answers the same `202` whether or not
+        the address belongs to a verified account, and it never contacts the mail
+        server; for a matching account one mail is sent in the background with a
+        single-use link that the person accepts while signed in. An unknown
+        address gets no mail. A send to an address that already has a pending
+        invitation replaces it and the earlier link stops working.
+
+        A body that does not match the request schema is refused by request
+        validation first, alike for every address. For a body that does, an
+        instance whose operator never stated its public origin answers `400`
+        naming the `no-public-origin` precondition, and one without a configured
+        mailer `mailer-unconfigured`, both before the address is read. A
+        malformed address or an unknown template is `400`. Sends are
+        bounded at 30 per hour per organisation and 200 live pending
+        invitations, both the uniform `429`.
+      x-hikyo-class: tenant
+      x-hikyo-operation: email-invitation.send
+      x-hikyo-formula: [manage-members@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 16
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailInvitationSendRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "202":
+          description: The invitation was recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailInvitation"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/email-invitations/{invitation}:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/EmailInvitationID"
+    delete:
+      operationId: revokeOrgEmailInvitation
+      tags: [access]
+      summary: Revoke one pending email invitation.
+      x-hikyo-class: tenant
+      x-hikyo-operation: email-invitation.revoke
+      x-hikyo-formula: [manage-members@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 16
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204":
+          description: Revoked.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /api/v1/orgs/{org}/registration-policy:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -11141,6 +11259,95 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/me/invitations/preview:
+    post:
+      operationId: previewEmailInvitation
+      tags: [access]
+      summary: Show what an email invitation token offers the signed-in person.
+      description: |
+        SELF-SCOPED: needs the person's own signed-in human session. The token is
+        valid only when it names an unexpired pending invitation of the current
+        credential epoch that is bound to this session's own account. Every other
+        case (unknown token, another account, an address that matched no
+        account, expired, superseded, revoked, already accepted, an organisation
+        that is gone, an inviter who no longer holds the authority) is one
+        uniform `404`; the cause is recorded on the instance trail. Writes
+        nothing else.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 16
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailInvitationTokenRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The organisation, template and expiry the token offers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailInvitationPreview"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/me/invitations/accept:
+    post:
+      operationId: acceptEmailInvitation
+      tags: [access]
+      summary: Accept an email invitation as the signed-in person.
+      description: |
+        SELF-SCOPED: same validity rule and uniform `404` as the preview. In ONE
+        transaction the inviter's authority is re-checked, the role template is
+        applied to the person as the inviter would apply it, and the invitation
+        is consumed.
+
+        Accepting is an ordinary privilege increase: when the template creates
+        a grant, the person's generation advances, every session of theirs ends
+        (the current one included) and their developer credentials are revoked.
+        `signed_out` reports that. The response leaves a browser session's
+        cookies untouched; the browser page ends its own session once it has
+        shown the outcome.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 16
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailInvitationTokenRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The invitation was accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailInvitationAcceptance"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /api/v1/me/sessions:
     get:
       operationId: listMySessions
@@ -16257,6 +16464,13 @@ components:
       description: Connection credential identifier.
       schema:
         $ref: "#/components/schemas/ID"
+    EmailInvitationID:
+      name: invitation
+      in: path
+      required: true
+      description: Pending email invitation identifier.
+      schema:
+        $ref: "#/components/schemas/ID"
     SessionID:
       name: session
       in: path
@@ -19023,6 +19237,113 @@ components:
             It creates no session: establish a password with it, then log in.
         expires_at:
           $ref: "#/components/schemas/Timestamp"
+
+    EmailInvitationSendRequest:
+      type: object
+      additionalProperties: false
+      required: [email, template]
+      properties:
+        email:
+          type: string
+          minLength: 3
+          maxLength: 254
+          description: |
+            The exact address, canonicalized as local sign-up does. Only a
+            verified address of an existing account can be reached.
+        template:
+          $ref: "#/components/schemas/RoleTemplate"
+
+    EmailInvitation:
+      type: object
+      additionalProperties: false
+      required: [id, email, template, created_at, expires_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/ID"
+        email:
+          type: string
+        template:
+          $ref: "#/components/schemas/RoleTemplate"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+
+    EmailInvitationListing:
+      type: object
+      additionalProperties: false
+      required: [id, email, template, invited_by, created_at, expires_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/ID"
+        email:
+          type: string
+        template:
+          $ref: "#/components/schemas/RoleTemplate"
+        invited_by:
+          $ref: "#/components/schemas/ID"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+
+    EmailInvitationList:
+      type: object
+      additionalProperties: false
+      required: [items, count]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailInvitationListing"
+        count:
+          type: integer
+          minimum: 0
+
+    EmailInvitationTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token:
+          type: string
+          minLength: 1
+          maxLength: 512
+          description: The single-use token from the invitation link's fragment.
+
+    EmailInvitationPreview:
+      type: object
+      additionalProperties: false
+      required: [org, org_name, template, expires_at]
+      properties:
+        org:
+          $ref: "#/components/schemas/ID"
+        org_name:
+          type: string
+        template:
+          $ref: "#/components/schemas/RoleTemplate"
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+
+    EmailInvitationAcceptance:
+      type: object
+      additionalProperties: false
+      required: [org, org_name, template, grants_created, signed_out]
+      properties:
+        org:
+          $ref: "#/components/schemas/ID"
+        org_name:
+          type: string
+        template:
+          $ref: "#/components/schemas/RoleTemplate"
+        grants_created:
+          type: integer
+          minimum: 0
+        signed_out:
+          type: boolean
+          description: |
+            True when grants were created: every session of the person ended,
+            the current one included, and they must sign in again.
 
     InviteMemberRequest:
       type: object

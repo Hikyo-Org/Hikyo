@@ -37,6 +37,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1162,6 +1163,7 @@ func TestMaxKnownCredentialEpochCoversEveryEpochColumn(t *testing.T) {
 			{"authn.sql", "PostLegacyMaxCredentialEpoch"},
 			{"authn.sql", "DeveloperMaxCredentialEpoch"},
 			{"remote_pairing.sql", "RemotePairingMaxCredentialEpoch"},
+			{"email_invitations.sql", "OrgEmailInvitationMaxCredentialEpoch"},
 		} {
 			src, err := os.ReadFile(filepath.Join("..", "store", "queries", engine, census.file))
 			if err != nil {
@@ -1296,6 +1298,55 @@ func runRestoreEpochForgery(t *testing.T, target drillTarget, c custody) {
 	}
 	if err := grantsAuthorize(t, restored); err == nil {
 		t.Error("a forged pre-reconciled principal authorized after the restore")
+	}
+}
+
+func TestRestoreOutrunsInvitationEpochSQLite(t *testing.T) {
+	c := newCustody(t)
+	runRestoreInvitationEpoch(t, sqliteTarget(t, t.TempDir(), c.recipient(t)), c)
+}
+
+func TestRestoreOutrunsInvitationEpochPostgres(t *testing.T) {
+	c := newCustody(t)
+	runRestoreInvitationEpoch(t, postgresTarget(t, t.TempDir(), c.recipient(t)), c)
+}
+
+// A pending email invitation carries the epoch it was stamped under. When it is
+// the highest stamp anywhere in the archive, restore must still end up with a
+// credential epoch above it, or the invitation would validate under the
+// restored instance.
+func runRestoreInvitationEpoch(t *testing.T, target drillTarget, c custody) {
+	target.configureCustody(t, c)
+	db := target.open(t)
+	for _, stmt := range fixtureSQL {
+		execRaw(t, db, stmt)
+	}
+	seedOrigins(t, db)
+	identityFixtures(t, db)
+
+	verifier := "X'696e76697465'"
+	if target.cfg.Store.Engine == config.EnginePostgres {
+		verifier = `'\x696e76697465'`
+	}
+	const invitationEpoch = 40000
+	execRaw(t, db, `INSERT INTO org_email_invitations (id, org_id, email, template, inviter_principal_id, token_verifier, credential_epoch, created_at, expires_at) `+
+		`VALUES ('ein_drill', 'org_a', 'drill@example.test', 'viewer', 'usr_alice', `+verifier+`, `+strconv.Itoa(invitationEpoch)+`, `+ts+`, '2030-01-01T00:00:00.000000Z')`)
+
+	archive := exportArchive(t, target)
+	target.destroy(t)
+	if err := app.RunRestore(t.Context(), target.cfg, drillLogger(),
+		[]string{"run", "--from", archive, "--identity-file", c.identityFile()},
+		io.Discard, nil, nil); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	recoverRestoredTarget(t, target, c)
+	restored := target.open(t)
+
+	if got := queryInt(t, restored, "SELECT credential_epoch FROM auth_instance_state WHERE id = 1"); got != invitationEpoch+1 {
+		t.Errorf("post-restore credential epoch = %d, want %d (the invitation stamp + 1)", got, invitationEpoch+1)
+	}
+	if got := queryInt(t, restored, "SELECT COUNT(*) FROM org_email_invitations WHERE id = 'ein_drill' AND credential_epoch = "+strconv.Itoa(invitationEpoch)); got != 1 {
+		t.Errorf("the invitation row did not survive the restore verbatim (%d)", got)
 	}
 }
 

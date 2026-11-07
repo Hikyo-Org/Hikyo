@@ -37,6 +37,9 @@ import (
 //     reset-credential` uses. Org or instance scope only: a project has no
 //     accounts of its own. External invitation claiming is a separate
 //     post-1.0 registration feature.
+//   - `invitation send|list|revoke|accept` (#1207) is the email invitation of
+//     an existing account (docs/spec/email-invitations.md section 6); accept
+//     reads its token from standard input, never argv.
 //   - `registration show|set|delete` (#606) is the registration policy of
 //     api-cli-spellings section 8, at org or instance scope (registration.go).
 //
@@ -50,13 +53,15 @@ import (
 // runAccess dispatches grant, rule, member, registration, policy, and request commands,
 // returning syntax errors or the selected command's error.
 func runAccess(ctx context.Context, ios IO, args []string) error {
-	sub, rest, err := subverb("access", args, "grant", "rule", "member", "registration", "policy", "request")
+	sub, rest, err := subverb("access", args, "grant", "rule", "member", "invitation", "registration", "policy", "request")
 	if err != nil {
 		return err
 	}
 	switch sub {
 	case "grant":
 		return runAccessGrant(ctx, ios, rest)
+	case "invitation":
+		return runAccessInvitation(ctx, ios, rest)
 	case "rule":
 		return runAccessRule(ctx, ios, rest)
 	case "policy":

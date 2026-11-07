@@ -1012,6 +1012,19 @@ type Org struct {
 	IdentityImageVersion   pgtype.Text
 }
 
+type OrgEmailInvitation struct {
+	ID                 string
+	OrgID              string
+	Email              string
+	Template           string
+	InviterPrincipalID string
+	AccountID          pgtype.Text
+	TokenVerifier      []byte
+	CredentialEpoch    int64
+	CreatedAt          pgtype.Timestamptz
+	ExpiresAt          pgtype.Timestamptz
+}
+
 type PasswordCredential struct {
 	AccountID       string
 	Verifier        []byte
