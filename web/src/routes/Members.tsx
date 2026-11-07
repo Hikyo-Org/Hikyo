@@ -530,7 +530,7 @@ export function Members({ scope }: { scope: MembersScope }) {
                 {!instance && projectId === '' && !noManageMembers && grants.isSuccess ? (
                   <EmailInvitations
                     org={orgQuery.data?.id ?? org}
-                    invitedByName={(principal) => principalLabel(principal, lines)}
+                    invitedByName={(principal) => (principal === me ? 'you' : principalLabel(principal, lines))}
                     onRevoked={(email) => feedback.ok(`Revoked the pending invitation for ${email}.`)}
                   />
                 ) : null}
