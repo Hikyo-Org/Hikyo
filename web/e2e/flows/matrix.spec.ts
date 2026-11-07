@@ -224,10 +224,12 @@ test.describe('environment matrix', () => {
       );
       await editor.getByRole('button', { name: 'Close', exact: true }).click();
 
-      // Three project reads plus four existing query families per environment.
-      // Config cells do not need a secret-disclosure capability request.
-      // Re-keying changes representation, not observer/query count.
-      await expect.poll(() => readResources.size).toBe(3 + 4 * 2);
+      // Three project reads plus five query families per environment: the four
+      // value families and the personal-value counts that mark cells (the
+      // caller's own list is read only when counts are refused, and this seed
+      // user manages members). Config cells do not need a secret-disclosure
+      // capability request. Re-keying changes representation, not observer/query count.
+      await expect.poll(() => readResources.size).toBe(3 + 5 * 2);
     } finally {
       page.off('request', recordMatrixRead);
       await browserApi(page, 'PUT', orderPath, zEnvironmentList, {
