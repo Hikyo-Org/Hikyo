@@ -304,6 +304,15 @@ the last write that reached it, so it can be the plain fail-safe text, which nam
 nothing that reassesses the head. #1194 narrows the case of a verdict whose
 write lands after the work clock.
 
+`gate-dev` does not listen to PR `edited` events. GitHub files every
+`ci-dev-required` record in the oldest Actions check suite on the head, whichever
+workflow owns it, and judges a required check only by the newest suite of each
+workflow. A `gate-dev` run for a title or body edit on the same head
+therefore hid the record and left the merge waiting for an "expected" check until
+a new head arrived (#1167, #1173). A base retarget still reruns `ci-feedback`, and
+its callback reassesses the PR. A `reopened` PR reruns every PR workflow, so it
+still needs a new head. See the [handoff](../handoff/dev-gate-stale-required-check.md).
+
 Discovery on a push to `dev` selects no PR. A green `ci-dev-required` stays valid
 when `dev` moves: the check is not strict about the base, and GitHub itself refuses
 a merge that now conflicts. It reassesses every open PR only when the push changed

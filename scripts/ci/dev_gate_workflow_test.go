@@ -78,3 +78,40 @@ func TestDevGateExecutesOnlyTrustedMainCodeUnderDistinctHeadLease(t *testing.T) 
 		t.Fatal("dev admission must not run the full graph or receive publication custody")
 	}
 }
+
+// GitHub files every ci-dev-required record in the head's oldest Actions check
+// suite and judges required checks only by the newest suite of each workflow.
+// When gate-dev hosts the record, a gate-dev run for a title or body edit
+// on the same head hides it, and the merge waits for an "expected"
+// check until a new head arrives. Base retargets still reach the publisher
+// through ci-feedback's workflow_run callback.
+func TestDevGateDoesNotRerunOnAnUnchangedHead(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/ci-dev-gate.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow struct {
+		On map[string]yaml.Node `yaml:"on"`
+	}
+	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	var target struct {
+		Types []string `yaml:"types"`
+	}
+	pr := workflow.On["pull_request_target"]
+	if err := pr.Decode(&target); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(target.Types, []string{"opened", "synchronize", "reopened", "closed"}) {
+		t.Fatalf("pull_request_target types %v: a PR edit would supersede the suite hosting ci-dev-required", target.Types)
+	}
+	var feedback struct {
+		Workflows []string `yaml:"workflows"`
+		Types     []string `yaml:"types"`
+	}
+	callback := workflow.On["workflow_run"]
+	if err := callback.Decode(&feedback); err != nil || !reflect.DeepEqual(feedback.Workflows, []string{"ci-feedback"}) || !reflect.DeepEqual(feedback.Types, []string{"requested", "in_progress", "completed"}) {
+		t.Fatal("a base retarget reaches dev admission only through ci-feedback's callback")
+	}
+}
