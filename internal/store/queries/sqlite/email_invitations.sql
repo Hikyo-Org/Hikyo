@@ -56,10 +56,10 @@ DELETE FROM org_email_invitations WHERE id = ? AND token_verifier = ?;
 -- name: PruneExpiredOrgEmailInvitations :execrows
 DELETE FROM org_email_invitations WHERE expires_at <= ?;
 
--- hikyo:reason Account erasure deletes every invitation bound to the erased account.
+-- hikyo:reason Account erasure unbinds every invitation bound to the erased account; the row stays listed until it expires and can never validate.
 -- hikyo:authn-resolution
 -- name: PrivacyEraseOrgEmailInvitations :exec
-DELETE FROM org_email_invitations WHERE account_id = ?;
+UPDATE org_email_invitations SET account_id = NULL WHERE account_id = ?;
 
 -- The restore catalog probe confirms the table exists before this runs.
 -- hikyo:reason restore must outrun every attacker-controlled email invitation epoch stamp

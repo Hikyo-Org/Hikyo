@@ -2752,8 +2752,8 @@
     "engine": "postgres",
     "name": "PrivacyEraseOrgEmailInvitations",
     "annotation": "authn-resolution",
-    "hash": "3e0cd2e5844e6c7d339080d35367568616ee704177fff876903ea297a92d0412",
-    "reason": "Account erasure deletes every invitation bound to the erased account."
+    "hash": "34703dcc0114e0161318e6428a9d268297d93c7c78aeb5720a4babd585c9ec43",
+    "reason": "Account erasure unbinds every invitation bound to the erased account; the row stays listed until it expires and can never validate."
   },
   {
     "engine": "postgres",
@@ -6339,8 +6339,8 @@
     "engine": "sqlite",
     "name": "PrivacyEraseOrgEmailInvitations",
     "annotation": "authn-resolution",
-    "hash": "055b5a401a310459c318e3263796461d898842d7fe7deb5e03d7d62b3034d617",
-    "reason": "Account erasure deletes every invitation bound to the erased account."
+    "hash": "e02dbe7696a1988739456acb913d6d1ec74abe2c0869ab677488c0370b204add",
+    "reason": "Account erasure unbinds every invitation bound to the erased account; the row stays listed until it expires and can never validate."
   },
   {
     "engine": "sqlite",

@@ -233,7 +233,8 @@ func (r *Resolver) ErasePrivacyAccount(ctx context.Context, account, principal, 
 			return 0, err
 		}
 	}
-	// Pending email invitations bound to the account go with it (#1207).
+	// Pending email invitations bound to the account are unbound, not deleted:
+	// the row stays listed until it expires and can never validate (#1207).
 	if !r.historicalRecoveryBeforeEmailInvitations {
 		if err := r.eraseOrgEmailInvitations(ctx, account); err != nil {
 			return err

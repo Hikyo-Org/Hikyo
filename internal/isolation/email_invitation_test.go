@@ -2,11 +2,14 @@ package isolation
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/mail"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -127,6 +130,56 @@ func (r *emailInvitationRig) grantsOf(p domain.PrincipalID) int64 {
 	return queryInt(r.t, r.db, `SELECT COUNT(*) FROM grants WHERE principal_id = '`+string(p)+`' AND org_id = 'org_a'`)
 }
 
+// tenantEvents counts the inviting organisation's trail.
+func (r *emailInvitationRig) tenantEvents() int64 {
+	r.t.Helper()
+	return queryInt(r.t, r.db, `SELECT COUNT(*) FROM audit_tenant_events WHERE org_id = 'org_a'`)
+}
+
+// targetState is everything an invitation must leave untouched while pending.
+type targetState struct {
+	generation int64
+	sessions   int64
+	grants     string
+	footprint  string
+	orgCount   int
+}
+
+func (r *emailInvitationRig) state(p domain.PrincipalID) targetState {
+	r.t.Helper()
+	var st targetState
+	err := tx.Read(r.t.Context(), r.db, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
+		var err error
+		if st.generation, err = az.PrincipalGeneration(ctx, p); err != nil {
+			return err
+		}
+		grants, err := az.GrantsForResetTarget(ctx, p)
+		if err != nil {
+			return err
+		}
+		foot, err := az.PrincipalFootprintOrgs(ctx, p)
+		if err != nil {
+			return err
+		}
+		st.grants, st.footprint, st.orgCount = fmt.Sprint(grants), fmt.Sprint(foot), len(foot)
+		return nil
+	})
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	st.sessions = queryInt(r.t, r.db, `SELECT COUNT(*) FROM sessions WHERE principal_id = '`+string(p)+`'`)
+	return st
+}
+
+func jsonKeys(t *testing.T, raw string) []string {
+	t.Helper()
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		t.Fatal(err)
+	}
+	return slices.Sorted(maps.Keys(m))
+}
+
 func wantNotFound(t *testing.T, what string, err error) {
 	t.Helper()
 	if !errors.Is(err, domain.ErrNotFound) {
@@ -168,8 +221,8 @@ func runEmailInvitations(t *testing.T, db *store.DB) {
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM audit_instance_events WHERE type = 'member.email_invitation_dispatch' AND payload LIKE '%"matched":false%'`); n != 1 {
 			t.Fatalf("instance dispatch (unmatched) = %d, want 1", n)
 		}
-		if n := auditCount(t, db, "member.email_invitation_mail_outcome"); n != 0 {
-			t.Fatalf("mail outcomes = %d, want 0", n)
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM audit_instance_events WHERE type = 'member.email_invitation_mail_outcome' AND outcome = 'success' AND payload LIKE '%"mail_sent":false%'`); n != 1 {
+			t.Fatalf("unmatched no-mail outcomes = %d, want 1", n)
 		}
 		execRaw(t, db, `DELETE FROM org_email_invitations`)
 	})
@@ -183,8 +236,8 @@ func runEmailInvitations(t *testing.T, db *store.DB) {
 			t.Fatalf("mail = %+v", rig.sink.Messages())
 		}
 		token := rig.token(0)
-		if auditCount(t, db, "member.email_invitation_mail_outcome") != 1 {
-			t.Fatal("no mail outcome recorded")
+		if queryInt(t, db, `SELECT COUNT(*) FROM audit_instance_events WHERE type = 'member.email_invitation_mail_outcome' AND outcome = 'success' AND payload LIKE '%"mail_sent":true%'`) != 1 {
+			t.Fatal("no delivered-mail outcome recorded")
 		}
 		before := rig.grantsOf(invitee)
 		var gen0 int64
@@ -195,10 +248,14 @@ func runEmailInvitations(t *testing.T, db *store.DB) {
 		})
 
 		// Someone else's session, and a read-only preview, change nothing.
+		trail := rig.tenantEvents()
 		_, err = rig.svc.Preview(ctx, service.LocalPrincipal(other), token)
 		wantNotFound(t, "preview by another account", err)
 		_, err = rig.svc.Accept(ctx, service.LocalPrincipal(other), token)
 		wantNotFound(t, "accept by another account", err)
+		if rig.tenantEvents() != trail {
+			t.Fatal("a refused acceptance wrote to the inviting organisation's trail")
+		}
 		if rig.refusals("other-account") != 2 {
 			t.Fatalf("other-account refusals = %d, want 2", rig.refusals("other-account"))
 		}
@@ -356,8 +413,12 @@ func runEmailInvitations(t *testing.T, db *store.DB) {
 		}
 		token := rig.token(before)
 		execRaw(t, db, `UPDATE org_email_invitations SET credential_epoch = credential_epoch + 7`)
+		trail := rig.tenantEvents()
 		_, err := rig.svc.Accept(ctx, service.LocalPrincipal(other), token)
 		wantNotFound(t, "a superseded epoch", err)
+		if rig.tenantEvents() != trail {
+			t.Fatal("an epoch refusal wrote to the inviting organisation's trail")
+		}
 		if rig.refusals("epoch-superseded") != 1 || rig.rows() != 1 {
 			t.Fatal("epoch refusal not recorded or row touched")
 		}
@@ -375,13 +436,30 @@ func runEmailInvitations(t *testing.T, db *store.DB) {
 		token = rig.token(before)
 		execRaw(t, db, `DELETE FROM grants WHERE id = 'g_ei_inv'`)
 		grantsBefore := rig.grantsOf(other)
+		trail = rig.tenantEvents()
 		_, err = rig.svc.Accept(ctx, service.LocalPrincipal(other), token)
 		wantNotFound(t, "an inviter who lost the authority", err)
+		if rig.tenantEvents() != trail {
+			t.Fatal("a lost-authority acceptance wrote a grant.denied to the inviting organisation's trail")
+		}
 		if rig.refusals("inviter-unauthorized") != 1 || rig.rows() != 1 || rig.grantsOf(other) != grantsBefore {
 			t.Fatal("the lost-authority refusal changed state")
 		}
 		_, err = rig.svc.Preview(ctx, service.LocalPrincipal(other), token)
 		wantNotFound(t, "preview after the authority is gone", err)
+		if rig.tenantEvents() != trail {
+			t.Fatal("a lost-authority preview wrote to the inviting organisation's trail")
+		}
+		// The unmatched and expired causes leave the trail alone as well.
+		execRaw(t, db, `UPDATE org_email_invitations SET account_id = NULL`)
+		_, err = rig.svc.Accept(ctx, service.LocalPrincipal(other), token)
+		wantNotFound(t, "an unmatched row", err)
+		execRaw(t, db, `UPDATE org_email_invitations SET expires_at = '2020-01-01T00:00:00.000000Z'`)
+		_, err = rig.svc.Accept(ctx, service.LocalPrincipal(other), token)
+		wantNotFound(t, "an expired row", err)
+		if rig.tenantEvents() != trail {
+			t.Fatal("an unmatched or expired acceptance wrote to the inviting organisation's trail")
+		}
 		execRaw(t, db, `DELETE FROM org_email_invitations`)
 	})
 
@@ -464,6 +542,143 @@ func runEmailInvitations(t *testing.T, db *store.DB) {
 		if _, err := fresh.send(admin, "budget-later@example.test"); err != nil {
 			t.Fatalf("send after the window = %v", err)
 		}
+		execRaw(t, db, `DELETE FROM org_email_invitations`)
+	})
+
+	t.Run("matched_and_unmatched_sends_look_the_same", func(t *testing.T) {
+		execRaw(t, db, `DELETE FROM org_email_invitations`)
+		watermark := queryInt(t, db, `SELECT COALESCE(MAX(seq), 0) FROM audit_tenant_events`)
+		matched, err := rig.send(admin, "other@example.test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		unmatched, err := rig.send(admin, "stranger@example.test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		mraw, _ := json.Marshal(matched)
+		uraw, _ := json.Marshal(unmatched)
+		if !slices.Equal(jsonKeys(t, string(mraw)), jsonKeys(t, string(uraw))) {
+			t.Fatalf("receipt keys differ: %s vs %s", mraw, uraw)
+		}
+		list, err := rig.svc.List(ctx, service.LocalPrincipal(admin), orgA)
+		if err != nil || len(list) != 2 {
+			t.Fatalf("list = %+v, %v", list, err)
+		}
+		lm, _ := json.Marshal(list[0])
+		lu, _ := json.Marshal(list[1])
+		if !slices.Equal(jsonKeys(t, string(lm)), jsonKeys(t, string(lu))) {
+			t.Fatalf("list entry keys differ: %s vs %s", lm, lu)
+		}
+		payload := func(id string) string {
+			return queryString(t, db, `SELECT payload FROM audit_tenant_events WHERE type = 'member.email_invited' AND object_id = '`+id+`'`)
+		}
+		if !slices.Equal(jsonKeys(t, payload(matched.ID)), jsonKeys(t, payload(unmatched.ID))) {
+			t.Fatalf("org-trail payload keys differ: %s vs %s", payload(matched.ID), payload(unmatched.ID))
+		}
+		for _, needle := range []string{"acc_usr_ei_other", "usr_ei_other"} {
+			if n := queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE org_id = 'org_a' AND seq > `+fmt.Sprint(watermark)+` AND (payload LIKE '%`+needle+`%' OR object_id LIKE '%`+needle+`%' OR actor_id LIKE '%`+needle+`%')`); n != 0 {
+				t.Fatalf("the org trail names the matched account (%s) in %d events", needle, n)
+			}
+		}
+		// The match fact lives on the instance trail only.
+		if queryInt(t, db, `SELECT COUNT(*) FROM audit_instance_events WHERE type = 'member.email_invitation_dispatch' AND payload LIKE '%"matched":true%'`) == 0 {
+			t.Fatal("matched dispatch intent missing")
+		}
+		execRaw(t, db, `DELETE FROM org_email_invitations`)
+	})
+
+	t.Run("nothing_about_the_person_changes_while_pending", func(t *testing.T) {
+		target := rig.account("usr_ei_pending", "pending@example.test")
+		execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_ei_pending', 'usr_ei_pending', 'read', 'org_a', `+ts+`)`)
+		sessionWithWindows(t, db, target)
+		before := rig.state(target)
+		if before.sessions == 0 {
+			t.Fatal("no session to protect")
+		}
+		if _, err := rig.send(admin, "pending@example.test"); err != nil {
+			t.Fatal(err)
+		}
+		if got := rig.state(target); got != before {
+			t.Fatalf("send changed the person: %+v -> %+v", before, got)
+		}
+		if _, err := rig.send(admin, "pending@example.test"); err != nil {
+			t.Fatal(err)
+		}
+		if got := rig.state(target); got != before {
+			t.Fatalf("re-send changed the person: %+v -> %+v", before, got)
+		}
+		execRaw(t, db, `DELETE FROM org_email_invitations`)
+	})
+
+	t.Run("credential_reset_follows_the_accepted_footprint", func(t *testing.T) {
+		resetter := rig.account("usr_ei_resetter", "resetter@example.test")
+		execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_ei_resetter', 'usr_ei_resetter', 'credential-reset', 'org_a', `+ts+`)`)
+		auth := authService(t, db)
+		multi := rig.account("usr_ei_multi", "multi@example.test")
+		execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_ei_multi', 'usr_ei_multi', 'read', 'org_b', `+ts+`)`)
+		solo := rig.account("usr_ei_solo", "solo@example.test")
+		for _, p := range []struct {
+			who  domain.PrincipalID
+			mail string
+		}{{multi, "multi@example.test"}, {solo, "solo@example.test"}} {
+			before := len(rig.sink.Messages())
+			if _, err := rig.send(admin, p.mail); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := rig.svc.Accept(ctx, service.LocalPrincipal(p.who), rig.token(before)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := auth.ResetCredential(ctx, service.LocalPrincipal(resetter), string(multi), "response"); err == nil {
+			t.Fatal("an org credential-reset holder reset a person who also belongs to another org")
+		}
+		if _, err := auth.ResetCredential(ctx, service.LocalPrincipal(resetter), string(solo), "response"); err != nil {
+			t.Fatalf("an org credential-reset holder could not reset a person whose only org is theirs: %v", err)
+		}
+	})
+
+	t.Run("deleting_the_org_removes_its_pending_rows", func(t *testing.T) {
+		org, err := (&service.Orgs{DB: db}).Create(ctx, service.LocalPrincipal(root), "ei-doomed", true, json.RawMessage(`{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := rig.svc.Send(ctx, service.LocalPrincipal(root), service.EmailInvitationSendSpec{Org: domain.OrgID(org.ID), Email: "doomed@example.test", Template: domain.TemplateViewer}); err != nil {
+			t.Fatal(err)
+		}
+		rig.svc.WaitForMail()
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM org_email_invitations WHERE org_id = '`+string(org.ID)+`'`); n != 1 {
+			t.Fatalf("pending rows = %d, want 1", n)
+		}
+		if err := (&service.Orgs{DB: db}).Delete(ctx, service.LocalPrincipal(root), domain.OrgID(org.ID)); err != nil {
+			t.Fatal(err)
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM org_email_invitations WHERE org_id = '`+string(org.ID)+`'`); n != 0 {
+			t.Fatalf("pending rows after org deletion = %d, want 0", n)
+		}
+	})
+
+	t.Run("erasing_the_matched_account_leaves_the_row_listed_and_unusable", func(t *testing.T) {
+		execRaw(t, db, `DELETE FROM org_email_invitations`)
+		victim := rig.account("usr_ei_erased", "erased@example.test")
+		before := len(rig.sink.Messages())
+		if _, err := rig.send(admin, "erased@example.test"); err != nil {
+			t.Fatal(err)
+		}
+		token := rig.token(before)
+		listed, err := rig.svc.List(ctx, service.LocalPrincipal(admin), orgA)
+		if err != nil || len(listed) != 1 {
+			t.Fatalf("list before erasure = %+v, %v", listed, err)
+		}
+		if _, err := authService(t, db).ApplyPrivacySubject(ctx, string(victim), "erase", ""); err != nil {
+			t.Fatal(err)
+		}
+		after, err := rig.svc.List(ctx, service.LocalPrincipal(admin), orgA)
+		if err != nil || len(after) != 1 || after[0] != listed[0] {
+			t.Fatalf("list after erasure = %+v, %v; want %+v", after, err, listed)
+		}
+		_, err = rig.svc.Accept(ctx, service.LocalPrincipal(victim), token)
+		wantNotFound(t, "accept after erasure", err)
 		execRaw(t, db, `DELETE FROM org_email_invitations`)
 	})
 

@@ -10,7 +10,7 @@ CREATE TABLE org_email_invitations (
     email TEXT NOT NULL CHECK (email <> ''),
     template TEXT NOT NULL CHECK (template <> ''),
     inviter_principal_id TEXT NOT NULL,
-    account_id TEXT REFERENCES accounts (id) ON DELETE CASCADE,
+    account_id TEXT REFERENCES accounts (id) ON DELETE SET NULL,
     token_verifier BYTEA NOT NULL UNIQUE,
     credential_epoch BIGINT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,

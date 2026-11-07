@@ -2212,6 +2212,8 @@ var registry = map[EventType]TypeSpec{
 		Schema: Schema{
 			"intent_id":     {Kind: KindString, Required: true},
 			"invitation_id": {Kind: KindString, Required: true},
+			// mail_sent is false for an unmatched address, which is never dialled.
+			"mail_sent": {Kind: KindBool, Required: true},
 		},
 	},
 	EventMemberEmailInvitationRefused: {

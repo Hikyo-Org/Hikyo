@@ -209,3 +209,11 @@ func TestSignupMailFailureCountsREDErrorWithoutChangingAcceptedResponse(t *testi
 		t.Fatalf("signup mail failures = %v", got)
 	}
 }
+
+func TestRecordEmailInvitationMailFailureCountsOnly(t *testing.T) {
+	m := NewMetrics(nil)
+	m.RecordEmailInvitationMailFailure()
+	if got := testutil.ToFloat64(m.emailInvitationMailFailures); got != 1 {
+		t.Fatalf("email invitation mail failures = %v", got)
+	}
+}
