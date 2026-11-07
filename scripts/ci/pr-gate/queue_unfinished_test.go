@@ -233,26 +233,31 @@ func TestAdmissionProtectionReadStates(t *testing.T) {
 	})
 }
 
-// Feedback callbacks reach the queue gate for dev PRs too, and retirement skips
-// completed records, so a refusal there would stay red on the head for good, with
-// text that is false for it. The pending barrier stays and the next pass retires it.
-func TestAdmissionCutOffLeavesNoQueueRefusalOnADevPR(t *testing.T) {
-	for _, attempt := range []int{1, 3} {
-		t.Run("attempt "+strconv.Itoa(attempt), func(t *testing.T) {
+// Feedback callbacks reach the queue gate for dev and stacked PRs too, and
+// retirement skips completed records, so a refusal there would stay red on the head
+// for good, with text that is false for it. The pending barrier stays and the next
+// pass retires it.
+func TestAdmissionCutOffLeavesNoQueueRefusalOutsideMain(t *testing.T) {
+	for _, tc := range []struct {
+		base    string
+		attempt int
+	}{{"dev", 1}, {"dev", 3}, {"feat/stacked-base", 1}, {"feat/stacked-base", 3}} {
+		attempt := tc.attempt
+		t.Run(tc.base+"/attempt "+strconv.Itoa(attempt), func(t *testing.T) {
 			t.Setenv("GITHUB_RUN_ATTEMPT", strconv.Itoa(attempt))
 			f := unfinishedFixture(t, "queue")
-			f.pr.Base.Ref = "dev"
+			f.pr.Base.Ref = tc.base
 			f.refresh()
 			f.feedbackRun.Pulls = []pull{f.pr}
 			f.feedbackRefresh()
 			f.c.api = deadlineAPI{api: f.c.api, readHook: cutOnce("attempts/1/jobs?")}
 			err := unfinishedInvoke("queue", f, workEndsAfter(100*time.Millisecond))
-			if err == nil || !strings.Contains(err.Error(), "work budget exhausted") || !strings.Contains(err.Error(), "a dev PR holds no queue role") {
-				t.Fatalf("expected a real cut and no refusal for a dev PR: %v", err)
+			if err == nil || !strings.Contains(err.Error(), "work budget exhausted") || !strings.Contains(err.Error(), "a PR outside the default branch holds no queue role") {
+				t.Fatalf("expected a real cut and no refusal for a PR to %s: %v", tc.base, err)
 			}
 			for _, w := range f.api.writes {
 				if w["status"] == "completed" {
-					t.Fatalf("a queue refusal reached a dev PR: %+v", w)
+					t.Fatalf("a queue refusal reached a PR to %s: %+v", tc.base, w)
 				}
 			}
 		})

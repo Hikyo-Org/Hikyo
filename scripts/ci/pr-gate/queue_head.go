@@ -87,6 +87,15 @@ func materializedHeads(live *queueData, branch string) ([]string, error) {
 	return heads, nil
 }
 
+// Only a PR to main holds a queue role, so dev and stacked PRs cannot block a
+// queue head's retirement. Other checks keep every base except dev protected.
+func (q *queueController) holdsRole(p pull) bool {
+	if q.checkName == queueCheckName {
+		return p.Base.Ref == q.repo.DefaultBranch
+	}
+	return p.Base.Ref != "dev"
+}
+
 func (q *queueController) roles(ctx context.Context, head string) (headRoles, error) {
 	if q.checkName == devCheckName {
 		return q.devRoles(ctx, head)
@@ -113,8 +122,7 @@ func (q *queueController) roles(ctx context.Context, head string) (headRoles, er
 	roles.AllPulls = make(map[int]pull, len(pulls))
 	for _, p := range pulls {
 		roles.AllPulls[p.Number] = p
-		// A dev PR holds no main queue role, so it cannot block this head's retirement.
-		if p.Head.SHA == head && p.Base.Ref != "dev" {
+		if p.Head.SHA == head && q.holdsRole(p) {
 			roles.Pulls = append(roles.Pulls, p)
 		}
 	}
