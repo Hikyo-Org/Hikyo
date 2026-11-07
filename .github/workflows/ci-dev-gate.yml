@@ -3,9 +3,12 @@
 name: gate-dev
 
 on:
+  # No edited: GitHub files ci-dev-required in the head's oldest Actions suite,
+  # and a newer gate-dev run on the same head hides it from the required check.
+  # A base retarget reruns ci-feedback, whose workflow_run callback reassesses.
   pull_request_target:
     branches: [dev]
-    types: [opened, synchronize, reopened, edited, closed]
+    types: [opened, synchronize, reopened, closed]
   push:
     branches: [main, dev]
   workflow_run:
