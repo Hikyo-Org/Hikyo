@@ -383,7 +383,7 @@ test('read-only details and filters work while management actions stay disabled'
   // one, with revocation closed to the preview.
   await page.goto(`./?account=admin#${projectPath}/settings`);
   await page.getByRole('tab', { name: 'Developer credentials', exact: true }).click();
-  await expect(page.getByRole('main').getByText('Developer principal:').first()).toBeVisible();
+  await expect(page.getByRole('main').getByText('Developer:').first()).toBeVisible();
   await expect(page.getByRole('main').getByText(/^Revoked/).first()).toBeVisible();
   await expect(page.getByRole('button', { name: /^Revoke / }).first()).toBeDisabled();
   // Re-reading is not a change: the refresh stays available in the preview.
