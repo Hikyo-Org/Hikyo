@@ -10,6 +10,9 @@ GitHub sometimes refused to merge a dev PR with `Required status check
 
 ## Root cause
 
+This model is inferred from suite and run data; GitHub documents neither rule.
+It explains both blocked heads and every merge in the sample below.
+
 1. A check run that a workflow creates through the Checks API with `GITHUB_TOKEN` is
    filed in the oldest `github-actions` check suite on the head, whichever workflow
    owns that suite. The run that wrote it does not matter.
@@ -44,11 +47,16 @@ timelines:
 ## Why removing `edited` keeps admission complete
 
 - The publisher never reads the title, body or draft state. Its binding covers
-  head, base and feedback attempt.
+  repository, PR, head, base SHA, base ref and feedback attempt.
 - A base retarget reruns `ci-feedback`, which is not a metadata-only edit, and
-  `gate-dev`'s `workflow_run` callback then publishes for the PR. On #1158,
+  `gate-dev`'s `workflow_run` callback then publishes for the PR. Discovery maps the
+  callback's head to every open dev PR on it. This is shown from the code: on #1158,
   retargeted to dev at 2026-11-04T16:46:23Z, the callback run 41870829461 completed
-  `ci-dev-required` at 16:52:30. The hourly schedule and manual dispatch remain backstops.
+  `ci-dev-required` at 16:52:30, but a push and a `gate-dev` `edited` run arrived at
+  the same time. `TestDevGateDoesNotRerunOnPullRequestEdits` pins both the callback
+  and `ci-feedback`'s `edited` trigger.
+- `ci-feedback` does not start when the PR conflicts with its new base, or while a
+  fork run awaits approval. The hourly schedule and manual dispatch then reassess.
 - Removing a trigger only removes publications. It cannot admit a head that the
   publisher would refuse.
 
@@ -64,11 +72,14 @@ timelines:
 
 ## Remaining risks (not fixed)
 
-- `reopened` reruns every PR workflow, so the host suite is always superseded. A
-  reopened dev PR still needs a new signed head.
+- Closing and reopening a PR reruns every workflow that hosted the record in the
+  sample: `tidy-checks` and `gate-dev` on `closed`, and `gate-dev`, `perf-control`,
+  `report-dco` and the `pull_request` workflows on `reopened`. A reopened dev PR
+  still needs a new signed head.
 - Other workflows can still rerun on an unchanged head: `ci-feedback` and
   `ci-advisory-dependencies` on metadata-only `edited` events (as skipped runs),
-  and `pr-benchmark` on `ready_for_review`. None of them hosted the record in the
+  `pr-benchmark` on `ready_for_review`, and the non-skipped `ci-feedback` and
+  `ci-advisory-dependencies` runs of a real base retarget. None of them hosted the record in the
   sample, but the `pull_request` workflow `ci-advisory-invariants` hosted it three
   times, so they can. Workflows defined in the PR branch itself can also add suites.
 - `ci-queue-gate.yml` has the same trigger types on main PRs. Whether the queue

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -79,13 +80,13 @@ func TestDevGateExecutesOnlyTrustedMainCodeUnderDistinctHeadLease(t *testing.T) 
 	}
 }
 
-// GitHub files every ci-dev-required record in the head's oldest Actions check
-// suite and judges required checks only by the newest suite of each workflow.
-// When gate-dev hosts the record, a gate-dev run for a title or body edit
-// on the same head hides it, and the merge waits for an "expected"
-// check until a new head arrives. Base retargets still reach the publisher
-// through ci-feedback's workflow_run callback.
-func TestDevGateDoesNotRerunOnAnUnchangedHead(t *testing.T) {
+// Observed on #1167 and #1173: GitHub filed each ci-dev-required record in the
+// head's oldest Actions check suite and judged the required check only by the
+// newest suite of each workflow. When gate-dev hosted the record, a gate-dev
+// run for a title or body edit on the same head hid it, and the merge waited
+// for an "expected" check until a new head arrived. Base retargets reach the
+// publisher through ci-feedback's edited run and its workflow_run callback.
+func TestDevGateDoesNotRerunOnPullRequestEdits(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/ci-dev-gate.yml"))
 	if err != nil {
 		t.Fatal(err)
@@ -113,5 +114,19 @@ func TestDevGateDoesNotRerunOnAnUnchangedHead(t *testing.T) {
 	callback := workflow.On["workflow_run"]
 	if err := callback.Decode(&feedback); err != nil || !reflect.DeepEqual(feedback.Workflows, []string{"ci-feedback"}) || !reflect.DeepEqual(feedback.Types, []string{"requested", "in_progress", "completed"}) {
 		t.Fatal("a base retarget reaches dev admission only through ci-feedback's callback")
+	}
+	raw, err = os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/ci-feedback.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var source struct {
+		On struct {
+			PullRequest struct {
+				Types []string `yaml:"types"`
+			} `yaml:"pull_request"`
+		} `yaml:"on"`
+	}
+	if err := yaml.Unmarshal(raw, &source); err != nil || !slices.Contains(source.On.PullRequest.Types, "edited") {
+		t.Fatal("ci-feedback must run on a base retarget, or a retargeted PR waits for the hourly dev discovery")
 	}
 }
