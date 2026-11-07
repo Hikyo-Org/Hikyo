@@ -25,8 +25,9 @@ so this was not a timeout.
   with `GOMAXPROCS=1`, 40 of 40 passed, and every attempt reported zero
   accounting failures. A whole-package run reached the personal value tests
   without a failure. It then hit the 40 minute local timeout chosen for it,
-  before the refusal tests ran. CI's exact shard (1) test list was then run on
-  the repaired branch. Its result is in the pull request.
+  before the refusal tests ran. With the repair, every refusal test passed
+  twice on both engines, 72 engine subtests, and the only retry lines were the
+  deliberate ones in the regression.
 - **Mechanism.** The refusal middleware discards `Refusals.Record` errors by
   design. Under the
   [refusal signals ADR](../adr/auth-refusal-signals.md), `Record` has a 100 ms
@@ -71,9 +72,12 @@ test still own the unconfirmed outcome. Production code is unchanged: the
 deadline, writers, waiters, retry policy and worker interval are all untouched.
 
 `TestConfirmedRefusalServesAgainAfterUnconfirmedAccounting` holds the real
-writer on both engines for the first attempt. It requires exactly two attempts,
-one recorded failure, and a retained sample from the second attempt. It then
-requires that a confirmed first attempt is served only once. With the
+writer on both engines for the first attempt. It requires at least two
+attempts, one recorded failure for each attempt but the last, and a retained
+sample from the last attempt. It then requires that a confirmed first attempt
+is served only once. The revoked replay test requires between one count and
+one count per attempt, so a request counted twice still fails when it is
+served once. With the
 helper bypassed, it fails on both engines with one attempt and one recorded
 failure. If its attempt check is also removed, it fails at `no pending window`,
 because its only sample was never staged. In the CI test, the other two requests
