@@ -235,6 +235,31 @@ func TestQueueFinalRoleSnapshotRefusesNewSharedPRHead(t *testing.T) {
 	f.assertNoSuccess(t)
 }
 
+// Only a PR to main holds a queue role. A dev or stacked PR on the same commit
+// makes a main PR's admission no more ambiguous. A retarget reruns feedback, and
+// that callback reassesses the other PR against its new base.
+func TestQueueSharedHeadOutsideMainIsNotAmbiguous(t *testing.T) {
+	for _, base := range []string{"main", "dev", "feat/stacked-base"} {
+		t.Run(base, func(t *testing.T) {
+			f := newQueueFixture(t)
+			other := f.pr
+			other.Number = 8
+			other.Base.Ref = base
+			f.api.responses[f.c.endpoint("pulls?state=open&per_page=100&page=1")] = []pull{f.pr, other}
+			if err := f.admit(); err != nil {
+				t.Fatal(err)
+			}
+			if base == "main" {
+				f.assertNoSuccess(t)
+				return
+			}
+			if len(f.api.writes) == 0 || f.api.writes[len(f.api.writes)-1]["conclusion"] != "success" {
+				t.Fatalf("a PR to %s sharing the head blocked main admission: %+v", base, f.api.writes)
+			}
+		})
+	}
+}
+
 func TestQueueFinalRoleSnapshotRetainsExactGroupMembership(t *testing.T) {
 	for _, change := range []string{"removed", "changed member"} {
 		t.Run(change, func(t *testing.T) {
