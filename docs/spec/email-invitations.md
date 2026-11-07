@@ -22,14 +22,24 @@ single-use link the invitation mailed to them.
 | D4 | A role template is required. An acceptance without one would write no grants and so would not make the person a member. |
 | D5 | An invitation lives 7 days (the ops-spec invitation expiry). The new-account invitation keeps its 24-hour credential-establishment lifetime. |
 
+Two rules were added during review of PR #1250 (2026-11-07) as implementation
+choices under these decisions and the uniformity requirement of section 2, not
+as owner decisions: a send needs an explicitly configured public origin (the
+uniform `no-public-origin` refusal, as local sign-up does), and invitation mail
+has no instance-wide in-flight cap (see section 2). The owner accepted the
+timing residuals of section 2 on 2026-11-07.
+
 ## 2. Sending (`inviteOrgMemberByEmail`)
 
 `POST /api/v1/orgs/{org}/email-invitations` with `{email, template}`, formula
 `manage-members@org`.
 
-1. Authorize the operation. Then evaluate the mailer predicate (the static
-   "mailer configured" predicate of the [ops catalogue](./ops-catalogue.md));
-   when it fails, answer the uniform `mailer-unconfigured` precondition refusal.
+1. Authorize the operation. Then, before the address is read, require an
+   explicitly configured public origin (the link is built from it), answering
+   the uniform `no-public-origin` precondition refusal as local sign-up does,
+   and evaluate the mailer predicate (the static "mailer configured" predicate
+   of the [ops catalogue](./ops-catalogue.md)); when it fails, answer the
+   uniform `mailer-unconfigured` precondition refusal.
 2. Canonicalize the address as local sign-up does
    ([social-signin.md](./social-signin.md) section 2.5); a malformed address or
    an unknown template is `400`.
@@ -50,7 +60,10 @@ matched, and it never contacts the mail server. The transaction writes a
 and one background task follows the commit for every send. Sends are never
 dropped: each gets its own attempt, bounded only by the per-organisation send
 budget charged before the transaction, so a send in flight changes nothing about
-whether any other send is attempted. An outcome
+whether or when any other send is attempted. There is deliberately no
+instance-wide cap on attempts in flight: a shared cap would let one
+organisation's matched sends delay another organisation's mail, a signal of
+whether those addresses matched. An outcome
 (`member.email_invitation_mail_outcome`) is recorded for every dispatch, except
 when the outcome write itself fails or the process dies, which is logged:
 
@@ -60,14 +73,18 @@ when the outcome write itself fails or the process dies, which is logged:
 - An unmatched address is never dialled. Its outcome is `success` with
   `mail_sent: false`, stating that no mail was sent.
 
-Outcomes live on the instance trail only. A failed or lost send is counted
+Outcomes live on the instance trail only. A failed send is counted
 (`hikyo_email_invitation_mail_failures_total`) but not reported to the
 administrator, who can send again. Stopping the application cancels the
 in-flight mail attempts, records their failure outcomes (the outcome write has
-a short timeout of its own), and only then lets the database close.
+a short timeout of its own), and only then lets the database close. A process
+that ends without stopping (a crash or a kill) loses its in-flight attempts:
+they leave an intent without an outcome on the instance trail and are not
+counted. Nothing retries them; the invitation stays pending and the
+administrator can send again.
 
-Known residuals, not closed by this design and not yet accepted by the owner
-(pending decision on #1207):
+Known residuals, not closed by this design. The owner accepted them on
+2026-11-07 (#1207) as the bound on the identical-timing criterion:
 
 - Inside the request, a matched row adds one indexed foreign-key check against
   `accounts`; its timing cost is negligible.

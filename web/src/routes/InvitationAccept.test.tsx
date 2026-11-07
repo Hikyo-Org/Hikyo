@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../api/client.ts';
 import { renderForm, settleTask } from '../testkit/renderForm.tsx';
-import { INVALID_INVITATION_TEXT } from '../api/emailInvitations.ts';
+import { INVALID_INVITATION_TEXT, acceptanceFailureText } from '../api/emailInvitations.ts';
 import { InvitationAccept } from './InvitationAccept.tsx';
 
 const mocks = vi.hoisted(() => ({
@@ -51,7 +51,122 @@ function button(root: HTMLElement, name: string): HTMLButtonElement {
   return found;
 }
 
+function SecondLink() {
+  const navigate = useNavigate();
+  return <button type="button" onClick={() => void navigate('/invitations/accept#token=eit_second')}>Open second link</button>;
+}
+
 describe('InvitationAccept', () => {
+  it('previews a second link opened in the same tab and accepts only the token on screen', async () => {
+    let resolveSecond: (value: typeof PREVIEW) => void = () => undefined;
+    mocks.preview.mockImplementation((token: string) => token === 'eit_secret'
+      ? Promise.resolve(PREVIEW)
+      : new Promise((resolve) => { resolveSecond = resolve; }));
+    mocks.accept.mockResolvedValue({ org: PREVIEW.org, org_name: 'Globex', template: 'viewer', grants_created: 1, signed_out: false });
+    const view = await renderForm(
+      <MemoryRouter initialEntries={['/invitations/accept#token=eit_secret']}>
+        <SecondLink />
+        <Routes>
+          <Route path="/invitations/accept" element={<InvitationAccept />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    try {
+      await settleTask();
+      expect(view.container.textContent).toContain('Acme');
+      await act(async () => button(view.container, 'Open second link').click());
+      await settleTask();
+      expect(mocks.preview).toHaveBeenLastCalledWith('eit_second');
+      // The first invitation is no longer offered while the second is checked.
+      expect(view.container.textContent).not.toContain('Acme');
+      expect([...view.container.querySelectorAll('button')].map((b) => b.textContent)).not.toContain('Accept');
+      await act(async () => resolveSecond({ ...PREVIEW, org_name: 'Globex', template: 'viewer' }));
+      await settleTask();
+      expect(view.container.textContent).toContain('Globex');
+      await act(async () => button(view.container, 'Accept').click());
+      await settleTask();
+      expect(mocks.accept).toHaveBeenCalledTimes(1);
+      expect(mocks.accept).toHaveBeenCalledWith('eit_second');
+    } finally { await view.unmount(); }
+  });
+
+  it('does not carry a retryable Accept failure over to a second link', async () => {
+    mocks.preview.mockImplementation((token: string) => Promise.resolve(token === 'eit_secret' ? PREVIEW : { ...PREVIEW, org_name: 'Globex' }));
+    const throttled = new ApiError(429, 'too many requests');
+    const throttledText = acceptanceFailureText(throttled);
+    mocks.accept.mockRejectedValue(throttled);
+    const view = await renderForm(
+      <MemoryRouter initialEntries={['/invitations/accept#token=eit_secret']}>
+        <SecondLink />
+        <Routes>
+          <Route path="/invitations/accept" element={<InvitationAccept />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    try {
+      await settleTask();
+      await act(async () => button(view.container, 'Accept').click());
+      await settleTask();
+      expect(view.container.textContent).toContain(throttledText);
+      await act(async () => button(view.container, 'Open second link').click());
+      await settleTask();
+      expect(view.container.textContent).toContain('Globex');
+      expect(view.container.textContent).not.toContain(throttledText);
+    } finally { await view.unmount(); }
+  });
+
+  it('keeps the outcome of a committed Accept when a second link arrives while it is pending', async () => {
+    mocks.preview.mockImplementation((token: string) => Promise.resolve(token === 'eit_secret' ? PREVIEW : { ...PREVIEW, org_name: 'Globex' }));
+    let resolveAccept: (value: unknown) => void = () => undefined;
+    mocks.accept.mockImplementation(() => new Promise((resolve) => { resolveAccept = resolve; }));
+    const view = await renderForm(
+      <MemoryRouter initialEntries={['/invitations/accept#token=eit_secret']}>
+        <SecondLink />
+        <Routes>
+          <Route path="/invitations/accept" element={<InvitationAccept />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    try {
+      await settleTask();
+      await act(async () => button(view.container, 'Accept').click());
+      await act(async () => button(view.container, 'Open second link').click());
+      await settleTask();
+      expect(mocks.preview).not.toHaveBeenCalledWith('eit_second');
+      await act(async () => resolveAccept({ org: PREVIEW.org, org_name: 'Acme', template: 'editor', grants_created: 1, signed_out: true }));
+      await settleTask();
+      expect(mocks.endSession).toHaveBeenCalledTimes(1);
+      expect(view.container.textContent).toContain('You joined Acme as editor');
+    } finally { await view.unmount(); }
+  });
+
+  it('previews the same link afresh when it is reopened after a refused Accept', async () => {
+    mocks.preview.mockResolvedValue(PREVIEW);
+    mocks.accept.mockRejectedValue(new ApiError(404, 'not found'));
+    function Reopen() {
+      const navigate = useNavigate();
+      return <button type="button" onClick={() => void navigate('/invitations/accept#token=eit_secret')}>Reopen link</button>;
+    }
+    const view = await renderForm(
+      <MemoryRouter initialEntries={['/invitations/accept#token=eit_secret']}>
+        <Reopen />
+        <Routes>
+          <Route path="/invitations/accept" element={<InvitationAccept />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    try {
+      await settleTask();
+      await act(async () => button(view.container, 'Accept').click());
+      await settleTask();
+      expect(mocks.preview).toHaveBeenCalledTimes(1);
+      await act(async () => button(view.container, 'Reopen link').click());
+      await settleTask();
+      expect(mocks.preview).toHaveBeenCalledTimes(2);
+      expect(view.container.textContent).not.toContain(INVALID_INVITATION_TEXT);
+    } finally { await view.unmount(); }
+  });
+
   it('reads the fragment token, clears it from the address and previews with it', async () => {
     mocks.preview.mockResolvedValue(PREVIEW);
     const view = await mount();

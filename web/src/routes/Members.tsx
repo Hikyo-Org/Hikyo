@@ -777,6 +777,8 @@ export function Members({ scope }: { scope: MembersScope }) {
       ) : null}
       {modal === 'invite-email' ? (
         <EmailInviteDialog
+          // Keyed by the organisation so a draft typed for one is never submitted to another.
+          key={orgQuery.data?.id ?? org}
           org={orgQuery.data?.id ?? org}
           scopeName={scopeName}
           onDone={() => setModal('none')}

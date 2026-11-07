@@ -35,7 +35,9 @@ const emailInvitationOutcomeTimeout = 5 * time.Second
 // MailSends is the owner-level home of the background sends. It outlives the
 // generations that start them, so a replaced generation's late send is still
 // joined, cancelled and counted. Concurrency is bounded by the per-organisation
-// send budget, never by a drop.
+// send budget (so at most budget times organisations instance-wide), never by a
+// drop, and deliberately by no instance-wide cap: a shared cap would let one
+// organisation's matched sends delay another's mail.
 type MailSends struct {
 	wg     sync.WaitGroup
 	ctx    context.Context
@@ -70,8 +72,11 @@ func (m *MailSends) Stop() {
 type EmailInvitations struct {
 	DB  *store.DB
 	Now func() time.Time
-	// ExternalOrigin builds the acceptance link.
-	ExternalOrigin string
+	// ExternalOrigin builds the acceptance link. ExternalOriginExplicit is
+	// whether the operator stated it: a derived default is not a public
+	// origin to mail a bearer link under, the rule local sign-up follows.
+	ExternalOrigin         string
+	ExternalOriginExplicit bool
 	// Mail captures the active runtime configuration; it is both the mailer
 	// predicate and the transport.
 	Mail   func(context.Context) (*runtimeconfig.Bundle, error)
@@ -144,8 +149,11 @@ func (s *EmailInvitations) Send(ctx context.Context, actor Actor, spec EmailInvi
 	if err != nil {
 		return EmailInvitationReceipt{}, err
 	}
-	// The mailer predicate precedes the address so an unconfigured instance
-	// answers every request alike.
+	// The origin and mailer predicates precede the address so an instance
+	// that cannot mail a link answers every request alike, in sign-up's order.
+	if !s.ExternalOriginExplicit {
+		return EmailInvitationReceipt{}, preconditionRefusal(PreconditionNoPublicOrigin, "")
+	}
 	if s.Mail == nil {
 		return EmailInvitationReceipt{}, preconditionRefusal(PreconditionMailerUnconfigured, "")
 	}
@@ -268,8 +276,9 @@ func (s *EmailInvitations) dispatch(ctx context.Context, receipt EmailInvitation
 		var sendErr error
 		if matched {
 			// Every send gets its own attempt: a matched send in flight changes
-			// nothing about whether others are attempted. The per-organisation
-			// send budget, charged before the transaction, bounds how many.
+			// nothing about whether or when others are attempted. The
+			// per-organisation send budget, charged before the transaction,
+			// bounds how many.
 			sendCtx, cancel := context.WithTimeout(detached, mail.SendTimeout)
 			stopCancel := context.AfterFunc(sends.ctx, cancel)
 			sendErr = s.deliver(sendCtx, receipt, orgName, token)

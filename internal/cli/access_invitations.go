@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -79,9 +80,12 @@ func runAccessInvitation(ctx context.Context, ios IO, args []string) error {
 		body := apigen.EmailInvitationSendRequest{Email: email, Template: apigen.RoleTemplate(template)}
 		if err := client.Do(ctx, http.MethodPost, path, body, &out); err != nil {
 			var ce *Error
+			const alternatives = "Use `hikyo access member invite` to create a new account, SCIM, or an administrator of both organisations instead."
 			if asCLIError(err, &ce) && ce.Detail == "mailer-unconfigured" {
-				return failf(ExitRefused,
-					"email invitations need a configured mailer, and this instance has none. Use `hikyo access member invite` to create a new account, SCIM, or an administrator of both organisations instead.")
+				return failf(ExitRefused, "email invitations need a configured mailer, and this instance has none. %s", alternatives)
+			}
+			if asCLIError(err, &ce) && ce.Detail == "no-public-origin" {
+				return failf(ExitRefused, "email invitations need the instance's public origin: its operator must set HIKYO_EXTERNAL_ORIGIN. %s", alternatives)
 			}
 			return err
 		}
@@ -116,17 +120,37 @@ func runAccessInvitation(ctx context.Context, ios IO, args []string) error {
 }
 
 // invitationTokenFromInput accepts the bare token or the whole invitation link
-// (`.../invitations/accept#token=...`) and returns the token.
-func invitationTokenFromInput(raw string) string {
+// (`.../invitations/accept#token=...`) and returns the token and, for a link,
+// its origin ("" for a bare token).
+func invitationTokenFromInput(raw string) (token, linkOrigin string) {
 	raw = strings.TrimSpace(raw)
-	if i := strings.Index(raw, "#"); i >= 0 {
-		q, err := url.ParseQuery(raw[i+1:])
-		if err != nil {
-			return ""
-		}
-		return q.Get("token")
+	i := strings.Index(raw, "#")
+	if i < 0 {
+		return raw, ""
 	}
-	return raw
+	q, err := url.ParseQuery(raw[i+1:])
+	if err != nil {
+		return "", ""
+	}
+	u, err := url.Parse(raw[:i])
+	if err != nil || u.Host == "" {
+		// An origin-less link cannot be matched to an instance, so it must
+		// not pass for one that matches.
+		return q.Get("token"), "?"
+	}
+	return q.Get("token"), normalizedOrigin(u)
+}
+
+// normalizedOrigin is the URL's scheme and host, lowercased, without the
+// scheme's default port, so https://h:443 and https://h compare equal.
+func normalizedOrigin(u *url.URL) string {
+	scheme, host := strings.ToLower(u.Scheme), strings.ToLower(u.Hostname())
+	if port := u.Port(); port != "" && !(scheme == "https" && port == "443") && !(scheme == "http" && port == "80") {
+		host = net.JoinHostPort(host, port)
+	} else if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	return scheme + "://" + host
 }
 
 func runAccessInvitationAccept(ctx context.Context, ios IO, args []string) error {
@@ -153,7 +177,7 @@ func runAccessInvitationAccept(ctx context.Context, ios IO, args []string) error
 	if err != nil {
 		return failf(ExitUsage, "reading the invitation token: %v", err)
 	}
-	token := invitationTokenFromInput(string(raw))
+	token, linkOrigin := invitationTokenFromInput(string(raw))
 	if token == "" || len(raw) > invitationTokenLimit {
 		return failf(ExitUsage, "standard input held no invitation token: pipe the token, or the whole link ending in #token=...")
 	}
@@ -164,6 +188,15 @@ func runAccessInvitationAccept(ctx context.Context, ios IO, args []string) error
 	session, err := requireHumanSession("hikyo access invitation accept", artifact)
 	if err != nil {
 		return err
+	}
+	// A link from another origin would hand its token to this instance (or a
+	// look-alike), so it is refused before anything is sent.
+	if linkOrigin != "" {
+		want, perr := url.Parse(client.Entry.Origin)
+		if perr != nil || linkOrigin != normalizedOrigin(want) {
+			return failf(ExitUsage, "the invitation link does not belong to instance %q (%s): nothing was sent. Open the link in a browser, select the instance it points at with --instance, or pipe only the token after #token=",
+				session.Instance, client.Entry.Origin)
+		}
 	}
 
 	const invalid = "this invitation is not valid for this account or has expired"
@@ -194,27 +227,37 @@ func runAccessInvitationAccept(ctx context.Context, ios IO, args []string) error
 	}
 
 	var out apigen.EmailInvitationAcceptance
+	var cleanupErr error
 	if err := client.Do(ctx, http.MethodPost, api.PathPrefix+"/me/invitations/accept", body, &out); err != nil {
 		return invitationNotFound(err, invalid)
 	}
 	if out.SignedOut {
 		// The server ended every session, this one included: drop the dead
 		// local artifact the way `hikyo logout` does.
-		if err := st.DeleteSession(session.Instance); err != nil {
-			return err
-		}
+		cleanupErr = st.DeleteSession(session.Instance)
+	}
+	// The notice comes first so a failed render cannot hide it.
+	if out.SignedOut {
+		fmt.Fprintf(ios.Stderr, "You were signed out on every device and your developer credentials ended. Run `hikyo login` again.\n")
 	}
 	if err := Render(ios.Stdout, f, Table{
 		Columns: []string{"ORGANISATION", "TEMPLATE", "GRANTS CREATED"},
 		Rows:    [][]string{{out.OrgName, string(out.Template), fmt.Sprint(out.GrantsCreated)}},
 		JSON:    out,
 	}); err != nil {
-		return err
+		// Acceptance already committed: keep a cleanup failure visible too.
+		return errors.Join(err, cleanupFailure(cleanupErr))
 	}
-	if out.SignedOut {
-		fmt.Fprintf(ios.Stderr, "You were signed out on every device and your developer credentials ended. Run `hikyo login` again.\n")
+	// Acceptance already committed, so a failed local cleanup is reported
+	// after the result rather than instead of it.
+	return cleanupFailure(cleanupErr)
+}
+
+func cleanupFailure(err error) error {
+	if err == nil {
+		return nil
 	}
-	return nil
+	return fmt.Errorf("the invitation was accepted, but removing the local session failed (run `hikyo logout`): %w", err)
 }
 
 // invitationNotFound collapses the server's uniform 404 into one generic

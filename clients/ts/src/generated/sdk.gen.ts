@@ -1420,9 +1420,10 @@ export const listOrgEmailInvitations = <ThrowOnError extends boolean = false>(op
  * address gets no mail. A send to an address that already has a pending
  * invitation replaces it and the earlier link stops working.
  *
- * An instance without a configured mailer refuses every request with
- * `400` naming the `mailer-unconfigured` precondition, before the address
- * is read. A malformed address or an unknown template is `400`. Sends are
+ * An instance whose operator never stated its public origin refuses every
+ * request with `400` naming the `no-public-origin` precondition, and one
+ * without a configured mailer with `mailer-unconfigured`, both before the
+ * address is read. A malformed address or an unknown template is `400`. Sends are
  * bounded at 30 per hour per organisation and 200 live pending
  * invitations, both the uniform `429`.
  *

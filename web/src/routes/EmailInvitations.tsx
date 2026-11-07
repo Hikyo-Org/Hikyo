@@ -22,7 +22,8 @@ export function EmailInvitations({
 }) {
   const invitations = useEmailInvitations(org, true);
   const revoke = useRevokeEmailInvitation(org);
-  const all = invitations.data?.items ?? [];
+  // A refused refresh must not keep showing the last page or its Revoke buttons.
+  const all = invitations.isError ? [] : (invitations.data?.items ?? []);
   const [find, setFind] = useState('');
   const needle = find.trim().toLocaleLowerCase();
   const items = needle === ''

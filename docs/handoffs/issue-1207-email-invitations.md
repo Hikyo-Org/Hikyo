@@ -49,23 +49,33 @@ can be reset only by the instance (spec section 5).
   `web/e2e/flows/login.spec.ts`. It covers sign-up, the
   invite from Members, the mail, enrolment, preview, acceptance, sign-out, the
   sign-in page with the revoked cookie, and the single-use replay refusal.
-- Reviews: independent Standards and Spec reviews in five rounds. Findings were
-  fixed; the timing residuals await the owner (below). Cross-provider review
-  was waived by the owner.
+- Reviews: independent Standards and Spec reviews in six rounds, plus the
+  CodeRabbit findings on PR #1250. Findings were fixed or answered; the timing
+  residuals were accepted by the owner. Cross-provider review was waived by the
+  owner.
 
-## Open items
+## Decisions and limits
 
-- Spec section 2 lists timing residuals that are not yet accepted by the owner:
+- The owner accepted the timing residuals in spec section 2 on 2026-11-07:
   the foreign-key check, the immediate unmatched outcome write on a
-  single-writer database, and relay throttling. Each needs an owner decision on
-  #1207 (accept, or redesign the outcome write).
-- No instance-wide cap limits concurrent invitation mail sends. Each send gets
-  its own attempt within the mail per-send deadline.
+  single-writer database, and relay throttling.
+- Two implementation choices from the PR #1250 review, not owner decisions
+  (spec section 1 records them as such):
+  - Invitation sends need an explicitly configured public origin
+    (`no-public-origin`), like local sign-up.
+  - Invitation mail has no instance-wide in-flight cap: a shared cap would let
+    one organisation's matched sends delay another's mail. The send budget
+    allows at most 30 attempts in flight per organisation, so the instance
+    bound is 30 times the number of organisations (ops catalogue Pi-4 fit).
+- A crash loses in-flight attempts without an outcome; the administrator can
+  send again.
+- The CLI refuses an invitation link whose origin is not the selected
+  instance's.
+- The per-organisation send budget is node-local, like every other budget in
+  `internal/service/budget.go` (single-node v1 envelope).
 - #1238: verified email for accounts other than local sign-ups.
 
 ## Next steps
 
-1. Get the owner's decision on the residuals in spec section 2 and record it in
-   the spec.
-2. Before merge, confirm the email invitation browser flow passes in CI on both
+1. Before merge, confirm the email invitation browser flow passes in CI on both
    viewports.

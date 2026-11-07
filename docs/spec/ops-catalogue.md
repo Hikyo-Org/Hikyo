@@ -110,10 +110,13 @@ Pi-4 fit: one serial pacer per credential at ≥ 1 s spacing bounds adapter CPU 
 | Invitation use | single use; bound to the account matched at send; uniform `404` otherwise | fixed |
 | Send budget | 30/hour per organisation; overflow is the uniform `429` | fixed |
 | Live pending invitations | 200 per organisation; overflow is the uniform `429` | fixed |
+| Public origin | an explicitly configured origin is required; without it every send is the uniform `no-public-origin` refusal | fixed |
 | Mailer | required; without it every send is the uniform `mailer-unconfigured` refusal | fixed |
-| Mail attempts | one background attempt per matched send, within the mail per-send deadline; none for an unknown address; sends are never dropped and are bounded only by the send budget; stopping cancels in-flight attempts and records their failure | fixed |
+| Mail attempts | one background attempt per matched send, within the mail per-send deadline; none for an unknown address; sends are never dropped and are bounded only by the send budget (no instance-wide cap, which would couple organisations' mail timing); stopping cancels in-flight attempts and records their failure | fixed |
 | Failure metric | `hikyo_email_invitation_mail_failures_total` counts failed or cancelled background sends, owner-wide across configuration generations; no address, organisation or SMTP response in labels | fixed |
 | Expired rows | deleted by the existing hourly pruning run | fixed |
+
+Pi-4 fit: each matched send is one goroutine holding one SMTP connection for at most the 15 s mail per-send deadline plus the 5 s outcome write. The send budget allows at most 30 attempts in flight per organisation, so the instance-wide worst case is 30 times the number of organisations, which only the instance-class `org.create` operation grows. An unmatched send holds no connection and only writes its outcome.
 
 ## Open registration and social sign-in ([ops-spec.md](../adr/ops-spec.md) amendment 2026-09-03, [#589](https://github.com/Hikyo-Org/Hikyo/issues/589); spec [social-signin.md](./social-signin.md))
 

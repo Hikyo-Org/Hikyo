@@ -4,7 +4,7 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../api/client.ts';
-import { MAILER_UNCONFIGURED_TEXT } from '../api/emailInvitations.ts';
+import { MAILER_UNCONFIGURED_TEXT, NO_PUBLIC_ORIGIN_TEXT } from '../api/emailInvitations.ts';
 import { renderForm, settle, settleTask, typeInto } from '../testkit/renderForm.tsx';
 import { EmailInvitations } from './EmailInvitations.tsx';
 import { EmailInviteDialog } from './EmailInviteDialog.tsx';
@@ -97,6 +97,15 @@ describe('EmailInviteDialog', () => {
     for (const alternative of ['Invite', 'SCIM', 'administrator of both organisations']) expect(alert).toContain(alternative);
     expect(container.querySelector('form')).not.toBeNull();
     expect(onDone).not.toHaveBeenCalled();
+    await unmount();
+  });
+
+  it('explains that email invitations need the operator to state the public origin', async () => {
+    mocks.send.mockRejectedValue(new ApiError(400, 'bad', 'no-public-origin'));
+    const { rendered } = mount();
+    const { container, unmount } = await rendered;
+    await fill(container, 'dana@example.com', 'viewer');
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe(NO_PUBLIC_ORIGIN_TEXT);
     await unmount();
   });
 
@@ -201,6 +210,27 @@ describe('EmailInvitations list', () => {
       expect(requests).toContain(`DELETE /api/v1/orgs/${org}/email-invitations/${invitation}`);
       expect(onRevoked).toHaveBeenCalledWith('dana@example.com');
       expect(view.container.textContent).toContain('No pending email invitations.');
+    } finally { await view.unmount(); }
+  });
+
+  it('shows no cached rows or Revoke buttons after a refresh fails', async () => {
+    let failing = false;
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => failing
+      ? json({ error: 'down' }, 500)
+      : json({ count: 1, items: [{
+        id: invitation, email: 'dana@example.com', template: 'editor', invited_by: inviter,
+        created_at: '2026-11-06T10:00:00Z', expires_at: '2026-11-13T10:00:00Z',
+      }] })));
+    const view = await renderForm(<EmailInvitations org={org} invitedByName={() => 'Alex'} onRevoked={vi.fn()} />);
+    try {
+      await settleTask();
+      expect(view.container.textContent).toContain('dana@example.com');
+      failing = true;
+      await act(async () => { await view.client.invalidateQueries(); });
+      await settleTask();
+      expect(view.container.querySelector('[role="alert"]')).not.toBeNull();
+      expect(view.container.textContent).not.toContain('dana@example.com');
+      expect(view.container.querySelector('button[aria-label^="Revoke"]')).toBeNull();
     } finally { await view.unmount(); }
   });
 });

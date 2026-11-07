@@ -274,7 +274,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	}
 	metrics.SetEmailInvitationFailureSource(owner.emailSends.Failures)
 	emailInvitationsSvc := &service.EmailInvitations{
-		DB: db, ExternalOrigin: cfg.ExternalOrigin, Mail: selfConfig.Capture,
+		DB: db, ExternalOrigin: cfg.ExternalOrigin, ExternalOriginExplicit: cfg.ExternalOriginExplicit, Mail: selfConfig.Capture,
 		Budget: budget, Log: log, Sends: owner.emailSends,
 	}
 	api := &server.API{

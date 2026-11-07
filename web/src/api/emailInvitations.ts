@@ -80,8 +80,17 @@ export function isMailerUnconfigured(error: unknown): boolean {
 export const MAILER_UNCONFIGURED_TEXT =
   'Email invitations need a configured mail server on this instance, and it has none. Use Invite to create a new account, SCIM provisioning, or an administrator of both organisations instead.';
 
+/** The send refusal for an instance whose public origin the operator never stated: the mailed link would point at a guess. */
+export function isNoPublicOrigin(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 400 && (error.detail ?? '').startsWith('no-public-origin');
+}
+
+export const NO_PUBLIC_ORIGIN_TEXT =
+  'Email invitations need the instance\'s public origin: its operator must set HIKYO_EXTERNAL_ORIGIN. Use Invite to create a new account, SCIM provisioning, or an administrator of both organisations instead.';
+
 export function sendFailureText(error: unknown): string {
   if (isMailerUnconfigured(error)) return MAILER_UNCONFIGURED_TEXT;
+  if (isNoPublicOrigin(error)) return NO_PUBLIC_ORIGIN_TEXT;
   return statusText(
     error,
     {
