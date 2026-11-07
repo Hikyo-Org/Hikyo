@@ -184,10 +184,18 @@ export const FederatedZeroWindow: Story = {
 
 // A protected environment takes no personal values and mints no developer
 // credential, so there is no running locally to explain.
+let federatedServed = false;
 export const FederatedProtected: Story = {
-  parameters: app({ totp: federated, window: { ...window, protected: true } }),
+  parameters: app({
+    totp: { ...federated, handler: () => { federatedServed = true; return Response.json(federated.body); } },
+    window: { ...window, protected: true },
+  }),
+  beforeEach: () => { federatedServed = false; },
   play: async ({ canvas }) => {
     await expect(await canvas.findByText(/Personal values are for unprotected environments only/)).toBeVisible();
+    // The absence only means something once the account is known to be federated.
+    await waitFor(() => expect(federatedServed).toBe(true));
+    await expect(await canvas.findByRole('button', { name: 'Reveal DATABASE_URL' })).toBeVisible();
     await expect(canvas.queryByText(/Running a program locally/)).toBeNull();
   },
 };

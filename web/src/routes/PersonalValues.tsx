@@ -248,7 +248,7 @@ function PersonalSurface({ env }: { env: EnvRef }) {
           <Link to="/settings?tab=factors">Settings › Security</Link>.
         </Alert>
       ) : null}
-      {federatedQualified && !protectedEnvironment ? (
+      {federatedQualified && guard.data !== undefined && !protectedEnvironment ? (
         <Alert
           tone="info"
           action={(
