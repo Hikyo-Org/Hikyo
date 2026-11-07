@@ -157,9 +157,7 @@ func TestSCIMRefusalOwnershipAcrossRealWire(t *testing.T) {
 			t.Fatal("silent SCIM failure was not staged")
 		}
 		expireRefusalWindow(t, db)
-		if err := signals.Seal(t.Context()); err != nil {
-			t.Fatal(err)
-		}
+		sealRefusals(t, signals)
 		assertRetainedRefusalRequest(t, db, revoked.Header().Get(server.RefusalRequestIDHeader), "192.0.2.103")
 	})
 }
@@ -201,9 +199,7 @@ func TestRequestRefusalConnectionAndWorkspaceWire(t *testing.T) {
 			}
 		}
 		expireRefusalWindow(t, db)
-		if err := signals.Seal(t.Context()); err != nil {
-			t.Fatal(err)
-		}
+		sealRefusals(t, signals)
 		assertRetainedRefusalRequest(t, db, proofID, "192.0.2.103")
 	})
 }

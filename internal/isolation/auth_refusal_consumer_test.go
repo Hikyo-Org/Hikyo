@@ -56,9 +56,7 @@ func TestRequestRefusalSupportedInstanceConsumers(t *testing.T) {
 			t.Fatal("revoked replay did not produce the uniform correlated refusal")
 		}
 		expireRefusalWindow(t, db)
-		if err := signals.Seal(t.Context()); err != nil {
-			t.Fatal(err)
-		}
+		sealRefusals(t, signals)
 		// Exercise the same cookie-authenticated endpoint the browser reads.
 		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+api.PathPrefix+"/instance/audit?operation=auth.request_refused", nil)
 		if err != nil {

@@ -85,6 +85,39 @@ func confirmedRefusal[T any](t *testing.T, signals *service.RefusalSignals, serv
 	}
 }
 
+// sealRefusals seals expired staging through the runtime writer, which shares
+// Record's approved budget: a missed deadline is logged and sealed again, and
+// any other error fails at once. A retry after a lost receipt seals nothing.
+func sealRefusals(t *testing.T, signals *service.RefusalSignals) {
+	t.Helper()
+	for attempt := 1; ; attempt++ {
+		err := signals.Seal(t.Context())
+		if err == nil {
+			return
+		}
+		if !errors.Is(err, context.DeadlineExceeded) || attempt == 3 {
+			t.Fatalf("refusal seal failed: %v", err)
+		}
+		t.Logf("refusal seal attempt %d missed its budget; sealing again", attempt)
+	}
+}
+
+// stagedRefusalCount is the exact committed count in the pending window. A
+// served-again request can stage twice when a Postgres commit landed but its
+// receipt was lost, so exact-count checks compare against this, not one.
+func stagedRefusalCount(t *testing.T, db *store.DB) int64 {
+	t.Helper()
+	var window audit.RefusalWindow
+	if err := json.Unmarshal([]byte(queryString(t, db, "SELECT state FROM auth_refusal_window WHERE id=1")), &window); err != nil {
+		t.Fatal(err)
+	}
+	var total int64
+	for _, count := range window.Counts {
+		total += count
+	}
+	return total
+}
+
 func assertRetainedRefusalRequest(t *testing.T, db *store.DB, requestID, source string) {
 	t.Helper()
 	if requestID == "" {
@@ -141,12 +174,14 @@ func TestRequestRefusalRevokedReplayIsRetainedAndCorrelated(t *testing.T) {
 		if _, err := uuid.Parse(requestID); err != nil || requestID == "spoofed-request" {
 			t.Fatal("untrusted correlation")
 		}
+		staged := stagedRefusalCount(t, db)
+		if staged < 1 {
+			t.Fatal("revoked replay was not staged")
+		}
 		expireRefusalWindow(t, db)
 		// A fresh service object recovers durable pending data without a replay.
 		restarted := service.NewRefusalSignals(db)
-		if err := restarted.Seal(t.Context()); err != nil {
-			t.Fatal(err)
-		}
+		sealRefusals(t, restarted)
 		page, err := (&service.Audits{DB: db}).InstanceQuery(t.Context(), root, store.AuditFilter{Limit: 100})
 		if err != nil {
 			t.Fatal(err)
@@ -167,7 +202,7 @@ func TestRequestRefusalRevokedReplayIsRetainedAndCorrelated(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, sample := range p.Samples {
-				if sample.RequestID == requestID && sample.SourceIP == "192.0.2.103" && p.Count == 1 {
+				if sample.RequestID == requestID && sample.SourceIP == "192.0.2.103" && p.Count == staged {
 					found = true
 				}
 			}
@@ -206,10 +241,22 @@ func TestConfirmedRefusalServesAgainAfterUnconfirmedAccounting(t *testing.T) {
 		if w.Code != http.StatusUnauthorized || attempts != 2 || signals.RefusalHealth().Failures != 1 {
 			t.Fatalf("unconfirmed attempt not served again: %d attempts=%d %+v", w.Code, attempts, signals.RefusalHealth())
 		}
-		expireRefusalWindow(t, db)
-		if err := signals.Seal(t.Context()); err != nil {
-			t.Fatal(err)
+		// A confirmed attempt is returned at once, never served again.
+		attempts = 0
+		confirmedRefusal(t, signals, func() *httptest.ResponseRecorder {
+			attempts++
+			r := httptest.NewRequest(http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
+			r.RemoteAddr = "192.0.2.103:1234"
+			r.Header.Set("Authorization", "Bearer "+token)
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			return w
+		})
+		if attempts != 1 || signals.RefusalHealth().Failures != 1 {
+			t.Fatalf("confirmed attempt served again: attempts=%d %+v", attempts, signals.RefusalHealth())
 		}
+		expireRefusalWindow(t, db)
+		sealRefusals(t, signals)
 		assertRetainedRefusalRequest(t, db, w.Header().Get(server.RefusalRequestIDHeader), "192.0.2.103")
 	})
 }
@@ -248,9 +295,7 @@ func TestRequestRefusalFailedDedicatedCommitDoesNotSuppressFallback(t *testing.T
 			t.Fatalf("failed dedicated event appeared committed: %d", got)
 		}
 		expireRefusalWindow(t, db)
-		if err := signals.Seal(t.Context()); err != nil {
-			t.Fatal(err)
-		}
+		sealRefusals(t, signals)
 		assertRetainedRefusalRequest(t, db, w.Header().Get(server.RefusalRequestIDHeader), "192.0.2.103")
 	})
 }

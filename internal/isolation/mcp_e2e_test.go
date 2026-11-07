@@ -480,9 +480,7 @@ func runTestMCPToolsEndToEndCanaryAndDenial(t *testing.T, codex bool) {
 		// result as a token that never existed.
 		if refusalSignals.RefusalHealth().PendingSince != 0 {
 			expireRefusalWindow(t, db)
-			if err := refusalSignals.Seal(ctx); err != nil {
-				t.Fatal(err)
-			}
+			sealRefusals(t, refusalSignals)
 		}
 		identities := &service.Identities{DB: db, Auth: auth}
 		if err := identities.RevokeCredential(ctx, service.LocalPrincipal(custodian), projectScope,
@@ -501,9 +499,7 @@ func runTestMCPToolsEndToEndCanaryAndDenial(t *testing.T, codex bool) {
 				revoked.Code, revoked.Body.String(), invalidAfterRevoke.Code, invalidAfterRevoke.Body.String())
 		}
 		expireRefusalWindow(t, db)
-		if err := refusalSignals.Seal(ctx); err != nil {
-			t.Fatal(err)
-		}
+		sealRefusals(t, refusalSignals)
 		assertRetainedRefusalRequest(t, db, revoked.Header().Get(server.RefusalRequestIDHeader), "192.0.2.1")
 	})
 }

@@ -23,7 +23,10 @@ so this was not a timeout.
   files.
 - **Local runs on PostgreSQL 18.** Alone, 30 of 30 runs passed. Under `-race`
   with `GOMAXPROCS=1`, 40 of 40 passed, and every attempt reported zero
-  accounting failures. The full package was also run; see the PR for its result.
+  accounting failures. A whole-package run reached the personal value tests
+  without a failure. It then hit the 40 minute local timeout chosen for it,
+  before the refusal tests ran. CI's exact shard (1) test list was then run on
+  the repaired branch. Its result is in the pull request.
 - **Mechanism.** The refusal middleware discards `Refusals.Record` errors by
   design. Under the
   [refusal signals ADR](../adr/auth-refusal-signals.md), `Record` has a 100 ms
@@ -54,13 +57,23 @@ It is applied to every test that asserts a retained sample after a runtime
 - supported instance consumers;
 - MCP revocation.
 
+`Seal` shares the same writer and budget. `sealRefusals` seals again after a
+missed deadline only, at most three times; any other error fails at once. A
+retry after a lost receipt finds nothing to seal.
+
+The revoked replay test checks the sealed count against the exact count staged
+in the pending window, not against one. On PostgreSQL, a commit can land while
+its receipt is lost. The unconfirmed attempt then stages too, and the request
+is served again.
+
 `TestAuthenticationRefusalWireUnconfirmedAccounting` and the blocked datastore
 test still own the unconfirmed outcome. Production code is unchanged: the
 deadline, writers, waiters, retry policy and worker interval are all untouched.
 
 `TestConfirmedRefusalServesAgainAfterUnconfirmedAccounting` holds the real
 writer on both engines for the first attempt. It requires exactly two attempts,
-one recorded failure, and a retained sample from the second attempt. With the
+one recorded failure, and a retained sample from the second attempt. It then
+requires that a confirmed first attempt is served only once. With the
 helper bypassed, it fails on both engines with one attempt and one recorded
 failure. If its attempt check is also removed, it fails at `no pending window`,
 because its only sample was never staged. In the CI test, the other two requests
@@ -70,6 +83,7 @@ produce the failure. It does not show that it did on CI.
 
 ## Falsifier
 
-If this test fails again in CI and no `refusal accounting attempt ... unconfirmed`
-line is logged, the mechanism above was wrong. Reopen the diagnosis from that
-trace.
+If one of these tests fails again in CI with a missing sample, and no
+`refusal accounting attempt ... unconfirmed` or `refusal seal attempt ... missed
+its budget` line is logged, the mechanism above was wrong. Reopen the diagnosis
+from that trace.
