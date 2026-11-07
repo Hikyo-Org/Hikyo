@@ -335,6 +335,10 @@ func (q *queueController) admissionFiles(ctx context.Context, p pull) ([]pullFil
 	default:
 		return nil, false, fmt.Errorf("unexpected compare status %q for a stacked PR", compare.Status)
 	}
+	// GitHub's schema makes files optional; an absent list is not an empty one.
+	if compare.Files == nil {
+		return nil, false, errors.New("compare for a stacked PR omitted its file list")
+	}
 	if len(compare.Files) >= compareFileLimit {
 		return nil, false, nil
 	}

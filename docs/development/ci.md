@@ -323,17 +323,18 @@ reads the `stack` field GitHub adds to such a PR. A layer whose `stack.base.ref`
 tip. The PR keeps its real base for everything GitHub itself identifies: the
 `ci-feedback` run association, role matching and movement checks. The result binds
 to the real base as well as the `dev` tip, so retargeting the layer to `dev` is a
-new tuple. A stack on `main` or any other branch gets nothing from dev admission,
-and a malformed `stack` field makes dev admission refuse that PR without affecting
-the main queue.
+new tuple. A stack on `main` or any other branch gets nothing from dev admission.
+A malformed `stack` field makes dev admission refuse that PR, and discovery does not
+select a PR through its stack, so one bad stack affects neither other PRs nor the
+main queue.
 
 A layer's own file list starts at the layer below, so it would hide a lower layer's
 CI definition edits that the layer carries into `dev`. For a stacked layer, both the
 dev CI-definition check and the `.github/` maintainer-review gate read the compare of
 the resolved `dev` tip against the head instead. The publisher passes that tip to
 `scripts/ci/check-fork-validation.sh` as `PR_GATE_FILES_BASE`, so both judge one
-tuple. A compare listing 300 files or more fails closed, and the BDFL exemption
-applies unchanged. Direct dev PRs keep the pull request file list. The DCO and
+tuple. A compare that omits its file list, or lists 300 files or more, fails closed,
+and the BDFL exemption applies unchanged. Direct dev PRs keep the pull request file list. The DCO and
 publisher-contract checks cover the same `dev...head` range. Signature
 verification belongs to the GitHub ruleset, not to this gate.
 

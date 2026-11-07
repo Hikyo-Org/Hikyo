@@ -231,7 +231,7 @@ if [ -n "${PR_GATE_FILES_BASE:-}" ]; then
 	printf '%s\n' "$PR_GATE_FILES_BASE" | grep -Eq '^[0-9a-f]{40}$' ||
 		fail 'invalid stacked file-list base' api-failure
 	files=$(gh_read "repos/$GH_REPO/compare/$PR_GATE_FILES_BASE...$HEAD_SHA" \
-		--jq 'if (.status | IN("ahead", "diverged", "identical") | not) or ((.files // []) | type) != "array" or ((.files // []) | length) >= 300 or any((.files // [])[]; (.filename | type) != "string" or .filename == "" or (.previous_filename != null and (.previous_filename | type) != "string")) then error("invalid or incomplete changed files") else (.files // [])[] | [.filename, (.previous_filename // "")] | @tsv end') ||
+		--jq 'if (.status | IN("ahead", "diverged", "identical") | not) or (.files | type) != "array" or (.files | length) >= 300 or any(.files[]; (.filename | type) != "string" or .filename == "" or (.previous_filename != null and (.previous_filename | type) != "string")) then error("invalid or incomplete changed files") else .files[] | [.filename, (.previous_filename // "")] | @tsv end') ||
 		fail 'cannot read a complete dev...head file list' api-failure
 else
 	# The files endpoint lists at most 3000 entries. A shorter list than

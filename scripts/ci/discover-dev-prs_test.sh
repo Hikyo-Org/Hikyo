@@ -138,11 +138,23 @@ run | jq -e --arg layer "$layer" '. == [{pr:8,head:$layer}]' >/dev/null || { pri
 jq '.pull_request.stack.base.ref="main"' "$work/event.json" >"$work/new.json"; mv "$work/new.json" "$work/event.json"
 if run >/dev/null 2>&1; then printf 'dev PR event accepted a stack on another base\n' >&2; exit 1; fi
 GITHUB_EVENT_NAME=schedule
-for mutation in '.[0][1].stack.base.sha="bad"' '.[0][1].stack.base.ref=""' '.[0][1].stack.base.ref=5' '.[0][1].stack.base=null' '.[0][2].stack="x"' '.[0][2].stack.base.sha=null' '.[0][2].stack={}'; do
-  reset
-  stack_pulls dev main
-  jq "$mutation" "$work/pulls.json" >"$work/new.json"
-  mv "$work/new.json" "$work/pulls.json"
-  if run >/dev/null 2>&1; then printf 'dev discovery accepted malformed stack: %s\n' "$mutation" >&2; exit 1; fi
+# A malformed stack drops only its own PR from selection (the publisher refuses it
+# if it is ever reached) and never stalls discovery for the others. A direct dev PR
+# stays selected so the publisher can refuse it visibly.
+malformed='.stack.base.sha="bad"|.stack.base.ref=""|.stack.base.ref=5|.stack.base=null|.stack="x"|.stack.base.sha=null|.stack={}'
+IFS='|' read -r -a bad_stacks <<<"$malformed"
+for mutation in "${bad_stacks[@]}"; do
+  for index in 1 2 0; do
+    reset
+    stack_pulls dev main
+    jq ".[0][$index] |= ($mutation)" "$work/pulls.json" >"$work/new.json"
+    mv "$work/new.json" "$work/pulls.json"
+    case $index in
+      1) want="[{pr:7,head:\"$head\"}]" ;;
+      2) want="[{pr:7,head:\"$head\"},{pr:8,head:\"$layer\"}]" ;;
+      0) want="[{pr:7,head:\"$head\"},{pr:8,head:\"$layer\"}]" ;;
+    esac
+    run | jq -e "sort_by(.pr) == $want" >/dev/null || { printf 'dev discovery mishandled malformed stack %s on PR index %s\n' "$mutation" "$index" >&2; exit 1; }
+  done
 done
-printf 'dev discovery fixtures: exact current heads, superseded-head cleanup, dev-push scoping with every fail-open case, stacked-on-dev admission, and malformed pagination and stack refusals passed\n'
+printf 'dev discovery fixtures: exact current heads, superseded-head cleanup, dev-push scoping with every fail-open case, stacked-on-dev admission, malformed stacks skipped without stalling, and malformed pagination refusals passed\n'

@@ -34,11 +34,12 @@ jq -cse --arg name "$GITHUB_EVENT_NAME" --arg repo "$GH_REPO" --arg scope "$scop
   def sha: type == "string" and test("^[0-9a-f]{40}$");
   def number: type == "number" and . > 0 and floor == .;
   # GitHub judges every PR of a stack by the stack base, so a layer of a stack
-  # based on dev is a dev PR. A present but malformed stack is refused, not skipped.
+  # based on dev is a dev PR. A PR with a malformed stack is not selected through it,
+  # so one bad stack cannot stall discovery; the publisher refuses it if it is reached.
   def stack_ok: .stack == null or
     (.stack | type == "object" and (.base | type == "object") and
       (.base.ref | type == "string" and . != "") and (.base.sha | sha));
-  def dev_pr: stack_ok and (.base.ref == "dev" or .stack.base.ref == "dev");
+  def dev_pr: .base.ref == "dev" or (stack_ok and .stack.base.ref == "dev");
   if length != 1 or (.[0] | type) != "array" then error("invalid dev PR pages") else .[0] end |
   if length == 0 or any(.[]; type != "array" or length > 100) or
      (length > 1 and any(.[0:-1][]; length != 100))
@@ -46,7 +47,7 @@ jq -cse --arg name "$GITHUB_EVENT_NAME" --arg repo "$GH_REPO" --arg scope "$scop
   flatten as $all |
   if ($all | length) > 2000 or
      any($all[]; type != "object" or (.number | number | not) or .state != "open" or
-       (.base.ref | type != "string") or .base.repo.full_name != $repo or (.head.sha | sha | not) or (stack_ok | not)) or
+       (.base.ref | type != "string") or .base.repo.full_name != $repo or (.head.sha | sha | not)) or
      ([$all[].number] | unique | length) != ($all | length) or
      ($event | length) != 1 or $event[0].repository.full_name != $repo
   then error("invalid authenticated dev discovery identity") else . end |

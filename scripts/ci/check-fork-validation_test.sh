@@ -641,7 +641,9 @@ expect_accept 'a dev range just under the compare file limit'
 compare behind "$docs"
 expect_reject 'a dev range whose compare is behind'
 printf '{"status":"ahead"}\n' >"$work/compare.json"
-expect_accept 'a compare without a file list is an empty list'
+expect_reject 'a compare without a file list'
+printf '{"status":"ahead","files":null}\n' >"$work/compare.json"
+expect_reject 'a compare with a null file list'
 printf '{"status":"ahead","files":"x"}\n' >"$work/compare.json"
 expect_reject 'a compare with a malformed file list'
 compare ahead '[{"filename":""}]'

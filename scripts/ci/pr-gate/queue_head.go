@@ -57,7 +57,7 @@ type admissionSnapshot struct {
 // REST Base.SHA can lag behind live main; ref/repository and exact source
 // identity must still match the proof when a later complete list is observed.
 func sameRolePull(current, proved pull) bool {
-	return current.State == "open" && current.Number == proved.Number && current.User == proved.User && current.Head == proved.Head && current.Base.Ref == proved.Base.Ref && current.Base.Repo == proved.Base.Repo && current.Stack == proved.Stack
+	return current.State == "open" && current.Number == proved.Number && current.User == proved.User && current.Head == proved.Head && current.Base.Ref == proved.Base.Ref && current.Base.Repo == proved.Base.Repo && current.Stack.Base.Ref == proved.Stack.Base.Ref && current.StackInvalid == proved.StackInvalid
 }
 
 func materializedHeads(live *queueData, branch string) ([]string, error) {

@@ -264,8 +264,10 @@ func TestStackedLayerIsRefusedForLowerLayerCIEdit(t *testing.T) {
 func TestStackedFileListFailsClosedOnIncompleteCompare(t *testing.T) {
 	t.Setenv("GITHUB_REF", "refs/heads/main")
 	for name, response := range map[string]map[string]any{
-		"at the limit": {"status": "ahead", "files": make([]map[string]string, compareFileLimit)},
-		"behind":       {"status": "behind", "files": []map[string]string{}},
+		"at the limit":  {"status": "ahead", "files": make([]map[string]string, compareFileLimit)},
+		"behind":        {"status": "behind", "files": []map[string]string{}},
+		"files omitted": {"status": "ahead"},
+		"files null":    {"status": "ahead", "files": nil},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f, tip := stackedFixture(t, "dev")
@@ -377,5 +379,67 @@ func TestStackedMovementIsDetected(t *testing.T) {
 	unstacked.Stack = stack{}
 	if sameRolePull(unstacked, a) {
 		t.Fatal("a layer that left its stack still matches its stacked role")
+	}
+}
+
+// stack.base.sha follows the trunk tip, which Base.SHA is already exempt from here.
+// Only the stack's presence and branch identify the role.
+func TestRoleMatchToleratesTrunkMovementUnderAStack(t *testing.T) {
+	f, tip := stackedFixture(t, "dev")
+	proved := f.pr
+	proved.DevTip = tip
+	current := proved
+	current.Stack.Base.SHA = strings.Repeat("e", 40)
+	if !sameRolePull(current, proved) {
+		t.Fatal("a moved trunk tip under an unchanged stack made the role stale")
+	}
+	for name, mutate := range map[string]func(*pull){
+		"stack left":      func(p *pull) { p.Stack = stack{} },
+		"stack rebased":   func(p *pull) { p.Stack.Base.Ref = "main" },
+		"stack malformed": func(p *pull) { p.StackInvalid = true },
+	} {
+		changed := proved
+		mutate(&changed)
+		if sameRolePull(changed, proved) {
+			t.Fatalf("%s still matches the proved role", name)
+		}
+	}
+}
+
+// A direct dev PR never enters stacked file-list mode: the verifier strips any
+// inherited PR_GATE_FILES_BASE and sets it only from the controller's own context.
+func TestVerifyPolicyStripsInheritedFilesBase(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(dir+"/scripts/ci", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seen := dir + "/seen"
+	script := "#!/bin/sh\nprintf '%s' \"${PR_GATE_FILES_BASE:-unset}\" >\"" + seen + "\"\nprintf '{\"workflow_change_authorized\":false}\\n'\n"
+	if err := os.WriteFile(dir+"/scripts/ci/check-fork-validation.sh", []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	t.Setenv("PR_GATE_FILES_BASE", strings.Repeat("a", 40))
+	head := strings.Repeat("b", 40)
+	read := func() string {
+		data, err := os.ReadFile(seen)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}
+	if _, err := verifyPolicy(context.Background(), 7, head); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(); got != "unset" {
+		t.Fatalf("a direct PR inherited PR_GATE_FILES_BASE=%s", got)
+	}
+	tip := strings.Repeat("c", 40)
+	ctx := context.WithValue(context.Background(), policyFilesBase{}, tip)
+	if _, err := verifyPolicy(ctx, 7, head); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(); got != tip {
+		t.Fatalf("the stacked verifier saw base %s, want %s", got, tip)
 	}
 }
