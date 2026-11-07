@@ -72,9 +72,10 @@ func TestEmailInvitationResponseBodiesHaveAClosedKeySet(t *testing.T) {
 	}
 }
 
-// An acceptance that ended a browser session's sessions answers a plain 200
-// without touching its cookies (#1207): the browser keeps a response whose
-// session cookie changed only if the session still proves the same person.
+// An acceptance that ended the person's sessions, called from a browser
+// session, answers a plain 200 without touching its cookies (#1207): the
+// browser keeps a response whose CSRF companion cookie changed only if the
+// session still proves the same person.
 func TestAcceptEmailInvitationLeavesBrowserCookies(t *testing.T) {
 	api := &API{EmailInvitations: stubEmailInvitations{}}
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/me/invitations/accept", nil)

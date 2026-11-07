@@ -71,14 +71,17 @@ Known residuals, not closed by this design and not yet accepted by the owner
 
 - Inside the request, a matched row adds one indexed foreign-key check against
   `accounts`; its timing cost is negligible.
-- The outcome write runs in the background and starts as the response is
-  written. An unmatched send writes it at once; a matched send writes it only
-  after the relay answers. This never appears in a response body, the pending
-  list or the organisation trail, but on a single-writer database (SQLite) the
-  immediate unmatched write can contend with the send's own end-of-request
-  session write and with the administrator's next write, such as the
-  pending-list refresh that follows every send, delaying either by one small
-  write.
+- The outcome write runs in a background send that starts inside the request,
+  before the response is encoded. An unmatched send writes it at once, as does
+  a matched send whose mail configuration fails to load or is unconfigured;
+  any other matched send writes it only after the relay answers. This never
+  appears in a response body, the pending list or the organisation trail. On a
+  single-writer database (SQLite) the immediate write can contend with the
+  request's own session-clock write, which runs before the `202` is flushed
+  whenever the session's slide interval has elapsed, so the latency of the
+  send's own response can differ by one small write. It can likewise delay the
+  administrator's next write, such as the pending-list refresh the web page
+  makes after every send.
 - A relay that throttles per client can delay or refuse later sends while an
   earlier matched send holds a connection, so an administrator who mails their
   own address can observe the earlier match through what arrives. The mail relay
