@@ -127,7 +127,7 @@ func TestSCIMRefusalOwnershipAcrossRealWire(t *testing.T) {
 		if err := svc.RevokeCredential(t.Context(), service.LocalPrincipal(orgAdmin), wireOrg, binding.ID, mint.Credential.ID); err != nil {
 			t.Fatal(err)
 		}
-		revoked := call(binding.ID, mint.Token)
+		revoked := confirmedRefusal(t, signals, func() *httptest.ResponseRecorder { return call(binding.ID, mint.Token) })
 		if miss.Code != http.StatusUnauthorized || revoked.Code != miss.Code || revoked.Body.String() != miss.Body.String() {
 			t.Fatal("SCIM artifact state enumerated")
 		}
@@ -188,8 +188,11 @@ func TestRequestRefusalConnectionAndWorkspaceWire(t *testing.T) {
 				r.Header.Set("Authorization", "DPoP "+token)
 				r.Header.Set("DPoP", "CANARY-RAW-PROOF")
 			}
-			w := httptest.NewRecorder()
-			h.ServeHTTP(w, r)
+			w := confirmedRefusal(t, signals, func() *httptest.ResponseRecorder {
+				w := httptest.NewRecorder()
+				h.ServeHTTP(w, r.Clone(r.Context()))
+				return w
+			})
 			if w.Code != http.StatusUnauthorized {
 				t.Fatalf("%s: %d %s", kind, w.Code, w.Body)
 			}

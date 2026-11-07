@@ -63,6 +63,28 @@ func runRefusalAuditLifecycle(t *testing.T, db *store.DB) {
 	waitForRefusalSeal(t, db, service.NewRefusalSignals(db), before+1)
 }
 
+// confirmedRefusal serves a refused request until its runtime accounting
+// confirms, and returns that attempt. Record has an approved 100 ms budget and
+// may report an unconfirmed result, visible only in health (auth refusal
+// signals ADR); TestAuthenticationRefusalWireUnconfirmedAccounting owns that
+// outcome. A test that then asserts the retained sample must know the sample
+// was staged, so an unconfirmed attempt is logged and served again.
+func confirmedRefusal[T any](t *testing.T, signals *service.RefusalSignals, serve func() T) T {
+	t.Helper()
+	for attempt := 1; ; attempt++ {
+		before := signals.RefusalHealth().Failures
+		result := serve()
+		health := signals.RefusalHealth()
+		if health.Failures == before {
+			return result
+		}
+		if attempt == 3 {
+			t.Fatalf("refusal accounting stayed unconfirmed: %+v", health)
+		}
+		t.Logf("refusal accounting attempt %d unconfirmed within its budget; serving again", attempt)
+	}
+}
+
 func assertRetainedRefusalRequest(t *testing.T, db *store.DB, requestID, source string) {
 	t.Helper()
 	if requestID == "" {
@@ -101,14 +123,17 @@ func TestRequestRefusalRevokedReplayIsRetainedAndCorrelated(t *testing.T) {
 		signals := service.NewRefusalSignals(db)
 		handler := server.New(&server.API{Auth: auth, Refusals: signals}, nil)
 		token := refusalSession(t, db, crypto.ArtifactCLISession, "revoked")
-		r := httptest.NewRequest(http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
-		r.RemoteAddr = "192.0.2.103:12345"
-		r.Header.Set("Authorization", "Bearer "+token)
-		r.Header.Set("X-Forwarded-For", "198.51.100.100")
-		r.Header.Set(server.RefusalRequestIDHeader, "spoofed-request")
-		r.Header.Set("X-Request-ID", "spoofed-request")
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, r)
+		w := confirmedRefusal(t, signals, func() *httptest.ResponseRecorder {
+			r := httptest.NewRequest(http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
+			r.RemoteAddr = "192.0.2.103:12345"
+			r.Header.Set("Authorization", "Bearer "+token)
+			r.Header.Set("X-Forwarded-For", "198.51.100.100")
+			r.Header.Set(server.RefusalRequestIDHeader, "spoofed-request")
+			r.Header.Set("X-Request-ID", "spoofed-request")
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			return w
+		})
 		if w.Code != http.StatusUnauthorized {
 			t.Fatalf("replay: %d", w.Code)
 		}
@@ -153,6 +178,42 @@ func TestRequestRefusalRevokedReplayIsRetainedAndCorrelated(t *testing.T) {
 	})
 }
 
+// TestConfirmedRefusalServesAgainAfterUnconfirmedAccounting holds the staging
+// writer past Record's budget for the first attempt only, as a loaded runner
+// can. The helper must see that attempt unconfirmed and return the next one,
+// whose sample the reader then retains.
+func TestConfirmedRefusalServesAgainAfterUnconfirmedAccounting(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		signals := service.NewRefusalSignals(db)
+		h := server.New(&server.API{Auth: authService(t, db), Workspace: &service.Workspace{DB: db}, Refusals: signals}, nil)
+		token, _, err := crypto.NewArtifact(crypto.ArtifactWorkspaceSession)
+		if err != nil {
+			t.Fatal(err)
+		}
+		attempts := 0
+		w := confirmedRefusal(t, signals, func() *httptest.ResponseRecorder {
+			attempts++
+			if attempts == 1 {
+				defer holdRefusalWriter(t, db)()
+			}
+			r := httptest.NewRequest(http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
+			r.RemoteAddr = "192.0.2.103:1234"
+			r.Header.Set("Authorization", "Bearer "+token)
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			return w
+		})
+		if w.Code != http.StatusUnauthorized || attempts != 2 || signals.RefusalHealth().Failures != 1 {
+			t.Fatalf("unconfirmed attempt not served again: %d attempts=%d %+v", w.Code, attempts, signals.RefusalHealth())
+		}
+		expireRefusalWindow(t, db)
+		if err := signals.Seal(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		assertRetainedRefusalRequest(t, db, w.Header().Get(server.RefusalRequestIDHeader), "192.0.2.103")
+	})
+}
+
 func TestRequestRefusalFailedDedicatedCommitDoesNotSuppressFallback(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		auth := authService(t, db)
@@ -169,11 +230,14 @@ func TestRequestRefusalFailedDedicatedCommitDoesNotSuppressFallback(t *testing.T
 			return nil
 		})
 		path := api.PathPrefix + "/orgs/org_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fee/projects/prj_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fdd/environments/env_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fcc/settings"
-		r := httptest.NewRequest(http.MethodGet, path, nil)
-		r.RemoteAddr = "192.0.2.103:1234"
-		r.Header.Set("Authorization", "Bearer "+token)
-		w := httptest.NewRecorder()
-		h.ServeHTTP(w, r)
+		w := confirmedRefusal(t, signals, func() *httptest.ResponseRecorder {
+			r := httptest.NewRequest(http.MethodGet, path, nil)
+			r.RemoteAddr = "192.0.2.103:1234"
+			r.Header.Set("Authorization", "Bearer "+token)
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			return w
+		})
 		fail()
 		// The dedicated owner still fails closed. A tentative capture cannot
 		// suppress the independently durable generic fallback on that response.

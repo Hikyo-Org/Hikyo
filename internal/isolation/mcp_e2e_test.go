@@ -489,8 +489,9 @@ func runTestMCPToolsEndToEndCanaryAndDenial(t *testing.T, codex bool) {
 			granted.AccountID, granted.CredentialID); err != nil {
 			t.Fatalf("revoke MCP credential: %v", err)
 		}
-		revoked := mcpCall(t, other, granted.token, mcpserver.ToolListDefinitions,
-			`{"org_id":"org_a","project_id":"prj_a1"}`)
+		revoked := confirmedRefusal(t, refusalSignals, func() *httptest.ResponseRecorder {
+			return mcpCall(t, other, granted.token, mcpserver.ToolListDefinitions, `{"org_id":"org_a","project_id":"prj_a1"}`)
+		})
 		invalidAfterRevoke := mcpCall(t, other, "not-a-real-token", mcpserver.ToolListDefinitions,
 			`{"org_id":"org_a","project_id":"prj_a1"}`)
 		if revoked.Code != http.StatusUnauthorized || revoked.Code != invalidAfterRevoke.Code ||

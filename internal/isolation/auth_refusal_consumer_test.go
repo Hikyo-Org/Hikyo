@@ -38,16 +38,19 @@ func TestRequestRefusalSupportedInstanceConsumers(t *testing.T) {
 		signals := service.NewRefusalSignals(db)
 		srv := httptest.NewTLSServer(server.New(&server.API{Auth: auth, Audits: &service.Audits{DB: db}, Refusals: signals}, nil))
 		t.Cleanup(srv.Close)
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+api.PathPrefix+"/auth/whoami", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		req.Header.Set("Authorization", "Bearer "+revoked)
-		resp, err := srv.Client().Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp.Body.Close()
+		resp := confirmedRefusal(t, signals, func() *http.Response {
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+api.PathPrefix+"/auth/whoami", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Authorization", "Bearer "+revoked)
+			resp, err := srv.Client().Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			return resp
+		})
 		requestID := resp.Header.Get(server.RefusalRequestIDHeader)
 		if resp.StatusCode != http.StatusUnauthorized || requestID == "" {
 			t.Fatal("revoked replay did not produce the uniform correlated refusal")
@@ -57,7 +60,7 @@ func TestRequestRefusalSupportedInstanceConsumers(t *testing.T) {
 			t.Fatal(err)
 		}
 		// Exercise the same cookie-authenticated endpoint the browser reads.
-		req, err = http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+api.PathPrefix+"/instance/audit?operation=auth.request_refused", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+api.PathPrefix+"/instance/audit?operation=auth.request_refused", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
