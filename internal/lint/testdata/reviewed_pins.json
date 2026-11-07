@@ -2500,16 +2500,22 @@
       ]
     },
     "internal/store/upgrade/rollback.go:PreflightPostgresRollback": {
-      "hash": "db1feed585a5e76a2c5e60f2924dad2eb8c8c0a2adc1b80c0285e3897e354d6c",
-      "reason": "Rollback preflight protocol runs before the backup fence, under migration exclusion: read-only catalog queries that check the cluster system identifier is readable, the current schema, and the owner of every object in public, so an install a rollback could not identify or rebuild is refused while nothing has changed."
+      "hash": "ef562ca892f2e94ae901913a762a1d7272a31992845827a094926acd78831a16",
+      "reason": "Rollback preflight protocol runs before the backup fence, under migration exclusion: read-only catalog queries that check the cluster system identifier is readable, the current schema, the owner of every object in public, and that nothing outside public depends on it, so an install a rollback could not identify or rebuild, or whose reset would drop objects elsewhere, is refused while nothing has changed.",
+      "dependencies": [
+        "internal/store/upgrade/rollback.go:outsideDependents"
+      ]
     },
     "internal/store/upgrade/rollback.go:Rollback.Identity": {
       "hash": "6debc9a5229570354cdb4202d586e6c1a1c8bd3bf1217a14fc0de31ba9b15456",
       "reason": "Rollback identity protocol reads the actual PostgreSQL database name and cluster system identifier under migration exclusion, so a resumed rollback can tell an emptied database it started from a same-named one elsewhere; no application table is queried."
     },
     "internal/store/upgrade/rollback.go:RollbackAdmission.ResetPostgres": {
-      "hash": "ba9bcf30c64c563f75634e48dfa241257b72c557b8e574431fb566dd8023effb",
-      "reason": "Rollback reset protocol runs only under the rollback admission: it refuses while any other client session of any role stays connected, bounds lock waits, drops the objects in the owned public schema in one transaction, and refuses to commit if any object remains, leaving the schema and its grants; it is recovery lifecycle DDL, never a runtime database reset."
+      "hash": "daca582ad7a29efe9ed101afad95283bd93959a886ee20418af86d848e8fd502",
+      "reason": "Rollback reset protocol runs only under the rollback admission: it refuses while any other client session of any role stays connected or any object outside public depends on it, bounds lock waits, drops the objects in the owned public schema in one transaction, and refuses to commit if any object remains, leaving the schema and its grants; it is recovery lifecycle DDL, never a runtime database reset.",
+      "dependencies": [
+        "internal/store/upgrade/rollback.go:outsideDependents"
+      ]
     },
     "internal/store/upgrade/runtime_snapshot.go:ReadPostgresSnapshot": {
       "hash": "548295dc1a16edb084ee9bbdce0c793a671aca537cd0dc06b73d9f039c140ff7",
@@ -3058,6 +3064,7 @@
     "internal/store/upgrade/recovery_admission.go:RecoveryAdmission.Valid": "46be22a6320dad35f082fbe0a9704f6003e7d251c151f12ec6f2ab0da23cbc19",
     "internal/store/upgrade/recovery_admission.go:RecoveryAdmission.checkRows": "633c45be26d761b381f78da585c185c9cc091c4b80d0297cf4695f2a3f8aa7d3",
     "internal/store/upgrade/restore.go:reconcileRestore": "f2b1b7269251540b7955077a30159f90356e8ba93cc3a3b157d0597490b792ef",
+    "internal/store/upgrade/rollback.go:outsideDependents": "1fc188ad4124f193b56c443af62958cd2eada7f6d3fea57e0a4fafcfd8904779",
     "internal/store/upgrade/restore_schema.go:prepareRestoreSchema": "ef32c202ae0f3d7689fcd0e014569b031a12f6553bb42736649c1ce9726a6816",
     "internal/store/upgrade/schema.go:Catalog.Digest": "54ada04ae98ce42277ee4d2ec0698ec8a060fcb2c0801d9dd4b77589b014a57b",
     "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19",
