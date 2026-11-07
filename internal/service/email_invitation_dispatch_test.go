@@ -173,3 +173,11 @@ func TestEmailInvitationDispatchOutcomes(t *testing.T) {
 		})
 	}
 }
+
+// A service wired without its send set refuses before touching the database.
+func TestEmailInvitationSendRefusesWithoutSendSet(t *testing.T) {
+	_, err := (&EmailInvitations{}).Send(t.Context(), Bearer("unused"), EmailInvitationSendSpec{})
+	if err == nil || !strings.Contains(err.Error(), "no background send set") {
+		t.Fatalf("Send without a send set = %v", err)
+	}
+}

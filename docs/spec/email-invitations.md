@@ -66,15 +66,19 @@ administrator, who can send again. Stopping the application cancels the
 in-flight mail attempts, records their failure outcomes (the outcome write has
 a short timeout of its own), and only then lets the database close.
 
-Known residuals, not closed by this design:
+Known residuals, not closed by this design and not yet accepted by the owner
+(pending decision on #1207):
 
 - Inside the request, a matched row adds one indexed foreign-key check against
   `accounts`; its timing cost is negligible.
-- After the response, a matched send dials the relay and records its outcome at
-  a different moment than an unmatched send records its own. This never appears
-  in a response body, the pending list or the organisation trail, but on a
-  single-writer database it can shift the latency of a concurrent request by one
-  small write.
+- The outcome write runs in the background and starts as the response is
+  written. An unmatched send writes it at once; a matched send writes it only
+  after the relay answers. This never appears in a response body, the pending
+  list or the organisation trail, but on a single-writer database (SQLite) the
+  immediate unmatched write can contend with the send's own end-of-request
+  session write and with the administrator's next write, such as the
+  pending-list refresh that follows every send, delaying either by one small
+  write.
 - A relay that throttles per client can delay or refuse later sends while an
   earlier matched send holds a connection, so an administrator who mails their
   own address can observe the earlier match through what arrives. The mail relay
@@ -103,6 +107,10 @@ The link is `{origin}/invitations/accept#token=...`; the token travels in the
 fragment. `POST /api/v1/me/invitations/preview` and
 `POST /api/v1/me/invitations/accept` take `{token}` and need the person's own
 signed-in human session (browser or CLI).
+The fragment never travels further. A signed-out visitor is asked to sign in
+with the invited account and open the emailed link again. A session that still
+owes factor enrolment is sent to enrolment and returns to the page without the
+fragment, which then asks for the emailed link again.
 
 An invitation is valid for the session only when the token resolves to a
 pending row that is unexpired, carries the current credential epoch and is

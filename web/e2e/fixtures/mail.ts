@@ -20,6 +20,11 @@ export function readMail(recipient: string, stateFile = STATE) {
     .filter((message) => message.recipients.includes(recipient));
 }
 
+/** A message body as text: go-mail emits quoted-printable, so unwrap soft lines and escapes. */
+export function mailText(data: string) {
+  return data.replace(/=\r\n/g, '').replace(/=([0-9A-F]{2})/gi, (_, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
+}
+
 /** Run the existing Go TLS SMTP sink; product certificate and egress checks stay enabled. */
 export async function startMailSink(stateFile = STATE) {
   const configuredBinary = process.env['HIKYO_E2E_MAIL_BINARY'];

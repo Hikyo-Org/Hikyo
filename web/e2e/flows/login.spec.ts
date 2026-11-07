@@ -10,10 +10,10 @@ import {
   expectStatusIsTextAndAria,
   measureSurfaceLuminance,
 } from '../fixtures/assertions.ts';
-import { zAuthMethods, zError, zLoginResult, zOrgList, zRegistrationPolicy, zTotpEnrolStartResult, zWhoAmI } from '@hikyo/zod';
+import { zAuthMethods, zEmailInvitationAcceptance, zEmailInvitationPreview, zError, zLoginChallenge, zLoginResult, zOrgList, zRegistrationPolicy, zTotpEnrolStartResult, zWhoAmI } from '@hikyo/zod';
 import { z } from 'zod';
 
-import { browserApi, fixtureApiCall } from '../fixtures/api.ts';
+import { browserApi, BrowserApiError, fixtureApiCall } from '../fixtures/api.ts';
 import {
   ADMIN,
   BASE_URL,
@@ -26,7 +26,7 @@ import {
 } from '../fixtures/instance.ts';
 import { enrolledAccount, TotpLedger, TOTP_STEP_MS, withSharedAdmin } from '../fixtures/accounts.ts';
 import { withPasskeyPage } from '../fixtures/passkey.ts';
-import { readMail } from '../fixtures/mail.ts';
+import { mailText, readMail } from '../fixtures/mail.ts';
 
 /** publicPost is an unauthenticated JSON POST, parsed at the boundary. */
 async function publicPost<T>(path: string, body: unknown, schema: z.ZodType<T>): Promise<T> {
@@ -38,7 +38,8 @@ async function publicPost<T>(path: string, body: unknown, schema: z.ZodType<T>):
   if (!response.ok) {
     throw new Error(`POST ${path} answered ${String(response.status)}: ${await response.text()}`);
   }
-  return schema.parse(response.status === 204 ? {} : await response.json());
+  const text = await response.text();
+  return schema.parse(text === '' ? {} : JSON.parse(text));
 }
 
 async function expectLoginSurface(page: Page, theme: 'dark' | 'light') {
@@ -593,7 +594,7 @@ test.describe('login', () => {
 
   // Email invitation acceptance (#1207, registry surface `invitation-accept`):
   // signed out, the page asks for sign-in first and sends the fragment token
-  // nowhere. The signed-in accept is covered by the unit suite and stories.
+  // nowhere. The signed-in accept rides the local sign-up block below.
   for (const scheme of ['dark', 'light'] as const) {
     test(`invitation page asks a signed-out visitor to sign in and clears the fragment (${scheme})`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: scheme });
@@ -1162,9 +1163,7 @@ test.describe('local sign-up', () => {
       const messages = readMail(emailAddress);
       const links = messages.map((message) => {
         expect(message.from).toBe('signup@hikyo.test');
-        // go-mail emits quoted-printable text: unwrap soft lines before reading the URL.
-        const body = message.data.replace(/=\r\n/g, '').replace(/=([0-9A-F]{2})/gi, (_, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
-        const link = body.match(/https?:\/\/[^\s]+\/signup\/verify#[^\s]+/)?.[0];
+        const link = mailText(message.data).match(/https?:\/\/[^\s]+\/signup\/verify#[^\s]+/)?.[0];
         if (link === undefined) throw new Error('accepted sign-up mail has no verification link');
         expect(new URL(link).origin).toBe(BASE_URL);
         return link;
@@ -1223,6 +1222,126 @@ test.describe('local sign-up', () => {
       if (created !== undefined) await fixtureApiCall(operator.bearer, 'DELETE', `/api/v1/orgs/${created}`, z.object({}));
     }
   });
+  // Email invitation of an existing account (#1207): a verified local sign-up
+  // is invited into the seeded organisation from Members, the mail carries the
+  // acceptance link, and the person accepts while signed in.
+  test('invites an existing account by email and the person accepts while signed in', async ({ page, browser }, testInfo) => {
+    testInfo.setTimeout(testInfo.timeout + TOTP_STEP_MS);
+    const [operator, closer] = await Promise.all([
+      enrolledAccount(browser, 'email-invite-operator', 'instance'),
+      enrolledAccount(browser, 'email-invite-closer', 'instance'),
+    ]);
+    const emailAddress = `invitee-${testInfo.project.name}-${Date.now().toString(36)}@hikyo.test`;
+    const password = randomBytes(18).toString('base64url');
+    const policyPath = '/api/v1/instance/registration-policy';
+    const { org: target, orgName: targetName } = readSeed();
+    let created: string | undefined;
+    let opened = false;
+    try {
+      await fixtureApiCall(operator.bearer, 'PUT', policyPath, zRegistrationPolicy, {
+        local: {}, external: [], landing: { kind: 'fresh-org', cap: 5 }, proof: await operator.ledger.next(),
+      });
+      opened = true;
+      await publicPost('/api/v1/auth/signup', { email: emailAddress }, z.object({}));
+      await expect.poll(() => readMail(emailAddress).length).toBe(1);
+      const signupLink = mailText(readMail(emailAddress)[0]?.data ?? '').match(/https?:\/\/[^\s]+\/signup\/verify#[^\s]+/)?.[0];
+      if (signupLink === undefined) throw new Error('sign-up mail has no verification link');
+      const signupToken = new URLSearchParams(new URL(signupLink).hash.slice(1)).get('token') ?? '';
+      const organisation = `Invitee home ${testInfo.project.name} ${Date.now().toString(36)}`;
+      await publicPost('/api/v1/auth/signup/verify', { token: signupToken, password, display_name: 'Robin', org_name: organisation }, z.object({}));
+      const orgs = await fixtureApiCall(operator.bearer, 'GET', '/api/v1/orgs?origin=registration', zOrgList);
+      created = orgs.items.find((org) => org.name === organisation)?.id;
+
+      // The administrator invites the address from Members.
+      const template = await withSharedAdmin(browser, async (admin) => {
+        await admin.goto(`/orgs/${target}/members`);
+        await admin.getByRole('button', { name: 'Invite by email', exact: true }).click();
+        const dialog = admin.getByRole('dialog');
+        await dialog.getByLabel('Email address').fill(emailAddress);
+        const select = dialog.getByLabel('Role template');
+        await select.selectOption({ index: 1 });
+        const chosen = await select.inputValue();
+        await admin.screenshot({ path: testInfo.outputPath('email-invite-dialog.png'), fullPage: true });
+        const sent = admin.waitForResponse((response) => response.url().endsWith(`/orgs/${target}/email-invitations`) && response.request().method() === 'POST');
+        await dialog.getByRole('button', { name: 'Invite by email', exact: true }).click();
+        expect((await sent).status()).toBe(202);
+        await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+        const pending = admin.locator('#members-email-invitations');
+        await expect(pending).toContainText(emailAddress);
+        await expectNoSeriousAxeViolations(admin);
+        await pending.scrollIntoViewIfNeeded();
+        await admin.screenshot({ path: testInfo.outputPath('email-invite-pending.png'), fullPage: true });
+        return chosen;
+      });
+
+      // The mail carries the acceptance link; the token travels in the fragment.
+      await expect.poll(() => readMail(emailAddress).length).toBe(2);
+      const message = readMail(emailAddress)[1];
+      const link = mailText(message?.data ?? '').match(/https?:\/\/[^\s]+\/invitations\/accept#token=[^\s]+/)?.[0];
+      if (link === undefined) throw new Error('invitation mail has no acceptance link');
+      expect(new URL(link).origin).toBe(BASE_URL);
+
+      const signedIn = await page.request.post(`${BASE_URL}/api/v1/auth/local/login`, {
+        data: { username: emailAddress, password, artifact: 'browser' },
+      });
+      expect(signedIn.status()).toBe(200);
+      // The instance requires a second factor and the enrolment gate drops a
+      // public page's fragment, so the person enrols (here through the API)
+      // before opening the link.
+      const enrolment = await browserApi(page, 'POST', '/api/v1/auth/totp/enrol/start', zTotpEnrolStartResult, { password });
+      const ledger = new TotpLedger(enrolment.otpauth_uri, new Date());
+      await browserApi(page, 'POST', '/api/v1/auth/totp/enrol/confirm', zLoginResult, { code: await ledger.next() });
+      await page.goto(link);
+      await expect(page).toHaveURL(/\/invitations\/accept$/);
+      const card = page.locator('.login__card');
+      await expect(card).toContainText(targetName);
+      await expect(card).toContainText(template);
+      const accept = page.getByRole('button', { name: 'Accept', exact: true });
+      await expect(accept).toBeVisible();
+      await expectNoSeriousAxeViolations(page);
+      await page.screenshot({ path: testInfo.outputPath('email-invite-accept-preview.png'), fullPage: true });
+      const accepted = page.waitForResponse((response) => response.url().endsWith('/api/v1/me/invitations/accept'));
+      await accept.click();
+      const response = await accepted;
+      expect(response.status()).toBe(200);
+      const result = zEmailInvitationAcceptance.parse(await response.json());
+      expect(result).toMatchObject({ org: target, org_name: targetName, template, signed_out: true });
+      expect(result.grants_created).toBeGreaterThan(0);
+      await expect(card.getByText(`You joined ${targetName} as ${template}.`)).toBeVisible();
+      await expect(page.getByRole('link', { name: 'Sign in', exact: true })).toBeVisible();
+      // The grant ended this session on the server; the page has ended its own.
+      expect((await page.request.get(`${BASE_URL}/api/v1/auth/whoami`)).status()).toBe(401);
+      await expectNoSeriousAxeViolations(page);
+      await page.screenshot({ path: testInfo.outputPath('email-invite-accepted.png'), fullPage: true });
+      // The revoked cookie left in the browser still reaches the sign-in form.
+      await page.getByRole('link', { name: 'Sign in', exact: true }).click();
+      await expect(page).toHaveURL(/\/login$/);
+      await expect(page.getByRole('heading', { name: 'Sign in to Hikyo', exact: true })).toBeVisible();
+
+      // The link is single use: signed in again, it is the uniform refusal.
+      const again = await page.request.post(`${BASE_URL}/api/v1/auth/local/login`, {
+        data: { username: emailAddress, password, artifact: 'browser' },
+      });
+      expect(again.status()).toBe(202);
+      const challenge = zLoginChallenge.parse(await again.json());
+      const answered = await page.request.post(`${BASE_URL}/api/v1/auth/login/challenge/${challenge.challenge_id}/totp`, {
+        data: { code: await ledger.next() },
+      });
+      expect(answered.ok()).toBe(true);
+      const replayed = await browserApi(page, 'POST', '/api/v1/me/invitations/preview', zEmailInvitationPreview, {
+        token: new URLSearchParams(new URL(link).hash.slice(1)).get('token') ?? '',
+      }).then(() => 0, (error: unknown) => (error instanceof BrowserApiError ? error.status : -1));
+      expect(replayed).toBe(404);
+      await withSharedAdmin(browser, async (admin) => {
+        await admin.goto(`/orgs/${target}/members`);
+        await expect(admin.locator('#members-email-invitations')).not.toContainText(emailAddress);
+      });
+    } finally {
+      if (opened) await fixtureApiCall(closer.bearer, 'DELETE', policyPath, z.object({}), { proof: await closer.ledger.next() });
+      if (created !== undefined) await fixtureApiCall(operator.bearer, 'DELETE', `/api/v1/orgs/${created}`, z.object({}));
+    }
+  });
+
 });
 
 /** #612 rides the existing login CI shard, including both viewport projects. */

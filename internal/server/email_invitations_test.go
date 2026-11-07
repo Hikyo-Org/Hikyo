@@ -15,70 +15,14 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
-// An acceptance that ended the person's sessions clears the browser cookies in
-// the same 200 (#1207), exactly as logout does.
-func TestAcceptEmailInvitationClearsBrowserCookies(t *testing.T) {
-	rec := httptest.NewRecorder()
-	resp := acceptEmailInvitationResponse{
-		body:    apigen.EmailInvitationAcceptance{Org: "org_a", OrgName: "org-a", Template: apigen.RoleTemplate("viewer"), GrantsCreated: 3, SignedOut: true},
-		cookies: expiredBrowserCookies(),
-	}
-	if err := resp.VisitAcceptEmailInvitationResponse(rec); err != nil {
-		t.Fatal(err)
-	}
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"signed_out":true`) {
-		t.Fatalf("response %d %s", rec.Code, rec.Body.String())
-	}
-	cleared := map[string]bool{}
-	for _, c := range rec.Result().Cookies() {
-		if c.MaxAge < 0 && c.Value == "" {
-			cleared[c.Name] = true
-		}
-	}
-	if !cleared[browserSessionCookie] || !cleared[browserCSRFCookie] {
-		t.Fatalf("cookies cleared: %v", cleared)
-	}
-}
-
-// The handler's own decision: cookies are cleared only when the acceptance
-// ended the sessions (signed_out) and the request carried a browser session.
-func TestAcceptEmailInvitationCookieClearingDecision(t *testing.T) {
-	for _, tc := range []struct {
-		name      string
-		signedOut bool
-		cookie    bool
-		cleared   bool
-	}{
-		{"signed out with a browser session", true, true, true},
-		{"signed out without a browser session", true, false, false},
-		{"not signed out with a browser session", false, true, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			r := httptest.NewRequest(http.MethodPost, "/api/v1/invitations/accept", nil)
-			if tc.cookie {
-				r.AddCookie(&http.Cookie{Name: browserSessionCookie, Value: "session"})
-			}
-			ctx := context.WithValue(t.Context(), requestKey{}, r)
-			resp := acceptEmailInvitationResult(ctx, service.EmailInvitationAcceptance{Org: "org_a", OrgName: "org-a", Template: "viewer", GrantsCreated: 1, SignedOut: tc.signedOut})
-			rec := httptest.NewRecorder()
-			if err := resp.VisitAcceptEmailInvitationResponse(rec); err != nil {
-				t.Fatal(err)
-			}
-			cleared := false
-			for _, c := range rec.Result().Cookies() {
-				cleared = cleared || c.Name == browserSessionCookie && c.MaxAge < 0 && c.Value == ""
-			}
-			if rec.Code != http.StatusOK || cleared != tc.cleared {
-				t.Fatalf("status %d cleared %v, want cleared %v", rec.Code, cleared, tc.cleared)
-			}
-		})
-	}
-}
-
 type stubEmailInvitations struct{ EmailInvitationService }
 
 func (stubEmailInvitations) Send(_ context.Context, _ service.Actor, spec service.EmailInvitationSendSpec) (service.EmailInvitationReceipt, error) {
 	return service.EmailInvitationReceipt{ID: "ein_1", Email: spec.Email, Template: spec.Template}, nil
+}
+
+func (stubEmailInvitations) Accept(_ context.Context, _ service.Actor, _ string) (service.EmailInvitationAcceptance, error) {
+	return service.EmailInvitationAcceptance{Org: "org_a", OrgName: "org-a", Template: "viewer", GrantsCreated: 1, SignedOut: true}, nil
 }
 
 func (stubEmailInvitations) List(context.Context, service.Actor, domain.OrgID) ([]service.EmailInvitationEntry, error) {
@@ -125,5 +69,26 @@ func TestEmailInvitationResponseBodiesHaveAClosedKeySet(t *testing.T) {
 	}
 	if got, want := keys(page.Items[0]), []string{"created_at", "email", "expires_at", "id", "invited_by", "template"}; !slices.Equal(got, want) {
 		t.Fatalf("list entry keys = %v, want %v", got, want)
+	}
+}
+
+// An acceptance that ended a browser session's sessions answers a plain 200
+// without touching its cookies (#1207): the browser keeps a response whose
+// session cookie changed only if the session still proves the same person.
+func TestAcceptEmailInvitationLeavesBrowserCookies(t *testing.T) {
+	api := &API{EmailInvitations: stubEmailInvitations{}}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/me/invitations/accept", nil)
+	request.AddCookie(&http.Cookie{Name: browserSessionCookie, Value: "session-secret"})
+	ctx := context.WithValue(t.Context(), requestKey{}, request)
+	resp, err := api.AcceptEmailInvitation(ctx, apigen.AcceptEmailInvitationRequestObject{Body: &apigen.AcceptEmailInvitationJSONRequestBody{Token: "token"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	if err := resp.VisitAcceptEmailInvitationResponse(rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusOK || len(rec.Result().Cookies()) != 0 || !strings.Contains(rec.Body.String(), `"signed_out":true`) {
+		t.Fatalf("status %d cookies %v body %s", rec.Code, rec.Result().Cookies(), rec.Body.String())
 	}
 }

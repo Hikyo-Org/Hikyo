@@ -5,7 +5,6 @@ import { z } from 'zod';
 import {
   acceptanceFailureText,
   acceptEmailInvitation,
-  INVALID_INVITATION_TEXT,
   previewEmailInvitation,
   type EmailInvitationPreview,
 } from '../api/emailInvitations.ts';
@@ -40,6 +39,7 @@ export function InvitationAccept() {
   const [preview, setPreview] = useState<EmailInvitationPreview | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const requested = useRef(false);
+  const ending = useRef<ReturnType<typeof auth.captureTransition> | null>(null);
   const signedIn = auth.state.status === 'authenticated';
   const login = surfaceById('login').path;
 
@@ -50,8 +50,8 @@ export function InvitationAccept() {
     onSuccess: (result, _token, guard) => {
       setToken('');
       const joined = { org_name: result.org_name, template: result.template, signed_out: result.signed_out };
+      if (result.signed_out && guard !== undefined) ending.current = guard;
       void navigate(location.pathname, { replace: true, state: { joined } });
-      if (result.signed_out && guard !== undefined) auth.endSession(guard);
     },
   });
 
@@ -75,6 +75,14 @@ export function InvitationAccept() {
   }, [signedIn, token, previewing, setToken]);
 
   const outcome = zJoined.safeParse(location.state);
+  // End the session only once the router holds the outcome: ending it remounts
+  // the whole tree, router included, and drops a navigation not yet committed.
+  useEffect(() => {
+    if (!outcome.success || ending.current === null) return;
+    const guard = ending.current;
+    ending.current = null;
+    auth.endSession(guard);
+  }, [outcome.success, auth]);
   let body;
   if (outcome.success) {
     const { org_name: org, template, signed_out: signedOut } = outcome.data.joined;
@@ -102,13 +110,13 @@ export function InvitationAccept() {
     // A fragment still being captured is not yet a missing token.
     body = token === '' && location.hash === '' && !previewing.isPending
       ? <>
-        <Alert>{INVALID_INVITATION_TEXT}</Alert>
+        <p>This page needs the link from your invitation email. Open that link again, signed in with the account it was sent to.</p>
         <Link className="btn" to={surfaceById('projects').path}>Go to projects</Link>
       </>
       : <p role="status">Checking the invitation…</p>;
   } else {
     body = <>
-      <dl>
+      <dl className="invitation__facts">
         <dt>Organisation</dt>
         <dd>{preview.org_name}</dd>
         <dt>Role template</dt>

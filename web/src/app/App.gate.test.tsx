@@ -83,6 +83,15 @@ it('retains the destination until mandatory factor enrolment completes', async (
   await view.unmount();
 });
 
+it('never carries a public page\'s fragment token into the sign-in query', async () => {
+  auth.identity = { ...authenticatedIdentity, enrolment_required: true };
+  const view = await renderAt('/invitations/accept#token=hik_1_ei_secret');
+  expect(globalThis.location.pathname).toBe('/login');
+  expect(new URLSearchParams(globalThis.location.search).get('returnTo')).toBe('/invitations/accept');
+  expect(globalThis.location.href).not.toContain('hik_1_ei_secret');
+  await view.unmount();
+});
+
 it.each(['/login', '/signup'])('uses the requested destination for an authenticated %s visit', async (door) => {
   auth.identity = authenticatedIdentity;
   const view = await renderAt(`${door}?${new URLSearchParams({ returnTo: destination })}`);
