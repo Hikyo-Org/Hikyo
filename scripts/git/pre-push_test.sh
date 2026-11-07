@@ -180,8 +180,14 @@ commit_change web/a.txt
 before=$(count suite)
 printf '%s %s refs/heads/fe-new %s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD)" "$zero" | sh .githooks/pre-push origin url >"$out" 2>&1 || fail 'SHA frontend push refused'
 expect_count suite $((before + 1))
-# Tags are not branch pushes.
-printf 'refs/tags/v1 %s refs/tags/v1 %s\n' "$(git rev-parse HEAD)" "$zero" | sh .githooks/pre-push origin url >"$out" 2>&1 || fail 'tag push refused'
+# Tag-to-tag pushes stay unchecked; a branch pushed to a tag or review ref is checked.
+: >"$logs/sig-fail"
+printf 'refs/tags/v1 %s refs/tags/v1 %s\n' "$(git rev-parse HEAD)" "$zero" | sh .githooks/pre-push origin url >"$out" 2>&1 || fail 'tag-to-tag push refused'
+for target in refs/tags/y refs/for/main; do
+	printf 'refs/heads/fe-new %s %s %s\n' "$(git rev-parse HEAD)" "$target" "$zero" | sh .githooks/pre-push origin url >"$out" 2>&1 && fail "branch pushed to $target skipped the signature check"
+	grep -F 'unsigned commit' "$out" >/dev/null || fail "$target push did not reach the signature check"
+done
+rm "$logs/sig-fail"
 
 # 12. Edits made while the suite runs are never stamped.
 commit_change web/a.txt

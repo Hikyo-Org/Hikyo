@@ -31,11 +31,14 @@ storybook_key() {
 # Succeed only when the working tree holds exactly the bytes with key $1.
 # Every failure is explicit: set -e is off inside functions run as `f || ...`.
 worktree_has_key() {
-	[ "$1" = "$(storybook_key HEAD)" ] || return 1
+	head_key=$(storybook_key HEAD) || return 1
+	[ "$1" = "$head_key" ] || return 1
 	# shellcheck disable=SC2086 # the paths contain no whitespace or glob characters
-	[ -z "$(git status --porcelain --untracked-files=all -- $storybook_paths)" ] || return 1
+	dirty=$(git status --porcelain --untracked-files=all -- $storybook_paths) || return 1
+	[ -z "$dirty" ] || return 1
 	# Ignored .env files change the build without changing any tree OID.
-	[ -z "$(find web clients/ts -name node_modules -prune -o -name '.env*' -print 2>/dev/null)" ] || return 1
+	env_files=$(find web clients/ts -name node_modules -prune -o -name '.env*' -print) || return 1
+	[ -z "$env_files" ] || return 1
 }
 
 # Require the Storybook suite to have passed for exactly the pushed frontend bytes.
@@ -48,7 +51,7 @@ require_storybook() {
 	fi
 	worktree_has_key "$key" || {
 		printf 'pre-push: %s changes the frontend, and the Storybook suite has not passed for those exact bytes.\n' "$1" >&2
-		printf 'pre-push: check out and clean the branch you are pushing (no modified, untracked or .env files under web/ and clients/ts/), or push from the worktree that has it, then push again.\n' >&2
+		printf 'pre-push: check out and clean the branch you are pushing (no modified or untracked files under the Storybook inputs, and no .env files under web/ or clients/ts/), or push from the worktree that has it, then push again.\n' >&2
 		return 1
 	}
 	printf 'pre-push: running the Storybook suite (about 4 minutes; HIKYO_PREPUSH_STORYBOOK=skip skips it for WIP pushes)\n' >&2
@@ -74,11 +77,13 @@ git rev-parse --verify "$base^{commit}" >/dev/null 2>&1 || {
 }
 
 while read -r local_ref local_oid remote_ref _remote_oid; do
-	# Classify by the remote ref so `git push origin HEAD` and SHA pushes are
-	# checked; an all-zero local object is a deletion.
-	case "$remote_ref:$local_oid" in
-		refs/heads/*:"$zero") continue ;;
-		refs/heads/*:*) ;;
+	# An all-zero local object is a deletion. Otherwise check a push whose local
+	# OR remote ref is a branch: `git push origin HEAD` and SHA pushes name only
+	# the remote branch, `main:refs/tags/v1` only the local one. Tag-to-tag pushes
+	# stay unchecked, as before.
+	[ "$local_oid" != "$zero" ] || continue
+	case "$local_ref:$remote_ref" in
+		refs/heads/*:* | *:refs/heads/*) ;;
 		*) continue ;;
 	esac
 

@@ -239,8 +239,8 @@ The pre-push hook also runs `scripts/ci/storybook-suite.sh` (about 4 minutes the
 first time, then cached per exact input bytes) when a push changes `web/`,
 `clients/ts/`, `.nvmrc`, the root `package.json`, that script or
 `docs/site/scripts/test-csp.mjs`. It refuses unless the pushed branch is checked
-out and clean (no modified, untracked or `.env*` files under `web/` and
-`clients/ts/`). Set `HIKYO_PREPUSH_STORYBOOK=skip` to skip only that suite for a
+out and clean (no modified or untracked files under those inputs, and no `.env*`
+files under `web/` or `clients/ts/`). Set `HIKYO_PREPUSH_STORYBOOK=skip` to skip only that suite for a
 WIP push; CI still runs it, and signature checks cannot be skipped.
 
 ## Continuous integration

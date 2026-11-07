@@ -128,9 +128,31 @@ func storybookScriptProblems(script string, wantCommands, wantLoop []string) []s
 	if start < 0 {
 		return []string{"script has no step() helper"}
 	}
-	for _, line := range lines[:start] {
-		if strings.HasPrefix(line, "step ") || strings.HasPrefix(line, "pnpm ") || strings.HasPrefix(line, "(cd ") {
+	if lines[0] != "set -eu" {
+		problems = append(problems, "the first code line must be `set -eu`, got: "+lines[0])
+	}
+	// The prelude may define only fail(), the one place that exits.
+	functionDefinition := regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*\s*\(\)`)
+	exits := regexp.MustCompile(`\bexit\b`)
+	inFail := false
+	for index, line := range lines[:start] {
+		switch {
+		case line == "fail() {":
+			inFail = true
+			continue
+		case inFail && line == "}":
+			inFail = false
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "step ") || strings.HasPrefix(line, "pnpm ") || strings.HasPrefix(line, "(cd "):
 			problems = append(problems, "the prelude runs a suite command: "+line)
+		case functionDefinition.MatchString(line):
+			problems = append(problems, "the prelude defines a function other than fail(): "+line)
+		case !inFail && exits.MatchString(line):
+			problems = append(problems, "the prelude exits outside fail(): "+line)
+		case strings.HasPrefix(line, "alias ") || (index > 0 && strings.HasPrefix(line, "set ")):
+			problems = append(problems, "the prelude changes shell behaviour: "+line)
 		}
 	}
 	rest := lines[start:]
@@ -178,6 +200,16 @@ func storybookCIStrict(ci []byte) error {
 	}
 	if err := node.Decode(&job); err != nil {
 		return err
+	}
+	// Job-level env and defaults would change every step without the script knowing.
+	var settings map[string]yaml.Node
+	if err := node.Decode(&settings); err != nil {
+		return err
+	}
+	for _, key := range []string{"env", "defaults"} {
+		if _, ok := settings[key]; ok {
+			return fmt.Errorf("the ci.yml storybook job sets %s, which the script cannot mirror", key)
+		}
 	}
 	type suiteStep struct {
 		Name             string `yaml:"name"`
@@ -258,6 +290,10 @@ func TestStorybookSuiteScriptDriftIsDetected(t *testing.T) {
 		"suite command in the prelude": func(s string) string {
 			return strings.Replace(s, "step() {", "pnpm run lint\nstep() {", 1)
 		},
+		"errexit dropped": func(s string) string { return strings.Replace(s, "set -eu\n", "set -u\n", 1) },
+		"early exit":      func(s string) string { return strings.Replace(s, "cd \"$(dirname", "exit 0\ncd \"$(dirname", 1) },
+		"shadowed pnpm":   func(s string) string { return strings.Replace(s, "step() {", "pnpm() { :; }\nstep() {", 1) },
+		"errexit off":     func(s string) string { return strings.Replace(s, "step() {", "set +e\nstep() {", 1) },
 		"altered helper": func(s string) string {
 			return strings.Replace(s, `(cd "$dir" && "$@")`, `(cd "$dir" && "$@" || true)`, 1)
 		},
@@ -273,6 +309,20 @@ func TestStorybookSuiteScriptDriftIsDetected(t *testing.T) {
 		}
 		if len(storybookScriptProblems(mutated, wantCommands, wantLoop)) == 0 {
 			t.Errorf("%s: drift went undetected", name)
+		}
+	}
+
+	// Job-level settings on the reference job are refused too.
+	for name, extra := range map[string]string{
+		"job env":      "    env:\n      CI: ''\n",
+		"job defaults": "    defaults:\n      run:\n        shell: sh\n",
+	} {
+		anchor := "  storybook:\n    needs: [changes]\n"
+		if !strings.Contains(string(ci), anchor) {
+			t.Fatalf("anchor missing from ci.yml")
+		}
+		if storybookCIStrict([]byte(strings.Replace(string(ci), anchor, anchor+extra, 1))) == nil {
+			t.Errorf("%s on the storybook job was accepted", name)
 		}
 	}
 
