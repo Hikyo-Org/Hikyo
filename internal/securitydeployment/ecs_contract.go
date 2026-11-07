@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
 	"regexp"
 	"runtime"
 	"slices"
@@ -98,6 +99,22 @@ func (c ECSConfig) validate() error {
 		return ErrInvalid
 	}
 	return nil
+}
+
+// ecsOnUpgradeMount is whether dir resolves onto the upgrade volume: cleaned, so
+// ".." cannot climb out, and with no more specific mount covering it.
+func ecsOnUpgradeMount(c ECSConfig, dir string) bool {
+	if !path.IsAbs(dir) {
+		return false
+	}
+	dir = path.Clean(dir)
+	covering := ""
+	for _, mount := range []string{c.UpgradeMountPath, c.RootMountPath, "/tmp"} {
+		if pathContains(mount, dir) && len(mount) >= len(covering) {
+			covering = mount
+		}
+	}
+	return covering == c.UpgradeMountPath
 }
 
 func pathContains(parent, child string) bool {
@@ -337,6 +354,7 @@ type ecsDefinition struct {
 	ARN          string
 	Registration map[string]json.RawMessage
 	Container    ecsContainerDefinition
+	Tags         []ecsTag
 }
 
 func (e *Executor) validateECSDefinition(raw map[string]json.RawMessage) (ecsDefinition, error) {
@@ -423,7 +441,7 @@ func (e *Executor) validateECSDefinition(raw map[string]json.RawMessage) (ecsDef
 		environment[value.Name] = value.Value
 	}
 	if environment["HIKYO_UPGRADE_UNATTENDED"] != "true" || environment["HIKYO_HA"] != "false" || environment["HIKYO_CONFIG_ROLLOUT_ENROLLMENT"] != "" ||
-		environment["HIKYO_OPERATIONAL_LISTEN"] != "0.0.0.0:"+strconv.Itoa(c.ReadinessPort) || !pathContains(c.UpgradeMountPath, environment["HIKYO_UPGRADE_STATE_DIR"]) ||
+		environment["HIKYO_OPERATIONAL_LISTEN"] != "0.0.0.0:"+strconv.Itoa(c.ReadinessPort) || !ecsOnUpgradeMount(*c, environment["HIKYO_UPGRADE_STATE_DIR"]) ||
 		environment["HIKYO_ROOT_KEY_FILE"] != c.RootMountPath+"/root-key" || environment["HIKYO_DB"] != "" || environment["HIKYO_UPGRADE_SCRATCH_POSTGRES_DSN"] != "" {
 		return result, ErrUnsupported
 	}
@@ -548,6 +566,9 @@ func ecsServiceContractDigest(service ecsService) (releaseidentity.Digest, error
 	// could alter execution, ownership or networking is pinned independently.
 	service.Desired, service.Running, service.Pending = 0, 0, 0
 	service.Deployments = nil
+	// ECS documents no tag order; keys are unique, so sorting by key is canonical.
+	service.Tags = slices.Clone(service.Tags)
+	slices.SortFunc(service.Tags, func(a, b ecsTag) int { return strings.Compare(a.Key, b.Key) })
 	raw, err := json.Marshal(service)
 	if err != nil {
 		return "", err

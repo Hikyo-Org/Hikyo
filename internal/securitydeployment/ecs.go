@@ -18,6 +18,7 @@ type ecsPrepared struct {
 	Format             string                 `json:"format"`
 	Target             Target                 `json:"target"`
 	Source             ecsSnapshot            `json:"source"`
+	Nonce              string                 `json:"nonce"`
 	TargetDefinition   string                 `json:"target_definition"`
 	RegistrationSHA256 releaseidentity.Digest `json:"registration_sha256"`
 }
@@ -28,6 +29,12 @@ type ecsRegistrationIntent struct {
 	Target             Target                 `json:"target"`
 	Definition         string                 `json:"definition,omitempty"`
 	RegistrationSHA256 releaseidentity.Digest `json:"registration_sha256"`
+	// CreatedAt starts the settle window of a registration whose reply was lost.
+	// A record without it gets its window started when recovery first reads it.
+	CreatedAt time.Time `json:"created_at"`
+	// Retiring is written before DeregisterTaskDefinition, so a lost reply is
+	// settled by reading the revision instead of refusing the INACTIVE one.
+	Retiring bool `json:"retiring,omitempty"`
 }
 
 const ecsPreparedFormat = "hikyo.security-ecs-preparation/v1"
@@ -53,7 +60,7 @@ func (e *Executor) readECSPrepared() (ecsPrepared, error) {
 	if err != nil {
 		return prepared, err
 	}
-	if decode(raw, &prepared) != nil || prepared.Format != ecsPreparedFormat || e.target(prepared.Target) != nil || !e.c.ECS.definitionARN(prepared.TargetDefinition) || prepared.RegistrationSHA256.Validate() != nil || !validObservation(prepared.Source.Source) {
+	if decode(raw, &prepared) != nil || prepared.Format != ecsPreparedFormat || e.target(prepared.Target) != nil || !ecsTaskIDPattern.MatchString(prepared.Nonce) || !e.c.ECS.definitionARN(prepared.TargetDefinition) || prepared.RegistrationSHA256.Validate() != nil || !validObservation(prepared.Source.Source) {
 		return prepared, ErrInvalid
 	}
 	return prepared, nil
@@ -73,14 +80,21 @@ func (e *Executor) readECSRegistration() (ecsRegistrationIntent, error) {
 	if err != nil {
 		return intent, err
 	}
-	if decode(raw, &intent) != nil || intent.Format != ecsRegistrationFormat || !ecsTaskIDPattern.MatchString(intent.Nonce) || e.target(intent.Target) != nil || intent.RegistrationSHA256.Validate() != nil || (intent.Definition != "" && !e.c.ECS.definitionARN(intent.Definition)) {
+	if decode(raw, &intent) != nil || intent.Format != ecsRegistrationFormat || !ecsTaskIDPattern.MatchString(intent.Nonce) || e.target(intent.Target) != nil || intent.RegistrationSHA256.Validate() != nil || (intent.Definition != "" && !e.c.ECS.definitionARN(intent.Definition)) || (intent.Retiring && intent.Definition == "") {
 		return intent, ErrInvalid
 	}
 	return intent, nil
 }
 
-func (e *Executor) retireECSDefinition(ctx context.Context, arn string, digest releaseidentity.Digest) error {
-	if !e.c.ECS.definitionARN(arn) || digest.Validate() != nil {
+func ownedECSRegistration(definition ecsDefinition, nonce string) bool {
+	return slices.Contains(definition.Tags, ecsTag{Key: "hikyo.dev/security-registration", Value: nonce})
+}
+
+// retireECSRegistration deregisters the intent's never-selected revision and then
+// removes the registration record. The retiring marker is durable before the call.
+func (e *Executor) retireECSRegistration(ctx context.Context, intent ecsRegistrationIntent) error {
+	arn := intent.Definition
+	if !e.c.ECS.definitionARN(arn) || intent.RegistrationSHA256.Validate() != nil {
 		return ErrInvalid
 	}
 	service, err := e.ecsService(ctx)
@@ -97,12 +111,23 @@ func (e *Executor) retireECSDefinition(ctx context.Context, arn string, digest r
 		return err
 	}
 	definition, err := e.ecsDefinition(ctx, arn)
+	// The record already sent the deregistration and lost its reply, or ECS reports the revision
+	// retired by any hand; either way nothing is left to retire.
+	if errors.Is(err, errECSDefinitionInactive) || intent.Retiring && errors.Is(err, errECSDefinitionRetired) {
+		return removeECSRecord(e.ecsRegistrationPath())
+	}
 	if err != nil {
 		return err
 	}
 	actual, err := ecsRegistrationDigest(definition.Registration)
-	if err != nil || actual != digest {
+	if err != nil || actual != intent.RegistrationSHA256 || !ownedECSRegistration(definition, intent.Nonce) {
 		return ErrConflict
+	}
+	if !intent.Retiring {
+		intent.Retiring = true
+		if err := e.writeECSRecord(e.ecsRegistrationPath(), intent); err != nil {
+			return err
+		}
 	}
 	var response struct {
 		Definition map[string]json.RawMessage `json:"taskDefinition"`
@@ -115,7 +140,20 @@ func (e *Executor) retireECSDefinition(ctx context.Context, arn string, digest r
 	if json.Unmarshal(response.Definition["taskDefinitionArn"], &returned) != nil || returned != arn || json.Unmarshal(response.Definition["status"], &status) != nil || status != "INACTIVE" {
 		return ErrConflict
 	}
-	return nil
+	return removeECSRecord(e.ecsRegistrationPath())
+}
+
+// retireECSPrepared hands a prepared revision to a registration record first, so
+// its retirement resumes through recoverECSRegistration after any interruption.
+func (e *Executor) retireECSPrepared(ctx context.Context, prepared ecsPrepared) error {
+	intent := ecsRegistrationIntent{Format: ecsRegistrationFormat, Nonce: prepared.Nonce, Target: prepared.Target, Definition: prepared.TargetDefinition, RegistrationSHA256: prepared.RegistrationSHA256, CreatedAt: e.now().UTC()}
+	if err := e.writeECSRecord(e.ecsRegistrationPath(), intent); err != nil {
+		return err
+	}
+	if err := removeECSRecord(e.ecsPreparedPath()); err != nil {
+		return err
+	}
+	return e.retireECSRegistration(ctx, intent)
 }
 
 func (e *Executor) recoverECSRegistration(ctx context.Context) error {
@@ -127,9 +165,19 @@ func (e *Executor) recoverECSRegistration(ctx context.Context) error {
 		return err
 	}
 	if intent.Definition == "" {
-		// A lost reply has no revision handle, so find it by its exact digest.
+		if intent.CreatedAt.IsZero() {
+			// A record from before CreatedAt: start its settle window now.
+			intent.CreatedAt = e.now().UTC()
+			if err := e.writeECSRecord(e.ecsRegistrationPath(), intent); err != nil {
+				return err
+			}
+			return ErrNotReady
+		}
+		// A lost reply has no revision handle, so find it by its exact digest and nonce.
+		// ECS listings are eventually consistent: absence counts only once settled.
 		// shortcut: only the newest ACTIVE revision is checked, so one hidden behind a
 		// later foreign registration leaks as an unused definition, not a running task.
+		settled := e.now().Sub(intent.CreatedAt) > ecsJobSettle
 		var listed struct {
 			ARNs []string `json:"taskDefinitionArns"`
 			Next string   `json:"nextToken"`
@@ -141,18 +189,20 @@ func (e *Executor) recoverECSRegistration(ctx context.Context) error {
 		if newest < 0 && listed.Next != "" {
 			return ErrRecoveryRequired
 		}
-		if newest < 0 {
-			return removeECSRecord(e.ecsRegistrationPath())
-		}
-		definition, err := e.ecsDefinition(ctx, listed.ARNs[newest])
-		if err != nil {
-			return err
+		var definition ecsDefinition
+		if newest >= 0 {
+			if definition, err = e.ecsDefinition(ctx, listed.ARNs[newest]); err != nil {
+				return err
+			}
 		}
 		digest, err := ecsRegistrationDigest(definition.Registration)
 		if err != nil {
 			return err
 		}
-		if digest != intent.RegistrationSHA256 || definition.Container.Image != intent.Target.Image {
+		if newest < 0 || digest != intent.RegistrationSHA256 || definition.Container.Image != intent.Target.Image || !ownedECSRegistration(definition, intent.Nonce) {
+			if !settled {
+				return ErrNotReady
+			}
 			return removeECSRecord(e.ecsRegistrationPath())
 		}
 		intent.Definition = definition.ARN
@@ -165,10 +215,7 @@ func (e *Executor) recoverECSRegistration(ctx context.Context) error {
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if err := e.retireECSDefinition(ctx, intent.Definition, intent.RegistrationSHA256); err != nil {
-		return err
-	}
-	return removeECSRecord(e.ecsRegistrationPath())
+	return e.retireECSRegistration(ctx, intent)
 }
 
 func (e *Executor) registerECSTarget(ctx context.Context, source ecsSnapshot, target Target) (ecsPrepared, error) {
@@ -198,11 +245,10 @@ func (e *Executor) registerECSTarget(ctx context.Context, source ecsSnapshot, ta
 			return previous, nil
 		}
 		if previous.TargetDefinition != source.Service.TaskDefinition {
-			if err := e.retireECSDefinition(ctx, previous.TargetDefinition, previous.RegistrationSHA256); err != nil {
+			if err := e.retireECSPrepared(ctx, previous); err != nil {
 				return result, err
 			}
-		}
-		if err := removeECSRecord(e.ecsPreparedPath()); err != nil {
+		} else if err := removeECSRecord(e.ecsPreparedPath()); err != nil {
 			return result, err
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -221,7 +267,7 @@ func (e *Executor) registerECSTarget(ctx context.Context, source ecsSnapshot, ta
 	if err != nil {
 		return result, err
 	}
-	intent := ecsRegistrationIntent{Format: ecsRegistrationFormat, Nonce: nonce, Target: target, RegistrationSHA256: digest}
+	intent := ecsRegistrationIntent{Format: ecsRegistrationFormat, Nonce: nonce, Target: target, RegistrationSHA256: digest, CreatedAt: e.now().UTC()}
 	if err := e.writeECSRecord(e.ecsRegistrationPath(), intent); err != nil {
 		return result, err
 	}
@@ -251,7 +297,7 @@ func (e *Executor) registerECSTarget(ctx context.Context, source ecsSnapshot, ta
 	if err := e.writeECSRecord(e.ecsRegistrationPath(), intent); err != nil {
 		return result, err
 	}
-	result = ecsPrepared{Format: ecsPreparedFormat, Target: target, Source: source, TargetDefinition: registered.ARN, RegistrationSHA256: digest}
+	result = ecsPrepared{Format: ecsPreparedFormat, Target: target, Source: source, Nonce: nonce, TargetDefinition: registered.ARN, RegistrationSHA256: digest}
 	if err := e.writeECSRecord(e.ecsPreparedPath(), result); err != nil {
 		return result, err
 	}
@@ -279,14 +325,10 @@ func (e *Executor) prepareECS(ctx context.Context, target Target) (Observation, 
 	staged, err := e.ecsJob(ctx, source.Service, prepared.TargetDefinition, targetRuntimeDigest(target), "stage", []string{"security-maintenance", "stage", "--expected-manifest", string(target.Identity.ManifestSHA256)})
 	if err != nil {
 		// No service mutation has occurred. Only this known, never-selected
-		// revision may be retired; failures retain its preparation for recovery.
+		// revision may be retired; a failure leaves its registration record for recovery.
 		cleanup, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		defer cancel()
-		retire := e.retireECSDefinition(cleanup, prepared.TargetDefinition, prepared.RegistrationSHA256)
-		if retire == nil {
-			retire = removeECSRecord(e.ecsPreparedPath())
-		}
-		return Observation{}, errors.Join(err, retire)
+		return Observation{}, errors.Join(err, e.retireECSPrepared(cleanup, prepared))
 	}
 	staged.Image, staged.RuntimeImageSHA256 = source.Source.Image, source.Source.RuntimeImageSHA256
 	if staged.Engine != releaseidentity.Postgres || !sameSource(source.Source, staged) || staged.StagedTarget != target.Identity || staged.Phase != "staged" || staged.Ready || staged.RouteSHA256.Validate() != nil {
@@ -382,7 +424,12 @@ func (e *Executor) applyECS(ctx context.Context, j *deploymentJournal) error {
 		if err != nil {
 			return false, err
 		}
-		if err := e.validateECSService(service, 0); err != nil {
+		// ECS reads are eventually consistent: a stale pre-scale-down count is not done yet.
+		desired := 0
+		if service.Desired == 1 {
+			desired = 1
+		}
+		if err := e.validateECSService(service, desired); err != nil {
 			return false, err
 		}
 		original, _ := ecsServiceContractDigest(source.Service)
@@ -397,7 +444,7 @@ func (e *Executor) applyECS(ctx context.Context, j *deploymentJournal) error {
 		if len(tasks) != 1 || tasks[0].Definition != source.Service.TaskDefinition || tasks[0].Group != "service:"+e.c.ECS.serviceName() {
 			return false, ErrConflict
 		}
-		if tasks[0].LastStatus != "STOPPED" || service.Running != 0 || service.Pending != 0 {
+		if desired != 0 || tasks[0].LastStatus != "STOPPED" || service.Running != 0 || service.Pending != 0 {
 			return false, nil
 		}
 		remaining, err := e.ecsServiceTasks(wait)
@@ -415,6 +462,14 @@ func (e *Executor) applyECS(ctx context.Context, j *deploymentJournal) error {
 		return err
 	}
 	if err := e.waitECS(ctx, func(wait context.Context) (bool, error) {
+		service, err := e.ecsService(wait)
+		if err != nil {
+			return false, err
+		}
+		// A stale read of the scaled-down service: same contract checks, not done yet.
+		if (service.Desired == 0 || service.TaskDefinition == source.Service.TaskDefinition) && service.Desired <= 1 {
+			return false, e.validateECSService(service, service.Desired)
+		}
 		current, err := e.ecsCurrent(wait, false)
 		if errors.Is(err, ErrNotReady) {
 			return false, nil

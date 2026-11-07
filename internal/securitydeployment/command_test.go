@@ -32,6 +32,9 @@ func TestCommandHelperProcess(t *testing.T) {
 	case "large":
 		fmt.Fprint(os.Stdout, strings.Repeat("x", maxRecordBytes+1024))
 		os.Exit(0)
+	case "rotated":
+		fmt.Fprintln(os.Stderr, "connection refused for rotated-old-value")
+		os.Exit(3)
 	case "success":
 		fmt.Fprint(os.Stdout, `{"result":"ok"}`)
 		os.Exit(0)
@@ -94,6 +97,22 @@ func TestStderrTailRemovesExactInstallationValues(t *testing.T) {
 	}
 }
 
+// A value rotated while the command ran is the one the command used.
+func TestCommandDiagnosticsCoverAValueRotatedDuringTheRun(t *testing.T) {
+	reads := 0
+	runner := CommandRunner{Secrets: func() ([]string, error) {
+		reads++
+		if reads == 1 {
+			return []string{"rotated-old-value"}, nil
+		}
+		return []string{"rotated-new-value"}, nil
+	}}
+	_, err := runner.Run(t.Context(), Command{Path: os.Args[0], Args: []string{"-test.run=^TestCommandHelperProcess$", "--", "rotated"}})
+	if err == nil || strings.Contains(err.Error(), "rotated-old-value") || !strings.Contains(err.Error(), "connection refused") {
+		t.Fatalf("rotated value not scrubbed: %v", err)
+	}
+}
+
 func TestCommandDiagnosticsWithheldWithoutProtectedValues(t *testing.T) {
 	runner := CommandRunner{Secrets: func() ([]string, error) { return nil, os.ErrPermission }}
 	_, err := runner.Run(t.Context(), Command{Path: "/bin/sh", Args: []string{"-c", "echo short-secret >&2; exit 3"}})
@@ -113,7 +132,7 @@ func TestCommandEnvOverridesTheInheritedEnvironment(t *testing.T) {
 
 func TestComposeEnvironmentValuesCoverDotenvForms(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "install.env")
-	content := "# NOTE=comment\nexport A=plainvalue\nB=\"quoted value\"\nC=\nD=abc\nE=inline-value # note\nF: colon-value\nG=\"esc\\\"aped\"\nH=\"first\nsecond-line\"\n"
+	content := "# NOTE=comment\nexport A=plainvalue\nB=\"quoted value\"\nC=\nD=abc\nE=inline-value # note\nF: colon-value\nG=\"esc\\\"aped\"\nH=\"first\nsecond-line\"\nI=\"tab\\tcr\\rbell\\a\\b\\f\\vend\"\n"
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +140,7 @@ func TestComposeEnvironmentValuesCoverDotenvForms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"plainvalue", "quoted value", "inline-value", "colon-value", `esc"aped`, "first", "second-line"} {
+	for _, want := range []string{"plainvalue", "quoted value", "inline-value", "colon-value", `esc"aped`, "first", "second-line", "tab\tcr\rbell\a\b\f\vend"} {
 		if !slices.Contains(values, want) {
 			t.Fatalf("missing %q in %q", want, values)
 		}
@@ -138,5 +157,28 @@ func TestComposeEnvironmentValuesCoverDotenvForms(t *testing.T) {
 	}
 	if _, err := composeEnvironmentValues(filepath.Join(t.TempDir(), "absent")); err == nil {
 		t.Fatal("absent file reported no error")
+	}
+}
+
+// Commands run from the prepared snapshot consume its values even after the environment file rotates.
+func TestComposeProtectedValuesIncludeThePreparedSnapshot(t *testing.T) {
+	directory := t.TempDir()
+	environment, snapshot := filepath.Join(directory, "install.env"), filepath.Join(directory, "compose-prepared.json")
+	if err := os.WriteFile(environment, []byte("A=current-value\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	values, err := composeProtectedValues(environment, snapshot)
+	if err != nil || !slices.Contains(values, "current-value") {
+		t.Fatalf("an absent snapshot changed the values: %q %v", values, err)
+	}
+	if err := os.WriteFile(snapshot, []byte(`{"services":{"server":{"environment":{"A":"rotated-away-value"}}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	values, err = composeProtectedValues(environment, snapshot)
+	if err != nil || !slices.Contains(values, "current-value") || !slices.Contains(values, "rotated-away-value") {
+		t.Fatalf("the snapshot's values are not protected: %q %v", values, err)
+	}
+	if tail := stderrTail([]byte("refused rotated-away-value\n"), values); strings.Contains(tail, "rotated") {
+		t.Fatalf("a snapshot value survived: %q", tail)
 	}
 }

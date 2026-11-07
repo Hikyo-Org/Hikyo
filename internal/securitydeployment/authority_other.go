@@ -6,4 +6,6 @@ import "os/exec"
 
 func installedAuthority(string, bool, bool) error { return ErrUnsupported }
 
+func installedDirectory(string) error { return ErrUnsupported }
+
 func configureCommand(*exec.Cmd) {}

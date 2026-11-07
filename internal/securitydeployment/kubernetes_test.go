@@ -2,6 +2,7 @@ package securitydeployment
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -11,12 +12,14 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/multicall"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -48,6 +51,8 @@ type kubernetesFixture struct {
 	stageArgs  []string
 	// conflicts fails that many Deployment writes; finalized keeps a deleted stage Pod for that many reads.
 	conflicts, finalized int
+	// admit is the API server's admission of a stage Pod, which may add to its spec.
+	admit func(*corev1.Pod)
 }
 
 func owner(kind, name string, uid types.UID) []metav1.OwnerReference {
@@ -79,6 +84,9 @@ func newKubernetesFixture(t *testing.T) *kubernetesFixture {
 		// service account field but uses the default account at runtime.
 		if stage.Spec.ServiceAccountName == "" {
 			stage.Spec.ServiceAccountName = "default"
+		}
+		if f.admit != nil {
+			f.admit(stage)
 		}
 		stage.Status.Phase = corev1.PodSucceeded
 		f.command = stage.Spec.Containers[0].Args[1]
@@ -177,7 +185,7 @@ func (f *kubernetesFixture) Logs(context.Context, string, string) ([]byte, error
 	staged.StagedTarget = f.target.Identity
 	staged.RouteSHA256 = fixtureIdentity(2).CompatibilitySHA256
 	staged.RequiresMaintenance = true
-	return encoded(f.t, staged), nil
+	return append([]byte(f.logLine), encoded(f.t, staged)...), nil
 }
 
 func (f *kubernetesFixture) deployment() *appsv1.Deployment {
@@ -491,7 +499,7 @@ func TestKubernetesAcceptsOnlyOptedInHelmRelease(t *testing.T) {
 }
 
 func TestKubernetesRefusesCompetingOwnersAndUnsupportedTopology(t *testing.T) {
-	for _, change := range []string{"flux", "flux-opt-in", "flux-helm-opt-in", "helm", "helm-other-label", "opt-in-rendered-only", "argocd", "argocd-opt-in", "replicas", "rolling", "token", "scratch", "persistent", "init-writes-claim", "init-writes-claim-explicitly", "init-attaches-claim-device"} {
+	for _, change := range []string{"flux", "flux-opt-in", "flux-helm-opt-in", "helm", "helm-other-label", "opt-in-rendered-only", "argocd", "argocd-opt-in", "replicas", "rolling", "token", "scratch", "persistent", "init-writes-claim", "init-writes-claim-explicitly", "init-attaches-claim-device", "init-unknown", "init-hikyo-migrate", "init-stager-other-image", "init-stager-command", "envfrom-could-enable-ha", "unattended-single-dash", "unattended-zero", "unattended-capital-false", "auto-migrate-f", "wrapper-command", "state-dir-shadowed-by-scratch", "state-claim-read-only"} {
 		t.Run(change, func(t *testing.T) {
 			f := newKubernetesFixture(t)
 			d := f.deployment()
@@ -533,6 +541,33 @@ func TestKubernetesRefusesCompetingOwnersAndUnsupportedTopology(t *testing.T) {
 				d.Spec.Template.Spec.InitContainers[0].VolumeMounts = []corev1.VolumeMount{{Name: "upgrade-state", MountPath: "/var/lib/hikyo-upgrade"}}
 			case "init-attaches-claim-device":
 				d.Spec.Template.Spec.InitContainers[0].VolumeDevices = []corev1.VolumeDevice{{Name: "upgrade-state", DevicePath: "/dev/hikyo-state"}}
+			case "init-unknown":
+				// It holds the production credentials and would run again while the source serves.
+				d.Spec.Template.Spec.InitContainers = append(d.Spec.Template.Spec.InitContainers, corev1.Container{Name: "wait-for-db", Image: "busybox", Env: d.Spec.Template.Spec.Containers[0].Env})
+			case "init-hikyo-migrate":
+				d.Spec.Template.Spec.InitContainers = append(d.Spec.Template.Spec.InitContainers, corev1.Container{Name: "migrate", Image: d.Spec.Template.Spec.Containers[0].Image, Args: []string{"migrate"}, Env: d.Spec.Template.Spec.Containers[0].Env})
+			case "init-stager-other-image":
+				d.Spec.Template.Spec.InitContainers[0].Image = "registry.example/other@sha256:" + strings.Repeat("e", 64)
+			case "init-stager-command":
+				d.Spec.Template.Spec.InitContainers[0].Command = []string{"/bin/sh", "-c"}
+			case "envfrom-could-enable-ha":
+				d.Spec.Template.Spec.Containers[0].EnvFrom = []corev1.EnvFromSource{{ConfigMapRef: &corev1.ConfigMapEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "settings"}}}}
+			case "unattended-single-dash":
+				d.Spec.Template.Spec.Containers[0].Args = append(d.Spec.Template.Spec.Containers[0].Args, "-upgrade-unattended=false")
+			case "unattended-zero":
+				d.Spec.Template.Spec.Containers[0].Args = append(d.Spec.Template.Spec.Containers[0].Args, "--upgrade-unattended=0")
+			case "unattended-capital-false":
+				d.Spec.Template.Spec.Containers[0].Args = append(d.Spec.Template.Spec.Containers[0].Args, "--upgrade-unattended=FALSE")
+			case "auto-migrate-f":
+				d.Spec.Template.Spec.Containers[0].Args = append(d.Spec.Template.Spec.Containers[0].Args, "-auto-migrate=f")
+			case "wrapper-command":
+				d.Spec.Template.Spec.Containers[0].Command = []string{"/bin/sh", "-c", "exec hikyo server --upgrade-unattended=false"}
+			case "state-dir-shadowed-by-scratch":
+				// The claim covers /var/lib/hikyo-upgrade, but the state directory itself is an emptyDir.
+				d.Spec.Template.Spec.Volumes = append(d.Spec.Template.Spec.Volumes, corev1.Volume{Name: "scratch", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}})
+				d.Spec.Template.Spec.Containers[0].VolumeMounts = append(d.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{Name: "scratch", MountPath: "/var/lib/hikyo-upgrade/private"})
+			case "state-claim-read-only":
+				d.Spec.Template.Spec.Volumes[0].PersistentVolumeClaim.ReadOnly = true
 			case "init-writes-claim-explicitly":
 				d.Spec.Template.Spec.InitContainers = append(d.Spec.Template.Spec.InitContainers, corev1.Container{Name: "chown", Image: "busybox", VolumeMounts: []corev1.VolumeMount{{Name: "upgrade-state", MountPath: "/data", ReadOnly: false}}})
 			}
@@ -1029,7 +1064,7 @@ func TestKubernetesCorruptIdentityIsNotTreatedAsUnpinned(t *testing.T) {
 func (f *kubernetesFixture) addCoordinator(image string) {
 	f.t.Helper()
 	f.executor.c.Kubernetes.CronJob = "hikyo-security-maintenance"
-	cron := &batchv1.CronJob{ObjectMeta: metav1.ObjectMeta{Name: "hikyo-security-maintenance", Namespace: "hikyo"}, Spec: batchv1.CronJobSpec{JobTemplate: batchv1.JobTemplateSpec{Spec: batchv1.JobSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "coordinator", Image: image}, {Name: "sidecar", Image: "registry.example/other@sha256:" + strings.Repeat("e", 64)}}}}}}}}
+	cron := &batchv1.CronJob{ObjectMeta: metav1.ObjectMeta{Name: "hikyo-security-maintenance", Namespace: "hikyo", ResourceVersion: "1"}, Spec: batchv1.CronJobSpec{JobTemplate: batchv1.JobTemplateSpec{Spec: batchv1.JobSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "coordinator", Image: image}, {Name: "sidecar", Image: "registry.example/other@sha256:" + strings.Repeat("e", 64)}}}}}}}}
 	if _, err := f.client.BatchV1().CronJobs("hikyo").Create(f.t.Context(), cron, metav1.CreateOptions{}); err != nil {
 		f.t.Fatal(err)
 	}
@@ -1627,5 +1662,318 @@ func TestKubernetesLeftoverStagePodDoesNotBlockPrepareOrInspect(t *testing.T) {
 	f.inspectRow = &row
 	if _, err := f.executor.NoFinalGate(t.Context(), row); err != nil {
 		t.Fatalf("a leftover Pod blocked the inspect: %v", err)
+	}
+}
+
+// A Pod is admitted with what its template omits: requests default to limits, and a
+// LimitRange adds defaults. A resource the template sets must still match exactly.
+func TestKubernetesStageAcceptsAdmissionAddedResources(t *testing.T) {
+	for name, test := range map[string]struct {
+		requests corev1.ResourceList
+		admit    func(*corev1.Container)
+		wantErr  error
+	}{
+		"requests from limits": {admit: func(c *corev1.Container) { c.Resources.Requests = c.Resources.Limits.DeepCopy() }},
+		"limit range default": {admit: func(c *corev1.Container) {
+			c.Resources.Requests = corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m")}
+		}},
+		"a set request changed": {requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m")}, admit: func(c *corev1.Container) {
+			c.Resources.Requests[corev1.ResourceCPU] = resource.MustParse("200m")
+		}, wantErr: ErrConflict},
+		"a set limit changed": {admit: func(c *corev1.Container) {
+			c.Resources.Limits[corev1.ResourceMemory] = resource.MustParse("2Gi")
+		}, wantErr: ErrConflict},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newKubernetesFixture(t)
+			d := f.deployment()
+			for _, containers := range [][]corev1.Container{d.Spec.Template.Spec.Containers, d.Spec.Template.Spec.InitContainers} {
+				containers[0].Resources = corev1.ResourceRequirements{Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")}, Requests: test.requests.DeepCopy()}
+			}
+			if err := f.client.Tracker().Update(appsv1.SchemeGroupVersion.WithResource("deployments"), d, d.Namespace); err != nil {
+				t.Fatal(err)
+			}
+			f.admit = func(p *corev1.Pod) {
+				for i := range p.Spec.Containers {
+					test.admit(&p.Spec.Containers[i])
+				}
+				for i := range p.Spec.InitContainers {
+					test.admit(&p.Spec.InitContainers[i])
+				}
+			}
+			_, err := f.executor.Prepare(t.Context(), f.target)
+			if test.wantErr == nil && err != nil || test.wantErr != nil && !errors.Is(err, test.wantErr) {
+				t.Fatalf("err = %v, want %v", err, test.wantErr)
+			}
+		})
+	}
+}
+
+// Pod logs merge stderr, so a warning can precede the stage report.
+func TestKubernetesStageReportBehindALogLine(t *testing.T) {
+	f := newKubernetesFixture(t)
+	f.logLine = "warning: HIKYO_ROOT_KEY is set\n"
+	staged, err := f.executor.Prepare(t.Context(), f.target)
+	if err != nil || staged.Phase != "staged" {
+		t.Fatalf("a report behind a log line was refused: %+v %v", staged, err)
+	}
+}
+
+// A read that fails after the stop is proven still gives the source gate the source back.
+func TestKubernetesRollbackWritesTheSourceBackWhenTheReadAfterTheStopFails(t *testing.T) {
+	f := newKubernetesFixture(t)
+	if _, err := f.executor.Prepare(t.Context(), f.target); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.executor.Apply(t.Context(), f.target); err != nil {
+		t.Fatal(err)
+	}
+	failed := false
+	f.client.PrependReactor("get", "deployments", func(ktesting.Action) (bool, runtime.Object, error) {
+		if j, err := f.executor.journal(); !failed && err == nil && j != nil && j.RollingBack {
+			failed = true
+			return true, nil, errors.New("transient read failure")
+		}
+		return false, nil, nil
+	})
+	if _, err := f.executor.RollBack(t.Context()); err == nil || !failed {
+		t.Fatalf("a failed read was not reported: failed=%t err=%v", failed, err)
+	}
+	if d := f.deployment(); *d.Spec.Replicas != 1 || d.Spec.Template.Annotations[replacementTarget] != "" {
+		t.Fatalf("the source gate was not given the source back: %+v", d.Spec)
+	}
+}
+
+func TestKubernetesCoordinatorInitImagesFollowTheGivenImage(t *testing.T) {
+	f := newKubernetesFixture(t)
+	source := f.deployment().Spec.Template.Spec.Containers[0].Image
+	f.addCoordinator(source)
+	other := "registry.example/other@sha256:" + strings.Repeat("e", 64)
+	cron, err := f.client.BatchV1().CronJobs("hikyo").Get(t.Context(), "hikyo-security-maintenance", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cron.Spec.JobTemplate.Spec.Template.Spec.InitContainers = []corev1.Container{{Name: "root-key-stage", Image: source}, {Name: "other", Image: other}}
+	if _, err := f.client.BatchV1().CronJobs("hikyo").Update(t.Context(), cron, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.executor.FollowCoordinator(t.Context(), f.target.Image); err != nil {
+		t.Fatal(err)
+	}
+	cron, _ = f.client.BatchV1().CronJobs("hikyo").Get(t.Context(), "hikyo-security-maintenance", metav1.GetOptions{})
+	inits := cron.Spec.JobTemplate.Spec.Template.Spec.InitContainers
+	if len(inits) != 2 || inits[0].Image != f.target.Image || inits[1].Image != other || f.coordinatorImage() != f.target.Image {
+		t.Fatalf("init images = %+v", inits)
+	}
+}
+
+// The patch carries the read's resourceVersion, so the API server refuses it after a concurrent change.
+func TestKubernetesCoordinatorPatchRefusesAConcurrentChange(t *testing.T) {
+	f := newKubernetesFixture(t)
+	source := f.deployment().Spec.Template.Spec.Containers[0].Image
+	f.addCoordinator(source)
+	f.client.PrependReactor("patch", "cronjobs", func(action ktesting.Action) (bool, runtime.Object, error) {
+		var body struct {
+			Metadata struct {
+				ResourceVersion string `json:"resourceVersion"`
+			} `json:"metadata"`
+		}
+		if err := json.Unmarshal(action.(ktesting.PatchAction).GetPatch(), &body); err != nil {
+			return true, nil, err
+		}
+		// An operator wrote the CronJob after the read, moving it to version 2.
+		if body.Metadata.ResourceVersion != "" && body.Metadata.ResourceVersion != "2" {
+			return true, nil, apierrors.NewConflict(schema.GroupResource{Group: "batch", Resource: "cronjobs"}, "hikyo-security-maintenance", errors.New("the object has been modified"))
+		}
+		return true, nil, errors.New("an unconditional patch would overwrite the concurrent change")
+	})
+	if err := f.executor.FollowCoordinator(t.Context(), f.target.Image); !errors.Is(err, ErrConflict) {
+		t.Fatalf("a concurrent change was not refused as a conflict: %v", err)
+	}
+	if f.cronJobPatches() != 1 || f.coordinatorImage() != source {
+		t.Fatal("the refused patch was retried or changed the image")
+	}
+}
+
+func TestKubernetesUnknownInitContainerRefusalNamesItAndTheRemedy(t *testing.T) {
+	f := newKubernetesFixture(t)
+	d := f.deployment()
+	d.Spec.Template.Spec.InitContainers = append(d.Spec.Template.Spec.InitContainers, corev1.Container{Name: "wait-for-db", Image: "busybox"})
+	if err := f.client.Tracker().Update(appsv1.SchemeGroupVersion.WithResource("deployments"), d, d.Namespace); err != nil {
+		t.Fatal(err)
+	}
+	_, err := f.executor.Prepare(t.Context(), f.target)
+	if !errors.Is(err, ErrUnsupported) || !strings.Contains(err.Error(), `"wait-for-db"`) || !strings.Contains(err.Error(), "remove it") {
+		t.Fatalf("refusal does not name the init container and the remedy: %v", err)
+	}
+	if f.stage != nil {
+		t.Fatal("an unknown init container obtained staging authority")
+	}
+}
+
+// The chart's TLS stager qualifies only in its exact form.
+func TestKubernetesAcceptsOnlyTheChartsTLSStager(t *testing.T) {
+	for name, args := range map[string][]string{"chart form": {multicall.TLSStage, "--once"}, "watching form": {multicall.TLSStage}, "extra argument": {multicall.TLSStage, "--once", "--x"}} {
+		t.Run(name, func(t *testing.T) {
+			f := newKubernetesFixture(t)
+			d := f.deployment()
+			image := d.Spec.Template.Spec.InitContainers[0].Image
+			d.Spec.Template.Spec.InitContainers = append(d.Spec.Template.Spec.InitContainers, corev1.Container{Name: "tls-stage", Image: image, Args: args})
+			if err := f.client.Tracker().Update(appsv1.SchemeGroupVersion.WithResource("deployments"), d, d.Namespace); err != nil {
+				t.Fatal(err)
+			}
+			_, err := f.executor.Prepare(t.Context(), f.target)
+			if refused := errors.Is(err, ErrUnsupported); refused != (name != "chart form") {
+				t.Fatalf("Prepare = %v", err)
+			}
+		})
+	}
+}
+
+// Explicit env wins over envFrom, and a bare or true unattended flag keeps it on.
+func TestKubernetesAcceptsExplicitOverridesAndEnablingFlagForms(t *testing.T) {
+	f := newKubernetesFixture(t)
+	d := f.deployment()
+	server := &d.Spec.Template.Spec.Containers[0]
+	server.EnvFrom = []corev1.EnvFromSource{{ConfigMapRef: &corev1.ConfigMapEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "settings"}}}}
+	server.Env = append(server.Env, corev1.EnvVar{Name: "HIKYO_HA", Value: "false"})
+	server.Args = append(server.Args, "--upgrade-unattended", "-upgrade-unattended=1", "--auto-migrate=true")
+	server.Command = []string{"/usr/local/bin/hikyo"}
+	// A claim mounted more specifically than a scratch volume is the state directory's.
+	d.Spec.Template.Spec.Volumes = append(d.Spec.Template.Spec.Volumes, corev1.Volume{Name: "scratch", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}})
+	server.VolumeMounts = []corev1.VolumeMount{{Name: "scratch", MountPath: "/var/lib"}, {Name: "upgrade-state", MountPath: "/var/lib/hikyo-upgrade/"}, {Name: "security-status", MountPath: "/run/hikyo-security-status", ReadOnly: true}}
+	if err := f.client.Tracker().Update(appsv1.SchemeGroupVersion.WithResource("deployments"), d, d.Namespace); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.executor.Prepare(t.Context(), f.target); err != nil {
+		t.Fatalf("a qualifying template was refused: %v", err)
+	}
+}
+
+// Of two enrollments that both read no pin, the second compares against the first instead of replacing it.
+func TestKubernetesIdentityPinIsFirstWriterWins(t *testing.T) {
+	f := newKubernetesFixture(t)
+	f.executor.c.Kubernetes.DeploymentUID = ""
+	if err := f.executor.publishIdentity([]byte(`{"deployment_uid":"deployment-0"}`), "deployment-0"); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(kubernetesIdentity{DeploymentUID: "deployment-1"})
+	if err := f.executor.publishIdentity(raw, "deployment-1"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("a second enrollment replaced or accepted another pin: %v", err)
+	}
+	if uid, err := f.executor.pinnedUID(); err != nil || uid != "deployment-0" {
+		t.Fatalf("pin = %q %v", uid, err)
+	}
+	if err := f.executor.publishIdentity([]byte(`{"deployment_uid":"deployment-0"}`), "deployment-0"); err != nil {
+		t.Fatalf("repeating the same pin failed: %v", err)
+	}
+	entries, _ := os.ReadDir(f.executor.c.StateDirectory)
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".kubernetes-identity-") {
+			t.Fatalf("temporary pin left behind: %s", entry.Name())
+		}
+	}
+}
+
+// canceledLogs is Pod I/O whose log read is cut off by a canceled context.
+type canceledLogs struct{ podIO }
+
+func (canceledLogs) Logs(context.Context, string, string) ([]byte, error) {
+	return nil, context.Canceled
+}
+
+func TestKubernetesRollbackWritesTheSourceBackWhenOneShotIOIsCanceled(t *testing.T) {
+	f := appliedKubernetesFixture(t)
+	var seen []error
+	f.executor.client = spentContextClient{f.client, &seen}
+	f.executor.pods = canceledLogs{f}
+	restored, err := f.executor.RollBack(t.Context())
+	if !errors.Is(err, context.Canceled) || restored {
+		t.Fatalf("restored=%t err=%v", restored, err)
+	}
+	if len(seen) == 0 || seen[len(seen)-1] != nil {
+		t.Fatalf("the write-back ran on a spent context: %v", seen)
+	}
+	if d := f.deployment(); *d.Spec.Replicas != 1 || d.Spec.Template.Annotations[replacementTarget] != "" {
+		t.Fatalf("the source gate was not given the source back: %+v", d.Spec)
+	}
+}
+
+// The one-shot is built from a read after the stop; a Deployment changed in between is refused, and the
+// write-back still decides by the state it finds.
+func TestKubernetesRollbackRefusesADeploymentChangedAfterTheStop(t *testing.T) {
+	f := appliedKubernetesFixture(t)
+	changed := false
+	f.client.PrependReactor("get", "deployments", func(ktesting.Action) (bool, runtime.Object, error) {
+		if j, err := f.executor.journal(); changed || err != nil || j == nil || !j.RollingBack {
+			return false, nil, nil
+		}
+		changed = true
+		object, err := f.client.Tracker().Get(appsv1.SchemeGroupVersion.WithResource("deployments"), "hikyo", "hikyo")
+		if err != nil {
+			return true, nil, err
+		}
+		d := object.(*appsv1.Deployment).DeepCopy()
+		d.Spec.Template.Spec.Containers[0].Env = append(d.Spec.Template.Spec.Containers[0].Env, corev1.EnvVar{Name: "HIKYO_LOG_LEVEL", Value: "debug"})
+		return true, d, nil
+	})
+	if _, err := f.executor.RollBack(t.Context()); !errors.Is(err, ErrConflict) || !changed {
+		t.Fatalf("a changed Deployment was used for the one-shot: changed=%t err=%v", changed, err)
+	}
+	if f.command == "rollback" {
+		t.Fatal("the rollback one-shot ran from a changed Deployment")
+	}
+	if d := f.deployment(); *d.Spec.Replicas != 1 || d.Spec.Template.Annotations[replacementTarget] != "" {
+		t.Fatalf("the source was not written back: %+v", d.Spec)
+	}
+}
+
+// As in Compose: a source image serving again, a target past its final gate, or a Pod running a third
+// image is refused before anything is stopped.
+func TestKubernetesRollbackRefusesWhatIsNotAStoppedOrFailingTarget(t *testing.T) {
+	for _, name := range []string{"source serving again", "past the final gate", "third image"} {
+		t.Run(name, func(t *testing.T) {
+			f := appliedKubernetesFixture(t)
+			switch name {
+			case "source serving again":
+				sourcePod, err := f.client.CoreV1().Pods("hikyo").Get(t.Context(), "hikyo-source-pod", metav1.GetOptions{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				f.failPod = true
+				if _, err := f.executor.RollBack(t.Context()); err == nil {
+					t.Fatal("a failed one-shot was reported as success")
+				}
+				// The source gate admitted the written-back source, which serves at a later generation.
+				d := f.deployment()
+				d.Status = appsv1.DeploymentStatus{ObservedGeneration: d.Generation, Replicas: 1, UpdatedReplicas: 1, ReadyReplicas: 1, AvailableReplicas: 1}
+				if err := f.client.Tracker().Update(appsv1.SchemeGroupVersion.WithResource("deployments"), d, d.Namespace); err != nil {
+					t.Fatal(err)
+				}
+				if err := f.client.Tracker().Create(corev1.SchemeGroupVersion.WithResource("pods"), sourcePod, "hikyo"); err != nil {
+					t.Fatal(err)
+				}
+				f.current.Generation++
+				f.failPod = false
+			case "past the final gate":
+				f.replace(imageDigest(f.target.Image))
+			case "third image":
+				pod, err := f.client.CoreV1().Pods("hikyo").Get(t.Context(), "hikyo-source-pod", metav1.GetOptions{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				pod.Spec.Containers[0].Image = fixtureRepository + "@sha256:" + strings.Repeat("c", 64)
+				if _, err := f.client.CoreV1().Pods("hikyo").Update(t.Context(), pod, metav1.UpdateOptions{}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			f.command, f.updates = "", nil
+			if _, err := f.executor.RollBack(t.Context()); !errors.Is(err, ErrConflict) {
+				t.Fatalf("rollback was not refused: %v", err)
+			}
+			if len(f.updates) != 0 || f.command != "" {
+				t.Fatalf("a refused rollback stopped or ran something: %d writes, one-shot %q", len(f.updates), f.command)
+			}
+		})
 	}
 }

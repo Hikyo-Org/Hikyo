@@ -245,6 +245,13 @@ func New(c Config) (*Executor, error) {
 		if err := installedAuthority(c.Compose.Docker, true, false); err != nil {
 			return nil, err
 		}
+		directory, err := dockerConfigDirectory()
+		if err != nil {
+			return nil, err
+		}
+		if err := vetDockerClient(directory, os.Getenv("PATH")); err != nil {
+			return nil, err
+		}
 		if err := installedAuthority(c.Compose.File, false, false); err != nil {
 			return nil, err
 		}
@@ -289,7 +296,9 @@ func New(c Config) (*Executor, error) {
 	}
 	runner := CommandRunner{}
 	if c.Compose != nil {
-		runner.Secrets = func() ([]string, error) { return composeEnvironmentValues(c.Compose.EnvironmentFile) }
+		runner.Secrets = func() ([]string, error) {
+			return composeProtectedValues(c.Compose.EnvironmentFile, filepath.Join(c.StateDirectory, "compose-prepared.json"))
+		}
 	}
 	executor, err := NewWithDependencies(c, runner, client)
 	if err != nil {
@@ -513,6 +522,10 @@ func (e *Executor) Apply(ctx context.Context, target Target) error {
 	if j.Phase == "healthy" {
 		return nil
 	}
+	// A rollback ended this attempt; only a fresh Prepare starts another.
+	if j.Phase == "rolled-back" {
+		return ErrConflict
+	}
 	j.Target.EligibilityUntil = target.EligibilityUntil
 	j.Target.BeforeMutation = target.BeforeMutation
 	if e.c.Kind == Compose {
@@ -702,7 +715,11 @@ func (e *Executor) RestoreSource(ctx context.Context, aborted Observation) error
 	if releaseidentity.Hash(prepared) != j.DesiredSHA256 {
 		return ErrConflict
 	}
-	args := append(e.composeArgs(snapshot), "up", "--detach", "--no-deps", "--force-recreate", "--pull", "never", e.c.Compose.Service)
+	args, err := e.composeSourceArgs(j, snapshot)
+	if err != nil {
+		return err
+	}
+	args = append(args, "up", "--detach", "--no-deps", "--force-recreate", "--pull", "never", e.c.Compose.Service)
 	_, err = e.run(ctx, e.c.Compose.Docker, args, nil)
 	return err
 }

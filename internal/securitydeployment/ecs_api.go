@@ -74,16 +74,35 @@ func (e *Executor) ecsDefinition(ctx context.Context, arn string) (ecsDefinition
 	}
 	var response struct {
 		Definition map[string]json.RawMessage `json:"taskDefinition"`
+		Tags       []ecsTag                   `json:"tags"`
 	}
 	if err := e.aws(ctx, "ecs", "describe-task-definition", map[string]any{"taskDefinition": arn, "include": []string{"TAGS"}}, &response); err != nil {
+		if ecsDefinitionUnreadable.MatchString(err.Error()) {
+			return ecsDefinition{}, errors.Join(err, errECSDefinitionRetired)
+		}
 		return ecsDefinition{}, err
+	}
+	var status, returned string
+	if json.Unmarshal(response.Definition["status"], &status) == nil && status == "INACTIVE" && json.Unmarshal(response.Definition["taskDefinitionArn"], &returned) == nil && returned == arn {
+		return ecsDefinition{}, errors.Join(ErrUnsupported, errECSDefinitionRetired, errECSDefinitionInactive)
 	}
 	definition, err := e.validateECSDefinition(response.Definition)
 	if err != nil || definition.ARN != arn {
 		return ecsDefinition{}, errors.Join(err, ErrUnsupported)
 	}
+	definition.Tags = response.Tags
 	return definition, nil
 }
+
+// errECSDefinitionRetired marks a revision that reads INACTIVE or that ECS will no
+// longer describe: DescribeTaskDefinition serves an INACTIVE revision only while
+// something references it.
+var errECSDefinitionRetired = errors.New("security deployment: ECS task definition is deregistered")
+
+// errECSDefinitionInactive is a deregistration ECS reported, not one inferred from an unreadable revision.
+var errECSDefinitionInactive = errors.New("security deployment: ECS task definition is INACTIVE")
+
+var ecsDefinitionUnreadable = regexp.MustCompile(`(?s)exited with status 254\b.*\(ClientException\) when calling the DescribeTaskDefinition operation`)
 
 type ecsTask struct {
 	ARN           string          `json:"taskArn"`
@@ -208,7 +227,38 @@ func (e *Executor) ecsOnlyServiceWriter(ctx context.Context, sourceTask string) 
 	if response.Next != "" || len(response.ARNs) != 1 || response.ARNs[0] != sourceTask {
 		return ErrUnsupported
 	}
-	return nil
+	// A task told to stop keeps its database access until it reaches STOPPED.
+	// Stopped tasks stay listed for at least an hour, so page through them.
+	token := ""
+	for page := 0; page < 50; page++ {
+		var stopping struct {
+			ARNs []string `json:"taskArns"`
+			Next string   `json:"nextToken"`
+		}
+		input := map[string]any{"cluster": e.c.ECS.ClusterARN, "family": e.c.ECS.TaskFamily, "desiredStatus": "STOPPED", "maxResults": 100}
+		if token != "" {
+			input["nextToken"] = token
+		}
+		if err := e.aws(ctx, "ecs", "list-tasks", input, &stopping); err != nil {
+			return err
+		}
+		// shortcut: a task reaped between the list and the describe fails closed as a conflict; retry the observation.
+		tasks, err := e.ecsTasks(ctx, stopping.ARNs)
+		if err != nil {
+			return err
+		}
+		for _, task := range tasks {
+			if task.LastStatus != "STOPPED" {
+				return ErrNotReady
+			}
+		}
+		if stopping.Next == "" {
+			return nil
+		}
+		token = stopping.Next
+	}
+	// Stopped tasks age out of the listing, so a family this busy qualifies later.
+	return ErrNotReady
 }
 
 func (e *Executor) ecsReadiness(ctx context.Context, service ecsService, task ecsTask) error {
