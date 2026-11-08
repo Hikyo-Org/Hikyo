@@ -44,6 +44,7 @@ STUB
 # internal/x.go holds BAD or wip.go exists in that tree.
 cat >scripts/ci/golangci-lint-new.sh <<STUB
 #!/bin/sh
+echo committed >>"$logs/marker.log"
 echo "\$1 \$(git rev-parse HEAD) \$(pwd -P)" >>"$logs/golangci.log"
 [ ! -f "$logs/golangci-fail" ] || exit "\$(cat "$logs/golangci-fail")"
 ! grep -q BAD internal/x.go 2>/dev/null || { echo 'stub: new issue' >&2; exit 1; }
@@ -353,7 +354,7 @@ printf 'refs/heads/gl-two %s refs/heads/gl-two %s\nrefs/heads/gl %s refs/heads/g
 expect_count golangci $((before + 2))
 [ "$(tail -n 2 "$logs/golangci.log" | cut -d' ' -f2 | tr '\n' ' ')" = "$oid_a $oid_b " ] || fail 'two-branch push did not lint each commit'
 
-# 17. Real pushes from a linked worktree, where git exports GIT_DIR for that
+# 18. Real pushes from a linked worktree, where git exports GIT_DIR for that
 # worktree to the hook: the ratchet still lints exactly the pushed commit, with
 # the pushed commit's config and script, in a stable path that is never reused
 # while taken.
@@ -362,6 +363,15 @@ git init -q --bare "$root/remote.git"
 git remote add bare "$root/remote.git"
 git config core.hooksPath .githooks
 git worktree add -q "$root/lw" -b lw-co "$base"
+# The pushing checkout holds a different (dirty) copy of the script, marked
+# "checkout"; the committed copy every branch carries is marked "committed".
+{
+	sed -n 1p "$root/lw/scripts/ci/golangci-lint-new.sh"
+	echo "echo checkout >>\"$logs/marker.log\""
+	sed 1d "$root/lw/scripts/ci/golangci-lint-new.sh" | grep -v '^echo committed'
+} >"$root/lw-script"
+cat "$root/lw-script" >"$root/lw/scripts/ci/golangci-lint-new.sh"
+marker() { tail -n 1 "$logs/marker.log"; }
 git branch -q other-good "$base"
 git switch -q other-good
 commit_change internal/x.go
@@ -378,6 +388,7 @@ if lw_push other-bad:other-bad; then fail 'bad commit pushed from a linked workt
 grep -F 'reported issues' "$out" >/dev/null || fail 'linked-worktree refusal message missing'
 lw_push other-good:other-good || fail 'good commit pushed from a linked worktree was refused'
 [ "$(last 2)" = "$good_oid" ] || fail "linked-worktree push linted $(last 2), want $good_oid"
+[ "$(marker)" = committed ] || fail "ran the $(marker) copy of the ratchet script, want the pushed commit's"
 # The lint tree is the stable per-repository path, and is gone afterwards.
 stable=$(cd "$gitdir" && pwd -P)/hikyo-golangci-lint
 [ "$(last 3-)" = "$stable" ] || fail "lint ran in '$(last 3-)', want $stable"
@@ -410,6 +421,7 @@ before=$(count golangci)
 lw_push other-noscript:other-noscript || fail 'script-less commit was refused'
 expect_count golangci $((before + 1))
 [ "$(last 2)" = "$(git rev-parse other-noscript)" ] || fail 'fallback script linted the wrong commit'
+[ "$(marker)" = checkout ] || fail "fallback ran the $(marker) copy, want the pushing checkout's"
 git worktree remove --force "$root/lw"
 
 printf 'pre-push fixture: signatures run first; the suite runs once per frontend key and is skipped on stamps, branch deletions, non-frontend pushes and explicit opt-out; dirty, foreign or failing runs refuse; the golangci-lint ratchet runs on Go changes only and honours its own opt-out\n'
