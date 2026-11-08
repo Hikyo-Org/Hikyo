@@ -35,6 +35,8 @@ const (
 	// MaintenanceConfiguration opens only the authenticated managed transport
 	// projection during a resumed maintenance operation. It never migrates.
 	MaintenanceConfiguration Mode = "maintenance-configuration"
+	// ReleasePreparation lets the exact frozen source lift its own backup fence.
+	ReleasePreparation Mode = "release-preparation"
 )
 
 var (
@@ -98,7 +100,7 @@ func RunDevelopment(ctx context.Context, request Request) (Result, error) {
 }
 
 func run(ctx context.Context, request Request, build []byte, domain upgrade.TrustDomain, verifyBuild func(upgradecompat.VerifiedNode) error) (Result, error) {
-	if request.Mode != Boot && request.Mode != Migrate && request.Mode != PrepareBackup && request.Mode != PrepareRoute && request.Mode != MaintenanceConfiguration {
+	if request.Mode != Boot && request.Mode != Migrate && request.Mode != PrepareBackup && request.Mode != PrepareRoute && request.Mode != MaintenanceConfiguration && request.Mode != ReleasePreparation {
 		return Result{}, errors.New("unknown upgrade gate operation")
 	}
 	if request.Store.Engine.Validate() != nil || domain.Validate() != nil {
@@ -117,7 +119,7 @@ func run(ctx context.Context, request Request, build []byte, domain upgrade.Trus
 	if err != nil && !absent {
 		return Result{}, err
 	}
-	if absent && (request.Mode == PrepareBackup || request.Mode == PrepareRoute || request.Mode == MaintenanceConfiguration) {
+	if absent && (request.Mode == PrepareBackup || request.Mode == PrepareRoute || request.Mode == MaintenanceConfiguration || request.Mode == ReleasePreparation) {
 		return Result{}, errors.New("unattended preparation requires an enrolled released source")
 	}
 	rootDigest := releaseidentity.Hash(request.Pinned.Root)
@@ -251,6 +253,10 @@ func run(ctx context.Context, request Request, build []byte, domain upgrade.Trus
 		}
 		if request.Mode == MaintenanceConfiguration {
 			result, err = inspectMaintenanceConfiguration(ctx, session, request, bundle, node, current)
+			return err
+		}
+		if request.Mode == ReleasePreparation {
+			result, err = releaseUnattendedPreparation(ctx, session, request, node, current)
 			return err
 		}
 		if request.Mode == PrepareBackup || request.Mode == PrepareRoute {

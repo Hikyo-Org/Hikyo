@@ -299,6 +299,7 @@ operations:
   deleteOidcProvider:          {webui: instance-admin}
   getRetentionHealth:          {webui: instance-admin}
   getUpdateStatus:             {webui: instance-admin}
+  getSecurityMaintenance:      {webui: instance-admin}
   # Legacy apply is retired (#638); the UI communicates its unsupported result
   # through status and never sends this mutation to an older remote helper.
   requestInstanceUpdate:       {webui: instance-admin, via: [getUpdateStatus]}

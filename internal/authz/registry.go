@@ -797,6 +797,7 @@ const (
 	StoreOrgsCreate                    StoreOp = "orgs.Create"
 	StoreOrgsGet                       StoreOp = "orgs.Get"
 	StoreOrgsList                      StoreOp = "orgs.List"
+	StoreOrgsListIDs                   StoreOp = "orgs.ListIDs"
 	StoreOrgsCount                     StoreOp = "orgs.Count"
 	StoreOrgsRename                    StoreOp = "orgs.Rename"
 	StoreOrgsSetIdentity               StoreOp = "orgs.SetIdentity"
@@ -1462,6 +1463,7 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StorePersonalReportEvidence:         true,
 	StorePersonalReportMemberSeen:       true,
 	StoreOrgsList:                       true,
+	StoreOrgsListIDs:                    true,
 	StoreOrgsCount:                      true,
 	StorePersonalValuesRetentionList:    true,
 	StoreCataloguePersonalRequiredList:  true,
@@ -2083,7 +2085,7 @@ var operationTable = map[Operation]opSpec{
 	OpOrgList: {
 		class:    ClassInstance,
 		formula:  Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}},
-		storeOps: map[StoreOp]bool{StoreOrgsList: true, StoreOrgsCount: true, StoreAuditInstanceInsert: true},
+		storeOps: map[StoreOp]bool{StoreOrgsList: true, StoreOrgsListIDs: true, StoreOrgsCount: true, StoreAuditInstanceInsert: true},
 		events:   []audit.EventType{audit.EventOrgRead},
 	},
 	// Every BY-ID org operation is tenant-class at org depth, which is what

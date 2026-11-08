@@ -7053,6 +7053,41 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/instance/security-maintenance:
+    get:
+      operationId: getSecurityMaintenance
+      tags: [instance]
+      summary: Read the security-maintenance status the coordinator published.
+      description: |
+        The serving application never holds deployment credentials. The separate
+        maintenance coordinator writes a public status file and this operation
+        only reads it, on every request. Staleness is the caller's judgment from
+        `known_until` and `last_attempt`.
+      x-hikyo-class: instance
+      x-hikyo-operation: update.status-read
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "200":
+          description: Not reported, unreadable, or the coordinator's last published status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityMaintenanceStatus"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /api/v1/instance/update:
     post:
       operationId: requestInstanceUpdate
@@ -18877,6 +18912,79 @@ components:
         apply_error:
           type: string
           description: Operator-safe reason remote apply is unsupported; manual upgrades remain available.
+
+    SecurityMaintenanceStatus:
+      type: object
+      x-hikyo-zod-strict: true
+      additionalProperties: false
+      required: [reported, unreadable]
+      description: |
+        `reported` is false when no status file is configured or the coordinator
+        has not written one. `unreadable` is true when a file exists but cannot be
+        read, is oversized or fails strict parsing; it is never a healthy state.
+      properties:
+        reported:
+          type: boolean
+        unreadable:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/SecurityMaintenancePublicStatus"
+
+    SecurityMaintenancePublicStatus:
+      type: object
+      x-hikyo-zod-strict: true
+      additionalProperties: false
+      required: [enrolled, phase, protection_gap, applicable, coverage, covered_components, catalog_sequence]
+      properties:
+        mode:
+          type: string
+        channel:
+          type: string
+        enrolled:
+          type: boolean
+        phase:
+          type: string
+        reason:
+          type: string
+        protection_gap:
+          type: boolean
+          description: A known advisory stays unremediated and the installation is stuck, not waiting for a schedule.
+        applicable:
+          type: array
+          items:
+            type: string
+        coverage:
+          type: array
+          items:
+            type: string
+        covered_components:
+          type: array
+          items:
+            type: string
+        coverage_through:
+          type: string
+        catalog_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+        last_attempt:
+          type: string
+          format: date-time
+        last_verified:
+          type: string
+          format: date-time
+        known_until:
+          type: string
+          format: date-time
+        running_version:
+          type: string
+        target_version:
+          type: string
+        action:
+          type: string
+          description: The exact local command an operator runs to leave a blocked state.
+        detail:
+          type: string
 
     InstanceUpdateBackend:
       type: string

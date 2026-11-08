@@ -62,3 +62,18 @@ func prepareUnattendedRoute(ctx context.Context, session *upgrade.Session, reque
 	state, err := session.Prepare(ctx, current, operationFor(plan, 0, current.Generation+1, incarnation, backup, acceptance))
 	return Result{State: state, SchemaOnly: true}, err
 }
+
+// releaseUnattendedPreparation runs after the same build, trust and operator-pin
+// checks as every mode. Only the image the source was frozen under may lift the
+// fence, and only while it still holds BackupPreparing: Prepare already moved
+// the generation, and that is never undone.
+func releaseUnattendedPreparation(ctx context.Context, session *upgrade.Session, request Request, node upgradecompat.VerifiedNode, current upgrade.State) (Result, error) {
+	if !request.Operator.Valid() || request.Operator.InstanceID() != current.InstanceID || current.Pending.Invalidated || current.Applied != (releaseidentity.Source{Release: node.Identity()}) {
+		return Result{}, upgrade.ErrConflict
+	}
+	if current.Pending.Phase == upgrade.Healthy && !current.Maintenance {
+		return Result{State: current, SchemaOnly: true}, nil
+	}
+	state, err := session.ReleaseBackupFence(ctx, current)
+	return Result{State: state, SchemaOnly: true}, err
+}

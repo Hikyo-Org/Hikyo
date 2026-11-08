@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -69,6 +70,94 @@ func TestLinuxStopFailureLeavesDurableFence(t *testing.T) {
 	}
 	if strings.Join(operations, ",") != "daemon-reload,stop" {
 		t.Fatalf("unexpected operations: %v", operations)
+	}
+}
+
+// A fence that cannot be installed or refreshed must still stop the writer it was meant to hold.
+func TestLinuxFenceFailureStillStopsTheWriter(t *testing.T) {
+	h := rootTestHost(t)
+	if err := os.Mkdir(filepath.Dir(h.startPermission()), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(h.startPermission(), []byte("temporary candidate start\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	reload := errors.New("daemon-reload failed")
+	var operations []string
+	h.run = func(_ context.Context, c command) ([]byte, error) {
+		op := c.args[2]
+		operations = append(operations, op)
+		switch op {
+		case "daemon-reload":
+			return nil, reload
+		case "show":
+			return []byte("ActiveState=inactive\nMainPID=0\nControlGroup=\n"), nil
+		}
+		return nil, nil
+	}
+	if err := h.FenceAndStop(context.Background()); !errors.Is(err, reload) {
+		t.Fatalf("fence failure not reported: %v", err)
+	}
+	if strings.Join(operations, ",") != "daemon-reload,stop,show" {
+		t.Fatalf("writer not stopped and verified: %v", operations)
+	}
+	if _, err := os.Lstat(h.startPermission()); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("temporary start permission survived a failed fence")
+	}
+	if active, err := h.Maintenance(); err != nil || active {
+		t.Fatalf("maintenance published without its boot condition: %v", err)
+	}
+}
+
+// A new installation migrates with the configured binary before the boot proves its
+// identity, so only the authenticated release may reach migrate.
+func TestLinuxNewInstallationRefusesAnotherBinaryBeforeMigrating(t *testing.T) {
+	if err := trustedFile("/usr/bin/systemctl"); err != nil {
+		t.Skip("preflight needs a root-owned /usr/bin/systemctl:", err)
+	}
+	h := rootTestHost(t)
+	base := filepath.Dir(h.config.StateDirectory)
+	h.config.WorkingDirectory = filepath.Join(base, "work")
+	h.config.EnvironmentFile = filepath.Join(base, "hikyo.env")
+	h.config.RootKeyFile = filepath.Join(base, "root.key")
+	h.config.Binary = filepath.Join(base, "hikyo")
+	fragment := filepath.Join(base, "hikyo.service")
+	for path, data := range map[string]string{h.config.EnvironmentFile: "HIKYO_DB=sqlite:hikyo.db\n", h.config.RootKeyFile: strings.Repeat("a", 64), h.config.Binary: "release bytes", fragment: "[Service]\n"} {
+		if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(h.config.WorkingDirectory, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chown(h.config.WorkingDirectory, int(h.uid), int(h.gid)); err != nil {
+		t.Fatal(err)
+	}
+	start := "{ path=" + h.config.Binary + " ; argv[]=" + h.config.Binary + " server --root-key-file=/run/credentials/hikyo.service/hikyo-root-key ; ignore_errors=no }"
+	unit := "User=hikyo\nGroup=hikyo\nWorkingDirectory=" + h.config.WorkingDirectory + "\nEnvironmentFiles=" + h.config.EnvironmentFile + " (ignore_errors=no)\nExecStart=" + start +
+		"\nExecStartPre=\nExecStartPost=\nExecStop=\nExecStopPost=\nRootDirectory=\nRootImage=\nKillMode=control-group\nControlGroup=\n"
+	migrated := errors.New("migrate ran")
+	h.run = func(_ context.Context, c command) ([]byte, error) {
+		if c.path == h.config.Binary {
+			return nil, migrated
+		}
+		if c.args[2] != "show" {
+			t.Fatalf("unexpected systemd operation %v", c.args)
+		}
+		if strings.Contains(c.args[4], "FragmentPath") {
+			return []byte("FragmentPath=" + fragment + "\nDropInPaths=\n"), nil
+		}
+		return []byte(unit), nil
+	}
+	if err := h.BootNewInstallation(t.Context(), strings.Repeat("0", 64), true, time.Second, io.Discard, io.Discard); err == nil || errors.Is(err, migrated) {
+		t.Fatalf("another binary reached migrate: %v", err)
+	}
+	digest, err := fileDigest(h.config.Binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.BootNewInstallation(t.Context(), digest, true, time.Second, io.Discard, io.Discard); !errors.Is(err, migrated) {
+		t.Fatalf("the authenticated binary did not reach migrate: %v", err)
 	}
 }
 
@@ -308,6 +397,36 @@ func TestLinuxPrunePublicKeepsOnlyReferencedEvidence(t *testing.T) {
 	}
 	if err := h.PrunePublic(RuntimeEvidence{BundleDirectory: filepath.Join(h.config.StateDirectory, "bundle-x")}); err == nil {
 		t.Fatal("accepted retained evidence outside the public directory")
+	}
+}
+
+// A host enrolled from nothing has no journal, so the bundle its service boots from is
+// named only by runtime.env. Pruning an attempt's leftovers must not remove it.
+func TestLinuxPrunePublicKeepsTheBundleRuntimeEnvironmentNames(t *testing.T) {
+	h := rootTestHost(t)
+	public := h.config.PublicDirectory
+	for _, name := range []string{"bundle-source", "bundle-attempt", "evidence-attempt", "backup-attempt"} {
+		if err := os.MkdirAll(filepath.Join(public, name, "inner"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(h.config.StateDirectory, "downloads"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(public, "bundle-source")
+	if err := os.WriteFile(filepath.Join(h.config.StateDirectory, "runtime.env"), []byte("HIKYO_UPGRADE_BUNDLE="+source+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := h.LocalBundleDirectory()
+	if err != nil || bundle != source {
+		t.Fatal(bundle, err)
+	}
+	if err := h.PrunePublic(RuntimeEvidence{BundleDirectory: bundle}); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(public)
+	if err != nil || len(entries) != 1 || entries[0].Name() != "bundle-source" {
+		t.Fatal("the source bundle was pruned or an attempt's artifacts remain", entries, err)
 	}
 }
 

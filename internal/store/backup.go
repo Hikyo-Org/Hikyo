@@ -30,6 +30,7 @@ import (
 	"archive/tar"
 	"context"
 	"database/sql"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -593,17 +594,65 @@ func RestoreUpgradeSQLite(ctx context.Context, archive io.Reader, path string, p
 }
 
 func restoreSQLitePlan(ctx context.Context, archive io.Reader, path string, plan upgradecompat.Plan, mutate func(context.Context, *sql.Tx) error, operations sqliteRestoreOperations) (manifest Manifest, restoreErr error) {
-	return restoreSQLiteChecked(ctx, archive, path, plan, mutate, operations, true)
+	return restoreSQLiteChecked(ctx, archive, path, plan, mutate, operations, true, nil)
 }
 
 func RestoreDataSQLite(ctx context.Context, archive io.Reader, path string, plan upgradecompat.Plan, mutate func(context.Context, *sql.Tx) error) (Manifest, error) {
 	if !plan.Valid() {
 		return Manifest{}, upgrade.ErrConflict
 	}
-	return restoreSQLiteChecked(ctx, archive, path, plan, mutate, defaultSQLiteRestoreOperations(), false)
+	return restoreSQLiteChecked(ctx, archive, path, plan, mutate, defaultSQLiteRestoreOperations(), false, nil)
 }
 
-func restoreSQLiteChecked(ctx context.Context, archive io.Reader, path string, plan upgradecompat.Plan, mutate func(context.Context, *sql.Tx) error, operations sqliteRestoreOperations, requireUpgradeReceipt bool) (manifest Manifest, restoreErr error) {
+// RollbackUpgradeSQLite replaces the live database with the fenced snapshot in an
+// authenticated upgrade archive. Only the rollback lock's admission reaches it. It
+// skips credential invalidation on purpose: nothing was written since the snapshot.
+func RollbackUpgradeSQLite(ctx context.Context, archive io.Reader, plan upgradecompat.Plan, admission upgrade.RollbackAdmission) (Manifest, error) {
+	path, err := admission.Path()
+	if err != nil || !plan.Valid() {
+		return Manifest{}, errors.Join(upgrade.ErrConflict, err)
+	}
+	verify := func(ctx context.Context, tx *sql.Tx) error {
+		state, err := upgrade.ReadSQLiteSnapshot(ctx, tx)
+		if err != nil {
+			return err
+		}
+		return admission.CheckRestored(state)
+	}
+	return restoreSQLiteChecked(ctx, archive, path, plan, verify, defaultSQLiteRestoreOperations(), true, &admission)
+}
+
+// RollbackUpgradePostgres empties the owned schema, replays the source migrations and
+// imports the fenced snapshot, checking rule 3 inside the import transaction. It is
+// several steps, not one transaction: the journal's "rolling-back" phase repeats it.
+func RollbackUpgradePostgres(ctx context.Context, cfg Config, archive *backupreceipt.AuthenticatedArchive, plan upgradecompat.Plan, admission upgrade.RollbackAdmission, migrations embed.FS, directory string) error {
+	if err := admission.ResetPostgres(ctx); err != nil {
+		return err
+	}
+	if err := admission.ApplyRestoreSchema(ctx, plan, migrations, directory); err != nil {
+		return err
+	}
+	authority, err := admission.ValidateRestoreDestination(ctx, archive, plan)
+	if err != nil {
+		return err
+	}
+	destination, err := OpenRestoreDestination(ctx, cfg, authority, archive, plan)
+	if err != nil {
+		return err
+	}
+	_, err = destination.RestorePostgres(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		state, err := upgrade.ReadPostgresSnapshot(ctx, tx)
+		if err != nil {
+			return err
+		}
+		return admission.CheckRestored(state)
+	})
+	return errors.Join(err, destination.Close())
+}
+
+// restoreSQLiteChecked publishes onto a missing target. With a rollback admission the
+// target is the live database: it is removed, with its sidecars, just before publication.
+func restoreSQLiteChecked(ctx context.Context, archive io.Reader, path string, plan upgradecompat.Plan, mutate func(context.Context, *sql.Tx) error, operations sqliteRestoreOperations, requireUpgradeReceipt bool, rollback *upgrade.RollbackAdmission) (manifest Manifest, restoreErr error) {
 	tr, m, err := openArchive(archive)
 	if err != nil {
 		return Manifest{}, err
@@ -614,9 +663,9 @@ func restoreSQLiteChecked(ctx context.Context, archive io.Reader, path string, p
 	if m.Engine != EngineSQLite {
 		return Manifest{}, fmt.Errorf("%w: archive is %s, target is sqlite", ErrEngineMismatch, m.Engine)
 	}
-	if _, err := os.Stat(path); err == nil {
+	if _, err := os.Stat(path); err == nil && rollback == nil {
 		return Manifest{}, fmt.Errorf("%w: %s already exists", ErrTargetNotEmpty, path)
-	} else if !errors.Is(err, os.ErrNotExist) {
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return Manifest{}, fmt.Errorf("store: check restore target: %w", err)
 	}
 
@@ -685,6 +734,17 @@ func restoreSQLiteChecked(ctx context.Context, archive io.Reader, path string, p
 	}
 	if err := operations.fsyncFile(staging.database); err != nil {
 		return Manifest{}, err
+	}
+	if rollback != nil {
+		if err := rollback.RemoveLive(operations.remove); err != nil {
+			return Manifest{}, fmt.Errorf("store: remove the live database: %w", err)
+		}
+		// The removal must be durable before the link: a crash between them must not leave either file ambiguous.
+		for _, directory := range syncPaths {
+			if err := operations.syncDirectory(directory); err != nil {
+				return Manifest{}, fmt.Errorf("store: sync directory %s after removing the live database: %w", directory, err)
+			}
+		}
 	}
 	// link(2), not rename(2): the not-exists check above raced everything that
 	// happened since, and rename would silently overwrite a database created

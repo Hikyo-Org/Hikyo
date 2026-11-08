@@ -56,6 +56,13 @@ func (a *TxAuthorizer) selfConfigProfile(ctx context.Context, caller Identity, o
 	return true, evaluate(f, chain, grants), nil
 }
 
+// IsProtectedOrg reports whether org is the instance's own protected
+// configuration organisation. It is the same resolver fact the formula
+// conjunction uses and authorizes nothing.
+func (a *TxAuthorizer) IsProtectedOrg(ctx context.Context, org domain.OrgID) (bool, error) {
+	return a.r.IsSelfConfigScope(ctx, domain.Scope{Org: org})
+}
+
 // IsSelfConfig reports the database-resolved protected resource profile on a
 // canonical proof. It is a value and display hint, never a new authorization door.
 func IsSelfConfig(p Proof) bool {

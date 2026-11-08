@@ -135,6 +135,7 @@ var driverFiles = map[string]bool{
 	"internal/store/upgrade/restore_schema.go":                   true,
 	"internal/store/upgrade/restore_schema_test.go":              true,
 	"internal/store/upgrade/restore_test.go":                     true,
+	"internal/store/upgrade/rollback.go":                         true, // rollback lock holds the reserved migration session and replaces the live database under it
 	"internal/store/upgrade/route_test.go":                       true,
 	"internal/store/upgrade/schema.go":                           true,
 	"internal/store/upgrade/schema_postgres.go":                  true, // canonical catalog scope on the reserved migration/admission connection; no pool access

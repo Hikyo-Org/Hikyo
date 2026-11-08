@@ -43,6 +43,7 @@ import { PkiIssuersPanel } from './PkiIssuersPanel.tsx';
 import { PkiProfilesPanel } from './PkiProfilesPanel.tsx';
 import { SamlProvidersPanel } from './SamlProvidersPanel.tsx';
 import { SamlSpKeysPanel } from './SamlSpKeysPanel.tsx';
+import { SecurityMaintenancePanel } from './SecurityMaintenancePanel.tsx';
 import { ConsequencesDialog, Panel, SectionTabs } from './Sections.tsx';
 import { useFeedback } from './useFeedback.ts';
 import { useReencryptDrain } from './useReencryptDrain.ts';
@@ -239,6 +240,7 @@ export function InstanceAdmin() {
               <p className="field__hint">A run is stale after {duration(health.data.stale_after_seconds)}. The same fact is a Prometheus gauge and a <span className="mono">hikyo doctor</span> row.</p></> : null}
           </Panel>
         ) },
+        { id: 'instance-security-maintenance', label: 'Security maintenance', content: <SecurityMaintenancePanel /> },
         { id: 'instance-keys', label: 'Keys & crypto', content: (
           <Panel id="instance-keys" title="Keys &amp; crypto">
             <CryptoMaintenance onDone={ok} />

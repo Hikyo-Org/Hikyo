@@ -46,7 +46,7 @@ func TestPruneNightlyCacheKeepsRetainedIdentityAndTrustState(t *testing.T) {
 	if !slices.Equal(names, want) {
 		t.Fatalf("after prune: %v, want %v", names, want)
 	}
-	if !strings.Contains(progress.String(), "Removed 6 cached nightly artifacts") {
+	if !strings.Contains(progress.String(), "Removed 6 cached release artifacts") {
 		t.Fatalf("progress: %q", progress.String())
 	}
 	if err := installer.PruneNightlyCache(t.Context(), releaseidentity.Identity{}); err == nil {

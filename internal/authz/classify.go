@@ -109,6 +109,14 @@ type Cache struct {
 
 // caches is the closed cache registry.
 var caches = map[string]Cache{
+	"securityfeed.metadata": {
+		KeyConstructor: "internal/securityfeed.Repository: private installation feed state directory, provisioned root hash, fixed TUF role name and authenticated version/hash floor",
+		ProofGatedAt:   "not tenant proof-gated: common public metadata; go-tuf thresholds, expiry, durable rollback/equivocation and clock floors gate every refreshed catalog; cached metadata alone never authorizes execution",
+	},
+	"app.security-stage": {
+		KeyConstructor: "internal/app.cachedSecurityStageImage: installation upgrade StateDirectory/security-stage.json; exact target, original source/recovery tuple and authenticated route digest",
+		ProofGatedAt:   "not tenant proof-gated: public signed release payloads; preparedSecurityImageRoute reauthenticates every cached executable and bundle against current installed release trust/floor, while deployment exclusion and the database gate control application",
+	},
 	"store.audit-actor-kind": {
 		// Principals are instance-owned. The exact actor id is compared inside
 		// one transaction-owned slot, with no tenant chain or concatenation.

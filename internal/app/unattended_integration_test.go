@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -19,6 +20,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
+	"github.com/Hikyo-Org/hikyo/internal/securitymaintenance"
 	"github.com/Hikyo-Org/hikyo/internal/selfupdate"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
@@ -33,6 +35,8 @@ type unattendedChildFixture struct {
 	Pinned    releasetrust.PinnedTrust
 	Target    selfupdate.PreparedNightly
 	Releases  []selfupdate.PreparedNightly
+	// Inspect names a file that receives this image's own security observation.
+	Inspect string
 }
 
 type unattendedFixtureInstaller struct{ releases []selfupdate.PreparedNightly }
@@ -78,10 +82,29 @@ func TestUnattendedCoordinatorChild(t *testing.T) {
 	if err := json.Unmarshal(raw, &fixture); err != nil {
 		t.Fatal(err)
 	}
+	if fixture.Inspect != "" {
+		observed, err := inspectSecurityImage(t.Context(), &fixture.Config)
+		if err != nil {
+			observed = securitymaintenance.Observation{}
+		}
+		if err := os.WriteFile(fixture.Inspect, mustJSON(t, observed), 0600); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
 	installer := unattendedFixtureInstaller{fixture.Releases}
 	if err := runPreparedUnattended(t.Context(), &fixture.Config, UnattendedUpgradeOptions{}, fixture.Directory, fixture.Root, fixture.Pinned, installer, installer, fixture.Target); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func mustJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }
 
 func TestUnattendedPackagedEnrollmentUpgradeAndIntermediateCredential(t *testing.T) {
@@ -285,6 +308,9 @@ func TestUnattendedPackagedEnrollmentUpgradeAndIntermediateCredential(t *testing
 				t.Fatalf("starting the current image created an upgrade journal: %v", err)
 			}
 			// Reverting the policy (the plain config) lets the upgrade proceed.
+			if engine == store.EngineSQLite {
+				unattendedTargetFailsBeforeWritingAndSourceResumes(t, live, directory, identities, children, fixture, runChild)
+			}
 			if err := runChild(1); err != nil {
 				t.Fatalf("image replacement: %v", err)
 			}
@@ -316,4 +342,148 @@ func TestUnattendedPackagedEnrollmentUpgradeAndIntermediateCredential(t *testing
 
 		})
 	}
+}
+
+// A secret that the scratch restore cannot open fails the target's proof after
+// the source was frozen and before anything else was written.
+func unattendedTargetFailsBeforeWritingAndSourceResumes(t *testing.T, live store.Config, directory string, identities []releaseidentity.Identity, children []string, fixture unattendedChildFixture, runChild func(int) error) {
+	t.Helper()
+	database := upgrade.Config{Engine: releaseidentity.SQLite, Path: live.Path}
+	journalPath := filepath.Join(directory, "operation.json")
+	control := func() upgrade.State {
+		state, err := upgrade.InspectControl(t.Context(), database)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return state
+	}
+	inspect := func(index int) securitymaintenance.Observation {
+		fixture.Target, fixture.Inspect = fixture.Releases[index], filepath.Join(t.TempDir(), "inspect.json")
+		raw, err := json.Marshal(fixture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(t.TempDir(), "child.json")
+		if err := os.WriteFile(path, raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+		command := exec.CommandContext(t.Context(), children[index], "-test.run=^TestUnattendedCoordinatorChild$", "-test.timeout=90s")
+		command.Env = append(os.Environ(), "HIKYO_UNATTENDED_TEST_CHILD="+path)
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("inspect child: %s", output)
+		}
+		var observed securitymaintenance.Observation
+		raw, err = os.ReadFile(fixture.Inspect)
+		if err != nil || json.Unmarshal(raw, &observed) != nil {
+			t.Fatal("unreadable inspection", err)
+		}
+		return observed
+	}
+	sqlDB, err := sql.Open("sqlite", store.SQLiteDSN(live.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	mutate := func(statements ...string) {
+		t.Helper()
+		for _, statement := range statements {
+			if _, err := sqlDB.ExecContext(t.Context(), statement); err != nil {
+				t.Fatalf("%s: %v", statement, err)
+			}
+		}
+	}
+	mutate(`INSERT INTO orgs (id,name,active,metadata,created_at) VALUES ('org_drill','Drill',TRUE,'{}','2026-09-05T00:00:00Z')`,
+		`INSERT INTO projects (id,org_id,name,created_at) VALUES ('prj_drill','org_drill','Drill','2026-09-05T00:00:00Z')`,
+		`INSERT INTO environments (id,org_id,project_id,name,note,created_at,display_order) VALUES ('env_drill','org_drill','prj_drill','drill','','2026-09-05T00:00:00Z',0)`,
+		`INSERT INTO keys (id,org_id,project_id,name,folder_path,classification,description,deprecated,deprecation_note,declaration,required_mode,forbidden_mode,created_at) VALUES ('key_drill','org_drill','prj_drill','DRILL_SECRET','','secret','',FALSE,'','{}','none','none','2026-09-05T00:00:00Z')`,
+		`INSERT INTO principals (id,kind,created_at) VALUES ('usr_drill','human','2026-09-05T00:00:00Z')`,
+		`INSERT INTO value_entries (id,org_id,project_id,environment_id,key_id,ciphertext,updated_at,updated_by) VALUES ('val_drill','org_drill','prj_drill','env_drill','key_drill',x'0102030405','2026-09-05T00:00:00Z','usr_drill')`)
+	before := control()
+
+	if err := runChild(1); err == nil {
+		t.Fatal("a stored secret the restore cannot open passed the proof")
+	}
+	frozen := control()
+	if frozen.Pending.Phase != upgrade.BackupPreparing || !frozen.Maintenance || frozen.Generation != before.Generation || frozen.Applied != before.Applied || frozen.SchemaDigest != before.SchemaDigest {
+		t.Fatalf("the failed proof left something other than the fenced source: %+v", frozen.Pending)
+	}
+	journal, err := readAutomaticJournal(journalPath)
+	if err != nil || journal == nil || journal.Phase != "preparing" || journal.Aborted == "" {
+		t.Fatalf("the target did not record that it stopped before writing: %+v %v", journal, err)
+	}
+	if aborted := inspect(1); !aborted.AbortedBeforeMutation || aborted.Ready || aborted.Identity != identities[0] || aborted.Generation != before.Generation {
+		t.Fatalf("the coordinator would not learn the source is untouched: %+v", aborted)
+	}
+	// The failed attempt's encrypted backup and restore scratch are gone with it.
+	if copies := attemptCopies(t, directory); len(copies) != 0 {
+		t.Fatalf("the failed attempt left %v on the state volume", copies)
+	}
+	// A restart finds the marker and parks. Retrying could cross "write-intent"
+	// before the coordinator puts the source back, leaving the Deployment on the target.
+	if parked := runChild(1); parked == nil || !strings.Contains(parked.Error(), ErrPreparationAborted.Error()) {
+		t.Fatalf("a target holding its own abort marker did not park: %v", parked)
+	}
+	if again, err := readAutomaticJournal(journalPath); err != nil || again == nil || again.Phase != "preparing" || again.Aborted == "" || control().Pending.Phase != upgrade.BackupPreparing || len(attemptCopies(t, directory)) != 0 {
+		t.Fatalf("the parked target changed durable state: %+v %v", again, err)
+	}
+
+	// Only the journal's own source image may resume: another image stays refused.
+	elsewhere := *journal
+	elsewhere.Source.Identity = releaseidentity.Source{Release: identities[1]}
+	if err := writeAutomaticJournal(journalPath, &elsewhere); err != nil {
+		t.Fatal(err)
+	}
+	if err := runChild(0); err == nil || !strings.Contains(err.Error(), "requires its original exact image") || control().Pending.Phase != upgrade.BackupPreparing {
+		t.Fatalf("an image that is not the journal's source resumed: %v", err)
+	}
+	// "write-intent" is written before the first step that can start a migration.
+	// A marker left over from before it can neither release the source nor be read
+	// by the coordinator.
+	mutated := *journal
+	mutated.Phase = "write-intent"
+	if err := writeAutomaticJournal(journalPath, &mutated); err != nil {
+		t.Fatal(err)
+	}
+	if err := runChild(0); err == nil || !strings.Contains(err.Error(), "requires its original exact image") || control().Pending.Phase != upgrade.BackupPreparing {
+		t.Fatalf("a journal past preparing released the source: %v", err)
+	}
+	if inspect(1).AbortedBeforeMutation {
+		t.Fatal("a marker from a run that went on to write was believed")
+	}
+	if err := writeAutomaticJournal(journalPath, journal); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runChild(0); err != nil {
+		t.Fatalf("the source did not resume: %v", err)
+	}
+	if resumed := control(); resumed.Pending.Phase != upgrade.Healthy || resumed.Maintenance || resumed.Pending.Preparation != nil || resumed.Generation != before.Generation || resumed.Applied != before.Applied {
+		t.Fatalf("the source is still frozen: %+v", resumed.Pending)
+	}
+	if _, err := os.Stat(journalPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the unfinished journal was not cleared: %v", err)
+	}
+	if _, err := readUnattendedPrivate(filepath.Join(directory, "preparation-abandoned.json")); err != nil {
+		t.Fatalf("the reason was not recorded: %v", err)
+	}
+	if observed := inspect(0); observed.AbortedBeforeMutation || !observed.Ready || observed.Identity != identities[0] {
+		t.Fatalf("the resumed source is not observed as an ordinary healthy release: %+v", observed)
+	}
+	mutate(`DELETE FROM value_entries`, `DELETE FROM keys`, `DELETE FROM environments`, `DELETE FROM projects`, `DELETE FROM orgs`, `DELETE FROM principals WHERE id='usr_drill'`)
+}
+
+func attemptCopies(t *testing.T, directory string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found []string
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() && (strings.HasPrefix(name, "backup-") || strings.HasPrefix(name, "evidence-") || strings.HasPrefix(name, "scratch-") || strings.HasPrefix(name, ".hikyo-upgrade-evidence-")) {
+			found = append(found, name)
+		}
+	}
+	return found
 }
