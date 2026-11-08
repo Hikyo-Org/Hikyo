@@ -36,7 +36,8 @@ jobs:
       EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
       BASE_REF: ${{ github.event.pull_request.base.ref }}
     steps:
-      # Full history: the script needs the merge base with the PR base branch.
+      # Full history: fetch-depth 0 also fetches every branch, so origin/${BASE_REF}
+      # exists for the merge base without a separate fetch.
       - name: Check out the exact PR head without credentials
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -66,7 +67,5 @@ jobs:
           key: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: |
             go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
-      - name: Fetch the PR base branch
-        run: git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
       - name: golangci-lint, new code only
         run: ./scripts/ci/golangci-lint-new.sh "origin/${BASE_REF}"

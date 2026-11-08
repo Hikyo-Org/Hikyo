@@ -75,10 +75,13 @@ but it is not a substitute for this signature.
   Go code. It runs golangci-lint (errcheck, errorlint, errchkjson, noctx,
   wastedassign, unused, staticcheck, and gosec G115/G204/G306 outside tests, from
   `.golangci.yml`) and flags only issues on lines changed since the merge base, so
-  the existing baseline never blocks you. Push from the checked-out branch;
-  reproduce with `scripts/ci/golangci-lint-new.sh hikyo-upstream/main`. For WIP
-  pushes only, set `HIKYO_PREPUSH_GOLANGCI=skip`; the advisory `ci-advisory-golangci`
-  check still runs it.
+  the existing baseline never blocks you. It lints a temporary worktree at the
+  pushed commit, so any branch can be pushed and uncommitted files are ignored.
+  Fetch `hikyo-upstream` first: a stale base widens "new code". Only the default
+  build is linted (files for another OS, or tagged `ui`, `k8se2e` or `floor*`, are
+  not), and type errors are always reported in full. Reproduce with
+  `scripts/ci/golangci-lint-new.sh hikyo-upstream/main`. For WIP pushes only, set
+  `HIKYO_PREPUSH_GOLANGCI=skip`; the advisory `ci-advisory-golangci` check still runs it.
 - For `web/` changes, also run the affected flow specs before requesting review and
   list them in the PR Evidence:
   `pnpm --dir web run build && pnpm --dir web exec playwright test --project=desktop e2e/flows/<spec>.spec.ts`

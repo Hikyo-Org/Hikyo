@@ -110,8 +110,16 @@ func TestGolangciAdvisoryWorkflow(t *testing.T) {
 	}
 	restores := 0
 	for _, step := range steps {
-		if strings.HasPrefix(step.Uses, "actions/cache/restore@") {
+		switch {
+		case strings.HasPrefix(step.Uses, "actions/cache/restore@"):
 			restores++
+		case strings.HasPrefix(step.Uses, "actions/cache"):
+			t.Errorf("step %q uses %s; only actions/cache/restore may touch caches", step.Name, step.Uses)
+		case strings.HasPrefix(step.Uses, "actions/setup-go@"):
+			// setup-go saves a cache at the end of the job unless told not to.
+			if step.With["cache"] != "false" {
+				t.Errorf("setup-go must set cache: false, got %q", step.With["cache"])
+			}
 		}
 	}
 	if restores != 2 {

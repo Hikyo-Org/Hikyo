@@ -39,10 +39,15 @@ echo suite >>"$logs/suite.log"
 [ ! -f "$logs/suite-edit" ] || echo edited >>web/a.txt
 [ ! -f "$logs/suite-fail" ] || { echo 'stub: suite red' >&2; exit 1; }
 STUB
+# The ratchet stub records its base argument, the commit and work tree it runs
+# in, fails like golangci-lint (exit 1, or the code in golangci-fail) when
+# internal/x.go holds BAD or wip.go exists in that tree.
 cat >scripts/ci/golangci-lint-new.sh <<STUB
 #!/bin/sh
-echo "\$*" >>"$logs/golangci.log"
-[ ! -f "$logs/golangci-fail" ] || { echo 'stub: new issue' >&2; exit 1; }
+echo "\$1 \$(git rev-parse HEAD) \$(pwd -P)" >>"$logs/golangci.log"
+[ ! -f "$logs/golangci-fail" ] || exit "\$(cat "$logs/golangci-fail")"
+! grep -q BAD internal/x.go 2>/dev/null || { echo 'stub: new issue' >&2; exit 1; }
+[ ! -e wip.go ] || { echo 'stub: stray wip.go linted' >&2; exit 1; }
 STUB
 chmod +x .githooks/pre-push scripts/ci/*.sh
 echo 26.0.0 >.nvmrc
@@ -86,7 +91,7 @@ expect_ok go
 expect_count sig 1
 expect_count suite 0
 expect_count golangci 1
-[ "$(cat "$logs/golangci.log")" = refs/remotes/hikyo-upstream/main ] || fail 'ratchet was not given the signature range base'
+[ "$(cut -d' ' -f1,2 "$logs/golangci.log")" = "refs/remotes/hikyo-upstream/main $(git rev-parse go)" ] || fail 'ratchet was not given the range base and the pushed commit'
 
 # 2. A frontend push runs the suite once and records the pass; the same bytes skip it.
 git switch -q -c fe "$base"
@@ -278,22 +283,70 @@ expect_count golangci $((before + 1))
 git switch -q gl
 commit_change internal/x.go
 : >"$logs/golangci-fail"
-expect_refused 'scripts/ci/golangci-lint-new.sh refs/remotes/hikyo-upstream/main' gl
+echo 1 >"$logs/golangci-fail"
+expect_refused 'reported issues' gl
+grep -F 'scripts/ci/golangci-lint-new.sh refs/remotes/hikyo-upstream/main' "$out" >/dev/null || fail 'reproduce hint missing'
 expect_count golangci $((before + 2))
+echo 5 >"$logs/golangci-fail"
+expect_refused 'could not complete (exit 5' gl
 rm "$logs/golangci-fail"
 (HIKYO_PREPUSH_GOLANGCI=skip && export HIKYO_PREPUSH_GOLANGCI && push gl) || fail 'golangci skip push was refused'
 grep -F 'skipping the golangci-lint ratchet' "$out" >/dev/null || fail 'golangci skip warning missing'
-expect_count golangci $((before + 2))
+expect_count golangci $((before + 3))
 if (HIKYO_PREPUSH_GOLANGCI=1 && export HIKYO_PREPUSH_GOLANGCI && push gl); then fail 'invalid HIKYO_PREPUSH_GOLANGCI accepted'; fi
 grep -F 'must be unset or "skip"' "$out" >/dev/null || fail 'invalid golangci value message missing'
+# Signatures run first: a failing signature check never reaches the ratchet, with or without the opt-out.
+before=$(count golangci)
 : >"$logs/sig-fail"
+expect_refused 'unsigned commit' gl
 if (HIKYO_PREPUSH_GOLANGCI=skip && export HIKYO_PREPUSH_GOLANGCI && push gl); then fail 'golangci skip bypassed the signature check'; fi
 rm "$logs/sig-fail"
-git switch -q pkg
-expect_refused 'lints the checked-out tree' gl
-expect_count golangci $((before + 2))
-git switch -q gl
+expect_count golangci "$before"
+
+# The ratchet lints exactly the pushed commit, in a temporary worktree.
+# (C) a bad commit fixed only in the work tree is still refused.
+commit_change internal/x.go
+echo BAD >>internal/x.go
+git add internal/x.go
+git commit -q -m 'bad change'
+git checkout -q HEAD~1 -- internal/x.go
+expect_refused 'reported issues' gl
+git checkout -q -- internal/x.go
+git reset -q --hard HEAD~1
+# (B) an untracked file with an issue does not refuse a good commit.
+echo 'package x' >wip.go
 expect_ok gl
-expect_count golangci $((before + 3))
+# (D) a broken untracked file does not refuse it either.
+echo 'this is not go' >wip.go
+expect_ok gl
+rm wip.go
+# The lint ran on the pushed commit, in a worktree that is gone afterwards.
+[ "$(tail -n 1 "$logs/golangci.log" | cut -d' ' -f2)" = "$(git rev-parse gl)" ] || fail 'ratchet did not lint the pushed commit'
+lint_dir=$(tail -n 1 "$logs/golangci.log" | cut -d' ' -f3-)
+[ "$lint_dir" != "$(pwd -P)" ] || fail 'ratchet ran in the checked-out tree'
+[ ! -e "$lint_dir" ] || fail 'temporary worktree was left behind'
+[ "$(git worktree list | wc -l | tr -d ' ')" = 1 ] || fail 'worktree registration left behind'
+# A branch that is not checked out is linted, and refused when bad.
+git branch -q gl-bad "$base"
+git switch -q -c gl-other "$base"
+git switch -q gl-bad
+echo BAD >>internal/x.go
+git add internal/x.go
+git commit -q -m 'bad branch'
+git switch -q gl-other
+expect_refused 'reported issues' gl-bad
+expect_ok gl
+[ "$(tail -n 1 "$logs/golangci.log" | cut -d' ' -f2)" = "$(git rev-parse gl)" ] || fail 'non-checked-out push linted the wrong commit'
+# Two branches in one push: each is linted at its own commit.
+before=$(count golangci)
+git branch gl-twin gl
+git switch -q -c gl-two gl
+commit_change internal/x.go
+oid_a=$(git rev-parse gl-two)
+oid_b=$(git rev-parse gl)
+printf 'refs/heads/gl-two %s refs/heads/gl-two %s\nrefs/heads/gl %s refs/heads/gl %s\n' "$oid_a" "$zero" "$oid_b" "$zero" |
+	sh .githooks/pre-push origin url >"$out" 2>&1 || fail 'two-branch push was refused'
+expect_count golangci $((before + 2))
+[ "$(tail -n 2 "$logs/golangci.log" | cut -d' ' -f2 | tr '\n' ' ')" = "$oid_a $oid_b " ] || fail 'two-branch push did not lint each commit'
 
 printf 'pre-push fixture: signatures run first; the suite runs once per frontend key and is skipped on stamps, branch deletions, non-frontend pushes and explicit opt-out; dirty, foreign or failing runs refuse; the golangci-lint ratchet runs on Go changes only and honours its own opt-out\n'

@@ -254,7 +254,12 @@ minute). It applies the rules in `.golangci.yml`, chosen from findings that kept
 recurring in review (unchecked errors, `==` on errors, `http.Get` without a
 context, ignored `json.Marshal` errors, unsafe integer narrowing, subprocess
 arguments, file modes), and reports only issues on lines you changed since the
-merge base. Run it by hand with `scripts/ci/golangci-lint-new.sh hikyo-upstream/main`.
+merge base. It lints a temporary worktree at the pushed commit, so any branch
+can be pushed and uncommitted files are ignored; fetch `hikyo-upstream` first, as
+a stale base widens "new code". Only the default build for your platform is
+linted (files for another OS, or tagged `ui`, `k8se2e` or `floor*`, are not), and
+type errors are always reported in full. Run it by hand with
+`scripts/ci/golangci-lint-new.sh hikyo-upstream/main`.
 Set `HIKYO_PREPUSH_GOLANGCI=skip` to skip it for a WIP push; the advisory
 `ci-advisory-golangci` check still runs it on the pull request.
 

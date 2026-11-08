@@ -16,12 +16,30 @@ fail() {
 	exit 1
 }
 
+# Fake go: `go list` reports a package as buildable when its directory holds a
+# .go file whose name does not end in _ignored.go (standing in for build constraints).
+mkdir -p "$root/bin"
+cat >"$root/bin/go" <<'STUB'
+#!/bin/sh
+[ "$1" = list ] || exit 99
+[ ! -f "$GO_LIST_FAIL" ] || { echo 'stub: go list broke' >&2; exit 3; }
+for arg in "$@"; do dir=$arg; done
+for f in "$dir"/*.go; do
+	[ -e "$f" ] || continue
+	case "$f" in *_ignored.go) ;; *) echo y; exit 0 ;; esac
+done
+STUB
+chmod +x "$root/bin/go"
+PATH=$root/bin:$PATH
+GO_LIST_FAIL=$root/go-list-fail
+export GO_LIST_FAIL
+
 git init -q -b main "$repo"
 cd "$repo"
 git config user.name 'Fixture Author'
 git config user.email 'fixture@example.com'
 git config commit.gpgsign false
-mkdir -p scripts/ci a b gone testdata/x
+mkdir -p scripts/ci a b gone testdata/x docs-only ignored "with space" "café"
 cp "$script" scripts/ci/golangci-lint-new.sh
 cat >scripts/ci/run-go-tool.sh <<STUB
 #!/bin/sh
@@ -32,6 +50,11 @@ chmod +x scripts/ci/*.sh
 echo 'package a' >a/a.go
 echo 'package a' >a/extra.go
 echo 'package b' >b/b.go
+echo 'package d' >docs-only/d.go
+echo readme >docs-only/README.md
+echo 'package i' >ignored/i_ignored.go
+echo 'package s' >"with space/s.go"
+echo 'package c' >"café/c.go"
 echo 'package gone' >gone/g.go
 echo 'package x' >testdata/x/x.go
 echo 'package main' >main.go
@@ -62,7 +85,8 @@ run() { # exit status of the script against main, output in $out, args in $calls
 	return "$status"
 }
 expect_call() {
-	[ "$(cat "$calls")" = "golangci-lint run -j 2 --new-from-merge-base=main $1" ] || fail "run-go-tool got '$(cat "$calls")', want packages: $1"
+	want="golangci-lint run -j 2 --config $(cd "$repo/scripts/ci" && pwd)/../../.golangci.yml --new-from-merge-base=main $1"
+	[ "$(cat "$calls")" = "$want" ] || fail "run-go-tool got '$(cat "$calls")', want '$want'"
 }
 
 # 1. No Go inputs: nothing runs, exit 0.
@@ -87,6 +111,36 @@ git rm -q gone/g.go a/a.go
 git commit -q -m delete
 run || fail 'delete failed'
 expect_call './a'
+
+# 4b. A directory whose last Go file was deleted (a README remains), or whose
+# remaining files all fail build constraints, is not selected; a mix keeps the rest.
+git switch -q -c nogo main
+git rm -q docs-only/d.go
+echo '# x' >>ignored/i_ignored.go
+git add ignored/i_ignored.go
+git commit -q -m 'no go files left'
+run || fail 'no-go-files change failed'
+[ ! -s "$calls" ] || fail "ran the linter on '$(cat "$calls")'"
+grep -F 'nothing to lint' "$out" >/dev/null || fail 'nothing-to-lint message missing'
+git rm -q b/b.go
+git commit -q -m 'delete b'
+echo '# x' >>a/a.go
+git add a/a.go
+git commit -q -m 'edit a'
+run || fail 'mixed change failed'
+expect_call './a'
+
+# 4c. Directory names with spaces and non-ASCII characters stay single arguments.
+change "with space/s.go" "café/c.go"
+run || fail 'odd names failed'
+expect_call "./café ./with space"
+
+# 4d. A go list failure aborts instead of silently dropping the package.
+change a/a.go
+: >"$GO_LIST_FAIL"
+if run; then fail 'go list failure was swallowed'; fi
+grep -F 'go list failed' "$out" >/dev/null || fail 'go list failure message missing'
+rm "$GO_LIST_FAIL"
 
 # 5. Inputs that affect every package lint everything.
 for f in go.mod go.sum .golangci.yml scripts/ci/golangci-lint-version scripts/ci/golangci-lint-new.sh scripts/ci/run-go-tool.sh; do

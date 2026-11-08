@@ -92,18 +92,33 @@ require_storybook() {
 	mv "$stamps.$$" "$stamps" || return 1
 }
 
-# Lint the new Go code of the pushed commit $1 against $2 (the script reads HEAD).
+# Lint the new Go code of the pushed commit $1 against $2. It runs in a
+# temporary detached worktree at exactly that commit, so uncommitted or
+# untracked files and whichever branch is checked out never change the verdict.
 require_golangci() {
-	[ "$(git rev-parse HEAD)" = "$1" ] || {
-		printf 'pre-push: %s changes Go code, and the golangci-lint ratchet lints the checked-out tree.\n' "$1" >&2
-		printf 'pre-push: check out the branch you are pushing, then push again (HIKYO_PREPUSH_GOLANGCI=skip skips the ratchet).\n' >&2
-		return 1
-	}
 	printf 'pre-push: running the golangci-lint ratchet on new Go code (HIKYO_PREPUSH_GOLANGCI=skip skips it for WIP pushes)\n' >&2
-	"$repo_root/scripts/ci/golangci-lint-new.sh" "$2" </dev/null || {
-		printf 'pre-push: golangci-lint found issues in new code; fix them, or reproduce with scripts/ci/golangci-lint-new.sh %s\n' "$2" >&2
-		return 1
-	}
+	status=0
+	(
+		tmp=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-golangci.XXXXXX") || exit 1
+		# shellcheck disable=SC2329 # run by the EXIT trap
+		cleanup() {
+			cd "$repo_root" || :
+			git worktree remove --force "$tmp" >/dev/null 2>&1 || :
+			rm -rf "$tmp"
+			git worktree prune
+		}
+		trap cleanup EXIT
+		trap 'exit 1' HUP INT TERM
+		git worktree add -q --detach "$tmp" "$1" || exit 1
+		cd "$tmp" && "$repo_root/scripts/ci/golangci-lint-new.sh" "$2" </dev/null
+	) || status=$?
+	[ "$status" -ne 0 ] || return 0
+	if [ "$status" -eq 1 ]; then
+		printf 'pre-push: golangci-lint reported issues in the new code (or type errors, which are always reported in full); fix them, or reproduce with scripts/ci/golangci-lint-new.sh %s\n' "$2" >&2
+	else
+		printf 'pre-push: the golangci-lint ratchet could not complete (exit %s: tool build, package load or git failure, not a finding); reproduce with scripts/ci/golangci-lint-new.sh %s\n' "$status" "$2" >&2
+	fi
+	return 1
 }
 
 git rev-parse --verify "$base^{commit}" >/dev/null 2>&1 || {
