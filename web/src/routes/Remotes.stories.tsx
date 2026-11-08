@@ -15,7 +15,7 @@ const remote = { id: 'rem_00000000-0000-7000-8000-000000000001', name: 'Producti
 const responses = [
   { url: '/api/v1/instance/pairing-invites', body: { items: [], count: 0, origin: 'https://remote.example' } },
   { url: '/api/v1/instance/directory', body: directory },
-  { url: '/api/v1/meta', body: { server_version: '1.4.0', api_revision: 1, protocol_capabilities: [], instance_identity: 'storybook-local-instance' } satisfies z.input<typeof zMeta> },
+  { url: '/api/v1/meta', body: { server_version: '1.4.0', api_revision: 1, protocol_capabilities: [] } satisfies z.input<typeof zMeta> },
   { url: '/api/v1/instance/connections', body: zInstanceConnectionList.parse({ items: [], count: 0 }) },
   { url: '/api/v1/instance/workspace-origins', body: zWorkspaceOriginList.parse({ items: [], count: 0 }) },
 ];

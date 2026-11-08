@@ -329,7 +329,6 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		// The settings knob calls LowerEffectiveWindow, which is the Auth
 		// service's library; one Auth, so the window the knob writes and the
 		// window the reveal guard reads cannot come from two configurations.
-		Discovery:       &service.Discovery{DB: db},
 		Settings:        &service.ProjectSettings{DB: db, Auth: authSvc, MaxKeysPerProject: cfg.MaxKeysPerProject, DefaultKeysPerProject: cfg.DefaultKeysPerProject},
 		Retention:       retentionSvc,
 		RetentionHealth: retentionSvc,

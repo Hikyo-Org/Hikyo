@@ -40,8 +40,7 @@ before exporting evidence. A chart label or an image tag is not runtime identity
 
 Read `GET /api/v1/meta` through ordinary verified public HTTPS, without a cookie
 jar or Authorization header. Record `server_version` and `api_revision` only.
-`GetMeta` can also emit `instance_identity` when Discovery is configured; do not
-publish that identifier. The handler's [source](../../internal/server/api.go) and
+The handler's [source](../../internal/server/api.go) and
 the [OpenAPI schema](../../api/openapi.yaml) govern the shape, not a minimal
 three-field fixture or an old screenshot. Record public runtime availability
 separately; a successful metadata request is not a readiness/restore proof.

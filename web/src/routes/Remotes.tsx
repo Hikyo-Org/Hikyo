@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { generatePath, Link } from 'react-router';
 
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
-import { useInstanceIdentity } from '../api/discovery.ts';
 import { ApiError } from '../api/client.ts';
 import { isoDay } from '../api/identities.ts';
 import { useProjects } from '../api/settings.ts';
@@ -517,7 +516,8 @@ function RenameRemotePanel({
 
 /** The "Add a remote" card: what a remote needs, and the button that opens the form. */
 function AddRemoteCard() {
-  const identity = useInstanceIdentity();
+  // Authenticated under instance-directory; the pre-auth meta read carries no identity.
+  const identity = useInstanceDirectory().data?.identity;
   return (
     <section className="card" aria-labelledby="add-remote-title">
       <h2 id="add-remote-title">Add a remote</h2>
@@ -526,7 +526,7 @@ function AddRemoteCard() {
         connection. It replaces the certificate authority as the trust root, which is what makes a
         self-signed instance on your own network safe to point at.
       </p>
-      {identity.data == null ? null : <p>This instance: <span className="mono">{identity.data}</span>. The server refuses this identity even through another URL.</p>}
+      {identity === undefined ? null : <p>This instance: <span className="mono">{identity}</span>. The server refuses this identity even through another URL.</p>}
       <PanelForm opener="Add a remote" variant="primary" readOnlySafe={false}>
         {(close) => <AddRemote onAdded={close} />}
       </PanelForm>
@@ -536,7 +536,8 @@ function AddRemoteCard() {
 
 /** AddRemote is the add form itself: it opens in the side panel. */
 export function AddRemote({ onAdded }: { onAdded?: () => void } = {}) {
-  const identity = useInstanceIdentity();
+  // Authenticated under instance-directory; the pre-auth meta read carries no identity.
+  const identity = useInstanceDirectory().data?.identity;
   const add = useAddRemote();
   const remotes = useRemotes();
   const [name, setName] = useState('');
@@ -590,7 +591,7 @@ export function AddRemote({ onAdded }: { onAdded?: () => void } = {}) {
 
   return (
     <>
-      {identity.data == null ? null : <p>This instance: <span className="mono">{identity.data}</span>. A URL that reaches it is refused.</p>}
+      {identity === undefined ? null : <p>This instance: <span className="mono">{identity}</span>. A URL that reaches it is refused.</p>}
       <form className="form" onSubmit={onSubmit} aria-label="Add a remote" noValidate>
         {/* Whole-form refusals only: a refusal that names the URL is rendered
             under the URL control as its error. */}

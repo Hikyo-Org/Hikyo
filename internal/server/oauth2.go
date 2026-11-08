@@ -104,8 +104,11 @@ func (a *API) Oauth2Callback(ctx context.Context, req apigen.Oauth2CallbackReque
 		}
 	}
 	result, err := a.Auth.OAuth2Callback(ctx, string(req.Provider), code, state, iss, idpErr, bindingCookie, bearer(ctx))
-	if !result.Browser && errors.Is(err, admission.ErrOverloaded) && browserPurpose != "" {
-		result = service.OIDCCallbackResult{Browser: true, Purpose: browserPurpose, State: state}
+	if err != nil {
+		// A refusal's shape and purpose come only from the caller's own marker
+		// cookie, never from the transaction, so a presented state reveals
+		// neither its existence nor its purpose.
+		result = service.OIDCCallbackResult{Browser: browserPurpose != "", Purpose: browserPurpose, State: state}
 	}
 	if result.Browser {
 		errorCode := ""
