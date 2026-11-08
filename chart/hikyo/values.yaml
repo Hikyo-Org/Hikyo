@@ -216,6 +216,10 @@ releaseTrust:
     enabled: false
     mode: keyed
 
+# A memory limit must hold the pre-authentication admission budget
+# (HIKYO_ADMISSION_BUDGET_MIB, 272 MiB by default) plus about 128 MiB of
+# working set, divided by 0.8: the server sets its Go memory limit to 80% of a
+# detected container limit. Allow at least 512Mi; 1Gi leaves headroom.
 resources: {}
 
 operator:
