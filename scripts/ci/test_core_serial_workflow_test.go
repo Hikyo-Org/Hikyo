@@ -68,8 +68,9 @@ func normalizeTestCoreSerial(workflow map[string]map[string]any) error {
 
 // Merge groups run the protected base's checker and registry against the
 // candidate's ci.yml. A base that predates test_core_serial must still accept a
-// candidate whose serial job really ran, and must never accept one whose job
-// failed, was cancelled, was skipped while planned, or is missing.
+// candidate whose serial job really ran or was skipped by a docs-only plan, and
+// must never accept one whose job failed, was cancelled, was skipped while
+// planned, ran while unplanned, or is missing.
 func TestTestCoreSerialTrustedBaseMigration(t *testing.T) {
 	root := repositoryRoot(t)
 	var ci mainValidationWorkflow
@@ -105,15 +106,16 @@ func TestTestCoreSerialTrustedBaseMigration(t *testing.T) {
 		t.Fatalf("test_core_serial must be directly required by the test plan, got %+v", rule)
 	}
 	for _, baseKind := range []string{"current", "predates-serial"} {
-		for _, scenario := range []string{"full-success", "failure", "cancelled", "skipped", "missing"} {
+		for _, scenario := range []string{"full-success", "failure", "cancelled", "skipped", "missing", "docs-only", "docs-only-ran"} {
 			t.Run(baseKind+"/"+scenario, func(t *testing.T) {
 				base := cloneRegistry(t, current)
 				if baseKind == "predates-serial" {
 					delete(base.Jobs, "test_core_serial")
 				}
 				plan := make(map[string]bool)
+				docsOnly := strings.HasPrefix(scenario, "docs-only")
 				for _, key := range current.PathClasses["full"] {
-					plan[key] = true
+					plan[key] = !docsOnly || key == "docs"
 				}
 				results := make(map[string]map[string]string)
 				for name, rule := range current.Jobs {
@@ -136,6 +138,8 @@ func TestTestCoreSerialTrustedBaseMigration(t *testing.T) {
 					results["test_core_serial"]["result"] = scenario
 				case "missing":
 					delete(results, "test_core_serial")
+				case "docs-only-ran":
+					results["test_core_serial"]["result"] = "success"
 				}
 				encode := func(value any) []byte {
 					t.Helper()
@@ -168,6 +172,13 @@ func TestTestCoreSerialTrustedBaseMigration(t *testing.T) {
 				}
 				write("check-required-jobs.sh", checker)
 				write("ci-job-registry.json", encode(base))
+				if docsOnly {
+					// The base planner authorizes a docs-only merge group; the
+					// trusted checker then validates it as merge_group_docs.
+					decision := encode(map[string]any{"mode": "docs", "plan": plan})
+					write("plan-merge-group.sh", []byte("#!/bin/sh\nprintf '%s\\n' '"+string(decision)+"'\n"))
+					write("classify-changed-paths.sh", []byte("#!/bin/sh\nexit 0\n"))
+				}
 				git("init", "--quiet")
 				git("add", "scripts/ci")
 				baseTree := git("write-tree")
@@ -179,7 +190,7 @@ func TestTestCoreSerialTrustedBaseMigration(t *testing.T) {
 				cmd.Env = append(os.Environ(), "RUNNER_TEMP="+t.TempDir(), "GITHUB_EVENT_NAME=merge_group",
 					"BASE_SHA="+baseTree, "NEEDS_JSON="+string(encode(results)), "PLAN_JSON="+string(encode(plan)))
 				out, err := cmd.CombinedOutput()
-				accept := scenario == "full-success"
+				accept := scenario == "full-success" || scenario == "docs-only"
 				if (err == nil) != accept {
 					t.Fatalf("accepted %v want %v: %s", err == nil, accept, out)
 				}
