@@ -252,10 +252,11 @@ The hook also runs `scripts/ci/golangci-lint-new.sh` when a push changes Go code
 (the first run builds the pinned golangci-lint; later runs take well under a
 minute). It applies the rules in `.golangci.yml`, chosen from findings that kept
 recurring in review (unchecked errors, `==` on errors, `http.Get` without a
-context, ignored `json.Marshal` errors, unsafe integer narrowing, subprocess
+context, ignored `json.Marshal` errors, staticcheck
+`SA*` bugs plus `QF1001` and `QF1003` (not its style checks), unsafe integer narrowing, subprocess
 arguments, file modes), and reports only issues on lines you changed since the
 merge base. It lints a temporary worktree at the pushed commit, so any branch
-can be pushed from any worktree, and uncommitted files and local edits to
+can be pushed from any worktree, and uncommitted files and uncommitted local edits to
 `.golangci.yml` are ignored (the pushed commit's config, pin and script apply); fetch `hikyo-upstream` first, as
 a stale base widens "new code". Only the default build for your platform is
 linted (files for another OS, or tagged `ui`, `k8se2e` or `floor*`, are not), and

@@ -2,6 +2,7 @@ package ci_test
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -209,5 +210,94 @@ func TestGolangciPackageSelectionFixture(t *testing.T) {
 	output, err := exec.CommandContext(t.Context(), "sh", filepath.Join(repositoryRoot(t), "scripts/ci/golangci-lint-new_test.sh")).CombinedOutput()
 	if err != nil {
 		t.Fatalf("golangci-lint-new fixture failed: %v\n%s", err, output)
+	}
+}
+
+// golangciConfig is the whole of .golangci.yml; unknown keys are rejected so
+// no setting can be added without this test noticing.
+type golangciConfig struct {
+	Version string `yaml:"version"`
+	Linters struct {
+		Default  string   `yaml:"default"`
+		Enable   []string `yaml:"enable"`
+		Settings struct {
+			Staticcheck struct {
+				Checks []string `yaml:"checks"`
+			} `yaml:"staticcheck"`
+			Gosec struct {
+				Includes []string `yaml:"includes"`
+			} `yaml:"gosec"`
+		} `yaml:"settings"`
+		Exclusions struct {
+			Rules []struct {
+				Path    string   `yaml:"path"`
+				Linters []string `yaml:"linters"`
+			} `yaml:"rules"`
+		} `yaml:"exclusions"`
+	} `yaml:"linters"`
+	Issues struct {
+		MaxPerLinter int `yaml:"max-issues-per-linter"`
+		MaxSame      int `yaml:"max-same-issues"`
+	} `yaml:"issues"`
+}
+
+func golangciConfigProblems(raw string) []string {
+	var config golangciConfig
+	decoder := yaml.NewDecoder(strings.NewReader(raw))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&config); err != nil {
+		return []string{"decode: " + err.Error()}
+	}
+	var problems []string
+	check := func(name string, got, want any) {
+		if !reflect.DeepEqual(got, want) {
+			problems = append(problems, fmt.Sprintf("%s is %v, want %v", name, got, want))
+		}
+	}
+	enabled := slices.Clone(config.Linters.Enable)
+	slices.Sort(enabled)
+	check("version", config.Version, "2")
+	check("linters.default", config.Linters.Default, "none")
+	check("linters.enable", enabled, []string{"errcheck", "errchkjson", "errorlint", "gosec", "noctx", "staticcheck", "unused", "wastedassign"})
+	// A configured list replaces staticcheck's default of SA, S, ST and QF.
+	check("staticcheck.checks", config.Linters.Settings.Staticcheck.Checks, []string{"SA*", "QF1001", "QF1003"})
+	check("gosec.includes", config.Linters.Settings.Gosec.Includes, []string{"G115", "G204", "G306"})
+	check("exclusion rules", len(config.Linters.Exclusions.Rules), 1)
+	if len(config.Linters.Exclusions.Rules) == 1 {
+		check("exclusion path", config.Linters.Exclusions.Rules[0].Path, `_test\.go`)
+		check("exclusion linters", config.Linters.Exclusions.Rules[0].Linters, []string{"gosec"})
+	}
+	check("max-issues-per-linter", config.Issues.MaxPerLinter, 0)
+	check("max-same-issues", config.Issues.MaxSame, 0)
+	return problems
+}
+
+func TestGolangciConfigIsPinned(t *testing.T) {
+	raw := readRepoFile(t, ".golangci.yml")
+	for _, problem := range golangciConfigProblems(raw) {
+		t.Error(problem)
+	}
+	for name, mutate := range map[string]func(string) string{
+		"extra linter":   func(s string) string { return strings.Replace(s, "    - gosec\n", "    - gosec\n    - revive\n", 1) },
+		"dropped linter": func(s string) string { return strings.Replace(s, "    - noctx\n", "", 1) },
+		"default staticcheck": func(s string) string {
+			return strings.Replace(s, `      checks: ["SA*", "QF1001", "QF1003"]`+"\n", "", 1)
+		},
+		"widened staticcheck": func(s string) string { return strings.Replace(s, `"QF1003"`, `"QF*"`, 1) },
+		"widened gosec":       func(s string) string { return strings.Replace(s, "[G115, G204, G306]", "[G115, G204, G306, G104]", 1) },
+		"gosec on tests":      func(s string) string { return strings.Replace(s, "linters: [gosec]", "linters: [unused]", 1) },
+		"default linters on":  func(s string) string { return strings.Replace(s, "default: none", "default: standard", 1) },
+		"issue cap": func(s string) string {
+			return strings.Replace(s, "max-issues-per-linter: 0", "max-issues-per-linter: 50", 1)
+		},
+		"formatters section": func(s string) string { return s + "formatters:\n  enable: [gofmt]\n" },
+	} {
+		mutated := mutate(raw)
+		if mutated == raw {
+			t.Fatalf("%s: mutation did not change the config", name)
+		}
+		if len(golangciConfigProblems(mutated)) == 0 {
+			t.Errorf("%s: config drift went undetected", name)
+		}
 	}
 }

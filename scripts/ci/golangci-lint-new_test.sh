@@ -178,4 +178,34 @@ case "$(cat "$calls")" in
 	*) fail "config-less run-go-tool got '$(cat "$calls")'" ;;
 esac
 
+# 9. A failing `git diff` is a setup failure (64), never "nothing to lint":
+# the shim fails the Nth diff call and passes everything else through.
+real_git=$(command -v git)
+mkdir -p "$root/shim"
+cat >"$root/shim/git" <<STUB
+#!/bin/sh
+for arg in "\$@"; do
+	if [ "\$arg" = diff ]; then
+		n=\$(cat "$root/diff-calls" 2>/dev/null || echo 0)
+		echo \$((n + 1)) >"$root/diff-calls"
+		[ "\$((n + 1))" != "\$FAIL_DIFF" ] || { echo 'stub: git diff broke' >&2; exit 1; }
+	fi
+done
+exec "$real_git" "\$@"
+STUB
+chmod +x "$root/shim/git"
+change a/a.go
+for nth in 1 2; do
+	: >"$calls"
+	rm -f "$root/diff-calls"
+	set +e
+	FAIL_DIFF=$nth PATH=$root/shim:$PATH sh scripts/ci/golangci-lint-new.sh main >"$out" 2>&1
+	status=$?
+	set -e
+	[ "$status" = 64 ] || fail "failing git diff #$nth exited $status, want 64"
+	grep -F 'git diff failed' "$out" >/dev/null || fail "failing git diff #$nth message missing"
+	[ ! -s "$calls" ] || fail "failing git diff #$nth still ran the linter"
+	grep -F 'nothing to lint' "$out" >/dev/null && fail "failing git diff #$nth read as nothing to lint"
+done
+
 printf 'golangci-lint-new fixture: selects changed package directories, lints everything for config changes, skips deletions and testdata, propagates failure\n'

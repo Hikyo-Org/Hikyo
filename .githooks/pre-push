@@ -120,7 +120,7 @@ require_golangci() {
 			git worktree remove --force "$tmp" >/dev/null 2>&1 || { rm -rf "$tmp"; git worktree prune; }
 		}
 		trap cleanup EXIT
-		trap 'exit 64' HUP INT TERM
+		trap 'exit 130' HUP INT TERM
 		git worktree add -q --detach "$tmp" "$1" || exit 64
 		ratchet=$tmp/scripts/ci/golangci-lint-new.sh
 		[ -e "$ratchet" ] || ratchet=$repo_root/scripts/ci/golangci-lint-new.sh
@@ -128,9 +128,9 @@ require_golangci() {
 	) || status=$?
 	[ "$status" -ne 0 ] || return 0
 	if [ "$status" -eq 64 ]; then
-		printf 'pre-push: the golangci-lint ratchet could not start or finish its setup (worktree, merge base or package listing); reproduce with scripts/ci/golangci-lint-new.sh %s\n' "$2" >&2
+		printf 'pre-push: the golangci-lint ratchet could not start or finish its setup (worktree, merge base or package listing); reproduce: check out %s (detached) and run scripts/ci/golangci-lint-new.sh %s\n' "$1" "$2" >&2
 	else
-		printf 'pre-push: golangci-lint reported issues or could not run; see the output above, or reproduce with scripts/ci/golangci-lint-new.sh %s\n' "$2" >&2
+		printf 'pre-push: golangci-lint reported issues or could not run; see the output above, or reproduce: check out %s (detached) and run scripts/ci/golangci-lint-new.sh %s\n' "$1" "$2" >&2
 	fi
 	return 1
 }

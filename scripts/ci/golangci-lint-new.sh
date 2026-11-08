@@ -19,9 +19,12 @@ fail() {
 
 [ "$#" -eq 1 ] || { printf 'usage: %s BASE\n' "$0" >&2; exit 2; }
 base=$1
-script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
+script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd) || fail 'cannot locate this script'
 config=$script_dir/../../.golangci.yml
-cd "$(git rev-parse --show-toplevel)"
+# Every command whose status matters is run on its own, never inside a test or
+# a pipeline, where its failure would read as "no changes".
+top=$(git rev-parse --show-toplevel) || fail 'not inside a git work tree'
+cd "$top" || fail "cannot enter $top"
 
 merge_base=$(git merge-base "$base" HEAD) || fail "no merge base between $base and HEAD; fetch $base first"
 
@@ -30,14 +33,22 @@ merge_base=$(git merge-base "$base" HEAD) || fail "no merge base between $base a
 everything='go.mod go.sum .golangci.yml scripts/ci/golangci-lint-version scripts/ci/golangci-lint-new.sh scripts/ci/run-go-tool.sh'
 
 # shellcheck disable=SC2086 # the paths contain no whitespace or glob characters
-if [ -n "$(git diff --name-only "$merge_base" HEAD -- $everything)" ]; then
+changed_inputs=$(git diff --name-only "$merge_base" HEAD -- $everything) || fail "git diff failed against $merge_base"
+if [ -n "$changed_inputs" ]; then
 	set -- ./...
 else
-	dirs=$(mktemp "${TMPDIR:-/tmp}/golangci-dirs.XXXXXX") || fail 'cannot create a temporary file'
-	trap 'rm -f "$dirs"' EXIT HUP INT TERM
+	files=$(mktemp "${TMPDIR:-/tmp}/golangci-files.XXXXXX") || fail 'cannot create a temporary file'
+	dirs=$(mktemp "${TMPDIR:-/tmp}/golangci-dirs.XXXXXX") || { rm -f "$files"; fail 'cannot create a temporary file'; }
+	trap 'rm -f "$files" "$dirs" "$dirs.raw"' EXIT
+	trap 'exit 130' HUP INT TERM
 	# Directories of every changed Go file (names with newlines are unsupported).
-	git -c core.quotePath=false diff --name-only "$merge_base" HEAD -- '*.go' |
-		while IFS= read -r file; do dirname "$file"; done | sort -u >"$dirs"
+	git -c core.quotePath=false diff --name-only "$merge_base" HEAD -- '*.go' >"$files" || fail "git diff failed against $merge_base"
+	while IFS= read -r file; do
+		dir=$(dirname "$file") || fail "dirname failed for $file"
+		printf '%s\n' "$dir"
+	done <"$files" >"$dirs.raw" || fail 'cannot list changed directories'
+	sort -u "$dirs.raw" >"$dirs" || fail 'cannot sort changed directories'
+	rm -f "$dirs.raw"
 	set --
 	while IFS= read -r dir; do
 		# Gone with its last file, or only testdata: nothing to load.
@@ -50,7 +61,7 @@ else
 		[ -n "$buildable" ] || continue
 		if [ "$dir" = . ]; then set -- "$@" .; else set -- "$@" "./$dir"; fi
 	done <"$dirs"
-	rm -f "$dirs"
+	rm -f "$files" "$dirs"
 	if [ "$#" -eq 0 ]; then
 		printf 'golangci-lint-new: no lintable Go inputs changed since %s; nothing to lint\n' "$base" >&2
 		exit 0

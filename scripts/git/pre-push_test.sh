@@ -423,6 +423,18 @@ lw_push other-noscript:other-noscript || fail 'script-less commit was refused'
 expect_count golangci $((before + 1))
 [ "$(last 2)" = "$(git rev-parse other-noscript)" ] || fail 'fallback script linted the wrong commit'
 [ "$(marker)" = checkout ] || fail "fallback ran the $(marker) copy, want the pushing checkout's"
+# A pushed commit with neither the script nor a .golangci.yml: the fallback
+# script gets --config pointing at the pushing checkout's real config file.
+git switch -q -c other-noboth other-good
+git rm -q scripts/ci/golangci-lint-new.sh .golangci.yml
+git commit -q -m 'drop the script and the config'
+git switch -q go
+lw_push other-noboth:other-noboth || fail 'commit without script and config was refused'
+cfg_arg=$(config)
+case "$cfg_arg" in "--config "*) ;; *) fail "expected a --config argument, got '$cfg_arg'" ;; esac
+cfg_path=${cfg_arg#--config }
+[ -f "$cfg_path" ] || fail "--config points at a missing file: $cfg_path"
+[ "$(cd "$(dirname "$cfg_path")" && pwd -P)" = "$(cd "$root/lw" && pwd -P)" ] || fail "--config is not the pushing checkout's config: $cfg_path"
 # A committed script without its executable bit fails closed, as in CI, which
 # runs it directly: the push is refused, not silently run through the fallback.
 git switch -q -c other-nox other-good

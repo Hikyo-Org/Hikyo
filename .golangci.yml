@@ -14,6 +14,10 @@ linters:
     - staticcheck
     - gosec
   settings:
+    # A configured list replaces staticcheck's default (SA, S, ST and QF checks);
+    # only the checks that recurred in review are kept, not style suggestions.
+    staticcheck:
+      checks: ["SA*", "QF1001", "QF1003"]
     gosec:
       includes: [G115, G204, G306]
   exclusions:
