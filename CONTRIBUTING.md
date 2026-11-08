@@ -235,13 +235,18 @@ for the checks and limits. The signed-commit pre-push hook remains installed.
 The local feedback helper is optional and does not authorize merge. Hosted
 useful feedback must pass before queue admission.
 
-The pre-push hook also runs `scripts/ci/storybook-suite.sh` (about 4 minutes the
-first time, then cached per exact input bytes) when a push changes `web/`,
-`clients/ts/`, `.nvmrc`, the root `package.json`, that script or
-`docs/site/scripts/test-csp.mjs`. It refuses unless the pushed branch is checked
-out and clean (no modified or untracked files under those inputs, and no `.env*`
-files under `web/` or `clients/ts/`). Set `HIKYO_PREPUSH_STORYBOOK=skip` to skip only that suite for a
-WIP push; CI still runs it, and signature checks cannot be skipped.
+The pre-push hook also runs `scripts/ci/storybook-suite.sh` when a push changes
+`web/`, `clients/ts/`, `.nvmrc`, the root `package.json`, that script or
+`docs/site/scripts/test-csp.mjs`. If the suite already passed in this clone for
+the exact pushed bytes and file modes of those inputs, the hook accepts the push
+without looking at the checkout. Otherwise it runs the suite (about 4 minutes) in
+the current checkout, which must hold exactly the pushed inputs: the same
+committed versions, no modified or untracked files under them, and no `.env*`
+files under `web/` or `clients/ts/`. The checkout need not be the pushed branch,
+and an accepted push does not mean the current checkout is clean. The suite
+needs the pinned Chromium: run `pnpm --dir web run e2e:install` once. Set
+`HIKYO_PREPUSH_STORYBOOK=skip` to skip only that suite for a WIP push; CI still
+runs it, and signature checks cannot be skipped.
 
 ## Continuous integration
 

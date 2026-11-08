@@ -3,13 +3,13 @@ set -eu
 
 _remote_name=$1
 repo_root=$(git rev-parse --show-toplevel)
-zero=0000000000000000000000000000000000000000
 base=refs/remotes/hikyo-upstream/main
 dev=refs/remotes/hikyo-upstream/dev
 # Everything the Storybook suite reads from the repository (see
 # scripts/ci/storybook-suite.sh): web and the client package it aliases, the
 # Node and pnpm pins, the suite itself and the CSP checker build:demo runs.
-# ci-storybook.yml triggers on exactly this list (plus its own file); a Go test
+# ci-storybook.yml triggers on exactly this list (plus its own file and setup
+# helpers); a Go test
 # keeps them equal.
 storybook_paths='web clients/ts .nvmrc package.json scripts/ci/storybook-suite.sh docs/site/scripts/test-csp.mjs'
 
@@ -21,11 +21,12 @@ case "${HIKYO_PREPUSH_STORYBOOK:-}" in
 		;;
 esac
 
-# Hash of the bytes of every Storybook input at REV; equal keys mean equal inputs.
+# Hash of every Storybook input at REV, bytes and file modes (a tree entry
+# carries both), so a mode-only change such as a non-executable suite is a new key.
 storybook_key() {
-	for path in $storybook_paths; do
-		printf '%s %s\n' "$path" "$(git rev-parse --verify --quiet "$1:$path" || printf absent)"
-	done | git hash-object --stdin
+	# shellcheck disable=SC2086 # the paths contain no whitespace or glob characters
+	entries=$(git ls-tree "$1" -- $storybook_paths) || return 1
+	printf '%s\n' "$entries" | git hash-object --stdin
 }
 
 # Succeed only when the working tree holds exactly the bytes with key $1.
@@ -56,7 +57,7 @@ require_storybook() {
 	}
 	printf 'pre-push: running the Storybook suite (about 4 minutes; HIKYO_PREPUSH_STORYBOOK=skip skips it for WIP pushes)\n' >&2
 	(cd "$repo_root" && scripts/ci/storybook-suite.sh </dev/null) || {
-		printf 'pre-push: the Storybook suite failed; fix it before pushing\n' >&2
+		printf 'pre-push: the Storybook suite failed; fix it before pushing (if its browser is missing, run pnpm --dir web run e2e:install once)\n' >&2
 		return 1
 	}
 	# Edits made while the suite ran must not be stamped.
@@ -77,11 +78,12 @@ git rev-parse --verify "$base^{commit}" >/dev/null 2>&1 || {
 }
 
 while read -r local_ref local_oid remote_ref _remote_oid; do
-	# An all-zero local object is a deletion. Otherwise check a push whose local
+	# Git marks a deletion with a (delete) local ref and an all-zero object of the
+	# repository's hash length, 40 or 64. Otherwise check a push whose local
 	# OR remote ref is a branch: `git push origin HEAD` and SHA pushes name only
 	# the remote branch, `main:refs/tags/v1` only the local one. Tag-to-tag pushes
 	# stay unchecked, as before.
-	[ "$local_oid" != "$zero" ] || continue
+	[ "$local_ref" != "(delete)" ] || continue
 	case "$local_ref:$remote_ref" in
 		refs/heads/*:* | *:refs/heads/*) ;;
 		*) continue ;;

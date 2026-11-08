@@ -65,8 +65,10 @@ but it is not a substitute for this signature.
   when that leaves fewer, and each branch being pushed. Keep the hook installed; do not bypass it with `--no-verify`.
 - The hook also runs `scripts/ci/storybook-suite.sh` (about 4 minutes) when a push
   changes `web/`, `clients/ts/`, `.nvmrc`, the root `package.json`, that script or
-  `docs/site/scripts/test-csp.mjs`; a pass is cached per exact input bytes. Push
-  from a clean checkout of the branch (no changes to those inputs, no `.env*` files under `web/` or `clients/ts/`).
+  `docs/site/scripts/test-csp.mjs`; a pass is cached per exact input bytes and modes,
+  and a cached pass skips the checkout checks. Otherwise push from a clean checkout
+  holding the pushed inputs (no changes to them, no `.env*` files under `web/` or
+  `clients/ts/`). Install its browser once with `pnpm --dir web run e2e:install`.
   For WIP pushes only, set `HIKYO_PREPUSH_STORYBOOK=skip`; CI still runs the suite.
   Signatures are never skippable.
 - For `web/` changes, also run the affected flow specs before requesting review and

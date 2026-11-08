@@ -144,6 +144,8 @@ expect_count suite "$before"
 # 8. Branch deletions are ignored entirely, even with a failing signature stub.
 : >"$logs/sig-fail"
 printf '(delete) %s refs/heads/gone %s\n' "$zero" "$base" | sh .githooks/pre-push origin url >"$out" 2>&1 || fail 'deletion was refused'
+# SHA-256 repositories send a 64-zero object for the deletion.
+printf '(delete) %s%s refs/heads/gone %s\n' "$zero" "$(printf '%024d' 0)" "$base" | sh .githooks/pre-push origin url >"$out" 2>&1 || fail 'SHA-256 deletion was refused'
 rm "$logs/sig-fail"
 
 # 9. Linked worktrees share the stamps and need their own clean checkout.
@@ -234,5 +236,15 @@ git switch -q -c pkg "$base"
 commit_change package.json
 expect_ok pkg
 expect_count suite $((before + 1))
+
+# 16. A mode-only change is a new key: a non-executable suite cannot reuse
+# the pass stamped for the same bytes, and fails when the hook runs it.
+git switch -q -c mode pkg
+chmod -x scripts/ci/storybook-suite.sh
+git add scripts/ci/storybook-suite.sh
+git commit -q -m 'drop the suite executable bit'
+before=$(count suite)
+expect_refused 'the Storybook suite failed' mode
+expect_count suite "$before"
 
 printf 'pre-push fixture: signatures run first; the suite runs once per frontend key and is skipped on stamps, branch deletions, non-frontend pushes and explicit opt-out; dirty, foreign or failing runs refuse\n'

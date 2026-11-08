@@ -106,6 +106,10 @@ var storybookStepFunction = []string{
 
 const storybookLoopBanner = `printf '==> web: every linked design image ships in the static build\n' >&2`
 
+// storybookWorkflowOnlyPaths trigger the advisory workflow but are not suite
+// inputs the pre-push hook keys on: the workflow's setup helpers and itself.
+var storybookWorkflowOnlyPaths = []string{"scripts/ci/install-corepack.sh", "scripts/ci/export-pnpm-cache.sh", storybookAdvisoryPath}
+
 func scriptCodeLines(script string) []string {
 	var lines []string
 	for _, line := range nonBlankTrimmed(script) {
@@ -150,6 +154,11 @@ var storybookPrelude = []string{
 // command and the closing design image loop.
 func storybookScriptProblems(script string, wantCommands, wantLoop []string) []string {
 	var problems []string
+	// The hook and workflow execute the script directly, so its interpreter is
+	// part of the suite: `#!/bin/true` would pass without running anything.
+	if first, _, _ := strings.Cut(script, "\n"); first != "#!/bin/sh" {
+		problems = append(problems, fmt.Sprintf("the interpreter line is %q, want \"#!/bin/sh\"", first))
+	}
 	lines := scriptCodeLines(script)
 	start := slices.Index(lines, storybookStepFunction[0])
 	if start < 0 {
@@ -308,9 +317,10 @@ func TestStorybookSuiteScriptDriftIsDetected(t *testing.T) {
 		"keyword function": func(s string) string {
 			return strings.Replace(s, "step() {", "function pnpm { :; }\nstep() {", 1)
 		},
-		"trap":        func(s string) string { return strings.Replace(s, "step() {", "trap '' ERR\nstep() {", 1) },
-		"PATH shim":   func(s string) string { return strings.Replace(s, "step() {", "PATH=/tmp/shims:$PATH\nstep() {", 1) },
-		"soft fail()": func(s string) string { return strings.Replace(s, "\texit 1\n}", "\texit 0\n}", 1) },
+		"trap":              func(s string) string { return strings.Replace(s, "step() {", "trap '' ERR\nstep() {", 1) },
+		"PATH shim":         func(s string) string { return strings.Replace(s, "step() {", "PATH=/tmp/shims:$PATH\nstep() {", 1) },
+		"soft fail()":       func(s string) string { return strings.Replace(s, "\texit 1\n}", "\texit 0\n}", 1) },
+		"no-op interpreter": func(s string) string { return strings.Replace(s, "#!/bin/sh\n", "#!/bin/true\n", 1) },
 		"altered helper": func(s string) string {
 			return strings.Replace(s, `(cd "$dir" && "$@")`, `(cd "$dir" && "$@" || true)`, 1)
 		},
@@ -417,7 +427,7 @@ func TestStorybookAdvisoryWorkflow(t *testing.T) {
 	if !reflect.DeepEqual(trigger.Types, []string{"opened", "synchronize", "reopened"}) {
 		t.Errorf("pull_request types %v", trigger.Types)
 	}
-	wantPaths := []string{"web/**", "clients/ts/**", ".nvmrc", "package.json", "docs/site/scripts/test-csp.mjs", storybookSuiteScript, storybookAdvisoryPath}
+	wantPaths := append([]string{"web/**", "clients/ts/**", ".nvmrc", "package.json", "docs/site/scripts/test-csp.mjs", storybookSuiteScript}, storybookWorkflowOnlyPaths...)
 	if !reflect.DeepEqual(trigger.Paths, wantPaths) {
 		t.Errorf("pull_request paths %v, want %v", trigger.Paths, wantPaths)
 	}
@@ -546,7 +556,7 @@ func TestPrePushKeyPathsMatchAdvisoryTriggerPaths(t *testing.T) {
 	}
 	var triggers []string
 	for _, path := range workflow.On.PullRequest.Paths {
-		if path != storybookAdvisoryPath {
+		if !slices.Contains(storybookWorkflowOnlyPaths, path) {
 			triggers = append(triggers, strings.TrimSuffix(path, "/**"))
 		}
 	}

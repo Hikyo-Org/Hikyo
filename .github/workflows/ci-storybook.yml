@@ -18,6 +18,9 @@ on:
       - package.json
       - docs/site/scripts/test-csp.mjs
       - scripts/ci/storybook-suite.sh
+      # Workflow-only setup helpers; the pre-push hook does not run them.
+      - scripts/ci/install-corepack.sh
+      - scripts/ci/export-pnpm-cache.sh
       - .github/workflows/ci-storybook.yml
 
 permissions:
