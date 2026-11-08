@@ -37,12 +37,16 @@ function remoteList(items: readonly (typeof peer)[]): Response {
   });
 }
 
-async function renderAddRemote(items: readonly (typeof peer)[], refusal?: string) {
+async function renderAddRemote(items: readonly (typeof peer)[], refusal?: string, directoryStatus = 200) {
   const fetchMock = vi.fn((request: RequestInfo | URL) => {
     const method = request instanceof Request ? request.method : 'GET';
     if (method === 'GET') {
       const url = request instanceof Request ? request.url : String(request);
-      if (new URL(url).pathname === '/api/v1/meta') return Promise.resolve(Response.json({ instance_identity: 'local-instance' }));
+      if (new URL(url).pathname === '/api/v1/instance/directory') {
+        return Promise.resolve(directoryStatus === 200
+          ? Response.json({ identity: 'local-instance', version: 'test', orgs: [], org_count: 0, project_count: 0 })
+          : Response.json({ error: { code: 'forbidden', message: 'Forbidden' } }, { status: directoryStatus }));
+      }
       return Promise.resolve(remoteList(items));
     }
     if (refusal !== undefined) return Promise.resolve(Response.json({ error: { code: 'conflict', message: 'Conflict', detail: refusal } }, { status: 409 }));
@@ -123,9 +127,16 @@ describe('UpdateJobStatus', () => {
 });
 
 describe('AddRemote', () => {
+  it('omits the identity line for a caller without instance-directory', async () => {
+    const { container } = await renderAddRemote([], undefined, 403);
+    expect(container.textContent).not.toContain('This instance:');
+  });
+
   it('names the identity refusal when another URL resolves to this instance', async () => {
-    const { container } = await renderAddRemote([], 'self_connected');
+    const { container, fetchMock } = await renderAddRemote([], 'self_connected');
     expect(container.textContent).toContain('local-instance');
+    // The identity comes from the authenticated directory, never the pre-auth meta read.
+    expect(fetchMock.mock.calls.some(([request]) => String(request instanceof Request ? request.url : request).includes('/api/v1/meta'))).toBe(false);
     await act(async () => {
       typeInto(input(container, 'remote-name'), 'alias');
       typeInto(input(container, 'remote-url'), 'https://alias.example');
