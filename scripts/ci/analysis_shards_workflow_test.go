@@ -186,10 +186,10 @@ func main() { if len(os.Args)==2 && os.Args[1]=="--supports-all-v1" { fmt.Printl
 	// subtest. A failed legacy execution must stop the parent comparison test.
 	expected := runScenario(t, workflowScenario{
 		name: "fixed legacy reference", event: "merge_group", source: oldSource,
-		wantSuccess: true, wantCalls: 20,
+		wantSuccess: true, wantCalls: 24,
 	})
 	for _, scenario := range []workflowScenario{
-		{"known legacy base", "merge_group", "", oldSource, true, 20},
+		{"known legacy base", "merge_group", "", oldSource, true, 24},
 		{"new trusted base", "merge_group", "", newSource, true, 1},
 		{"trusted main", "workflow_dispatch", "refs/heads/main", newSource, true, 1},
 		{"authenticated release tag", "push", "refs/tags/v1.2.3", newSource, true, 1},
