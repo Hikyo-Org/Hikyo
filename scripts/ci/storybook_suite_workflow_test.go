@@ -468,7 +468,7 @@ func TestStorybookAdvisoryWorkflow(t *testing.T) {
 			Uses: mirror["checkout"].Uses,
 			With: map[string]string{"ref": head, "persist-credentials": "false"},
 		},
-		{Name: "Verify the checkout is the PR head", Run: `test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"`},
+		{Name: "Verify the checkout is the PR head", Run: `test "$(git -c safe.directory="$PWD" rev-parse HEAD)" = "$EXPECTED_HEAD"`},
 		mirror["setup-node"],
 		mirror["corepack"],
 		mirror["pnpm-cache"],

@@ -42,8 +42,10 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
+      # The container user does not own the workspace, and checkout drops its
+      # temporary safe.directory on exit, so trust the workspace for this call only.
       - name: Verify the checkout is the PR head
-        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+        run: test "$(git -c safe.directory="$PWD" rev-parse HEAD)" = "$EXPECTED_HEAD"
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         with:
           node-version-file: .nvmrc
