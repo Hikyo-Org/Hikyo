@@ -1,9 +1,12 @@
 package main
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 func TestReleaseAssetStaysInsideItsDirectory(t *testing.T) {
-	if path, ok := releaseAsset("/releases/v1", "hikyo.tar.gz"); !ok || path != "/releases/v1/hikyo.tar.gz" {
+	if path, ok := releaseAsset("/releases/v1", "hikyo.tar.gz"); !ok || path != filepath.Join("/releases/v1", "hikyo.tar.gz") {
 		t.Fatalf("plain asset refused: %q %t", path, ok)
 	}
 	for _, name := range []string{"", ".", "..", "../secret", "a/b", "/etc/passwd"} {
