@@ -47,6 +47,7 @@ cat >scripts/ci/golangci-lint-new.sh <<STUB
 echo "\$1 \$(git rev-parse HEAD) \$(pwd -P)" >>"$logs/golangci.log"
 [ ! -f "$logs/golangci-fail" ] || exit "\$(cat "$logs/golangci-fail")"
 ! grep -q BAD internal/x.go 2>/dev/null || { echo 'stub: new issue' >&2; exit 1; }
+! grep -q BADCFG .golangci.yml 2>/dev/null || { echo 'stub: bad config' >&2; exit 1; }
 [ ! -e wip.go ] || { echo 'stub: stray wip.go linted' >&2; exit 1; }
 STUB
 chmod +x .githooks/pre-push scripts/ci/*.sh
@@ -55,6 +56,7 @@ echo one >web/a.txt
 echo one >clients/ts/b.txt
 echo one >docs/site/scripts/test-csp.mjs
 echo one >internal/x.go
+echo ok >.golangci.yml
 echo '.env*' >.gitignore
 echo one >package.json
 git add -A
@@ -288,11 +290,13 @@ expect_refused 'reported issues' gl
 grep -F 'scripts/ci/golangci-lint-new.sh refs/remotes/hikyo-upstream/main' "$out" >/dev/null || fail 'reproduce hint missing'
 expect_count golangci $((before + 2))
 echo 5 >"$logs/golangci-fail"
-expect_refused 'could not complete (exit 5' gl
+expect_refused 'tool failed (exit 5' gl
+echo 64 >"$logs/golangci-fail"
+expect_refused 'could not start or finish its setup' gl
 rm "$logs/golangci-fail"
 (HIKYO_PREPUSH_GOLANGCI=skip && export HIKYO_PREPUSH_GOLANGCI && push gl) || fail 'golangci skip push was refused'
 grep -F 'skipping the golangci-lint ratchet' "$out" >/dev/null || fail 'golangci skip warning missing'
-expect_count golangci $((before + 3))
+expect_count golangci $((before + 4))
 if (HIKYO_PREPUSH_GOLANGCI=1 && export HIKYO_PREPUSH_GOLANGCI && push gl); then fail 'invalid HIKYO_PREPUSH_GOLANGCI accepted'; fi
 grep -F 'must be unset or "skip"' "$out" >/dev/null || fail 'invalid golangci value message missing'
 # Signatures run first: a failing signature check never reaches the ratchet, with or without the opt-out.
@@ -348,5 +352,64 @@ printf 'refs/heads/gl-two %s refs/heads/gl-two %s\nrefs/heads/gl %s refs/heads/g
 	sh .githooks/pre-push origin url >"$out" 2>&1 || fail 'two-branch push was refused'
 expect_count golangci $((before + 2))
 [ "$(tail -n 2 "$logs/golangci.log" | cut -d' ' -f2 | tr '\n' ' ')" = "$oid_a $oid_b " ] || fail 'two-branch push did not lint each commit'
+
+# 17. Real pushes from a linked worktree, where git exports GIT_DIR for that
+# worktree to the hook: the ratchet still lints exactly the pushed commit, with
+# the pushed commit's config and script, in a stable path that is never reused
+# while taken.
+git switch -q go
+git init -q --bare "$root/remote.git"
+git remote add bare "$root/remote.git"
+git config core.hooksPath .githooks
+git worktree add -q "$root/lw" -b lw-co "$base"
+git branch -q other-good "$base"
+git switch -q other-good
+commit_change internal/x.go
+git switch -q -c other-bad "$base"
+commit_change internal/x.go
+echo BAD >>internal/x.go
+git add internal/x.go
+git commit -q -m 'bad'
+git switch -q go
+lw_push() { (cd "$root/lw" && git push -q bare "$@") >"$out" 2>&1; }
+last() { tail -n 1 "$logs/golangci.log" | cut -d' ' -f"$1"; }
+good_oid=$(git rev-parse other-good)
+if lw_push other-bad:other-bad; then fail 'bad commit pushed from a linked worktree was accepted'; fi
+grep -F 'reported issues' "$out" >/dev/null || fail 'linked-worktree refusal message missing'
+lw_push other-good:other-good || fail 'good commit pushed from a linked worktree was refused'
+[ "$(last 2)" = "$good_oid" ] || fail "linked-worktree push linted $(last 2), want $good_oid"
+# The lint tree is the stable per-repository path, and is gone afterwards.
+stable=$(cd "$gitdir" && pwd -P)/hikyo-golangci-lint
+[ "$(last 3-)" = "$stable" ] || fail "lint ran in '$(last 3-)', want $stable"
+[ ! -e "$stable" ] || fail 'stable lint path left behind'
+# A taken stable path is neither waited on nor deleted: a fresh path is used.
+mkdir "$stable"
+echo mine >"$stable/marker"
+git branch -q other-good2 other-good
+lw_push other-good2:other-good2 || fail 'push with a taken stable path was refused'
+[ "$(last 3-)" != "$stable" ] || fail 'a taken stable path was reused'
+[ -f "$stable/marker" ] || fail 'another run worktree was deleted'
+rm -r "$stable"
+# A dirty .golangci.yml in the pushing checkout does not change the verdict...
+echo BADCFG >>"$root/lw/.golangci.yml"
+git branch -q other-good3 other-good
+lw_push other-good3:other-good3 || fail 'dirty config in the pushing checkout changed the verdict'
+git -C "$root/lw" checkout -q -- .golangci.yml
+# ...but one committed on the pushed branch does.
+git switch -q -c other-badcfg other-good
+echo BADCFG >>.golangci.yml
+git commit -q -am 'bad config'
+git switch -q go
+if lw_push other-badcfg:other-badcfg; then fail 'committed bad config was accepted'; fi
+# A pushed commit without the script falls back to the pushing checkout's copy.
+git switch -q -c other-noscript other-good
+git rm -q scripts/ci/golangci-lint-new.sh
+git commit -q -m 'drop the script'
+git switch -q go
+before=$(count golangci)
+lw_push other-noscript:other-noscript || fail 'script-less commit was refused'
+expect_count golangci $((before + 1))
+[ "$(last 2)" = "$(git rev-parse other-noscript)" ] || fail 'fallback script linted the wrong commit'
+git worktree remove --force "$root/lw"
 
 printf 'pre-push fixture: signatures run first; the suite runs once per frontend key and is skipped on stamps, branch deletions, non-frontend pushes and explicit opt-out; dirty, foreign or failing runs refuse; the golangci-lint ratchet runs on Go changes only and honours its own opt-out\n'

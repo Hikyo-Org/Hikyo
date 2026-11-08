@@ -255,7 +255,8 @@ recurring in review (unchecked errors, `==` on errors, `http.Get` without a
 context, ignored `json.Marshal` errors, unsafe integer narrowing, subprocess
 arguments, file modes), and reports only issues on lines you changed since the
 merge base. It lints a temporary worktree at the pushed commit, so any branch
-can be pushed and uncommitted files are ignored; fetch `hikyo-upstream` first, as
+can be pushed from any worktree, and uncommitted files and local edits to
+`.golangci.yml` are ignored (the pushed commit's config, pin and script apply); fetch `hikyo-upstream` first, as
 a stale base widens "new code". Only the default build for your platform is
 linted (files for another OS, or tagged `ui`, `k8se2e` or `floor*`, are not), and
 type errors are always reported in full. Run it by hand with

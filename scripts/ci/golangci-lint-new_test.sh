@@ -85,7 +85,7 @@ run() { # exit status of the script against main, output in $out, args in $calls
 	return "$status"
 }
 expect_call() {
-	want="golangci-lint run -j 2 --config $(cd "$repo/scripts/ci" && pwd)/../../.golangci.yml --new-from-merge-base=main $1"
+	want="golangci-lint run -j 2 --new-from-merge-base=main $1"
 	[ "$(cat "$calls")" = "$want" ] || fail "run-go-tool got '$(cat "$calls")', want '$want'"
 }
 
@@ -139,6 +139,7 @@ expect_call "./café ./with space"
 change a/a.go
 : >"$GO_LIST_FAIL"
 if run; then fail 'go list failure was swallowed'; fi
+[ "$status" = 64 ] || fail "go list failure exited $status, want 64"
 grep -F 'go list failed' "$out" >/dev/null || fail 'go list failure message missing'
 rm "$GO_LIST_FAIL"
 
@@ -161,6 +162,20 @@ other=$(git commit-tree -m other "$(git hash-object -t tree /dev/null)")
 : >"$calls"
 if sh scripts/ci/golangci-lint-new.sh "$other" >"$out" 2>&1; then fail 'unrelated base accepted'; fi
 grep -F 'no merge base' "$out" >/dev/null || fail 'merge base message missing'
+sh scripts/ci/golangci-lint-new.sh "$other" >/dev/null 2>&1 || [ "$?" = 64 ] || fail 'missing merge base must exit 64'
 [ ! -s "$calls" ] || fail 'ran the linter without a merge base'
+
+# 8. A tree without its own .golangci.yml gets the script checkout's config
+# (reached through --config); one with it is left to find its own.
+git switch -q -c noconfig main
+git rm -q .golangci.yml
+echo '# x' >>a/a.go
+git add a/a.go
+git commit -q -m 'no config'
+run || fail 'config-less tree failed'
+case "$(cat "$calls")" in
+	"golangci-lint run -j 2 --config "*"/.golangci.yml --new-from-merge-base=main ./...") ;;
+	*) fail "config-less run-go-tool got '$(cat "$calls")'" ;;
+esac
 
 printf 'golangci-lint-new fixture: selects changed package directories, lints everything for config changes, skips deletions and testdata, propagates failure\n'
