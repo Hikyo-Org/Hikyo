@@ -41,6 +41,23 @@ OIDC identity and do not extend the closed `nightly/v1` archive inventory. Stabl
 The runtime's release/route verification still owns admission. Never substitute
 a chart signature for runtime recovery custody or a signed migration route.
 
+## Memory sizing
+
+Pre-authentication admission bounds concurrent Argon2id work to
+`HIKYO_ADMISSION_BUDGET_MIB` (272 MiB by default), but the process also needs
+its own working set, about 76 MiB idle and 148 MiB after one derivation. Give
+the server at least 512 MiB under a container memory limit, and 1 GiB for
+headroom.
+
+When `GOMEMLIMIT` is unset, the server reads the container's cgroup memory
+limit at boot and sets its Go memory limit to 80% of it, so garbage from
+repeated derivations is collected before the kernel kills the process. It logs
+a warning when that limit cannot hold the admission budget plus its working
+set. A host service limited by a nested cgroup, such as systemd `MemoryMax=`,
+is not detected: set `GOMEMLIMIT` explicitly, for example `GOMEMLIMIT=400MiB`
+under a 512 MiB limit. Rate-limiting `/api/v1/auth/*` per source address at
+the reverse proxy further reduces exposure.
+
 ## Runtime matrix
 
 | Deployment | Datastore and topology | Upgrade contract | Evidence boundary |

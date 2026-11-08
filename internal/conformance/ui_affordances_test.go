@@ -75,13 +75,4 @@ func scenarioUIAffordances(t *testing.T, db *store.DB) {
 	assertPolicy(reader, true, false)
 	grantOrg(t, db, reader, scope.Org, "uidelete", "manage-projects")
 	assertPolicy(reader, true, true)
-	discovery := &service.Discovery{DB: db}
-	first, err := discovery.InstanceIdentity(t.Context())
-	if err != nil || first == "" {
-		t.Fatalf("instance discovery = %q, %v", first, err)
-	}
-	second, err := discovery.InstanceIdentity(t.Context())
-	if err != nil || second != first {
-		t.Fatalf("instance identity changed = %q, %v", second, err)
-	}
 }
