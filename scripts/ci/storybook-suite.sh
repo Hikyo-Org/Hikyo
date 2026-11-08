@@ -1,7 +1,8 @@
 #!/bin/sh
 # The ci.yml `storybook` job's commands, in the same order, for the pre-push
 # hook and the advisory workflow. storybook_suite_workflow_test.go fails when
-# the two drift; edit both together. Run it from any directory.
+# the two drift; edit both together. It also pins the checks before step()
+# line for line. Run it from any directory.
 set -eu
 
 cd "$(dirname "$0")/../.."

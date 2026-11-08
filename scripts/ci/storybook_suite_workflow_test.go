@@ -116,11 +116,38 @@ func scriptCodeLines(script string) []string {
 	return lines
 }
 
-// storybookScriptProblems requires everything from the step() helper on to be
-// exactly: the pinned helper, one `step DIR COMMAND...` line per ci.yml command
-// and the closing design image loop. Only the prelude (toolchain and
-// environment checks) before the helper is free, and it may not run suite
-// commands.
+// storybookPrelude pins the script's toolchain and environment checks, the
+// code before the step() helper, line for line. A blocklist of risky shell
+// forms always misses a variant (eval, exec, traps, PATH shims, a softened
+// fail()), so any prelude change must update this pin in the same reviewed diff.
+var storybookPrelude = []string{
+	`set -eu`,
+	`cd "$(dirname "$0")/../.."`,
+	`fail() {`,
+	`printf 'storybook-suite: %s\n' "$*" >&2`,
+	`exit 1`,
+	`}`,
+	`command -v node >/dev/null 2>&1 || fail 'node is required'`,
+	`command -v pnpm >/dev/null 2>&1 || fail 'pnpm is required'`,
+	`node_version=$(node --version) || fail 'cannot determine Node version'`,
+	`[ "$node_version" = "v$(tr -d '\r\n' <.nvmrc)" ] || fail "Node $node_version differs from .nvmrc; select the pinned contributor toolchain"`,
+	`expected_pnpm=$(sed -n 's/^[[:space:]]*"packageManager":[[:space:]]*"pnpm@\([^"]*\)".*/\1/p' package.json)`,
+	`[ -n "$expected_pnpm" ] || fail 'package.json has no pnpm packageManager'`,
+	`pnpm_version=$(pnpm --version) || fail 'cannot determine pnpm version'`,
+	`[ "$pnpm_version" = "$expected_pnpm" ] || fail "pnpm $pnpm_version differs from packageManager $expected_pnpm; select the pinned contributor toolchain"`,
+	`for name in STORYBOOK_THEME STORYBOOK_STATIC_DIR STORYBOOK_INTERACTION_PASS HIKYO_DEMO_BASE POSTHOG_REQUIRED; do`,
+	`eval "[ -z \"\${$name+x}\" ]" || fail "$name is set; unset it so the suite matches CI"`,
+	`done`,
+	`if env | grep -q '^PUBLIC_POSTHOG_'; then`,
+	`fail 'PUBLIC_POSTHOG_* is set; unset it so the suite matches CI'`,
+	`fi`,
+	`CI=true`,
+	`export CI`,
+}
+
+// storybookScriptProblems requires the script to be exactly: the pinned
+// prelude, the pinned step() helper, one `step DIR COMMAND...` line per ci.yml
+// command and the closing design image loop.
 func storybookScriptProblems(script string, wantCommands, wantLoop []string) []string {
 	var problems []string
 	lines := scriptCodeLines(script)
@@ -128,32 +155,8 @@ func storybookScriptProblems(script string, wantCommands, wantLoop []string) []s
 	if start < 0 {
 		return []string{"script has no step() helper"}
 	}
-	if lines[0] != "set -eu" {
-		problems = append(problems, "the first code line must be `set -eu`, got: "+lines[0])
-	}
-	// The prelude may define only fail(), the one place that exits.
-	functionDefinition := regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*\s*\(\)`)
-	exits := regexp.MustCompile(`\bexit\b`)
-	inFail := false
-	for index, line := range lines[:start] {
-		switch {
-		case line == "fail() {":
-			inFail = true
-			continue
-		case inFail && line == "}":
-			inFail = false
-			continue
-		}
-		switch {
-		case strings.HasPrefix(line, "step ") || strings.HasPrefix(line, "pnpm ") || strings.HasPrefix(line, "(cd "):
-			problems = append(problems, "the prelude runs a suite command: "+line)
-		case functionDefinition.MatchString(line):
-			problems = append(problems, "the prelude defines a function other than fail(): "+line)
-		case !inFail && exits.MatchString(line):
-			problems = append(problems, "the prelude exits outside fail(): "+line)
-		case strings.HasPrefix(line, "alias ") || (index > 0 && strings.HasPrefix(line, "set ")):
-			problems = append(problems, "the prelude changes shell behaviour: "+line)
-		}
+	if !slices.Equal(lines[:start], storybookPrelude) {
+		problems = append(problems, fmt.Sprintf("the prelude differs from the pinned checks\n  %q\nwant\n  %q", lines[:start], storybookPrelude))
 	}
 	rest := lines[start:]
 	if len(rest) < len(storybookStepFunction) || !slices.Equal(rest[:len(storybookStepFunction)], storybookStepFunction) {
@@ -186,10 +189,16 @@ func storybookScriptProblems(script string, wantCommands, wantLoop []string) []s
 // custom shell, or any other key but name, run and working-directory.
 func storybookCIStrict(ci []byte) error {
 	var document struct {
-		Jobs map[string]yaml.Node `yaml:"jobs"`
+		Env      yaml.Node            `yaml:"env"`
+		Defaults yaml.Node            `yaml:"defaults"`
+		Jobs     map[string]yaml.Node `yaml:"jobs"`
 	}
 	if err := yaml.Unmarshal(ci, &document); err != nil {
 		return err
+	}
+	// Workflow-level env and defaults apply to the storybook job too.
+	if !document.Env.IsZero() || !document.Defaults.IsZero() {
+		return fmt.Errorf("ci.yml sets workflow-level env or defaults, which the script cannot mirror")
 	}
 	node, ok := document.Jobs["storybook"]
 	if !ok {
@@ -294,6 +303,14 @@ func TestStorybookSuiteScriptDriftIsDetected(t *testing.T) {
 		"early exit":      func(s string) string { return strings.Replace(s, "cd \"$(dirname", "exit 0\ncd \"$(dirname", 1) },
 		"shadowed pnpm":   func(s string) string { return strings.Replace(s, "step() {", "pnpm() { :; }\nstep() {", 1) },
 		"errexit off":     func(s string) string { return strings.Replace(s, "step() {", "set +e\nstep() {", 1) },
+		"exec":            func(s string) string { return strings.Replace(s, "step() {", "exec true\nstep() {", 1) },
+		"eval":            func(s string) string { return strings.Replace(s, "step() {", "eval 'set +e'\nstep() {", 1) },
+		"keyword function": func(s string) string {
+			return strings.Replace(s, "step() {", "function pnpm { :; }\nstep() {", 1)
+		},
+		"trap":        func(s string) string { return strings.Replace(s, "step() {", "trap '' ERR\nstep() {", 1) },
+		"PATH shim":   func(s string) string { return strings.Replace(s, "step() {", "PATH=/tmp/shims:$PATH\nstep() {", 1) },
+		"soft fail()": func(s string) string { return strings.Replace(s, "\texit 1\n}", "\texit 0\n}", 1) },
 		"altered helper": func(s string) string {
 			return strings.Replace(s, `(cd "$dir" && "$@")`, `(cd "$dir" && "$@" || true)`, 1)
 		},
@@ -309,6 +326,19 @@ func TestStorybookSuiteScriptDriftIsDetected(t *testing.T) {
 		}
 		if len(storybookScriptProblems(mutated, wantCommands, wantLoop)) == 0 {
 			t.Errorf("%s: drift went undetected", name)
+		}
+	}
+
+	// Workflow-level settings apply to the storybook job and are refused too.
+	for name, extra := range map[string]string{
+		"workflow env":      "env:\n  CI: ''\n",
+		"workflow defaults": "defaults:\n  run:\n    shell: sh\n",
+	} {
+		if !strings.Contains(string(ci), "\njobs:\n") {
+			t.Fatalf("jobs anchor missing from ci.yml")
+		}
+		if storybookCIStrict([]byte(strings.Replace(string(ci), "\njobs:\n", "\n"+extra+"jobs:\n", 1))) == nil {
+			t.Errorf("%s was accepted", name)
 		}
 	}
 
