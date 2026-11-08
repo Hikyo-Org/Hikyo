@@ -1,0 +1,36 @@
+{
+  "number": 1245,
+  "state": "open",
+  "head": {
+    "sha": "2f6116792da1cede3bccd22e10f4a8715c17a5a1",
+    "ref": "feat/security-maintenance-engine",
+    "repo": {
+      "id": 1316165429,
+      "full_name": "Hikyo-Org/Hikyo"
+    }
+  },
+  "base": {
+    "ref": "feat/security-maintenance-foundations",
+    "sha": "59591b0bccbf9ce26356d3e5724616dd85fd8ccb",
+    "repo": {
+      "id": 1316165429,
+      "full_name": "Hikyo-Org/Hikyo"
+    }
+  },
+  "stack": {
+    "base": {
+      "ref": "dev",
+      "sha": "576b8486b04207f7c86f6d9d899ae28002bb6c83"
+    },
+    "id": 3189179,
+    "number": 1248,
+    "position": 2,
+    "size": 5
+  },
+  "user": {
+    "id": 991668,
+    "login": "Dunky13"
+  },
+  "merge_commit_sha": "0a36d66371dd876be59b28ac0b0327694a6109e3",
+  "mergeable": true
+}

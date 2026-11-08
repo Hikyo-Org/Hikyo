@@ -62,7 +62,7 @@ func TestPlanBindingHonorsSplitPackageFilters(t *testing.T) {
 		t.Fatal(err)
 	}
 	jobs := strings.Join(i.Criteria[0].Tests[0].ExecutionJobs, ",")
-	if jobs != "test_core,race shard (1)" {
+	if jobs != "test_core_serial,race shard (1)" {
 		t.Fatalf("filtered package ownership wrong: %s", jobs)
 	}
 }

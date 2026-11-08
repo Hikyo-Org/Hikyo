@@ -223,13 +223,25 @@ require_workflow_review() {
 
 check_current_pr
 
-# The files endpoint lists at most 3000 entries. A shorter list than
-# changed_files could hide a workflow change, so it fails closed.
-files=$(gh_read "repos/$GH_REPO/pulls/$PR_NUMBER/files?per_page=100" --paginate \
-	--jq 'if type != "array" or any(.[]; (.filename | type) != "string" or .filename == "" or (.previous_filename != null and (.previous_filename | type) != "string")) then error("invalid changed files") else .[] | [.filename, (.previous_filename // "")] | @tsv end') || fail 'cannot read changed files' api-failure
-listed=$(printf '%s\n' "$files" | grep -c . || true)
-[ "$listed" -ge "$changed_files" ] ||
-	fail "listed $listed of $changed_files changed files; cannot prove .github/ is untouched"
+if [ -n "${PR_GATE_FILES_BASE:-}" ]; then
+	# A layer of a stack merges into dev with every lower layer, so its own file
+	# list (which starts at the layer below) is not the range under review. The
+	# publisher passes the dev tip it resolved, and the Go policy reads the same
+	# tuple. Compare lists at most 300 files; a longer list fails closed.
+	printf '%s\n' "$PR_GATE_FILES_BASE" | grep -Eq '^[0-9a-f]{40}$' ||
+		fail 'invalid stacked file-list base' api-failure
+	files=$(gh_read "repos/$GH_REPO/compare/$PR_GATE_FILES_BASE...$HEAD_SHA" \
+		--jq 'if (.status | IN("ahead", "diverged", "identical") | not) or (.files | type) != "array" or (.files | length) >= 300 or any(.files[]; (.filename | type) != "string" or .filename == "" or (.previous_filename != null and (.previous_filename | type) != "string")) then error("invalid or incomplete changed files") else .files[] | [.filename, (.previous_filename // "")] | @tsv end') ||
+		fail 'cannot read a complete dev...head file list' api-failure
+else
+	# The files endpoint lists at most 3000 entries. A shorter list than
+	# changed_files could hide a workflow change, so it fails closed.
+	files=$(gh_read "repos/$GH_REPO/pulls/$PR_NUMBER/files?per_page=100" --paginate \
+		--jq 'if type != "array" or any(.[]; (.filename | type) != "string" or .filename == "" or (.previous_filename != null and (.previous_filename | type) != "string")) then error("invalid changed files") else .[] | [.filename, (.previous_filename // "")] | @tsv end') || fail 'cannot read changed files' api-failure
+	listed=$(printf '%s\n' "$files" | grep -c . || true)
+	[ "$listed" -ge "$changed_files" ] ||
+		fail "listed $listed of $changed_files changed files; cannot prove .github/ is untouched"
+fi
 workflow_changed=false
 if printf '%s\n' "$files" | tr '\t' '\n' | grep '^\.github/' >&2; then
 	workflow_changed=true

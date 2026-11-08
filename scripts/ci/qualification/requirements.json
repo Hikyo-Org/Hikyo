@@ -47,7 +47,7 @@
     {
       "id": "full-main",
       "workflow": ".github/workflows/ci.yml",
-      "jobs": ["ci-required", "changes", "analysis_shards", "test_core", "isolation_shard", "race_shard", "fuzz_shard", "headline-guarantee", "floor-bench", "source-artifact-security"],
+      "jobs": ["ci-required", "changes", "analysis_shards", "test_core", "test_core_serial", "isolation_shard", "race_shard", "fuzz_shard", "headline-guarantee", "floor-bench", "source-artifact-security"],
       "commands": ["gh workflow run ci-main.yml --repo Hikyo-Org/Hikyo --ref main", "scripts/release/require-green-main.sh Hikyo-Org/Hikyo CANDIDATE_SHA"],
       "required_evidence": "ONLY AFTER integration: exact clean main commit/tree, ci-main workflow_dispatch run ID/attempt/path/event/tested SHA, all registered full domains and every supporting/matrix job. Capture changes full plan and planner outputs, all jobs/steps/logs/artifacts and failed jobs even in cancelled runs. Complete graph success and SQLite/PostgreSQL execution/skip evidence are separate from queue admission."
     },

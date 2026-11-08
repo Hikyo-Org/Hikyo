@@ -19,7 +19,7 @@ const goReuseDiskScript = "./scripts/ci/prepare-go-cache-disk.sh"
 func normalizeGoReuseDiskPreparation(jobs map[string]map[string]any) error {
 	readers := map[string]bool{
 		"supply-chain-checks": true, "app-build": true, "client": true,
-		"compose-demo": true, "web-go": true, "test_core": true,
+		"compose-demo": true, "web-go": true, "test_core": true, "test_core_serial": true,
 		"isolation_shard": true, "headline-guarantee": true,
 		"release-snapshot": true,
 	}
