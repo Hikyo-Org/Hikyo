@@ -362,7 +362,7 @@ test.describe('instance administration', () => {
     await expect(dialog).toContainText('incomplete until');
     await dialog.getByRole('button', { name: 'Rotate the DEK' }).click();
     await expect(page.getByRole('dialog')).toBeHidden();
-    await expect(page.locator('.notice')).toContainText('The instance DEK was rotated');
+    await expect(page.locator('.notice').filter({ hasText: 'The instance DEK was rotated' })).toBeVisible();
 
     // Reload BEFORE any re-encryption: the pending walk now lives only in the
     // server's cursor, with no client state to carry it. A fresh page must be
@@ -373,14 +373,14 @@ test.describe('instance administration', () => {
       page.getByRole('heading', { name: 'Instance settings', level: 1 }),
     ).toBeVisible();
     await keys.getByRole('button', { name: 'Re-encrypt the instance' }).click();
-    await expect(page.locator('.notice')).toContainText('Instance re-encryption complete');
+    await expect(page.locator('.notice').filter({ hasText: 'Instance re-encryption complete' })).toBeVisible();
 
     // Idempotent: everything now sits on the active version, so a further run
     // moves nothing and says so.
     await keys.getByRole('button', { name: 'Re-encrypt the instance' }).click();
-    await expect(page.locator('.notice')).toContainText(
-      'nothing to move; all ciphertext is already on the active DEK version',
-    );
+    await expect(
+      page.locator('.notice').filter({ hasText: 'nothing to move; all ciphertext is already on the active DEK version' }),
+    ).toBeVisible();
   });
 
   test('reads and saves the machine-credential ceiling', async ({ page }) => {
