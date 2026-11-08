@@ -71,6 +71,18 @@ but it is not a substitute for this signature.
   `clients/ts/`). Install its browser once with `pnpm --dir web run e2e:install`.
   For WIP pushes only, set `HIKYO_PREPUSH_STORYBOOK=skip`; CI still runs the suite.
   Signatures are never skippable.
+- The hook also runs `scripts/ci/golangci-lint-new.sh <base>` when a push changes
+  Go code. It runs golangci-lint (errcheck, errorlint, errchkjson, noctx,
+  wastedassign, unused, staticcheck `SA*`/`QF1001`/`QF1003`, and gosec G115/G204/G306 outside tests, from
+  `.golangci.yml`) and flags only issues on lines changed since the merge base, so
+  the existing baseline never blocks you. It lints a temporary worktree at the
+  pushed commit, with that commit's config, pin and script, so any branch can be
+  pushed from any worktree, and uncommitted files and uncommitted edits to `.golangci.yml` are ignored.
+  Fetch `hikyo-upstream` first: a stale base widens "new code". Only the default
+  build is linted (files for another OS, or tagged `ui`, `k8se2e` or `floor*`, are
+  not), and type errors are always reported in full. Reproduce with
+  `scripts/ci/golangci-lint-new.sh hikyo-upstream/main`. For WIP pushes only, set
+  `HIKYO_PREPUSH_GOLANGCI=skip`; the advisory `ci-advisory-golangci` check still runs it.
 - For `web/` changes, also run the affected flow specs before requesting review and
   list them in the PR Evidence:
   `pnpm --dir web run build && pnpm --dir web exec playwright test --project=desktop e2e/flows/<spec>.spec.ts`

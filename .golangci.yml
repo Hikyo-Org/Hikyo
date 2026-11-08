@@ -1,0 +1,29 @@
+# Rule set taken from the static-analysis findings that recurred in PR review.
+# The gate is new-code-only (scripts/ci/golangci-lint-new.sh): the existing
+# baseline is not enforced, only issues on lines changed since the merge base.
+version: "2"
+linters:
+  default: none
+  enable:
+    - errcheck
+    - errorlint
+    - errchkjson
+    - noctx
+    - wastedassign
+    - unused
+    - staticcheck
+    - gosec
+  settings:
+    # A configured list replaces staticcheck's default (SA, S, ST and QF checks);
+    # only the checks that recurred in review are kept, not style suggestions.
+    staticcheck:
+      checks: ["SA*", "QF1001", "QF1003"]
+    gosec:
+      includes: [G115, G204, G306]
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [gosec]
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
