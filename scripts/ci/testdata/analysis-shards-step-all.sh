@@ -10,7 +10,7 @@ fi
 planner="$RUNNER_TEMP/analysis-shards"
 go build -o "$planner" "$trusted_planner"
 race_count=12
-shard_count=3
+shard_count=4
 if "$planner" --supports-all-v1 >"$RUNNER_TEMP/planner-capability" 2>"$RUNNER_TEMP/planner-capability-error"; then
   test "$(cat "$RUNNER_TEMP/planner-capability")" = analysis-shards-all-v1
   plan=$("$planner" all --root . --race-shards "$race_count" --shards "$shard_count")

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -473,7 +474,7 @@ func TestFinalReadbackRefusesChangedProofAndAuthority(t *testing.T) {
 					r.Attempt++
 					return r, true
 				case scenario == "jobs" && strings.Contains(endpoint, "/jobs?") && count == 2:
-					return map[string]any{"total_count": 48, "jobs": f.jobLists[100][1:]}, true
+					return map[string]any{"total_count": 50, "jobs": f.jobLists[100][1:]}, true
 				case scenario == "main" && strings.HasSuffix(endpoint, "git/ref/heads/main") && count == 2:
 					return map[string]any{"ref": "refs/heads/main", "object": map[string]any{"sha": testDev, "type": "commit"}}, true
 				case scenario == "dev-ancestry" && strings.Contains(endpoint, "compare/"+testSource+"..."+testDev) && count == 2:
@@ -547,10 +548,10 @@ func TestSyntheticChecksCannotSupplyJobCoverage(t *testing.T) {
 
 func TestClosedRegistryAndExecutionInventory(t *testing.T) {
 	f := newFixture(t, "dev", devProducer)
-	if len(f.jobLists[100]) != 48 {
-		t.Fatalf("full schema must conserve 48 native executions: %d", len(f.jobLists[100]))
+	if len(f.jobLists[100]) != 50 {
+		t.Fatalf("full schema must conserve 50 native executions: %d", len(f.jobLists[100]))
 	}
-	for _, name := range []string{"validation / web (desktop, 4)", "validation / web (mobile, 4)", "validation / race shard (11)", "validation / isolation shard (2)", "validation / fuzz shard (2)", "validation / floor-bench / measure", "validation / scan-xplat (windows-latest)", "validation / source-artifact-security"} {
+	for _, name := range []string{"validation / web (desktop, 4)", "validation / web (mobile, 4)", "validation / race shard (11)", "validation / isolation shard (2)", "validation / fuzz shard (2)", "validation / isolation shard (3)", "validation / fuzz shard (3)", "validation / floor-bench / measure", "validation / scan-xplat (windows-latest)", "validation / source-artifact-security"} {
 		found := false
 		for _, current := range f.jobLists[100] {
 			found = found || current.Name == name
@@ -626,5 +627,37 @@ func TestReceiptContainsOnlyStableExactIdentity(t *testing.T) {
 	b, err := resolveFixture(f, options{Mode: "dev", Commit: testSource, Authority: testMain})
 	if err != nil || !reflect.DeepEqual(a, b) {
 		t.Fatalf("proof identity is nondeterministic: %+v %+v %v", a, b, err)
+	}
+}
+
+// The closed shard inventory must follow the workflow planner counts; a count
+// change that misses inventory.go would otherwise fail only post-merge proof.
+func TestShardInventoryMatchesWorkflowPlanner(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", ".github/workflows/ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := func(name string) int {
+		m := regexp.MustCompile(`(?m)^\s*`+name+`=([0-9]+)$`).FindAllSubmatch(data, -1)
+		if len(m) != 1 {
+			t.Fatalf("ci.yml must assign %s exactly once, found %d", name, len(m))
+		}
+		n, err := strconv.Atoi(string(m[0][1]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	want := map[string]int{"isolation shard (": count("shard_count"), "fuzz shard (": count("shard_count"), "race shard (": count("race_count")}
+	got := map[string]int{}
+	for name := range expectedJobs(selectedRun{}) {
+		for family := range want {
+			if strings.HasPrefix(name, "validation / "+family) {
+				got[family]++
+			}
+		}
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("source-proof shard inventory %v differs from ci.yml planner counts %v", got, want)
 	}
 }
