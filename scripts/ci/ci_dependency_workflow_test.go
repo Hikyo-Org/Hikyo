@@ -23,7 +23,7 @@ func TestCoreValidationRunsAlongsideCrossPlatformProof(t *testing.T) {
 	if err := yaml.Unmarshal(raw, &ci); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"test_core", "scan-xplat"} {
+	for _, name := range []string{"test_core", "test_core_serial", "scan-xplat"} {
 		job, ok := ci.Jobs[name]
 		if !ok {
 			t.Fatalf("missing %s validation", name)
@@ -43,7 +43,7 @@ func TestCoreValidationRunsAlongsideCrossPlatformProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"test_core", "scan-xplat"} {
+	for _, name := range []string{"test_core", "test_core_serial", "scan-xplat"} {
 		found := false
 		for _, required := range needs {
 			found = found || required == name
@@ -60,7 +60,7 @@ func TestCoreValidationRunsAlongsideCrossPlatformProof(t *testing.T) {
 	if err := json.Unmarshal(raw, &rules); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"test_core", "scan-xplat"} {
+	for _, name := range []string{"test_core", "test_core_serial", "scan-xplat"} {
 		rule := rules.Jobs[name]
 		if rule.RequiredGate != "planned" || !reflect.DeepEqual(rule.PlanJobs, []string{"test"}) {
 			t.Fatalf("%s must be directly required by the complete test plan, got %+v", name, rule)

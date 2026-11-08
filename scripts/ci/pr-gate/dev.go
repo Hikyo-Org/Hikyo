@@ -58,7 +58,7 @@ func (q *queueController) executeDev(ctx context.Context, name string, e event, 
 	switch name {
 	case "pull_request_target":
 		previous := e.Action == "synchronize" && e.Before == q.expectedHead && e.Before != e.Pull.Head.SHA
-		if e.Number != number || e.Pull.Number != number || e.Pull.Base.Ref != "dev" || e.Pull.Head.SHA != q.expectedHead && !previous {
+		if e.Number != number || e.Pull.Number != number || e.Pull.StackInvalid || e.Pull.admission().Ref != "dev" || e.Pull.Head.SHA != q.expectedHead && !previous {
 			return errors.New("dev PR event differs from the held routing identity")
 		}
 	case "workflow_run":
@@ -81,7 +81,7 @@ func (q *queueController) executeDev(ctx context.Context, name string, e event, 
 		if err != nil {
 			return err
 		}
-		if p.State != "open" || p.Head.SHA != q.expectedHead || p.Base.Ref != "dev" {
+		if p.State != "open" || p.Head.SHA != q.expectedHead || p.admission().Ref != "dev" {
 			return errors.Join(&staleHeadWork{expected: q.expectedHead}, q.reconciliation.retireHead(ctx, false))
 		}
 		return q.admitProof(ctx, number, nil, &p)
@@ -310,11 +310,46 @@ func (q *queueController) pullFiles(ctx context.Context, p pull) ([]pullFile, bo
 	return files, false, nil
 }
 
+// A stacked layer's own file list starts at the layer below, so it would hide a
+// lower layer's CI edits that dev..head carries. Judge the range dev would merge:
+// compare lists at most 300 files, and a longer or unusable list is incomplete.
+const compareFileLimit = 300
+
+func (q *queueController) admissionFiles(ctx context.Context, p pull) ([]pullFile, bool, error) {
+	if !p.stackedOnDev() {
+		return q.pullFiles(ctx, p)
+	}
+	tip := p.admission().SHA
+	if !shaPattern.MatchString(tip) || !shaPattern.MatchString(p.Head.SHA) {
+		return nil, false, errors.New("invalid dev tip or head for a stacked PR file list")
+	}
+	var compare struct {
+		Status string     `json:"status"`
+		Files  []pullFile `json:"files"`
+	}
+	if err := q.api.read(ctx, q.endpoint("compare/"+tip+"..."+p.Head.SHA), &compare); err != nil {
+		return nil, false, err
+	}
+	switch compare.Status {
+	case "ahead", "diverged", "identical":
+	default:
+		return nil, false, fmt.Errorf("unexpected compare status %q for a stacked PR", compare.Status)
+	}
+	// GitHub's schema makes files optional; an absent list is not an empty one.
+	if compare.Files == nil {
+		return nil, false, errors.New("compare for a stacked PR omitted its file list")
+	}
+	if len(compare.Files) >= compareFileLimit {
+		return nil, false, nil
+	}
+	return compare.Files, true, nil
+}
+
 // A PR may carry a policy path only when it already matches main, as a backmerge
 // does. The PR's file list starts at the merge base, so feature branches can lag a
 // CI change on main.
 func (q *queueController) devPolicyRefusal(ctx context.Context, p pull) (string, error) {
-	files, complete, err := q.pullFiles(ctx, p)
+	files, complete, err := q.admissionFiles(ctx, p)
 	if err != nil {
 		return "", err
 	}
@@ -417,7 +452,8 @@ func (q *queueController) devPublisherContract(ctx context.Context, p pull) erro
 	}
 	// The three copies are independent reads of one phase. Judge them in the
 	// order the serial code did: main's, then the base's, then the head's.
-	revisions := []string{mainRef.Object.SHA, p.Base.SHA, p.Head.SHA}
+	base := p.admission().SHA
+	revisions := []string{mainRef.Object.SHA, base, p.Head.SHA}
 	var copies [3][]byte
 	var failures [3]error
 	settle(ctx,
@@ -429,7 +465,7 @@ func (q *queueController) devPublisherContract(ctx context.Context, p pull) erro
 		return failures[0]
 	}
 	trusted := copies[0]
-	for i, revision := range []string{p.Base.SHA, p.Head.SHA} {
+	for i, revision := range []string{base, p.Head.SHA} {
 		if failures[i+1] != nil {
 			return failures[i+1]
 		}
@@ -438,7 +474,7 @@ func (q *queueController) devPublisherContract(ctx context.Context, p pull) erro
 			// A main-side publisher repair must be able to flow back into
 			// dev. Only the exact authenticated main head can restore an
 			// older base definition; the proposed head must still match main.
-			if revision == p.Base.SHA && p.Head.SHA == mainRef.Object.SHA && p.Head.Repo.ID == q.repo.ID && strings.EqualFold(p.Head.Repo.FullName, q.repoName) {
+			if revision == base && p.Head.SHA == mainRef.Object.SHA && p.Head.Repo.ID == q.repo.ID && strings.EqualFold(p.Head.Repo.FullName, q.repoName) {
 				continue
 			}
 			return errDevPublisherDiffers

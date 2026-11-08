@@ -189,5 +189,7 @@ The expensive or flaky tails are **not** in `preflight.sh`; run them on demand:
 - **`go test -race ./...`** — the longest CI job. Its recurring failures are
   load flakes (see #747), not reproducible pre-checks.
 - **`test_core`** (postgres-backed) — needs a `postgres:18` service; run with
-  `HIKYO_TEST_POSTGRES_DSN=...` + `scripts/ci/test-core-packages.sh`.
+  `HIKYO_TEST_POSTGRES_DSN=...` + `scripts/ci/test-core-packages.sh` (pool) and
+  `scripts/ci/test-core-packages.sh serial` (`internal/app` and `internal/lint`,
+  the `test_core_serial` job).
 - **`k8s-e2e`** — spins a kind cluster (`scripts/ci/k8s-e2e.sh`).

@@ -125,6 +125,7 @@
     },
     "scan-xplat": {"required_gate": "planned", "plan_jobs": ["test"]},
     "test_core": {"required_gate": "planned", "plan_jobs": ["test"]},
+    "test_core_serial": {"required_gate": "planned", "plan_jobs": ["test"]},
     "isolation_shard": {
       "required_gate": "planned",
       "plan_jobs": ["test"]
