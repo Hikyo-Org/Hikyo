@@ -38,7 +38,7 @@ func (a *TxAuthorizer) authenticateDeveloper(ctx context.Context, presented stri
 		_ = a.refuseAdmission(ctx, Identity{Principal: c.PrincipalID, AuthorityPrincipal: c.AuthorityPrincipal, CredentialID: c.ID, Class: domain.ClassDeveloper}, "delivery.fetch", "developer-credential", "invalid-developer-credential")
 		return Identity{}, domain.ErrUnauthenticated
 	}
-	return Identity{Principal: c.PrincipalID, Class: domain.ClassDeveloper, CredentialID: c.ID, Artifact: string(crypto.ArtifactDeveloper), CredentialExpiresAt: c.ExpiresAt, CreatedAt: c.CreatedAt, AuthorityPrincipal: c.AuthorityPrincipal, DeveloperScope: c.Scope}, nil
+	return Identity{Principal: c.PrincipalID, Class: domain.ClassDeveloper, CredentialID: c.ID, Artifact: string(crypto.ArtifactDeveloper), CredentialExpiresAt: c.ExpiresAt, CreatedAt: c.CreatedAt, AuthorityPrincipal: c.AuthorityPrincipal, DeveloperScope: c.Scope, PersonalConsent: c.PersonalConsent}, nil
 }
 func (a *TxAuthorizer) DeveloperCredentialPolicy(ctx context.Context) (time.Duration, error) {
 	return a.r.DeveloperCredentialPolicy(ctx)
@@ -191,4 +191,34 @@ func (a *TxAuthorizer) DeveloperDeliveryGrants(ctx context.Context, caller Ident
 		{Capability: domain.CapRead, Scope: chain},
 		{Capability: domain.CapReveal, Scope: chain},
 	}, nil
+}
+
+// PersonalOwnerHasAccess answers, live, whether owner still holds read and reveal
+// over the whole environment, from grants or whole-environment rules: the
+// access half of the personal-value retention predicate (#1235). An
+// environment that no longer resolves is answered false.
+func (a *TxAuthorizer) PersonalOwnerHasAccess(ctx context.Context, owner domain.PrincipalID, scope domain.Scope) (bool, error) {
+	chain, err := a.r.ResolveChain(ctx, scope)
+	if errors.Is(err, domain.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	grants, err := a.r.Grants(ctx, owner)
+	if err != nil {
+		return false, err
+	}
+	rules, err := a.r.Rules(ctx, owner)
+	if err != nil {
+		return false, err
+	}
+	return developerEnvironmentAuthority(chain, grants, rules), nil
+}
+
+// PurgePersonalValues deletes an owner's personal values everywhere and
+// leaves a notice for each, inside the credential change that cost the owner
+// qualification (#1235).
+func (a *TxAuthorizer) PurgePersonalValues(ctx context.Context, owner domain.PrincipalID, cause string, at time.Time) (int64, error) {
+	return a.r.PurgePersonalValuesForOwner(ctx, owner, cause, at)
 }

@@ -208,6 +208,7 @@ var verbHandlers = map[string]func(context.Context, IO, []string) error{
 	"cert":                runCert,
 	"run":                 runRun,
 	"dev":                 runDeveloper,
+	"personal":            runPersonal,
 	"compose":             runCompose,
 	"file-target":         runFileTarget,
 	"file-sync":           runFileSync,
@@ -314,11 +315,12 @@ hierarchy:
   hikyo key list|show|create|rename|declare|reclassify|update|set-group|delete
   hikyo key create --name <NAME> --classification secret|config --declaration <json>
       [--required-in all|none|<ids>] [--forbidden-in all|none|<ids>] [--group G]
+      [--personal-required-in none|<ids>]
       [--folder P] [--description D] [--deprecated] [--deprecation-note N]
   hikyo key update <key> [--folder P] [--description D] [--deprecated] [--deprecation-note N]
       [--confirm-widening <principal>]...
   hikyo key declare <key> --declaration <json> [--required-in all|none|<ids>]
-      [--forbidden-in all|none|<ids>]
+      [--forbidden-in all|none|<ids>] [--personal-required-in none|<ids>]
   hikyo key reclassify <key> --classification secret|config    the ceremony, never update
   hikyo key group list|show|create|rename|delete
   hikyo key group create --name <name>
@@ -680,6 +682,10 @@ access:
   hikyo access member list [--org O] [--project P] [-o table|json]
   hikyo access member invite <username> [--display-name NAME] [--template T] [--org O | --instance-scope] [--output-file PATH | --dangerously-print]
   hikyo access member remove --principal <id>
+  hikyo access invitation send <email> --template T [--org O] [-o table|json]
+  hikyo access invitation list [--org O] [-o table|json]
+  hikyo access invitation revoke <id> [--org O]
+  hikyo access invitation accept [--yes] [-o table|json]   (token or link on standard input)
   hikyo access registration show [--org O | --instance-scope] [-o table|json]
   hikyo access registration set [--org O | --instance-scope] --file <policy.json>
   hikyo access registration delete [--org O | --instance-scope]
@@ -698,7 +704,7 @@ access:
   hikyo project-settings machine-reveal get|set --enabled true|false
 
 developer credentials:
-  hikyo dev session --env E [--ttl 8h] [-o table|json]
+  hikyo dev session --env E [--ttl 8h] [--personal] [-o table|json]
   hikyo dev session list [-o table|json]
   hikyo dev session revoke --id <credential-id> | --all
   hikyo instance-config developer-credential-policy get [-o table|json]
@@ -709,6 +715,31 @@ developer credentials:
   repository. Only online hikyo run discovers this exact environment's
   credential. Ordinary logout leaves it active until fixed expiry;
   dev session revoke --all ends your delegations on this instance.
+  --personal also delivers your own personal values; without it, hikyo
+  run refuses keys you hold one for rather than serving the shared value.
+  Mint needs a passkey or authenticator app on your account: signing in
+  only through an identity provider manages personal values but cannot
+  mint, so add one under Settings > Security to run locally with them.
+
+personal values:
+  hikyo personal list --env E [-o table|json]      your values (presence only) and notices
+  hikyo personal set <KEY> --env E (--stdin | --value-file PATH)
+                                                 set your own value for a declared key
+  hikyo personal set <KEY> --env E --clear          delete your value or dismiss its notice
+  hikyo personal get <KEY> --env E --reveal [--output-file PATH | --dangerously-print]
+  hikyo personal members <KEY> --env E [-o table|json]
+                                                 who holds one (manage-members)
+  hikyo personal set <KEY> --env E --clear --member NAME
+                                                 delete another person's value
+  hikyo personal counts --env E [-o table|json]
+                                                 holders and notices per key, with
+                                                 holders/eligible for required keys (manage-members)
+  hikyo personal offboarding-report <NAME> [-o table|json]
+                                                 shared keys they received and service
+                                                 accounts they created (manage-members, audit-read)
+
+  A personal value is delivered only to its owner's developer credential.
+  Administrators see who holds one, never the value.
 
 machine identities:
   hikyo sa list [-o table|json]
@@ -1890,10 +1921,18 @@ func runOrg(ctx context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
+		// Read the name before the delete (best effort, never for JSON): afterwards there is nothing to ask.
+		label := lazyLabeler(f, func() map[string]string {
+			var org apigen.Org
+			if err := client.Do(ctx, http.MethodGet, api.PathPrefix+"/orgs/"+url.PathEscape(id), nil, &org); err != nil {
+				return nil
+			}
+			return map[string]string{id: org.Name}
+		})(id)
 		if err := client.Do(ctx, http.MethodDelete, api.PathPrefix+"/orgs/"+url.PathEscape(id), nil, nil); err != nil {
 			return err
 		}
-		fmt.Fprintf(ios.Stderr, "deleted organisation %s\n", id)
+		fmt.Fprintf(ios.Stderr, "deleted organisation %s\n", label)
 		return nil
 
 	}
@@ -2084,6 +2123,7 @@ func authenticatedResolvedTarget(st *State, ios IO, flags commonFlags, resolved 
 		if err != nil {
 			return nil, nil, Resolved{}, err
 		}
+		client.machine = true
 		if echo := resolved.Echo(); echo != "" {
 			fmt.Fprintf(ios.Stderr, "target: %s [origin %s, artifact machine-credential]\n", echo, entry.Origin)
 		}

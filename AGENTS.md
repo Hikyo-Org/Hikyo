@@ -63,6 +63,30 @@ but it is not a substitute for this signature.
 
   The hook checks every commit between `hikyo-upstream/main`, or `hikyo-upstream/dev`
   when that leaves fewer, and each branch being pushed. Keep the hook installed; do not bypass it with `--no-verify`.
+- The hook also runs `scripts/ci/storybook-suite.sh` (about 4 minutes) when a push
+  changes `web/`, `clients/ts/`, `.nvmrc`, the root `package.json`, that script or
+  `docs/site/scripts/test-csp.mjs`; a pass is cached per exact input bytes and modes,
+  and a cached pass skips the checkout checks. Otherwise push from a clean checkout
+  holding the pushed inputs (no changes to them, no `.env*` files under `web/` or
+  `clients/ts/`). Install its browser once with `pnpm --dir web run e2e:install`.
+  For WIP pushes only, set `HIKYO_PREPUSH_STORYBOOK=skip`; CI still runs the suite.
+  Signatures are never skippable.
+- The hook also runs `scripts/ci/golangci-lint-new.sh <base>` when a push changes
+  Go code. It runs golangci-lint (errcheck, errorlint, errchkjson, noctx,
+  wastedassign, unused, staticcheck `SA*`/`QF1001`/`QF1003`, and gosec G115/G204/G306 outside tests, from
+  `.golangci.yml`) and flags only issues on lines changed since the merge base, so
+  the existing baseline never blocks you. It lints a temporary worktree at the
+  pushed commit, with that commit's config, pin and script, so any branch can be
+  pushed from any worktree, and uncommitted files and uncommitted edits to `.golangci.yml` are ignored.
+  Fetch `hikyo-upstream` first: a stale base widens "new code". Only the default
+  build is linted (files for another OS, or tagged `ui`, `k8se2e` or `floor*`, are
+  not), and type errors are always reported in full. Reproduce with
+  `scripts/ci/golangci-lint-new.sh hikyo-upstream/main`. For WIP pushes only, set
+  `HIKYO_PREPUSH_GOLANGCI=skip`; the advisory `ci-advisory-golangci` check still runs it.
+- For `web/` changes, also run the affected flow specs before requesting review and
+  list them in the PR Evidence:
+  `pnpm --dir web run build && pnpm --dir web exec playwright test --project=desktop e2e/flows/<spec>.spec.ts`
+  (add `--project=mobile` for mobile; `pnpm --dir web run e2e:install` once).
 - Commit normally with signing enabled. If `git commit -S -s` itself fails to
   sign, stop and report the exact error. Never disable or bypass signing.
 - Before every push, verify the complete pull-request range, using the base branch
@@ -109,6 +133,28 @@ The skill covers signing, local validation, and an optional playground.
   coverage within the existing setup-inclusive deadline and publication reserve.
 - Keep commit messages in the Conventional Commits style already used in the
   history (`feat(web): …`, `fix(app): …`, `test(web): …`).
+
+## Reviewing changes
+
+- Before requesting human review, have a fresh-context agent review the complete
+  PR diff against its issue or decision record and this guide.
+- Tag each finding Important (breaks or risks behaviour), Nit (style or
+  preference) or Pre-existing (present before this PR, so not the author's
+  regression). Cite a file and line as evidence. Start the report with the count,
+  and say plainly when nothing needs fixing.
+- Fix every confirmed finding, Nits included. Record evidence only for a finding
+  you reject as wrong. Fix a Pre-existing finding at its root cause in this PR
+  when it is in scope; otherwise open an issue for it.
+- When a finding is one instance of a class, fix every instance and say how you
+  found them.
+- Converge. After the first full review, re-review only the new diff and do not
+  repeat findings already fixed or rejected. After three review-and-fix rounds
+  without a clean result, stop and reconsider the approach, or ask the
+  maintainer, instead of starting a fourth round.
+- When the same finding recurs across PRs, fix it at the source: the code first,
+  then a check in `internal/lint` or `scripts/ci`, and this guide last.
+- When a `Dev integration is red` issue closes, add its regression to the
+  [review eval corpus](docs/development/review-evals.md).
 
 ## graphify
 

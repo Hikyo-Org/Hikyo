@@ -558,6 +558,38 @@
     ]
   },
   {
+    "operation": "email-invitation.accept",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
+    ]
+  },
+  {
+    "operation": "email-invitation.list",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
+    ]
+  },
+  {
+    "operation": "email-invitation.revoke",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
+    ]
+  },
+  {
+    "operation": "email-invitation.send",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
+    ]
+  },
+  {
     "operation": "environment.create",
     "class": "tenant",
     "level": "project",
@@ -1260,6 +1292,30 @@
     ]
   },
   {
+    "operation": "org.identity-image-clear",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
+    ]
+  },
+  {
+    "operation": "org.identity-image-set",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
+    ]
+  },
+  {
+    "operation": "org.identity-set",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
+    ]
+  },
+  {
     "operation": "org.list",
     "class": "instance",
     "level": "instance",
@@ -1273,6 +1329,73 @@
     "level": "org",
     "formula": [
       "manage-members@org"
+    ]
+  },
+  {
+    "operation": "personal-value.counts",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "manage-members@project"
+    ]
+  },
+  {
+    "operation": "personal-value.delete",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ]
+  },
+  {
+    "operation": "personal-value.delete-member",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "manage-members@project"
+    ]
+  },
+  {
+    "operation": "personal-value.list",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ]
+  },
+  {
+    "operation": "personal-value.members",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "manage-members@project"
+    ]
+  },
+  {
+    "operation": "personal-value.offboarding-report",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-members@project",
+      "audit-read@project"
+    ]
+  },
+  {
+    "operation": "personal-value.reveal",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment",
+      "reveal@environment"
+    ]
+  },
+  {
+    "operation": "personal-value.set",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment",
+      "reveal@environment"
     ]
   },
   {
@@ -1458,6 +1581,38 @@
     "level": "project",
     "formula": [
       "read@project"
+    ]
+  },
+  {
+    "operation": "project.identity-image-clear",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-projects@org"
+    ]
+  },
+  {
+    "operation": "project.identity-image-get",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "read@project"
+    ]
+  },
+  {
+    "operation": "project.identity-image-set",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-projects@org"
+    ]
+  },
+  {
+    "operation": "project.identity-set",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-projects@org"
     ]
   },
   {

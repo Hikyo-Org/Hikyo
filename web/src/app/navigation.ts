@@ -124,6 +124,18 @@ export const SURFACES = defineSurfaceRegistry([
     mode: 'public',
     chrome: 'none',
   },
+  // Acceptance of an email invitation (#1207). Public and chromeless like
+  // sign-up verification: the token rides the URL fragment, and the page
+  // itself tells a signed-out person to sign in first, so it renders in both
+  // session states.
+  {
+    id: 'invitation-accept',
+    path: '/invitations/accept',
+    label: 'Accept an invitation',
+    section: null,
+    mode: 'public',
+    chrome: 'none',
+  },
   {
     id: 'overview',
     path: '/',
@@ -299,6 +311,26 @@ export const SURFACES = defineSurfaceRegistry([
     id: 'values',
     path: '/orgs/:org/projects/:project/environments/:environment/values',
     label: 'Values',
+    section: null,
+    mode: 'authenticated',
+    chrome: 'shell',
+  },
+  // The owner's own personal values in one environment (personal-values ADR,
+  // O3). Like `values`, it addresses one environment, so it has no sidebar entry.
+  {
+    id: 'personal-values',
+    path: '/orgs/:org/projects/:project/environments/:environment/personal-values',
+    label: 'My personal values',
+    section: null,
+    mode: 'authenticated',
+    chrome: 'shell',
+  },
+  // The offboarding report for one member of a project: names only, opened
+  // from the project's members view.
+  {
+    id: 'offboarding-report',
+    path: '/orgs/:org/projects/:project/offboarding-report',
+    label: 'Offboarding report',
     section: null,
     mode: 'authenticated',
     chrome: 'shell',

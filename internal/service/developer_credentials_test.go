@@ -48,7 +48,7 @@ func developerLifecycleFixture(t *testing.T) (*DeveloperCredentials, Actor, stri
 }
 func openDeveloperMintWindow(t *testing.T, s *DeveloperCredentials, scope domain.Scope, ttl time.Duration) {
 	t.Helper()
-	intent, err := NewDeveloperCredentialReauthIntent(string(scope.Env), nil, ttl, true)
+	intent, err := NewPersonalDeveloperCredentialReauthIntent(string(scope.Env), nil, ttl, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,6 +97,24 @@ func TestDeveloperCredentialMintCapAndRevocation(t *testing.T) {
 	openDeveloperMintWindow(t, s, scope, time.Hour)
 	if _, err := s.Mint(t.Context(), actor, scope, request); err != nil {
 		t.Fatal(err)
+	}
+}
+func TestDeveloperCredentialListNamesTheDelegator(t *testing.T) {
+	s, actor, _, scope := developerLifecycleFixture(t)
+	openDeveloperMintWindow(t, s, scope, time.Hour)
+	if _, err := s.Mint(t.Context(), actor, scope, MintDeveloperCredentialRequest{Lifetime: time.Hour, ConsentCurrentAndFuture: true}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := s.List(t.Context(), actor, domain.Scope{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The delegator is a named account; the developer principal is not, so its name stays empty.
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want 1", len(rows))
+	}
+	if rows[0].AuthorityPrincipalName != "Developer" {
+		t.Fatalf("delegator name = %q, want Developer", rows[0].AuthorityPrincipalName)
 	}
 }
 func TestDeveloperCredentialLowerCeilingDoesNotReviveOnRaise(t *testing.T) {
@@ -174,7 +192,7 @@ func TestDeveloperReauthFullCatalogueBinding(t *testing.T) {
 	for i := range keys {
 		keys[i] = fmt.Sprintf("key_%04d", i)
 	}
-	intent, err := NewDeveloperCredentialReauthIntent("env_catalogue", keys, time.Hour, true)
+	intent, err := NewPersonalDeveloperCredentialReauthIntent("env_catalogue", keys, time.Hour, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,11 +202,11 @@ func TestDeveloperReauthFullCatalogueBinding(t *testing.T) {
 	}
 	changed := append([]string(nil), keys...)
 	changed[9999] = "key_changed"
-	other, err := NewDeveloperCredentialReauthIntent("env_catalogue", changed, time.Hour, true)
+	other, err := NewPersonalDeveloperCredentialReauthIntent("env_catalogue", changed, time.Hour, true, false)
 	if err != nil || other.keySet == intent.keySet {
 		t.Fatal("10000th key was omitted from exact ceremony binding")
 	}
-	if _, err := NewDeveloperCredentialReauthIntent("env_catalogue", append(keys, "key_overflow"), time.Hour, true); !errors.Is(err, domain.ErrInvalid) {
+	if _, err := NewPersonalDeveloperCredentialReauthIntent("env_catalogue", append(keys, "key_overflow"), time.Hour, true, false); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("catalogue overflow admitted: %v", err)
 	}
 }

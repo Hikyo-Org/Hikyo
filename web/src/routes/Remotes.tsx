@@ -66,6 +66,7 @@ import { Radio } from '../ui/Radio.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
 import { PanelForm } from './Sections.tsx';
 import { RemotePairing } from './RemotePairing.tsx';
+import { NamedId } from '../ui/NamedId.tsx';
 import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
 import { Glyph, type GlyphName } from '../ui/Glyph.tsx';
 
@@ -445,19 +446,20 @@ export function UpdateJobStatus({
   job: InstanceUpdateJob | undefined;
 }) {
   const outcome = job === undefined ? undefined : updateJobOutcome(job);
+  const target = <span title={`Update job ${jobID}`}>{job === undefined ? 'Update' : `Update to ${job.version}`}</span>;
   if (outcome?.kind === 'failed') {
     return (
       <Alert>
-        Update job <span className="mono">{jobID}</span> {job?.state}
+        {target} {job?.state}
         {job?.phase === undefined ? '' : ` (${job.phase})`}
         {outcome.failureCode === undefined ? '' : ` (${outcome.failureCode})`}. Inspect the
-        remote instance logs.
+        remote instance logs for update job <span className="mono">{jobID}</span>.
       </Alert>
     );
   }
   return (
     <p role="status">
-      Update job <span className="mono">{jobID}</span>: {job?.state ?? 'queued'}
+      {target}: {job?.state ?? 'queued'}
       {job?.phase === undefined ? '' : ` (${job.phase})`}
     </p>
   );
@@ -845,7 +847,7 @@ export function ConnectionRow({
         </dd>
         <dt>Created</dt>
         <dd>
-          {isoDay(connection.created_at)} by <span className="mono">{connection.created_by}</span>
+          {isoDay(connection.created_at)} by <NamedId id={connection.created_by} name={connection.created_by_name} />
         </dd>
         <dt>Last used</dt>
         <dd>{connection.last_used_at === undefined ? 'never used' : isoDay(connection.last_used_at)}</dd>

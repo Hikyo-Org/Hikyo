@@ -1502,6 +1502,30 @@ func (e DefinitionsSettingsDefinitionsSource) Valid() bool {
 	}
 }
 
+// Defines values for DeliveredKeyPersonal.
+const (
+	DeliveredKeyPersonalMissing  DeliveredKeyPersonal = "missing"
+	DeliveredKeyPersonalNotice   DeliveredKeyPersonal = "notice"
+	DeliveredKeyPersonalValue    DeliveredKeyPersonal = "value"
+	DeliveredKeyPersonalWithheld DeliveredKeyPersonal = "withheld"
+)
+
+// Valid indicates whether the value is a known member of the DeliveredKeyPersonal enum.
+func (e DeliveredKeyPersonal) Valid() bool {
+	switch e {
+	case DeliveredKeyPersonalMissing:
+		return true
+	case DeliveredKeyPersonalNotice:
+		return true
+	case DeliveredKeyPersonalValue:
+		return true
+	case DeliveredKeyPersonalWithheld:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DeliveredKeyPresence.
 const (
 	DeliveredKeyPresenceForbidden DeliveredKeyPresence = "forbidden"
@@ -2357,6 +2381,39 @@ func (e PendingDraftOperation) Valid() bool {
 	case PendingDraftOperationSet:
 		return true
 	case PendingDraftOperationUnset:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PersonalValueNoticeCause.
+const (
+	PersonalValueNoticeCauseAdministrator     PersonalValueNoticeCause = "administrator"
+	PersonalValueNoticeCauseForbidden         PersonalValueNoticeCause = "forbidden"
+	PersonalValueNoticeCauseKeyDeleted        PersonalValueNoticeCause = "key_deleted"
+	PersonalValueNoticeCauseKeyRenamed        PersonalValueNoticeCause = "key_renamed"
+	PersonalValueNoticeCauseQualificationLost PersonalValueNoticeCause = "qualification_lost"
+	PersonalValueNoticeCauseRestore           PersonalValueNoticeCause = "restore"
+	PersonalValueNoticeCauseRetention         PersonalValueNoticeCause = "retention"
+)
+
+// Valid indicates whether the value is a known member of the PersonalValueNoticeCause enum.
+func (e PersonalValueNoticeCause) Valid() bool {
+	switch e {
+	case PersonalValueNoticeCauseAdministrator:
+		return true
+	case PersonalValueNoticeCauseForbidden:
+		return true
+	case PersonalValueNoticeCauseKeyDeleted:
+		return true
+	case PersonalValueNoticeCauseKeyRenamed:
+		return true
+	case PersonalValueNoticeCauseQualificationLost:
+		return true
+	case PersonalValueNoticeCauseRestore:
+		return true
+	case PersonalValueNoticeCauseRetention:
 		return true
 	default:
 		return false
@@ -5316,6 +5373,9 @@ type AffectedCredential struct {
 
 	// ServiceAccountId A prefixed UUIDv7, e.g. `org_0198…`.
 	ServiceAccountId ID `json:"service_account_id"`
+
+	// ServiceAccountName Display name of the service account, omitted when it no longer resolves.
+	ServiceAccountName *string `json:"service_account_name,omitempty"`
 }
 
 // AffectedCredentialReason defines model for AffectedCredential.Reason.
@@ -5908,12 +5968,18 @@ type CLIReauthApproved struct {
 	State string `json:"state"`
 }
 
-// CLIReauthEnvironmentPolicy defines model for CLIReauthEnvironmentPolicy.
+// CLIReauthEnvironmentPolicy Display policy for one environment. The organisation and project ids are the owning rows, resolved by the server after it authorized the caller for this environment; clients read names through their own authorized endpoints.
 type CLIReauthEnvironmentPolicy struct {
 	EffectiveWindowSeconds int `json:"effective_window_seconds"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
-	EnvironmentId    ID   `json:"environment_id"`
+	EnvironmentId ID `json:"environment_id"`
+
+	// OrgId A prefixed UUIDv7, e.g. `org_0198…`.
+	OrgId ID `json:"org_id"`
+
+	// ProjectId A prefixed UUIDv7, e.g. `org_0198…`.
+	ProjectId        ID   `json:"project_id"`
 	RequiresWebauthn bool `json:"requires_webauthn"`
 }
 
@@ -6165,6 +6231,16 @@ type ChangedKey struct {
 
 // ChangedKeyChange defines model for ChangedKey.Change.
 type ChangedKeyChange string
+
+// ChromeIdentity The editable avatar of an organisation or project. `mark` is null when
+// the monogram is derived from the name; `image_version` is a lowercase
+// hex content hash of the uploaded image, null when there is none, and is
+// what the image URL's `v` query parameter carries.
+type ChromeIdentity struct {
+	Hue          int     `json:"hue"`
+	ImageVersion *string `json:"image_version"`
+	Mark         *string `json:"mark"`
+}
 
 // CloneEnvironmentRequest defines model for CloneEnvironmentRequest.
 type CloneEnvironmentRequest struct {
@@ -6769,8 +6845,9 @@ type DefinitionsBundleKey struct {
 	// Secret data key, an adapter effective name - so it is a delivery
 	// constraint, not a style preference. `maxLength` counts code points
 	// here and bytes in the service; the grammar is ASCII, so they agree.
-	Name       KeyName                   `json:"name"`
-	RequiredIn DefinitionsBundlePresence `json:"required_in"`
+	Name               KeyName                    `json:"name"`
+	PersonalRequiredIn *DefinitionsBundlePresence `json:"personal_required_in,omitempty"`
+	RequiredIn         DefinitionsBundlePresence  `json:"required_in"`
 }
 
 // DefinitionsBundlePresence defines model for DefinitionsBundlePresence.
@@ -6812,6 +6889,9 @@ type DefinitionsDiff struct {
 type DefinitionsEnvironmentDeletion struct {
 	Name        string `json:"name"`
 	Occurrences int64  `json:"occurrences"`
+
+	// PersonalValues Personal values the deletion would remove, counted when the plan was made. Apply removes whatever the environment holds then. Absent from servers older than revision 15.
+	PersonalValues *int64 `json:"personal_values,omitempty"`
 }
 
 // DefinitionsKeyDeletion defines model for DefinitionsKeyDeletion.
@@ -6835,7 +6915,10 @@ type DefinitionsLastApply struct {
 	// AppliedAt RFC 3339 UTC, microsecond precision.
 	AppliedAt Timestamp `json:"applied_at"`
 	AppliedBy string    `json:"applied_by"`
-	Commit    *string   `json:"commit,omitempty"`
+
+	// AppliedByName Display name of `applied_by` (a principal id), present only when it can be named.
+	AppliedByName *string `json:"applied_by_name,omitempty"`
+	Commit        *string `json:"commit,omitempty"`
 
 	// PlanId A prefixed UUIDv7, e.g. `org_0198…`.
 	PlanId   ID      `json:"plan_id"`
@@ -6931,6 +7014,18 @@ type DeliveredKey struct {
 	KeyId ID     `json:"key_id"`
 	Name  string `json:"name"`
 
+	// Personal Developer-credential delivery only (#1235). `value`: the value is
+	// the credential's human's own personal value. `withheld`: they hold
+	// one this fetch does not carry (see `personal_reason`). `notice`:
+	// their value was removed and not yet acknowledged. `missing`: the
+	// key is `personal_required_in` this environment and they hold no
+	// value (consenting fetches only). A withheld, notice or missing key
+	// never carries the shared value, and `hikyo run` refuses it.
+	Personal *DeliveredKeyPersonal `json:"personal,omitempty"`
+
+	// PersonalReason For `withheld`, one of consent, config_only, suspended. For `notice`, the cause. Absent for `missing`.
+	PersonalReason *string `json:"personal_reason,omitempty"`
+
 	// Presence What the fetch reports about this key in the addressed
 	// environment. `set` is a key the committed snapshot actually
 	// delivers (#51 -- values landed, and the change token moves with
@@ -6950,6 +7045,15 @@ type DeliveredKey struct {
 	// presence-only key. The maxLength matches the value-write bound.
 	Value *string `json:"value,omitempty"`
 }
+
+// DeliveredKeyPersonal Developer-credential delivery only (#1235). `value`: the value is
+// the credential's human's own personal value. `withheld`: they hold
+// one this fetch does not carry (see `personal_reason`). `notice`:
+// their value was removed and not yet acknowledged. `missing`: the
+// key is `personal_required_in` this environment and they hold no
+// value (consenting fetches only). A withheld, notice or missing key
+// never carries the shared value, and `hikyo run` refuses it.
+type DeliveredKeyPersonal string
 
 // DeliveredKeyPresence What the fetch reports about this key in the addressed
 // environment. `set` is a key the committed snapshot actually
@@ -7185,8 +7289,11 @@ type DeliveryTargetTombstoneRequest struct {
 // DeveloperCredential defines model for DeveloperCredential.
 type DeveloperCredential struct {
 	// AuthorityPrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
-	AuthorityPrincipalId ID        `json:"authority_principal_id"`
-	CreatedAt            time.Time `json:"created_at"`
+	AuthorityPrincipalId ID `json:"authority_principal_id"`
+
+	// AuthorityPrincipalName Display name of the human who delegated the credential. Omitted when unnamed.
+	AuthorityPrincipalName *string   `json:"authority_principal_name,omitempty"`
+	CreatedAt              time.Time `json:"created_at"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId ID        `json:"environment_id"`
@@ -7196,8 +7303,9 @@ type DeveloperCredential struct {
 	Id ID `json:"id"`
 
 	// OrgId A prefixed UUIDv7, e.g. `org_0198…`.
-	OrgId      ID     `json:"org_id"`
-	PrefixHint string `json:"prefix_hint"`
+	OrgId           ID     `json:"org_id"`
+	PersonalConsent *bool  `json:"personal_consent,omitempty"`
+	PrefixHint      string `json:"prefix_hint"`
 
 	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
 	PrincipalId ID `json:"principal_id"`
@@ -7222,6 +7330,9 @@ type DeveloperCredentialPolicy struct {
 type DeveloperCredentialReauthIntent struct {
 	ConsentCurrentAndFuture DeveloperCredentialReauthIntentConsentCurrentAndFuture `json:"consent_current_and_future"`
 	LifetimeSeconds         int64                                                  `json:"lifetime_seconds"`
+
+	// PersonalConsent The credential will also deliver the minting person's own personal values; bound into the ceremony.
+	PersonalConsent *bool `json:"personal_consent,omitempty"`
 }
 
 // DeveloperCredentialReauthIntentConsentCurrentAndFuture defines model for DeveloperCredentialReauthIntent.ConsentCurrentAndFuture.
@@ -7336,6 +7447,92 @@ type DynamicProviderList struct {
 
 // DynamicProviderState defines model for DynamicProviderState.
 type DynamicProviderState string
+
+// EmailInvitation defines model for EmailInvitation.
+type EmailInvitation struct {
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt Timestamp `json:"created_at"`
+	Email     string    `json:"email"`
+
+	// ExpiresAt RFC 3339 UTC, microsecond precision.
+	ExpiresAt Timestamp `json:"expires_at"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id ID `json:"id"`
+
+	// Template The closed v1 role template set.
+	Template RoleTemplate `json:"template"`
+}
+
+// EmailInvitationAcceptance defines model for EmailInvitationAcceptance.
+type EmailInvitationAcceptance struct {
+	GrantsCreated int `json:"grants_created"`
+
+	// Org A prefixed UUIDv7, e.g. `org_0198…`.
+	Org     ID     `json:"org"`
+	OrgName string `json:"org_name"`
+
+	// SignedOut True when grants were created: every session of the person ended,
+	// the current one included, and they must sign in again.
+	SignedOut bool `json:"signed_out"`
+
+	// Template The closed v1 role template set.
+	Template RoleTemplate `json:"template"`
+}
+
+// EmailInvitationList defines model for EmailInvitationList.
+type EmailInvitationList struct {
+	Count int                      `json:"count"`
+	Items []EmailInvitationListing `json:"items"`
+}
+
+// EmailInvitationListing defines model for EmailInvitationListing.
+type EmailInvitationListing struct {
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt Timestamp `json:"created_at"`
+	Email     string    `json:"email"`
+
+	// ExpiresAt RFC 3339 UTC, microsecond precision.
+	ExpiresAt Timestamp `json:"expires_at"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id ID `json:"id"`
+
+	// InvitedBy A prefixed UUIDv7, e.g. `org_0198…`.
+	InvitedBy ID `json:"invited_by"`
+
+	// Template The closed v1 role template set.
+	Template RoleTemplate `json:"template"`
+}
+
+// EmailInvitationPreview defines model for EmailInvitationPreview.
+type EmailInvitationPreview struct {
+	// ExpiresAt RFC 3339 UTC, microsecond precision.
+	ExpiresAt Timestamp `json:"expires_at"`
+
+	// Org A prefixed UUIDv7, e.g. `org_0198…`.
+	Org     ID     `json:"org"`
+	OrgName string `json:"org_name"`
+
+	// Template The closed v1 role template set.
+	Template RoleTemplate `json:"template"`
+}
+
+// EmailInvitationSendRequest defines model for EmailInvitationSendRequest.
+type EmailInvitationSendRequest struct {
+	// Email The exact address, canonicalized as local sign-up does. Only a
+	// verified address of an existing account can be reached.
+	Email string `json:"email"`
+
+	// Template The closed v1 role template set.
+	Template RoleTemplate `json:"template"`
+}
+
+// EmailInvitationTokenRequest defines model for EmailInvitationTokenRequest.
+type EmailInvitationTokenRequest struct {
+	// Token The single-use token from the invitation link's fragment.
+	Token string `json:"token"`
+}
 
 // EmergencyAccessInput defines model for EmergencyAccessInput.
 type EmergencyAccessInput struct {
@@ -7903,6 +8100,18 @@ type IdentityList struct {
 // IdentityProviderKind OPEN protocol discriminator in the byte-exact external-identity key.
 type IdentityProviderKind = string
 
+// IdentityRequest A partial write: each field present replaces the stored one and an
+// absent field is left unchanged, so saving one field never overwrites
+// a concurrent change to the other.
+type IdentityRequest struct {
+	Hue *int `json:"hue,omitempty"`
+
+	// Mark At most two grapheme clusters; no control or invisible format
+	// characters and no surrounding whitespace. Empty selects the
+	// name-derived monogram; null or absent leaves the stored mark.
+	Mark *string `json:"mark,omitempty"`
+}
+
 // IdentityUnlinkRequest defines model for IdentityUnlinkRequest.
 type IdentityUnlinkRequest struct {
 	Proof string `json:"proof"`
@@ -8145,6 +8354,9 @@ type InstanceConnection struct {
 	// CreatedAt RFC 3339 UTC, microsecond precision.
 	CreatedAt Timestamp `json:"created_at"`
 	CreatedBy string    `json:"created_by"`
+
+	// CreatedByName Display name of `created_by`, present only when it can be named.
+	CreatedByName *string `json:"created_by_name,omitempty"`
 
 	// ExpiresAt RFC 3339 UTC, microsecond precision.
 	ExpiresAt *Timestamp `json:"expires_at,omitempty"`
@@ -8461,6 +8673,13 @@ type KeyPresenceRules struct {
 	// from a rule the operator wrote as "always". `none` is the default.
 	ForbiddenIn KeyPresence `json:"forbidden_in"`
 
+	// PersonalRequiredIn Environments where each developer must hold their own personal
+	// value. `none` or `explicit` only: `all` is refused because it would
+	// reach environments created later. Refused where the key is also
+	// required or forbidden, and for a key in a group. Absent means `none`
+	// on create; on a declaration update, absent keeps the stored setting.
+	PersonalRequiredIn *KeyPresence `json:"personal_required_in,omitempty"`
+
 	// RequiredIn A mode plus an explicit set, never a bare id list: `all` is SYMBOLIC
 	// and covers environments created later, so expanding it into the ids
 	// existing at declaration time would silently exempt a new environment
@@ -8735,6 +8954,11 @@ type MintDeveloperCredentialRequest struct {
 	ConsentCurrentAndFuture MintDeveloperCredentialRequestConsentCurrentAndFuture `json:"consent_current_and_future"`
 	KeyIds                  []ID                                                  `json:"key_ids"`
 	LifetimeSeconds         int64                                                 `json:"lifetime_seconds"`
+
+	// PersonalConsent Explicit consent to deliver the minting person's current and future
+	// personal values in this environment through this credential. Without
+	// it, delivery names those keys only and `hikyo run` refuses them.
+	PersonalConsent *bool `json:"personal_consent,omitempty"`
 }
 
 // MintDeveloperCredentialRequestConsentCurrentAndFuture Explicit consent to every current and future published key in this environment until expiry.
@@ -8806,13 +9030,19 @@ type MintedInstanceConnection struct {
 }
 
 // MyOrg An organisation as a navigation destination: what the caller needs to
-// show it and route to it, and nothing else. Deliberately narrower than
+// show it and route to it (name and chrome identity), and nothing else. Deliberately narrower than
 // `Org` — `metadata` and `active` are operator-set state that belongs to
 // `getOrg`, which authorizes; a member listing does not.
 type MyOrg struct {
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
-	Id   ID     `json:"id"`
-	Name string `json:"name"`
+	Id ID `json:"id"`
+
+	// Identity The editable avatar of an organisation or project. `mark` is null when
+	// the monogram is derived from the name; `image_version` is a lowercase
+	// hex content hash of the uploaded image, null when there is none, and is
+	// what the image URL's `v` query parameter carries.
+	Identity *ChromeIdentity `json:"identity,omitempty"`
+	Name     string          `json:"name"`
 }
 
 // MyOrgList defines model for MyOrgList.
@@ -9015,7 +9245,13 @@ type Org struct {
 	CreatedAt Timestamp `json:"created_at"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
-	Id       ID                      `json:"id"`
+	Id ID `json:"id"`
+
+	// Identity The editable avatar of an organisation or project. `mark` is null when
+	// the monogram is derived from the name; `image_version` is a lowercase
+	// hex content hash of the uploaded image, null when there is none, and is
+	// what the image URL's `v` query parameter carries.
+	Identity *ChromeIdentity         `json:"identity,omitempty"`
 	Metadata *map[string]interface{} `json:"metadata,omitempty"`
 	Name     string                  `json:"name"`
 
@@ -9164,6 +9400,122 @@ type PendingDraftList struct {
 	Count int            `json:"count"`
 	Items []PendingDraft `json:"items"`
 }
+
+// PersonalOffboardingReceipt defines model for PersonalOffboardingReceipt.
+type PersonalOffboardingReceipt struct {
+	// ChangedSince The shared value was published again after the person last received it.
+	ChangedSince bool `json:"changed_since"`
+
+	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
+	EnvironmentId   ID        `json:"environment_id"`
+	EnvironmentName string    `json:"environment_name"`
+	KeyName         string    `json:"key_name"`
+	LastReceivedAt  time.Time `json:"last_received_at"`
+}
+
+// PersonalOffboardingReport Names only, never values. What to rotate after someone leaves.
+type PersonalOffboardingReport struct {
+	// EvidenceFrom The oldest audit record the report could read. Disclosures before it, or never audited, do not appear.
+	EvidenceFrom time.Time `json:"evidence_from"`
+	GeneratedAt  time.Time `json:"generated_at"`
+
+	// Limits Fixed statements of what the report cannot show or undo.
+	Limits []string `json:"limits"`
+
+	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
+	PrincipalId ID `json:"principal_id"`
+
+	// Received Shared keys the person is recorded as receiving, through their own session or a developer credential.
+	Received        []PersonalOffboardingReceipt        `json:"received"`
+	ServiceAccounts []PersonalOffboardingServiceAccount `json:"service_accounts"`
+	Username        string                              `json:"username"`
+}
+
+// PersonalOffboardingServiceAccount defines model for PersonalOffboardingServiceAccount.
+type PersonalOffboardingServiceAccount struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id   ID     `json:"id"`
+	Name string `json:"name"`
+}
+
+// PersonalValueCount defines model for PersonalValueCount.
+type PersonalValueCount struct {
+	// Holders People holding a personal value for this key here.
+	Holders int `json:"holders"`
+
+	// KeyId A prefixed UUIDv7, e.g. `org_0198…`.
+	KeyId ID     `json:"key_id"`
+	Name  string `json:"name"`
+
+	// Notices People with an unacknowledged removal notice.
+	Notices int `json:"notices"`
+
+	// Required The key is personal_required_in this environment.
+	Required bool `json:"required"`
+}
+
+// PersonalValueCounts defines model for PersonalValueCounts.
+type PersonalValueCounts struct {
+	// Eligible The denominator of `11/14`, humans currently holding both read and reveal here.
+	Eligible int                  `json:"eligible"`
+	Items    []PersonalValueCount `json:"items"`
+}
+
+// PersonalValueEntry defines model for PersonalValueEntry.
+type PersonalValueEntry struct {
+	// KeyId A prefixed UUIDv7, e.g. `org_0198…`.
+	KeyId *ID    `json:"key_id,omitempty"`
+	Name  string `json:"name"`
+
+	// Notice Why a personal value disappeared other than by its owner.
+	Notice *PersonalValueNoticeCause `json:"notice,omitempty"`
+
+	// Required The key is `personal_required_in` this environment (the owner's checklist).
+	Required *bool `json:"required,omitempty"`
+	Set      bool  `json:"set"`
+
+	// Suspended The owner lost read, reveal or qualification without a credential
+	// change. The value is kept but not delivered, and the retention
+	// sweep deletes it 14 days after `suspended_at` unless access returns.
+	Suspended   *bool      `json:"suspended,omitempty"`
+	SuspendedAt *time.Time `json:"suspended_at,omitempty"`
+	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
+
+	// Value Present only on reveal.
+	Value *string `json:"value,omitempty"`
+
+	// Warnings Schema rules this value does not satisfy, returned by set and
+	// reveal only (a list never decrypts). A warning to the owner only:
+	// no rule ever refuses a personal value, at write or delivery.
+	Warnings *[]string `json:"warnings,omitempty"`
+}
+
+// PersonalValueHolder defines model for PersonalValueHolder.
+type PersonalValueHolder struct {
+	// Notice Why a personal value disappeared other than by its owner.
+	Notice *PersonalValueNoticeCause `json:"notice,omitempty"`
+
+	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
+	PrincipalId ID         `json:"principal_id"`
+	Set         bool       `json:"set"`
+	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
+	Username    *string    `json:"username,omitempty"`
+}
+
+// PersonalValueHolderList defines model for PersonalValueHolderList.
+type PersonalValueHolderList struct {
+	Items []PersonalValueHolder `json:"items"`
+}
+
+// PersonalValueList defines model for PersonalValueList.
+type PersonalValueList struct {
+	Items []PersonalValueEntry `json:"items"`
+}
+
+// PersonalValueNoticeCause Why a personal value disappeared other than by its owner.
+type PersonalValueNoticeCause string
 
 // PkiCrl defines model for PkiCrl.
 type PkiCrl struct {
@@ -9421,8 +9773,14 @@ type Project struct {
 	CreatedAt Timestamp `json:"created_at"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
-	Id   ID     `json:"id"`
-	Name string `json:"name"`
+	Id ID `json:"id"`
+
+	// Identity The editable avatar of an organisation or project. `mark` is null when
+	// the monogram is derived from the name; `image_version` is a lowercase
+	// hex content hash of the uploaded image, null when there is none, and is
+	// what the image URL's `v` query parameter carries.
+	Identity *ChromeIdentity `json:"identity,omitempty"`
+	Name     string          `json:"name"`
 
 	// OrgId A prefixed UUIDv7, e.g. `org_0198…`.
 	OrgId ID `json:"org_id"`
@@ -10571,9 +10929,12 @@ type SSHCertificate struct {
 	RequesterClass       string `json:"requester_class"`
 
 	// RequesterPrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
-	RequesterPrincipalId ID                              `json:"requester_principal_id"`
-	RevocationReason     *SSHCertificateRevocationReason `json:"revocation_reason,omitempty"`
-	RevokedAt            *time.Time                      `json:"revoked_at,omitempty"`
+	RequesterPrincipalId ID `json:"requester_principal_id"`
+
+	// RequesterPrincipalName Display name of the requester, present only when it can be named.
+	RequesterPrincipalName *string                         `json:"requester_principal_name,omitempty"`
+	RevocationReason       *SSHCertificateRevocationReason `json:"revocation_reason,omitempty"`
+	RevokedAt              *time.Time                      `json:"revoked_at,omitempty"`
 
 	// Serial The certificate serial as a decimal string (64-bit).
 	Serial string `json:"serial"`
@@ -11182,6 +11543,40 @@ type ScimMintResult struct {
 // named refusal.
 type ScimResource map[string]interface{}
 
+// SecurityMaintenancePublicStatus defines model for SecurityMaintenancePublicStatus.
+type SecurityMaintenancePublicStatus struct {
+	// Action The exact local command an operator runs to leave a blocked state.
+	Action            *string    `json:"action,omitempty"`
+	Applicable        []string   `json:"applicable"`
+	CatalogSequence   int64      `json:"catalog_sequence"`
+	Channel           *string    `json:"channel,omitempty"`
+	Coverage          []string   `json:"coverage"`
+	CoverageThrough   *string    `json:"coverage_through,omitempty"`
+	CoveredComponents []string   `json:"covered_components"`
+	Detail            *string    `json:"detail,omitempty"`
+	Enrolled          bool       `json:"enrolled"`
+	KnownUntil        *time.Time `json:"known_until,omitempty"`
+	LastAttempt       *time.Time `json:"last_attempt,omitempty"`
+	LastVerified      *time.Time `json:"last_verified,omitempty"`
+	Mode              *string    `json:"mode,omitempty"`
+	Phase             string     `json:"phase"`
+
+	// ProtectionGap A known advisory stays unremediated and the installation is stuck, not waiting for a schedule.
+	ProtectionGap  bool    `json:"protection_gap"`
+	Reason         *string `json:"reason,omitempty"`
+	RunningVersion *string `json:"running_version,omitempty"`
+	TargetVersion  *string `json:"target_version,omitempty"`
+}
+
+// SecurityMaintenanceStatus `reported` is false when no status file is configured or the coordinator
+// has not written one. `unreadable` is true when a file exists but cannot be
+// read, is oversized or fails strict parsing; it is never a healthy state.
+type SecurityMaintenanceStatus struct {
+	Reported   bool                             `json:"reported"`
+	Status     *SecurityMaintenancePublicStatus `json:"status,omitempty"`
+	Unreadable bool                             `json:"unreadable"`
+}
+
 // SelfConfigReauthIntent defines model for SelfConfigReauthIntent.
 type SelfConfigReauthIntent struct {
 	Action SelfConfigReauthIntentAction `json:"action"`
@@ -11317,6 +11712,12 @@ type SetPasswordRequest struct {
 
 	// Proof Account-security proof; may be omitted with a live establish stamp.
 	Proof *string `json:"proof,omitempty"`
+}
+
+// SetPersonalValueRequest defines model for SetPersonalValueRequest.
+type SetPersonalValueRequest struct {
+	// Value The plaintext, sealed to this key, environment and owner. Never echoed back.
+	Value string `json:"value"`
 }
 
 // SetProjectCapacityRequest defines model for SetProjectCapacityRequest.
@@ -11661,14 +12062,17 @@ type TransitKey struct {
 	Exportable bool `json:"exportable"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
-	Id                    ID              `json:"id"`
-	LatestVersion         int64           `json:"latest_version"`
-	MinDecryptVersion     int64           `json:"min_decrypt_version"`
-	MinEncryptVersion     int64           `json:"min_encrypt_version"`
-	Name                  TransitKeyName  `json:"name"`
-	RotationDue           bool            `json:"rotation_due"`
-	RotationPeriodSeconds int64           `json:"rotation_period_seconds"`
-	State                 TransitKeyState `json:"state"`
+	Id                ID             `json:"id"`
+	LatestVersion     int64          `json:"latest_version"`
+	MinDecryptVersion int64          `json:"min_decrypt_version"`
+	MinEncryptVersion int64          `json:"min_encrypt_version"`
+	Name              TransitKeyName `json:"name"`
+
+	// PrincipalNames Current names for callers who hold a grant in this key's tenant; not a user directory.
+	PrincipalNames        *map[string]string `json:"principal_names,omitempty"`
+	RotationDue           bool               `json:"rotation_due"`
+	RotationPeriodSeconds int64              `json:"rotation_period_seconds"`
+	State                 TransitKeyState    `json:"state"`
 
 	// UpdatedAt RFC 3339 UTC, microsecond precision.
 	UpdatedAt Timestamp           `json:"updated_at"`
@@ -11967,6 +12371,10 @@ type ValueCell struct {
 
 	// UpdatedBy The principal whose act produced this occurrence.
 	UpdatedBy *string `json:"updated_by,omitempty"`
+
+	// UpdatedByName Display name of `updated_by`, present only when it can be named
+	// from a row the caller already reads.
+	UpdatedByName *string `json:"updated_by_name,omitempty"`
 
 	// Value Present only where the reader was authorized to see it: `config`
 	// under `read`, `secret` under `read` AND `reveal`.
@@ -12288,7 +12696,13 @@ type WorkspaceHandoffStepUp struct {
 
 	// Operation The exact decision the reauthentication authorizes.
 	Operation WorkspaceHandoffStepUpOperation `json:"operation"`
-	Purpose   WorkspaceHandoffStepUpPurpose   `json:"purpose"`
+
+	// OrgId Owning organisation of the environment, for display. Present only when the caller may list that environment.
+	OrgId *ID `json:"org_id,omitempty"`
+
+	// ProjectId Owning project of the environment, for display. Present only when the caller may list that environment.
+	ProjectId *ID                           `json:"project_id,omitempty"`
+	Purpose   WorkspaceHandoffStepUpPurpose `json:"purpose"`
 
 	// RequestingOrigin Exact canonical requesting origin from the stored transaction, never from approval-page URL fields.
 	RequestingOrigin string `json:"requesting_origin"`
@@ -12452,6 +12866,9 @@ type DeliveryProjection string
 // DynamicProviderID A prefixed UUIDv7, e.g. `org_0198…`.
 type DynamicProviderID = ID
 
+// EmailInvitationID A prefixed UUIDv7, e.g. `org_0198…`.
+type EmailInvitationID = ID
+
 // EnvironmentID A prefixed UUIDv7, e.g. `org_0198…`.
 type EnvironmentID = ID
 
@@ -12475,6 +12892,9 @@ type GrantPrincipal = ID
 
 // IdentityID A prefixed UUIDv7, e.g. `org_0198…`.
 type IdentityID = ID
+
+// IdentityImageVersion defines model for IdentityImageVersion.
+type IdentityImageVersion = string
 
 // InstanceUpdateJobID A prefixed UUIDv7, e.g. `org_0198…`.
 type InstanceUpdateJobID = ID
@@ -12924,6 +13344,12 @@ type RevokeOrgGrantParams struct {
 	Capability GrantCapability `form:"capability" json:"capability"`
 }
 
+// GetOrgIdentityImageParams defines parameters for GetOrgIdentityImage.
+type GetOrgIdentityImageParams struct {
+	// V The `identity.image_version` being rendered; a cache-busting hint only.
+	V *IdentityImageVersion `form:"v,omitempty" json:"v,omitempty"`
+}
+
 // RemoveAdapterTargetParams defines parameters for RemoveAdapterTarget.
 type RemoveAdapterTargetParams struct {
 	KeepRemote *bool `form:"keep_remote,omitempty" json:"keep_remote,omitempty"`
@@ -13288,6 +13714,12 @@ type RevokeProjectGrantParams struct {
 	Capability GrantCapability `form:"capability" json:"capability"`
 }
 
+// GetProjectIdentityImageParams defines parameters for GetProjectIdentityImage.
+type GetProjectIdentityImageParams struct {
+	// V The `identity.image_version` being rendered; a cache-busting hint only.
+	V *IdentityImageVersion `form:"v,omitempty" json:"v,omitempty"`
+}
+
 // DiffValuesParams defines parameters for DiffValues.
 type DiffValuesParams struct {
 	// Left The left environment.
@@ -13616,6 +14048,12 @@ type RemoveWorkspaceOriginJSONRequestBody = WorkspaceOriginRequest
 // AddWorkspaceOriginJSONRequestBody defines body for AddWorkspaceOrigin for application/json ContentType.
 type AddWorkspaceOriginJSONRequestBody = WorkspaceOriginRequest
 
+// AcceptEmailInvitationJSONRequestBody defines body for AcceptEmailInvitation for application/json ContentType.
+type AcceptEmailInvitationJSONRequestBody = EmailInvitationTokenRequest
+
+// PreviewEmailInvitationJSONRequestBody defines body for PreviewEmailInvitation for application/json ContentType.
+type PreviewEmailInvitationJSONRequestBody = EmailInvitationTokenRequest
+
 // UpdateMyProfileJSONRequestBody defines body for UpdateMyProfile for application/json ContentType.
 type UpdateMyProfileJSONRequestBody = UpdateAccountProfileRequest
 
@@ -13625,11 +14063,17 @@ type CreateOrgJSONRequestBody = CreateOrgRequest
 // RenameOrgJSONRequestBody defines body for RenameOrg for application/json ContentType.
 type RenameOrgJSONRequestBody = RenameRequest
 
+// InviteOrgMemberByEmailJSONRequestBody defines body for InviteOrgMemberByEmail for application/json ContentType.
+type InviteOrgMemberByEmailJSONRequestBody = EmailInvitationSendRequest
+
 // CreateOrgGrantJSONRequestBody defines body for CreateOrgGrant for application/json ContentType.
 type CreateOrgGrantJSONRequestBody = CreateGrantRequest
 
 // ApplyOrgTemplateJSONRequestBody defines body for ApplyOrgTemplate for application/json ContentType.
 type ApplyOrgTemplateJSONRequestBody = ApplyTemplateRequest
+
+// SetOrgIdentityJSONRequestBody defines body for SetOrgIdentity for application/json ContentType.
+type SetOrgIdentityJSONRequestBody = IdentityRequest
 
 // InviteOrgMemberJSONRequestBody defines body for InviteOrgMember for application/json ContentType.
 type InviteOrgMemberJSONRequestBody = InviteMemberRequest
@@ -13754,6 +14198,9 @@ type RenewLeaseJSONRequestBody = RenewLeaseRequest
 // ChangeEnvironmentParameterJSONRequestBody defines body for ChangeEnvironmentParameter for application/json ContentType.
 type ChangeEnvironmentParameterJSONRequestBody ChangeEnvironmentParameterJSONBody
 
+// SetMyPersonalValueJSONRequestBody defines body for SetMyPersonalValue for application/json ContentType.
+type SetMyPersonalValueJSONRequestBody = SetPersonalValueRequest
+
 // CreateRevisionPinJSONRequestBody defines body for CreateRevisionPin for application/json ContentType.
 type CreateRevisionPinJSONRequestBody = RevisionPinRequest
 
@@ -13852,6 +14299,9 @@ type CreateProjectGrantJSONRequestBody = CreateGrantRequest
 
 // ApplyProjectTemplateJSONRequestBody defines body for ApplyProjectTemplate for application/json ContentType.
 type ApplyProjectTemplateJSONRequestBody = ApplyTemplateRequest
+
+// SetProjectIdentityJSONRequestBody defines body for SetProjectIdentity for application/json ContentType.
+type SetProjectIdentityJSONRequestBody = IdentityRequest
 
 // CreateKeyGroupJSONRequestBody defines body for CreateKeyGroup for application/json ContentType.
 type CreateKeyGroupJSONRequestBody = CreateKeyGroupRequest
@@ -15371,6 +15821,9 @@ type ServerInterface interface {
 	// CompromiseRetireSamlSpKey Immediately erase and replace a compromised active SAML SP key.
 	// (POST /api/v1/instance/saml-sp-keys/{fingerprint}/compromise-retire)
 	CompromiseRetireSamlSpKey(w http.ResponseWriter, r *http.Request, fingerprint string)
+	// GetSecurityMaintenance Read the security-maintenance status the coordinator published.
+	// (GET /api/v1/instance/security-maintenance)
+	GetSecurityMaintenance(w http.ResponseWriter, r *http.Request)
 	// RequestInstanceUpdate Refuse legacy remote apply while preserving authenticated audit evidence.
 	// (POST /api/v1/instance/update)
 	RequestInstanceUpdate(w http.ResponseWriter, r *http.Request)
@@ -15389,6 +15842,12 @@ type ServerInterface interface {
 	// AddWorkspaceOrigin Consent to one exact UI origin.
 	// (POST /api/v1/instance/workspace-origins)
 	AddWorkspaceOrigin(w http.ResponseWriter, r *http.Request)
+	// AcceptEmailInvitation Accept an email invitation as the signed-in person.
+	// (POST /api/v1/me/invitations/accept)
+	AcceptEmailInvitation(w http.ResponseWriter, r *http.Request)
+	// PreviewEmailInvitation Show what an email invitation token offers the signed-in person.
+	// (POST /api/v1/me/invitations/preview)
+	PreviewEmailInvitation(w http.ResponseWriter, r *http.Request)
 	// ListMyOrgs The organisations the caller's own grants name.
 	// (GET /api/v1/me/orgs)
 	ListMyOrgs(w http.ResponseWriter, r *http.Request)
@@ -15428,6 +15887,15 @@ type ServerInterface interface {
 	// ExportOrgAudit Stream the organization's audit trail as JSONL.
 	// (GET /api/v1/orgs/{org}/audit/export)
 	ExportOrgAudit(w http.ResponseWriter, r *http.Request, org OrgID, params ExportOrgAuditParams)
+	// ListOrgEmailInvitations List the organisation's live pending email invitations.
+	// (GET /api/v1/orgs/{org}/email-invitations)
+	ListOrgEmailInvitations(w http.ResponseWriter, r *http.Request, org OrgID)
+	// InviteOrgMemberByEmail Invite the existing account holding an email address into this organisation.
+	// (POST /api/v1/orgs/{org}/email-invitations)
+	InviteOrgMemberByEmail(w http.ResponseWriter, r *http.Request, org OrgID)
+	// RevokeOrgEmailInvitation Revoke one pending email invitation.
+	// (DELETE /api/v1/orgs/{org}/email-invitations/{invitation})
+	RevokeOrgEmailInvitation(w http.ResponseWriter, r *http.Request, org OrgID, invitation EmailInvitationID)
 	// RevokeOrgGrant Revoke one capability at organisation scope.
 	// (DELETE /api/v1/orgs/{org}/grants)
 	RevokeOrgGrant(w http.ResponseWriter, r *http.Request, org OrgID, params RevokeOrgGrantParams)
@@ -15440,6 +15908,18 @@ type ServerInterface interface {
 	// ApplyOrgTemplate Apply a role template at organisation scope.
 	// (POST /api/v1/orgs/{org}/grants/template)
 	ApplyOrgTemplate(w http.ResponseWriter, r *http.Request, org OrgID)
+	// SetOrgIdentity Set the organisation's hue, mark or both.
+	// (PUT /api/v1/orgs/{org}/identity)
+	SetOrgIdentity(w http.ResponseWriter, r *http.Request, org OrgID)
+	// ClearOrgIdentityImage Remove the organisation's uploaded image.
+	// (DELETE /api/v1/orgs/{org}/identity/image)
+	ClearOrgIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID)
+	// GetOrgIdentityImage Read the organisation's uploaded image.
+	// (GET /api/v1/orgs/{org}/identity/image)
+	GetOrgIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, params GetOrgIdentityImageParams)
+	// SetOrgIdentityImage Upload the organisation's image.
+	// (PUT /api/v1/orgs/{org}/identity/image)
+	SetOrgIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID)
 	// InviteOrgMember Invite a human into this organisation with a local credential.
 	// (POST /api/v1/orgs/{org}/invitations)
 	InviteOrgMember(w http.ResponseWriter, r *http.Request, org OrgID)
@@ -15734,6 +16214,27 @@ type ServerInterface interface {
 	// ListPendingDrafts Preview the caller's pending drafts in one environment.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/pending)
 	ListPendingDrafts(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// ListPersonalValueCounts Count personal values and notices per key, for the matrix marks.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-value-counts)
+	ListPersonalValueCounts(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// ListMyPersonalValues List the caller's own personal values and notices, masked.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values)
+	ListMyPersonalValues(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// DeleteMyPersonalValue Delete the caller's own personal value and dismiss its notice.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key})
+	DeleteMyPersonalValue(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, key ValueKeyName)
+	// SetMyPersonalValue Set or replace the caller's own personal value for a declared key.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key})
+	SetMyPersonalValue(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, key ValueKeyName)
+	// ListPersonalValueMembers List who holds a personal value or notice for one key.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members)
+	ListPersonalValueMembers(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, key ValueKeyName)
+	// DeletePersonalValueMember Delete another person's personal value and leave them a notice.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members/{member})
+	DeletePersonalValueMember(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, key ValueKeyName, member string)
+	// RevealMyPersonalValue Read the caller's own personal value in plaintext.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/reveal)
+	RevealMyPersonalValue(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, key ValueKeyName)
 	// ListRevisionPins List durable workload revision pins.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/pins)
 	ListRevisionPins(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
@@ -15944,6 +16445,18 @@ type ServerInterface interface {
 	// ApplyProjectTemplate Apply a role template at project scope.
 	// (POST /api/v1/orgs/{org}/projects/{project}/grants/template)
 	ApplyProjectTemplate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// SetProjectIdentity Set the project's hue, mark or both.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/identity)
+	SetProjectIdentity(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// ClearProjectIdentityImage Remove the project's uploaded image.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/identity/image)
+	ClearProjectIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// GetProjectIdentityImage Read the project's uploaded image.
+	// (GET /api/v1/orgs/{org}/projects/{project}/identity/image)
+	GetProjectIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, params GetProjectIdentityImageParams)
+	// SetProjectIdentityImage Upload the project's image.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/identity/image)
+	SetProjectIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
 	// ListKeyGroups List the project's key groups.
 	// (GET /api/v1/orgs/{org}/projects/{project}/key-groups)
 	ListKeyGroups(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
@@ -15992,6 +16505,9 @@ type ServerInterface interface {
 	// SetMachineReveal Enable or withdraw the per-project machine-reveal opt-in.
 	// (PUT /api/v1/orgs/{org}/projects/{project}/machine-reveal)
 	SetMachineReveal(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// GetPersonalOffboardingReport List what to rotate after someone leaves the project.
+	// (GET /api/v1/orgs/{org}/projects/{project}/personal-offboarding-report/{member})
+	GetPersonalOffboardingReport(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, member string)
 	// ReencryptProject Walk a project's ciphertext onto the active DEK version.
 	// (POST /api/v1/orgs/{org}/projects/{project}/reencrypt)
 	ReencryptProject(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
@@ -17018,6 +17534,12 @@ func (_ Unimplemented) CompromiseRetireSamlSpKey(w http.ResponseWriter, r *http.
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// GetSecurityMaintenance Read the security-maintenance status the coordinator published.
+// (GET /api/v1/instance/security-maintenance)
+func (_ Unimplemented) GetSecurityMaintenance(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // RequestInstanceUpdate Refuse legacy remote apply while preserving authenticated audit evidence.
 // (POST /api/v1/instance/update)
 func (_ Unimplemented) RequestInstanceUpdate(w http.ResponseWriter, r *http.Request) {
@@ -17051,6 +17573,18 @@ func (_ Unimplemented) ListWorkspaceOrigins(w http.ResponseWriter, r *http.Reque
 // AddWorkspaceOrigin Consent to one exact UI origin.
 // (POST /api/v1/instance/workspace-origins)
 func (_ Unimplemented) AddWorkspaceOrigin(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// AcceptEmailInvitation Accept an email invitation as the signed-in person.
+// (POST /api/v1/me/invitations/accept)
+func (_ Unimplemented) AcceptEmailInvitation(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PreviewEmailInvitation Show what an email invitation token offers the signed-in person.
+// (POST /api/v1/me/invitations/preview)
+func (_ Unimplemented) PreviewEmailInvitation(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -17132,6 +17666,24 @@ func (_ Unimplemented) ExportOrgAudit(w http.ResponseWriter, r *http.Request, or
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListOrgEmailInvitations List the organisation's live pending email invitations.
+// (GET /api/v1/orgs/{org}/email-invitations)
+func (_ Unimplemented) ListOrgEmailInvitations(w http.ResponseWriter, r *http.Request, org OrgID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// InviteOrgMemberByEmail Invite the existing account holding an email address into this organisation.
+// (POST /api/v1/orgs/{org}/email-invitations)
+func (_ Unimplemented) InviteOrgMemberByEmail(w http.ResponseWriter, r *http.Request, org OrgID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeOrgEmailInvitation Revoke one pending email invitation.
+// (DELETE /api/v1/orgs/{org}/email-invitations/{invitation})
+func (_ Unimplemented) RevokeOrgEmailInvitation(w http.ResponseWriter, r *http.Request, org OrgID, invitation EmailInvitationID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // RevokeOrgGrant Revoke one capability at organisation scope.
 // (DELETE /api/v1/orgs/{org}/grants)
 func (_ Unimplemented) RevokeOrgGrant(w http.ResponseWriter, r *http.Request, org OrgID, params RevokeOrgGrantParams) {
@@ -17153,6 +17705,30 @@ func (_ Unimplemented) CreateOrgGrant(w http.ResponseWriter, r *http.Request, or
 // ApplyOrgTemplate Apply a role template at organisation scope.
 // (POST /api/v1/orgs/{org}/grants/template)
 func (_ Unimplemented) ApplyOrgTemplate(w http.ResponseWriter, r *http.Request, org OrgID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetOrgIdentity Set the organisation's hue, mark or both.
+// (PUT /api/v1/orgs/{org}/identity)
+func (_ Unimplemented) SetOrgIdentity(w http.ResponseWriter, r *http.Request, org OrgID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ClearOrgIdentityImage Remove the organisation's uploaded image.
+// (DELETE /api/v1/orgs/{org}/identity/image)
+func (_ Unimplemented) ClearOrgIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetOrgIdentityImage Read the organisation's uploaded image.
+// (GET /api/v1/orgs/{org}/identity/image)
+func (_ Unimplemented) GetOrgIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, params GetOrgIdentityImageParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetOrgIdentityImage Upload the organisation's image.
+// (PUT /api/v1/orgs/{org}/identity/image)
+func (_ Unimplemented) SetOrgIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -17744,6 +18320,48 @@ func (_ Unimplemented) ListPendingDrafts(w http.ResponseWriter, r *http.Request,
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListPersonalValueCounts Count personal values and notices per key, for the matrix marks.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-value-counts)
+func (_ Unimplemented) ListPersonalValueCounts(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListMyPersonalValues List the caller's own personal values and notices, masked.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values)
+func (_ Unimplemented) ListMyPersonalValues(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteMyPersonalValue Delete the caller's own personal value and dismiss its notice.
+// (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key})
+func (_ Unimplemented) DeleteMyPersonalValue(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, key ValueKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetMyPersonalValue Set or replace the caller's own personal value for a declared key.
+// (PUT /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key})
+func (_ Unimplemented) SetMyPersonalValue(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, key ValueKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListPersonalValueMembers List who holds a personal value or notice for one key.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members)
+func (_ Unimplemented) ListPersonalValueMembers(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, key ValueKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeletePersonalValueMember Delete another person's personal value and leave them a notice.
+// (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members/{member})
+func (_ Unimplemented) DeletePersonalValueMember(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, key ValueKeyName, member string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevealMyPersonalValue Read the caller's own personal value in plaintext.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/reveal)
+func (_ Unimplemented) RevealMyPersonalValue(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, key ValueKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListRevisionPins List durable workload revision pins.
 // (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/pins)
 func (_ Unimplemented) ListRevisionPins(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
@@ -18164,6 +18782,30 @@ func (_ Unimplemented) ApplyProjectTemplate(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// SetProjectIdentity Set the project's hue, mark or both.
+// (PUT /api/v1/orgs/{org}/projects/{project}/identity)
+func (_ Unimplemented) SetProjectIdentity(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ClearProjectIdentityImage Remove the project's uploaded image.
+// (DELETE /api/v1/orgs/{org}/projects/{project}/identity/image)
+func (_ Unimplemented) ClearProjectIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetProjectIdentityImage Read the project's uploaded image.
+// (GET /api/v1/orgs/{org}/projects/{project}/identity/image)
+func (_ Unimplemented) GetProjectIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, params GetProjectIdentityImageParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetProjectIdentityImage Upload the project's image.
+// (PUT /api/v1/orgs/{org}/projects/{project}/identity/image)
+func (_ Unimplemented) SetProjectIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListKeyGroups List the project's key groups.
 // (GET /api/v1/orgs/{org}/projects/{project}/key-groups)
 func (_ Unimplemented) ListKeyGroups(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
@@ -18257,6 +18899,12 @@ func (_ Unimplemented) GetMachineReveal(w http.ResponseWriter, r *http.Request, 
 // SetMachineReveal Enable or withdraw the per-project machine-reveal opt-in.
 // (PUT /api/v1/orgs/{org}/projects/{project}/machine-reveal)
 func (_ Unimplemented) SetMachineReveal(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetPersonalOffboardingReport List what to rotate after someone leaves the project.
+// (GET /api/v1/orgs/{org}/projects/{project}/personal-offboarding-report/{member})
+func (_ Unimplemented) GetPersonalOffboardingReport(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, member string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -21733,6 +22381,20 @@ func (siw *ServerInterfaceWrapper) CompromiseRetireSamlSpKey(w http.ResponseWrit
 	handler.ServeHTTP(w, r)
 }
 
+// GetSecurityMaintenance operation middleware
+func (siw *ServerInterfaceWrapper) GetSecurityMaintenance(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSecurityMaintenance(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RequestInstanceUpdate operation middleware
 func (siw *ServerInterfaceWrapper) RequestInstanceUpdate(w http.ResponseWriter, r *http.Request) {
 
@@ -21820,6 +22482,34 @@ func (siw *ServerInterfaceWrapper) AddWorkspaceOrigin(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AddWorkspaceOrigin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AcceptEmailInvitation operation middleware
+func (siw *ServerInterfaceWrapper) AcceptEmailInvitation(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AcceptEmailInvitation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PreviewEmailInvitation operation middleware
+func (siw *ServerInterfaceWrapper) PreviewEmailInvitation(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PreviewEmailInvitation(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -22420,6 +23110,93 @@ func (siw *ServerInterfaceWrapper) ExportOrgAudit(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// ListOrgEmailInvitations operation middleware
+func (siw *ServerInterfaceWrapper) ListOrgEmailInvitations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOrgEmailInvitations(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// InviteOrgMemberByEmail operation middleware
+func (siw *ServerInterfaceWrapper) InviteOrgMemberByEmail(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.InviteOrgMemberByEmail(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeOrgEmailInvitation operation middleware
+func (siw *ServerInterfaceWrapper) RevokeOrgEmailInvitation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "invitation" -------------
+	var invitation EmailInvitationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "invitation", chi.URLParam(r, "invitation"), &invitation, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "invitation", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeOrgEmailInvitation(w, r, org, invitation)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RevokeOrgGrant operation middleware
 func (siw *ServerInterfaceWrapper) RevokeOrgGrant(w http.ResponseWriter, r *http.Request) {
 
@@ -22544,6 +23321,126 @@ func (siw *ServerInterfaceWrapper) ApplyOrgTemplate(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ApplyOrgTemplate(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetOrgIdentity operation middleware
+func (siw *ServerInterfaceWrapper) SetOrgIdentity(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetOrgIdentity(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ClearOrgIdentityImage operation middleware
+func (siw *ServerInterfaceWrapper) ClearOrgIdentityImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ClearOrgIdentityImage(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOrgIdentityImage operation middleware
+func (siw *ServerInterfaceWrapper) GetOrgIdentityImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetOrgIdentityImageParams
+
+	// ------------- Optional query parameter "v" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "v", r.URL.Query(), &params.V, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "v"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "v", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOrgIdentityImage(w, r, org, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetOrgIdentityImage operation middleware
+func (siw *ServerInterfaceWrapper) SetOrgIdentityImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetOrgIdentityImage(w, r, org)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -27541,6 +28438,368 @@ func (siw *ServerInterfaceWrapper) ListPendingDrafts(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// ListPersonalValueCounts operation middleware
+func (siw *ServerInterfaceWrapper) ListPersonalValueCounts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPersonalValueCounts(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMyPersonalValues operation middleware
+func (siw *ServerInterfaceWrapper) ListMyPersonalValues(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMyPersonalValues(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteMyPersonalValue operation middleware
+func (siw *ServerInterfaceWrapper) DeleteMyPersonalValue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "key" -------------
+	var key ValueKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "key", chi.URLParam(r, "key"), &key, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteMyPersonalValue(w, r, org, project, environment, key)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetMyPersonalValue operation middleware
+func (siw *ServerInterfaceWrapper) SetMyPersonalValue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "key" -------------
+	var key ValueKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "key", chi.URLParam(r, "key"), &key, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetMyPersonalValue(w, r, org, project, environment, key)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPersonalValueMembers operation middleware
+func (siw *ServerInterfaceWrapper) ListPersonalValueMembers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "key" -------------
+	var key ValueKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "key", chi.URLParam(r, "key"), &key, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPersonalValueMembers(w, r, org, project, environment, key)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeletePersonalValueMember operation middleware
+func (siw *ServerInterfaceWrapper) DeletePersonalValueMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "key" -------------
+	var key ValueKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "key", chi.URLParam(r, "key"), &key, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "member" -------------
+	var member string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "member", chi.URLParam(r, "member"), &member, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "member", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeletePersonalValueMember(w, r, org, project, environment, key, member)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevealMyPersonalValue operation middleware
+func (siw *ServerInterfaceWrapper) RevealMyPersonalValue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "key" -------------
+	var key ValueKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "key", chi.URLParam(r, "key"), &key, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevealMyPersonalValue(w, r, org, project, environment, key)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListRevisionPins operation middleware
 func (siw *ServerInterfaceWrapper) ListRevisionPins(w http.ResponseWriter, r *http.Request) {
 
@@ -30911,6 +32170,162 @@ func (siw *ServerInterfaceWrapper) ApplyProjectTemplate(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// SetProjectIdentity operation middleware
+func (siw *ServerInterfaceWrapper) SetProjectIdentity(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetProjectIdentity(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ClearProjectIdentityImage operation middleware
+func (siw *ServerInterfaceWrapper) ClearProjectIdentityImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ClearProjectIdentityImage(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProjectIdentityImage operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectIdentityImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProjectIdentityImageParams
+
+	// ------------- Optional query parameter "v" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "v", r.URL.Query(), &params.V, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "v"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "v", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectIdentityImage(w, r, org, project, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetProjectIdentityImage operation middleware
+func (siw *ServerInterfaceWrapper) SetProjectIdentityImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetProjectIdentityImage(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListKeyGroups operation middleware
 func (siw *ServerInterfaceWrapper) ListKeyGroups(w http.ResponseWriter, r *http.Request) {
 
@@ -31552,6 +32967,50 @@ func (siw *ServerInterfaceWrapper) SetMachineReveal(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetMachineReveal(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPersonalOffboardingReport operation middleware
+func (siw *ServerInterfaceWrapper) GetPersonalOffboardingReport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "member" -------------
+	var member string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "member", chi.URLParam(r, "member"), &member, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "member", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPersonalOffboardingReport(w, r, org, project, member)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -34056,6 +35515,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Put(options.BaseURL+"/api/v1/orgs/{org}/retention", wrapper.SetOrgRetention)
 	})
 	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/identity", wrapper.SetOrgIdentity)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/identity/image", wrapper.ClearOrgIdentityImage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/identity/image", wrapper.GetOrgIdentityImage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/identity/image", wrapper.SetOrgIdentityImage)
+	})
+	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}", wrapper.DeleteProject)
 	})
 	r.Group(func(r chi.Router) {
@@ -34063,6 +35534,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}", wrapper.RenameProject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/identity", wrapper.SetProjectIdentity)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/identity/image", wrapper.ClearProjectIdentityImage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/identity/image", wrapper.GetProjectIdentityImage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/identity/image", wrapper.SetProjectIdentityImage)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments", wrapper.ListEnvironments)
@@ -34162,6 +35645,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/invitations", wrapper.InviteOrgMember)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/email-invitations", wrapper.ListOrgEmailInvitations)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/email-invitations", wrapper.InviteOrgMemberByEmail)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/email-invitations/{invitation}", wrapper.RevokeOrgEmailInvitation)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/registration-policy", wrapper.DeleteOrgRegistrationPolicy)
@@ -34311,6 +35803,30 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}/reveal", wrapper.RevealValue)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values", wrapper.ListMyPersonalValues)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}", wrapper.DeleteMyPersonalValue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}", wrapper.SetMyPersonalValue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/reveal", wrapper.RevealMyPersonalValue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-value-counts", wrapper.ListPersonalValueCounts)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/personal-offboarding-report/{member}", wrapper.GetPersonalOffboardingReport)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members", wrapper.ListPersonalValueMembers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members/{member}", wrapper.DeletePersonalValueMember)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/values/diff/reveal", wrapper.RevealValueDiff)
 	})
 	r.Group(func(r chi.Router) {
@@ -34429,6 +35945,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/instance/update-status", wrapper.GetUpdateStatus)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/security-maintenance", wrapper.GetSecurityMaintenance)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/instance/update", wrapper.RequestInstanceUpdate)
@@ -34711,6 +36230,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/auth/workspace/transactions/{state}", wrapper.ShowWorkspaceHandoff)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/me/invitations/preview", wrapper.PreviewEmailInvitation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/me/invitations/accept", wrapper.AcceptEmailInvitation)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/me/sessions", wrapper.ListMySessions)
@@ -51757,6 +53282,113 @@ func (response CompromiseRetireSamlSpKey503JSONResponse) VisitCompromiseRetireSa
 	return err
 }
 
+type GetSecurityMaintenanceRequestObject struct {
+}
+
+type GetSecurityMaintenanceResponseObject interface {
+	VisitGetSecurityMaintenanceResponse(w http.ResponseWriter) error
+}
+
+type GetSecurityMaintenance200JSONResponse SecurityMaintenanceStatus
+
+func (response GetSecurityMaintenance200JSONResponse) VisitGetSecurityMaintenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSecurityMaintenance401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetSecurityMaintenance401JSONResponse) VisitGetSecurityMaintenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSecurityMaintenance403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetSecurityMaintenance403JSONResponse) VisitGetSecurityMaintenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSecurityMaintenance404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetSecurityMaintenance404JSONResponse) VisitGetSecurityMaintenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSecurityMaintenance429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetSecurityMaintenance429JSONResponse) VisitGetSecurityMaintenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSecurityMaintenance500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetSecurityMaintenance500JSONResponse) VisitGetSecurityMaintenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSecurityMaintenance503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetSecurityMaintenance503JSONResponse) VisitGetSecurityMaintenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RequestInstanceUpdateRequestObject struct {
 	Body *RequestInstanceUpdateJSONRequestBody
 }
@@ -52431,6 +54063,222 @@ func (response AddWorkspaceOrigin500JSONResponse) VisitAddWorkspaceOriginRespons
 type AddWorkspaceOrigin503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response AddWorkspaceOrigin503JSONResponse) VisitAddWorkspaceOriginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptEmailInvitationRequestObject struct {
+	Body *AcceptEmailInvitationJSONRequestBody
+}
+
+type AcceptEmailInvitationResponseObject interface {
+	VisitAcceptEmailInvitationResponse(w http.ResponseWriter) error
+}
+
+type AcceptEmailInvitation200JSONResponse EmailInvitationAcceptance
+
+func (response AcceptEmailInvitation200JSONResponse) VisitAcceptEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptEmailInvitation400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response AcceptEmailInvitation400JSONResponse) VisitAcceptEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptEmailInvitation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response AcceptEmailInvitation401JSONResponse) VisitAcceptEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptEmailInvitation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response AcceptEmailInvitation404JSONResponse) VisitAcceptEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptEmailInvitation429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response AcceptEmailInvitation429JSONResponse) VisitAcceptEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptEmailInvitation500JSONResponse struct{ InternalJSONResponse }
+
+func (response AcceptEmailInvitation500JSONResponse) VisitAcceptEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptEmailInvitation503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response AcceptEmailInvitation503JSONResponse) VisitAcceptEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewEmailInvitationRequestObject struct {
+	Body *PreviewEmailInvitationJSONRequestBody
+}
+
+type PreviewEmailInvitationResponseObject interface {
+	VisitPreviewEmailInvitationResponse(w http.ResponseWriter) error
+}
+
+type PreviewEmailInvitation200JSONResponse EmailInvitationPreview
+
+func (response PreviewEmailInvitation200JSONResponse) VisitPreviewEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewEmailInvitation400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PreviewEmailInvitation400JSONResponse) VisitPreviewEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewEmailInvitation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response PreviewEmailInvitation401JSONResponse) VisitPreviewEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewEmailInvitation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PreviewEmailInvitation404JSONResponse) VisitPreviewEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewEmailInvitation429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response PreviewEmailInvitation429JSONResponse) VisitPreviewEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewEmailInvitation500JSONResponse struct{ InternalJSONResponse }
+
+func (response PreviewEmailInvitation500JSONResponse) VisitPreviewEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewEmailInvitation503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PreviewEmailInvitation503JSONResponse) VisitPreviewEmailInvitationResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -53907,6 +55755,340 @@ func (response ExportOrgAudit503JSONResponse) VisitExportOrgAuditResponse(w http
 	return err
 }
 
+type ListOrgEmailInvitationsRequestObject struct {
+	Org OrgID `json:"org"`
+}
+
+type ListOrgEmailInvitationsResponseObject interface {
+	VisitListOrgEmailInvitationsResponse(w http.ResponseWriter) error
+}
+
+type ListOrgEmailInvitations200JSONResponse EmailInvitationList
+
+func (response ListOrgEmailInvitations200JSONResponse) VisitListOrgEmailInvitationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgEmailInvitations401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListOrgEmailInvitations401JSONResponse) VisitListOrgEmailInvitationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgEmailInvitations403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListOrgEmailInvitations403JSONResponse) VisitListOrgEmailInvitationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgEmailInvitations404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListOrgEmailInvitations404JSONResponse) VisitListOrgEmailInvitationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgEmailInvitations429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListOrgEmailInvitations429JSONResponse) VisitListOrgEmailInvitationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgEmailInvitations500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListOrgEmailInvitations500JSONResponse) VisitListOrgEmailInvitationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgEmailInvitations503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListOrgEmailInvitations503JSONResponse) VisitListOrgEmailInvitationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMemberByEmailRequestObject struct {
+	Org  OrgID `json:"org"`
+	Body *InviteOrgMemberByEmailJSONRequestBody
+}
+
+type InviteOrgMemberByEmailResponseObject interface {
+	VisitInviteOrgMemberByEmailResponse(w http.ResponseWriter) error
+}
+
+type InviteOrgMemberByEmail202JSONResponse EmailInvitation
+
+func (response InviteOrgMemberByEmail202JSONResponse) VisitInviteOrgMemberByEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMemberByEmail400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response InviteOrgMemberByEmail400JSONResponse) VisitInviteOrgMemberByEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMemberByEmail401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response InviteOrgMemberByEmail401JSONResponse) VisitInviteOrgMemberByEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMemberByEmail403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response InviteOrgMemberByEmail403JSONResponse) VisitInviteOrgMemberByEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMemberByEmail404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response InviteOrgMemberByEmail404JSONResponse) VisitInviteOrgMemberByEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMemberByEmail429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response InviteOrgMemberByEmail429JSONResponse) VisitInviteOrgMemberByEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMemberByEmail500JSONResponse struct{ InternalJSONResponse }
+
+func (response InviteOrgMemberByEmail500JSONResponse) VisitInviteOrgMemberByEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMemberByEmail503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response InviteOrgMemberByEmail503JSONResponse) VisitInviteOrgMemberByEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeOrgEmailInvitationRequestObject struct {
+	Org        OrgID             `json:"org"`
+	Invitation EmailInvitationID `json:"invitation"`
+}
+
+type RevokeOrgEmailInvitationResponseObject interface {
+	VisitRevokeOrgEmailInvitationResponse(w http.ResponseWriter) error
+}
+
+type RevokeOrgEmailInvitation204Response struct {
+}
+
+func (response RevokeOrgEmailInvitation204Response) VisitRevokeOrgEmailInvitationResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeOrgEmailInvitation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RevokeOrgEmailInvitation401JSONResponse) VisitRevokeOrgEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeOrgEmailInvitation403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RevokeOrgEmailInvitation403JSONResponse) VisitRevokeOrgEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeOrgEmailInvitation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevokeOrgEmailInvitation404JSONResponse) VisitRevokeOrgEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeOrgEmailInvitation429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response RevokeOrgEmailInvitation429JSONResponse) VisitRevokeOrgEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeOrgEmailInvitation500JSONResponse struct{ InternalJSONResponse }
+
+func (response RevokeOrgEmailInvitation500JSONResponse) VisitRevokeOrgEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeOrgEmailInvitation503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeOrgEmailInvitation503JSONResponse) VisitRevokeOrgEmailInvitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RevokeOrgGrantRequestObject struct {
 	Org    OrgID `json:"org"`
 	Params RevokeOrgGrantParams
@@ -54380,6 +56562,463 @@ func (response ApplyOrgTemplate500JSONResponse) VisitApplyOrgTemplateResponse(w 
 type ApplyOrgTemplate503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response ApplyOrgTemplate503JSONResponse) VisitApplyOrgTemplateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentityRequestObject struct {
+	Org  OrgID `json:"org"`
+	Body *SetOrgIdentityJSONRequestBody
+}
+
+type SetOrgIdentityResponseObject interface {
+	VisitSetOrgIdentityResponse(w http.ResponseWriter) error
+}
+
+type SetOrgIdentity200JSONResponse Org
+
+func (response SetOrgIdentity200JSONResponse) VisitSetOrgIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentity400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SetOrgIdentity400JSONResponse) VisitSetOrgIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentity401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response SetOrgIdentity401JSONResponse) VisitSetOrgIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentity403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response SetOrgIdentity403JSONResponse) VisitSetOrgIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentity404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SetOrgIdentity404JSONResponse) VisitSetOrgIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentity429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response SetOrgIdentity429JSONResponse) VisitSetOrgIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentity500JSONResponse struct{ InternalJSONResponse }
+
+func (response SetOrgIdentity500JSONResponse) VisitSetOrgIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentity503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetOrgIdentity503JSONResponse) VisitSetOrgIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearOrgIdentityImageRequestObject struct {
+	Org OrgID `json:"org"`
+}
+
+type ClearOrgIdentityImageResponseObject interface {
+	VisitClearOrgIdentityImageResponse(w http.ResponseWriter) error
+}
+
+type ClearOrgIdentityImage200JSONResponse Org
+
+func (response ClearOrgIdentityImage200JSONResponse) VisitClearOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearOrgIdentityImage401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ClearOrgIdentityImage401JSONResponse) VisitClearOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearOrgIdentityImage403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ClearOrgIdentityImage403JSONResponse) VisitClearOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearOrgIdentityImage404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ClearOrgIdentityImage404JSONResponse) VisitClearOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearOrgIdentityImage429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ClearOrgIdentityImage429JSONResponse) VisitClearOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearOrgIdentityImage500JSONResponse struct{ InternalJSONResponse }
+
+func (response ClearOrgIdentityImage500JSONResponse) VisitClearOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearOrgIdentityImage503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ClearOrgIdentityImage503JSONResponse) VisitClearOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgIdentityImageRequestObject struct {
+	Org    OrgID `json:"org"`
+	Params GetOrgIdentityImageParams
+}
+
+type GetOrgIdentityImageResponseObject interface {
+	VisitGetOrgIdentityImageResponse(w http.ResponseWriter) error
+}
+
+type GetOrgIdentityImage200ImageResponse struct {
+	Body          io.Reader
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetOrgIdentityImage200ImageResponse) VisitGetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetOrgIdentityImage401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetOrgIdentityImage401JSONResponse) VisitGetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgIdentityImage404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetOrgIdentityImage404JSONResponse) VisitGetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgIdentityImage429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetOrgIdentityImage429JSONResponse) VisitGetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgIdentityImage500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetOrgIdentityImage500JSONResponse) VisitGetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgIdentityImage503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetOrgIdentityImage503JSONResponse) VisitGetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentityImageRequestObject struct {
+	Org         OrgID `json:"org"`
+	ContentType string
+	Body        io.Reader
+}
+
+type SetOrgIdentityImageResponseObject interface {
+	VisitSetOrgIdentityImageResponse(w http.ResponseWriter) error
+}
+
+type SetOrgIdentityImage200JSONResponse Org
+
+func (response SetOrgIdentityImage200JSONResponse) VisitSetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentityImage400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SetOrgIdentityImage400JSONResponse) VisitSetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentityImage401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response SetOrgIdentityImage401JSONResponse) VisitSetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentityImage403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response SetOrgIdentityImage403JSONResponse) VisitSetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentityImage404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SetOrgIdentityImage404JSONResponse) VisitSetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentityImage429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response SetOrgIdentityImage429JSONResponse) VisitSetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentityImage500JSONResponse struct{ InternalJSONResponse }
+
+func (response SetOrgIdentityImage500JSONResponse) VisitSetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentityImage503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetOrgIdentityImage503JSONResponse) VisitSetOrgIdentityImageResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -65245,6 +67884,771 @@ func (response ListPendingDrafts503JSONResponse) VisitListPendingDraftsResponse(
 	return err
 }
 
+type ListPersonalValueCountsRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+}
+
+type ListPersonalValueCountsResponseObject interface {
+	VisitListPersonalValueCountsResponse(w http.ResponseWriter) error
+}
+
+type ListPersonalValueCounts200JSONResponse PersonalValueCounts
+
+func (response ListPersonalValueCounts200JSONResponse) VisitListPersonalValueCountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPersonalValueCounts401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListPersonalValueCounts401JSONResponse) VisitListPersonalValueCountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPersonalValueCounts403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListPersonalValueCounts403JSONResponse) VisitListPersonalValueCountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPersonalValueCounts404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListPersonalValueCounts404JSONResponse) VisitListPersonalValueCountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPersonalValueCounts429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListPersonalValueCounts429JSONResponse) VisitListPersonalValueCountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPersonalValueCounts500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListPersonalValueCounts500JSONResponse) VisitListPersonalValueCountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPersonalValueCounts503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListPersonalValueCounts503JSONResponse) VisitListPersonalValueCountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyPersonalValuesRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+}
+
+type ListMyPersonalValuesResponseObject interface {
+	VisitListMyPersonalValuesResponse(w http.ResponseWriter) error
+}
+
+type ListMyPersonalValues200JSONResponse PersonalValueList
+
+func (response ListMyPersonalValues200JSONResponse) VisitListMyPersonalValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyPersonalValues401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListMyPersonalValues401JSONResponse) VisitListMyPersonalValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyPersonalValues404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListMyPersonalValues404JSONResponse) VisitListMyPersonalValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyPersonalValues429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListMyPersonalValues429JSONResponse) VisitListMyPersonalValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyPersonalValues500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListMyPersonalValues500JSONResponse) VisitListMyPersonalValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyPersonalValues503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListMyPersonalValues503JSONResponse) VisitListMyPersonalValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteMyPersonalValueRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Key         ValueKeyName  `json:"key"`
+}
+
+type DeleteMyPersonalValueResponseObject interface {
+	VisitDeleteMyPersonalValueResponse(w http.ResponseWriter) error
+}
+
+type DeleteMyPersonalValue204Response struct {
+}
+
+func (response DeleteMyPersonalValue204Response) VisitDeleteMyPersonalValueResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteMyPersonalValue401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteMyPersonalValue401JSONResponse) VisitDeleteMyPersonalValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteMyPersonalValue404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteMyPersonalValue404JSONResponse) VisitDeleteMyPersonalValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteMyPersonalValue429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response DeleteMyPersonalValue429JSONResponse) VisitDeleteMyPersonalValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteMyPersonalValue500JSONResponse struct{ InternalJSONResponse }
+
+func (response DeleteMyPersonalValue500JSONResponse) VisitDeleteMyPersonalValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteMyPersonalValue503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteMyPersonalValue503JSONResponse) VisitDeleteMyPersonalValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetMyPersonalValueRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Key         ValueKeyName  `json:"key"`
+	Body        *SetMyPersonalValueJSONRequestBody
+}
+
+type SetMyPersonalValueResponseObject interface {
+	VisitSetMyPersonalValueResponse(w http.ResponseWriter) error
+}
+
+type SetMyPersonalValue200JSONResponse PersonalValueEntry
+
+func (response SetMyPersonalValue200JSONResponse) VisitSetMyPersonalValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetMyPersonalValue400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SetMyPersonalValue400JSONResponse) VisitSetMyPersonalValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetMyPersonalValue401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response SetMyPersonalValue401JSONResponse) VisitSetMyPersonalValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetMyPersonalValue403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response SetMyPersonalValue403JSONResponse) VisitSetMyPersonalValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetMyPersonalValue404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SetMyPersonalValue404JSONResponse) VisitSetMyPersonalValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetMyPersonalValue409JSONResponse struct{ ConflictJSONResponse }
+
+func (response SetMyPersonalValue409JSONResponse) VisitSetMyPersonalValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetMyPersonalValue429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response SetMyPersonalValue429JSONResponse) VisitSetMyPersonalValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetMyPersonalValue500JSONResponse struct{ InternalJSONResponse }
+
+func (response SetMyPersonalValue500JSONResponse) VisitSetMyPersonalValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetMyPersonalValue503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetMyPersonalValue503JSONResponse) VisitSetMyPersonalValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPersonalValueMembersRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Key         ValueKeyName  `json:"key"`
+}
+
+type ListPersonalValueMembersResponseObject interface {
+	VisitListPersonalValueMembersResponse(w http.ResponseWriter) error
+}
+
+type ListPersonalValueMembers200JSONResponse PersonalValueHolderList
+
+func (response ListPersonalValueMembers200JSONResponse) VisitListPersonalValueMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPersonalValueMembers401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListPersonalValueMembers401JSONResponse) VisitListPersonalValueMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPersonalValueMembers403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListPersonalValueMembers403JSONResponse) VisitListPersonalValueMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPersonalValueMembers404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListPersonalValueMembers404JSONResponse) VisitListPersonalValueMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPersonalValueMembers429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListPersonalValueMembers429JSONResponse) VisitListPersonalValueMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPersonalValueMembers500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListPersonalValueMembers500JSONResponse) VisitListPersonalValueMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPersonalValueMembers503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListPersonalValueMembers503JSONResponse) VisitListPersonalValueMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeletePersonalValueMemberRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Key         ValueKeyName  `json:"key"`
+	Member      string        `json:"member"`
+}
+
+type DeletePersonalValueMemberResponseObject interface {
+	VisitDeletePersonalValueMemberResponse(w http.ResponseWriter) error
+}
+
+type DeletePersonalValueMember204Response struct {
+}
+
+func (response DeletePersonalValueMember204Response) VisitDeletePersonalValueMemberResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeletePersonalValueMember401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeletePersonalValueMember401JSONResponse) VisitDeletePersonalValueMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeletePersonalValueMember403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeletePersonalValueMember403JSONResponse) VisitDeletePersonalValueMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeletePersonalValueMember404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeletePersonalValueMember404JSONResponse) VisitDeletePersonalValueMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeletePersonalValueMember429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response DeletePersonalValueMember429JSONResponse) VisitDeletePersonalValueMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeletePersonalValueMember500JSONResponse struct{ InternalJSONResponse }
+
+func (response DeletePersonalValueMember500JSONResponse) VisitDeletePersonalValueMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeletePersonalValueMember503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeletePersonalValueMember503JSONResponse) VisitDeletePersonalValueMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevealMyPersonalValueRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Key         ValueKeyName  `json:"key"`
+}
+
+type RevealMyPersonalValueResponseObject interface {
+	VisitRevealMyPersonalValueResponse(w http.ResponseWriter) error
+}
+
+type RevealMyPersonalValue200JSONResponse PersonalValueEntry
+
+func (response RevealMyPersonalValue200JSONResponse) VisitRevealMyPersonalValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevealMyPersonalValue401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RevealMyPersonalValue401JSONResponse) VisitRevealMyPersonalValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevealMyPersonalValue403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RevealMyPersonalValue403JSONResponse) VisitRevealMyPersonalValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevealMyPersonalValue404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevealMyPersonalValue404JSONResponse) VisitRevealMyPersonalValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevealMyPersonalValue429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response RevealMyPersonalValue429JSONResponse) VisitRevealMyPersonalValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevealMyPersonalValue500JSONResponse struct{ InternalJSONResponse }
+
+func (response RevealMyPersonalValue500JSONResponse) VisitRevealMyPersonalValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevealMyPersonalValue503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevealMyPersonalValue503JSONResponse) VisitRevealMyPersonalValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListRevisionPinsRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -72900,6 +76304,425 @@ func (response ApplyProjectTemplate503JSONResponse) VisitApplyProjectTemplateRes
 	return err
 }
 
+type SetProjectIdentityRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+	Body    *SetProjectIdentityJSONRequestBody
+}
+
+type SetProjectIdentityResponseObject interface {
+	VisitSetProjectIdentityResponse(w http.ResponseWriter) error
+}
+
+type SetProjectIdentity200JSONResponse Project
+
+func (response SetProjectIdentity200JSONResponse) VisitSetProjectIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentity400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SetProjectIdentity400JSONResponse) VisitSetProjectIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentity401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response SetProjectIdentity401JSONResponse) VisitSetProjectIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentity404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SetProjectIdentity404JSONResponse) VisitSetProjectIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentity429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response SetProjectIdentity429JSONResponse) VisitSetProjectIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentity500JSONResponse struct{ InternalJSONResponse }
+
+func (response SetProjectIdentity500JSONResponse) VisitSetProjectIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentity503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetProjectIdentity503JSONResponse) VisitSetProjectIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearProjectIdentityImageRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+}
+
+type ClearProjectIdentityImageResponseObject interface {
+	VisitClearProjectIdentityImageResponse(w http.ResponseWriter) error
+}
+
+type ClearProjectIdentityImage200JSONResponse Project
+
+func (response ClearProjectIdentityImage200JSONResponse) VisitClearProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearProjectIdentityImage401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ClearProjectIdentityImage401JSONResponse) VisitClearProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearProjectIdentityImage404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ClearProjectIdentityImage404JSONResponse) VisitClearProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearProjectIdentityImage429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ClearProjectIdentityImage429JSONResponse) VisitClearProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearProjectIdentityImage500JSONResponse struct{ InternalJSONResponse }
+
+func (response ClearProjectIdentityImage500JSONResponse) VisitClearProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearProjectIdentityImage503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ClearProjectIdentityImage503JSONResponse) VisitClearProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectIdentityImageRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+	Params  GetProjectIdentityImageParams
+}
+
+type GetProjectIdentityImageResponseObject interface {
+	VisitGetProjectIdentityImageResponse(w http.ResponseWriter) error
+}
+
+type GetProjectIdentityImage200ImageResponse struct {
+	Body          io.Reader
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetProjectIdentityImage200ImageResponse) VisitGetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetProjectIdentityImage401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetProjectIdentityImage401JSONResponse) VisitGetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectIdentityImage404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetProjectIdentityImage404JSONResponse) VisitGetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectIdentityImage429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetProjectIdentityImage429JSONResponse) VisitGetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectIdentityImage500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetProjectIdentityImage500JSONResponse) VisitGetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectIdentityImage503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetProjectIdentityImage503JSONResponse) VisitGetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentityImageRequestObject struct {
+	Org         OrgID     `json:"org"`
+	Project     ProjectID `json:"project"`
+	ContentType string
+	Body        io.Reader
+}
+
+type SetProjectIdentityImageResponseObject interface {
+	VisitSetProjectIdentityImageResponse(w http.ResponseWriter) error
+}
+
+type SetProjectIdentityImage200JSONResponse Project
+
+func (response SetProjectIdentityImage200JSONResponse) VisitSetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentityImage400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SetProjectIdentityImage400JSONResponse) VisitSetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentityImage401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response SetProjectIdentityImage401JSONResponse) VisitSetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentityImage404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SetProjectIdentityImage404JSONResponse) VisitSetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentityImage429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response SetProjectIdentityImage429JSONResponse) VisitSetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentityImage500JSONResponse struct{ InternalJSONResponse }
+
+func (response SetProjectIdentityImage500JSONResponse) VisitSetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentityImage503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetProjectIdentityImage503JSONResponse) VisitSetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListKeyGroupsRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -74695,6 +78518,116 @@ func (response SetMachineReveal500JSONResponse) VisitSetMachineRevealResponse(w 
 type SetMachineReveal503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response SetMachineReveal503JSONResponse) VisitSetMachineRevealResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPersonalOffboardingReportRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+	Member  string    `json:"member"`
+}
+
+type GetPersonalOffboardingReportResponseObject interface {
+	VisitGetPersonalOffboardingReportResponse(w http.ResponseWriter) error
+}
+
+type GetPersonalOffboardingReport200JSONResponse PersonalOffboardingReport
+
+func (response GetPersonalOffboardingReport200JSONResponse) VisitGetPersonalOffboardingReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPersonalOffboardingReport401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetPersonalOffboardingReport401JSONResponse) VisitGetPersonalOffboardingReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPersonalOffboardingReport403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetPersonalOffboardingReport403JSONResponse) VisitGetPersonalOffboardingReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPersonalOffboardingReport404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetPersonalOffboardingReport404JSONResponse) VisitGetPersonalOffboardingReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPersonalOffboardingReport429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetPersonalOffboardingReport429JSONResponse) VisitGetPersonalOffboardingReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPersonalOffboardingReport500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetPersonalOffboardingReport500JSONResponse) VisitGetPersonalOffboardingReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPersonalOffboardingReport503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetPersonalOffboardingReport503JSONResponse) VisitGetPersonalOffboardingReportResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -81745,6 +85678,9 @@ type StrictServerInterface interface {
 	// CompromiseRetireSamlSpKey Immediately erase and replace a compromised active SAML SP key.
 	// (POST /api/v1/instance/saml-sp-keys/{fingerprint}/compromise-retire)
 	CompromiseRetireSamlSpKey(ctx context.Context, request CompromiseRetireSamlSpKeyRequestObject) (CompromiseRetireSamlSpKeyResponseObject, error)
+	// GetSecurityMaintenance Read the security-maintenance status the coordinator published.
+	// (GET /api/v1/instance/security-maintenance)
+	GetSecurityMaintenance(ctx context.Context, request GetSecurityMaintenanceRequestObject) (GetSecurityMaintenanceResponseObject, error)
 	// RequestInstanceUpdate Refuse legacy remote apply while preserving authenticated audit evidence.
 	// (POST /api/v1/instance/update)
 	RequestInstanceUpdate(ctx context.Context, request RequestInstanceUpdateRequestObject) (RequestInstanceUpdateResponseObject, error)
@@ -81763,6 +85699,12 @@ type StrictServerInterface interface {
 	// AddWorkspaceOrigin Consent to one exact UI origin.
 	// (POST /api/v1/instance/workspace-origins)
 	AddWorkspaceOrigin(ctx context.Context, request AddWorkspaceOriginRequestObject) (AddWorkspaceOriginResponseObject, error)
+	// AcceptEmailInvitation Accept an email invitation as the signed-in person.
+	// (POST /api/v1/me/invitations/accept)
+	AcceptEmailInvitation(ctx context.Context, request AcceptEmailInvitationRequestObject) (AcceptEmailInvitationResponseObject, error)
+	// PreviewEmailInvitation Show what an email invitation token offers the signed-in person.
+	// (POST /api/v1/me/invitations/preview)
+	PreviewEmailInvitation(ctx context.Context, request PreviewEmailInvitationRequestObject) (PreviewEmailInvitationResponseObject, error)
 	// ListMyOrgs The organisations the caller's own grants name.
 	// (GET /api/v1/me/orgs)
 	ListMyOrgs(ctx context.Context, request ListMyOrgsRequestObject) (ListMyOrgsResponseObject, error)
@@ -81802,6 +85744,15 @@ type StrictServerInterface interface {
 	// ExportOrgAudit Stream the organization's audit trail as JSONL.
 	// (GET /api/v1/orgs/{org}/audit/export)
 	ExportOrgAudit(ctx context.Context, request ExportOrgAuditRequestObject) (ExportOrgAuditResponseObject, error)
+	// ListOrgEmailInvitations List the organisation's live pending email invitations.
+	// (GET /api/v1/orgs/{org}/email-invitations)
+	ListOrgEmailInvitations(ctx context.Context, request ListOrgEmailInvitationsRequestObject) (ListOrgEmailInvitationsResponseObject, error)
+	// InviteOrgMemberByEmail Invite the existing account holding an email address into this organisation.
+	// (POST /api/v1/orgs/{org}/email-invitations)
+	InviteOrgMemberByEmail(ctx context.Context, request InviteOrgMemberByEmailRequestObject) (InviteOrgMemberByEmailResponseObject, error)
+	// RevokeOrgEmailInvitation Revoke one pending email invitation.
+	// (DELETE /api/v1/orgs/{org}/email-invitations/{invitation})
+	RevokeOrgEmailInvitation(ctx context.Context, request RevokeOrgEmailInvitationRequestObject) (RevokeOrgEmailInvitationResponseObject, error)
 	// RevokeOrgGrant Revoke one capability at organisation scope.
 	// (DELETE /api/v1/orgs/{org}/grants)
 	RevokeOrgGrant(ctx context.Context, request RevokeOrgGrantRequestObject) (RevokeOrgGrantResponseObject, error)
@@ -81814,6 +85765,18 @@ type StrictServerInterface interface {
 	// ApplyOrgTemplate Apply a role template at organisation scope.
 	// (POST /api/v1/orgs/{org}/grants/template)
 	ApplyOrgTemplate(ctx context.Context, request ApplyOrgTemplateRequestObject) (ApplyOrgTemplateResponseObject, error)
+	// SetOrgIdentity Set the organisation's hue, mark or both.
+	// (PUT /api/v1/orgs/{org}/identity)
+	SetOrgIdentity(ctx context.Context, request SetOrgIdentityRequestObject) (SetOrgIdentityResponseObject, error)
+	// ClearOrgIdentityImage Remove the organisation's uploaded image.
+	// (DELETE /api/v1/orgs/{org}/identity/image)
+	ClearOrgIdentityImage(ctx context.Context, request ClearOrgIdentityImageRequestObject) (ClearOrgIdentityImageResponseObject, error)
+	// GetOrgIdentityImage Read the organisation's uploaded image.
+	// (GET /api/v1/orgs/{org}/identity/image)
+	GetOrgIdentityImage(ctx context.Context, request GetOrgIdentityImageRequestObject) (GetOrgIdentityImageResponseObject, error)
+	// SetOrgIdentityImage Upload the organisation's image.
+	// (PUT /api/v1/orgs/{org}/identity/image)
+	SetOrgIdentityImage(ctx context.Context, request SetOrgIdentityImageRequestObject) (SetOrgIdentityImageResponseObject, error)
 	// InviteOrgMember Invite a human into this organisation with a local credential.
 	// (POST /api/v1/orgs/{org}/invitations)
 	InviteOrgMember(ctx context.Context, request InviteOrgMemberRequestObject) (InviteOrgMemberResponseObject, error)
@@ -82108,6 +86071,27 @@ type StrictServerInterface interface {
 	// ListPendingDrafts Preview the caller's pending drafts in one environment.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/pending)
 	ListPendingDrafts(ctx context.Context, request ListPendingDraftsRequestObject) (ListPendingDraftsResponseObject, error)
+	// ListPersonalValueCounts Count personal values and notices per key, for the matrix marks.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-value-counts)
+	ListPersonalValueCounts(ctx context.Context, request ListPersonalValueCountsRequestObject) (ListPersonalValueCountsResponseObject, error)
+	// ListMyPersonalValues List the caller's own personal values and notices, masked.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values)
+	ListMyPersonalValues(ctx context.Context, request ListMyPersonalValuesRequestObject) (ListMyPersonalValuesResponseObject, error)
+	// DeleteMyPersonalValue Delete the caller's own personal value and dismiss its notice.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key})
+	DeleteMyPersonalValue(ctx context.Context, request DeleteMyPersonalValueRequestObject) (DeleteMyPersonalValueResponseObject, error)
+	// SetMyPersonalValue Set or replace the caller's own personal value for a declared key.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key})
+	SetMyPersonalValue(ctx context.Context, request SetMyPersonalValueRequestObject) (SetMyPersonalValueResponseObject, error)
+	// ListPersonalValueMembers List who holds a personal value or notice for one key.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members)
+	ListPersonalValueMembers(ctx context.Context, request ListPersonalValueMembersRequestObject) (ListPersonalValueMembersResponseObject, error)
+	// DeletePersonalValueMember Delete another person's personal value and leave them a notice.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members/{member})
+	DeletePersonalValueMember(ctx context.Context, request DeletePersonalValueMemberRequestObject) (DeletePersonalValueMemberResponseObject, error)
+	// RevealMyPersonalValue Read the caller's own personal value in plaintext.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/reveal)
+	RevealMyPersonalValue(ctx context.Context, request RevealMyPersonalValueRequestObject) (RevealMyPersonalValueResponseObject, error)
 	// ListRevisionPins List durable workload revision pins.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/pins)
 	ListRevisionPins(ctx context.Context, request ListRevisionPinsRequestObject) (ListRevisionPinsResponseObject, error)
@@ -82318,6 +86302,18 @@ type StrictServerInterface interface {
 	// ApplyProjectTemplate Apply a role template at project scope.
 	// (POST /api/v1/orgs/{org}/projects/{project}/grants/template)
 	ApplyProjectTemplate(ctx context.Context, request ApplyProjectTemplateRequestObject) (ApplyProjectTemplateResponseObject, error)
+	// SetProjectIdentity Set the project's hue, mark or both.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/identity)
+	SetProjectIdentity(ctx context.Context, request SetProjectIdentityRequestObject) (SetProjectIdentityResponseObject, error)
+	// ClearProjectIdentityImage Remove the project's uploaded image.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/identity/image)
+	ClearProjectIdentityImage(ctx context.Context, request ClearProjectIdentityImageRequestObject) (ClearProjectIdentityImageResponseObject, error)
+	// GetProjectIdentityImage Read the project's uploaded image.
+	// (GET /api/v1/orgs/{org}/projects/{project}/identity/image)
+	GetProjectIdentityImage(ctx context.Context, request GetProjectIdentityImageRequestObject) (GetProjectIdentityImageResponseObject, error)
+	// SetProjectIdentityImage Upload the project's image.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/identity/image)
+	SetProjectIdentityImage(ctx context.Context, request SetProjectIdentityImageRequestObject) (SetProjectIdentityImageResponseObject, error)
 	// ListKeyGroups List the project's key groups.
 	// (GET /api/v1/orgs/{org}/projects/{project}/key-groups)
 	ListKeyGroups(ctx context.Context, request ListKeyGroupsRequestObject) (ListKeyGroupsResponseObject, error)
@@ -82366,6 +86362,9 @@ type StrictServerInterface interface {
 	// SetMachineReveal Enable or withdraw the per-project machine-reveal opt-in.
 	// (PUT /api/v1/orgs/{org}/projects/{project}/machine-reveal)
 	SetMachineReveal(ctx context.Context, request SetMachineRevealRequestObject) (SetMachineRevealResponseObject, error)
+	// GetPersonalOffboardingReport List what to rotate after someone leaves the project.
+	// (GET /api/v1/orgs/{org}/projects/{project}/personal-offboarding-report/{member})
+	GetPersonalOffboardingReport(ctx context.Context, request GetPersonalOffboardingReportRequestObject) (GetPersonalOffboardingReportResponseObject, error)
 	// ReencryptProject Walk a project's ciphertext onto the active DEK version.
 	// (POST /api/v1/orgs/{org}/projects/{project}/reencrypt)
 	ReencryptProject(ctx context.Context, request ReencryptProjectRequestObject) (ReencryptProjectResponseObject, error)
@@ -86601,6 +90600,30 @@ func (sh *strictHandler) CompromiseRetireSamlSpKey(w http.ResponseWriter, r *htt
 	}
 }
 
+// GetSecurityMaintenance operation middleware
+func (sh *strictHandler) GetSecurityMaintenance(w http.ResponseWriter, r *http.Request) {
+	var request GetSecurityMaintenanceRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSecurityMaintenance(ctx, request.(GetSecurityMaintenanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSecurityMaintenance")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSecurityMaintenanceResponseObject); ok {
+		if err := validResponse.VisitGetSecurityMaintenanceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // RequestInstanceUpdate operation middleware
 func (sh *strictHandler) RequestInstanceUpdate(w http.ResponseWriter, r *http.Request) {
 	var request RequestInstanceUpdateRequestObject
@@ -86761,6 +90784,68 @@ func (sh *strictHandler) AddWorkspaceOrigin(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(AddWorkspaceOriginResponseObject); ok {
 		if err := validResponse.VisitAddWorkspaceOriginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AcceptEmailInvitation operation middleware
+func (sh *strictHandler) AcceptEmailInvitation(w http.ResponseWriter, r *http.Request) {
+	var request AcceptEmailInvitationRequestObject
+
+	var body AcceptEmailInvitationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AcceptEmailInvitation(ctx, request.(AcceptEmailInvitationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AcceptEmailInvitation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AcceptEmailInvitationResponseObject); ok {
+		if err := validResponse.VisitAcceptEmailInvitationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PreviewEmailInvitation operation middleware
+func (sh *strictHandler) PreviewEmailInvitation(w http.ResponseWriter, r *http.Request) {
+	var request PreviewEmailInvitationRequestObject
+
+	var body PreviewEmailInvitationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PreviewEmailInvitation(ctx, request.(PreviewEmailInvitationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PreviewEmailInvitation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PreviewEmailInvitationResponseObject); ok {
+		if err := validResponse.VisitPreviewEmailInvitationResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -87117,6 +91202,92 @@ func (sh *strictHandler) ExportOrgAudit(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
+// ListOrgEmailInvitations operation middleware
+func (sh *strictHandler) ListOrgEmailInvitations(w http.ResponseWriter, r *http.Request, org OrgID) {
+	var request ListOrgEmailInvitationsRequestObject
+
+	request.Org = org
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListOrgEmailInvitations(ctx, request.(ListOrgEmailInvitationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListOrgEmailInvitations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListOrgEmailInvitationsResponseObject); ok {
+		if err := validResponse.VisitListOrgEmailInvitationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// InviteOrgMemberByEmail operation middleware
+func (sh *strictHandler) InviteOrgMemberByEmail(w http.ResponseWriter, r *http.Request, org OrgID) {
+	var request InviteOrgMemberByEmailRequestObject
+
+	request.Org = org
+
+	var body InviteOrgMemberByEmailJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.InviteOrgMemberByEmail(ctx, request.(InviteOrgMemberByEmailRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "InviteOrgMemberByEmail")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(InviteOrgMemberByEmailResponseObject); ok {
+		if err := validResponse.VisitInviteOrgMemberByEmailResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeOrgEmailInvitation operation middleware
+func (sh *strictHandler) RevokeOrgEmailInvitation(w http.ResponseWriter, r *http.Request, org OrgID, invitation EmailInvitationID) {
+	var request RevokeOrgEmailInvitationRequestObject
+
+	request.Org = org
+	request.Invitation = invitation
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeOrgEmailInvitation(ctx, request.(RevokeOrgEmailInvitationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeOrgEmailInvitation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeOrgEmailInvitationResponseObject); ok {
+		if err := validResponse.VisitRevokeOrgEmailInvitationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // RevokeOrgGrant operation middleware
 func (sh *strictHandler) RevokeOrgGrant(w http.ResponseWriter, r *http.Request, org OrgID, params RevokeOrgGrantParams) {
 	var request RevokeOrgGrantRequestObject
@@ -87229,6 +91400,121 @@ func (sh *strictHandler) ApplyOrgTemplate(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ApplyOrgTemplateResponseObject); ok {
 		if err := validResponse.VisitApplyOrgTemplateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetOrgIdentity operation middleware
+func (sh *strictHandler) SetOrgIdentity(w http.ResponseWriter, r *http.Request, org OrgID) {
+	var request SetOrgIdentityRequestObject
+
+	request.Org = org
+
+	var body SetOrgIdentityJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetOrgIdentity(ctx, request.(SetOrgIdentityRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetOrgIdentity")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetOrgIdentityResponseObject); ok {
+		if err := validResponse.VisitSetOrgIdentityResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ClearOrgIdentityImage operation middleware
+func (sh *strictHandler) ClearOrgIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID) {
+	var request ClearOrgIdentityImageRequestObject
+
+	request.Org = org
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ClearOrgIdentityImage(ctx, request.(ClearOrgIdentityImageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ClearOrgIdentityImage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ClearOrgIdentityImageResponseObject); ok {
+		if err := validResponse.VisitClearOrgIdentityImageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOrgIdentityImage operation middleware
+func (sh *strictHandler) GetOrgIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, params GetOrgIdentityImageParams) {
+	var request GetOrgIdentityImageRequestObject
+
+	request.Org = org
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOrgIdentityImage(ctx, request.(GetOrgIdentityImageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOrgIdentityImage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOrgIdentityImageResponseObject); ok {
+		if err := validResponse.VisitGetOrgIdentityImageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetOrgIdentityImage operation middleware
+func (sh *strictHandler) SetOrgIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID) {
+	var request SetOrgIdentityImageRequestObject
+
+	request.Org = org
+	request.ContentType = r.Header.Get("Content-Type")
+
+	request.Body = r.Body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetOrgIdentityImage(ctx, request.(SetOrgIdentityImageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetOrgIdentityImage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetOrgIdentityImageResponseObject); ok {
+		if err := validResponse.VisitSetOrgIdentityImageResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -90265,6 +94551,215 @@ func (sh *strictHandler) ListPendingDrafts(w http.ResponseWriter, r *http.Reques
 	}
 }
 
+// ListPersonalValueCounts operation middleware
+func (sh *strictHandler) ListPersonalValueCounts(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request ListPersonalValueCountsRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPersonalValueCounts(ctx, request.(ListPersonalValueCountsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPersonalValueCounts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPersonalValueCountsResponseObject); ok {
+		if err := validResponse.VisitListPersonalValueCountsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListMyPersonalValues operation middleware
+func (sh *strictHandler) ListMyPersonalValues(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request ListMyPersonalValuesRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListMyPersonalValues(ctx, request.(ListMyPersonalValuesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListMyPersonalValues")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListMyPersonalValuesResponseObject); ok {
+		if err := validResponse.VisitListMyPersonalValuesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteMyPersonalValue operation middleware
+func (sh *strictHandler) DeleteMyPersonalValue(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, key ValueKeyName) {
+	var request DeleteMyPersonalValueRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Key = key
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteMyPersonalValue(ctx, request.(DeleteMyPersonalValueRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteMyPersonalValue")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteMyPersonalValueResponseObject); ok {
+		if err := validResponse.VisitDeleteMyPersonalValueResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetMyPersonalValue operation middleware
+func (sh *strictHandler) SetMyPersonalValue(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, key ValueKeyName) {
+	var request SetMyPersonalValueRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Key = key
+
+	var body SetMyPersonalValueJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetMyPersonalValue(ctx, request.(SetMyPersonalValueRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetMyPersonalValue")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetMyPersonalValueResponseObject); ok {
+		if err := validResponse.VisitSetMyPersonalValueResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPersonalValueMembers operation middleware
+func (sh *strictHandler) ListPersonalValueMembers(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, key ValueKeyName) {
+	var request ListPersonalValueMembersRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Key = key
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPersonalValueMembers(ctx, request.(ListPersonalValueMembersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPersonalValueMembers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPersonalValueMembersResponseObject); ok {
+		if err := validResponse.VisitListPersonalValueMembersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeletePersonalValueMember operation middleware
+func (sh *strictHandler) DeletePersonalValueMember(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, key ValueKeyName, member string) {
+	var request DeletePersonalValueMemberRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Key = key
+	request.Member = member
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeletePersonalValueMember(ctx, request.(DeletePersonalValueMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeletePersonalValueMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeletePersonalValueMemberResponseObject); ok {
+		if err := validResponse.VisitDeletePersonalValueMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevealMyPersonalValue operation middleware
+func (sh *strictHandler) RevealMyPersonalValue(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, key ValueKeyName) {
+	var request RevealMyPersonalValueRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Key = key
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevealMyPersonalValue(ctx, request.(RevealMyPersonalValueRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevealMyPersonalValue")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevealMyPersonalValueResponseObject); ok {
+		if err := validResponse.VisitRevealMyPersonalValueResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListRevisionPins operation middleware
 func (sh *strictHandler) ListRevisionPins(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
 	var request ListRevisionPinsRequestObject
@@ -92489,6 +96984,125 @@ func (sh *strictHandler) ApplyProjectTemplate(w http.ResponseWriter, r *http.Req
 	}
 }
 
+// SetProjectIdentity operation middleware
+func (sh *strictHandler) SetProjectIdentity(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	var request SetProjectIdentityRequestObject
+
+	request.Org = org
+	request.Project = project
+
+	var body SetProjectIdentityJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetProjectIdentity(ctx, request.(SetProjectIdentityRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetProjectIdentity")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetProjectIdentityResponseObject); ok {
+		if err := validResponse.VisitSetProjectIdentityResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ClearProjectIdentityImage operation middleware
+func (sh *strictHandler) ClearProjectIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	var request ClearProjectIdentityImageRequestObject
+
+	request.Org = org
+	request.Project = project
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ClearProjectIdentityImage(ctx, request.(ClearProjectIdentityImageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ClearProjectIdentityImage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ClearProjectIdentityImageResponseObject); ok {
+		if err := validResponse.VisitClearProjectIdentityImageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectIdentityImage operation middleware
+func (sh *strictHandler) GetProjectIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, params GetProjectIdentityImageParams) {
+	var request GetProjectIdentityImageRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectIdentityImage(ctx, request.(GetProjectIdentityImageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectIdentityImage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectIdentityImageResponseObject); ok {
+		if err := validResponse.VisitGetProjectIdentityImageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetProjectIdentityImage operation middleware
+func (sh *strictHandler) SetProjectIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	var request SetProjectIdentityImageRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.ContentType = r.Header.Get("Content-Type")
+
+	request.Body = r.Body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetProjectIdentityImage(ctx, request.(SetProjectIdentityImageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetProjectIdentityImage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetProjectIdentityImageResponseObject); ok {
+		if err := validResponse.VisitSetProjectIdentityImageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListKeyGroups operation middleware
 func (sh *strictHandler) ListKeyGroups(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
 	var request ListKeyGroupsRequestObject
@@ -92987,6 +97601,34 @@ func (sh *strictHandler) SetMachineReveal(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetMachineRevealResponseObject); ok {
 		if err := validResponse.VisitSetMachineRevealResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPersonalOffboardingReport operation middleware
+func (sh *strictHandler) GetPersonalOffboardingReport(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, member string) {
+	var request GetPersonalOffboardingReportRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Member = member
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPersonalOffboardingReport(ctx, request.(GetPersonalOffboardingReportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPersonalOffboardingReport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPersonalOffboardingReportResponseObject); ok {
+		if err := validResponse.VisitGetPersonalOffboardingReportResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

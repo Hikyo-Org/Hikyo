@@ -71,7 +71,30 @@ type Org struct {
 	// foreign key; empty for a manual org.
 	Origin               string
 	RegistrationPolicyID string
+	// Identity is the chrome identity (hue, short mark, image version). The
+	// image bytes are never part of the row: they are read by GetIdentityImage
+	// only, so lists stay small.
+	Identity ChromeIdentity
 }
+
+// ChromeIdentity is the editable avatar of an org or project. Mark nil means
+// "derive the monogram from the name"; ImageVersion nil means no uploaded image.
+type ChromeIdentity struct {
+	Hue          int
+	Mark         *string
+	ImageVersion *string
+}
+
+// ChromeImage is an uploaded avatar: the stored bytes with the exact content
+// type they were validated under and their content-hash version.
+type ChromeImage struct {
+	Bytes       []byte
+	ContentType string
+	Version     string
+}
+
+// DefaultChromeHue is the hue every row carries until someone edits it.
+const DefaultChromeHue = 195
 
 // Project is a tenant-owned aggregate (chain: org). OrgID appears on reads
 // only; writes bind it from the proof.
@@ -89,6 +112,8 @@ type Project struct {
 	// `reveal` here and no machine fetch delivers secret plaintext, whatever
 	// grant rows exist.
 	MachineReveal bool
+	// Identity is the chrome identity, as on Org.
+	Identity ChromeIdentity
 }
 
 // RetentionPolicy is the stored keep-if-either payload policy. Unlimited is
@@ -175,11 +200,17 @@ type OrgReader interface {
 // closures (internal/store/tx) ever hold one.
 type OrgRepo interface {
 	OrgReader
+	// ListIDs skips the self-config filter so recovery classification runs on older source schemas.
+	ListIDs(ctx context.Context, p authz.Proof) ([]domain.OrgID, error)
 	Create(ctx context.Context, p authz.Proof, org Org) error
 	// Rename and Delete address the org through the proof's chain. Rename
 	// touches the mutable name only — identity is the immutable id, so a
 	// rename never breaks a reference.
 	Rename(ctx context.Context, p authz.Proof, name string) error
+	// SetIdentity replaces the hue and mark; SetIdentityImage replaces the
+	// uploaded image, or clears it when img is nil.
+	SetIdentity(ctx context.Context, p authz.Proof, hue int, mark *string) error
+	SetIdentityImage(ctx context.Context, p authz.Proof, img *ChromeImage) error
 	Lock(ctx context.Context, p authz.Proof) error
 	SetRetention(ctx context.Context, p authz.Proof, policy RetentionPolicy) error
 	Delete(ctx context.Context, p authz.Proof) error
@@ -191,8 +222,15 @@ type ProjectReader interface {
 	GetCapacity(ctx context.Context, p authz.Proof) (ProjectCapacity, error)
 	// Get returns the project addressed by the proof's resolved chain.
 	Get(ctx context.Context, p authz.Proof) (Project, error)
+	// GetIdentityImage reads the uploaded avatar bytes; ErrNotFound when the
+	// project has none.
+	GetIdentityImage(ctx context.Context, p authz.Proof) (ChromeImage, error)
 	// List returns every project in the org the proof addresses.
 	List(ctx context.Context, p authz.Proof) ([]Project, error)
+	// ListIDs returns only the project ids of the org the proof addresses. It
+	// selects no later-added columns, so it stays readable on a restored
+	// scratch database that predates them (the upgrade drill).
+	ListIDs(ctx context.Context, p authz.Proof) ([]string, error)
 	// ListAll returns (org id, name) for every project on the instance,
 	// under an instance-scope proof addressing no tenant. It exists for the
 	// multi-instance directory (#71), whose served listing is org/project
@@ -225,6 +263,9 @@ type ProjectRepo interface {
 	SetCapacity(ctx context.Context, p authz.Proof, override *int, expectedRevision int64) error
 	Create(ctx context.Context, p authz.Proof, proj NewProject) error
 	Rename(ctx context.Context, p authz.Proof, name string) error
+	// SetIdentity and SetIdentityImage are the org methods' project twins.
+	SetIdentity(ctx context.Context, p authz.Proof, hue int, mark *string) error
+	SetIdentityImage(ctx context.Context, p authz.Proof, img *ChromeImage) error
 	SetRetention(ctx context.Context, p authz.Proof, policy *RetentionPolicy) error
 	// SetDefinitionsSource writes the git/db definitions mode (#70). It is a
 	// project-settings write, off the definitions-edit path.
@@ -469,6 +510,9 @@ type Repos interface {
 	// dismissal, so a read-only twin would have no caller — the shape SCIM took
 	// for the same reason.
 	ScanningDismissals() ScanningDismissalRepo
+	// PersonalValues is the per-developer value surface (#1235). The read
+	// bundle carries only the owner's masked list (PersonalValueReader).
+	PersonalValues() PersonalValueRepo
 	// Reencrypt is the instance-credential reencrypt surface (#75/#187).
 	Reencrypt() ReencryptRepo
 	// Approvals is the policy-bound secret-change approval engine (#151). It is
@@ -486,6 +530,9 @@ type Repos interface {
 	Transit() TransitRepo
 	// FileTargets is the generic file-destination surface (#164).
 	FileTargets() FileTargetRepo
+	// PersonalReport is the personal-values matrix counts and offboarding
+	// report surface (#1235): counts and names, never a value.
+	PersonalReport() PersonalReportRepo
 }
 
 // ScanningDismissalRepo is the proof-bound dismissal-row surface (#74,
@@ -541,6 +588,8 @@ type ReadRepos interface {
 	Definitions() DefinitionsReader
 	DeliveryTargets() DeliveryTargetReader
 	FileTargets() FileTargetReader
+	// PersonalValues is the owner's own masked list (#1235).
+	PersonalValues() PersonalValueReader
 }
 
 // DefinitionsPlan is a stored plan row (#70). Bundle holds the canonical bundle
@@ -1287,7 +1336,7 @@ func openPostgres(ctx context.Context, dsn string, configuredMax int32) (*DB, er
 	} else if !postgresDSNHasPoolMax(dsn) {
 		poolConfig.MaxConns = postgresPoolDefaultMaxConnections
 	}
-	poolConfig.AfterConnect = func(_ context.Context, conn *pgx.Conn) error {
+	poolConfig.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		// Normalize at the decoding boundary for both binary and text queries.
 		// A session TimeZone alone does not change pgx's binary use of time.Local.
 		timestamp := &pgtype.Type{
@@ -1301,7 +1350,7 @@ func openPostgres(ctx context.Context, dsn string, configuredMax int32) (*DB, er
 			Name: "_timestamptz", OID: pgtype.TimestamptzArrayOID,
 			Codec: &pgtype.ArrayCodec{ElementType: timestamp},
 		})
-		return nil
+		return upgrade.SetPostgresSessionTimeouts(ctx, conn)
 	}
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {

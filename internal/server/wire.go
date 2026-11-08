@@ -22,6 +22,7 @@ func wireOrg(o service.Org) apigen.Org {
 		Active:    o.Active,
 		CreatedAt: o.CreatedAt,
 		Origin:    apigen.OrgOrigin(o.Origin),
+		Identity:  wireIdentity(o.Identity),
 	}
 	if o.RegistrationPolicyID != "" {
 		out.RegistrationPolicyId = &o.RegistrationPolicyID
@@ -57,7 +58,7 @@ func envScope(org, project, env string) domain.Scope {
 }
 
 func wireProject(p service.Project) apigen.Project {
-	return apigen.Project{Id: p.ID, OrgId: p.OrgID, Name: p.Name, CreatedAt: p.CreatedAt, CanManagePolicy: p.CanManagePolicy, CanDelete: p.CanDelete}
+	return apigen.Project{Id: p.ID, OrgId: p.OrgID, Name: p.Name, CreatedAt: p.CreatedAt, CanManagePolicy: p.CanManagePolicy, CanDelete: p.CanDelete, Identity: wireIdentity(p.Identity)}
 }
 
 func wireEnvironment(e service.Environment) apigen.Environment {
@@ -93,4 +94,8 @@ func marshalMetadata(m *map[string]any) (json.RawMessage, error) {
 		return json.RawMessage(`{}`), nil
 	}
 	return json.Marshal(*m)
+}
+
+func wireIdentity(i service.ChromeIdentity) *apigen.ChromeIdentity {
+	return &apigen.ChromeIdentity{Hue: i.Hue, Mark: i.Mark, ImageVersion: i.ImageVersion}
 }

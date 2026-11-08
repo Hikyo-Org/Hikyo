@@ -112,6 +112,15 @@ type DeliveredKey struct {
 	Value *string
 	// SnapshotReceipt exists only when this fetch actually delivered plaintext.
 	SnapshotReceipt *string
+	// Personal is the personal-values overlay disposition (#1235): empty for
+	// a shared entry, PersonalDelivered for the owner's own value, and
+	// PersonalWithheld or PersonalNotice when the owner holds a value or
+	// notice this fetch does not carry. The last two never carry a Value, so
+	// `hikyo run` refuses the key instead of using a shared value.
+	Personal string
+	// PersonalReason qualifies a withheld key (consent, config_only,
+	// suspended) or names a notice's cause.
+	PersonalReason string
 }
 
 // FetchOptions carries the per-request delivery controls that are not the
@@ -182,9 +191,19 @@ type Delivery struct {
 	// disables it.
 	Budget *Budget
 	Now    func() time.Time
+	// MaxPersonalRenderBytes caps the owner's delivered personal values per
+	// fetch, apart from the shared rows. Zero means MaxRenderBytesPerTarget.
+	MaxPersonalRenderBytes int
 	// FetchProbe is a conformance-only retry seam. Production leaves it nil;
 	// it is invoked immediately after attempt-local response state is reset.
 	FetchProbe DeliveryConformanceProbe
+}
+
+func (s *Delivery) personalRenderLimit() int {
+	if s.MaxPersonalRenderBytes > 0 {
+		return s.MaxPersonalRenderBytes
+	}
+	return MaxRenderBytesPerTarget
 }
 
 type DeliveryConformanceProbe interface {
@@ -415,6 +434,12 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 		if err != nil {
 			return err
 		}
+		if caller.Class == domain.ClassDeveloper {
+			rows, manifest, err = personalOverlay(ctx, r, az, p, sealer, scope, caller, mode, only, s.personalRenderLimit(), rows, manifest)
+			if err != nil {
+				return err
+			}
+		}
 		// One database-locked key snapshot binds the conditional token, cursor
 		// and any disclosure receipts. A replica's boot-time handle is not
 		// evidence that its token key is still active.
@@ -547,6 +572,12 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 		for i := range out.Keys {
 			k := out.Keys[i]
 			if k.Value == nil {
+				continue
+			}
+			if k.Personal == PersonalDelivered {
+				if err := auditPersonalDelivered(ctx, r, p, caller, scope, fetchEvent.ID, k); err != nil {
+					return err
+				}
 				continue
 			}
 			disclosure, err := newAuditEvent(ctx, audit.EventDisclosure, caller.Principal,

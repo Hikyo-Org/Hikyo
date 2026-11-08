@@ -1,0 +1,40 @@
+# The native server unit the automatic upgrade adapter accepts. It is deliberately
+# plain: the adapter refuses extra ExecStart arguments, a RootDirectory, ExecStartPre
+# or ExecStop, and any condition that could bypass its restart fence. Keep the listener
+# and TLS settings in /etc/hikyo/hikyo.env, not on the command line.
+[Unit]
+Description=Hikyo server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hikyo
+Group=hikyo
+WorkingDirectory=/var/lib/hikyo
+EnvironmentFile=/etc/hikyo/hikyo.env
+LoadCredential=hikyo-root-key:/etc/hikyo/root.key
+ExecStart=/usr/bin/hikyo server --root-key-file=%d/hikyo-root-key
+Restart=on-failure
+RestartSec=2s
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectKernelLogs=true
+ProtectClock=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/hikyo
+
+[Install]
+WantedBy=multi-user.target

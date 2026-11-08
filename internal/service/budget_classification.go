@@ -125,8 +125,10 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpSelfConfigStatus, authz.OpSelfConfigPreview, authz.OpSelfConfigAdopt, authz.OpSelfConfigProvisionProject)
 	add(budgetClassExempt, "SSE admission caps (§10, 4/32/128) own concurrency; per-event authz must not be budgeted",
 		authz.OpAdvisoryWatch, authz.OpAdvisoryEvent)
-	add(budgetClassExempt, "reveal ceremony + per-key gate limiter (GateAttemptsPerMinute) bound it",
+	add(budgetClassExempt, "reveal ceremony (a live reauthentication window per environment, single-decision only at a 0 window) + §10 authenticated API bound it",
 		authz.OpValueReveal)
+	add(budgetClassExempt, "personal set/reveal: one own cell behind the reveal ceremony (a live possession-only reauthentication window per environment, single-decision only at a 0 window) + §10 authenticated API",
+		authz.OpPersonalValueSet, authz.OpPersonalValueReveal)
 	add(budgetClassExempt, "delivery-target list: one environment, at most 100 rows per reporting principal (§10 authenticated API)",
 		authz.OpDeliveryTargetList)
 	add(budgetClassExempt, "file-target configuration and inspection: project-scoped admin metadata, one row per workload service account (§10 authenticated API)",
@@ -146,8 +148,10 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 	add(budgetClassExempt, "§10 authenticated API 300/min per session; single-row/paged CRUD, not a §179 fan-out",
 		// orgs / projects / environments / folders (structure CRUD)
 		authz.OpOrgCreate, authz.OpOrgGet, authz.OpOrgList, authz.OpOrgRename, authz.OpOrgDelete,
+		authz.OpOrgIdentitySet, authz.OpOrgIdentityImageSet, authz.OpOrgIdentityImageClear,
 		authz.OpOrgRetentionRead, authz.OpOrgRetentionUpdate,
 		authz.OpProjectCreate, authz.OpProjectGet, authz.OpProjectList, authz.OpProjectRename, authz.OpProjectDelete,
+		authz.OpProjectIdentitySet, authz.OpProjectIdentityImageSet, authz.OpProjectIdentityImageClear, authz.OpProjectIdentityImageGet,
 		authz.OpProjectRetentionRead, authz.OpProjectRetentionUpdate,
 		authz.OpProjectMachineRevealGet, authz.OpProjectMachineRevealSet,
 		authz.OpProjectCapacityRead, authz.OpProjectCapacitySet,
@@ -166,6 +170,10 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		// values (non-export, non-copy, non-import, non-publish): single-cell reads/writes
 		authz.OpValueRead, authz.OpValueList, authz.OpValueSet, authz.OpValueClear,
 		authz.OpValueStage, authz.OpValueInitialize, authz.OpValueValidate, authz.OpValuePendingList, authz.OpRevealWindowRead,
+		// personal values: the caller's own names, one own cell, or one key's holder metadata
+		authz.OpPersonalValueList, authz.OpPersonalValueDelete, authz.OpPersonalValueMembers, authz.OpPersonalValueDeleteMember,
+		// personal counts: one environment's per-key counts; offboarding report: one person's retained audit trail in one project
+		authz.OpPersonalValueCounts, authz.OpPersonalOffboardingReport,
 		// revisions / pins: paged reads and single-revision restores
 		authz.OpRevisionList, authz.OpRevisionShow, authz.OpRevisionSignals,
 		authz.OpRevisionRestore, authz.OpRevisionRestoreHistory, authz.OpRevisionRestoreCurrent,
@@ -238,6 +246,11 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		// authority mint; frequency governed by the §10 authenticated-API budget
 		// exactly as the template and credential-reset operations beside it.
 		authz.OpMemberInviteOrg, authz.OpMemberInviteInstance,
+		// email invitation of an existing account (#1207): one pending row per
+		// call. The send is additionally bounded by its own 30/hour per-org
+		// budget and the 200-pending cap, charged at the service method.
+		authz.OpEmailInvitationSend, authz.OpEmailInvitationList,
+		authz.OpEmailInvitationRevoke, authz.OpEmailInvitationAccept,
 		// registration policy (#606): one policy row and its child rows per
 		// scope. The sign-up legs the policy opens are charged to the named
 		// `signup` category at their own charge points (#607, #608), never here.

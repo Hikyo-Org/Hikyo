@@ -215,7 +215,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		transitService.Shared = owner.haCoord
 	}
 
-	updatesService := &service.Updates{DB: db, Source: updateSource, Version: Version, Channel: updatecheck.Channel(cfg.UpdateChannel), Log: log, SelfConfig: selfConfig}
+	updatesService := &service.Updates{DB: db, Source: updateSource, Version: Version, Channel: updatecheck.Channel(cfg.UpdateChannel), Log: log, SelfConfig: selfConfig, SecurityStatusFile: cfg.SecurityMaintenanceStatusFile}
 	// One RED collector shared by the API middleware (writer) and the
 	// operational /metrics handler (reader) (#513). The limiter supplies its
 	// admission-pressure gauges at scrape time.
@@ -267,6 +267,16 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	}
 	authSvc.EnableLocalSignup(selfConfig.Capture)
 	authSvc.MailFailed = metrics.RecordSignupMailFailure
+	// Sends outlive the generation that started them, so the join, the
+	// cancellation and the failure count are the owner's, like the refusals.
+	if owner.emailSends == nil {
+		owner.emailSends = service.NewMailSends()
+	}
+	metrics.SetEmailInvitationFailureSource(owner.emailSends.Failures)
+	emailInvitationsSvc := &service.EmailInvitations{
+		DB: db, ExternalOrigin: cfg.ExternalOrigin, ExternalOriginExplicit: cfg.ExternalOriginExplicit, Mail: selfConfig.Capture,
+		Budget: budget, Log: log, Sends: owner.emailSends,
+	}
 	api := &server.API{
 		Mail:     &service.InstanceMail{DB: db, Auth: authSvc, Capture: selfConfig.Capture},
 		Runtime:  &service.System{DB: db, Store: sc},
@@ -302,10 +312,12 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		// carries is the SAME window machinery human disclosure consumes, so
 		// they cannot come from two configurations.
 		Grants:               &service.Grants{DB: db, Auth: authSvc},
+		EmailInvitations:     emailInvitationsSvc,
 		Rules:                &service.Rules{DB: db},
 		Registration:         registrationSvc,
 		Identities:           &service.Identities{DB: db, Auth: authSvc},
 		DeveloperCredentials: &service.DeveloperCredentials{DB: db, Auth: authSvc},
+		PersonalValues:       &service.PersonalValues{DB: db, Keyring: kr, Auth: authSvc},
 		// One Federation across the issuer surface and the delivery surface, and
 		// one JWKS cache inside it: the cache's staleness bound is an instance
 		// property, so two caches would mean two answers to "are this issuer's
@@ -459,6 +471,12 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 			// stopped honouring expired rows; this is bookkeeping and evidence.
 			Name: "access_expiry_sweep",
 			Run:  accessSvc.DrainExpired,
+		}, {
+			// Personal-value retention (#1235, personal-values ADR): suspend
+			// values whose owner lost read, reveal or qualification, restore
+			// them when it returns, and delete them 14 days on with a notice.
+			Name: "personal_value_retention",
+			Run:  (&service.PersonalValues{DB: db, Keyring: kr, Auth: authSvc}).SweepRetention,
 		}, {
 			// Delivery-target condition reporting (#788, ADR D6): purge rows
 			// with no accepted report for 30 days, across all tenants, each

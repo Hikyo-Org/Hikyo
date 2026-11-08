@@ -3,19 +3,156 @@ set -eu
 
 _remote_name=$1
 repo_root=$(git rev-parse --show-toplevel)
-zero=0000000000000000000000000000000000000000
 base=refs/remotes/hikyo-upstream/main
 dev=refs/remotes/hikyo-upstream/dev
+# Everything the Storybook suite reads from the repository (see
+# scripts/ci/storybook-suite.sh): web and the client package it aliases, the
+# Node and pnpm pins, the suite itself and the CSP checker build:demo runs.
+# ci-storybook.yml triggers on exactly this list (plus its own file and setup
+# helpers); a Go test keeps them equal.
+storybook_paths='web clients/ts .nvmrc package.json scripts/ci/storybook-suite.sh docs/site/scripts/test-csp.mjs'
+
+case "${HIKYO_PREPUSH_STORYBOOK:-}" in
+	'' | skip) ;;
+	*)
+		printf 'pre-push: HIKYO_PREPUSH_STORYBOOK must be unset or "skip", got "%s"\n' "$HIKYO_PREPUSH_STORYBOOK" >&2
+		exit 1
+		;;
+esac
+case "${HIKYO_PREPUSH_GOLANGCI:-}" in
+	'' | skip) ;;
+	*)
+		printf 'pre-push: HIKYO_PREPUSH_GOLANGCI must be unset or "skip", got "%s"\n' "$HIKYO_PREPUSH_GOLANGCI" >&2
+		exit 1
+		;;
+esac
+# Inputs of the new-code golangci-lint ratchet besides **/*.go; the script
+# lints everything when one of these changes. ci-golangci.yml triggers on
+# exactly these plus **/*.go and itself; a Go test keeps them equal.
+golangci_paths='go.mod go.sum .golangci.yml scripts/ci/golangci-lint-version scripts/ci/golangci-lint-new.sh scripts/ci/run-go-tool.sh'
+
+# Hash of every Storybook input at REV, bytes and file modes (a tree entry
+# carries both), so a mode-only change such as a non-executable suite is a new key.
+storybook_key() {
+	# shellcheck disable=SC2086 # the paths contain no whitespace or glob characters
+	entries=$(git ls-tree "$1" -- $storybook_paths) || return 1
+	printf '%s\n' "$entries" | git hash-object --stdin
+}
+
+# Succeed only when the working tree holds exactly the bytes with key $1.
+# Every failure is explicit: set -e is off inside functions run as `f || ...`.
+worktree_has_key() {
+	head_key=$(storybook_key HEAD) || return 1
+	[ "$1" = "$head_key" ] || return 1
+	# shellcheck disable=SC2086 # the paths contain no whitespace or glob characters
+	dirty=$(git status --porcelain --untracked-files=all -- $storybook_paths) || return 1
+	[ -z "$dirty" ] || return 1
+	# Ignored .env files change the build without changing any tree OID.
+	env_files=$(find web clients/ts -name node_modules -prune -o -name '.env*' -print) || return 1
+	[ -z "$env_files" ] || return 1
+}
+
+# Require the Storybook suite to have passed for exactly the pushed frontend bytes.
+require_storybook() {
+	# CI executes the committed suite, and a core.fileMode=false clone would run
+	# an executable working copy over a non-executable commit.
+	suite=$(git ls-tree "$1" -- scripts/ci/storybook-suite.sh) || return 1
+	case "$suite" in
+		'100755 '*) ;;
+		*)
+			printf 'pre-push: %s does not commit scripts/ci/storybook-suite.sh as an executable file (mode 100755)\n' "$1" >&2
+			return 1
+			;;
+	esac
+	key=$(storybook_key "$1") || return 1
+	stamps=$(git rev-parse --path-format=absolute --git-common-dir) || return 1
+	stamps=$stamps/hikyo-storybook-passes
+	if [ -f "$stamps" ] && grep -Fx -- "$key" "$stamps" >/dev/null; then
+		return 0
+	fi
+	worktree_has_key "$key" || {
+		printf 'pre-push: %s changes the frontend, and the Storybook suite has not passed for those exact bytes.\n' "$1" >&2
+		printf 'pre-push: check out and clean the branch you are pushing (no modified or untracked files under the Storybook inputs, and no .env files under web/ or clients/ts/), or push from the worktree that has it, then push again.\n' >&2
+		return 1
+	}
+	printf 'pre-push: running the Storybook suite (about 4 minutes; HIKYO_PREPUSH_STORYBOOK=skip skips it for WIP pushes)\n' >&2
+	(cd "$repo_root" && scripts/ci/storybook-suite.sh </dev/null) || {
+		printf 'pre-push: the Storybook suite failed; fix it before pushing (if its browser is missing, run pnpm --dir web run e2e:install once)\n' >&2
+		return 1
+	}
+	# Edits made while the suite ran must not be stamped.
+	worktree_has_key "$key" || {
+		printf 'pre-push: the frontend files changed while the Storybook suite ran; push again once they are stable\n' >&2
+		return 1
+	}
+	{
+		grep -Fvx -- "$key" "$stamps" 2>/dev/null || :
+		printf '%s\n' "$key"
+	} | tail -n 50 >"$stamps.$$" || return 1
+	mv "$stamps.$$" "$stamps" || return 1
+}
+
+# Lint the new Go code of the pushed commit $1 against $2. It runs in a
+# detached worktree at exactly that commit, and the ratchet script, its pin and
+# .golangci.yml come from that commit too (the hook checkout's copy of the
+# script is used only when the commit has none), so the work tree you push from,
+# whichever branch it has checked out and any uncommitted or untracked file never
+# change the verdict, and it matches ci-advisory-golangci. Exit 64 is the hook's
+# or the script's own setup failing; any other non-zero code is golangci-lint
+# (run through `go run`, which turns every tool exit code into 1), so findings
+# and tool failures cannot be told apart.
+require_golangci() {
+	printf 'pre-push: running the golangci-lint ratchet on new Go code (HIKYO_PREPUSH_GOLANGCI=skip skips it for WIP pushes)\n' >&2
+	# The pushed commit's script, or the hook checkout's when the commit predates it.
+	if git cat-file -e "$1:scripts/ci/golangci-lint-new.sh" 2>/dev/null; then
+		ratchet=scripts/ci/golangci-lint-new.sh
+	else
+		ratchet=$repo_root/scripts/ci/golangci-lint-new.sh
+	fi
+	status=0
+	(
+		# From a linked worktree git exports GIT_DIR (and friends) for that
+		# worktree; every git command in the lint tree would read its HEAD.
+		# shellcheck disable=SC2046 # a list of variable names
+		unset $(git rev-parse --local-env-vars)
+		# The Go build cache keys on source paths; -trimpath makes the fresh
+		# directory of every push hit the cache of the last one.
+		GOFLAGS="${GOFLAGS:+$GOFLAGS }-trimpath"
+		export GOFLAGS
+		tmp=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-golangci.XXXXXX") || exit 64
+		# shellcheck disable=SC2329 # run by the EXIT trap
+		cleanup() {
+			cd "$repo_root" || :
+			git worktree remove --force "$tmp" >/dev/null 2>&1 || { rm -rf "$tmp"; git worktree prune; }
+		}
+		trap cleanup EXIT
+		trap 'exit 130' HUP INT TERM
+		git worktree add -q --detach "$tmp" "$1" || exit 64
+		cd "$tmp" && "$ratchet" "$2" </dev/null
+	) || status=$?
+	[ "$status" -ne 0 ] || return 0
+	if [ "$status" -eq 64 ]; then
+		printf 'pre-push: the golangci-lint ratchet could not start or finish its setup (worktree, merge base or package listing); reproduce: check out %s (detached) and run %s %s\n' "$1" "$ratchet" "$2" >&2
+	else
+		printf 'pre-push: golangci-lint reported issues or could not run; see the output above, or reproduce: check out %s (detached) and run %s %s\n' "$1" "$ratchet" "$2" >&2
+	fi
+	return 1
+}
 
 git rev-parse --verify "$base^{commit}" >/dev/null 2>&1 || {
 	printf 'pre-push: missing %s; fetch canonical Hikyo main into that reference first\n' "$base" >&2
 	exit 1
 }
 
-while read -r local_ref local_oid _remote_ref _remote_oid; do
-	case "$local_ref:$local_oid" in
-		refs/heads/*:"$zero") continue ;;
-		refs/heads/*:*) ;;
+while read -r local_ref local_oid remote_ref _remote_oid; do
+	# Git marks a deletion with a (delete) local ref and an all-zero object of the
+	# repository's hash length, 40 or 64. Otherwise check a push whose local
+	# OR remote ref is a branch: `git push origin HEAD` and SHA pushes name only
+	# the remote branch, `main:refs/tags/v1` only the local one. Tag-to-tag pushes
+	# stay unchecked, as before.
+	[ "$local_ref" != "(delete)" ] || continue
+	case "$local_ref:$remote_ref" in
+		refs/heads/*:* | *:refs/heads/*) ;;
 		*) continue ;;
 	esac
 
@@ -26,4 +163,24 @@ while read -r local_ref local_oid _remote_ref _remote_oid; do
 		range_base=$dev
 	fi
 	"$repo_root/scripts/ci/check-commit-signatures.sh" "$range_base" "$local_oid" "$repo_root"
+
+	merge_base=$(git merge-base "$range_base" "$local_oid")
+	# shellcheck disable=SC2086 # the paths contain no whitespace or glob characters
+	golang=$(git diff --name-only "$merge_base" "$local_oid" -- '*.go' $golangci_paths)
+	if [ -n "$golang" ]; then
+		if [ "${HIKYO_PREPUSH_GOLANGCI:-}" = skip ]; then
+			printf 'pre-push: WARNING: skipping the golangci-lint ratchet for %s; the advisory PR check still runs it\n' "$local_ref" >&2
+		else
+			require_golangci "$local_oid" "$range_base" || exit 1
+		fi
+	fi
+
+	# shellcheck disable=SC2086 # as above
+	frontend=$(git diff --name-only "$merge_base" "$local_oid" -- $storybook_paths)
+	[ -n "$frontend" ] || continue
+	if [ "${HIKYO_PREPUSH_STORYBOOK:-}" = skip ]; then
+		printf 'pre-push: WARNING: skipping the Storybook suite for %s; CI still runs it in the advisory and full suites\n' "$local_ref" >&2
+		continue
+	fi
+	require_storybook "$local_oid" || exit 1
 done

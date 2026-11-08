@@ -13,6 +13,7 @@ import (
 // projects does not silently grant it control over the running instance.
 var selfConfigOperations = map[Operation]bool{
 	OpOrgGet: true, OpOrgRename: true, OpProjectGet: true, OpProjectList: true, OpProjectRename: true,
+	OpOrgIdentitySet: true, OpOrgIdentityImageSet: true, OpOrgIdentityImageClear: true, OpProjectIdentitySet: true, OpProjectIdentityImageSet: true, OpProjectIdentityImageClear: true, OpProjectIdentityImageGet: true,
 	OpEnvRead: true, OpEnvList: true, OpEnvRename: true, OpEnvReorder: true, OpEnvUpdateNote: true,
 	OpKeyGet: true, OpKeyList: true, OpKeyGroupGet: true, OpKeyGroupList: true, OpFolderGet: true, OpFolderList: true,
 	OpValueRead: true, OpValueList: true, OpValueReveal: true, OpRevealWindowRead: true,
@@ -26,6 +27,7 @@ var selfConfigOperations = map[Operation]bool{
 	OpAuditQueryOrg: true, OpAuditQueryProject: true, OpAuditQueryEnv: true, OpAuditExportOrg: true, OpAuditExportProject: true, OpAuditExportEnv: true,
 	OpGrantCreateOrg: true, OpGrantCreateProject: true, OpGrantCreateEnv: true, OpGrantRevokeOrg: true, OpGrantRevokeProject: true, OpGrantRevokeEnv: true,
 	OpGrantListOrg: true, OpGrantListProject: true, OpTemplateApplyOrg: true, OpTemplateApplyProject: true, OpTemplateApplyEnv: true, OpMemberInviteOrg: true,
+	OpEmailInvitationSend: true, OpEmailInvitationList: true, OpEmailInvitationRevoke: true, OpEmailInvitationAccept: true,
 	OpSelfConfigApply: true, OpSelfConfigTest: true, OpReencryptProject: true,
 }
 
@@ -47,10 +49,18 @@ func (a *TxAuthorizer) selfConfigProfile(ctx context.Context, caller Identity, o
 	}
 	f := Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}}
 	switch op {
-	case OpGrantCreateOrg, OpGrantCreateProject, OpGrantCreateEnv, OpGrantRevokeOrg, OpGrantRevokeProject, OpGrantRevokeEnv, OpGrantListOrg, OpGrantListProject, OpTemplateApplyOrg, OpTemplateApplyProject, OpTemplateApplyEnv, OpMemberInviteOrg:
+	case OpGrantCreateOrg, OpGrantCreateProject, OpGrantCreateEnv, OpGrantRevokeOrg, OpGrantRevokeProject, OpGrantRevokeEnv, OpGrantListOrg, OpGrantListProject, OpTemplateApplyOrg, OpTemplateApplyProject, OpTemplateApplyEnv, OpMemberInviteOrg,
+		OpEmailInvitationSend, OpEmailInvitationList, OpEmailInvitationRevoke, OpEmailInvitationAccept:
 		f = append(f, Atom{Cap: domain.CapManageMembers, At: domain.LevelNone})
 	}
 	return true, evaluate(f, chain, grants), nil
+}
+
+// IsProtectedOrg reports whether org is the instance's own protected
+// configuration organisation. It is the same resolver fact the formula
+// conjunction uses and authorizes nothing.
+func (a *TxAuthorizer) IsProtectedOrg(ctx context.Context, org domain.OrgID) (bool, error) {
+	return a.r.IsSelfConfigScope(ctx, domain.Scope{Org: org})
 }
 
 // IsSelfConfig reports the database-resolved protected resource profile on a

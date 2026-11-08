@@ -248,7 +248,7 @@ func runCLIAdapterReauthHandoff(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if transaction.State != start.State || transaction.Operation != string(authz.OpAdapterSync) || transaction.RedirectURI != "http://127.0.0.1:40123/callback" || len(transaction.Environments) != 1 || transaction.Environments[0].EnvironmentID != "env_prod" || transaction.Environments[0].RequiresWebAuthn {
+	if transaction.State != start.State || transaction.Operation != string(authz.OpAdapterSync) || transaction.RedirectURI != "http://127.0.0.1:40123/callback" || len(transaction.Environments) != 1 || transaction.Environments[0].EnvironmentID != "env_prod" || transaction.Environments[0].OrgID != "org_a" || transaction.Environments[0].ProjectID != "prj_a1" || transaction.Environments[0].RequiresWebAuthn {
 		t.Fatalf("CLIReauthTransaction() = %+v", transaction)
 	}
 	// Policy is authoritative again at approval. A TOTP window opened while the

@@ -202,6 +202,9 @@ func (s *SCIM) CreateUser(ctx context.Context, actor Actor, org domain.OrgID, bi
 			if in.UserName == "" {
 				return nil, ErrSCIMUserNameRequired
 			}
+			if hasDirectionControl(in.UserName) {
+				return nil, ErrSCIMUserNameDirection
+			}
 			if err := checkSCIMAttributeNames(in.Attributes, 0); err != nil {
 				return nil, err
 			}
@@ -413,6 +416,11 @@ func (s *SCIM) mutateUser(
 			}
 			if desired.UserName == "" {
 				return nil, ErrSCIMUserNameRequired
+			}
+			// Only a new value: a stored name must not stop an identity provider
+			// deactivating the user who holds it.
+			if desired.UserName != row.UserName && hasDirectionControl(desired.UserName) {
+				return nil, ErrSCIMUserNameDirection
 			}
 			if err := checkSCIMAttributeNames(desired.Attributes, 0); err != nil {
 				return nil, err

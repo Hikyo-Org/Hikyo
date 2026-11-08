@@ -29,6 +29,7 @@ type CLIReauthStart struct {
 }
 
 type CLIReauthEnvironmentPolicy struct {
+	OrgID, ProjectID       string
 	EnvironmentID          string
 	EffectiveWindowSeconds int
 	RequiresWebAuthn       bool
@@ -384,7 +385,7 @@ func (s *Auth) CLIReauthTransaction(ctx context.Context, actor Actor, state stri
 			if err != nil {
 				return err
 			}
-			out.Environments = append(out.Environments, CLIReauthEnvironmentPolicy{EnvironmentID: environmentID, EffectiveWindowSeconds: int(effective / time.Second), RequiresWebAuthn: effective <= 0})
+			out.Environments = append(out.Environments, CLIReauthEnvironmentPolicy{OrgID: string(chain.Org), ProjectID: string(chain.Project), EnvironmentID: environmentID, EffectiveWindowSeconds: int(effective / time.Second), RequiresWebAuthn: effective <= 0})
 		}
 		return recordCLIReauthSuccess(ctx, az, "inspect", detail)
 	})
@@ -625,6 +626,11 @@ const (
 	cliReauthNeedsFactor cliReauthCredentialRequirement = iota
 	cliReauthNeedsPasskey
 	cliReauthNeedsLocalFactor
+	// A developer credential is how hikyo run delivers personal values, and
+	// minting one keeps the local-factor rule even for an account that
+	// qualifies for personal values through its identity provider (O9).
+	cliReauthDeveloperNeedsPasskey
+	cliReauthDeveloperNeedsLocalFactor
 )
 
 type cliReauthUnavailable struct {
@@ -639,6 +645,10 @@ func (e cliReauthUnavailable) SafeDetail() string {
 		return "this sign-in cannot satisfy step-up: this operation requires a passkey; add one under Settings > Security"
 	case cliReauthNeedsLocalFactor:
 		return "this sign-in cannot satisfy step-up: this operation requires a local authenticator or passkey; add one under Settings > Security"
+	case cliReauthDeveloperNeedsPasskey:
+		return "this sign-in cannot satisfy step-up: running a program locally with your personal values needs a developer credential, and in this environment minting one needs a passkey enrolled on your account; an identity-provider sign-in cannot mint one. Add a passkey under Settings > Security"
+	case cliReauthDeveloperNeedsLocalFactor:
+		return "this sign-in cannot satisfy step-up: running a program locally with your personal values needs a developer credential, and minting one needs a passkey or authenticator app enrolled on your account; an identity-provider sign-in cannot mint one. Add one under Settings > Security"
 	default:
 		return "this sign-in cannot satisfy step-up: sign in through a provider that asserts a second factor, or add an authenticator or passkey under Settings > Security"
 	}
@@ -671,6 +681,9 @@ func (s *Auth) requireCLIReauthCredential(ctx context.Context, az *authz.TxAutho
 			return err
 		}
 		if effective <= 0 {
+			if purpose == string(PurposeDeveloperCredential) {
+				return cliReauthUnavailable{requirement: cliReauthDeveloperNeedsPasskey}
+			}
 			return cliReauthUnavailable{requirement: cliReauthNeedsPasskey}
 		}
 	}
@@ -686,7 +699,10 @@ func (s *Auth) requireCLIReauthCredential(ctx context.Context, az *authz.TxAutho
 			return nil
 		}
 	}
-	if purpose == string(PurposeAdapter) || purpose == string(PurposeDeveloperCredential) {
+	if purpose == string(PurposeDeveloperCredential) {
+		return cliReauthUnavailable{requirement: cliReauthDeveloperNeedsLocalFactor}
+	}
+	if purpose == string(PurposeAdapter) {
 		return cliReauthUnavailable{requirement: cliReauthNeedsLocalFactor}
 	}
 	return cliReauthUnavailable{}

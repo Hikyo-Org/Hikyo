@@ -22,9 +22,13 @@ on:
       - "SECURITY.md"
       - "SUPPORT.md"
       - "TRADEMARK.md"
+  # security-feed.yml re-serves this workflow's last artifact, which must not expire.
+  schedule:
+    - cron: '41 5 1 * *'
 concurrency:
   group: github-pages
   cancel-in-progress: false
+  queue: max
 
 jobs:
   build:
@@ -72,6 +76,8 @@ jobs:
           pnpm --dir web run test:demo
           cp -r web/demo-dist docs/site/dist/demo
           node docs/site/scripts/test-csp.mjs --demo docs/site/dist/demo
+      - name: Include the security feed, which every deployment must carry
+        run: ./scripts/ci/merge-security-feed.sh docs/site/dist "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
       - name: Configure GitHub Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
       - name: Archive Pages artifact, including security.txt
@@ -88,7 +94,7 @@ jobs:
         with:
           name: github-pages
           path: ${{ runner.temp }}/artifact.tar
-          retention-days: 1
+          retention-days: 90
           if-no-files-found: error
 
   deploy:

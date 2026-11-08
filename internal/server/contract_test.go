@@ -67,7 +67,7 @@ func (cliReauthAuth) StartCLIReauth(context.Context, string, service.ReauthInten
 	return service.CLIReauthStart{State: "front-channel-state", ExpiresAt: time.Date(2026, 8, 17, 4, 5, 0, 0, time.UTC)}, nil
 }
 func (cliReauthAuth) CLIReauthTransaction(context.Context, service.Actor, string) (service.CLIReauthTransaction, error) {
-	return service.CLIReauthTransaction{State: "front-channel-state", Purpose: "adapter", Operation: "adapter.sync", KeyIDs: []string{}, RedirectURI: "http://127.0.0.1:40123/callback", ExpiresAt: time.Date(2026, 8, 17, 4, 5, 0, 0, time.UTC), Environments: []service.CLIReauthEnvironmentPolicy{{EnvironmentID: "env_00000000-0000-0000-0000-000000000001", RequiresWebAuthn: true}}}, nil
+	return service.CLIReauthTransaction{State: "front-channel-state", Purpose: "adapter", Operation: "adapter.sync", KeyIDs: []string{}, RedirectURI: "http://127.0.0.1:40123/callback", ExpiresAt: time.Date(2026, 8, 17, 4, 5, 0, 0, time.UTC), Environments: []service.CLIReauthEnvironmentPolicy{{OrgID: testOrgID, ProjectID: testProjectID, EnvironmentID: "env_00000000-0000-0000-0000-000000000001", RequiresWebAuthn: true}}}, nil
 }
 func (cliReauthAuth) ApproveCLIReauth(context.Context, service.Actor, string) (service.CLIReauthApproval, error) {
 	return service.CLIReauthApproval{Code: "single-use-code", State: "front-channel-state", RedirectURI: "http://127.0.0.1:40123/callback"}, nil
@@ -338,6 +338,26 @@ type stubOrgs struct {
 	mine   func(ctx context.Context, a service.Actor) ([]service.MyOrg, error)
 	rename func(ctx context.Context, a service.Actor, org domain.OrgID, name string) (service.Org, error)
 	del    func(ctx context.Context, a service.Actor, org domain.OrgID) error
+	image  func(ctx context.Context, a service.Actor, org domain.OrgID) (service.ChromeImage, error)
+}
+
+func (s stubOrgs) SetIdentity(context.Context, service.Actor, domain.OrgID, *int, *string) (service.Org, error) {
+	return service.Org{}, domain.ErrNotFound
+}
+
+func (s stubOrgs) SetIdentityImage(context.Context, service.Actor, domain.OrgID, string, []byte) (service.Org, error) {
+	return service.Org{}, domain.ErrNotFound
+}
+
+func (s stubOrgs) ClearIdentityImage(context.Context, service.Actor, domain.OrgID) (service.Org, error) {
+	return service.Org{}, domain.ErrNotFound
+}
+
+func (s stubOrgs) IdentityImage(ctx context.Context, a service.Actor, org domain.OrgID) (service.ChromeImage, error) {
+	if s.image == nil {
+		return service.ChromeImage{}, domain.ErrNotFound
+	}
+	return s.image(ctx, a, org)
 }
 
 func (s stubOrgs) ListMine(ctx context.Context, a service.Actor) ([]service.MyOrg, error) {
@@ -829,6 +849,9 @@ func TestCLIReauthOnlyRedeemDisclosesRotatedBearer(t *testing.T) {
 		if bytes.Contains(start, forbidden) || bytes.Contains(transaction, forbidden) || bytes.Contains(approved, forbidden) {
 			t.Fatalf("private handoff material %q crossed front channel: start=%s transaction=%s approve=%s", forbidden, start, transaction, approved)
 		}
+	}
+	if !bytes.Contains(transaction, []byte(`"org_id":"`+testOrgID+`"`)) || !bytes.Contains(transaction, []byte(`"project_id":"`+testProjectID+`"`)) {
+		t.Fatalf("environment policy omitted its owner ids: %s", transaction)
 	}
 	if !bytes.Contains(redeemed, []byte(`"session_token":"rotated-secret"`)) {
 		t.Fatalf("redeem omitted rotated bearer: %s", redeemed)
@@ -1469,6 +1492,22 @@ func (s stubHierarchy) List(context.Context, service.Actor, domain.OrgID) ([]ser
 
 func (s stubHierarchy) Rename(context.Context, service.Actor, domain.Scope, string) (service.Project, error) {
 	return service.Project{}, s.outcome()
+}
+
+func (s stubHierarchy) SetIdentity(context.Context, service.Actor, domain.Scope, *int, *string) (service.Project, error) {
+	return service.Project{}, s.outcome()
+}
+
+func (s stubHierarchy) SetIdentityImage(context.Context, service.Actor, domain.Scope, string, []byte) (service.Project, error) {
+	return service.Project{}, s.outcome()
+}
+
+func (s stubHierarchy) ClearIdentityImage(context.Context, service.Actor, domain.Scope) (service.Project, error) {
+	return service.Project{}, s.outcome()
+}
+
+func (s stubHierarchy) IdentityImage(context.Context, service.Actor, domain.Scope) (service.ChromeImage, error) {
+	return service.ChromeImage{}, s.outcome()
 }
 
 func (s stubHierarchy) Delete(context.Context, service.Actor, domain.Scope) error {
@@ -2282,7 +2321,7 @@ func TestWorkspaceHandoffStepUpResponseUsesRequiredBranch(t *testing.T) {
 		return service.HandoffView{
 			Purpose: service.HandoffStepUp, Operation: string(service.PurposeReveal),
 			RequestingOrigin: requestingOrigin,
-			EnvID:            testEnvID, KeySet: []string{testKeyID}, ExpiresAt: time.Now().UTC().Add(time.Minute),
+			EnvID:            testEnvID, OrgID: testOrgID, ProjectID: testProjectID, KeySet: []string{testKeyID}, ExpiresAt: time.Now().UTC().Add(time.Minute),
 		}, nil
 	}}
 	srv := httptest.NewServer(server.New(&server.API{
@@ -2316,6 +2355,9 @@ func TestWorkspaceHandoffStepUpResponseUsesRequiredBranch(t *testing.T) {
 	}
 	if stepUp.Environment != apigen.ID(testEnvID) {
 		t.Fatalf("environment = %q, want %q", stepUp.Environment, testEnvID)
+	}
+	if stepUp.OrgId == nil || *stepUp.OrgId != testOrgID || stepUp.ProjectId == nil || *stepUp.ProjectId != testProjectID {
+		t.Fatalf("owner ids = %v/%v, want %q/%q", stepUp.OrgId, stepUp.ProjectId, testOrgID, testProjectID)
 	}
 }
 

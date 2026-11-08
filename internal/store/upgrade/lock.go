@@ -14,7 +14,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/gofrs/flock"
 	"github.com/jackc/pgx/v5"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3/lock"
 	_ "modernc.org/sqlite"
 )
@@ -213,13 +213,39 @@ func open(cfg Config, readonly bool) (*sql.DB, error) {
 		}
 		dsn = (&url.URL{Scheme: "file", Path: cfg.Path, RawQuery: q.Encode()}).String()
 	}
-	db, err := sql.Open(driver, dsn)
-	if err != nil {
-		return nil, err
+	var db *sql.DB
+	if cfg.Engine == releaseidentity.Postgres {
+		// This session runs a target's migrations under the operator lock, so it is the one a
+		// target Pod that dies mid-migration leaves behind.
+		connConfig, err := pgx.ParseConfig(dsn)
+		if err != nil {
+			return nil, err
+		}
+		db = stdlib.OpenDB(*connConfig, stdlib.OptionAfterConnect(SetPostgresSessionTimeouts))
+	} else {
+		var err error
+		if db, err = sql.Open(driver, dsn); err != nil {
+			return nil, err
+		}
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(0)
 	return db, nil
+}
+
+// SetPostgresSessionTimeouts makes the server drop this session within about 90 seconds once its
+// client vanishes without closing it, such as a deleted Pod. Otherwise the session holds off a
+// rollback, which refuses while another session is connected, for up to two hours. It runs
+// set_config after connecting rather than sending startup parameters, which poolers such as
+// PgBouncer refuse.
+func SetPostgresSessionTimeouts(ctx context.Context, conn *pgx.Conn) error {
+	_, err := conn.Exec(ctx, `SELECT set_config('tcp_user_timeout', '30000', false),
+		set_config('tcp_keepalives_idle', '60', false), set_config('tcp_keepalives_interval', '10', false),
+		set_config('tcp_keepalives_count', '3', false)`)
+	if err != nil {
+		return fmt.Errorf("upgrade: set postgres session timeouts: %w", err)
+	}
+	return nil
 }
 
 func canonicalSQLite(path string) (string, error) {

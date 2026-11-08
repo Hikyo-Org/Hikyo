@@ -1,4 +1,6 @@
 export { Matrix } from '../../routes/Matrix.tsx';
+export { OffboardingReport } from '../../routes/OffboardingReport.tsx';
+export { PersonalValues } from '../../routes/PersonalValues.tsx';
 export { Projects } from '../../routes/Projects.tsx';
 export { Remotes } from '../../routes/Remotes.tsx';
 export { Values } from '../../routes/Values.tsx';

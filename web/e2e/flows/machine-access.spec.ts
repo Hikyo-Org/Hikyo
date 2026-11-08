@@ -1673,7 +1673,7 @@ test.describe('transit keys', () => {
       });
       expect(configured.min_decrypt_version).toBe(2n);
       expect(configured.rotation_period_seconds).toBe(3600n);
-      await expect(page.getByRole('region', { name: 'Selected Transit key', exact: true })).toContainText(seed.principal);
+      await expect(page.getByRole('region', { name: 'Selected Transit key', exact: true }).locator(`[title="${seed.principal}"]`)).toBeVisible();
       await page.getByRole('region', { name: 'Key management', exact: true }).getByRole('button', { name: 'Trim versions', exact: true }).click();
       const trimDialog = page.getByRole('dialog', { name: 'Trim versions', exact: true });
       await expect(trimDialog.getByRole('button', { name: 'Trim versions', exact: true })).toBeDisabled();
@@ -1903,7 +1903,7 @@ test.describe('browser-only lifecycle', () => {
       // 5. HUMAN ACCESS: invite a member with a template. The display-once
       // authority is shown in the dialog and nowhere else.
       await page.goto(`/orgs/${org.id}/members`);
-      await page.getByRole('button', { name: 'Invite' }).click();
+      await page.getByRole('button', { name: 'Invite', exact: true }).click();
       const invite = page.getByRole('dialog');
       await invite.getByLabel('Username').fill(`lc-viewer-${tag}`);
       await invite.getByLabel('Role template').selectOption('viewer');

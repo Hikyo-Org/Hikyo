@@ -193,6 +193,12 @@ func (r sqliteCatalogue) Delete(ctx context.Context, p authz.Proof, id string) e
 	if err != nil {
 		return err
 	}
+	// Every key-delete path loses the key's personal_required_in rows here.
+	if err := r.q.DeleteKeyPersonalRequired(ctx, sqlitegen.DeleteKeyPersonalRequiredParams{
+		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), KeyID: id,
+	}); err != nil {
+		return err
+	}
 	return affected(r.q.DeleteKey(ctx, sqlitegen.DeleteKeyParams{
 		OrgID:     string(chain.Org),
 		ProjectID: string(chain.Project),
@@ -619,6 +625,12 @@ func (r pgCatalogue) Delete(ctx context.Context, p authz.Proof, id string) error
 	if err != nil {
 		return err
 	}
+	// Every key-delete path loses the key's personal_required_in rows here.
+	if err := r.q.DeleteKeyPersonalRequired(ctx, pggen.DeleteKeyPersonalRequiredParams{
+		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), KeyID: id,
+	}); err != nil {
+		return err
+	}
 	return affected(r.q.DeleteKey(ctx, pggen.DeleteKeyParams{
 		ChainOrgID:     string(chain.Org),
 		ChainProjectID: string(chain.Project),
@@ -843,4 +855,80 @@ func groupFromPG(row pggen.KeyGroup) (CatalogueGroup, error) {
 		ID: row.ID, OrgID: row.OrgID, ProjectID: row.ProjectID,
 		Name: row.Name, CreatedAt: row.CreatedAt.Time.UTC(),
 	}, nil
+}
+
+func (r sqliteCatalogue) PersonalRequired(ctx context.Context, p authz.Proof) ([]KeyPresence, error) {
+	chain, err := authz.Verify(p, authz.StoreCataloguePersonalRequiredList, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListKeyPersonalRequired(ctx, sqlitegen.ListKeyPersonalRequiredParams{
+		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]KeyPresence, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, KeyPresence{KeyID: row.KeyID, EnvironmentID: row.EnvironmentID})
+	}
+	return out, nil
+}
+
+func (r sqliteCatalogue) ReplacePersonalRequired(ctx context.Context, p authz.Proof, keyID string, environmentIDs []string) error {
+	chain, err := authz.Verify(p, authz.StoreCataloguePersonalRequiredReplace, r.tok)
+	if err != nil {
+		return err
+	}
+	if err := r.q.DeleteKeyPersonalRequired(ctx, sqlitegen.DeleteKeyPersonalRequiredParams{
+		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), KeyID: keyID,
+	}); err != nil {
+		return err
+	}
+	for _, env := range environmentIDs {
+		if err := r.q.InsertKeyPersonalRequired(ctx, sqlitegen.InsertKeyPersonalRequiredParams{
+			ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), KeyID: keyID, EnvironmentID: env,
+		}); err != nil {
+			return constraint(err)
+		}
+	}
+	return nil
+}
+
+func (r pgCatalogue) PersonalRequired(ctx context.Context, p authz.Proof) ([]KeyPresence, error) {
+	chain, err := authz.Verify(p, authz.StoreCataloguePersonalRequiredList, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListKeyPersonalRequired(ctx, pggen.ListKeyPersonalRequiredParams{
+		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]KeyPresence, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, KeyPresence{KeyID: row.KeyID, EnvironmentID: row.EnvironmentID})
+	}
+	return out, nil
+}
+
+func (r pgCatalogue) ReplacePersonalRequired(ctx context.Context, p authz.Proof, keyID string, environmentIDs []string) error {
+	chain, err := authz.Verify(p, authz.StoreCataloguePersonalRequiredReplace, r.tok)
+	if err != nil {
+		return err
+	}
+	if err := r.q.DeleteKeyPersonalRequired(ctx, pggen.DeleteKeyPersonalRequiredParams{
+		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), KeyID: keyID,
+	}); err != nil {
+		return err
+	}
+	for _, env := range environmentIDs {
+		if err := r.q.InsertKeyPersonalRequired(ctx, pggen.InsertKeyPersonalRequiredParams{
+			ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), KeyID: keyID, EnvironmentID: env,
+		}); err != nil {
+			return constraint(err)
+		}
+	}
+	return nil
 }

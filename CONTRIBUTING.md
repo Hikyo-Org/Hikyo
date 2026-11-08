@@ -197,7 +197,10 @@ Before you request review, run the checks for what you touched:
   anything cross-cutting. Add or update tests for the behaviour you change.
   There is no numeric coverage gate, so reviewers, not an automated threshold,
   judge whether the tests cover the change.
-- `web/` changes: `node --run typecheck` and `node --run test` in `web/`.
+- `web/` changes: `node --run typecheck` and `node --run test` in `web/`. Also
+  run the affected Playwright flow specs (`web/e2e/flows/*.spec.ts`, see the
+  browser flow tests below) and list them in the PR Evidence. The pre-push hook
+  runs the Storybook suite for you.
 - Run the formatter and linters so the `lint` gate does not bounce the pull
   request.
 
@@ -228,9 +231,39 @@ checks. Prepare the pinned tools and frozen client/web dependencies first; this
 command does not install Node dependencies, generate files, or fix source. Go
 checks can download modules/toolchains and populate normal Go caches. See
 [the local feedback contract](scripts/dev/README.md)
-for the checks and limits. The signed-commit pre-push hook remains installed;
-the local feedback helper is optional and does not authorize merge. Hosted
+for the checks and limits. The signed-commit pre-push hook remains installed.
+The local feedback helper is optional and does not authorize merge. Hosted
 useful feedback must pass before queue admission.
+
+The pre-push hook also runs `scripts/ci/storybook-suite.sh` when a push changes
+`web/`, `clients/ts/`, `.nvmrc`, the root `package.json`, that script or
+`docs/site/scripts/test-csp.mjs`. If the suite already passed in this clone for
+the exact pushed bytes and file modes of those inputs, the hook accepts the push
+without looking at the checkout. Otherwise it runs the suite (about 4 minutes) in
+the current checkout, which must hold exactly the pushed inputs: the same
+committed versions, no modified or untracked files under them, and no `.env*`
+files under `web/` or `clients/ts/`. The checkout need not be the pushed branch,
+and an accepted push does not mean the current checkout is clean. The suite
+needs the pinned Chromium: run `pnpm --dir web run e2e:install` once. Set
+`HIKYO_PREPUSH_STORYBOOK=skip` to skip only that suite for a WIP push; CI still
+runs it, and signature checks cannot be skipped.
+
+The hook also runs `scripts/ci/golangci-lint-new.sh` when a push changes Go code
+(the first run builds the pinned golangci-lint; later runs take well under a
+minute). It applies the rules in `.golangci.yml`, chosen from findings that kept
+recurring in review (unchecked errors, `==` on errors, `http.Get` without a
+context, ignored `json.Marshal` errors, staticcheck
+`SA*` bugs plus `QF1001` and `QF1003` (not its style checks), unsafe integer narrowing, subprocess
+arguments, file modes), and reports only issues on lines you changed since the
+merge base. It lints a temporary worktree at the pushed commit, so any branch
+can be pushed from any worktree, and uncommitted files and uncommitted local edits to
+`.golangci.yml` are ignored (the pushed commit's config, pin and script apply); fetch `hikyo-upstream` first, as
+a stale base widens "new code". Only the default build for your platform is
+linted (files for another OS, or tagged `ui`, `k8se2e` or `floor*`, are not), and
+type errors are always reported in full. Run it by hand with
+`scripts/ci/golangci-lint-new.sh hikyo-upstream/main`.
+Set `HIKYO_PREPUSH_GOLANGCI=skip` to skip it for a WIP push; the advisory
+`ci-advisory-golangci` check still runs it on the pull request.
 
 ## Continuous integration
 

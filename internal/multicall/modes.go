@@ -21,6 +21,7 @@ type Mode struct {
 var modes = []Mode{
 	{Name: "server"}, {Name: "migrate"}, {Name: "upgrade"},
 	{Name: "operator"}, {Name: "config-rollout"}, {Name: "updater"},
+	{Name: "security-maintenance"},
 	{Name: "version"}, {Name: "about"}, {Name: "welcome"}, {Name: "admin"},
 	{Name: "backup"}, {Name: "escrow"}, {Name: "restore"},
 	{Name: "--version", Hidden: true}, {Name: "--upgrade-bundle-formats", Hidden: true},

@@ -282,7 +282,7 @@ type txForwarded interface {
 	// EnvironmentsInProject is the universe the mint and widen reachability
 	// formulas range over.
 	EnvironmentsInProject(ctx context.Context, scope domain.Scope) ([]domain.EnvID, error)
-	ErasePrivacyAccount(ctx context.Context, account, p, username string) error
+	ErasePrivacyAccount(ctx context.Context, account, p, username string) (int64, error)
 
 	// ExternalIdentitiesForAccount lists an account's linked identities.
 	ExternalIdentitiesForAccount(ctx context.Context, accountID string) ([]ExternalIdentity, error)
@@ -584,6 +584,11 @@ type txForwarded interface {
 	// ServiceAccountByPrincipal resolves the service account a machine principal
 	// is, for the grant surface's subtree confinement.
 	ServiceAccountByPrincipal(ctx context.Context, p domain.PrincipalID) (ServiceAccount, error)
+
+	// ServiceAccountByID resolves a service account from an id already
+	// disclosed on a row the caller may read, to name it for display. The id
+	// must never come from a request.
+	ServiceAccountByID(ctx context.Context, id string) (ServiceAccount, error)
 	ServiceAccountsIn(ctx context.Context, scope domain.Scope) ([]ServiceAccount, error)
 
 	// SessionsForPrincipal and RevokeSessionForPrincipal are the self-scoped
@@ -705,4 +710,15 @@ type txForwarded interface {
 	ExpiredRegistrationSignups(ctx context.Context, at time.Time) ([]ExpiredRegistrationSignup, error)
 	AccountByEmail(ctx context.Context, email string) (Account, error)
 	SetLocalAccountEmail(ctx context.Context, id, email string, at time.Time) error
+
+	// Email invitations of existing accounts (#1207).
+	UpsertOrgEmailInvitation(ctx context.Context, n EmailInvitation) (string, error)
+	CountLiveOrgEmailInvitations(ctx context.Context, org domain.OrgID, at time.Time) (int64, error)
+	ListLiveOrgEmailInvitations(ctx context.Context, org domain.OrgID, at time.Time) ([]EmailInvitationListing, error)
+	OrgEmailInvitationInOrg(ctx context.Context, id string, org domain.OrgID) (EmailInvitation, error)
+	OrgEmailInvitationByVerifier(ctx context.Context, verifier []byte) (EmailInvitation, error)
+	DeleteOrgEmailInvitationInOrg(ctx context.Context, id string, org domain.OrgID) (bool, error)
+	ConsumeOrgEmailInvitation(ctx context.Context, id string, verifier []byte) (bool, error)
+	PruneExpiredOrgEmailInvitations(ctx context.Context, at time.Time) (int64, error)
+	OrgEmailInvitationOrgName(ctx context.Context, org domain.OrgID) (string, error)
 }

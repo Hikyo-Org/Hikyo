@@ -871,6 +871,27 @@ func TestCredentialEstablishCLIPolicyRefusal(t *testing.T) {
 					if !errors.Is(err, domain.ErrInvalid) || !strings.Contains(err.Error(), "cannot satisfy step-up") {
 						t.Fatalf("OIDC-only adapter opened: %v", err)
 					}
+					// O9: this account qualifies for personal values through its provider,
+					// but a developer credential still needs a local factor, and the
+					// refusal says so before any browser opens.
+					developer, err := service.NewPersonalDeveloperCredentialReauthIntent("env_a1", []string{"key_611"}, time.Hour, true, true)
+					if err != nil {
+						t.Fatal(err)
+					}
+					handoffs := queryInt(t, db, "SELECT COUNT(*) FROM cli_reauth_handoffs")
+					for _, step := range []struct{ window, detail string }{
+						{"300", "running a program locally with your personal values needs a developer credential, and minting one needs a passkey or authenticator app enrolled on your account; an identity-provider sign-in cannot mint one. Add one under Settings > Security"},
+						{"0", "running a program locally with your personal values needs a developer credential, and in this environment minting one needs a passkey enrolled on your account; an identity-provider sign-in cannot mint one. Add a passkey under Settings > Security"},
+					} {
+						execRaw(t, db, "UPDATE environments SET reauth_window_seconds="+step.window+" WHERE id='env_a1'")
+						_, err = h.auth.StartCLIReauth(t.Context(), token, developer, challenge, "http://127.0.0.1:40124/callback")
+						if !errors.Is(err, domain.ErrInvalid) || !strings.Contains(err.Error(), "cannot satisfy step-up: "+step.detail) {
+							t.Fatalf("window %s: OIDC-only developer credential refusal = %v", step.window, err)
+						}
+					}
+					if after := queryInt(t, db, "SELECT COUNT(*) FROM cli_reauth_handoffs"); after != handoffs {
+						t.Fatal("refused developer handoff persisted before browser")
+					}
 				}
 				before := queryInt(t, db, "SELECT COUNT(*) FROM cli_reauth_handoffs")
 				execRaw(t, db, "UPDATE environments SET protected=TRUE,reauth_window_seconds=0 WHERE id='env_a1'")

@@ -1,5 +1,9 @@
 # Hikyo revisions, drafts, publishing & rollback (ADR, locked 2026-07-29)
 
+> **Proposed declared amendment (2026-11-03, owner decisions O5 to O8 on 2026-11-06, [personal-values.md](./personal-values.md), operative when its implementation PR merges; cross-provider review waived by the owner on 2026-11-06, did not run and is not CLEAN; the amended tickets are not reopened yet):** developer-credential delivery overlays the owner's current personal values on the committed snapshot at fetch time. This is the one exception to delivery reading only snapshots, and it applies only to the owner. Personal values have no revisions. The delivery cursor binds the owner's personal state (each value row, notice and withheld or missing marker), so a personal change or deletion is never answered as `current`.
+
+> **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** the scope of the change-token key, for Sealed orgs. See its supersession register.
+
 > **Declared amendment (2026-09-06, user-approved Hikyo self-configuration):** The [approved self-configuration design](../spec/self-configuration-proposal.md) separates **draft, published revision and applied runtime generation**. Publishing a system-project revision does not activate it. Apply names an exact retained snapshot, current catalogue version, expected generation and idempotency key. A single durable job prepares fixed HA participants before compare-and-swap of the desired target. A pre-commit failure preserves the old target; a post-commit interruption reconciles the committed target and remains partial until every participant acknowledges it. Revision numbers remain local to the owning environment and instance.
 >
 > Runtime retention is a first-class bounded root set, not an expiring workload pin. Three slots protect the desired snapshot, previous completed target and prepared candidate; duplicate slots may refer to one payload. Acquisition and GC serialize on the same snapshot locks, and GC excludes these roots both when selecting and when marking payloads collected. Single-flight activation refuses additional targets while a job is unresolved. After completion or pre-commit abort, the candidate slot is released; superseded previous roots return to normal retention. Normal rollback restores into drafts, validates under the current schema, publishes new lineage and explicitly applies it. It never mutates an old snapshot.
@@ -154,7 +158,6 @@ The matrix view receives **server-pushed change notifications** so another user'
 - **Architecture ([#22](https://github.com/Hikyo-Org/Hikyo/issues/22))** — owns the live-update transport (SSE recommended) and its polling fallback, under the metadata-only, per-event-authorized, advisory-only constraints above.
 - **Kubernetes integration ([#19](https://github.com/Hikyo-Org/Hikyo/issues/19))** — consumes the **keyed change token** for hash-annotation restarts; must use the token, never a content digest, and must handle the token-scheme version prefix.
 - **Operations spec (fog)** — fixes default retention values (N revisions, X days), pin quotas and expiry defaults, the unlimited-retention option and its backup-exposure consequence, and the **backup-retention bound** without which GC does not retire historical secrets.
-
 
 **Fetch-parameter amendment (#723, 2026-09-12):** Parameterized snapshots retain
 literal config templates and an immutable contract containing declarations and

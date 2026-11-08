@@ -164,7 +164,7 @@ describe('applying a plan whose folder moves widen access', () => {
     const view = await applyOnce();
     const dialog = wideningDialog(view.container);
     expect(dialog.textContent).toContain('Apply this definitions plan');
-    expect(dialog.textContent).toContain('Dana Ruiz: Reveal (production)');
+    expect(dialog.textContent).toMatch(/Dana Ruiz ID ending …\S{6}: Reveal \(production\)/);
     // The refusal is the confirmation, not an inline error.
     expect(view.container.querySelector('.definitions-bundle__body [role="alert"]')).toBeNull();
 

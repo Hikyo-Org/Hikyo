@@ -47,6 +47,11 @@ hard maximum are eight hours; the instance can impose a shorter ceiling. The CLI
 resolves that ceiling before consent and binds the confirmed lifetime to mint. You can
 hold at most four live credentials per instance. There is no renewal.
 
+Mint needs a passkey or authenticator app on your account. Signing in only
+through an identity provider is not enough, even when that sign-in qualifies
+you for [personal values](#personal-values). `hikyo dev session` then refuses
+and prints the address of **Settings → Security**, where you add one.
+
 The CLI stores the bearer in private 0600 state outside the repository, under
 `HIKYO_STATE_DIR` or the normal user state directory. Mint prints metadata only.
 `run` discovers it only for the exact trusted origin and immutable environment.
@@ -98,6 +103,26 @@ applying the change.
 These administration pages do not mint credentials or replace your personal
 CLI lifecycle. Continue to use `hikyo dev session`, `hikyo dev session list`,
 and `hikyo dev session revoke` for your own delegations.
+
+### Personal values
+
+A personal value is your own value for a declared key in an unprotected
+environment, such as your own API token. When you run a program, it replaces
+the shared value for you only. Manage your values in the browser under **My
+personal values** for the environment, or with `hikyo personal list`, `set` and
+`get`. Mint with `hikyo dev session --personal` so `hikyo run` delivers them.
+Without `--personal`, `run` refuses keys you hold a value for rather than
+serving the shared value.
+
+Setting or revealing a personal value needs a passkey or authenticator app, or
+a passwordless account that signs in through an OpenID Connect identity provider
+your administrator has given an assurance policy.
+Running a program locally with your personal values needs more: a developer
+credential, and minting one always needs a passkey or authenticator app (only a
+passkey where the environment's reauthentication window is zero). If you
+sign in only through an identity provider, you can manage your values but not
+run with them until you add a passkey or authenticator app under **Settings →
+Security**. The personal values page and `hikyo dev session` both say so.
 
 ## What each path protects
 

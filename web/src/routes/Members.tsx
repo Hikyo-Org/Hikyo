@@ -1,6 +1,6 @@
 import { CeremonyNotice } from '../ui/CeremonyNotice.tsx';
 import { useId, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router';
+import { generatePath, Link, useParams, useSearchParams } from 'react-router';
 
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import {
@@ -43,6 +43,7 @@ import { useCeremonyTask } from './useCeremonyTask.ts';
 import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
+import { surfaceById } from '../app/navigation.ts';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
@@ -90,6 +91,8 @@ import {
 } from '../api/rules.ts';
 import { useOrg, useOrgTopology } from '../api/settings.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
+import { EmailInvitations } from './EmailInvitations.tsx';
+import { EmailInviteDialog } from './EmailInviteDialog.tsx';
 import { InviteDialog, IssuedAuthorityDialog } from './InviteDialog.tsx';
 import { OpenRegistrationPanel } from './OpenRegistration.tsx';
 import { CapabilityTag } from './capabilityTags.tsx';
@@ -202,7 +205,7 @@ export function Members({ scope }: { scope: MembersScope }) {
   const auth = useAuth();
   const revoke = useRevokeGrant();
   const feedback = useFeedback(membersFailureText);
-  const [modal, setModal] = useState<'none' | 'grant' | 'blast' | 'invite'>('none');
+  const [modal, setModal] = useState<'none' | 'grant' | 'blast' | 'invite' | 'invite-email'>('none');
   // Reset credential (#568): a plain async call and component state, never a
   // mutation cache, so the display-once authority lives exactly as long as
   // the dialog that shows it.
@@ -509,8 +512,28 @@ export function Members({ scope }: { scope: MembersScope }) {
                       Invite
                     </Button>
                   ) : null}
+                  {/* Email invitation of an existing account (#1207): organisation scope only. */}
+                  {projectId === '' && !instance ? (
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        feedback.clear();
+                        setModal('invite-email');
+                      }}
+                    >
+                      Invite by email
+                    </Button>
+                  ) : null}
                 </div>
                 )}
+
+                {!instance && projectId === '' && !noManageMembers && grants.isSuccess ? (
+                  <EmailInvitations
+                    org={orgQuery.data?.id ?? org}
+                    invitedByName={(principal) => (principal === me ? 'you' : principalLabel(principal, lines))}
+                    onRevoked={(email) => feedback.ok(`Revoked the pending invitation for ${email}.`)}
+                  />
+                ) : null}
 
                 {grants.isPending ? <p role="status">Loading members…</p> : null}
 
@@ -569,6 +592,14 @@ export function Members({ scope }: { scope: MembersScope }) {
                               >
                                 {resetPending === person.id ? 'Resetting…' : 'Reset credential'}
                               </Button>
+                            ) : null}
+                            {projectId !== '' && person.kind === 'person' ? (
+                              <Link
+                                className="btn btn--quiet"
+                                to={`${generatePath(surfaceById('offboarding-report').path, { org, project: projectId })}?member=${encodeURIComponent(person.id)}`}
+                              >
+                                Offboarding report<span className="visually-hidden"> for {person.name}</span>
+                              </Link>
                             ) : null}
                           </>
                         )}
@@ -744,6 +775,16 @@ export function Members({ scope }: { scope: MembersScope }) {
           onCancel={() => setModal('none')}
         />
       ) : null}
+      {modal === 'invite-email' ? (
+        <EmailInviteDialog
+          // Keyed by the organisation so a draft typed for one is never submitted to another.
+          key={orgQuery.data?.id ?? org}
+          org={orgQuery.data?.id ?? org}
+          scopeName={scopeName}
+          onDone={() => setModal('none')}
+          onCancel={() => setModal('none')}
+        />
+      ) : null}
       {resetIssued === null ? null : (
         <IssuedAuthorityDialog
           title={`Credential reset for ${principalLabel(resetIssued.principal, lines)}`}
@@ -760,7 +801,7 @@ export function Members({ scope }: { scope: MembersScope }) {
           }}
         />
       )}
-      {modal === 'none' || modal === 'invite' ? null : (
+      {modal === 'none' || modal === 'invite' || modal === 'invite-email' ? null : (
         <GrantModal
           orgName={scopeName}
           options={grantOptions}

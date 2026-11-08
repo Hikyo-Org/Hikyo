@@ -98,9 +98,9 @@ var PermittedChanges = map[string]bool{
 // The exception is a closed list of exact findings, not an allowlisted change
 // id, so anything outside it still fails: `mldsa44` on the same path,
 // `mldsa65` on any other enum or operation that oasdiff reports, and a future
-// `mldsa87`. oasdiff has no finding for enum growth in a response header, so
-// the guard does not see that (#1217). Adding to this list is an ADR amendment,
-// not a code edit.
+// `mldsa87`. oasdiff has no finding for enum growth in a response header; the
+// document-coordinate layer (MLDSA65EnumLocations) refuses it (#1217). Adding
+// to this list is an ADR amendment, not a code edit.
 const (
 	requestEnumAdded  = "request-property-enum-value-added"
 	responseEnumAdded = "response-property-enum-value-added"
@@ -181,6 +181,12 @@ func (v Violation) String() string {
 // change but has no opinion about `nullable` or `jsonSchemaDialect`, and
 // CheckProfile sees the profile but has no memory of what the document said
 // yesterday.
+//
+// Violations have three sources: the oasdiff allowlist, freezeRemovals, and a
+// third, independent layer (freezeContract) that compares the raw documents
+// and refuses every difference but an explicit short list of additions and
+// prose edits. It exists because enumerating oasdiff's blind spots never
+// converged (#1217).
 func CheckFreeze(base, revised []byte) ([]Violation, error) {
 	if err := CheckProfile(revised); err != nil {
 		return []Violation{{
@@ -212,6 +218,11 @@ func CheckFreeze(base, revised []byte) ([]Violation, error) {
 	changes := checker.CheckBackwardCompatibilityUntilLevel(config, report, sources, checker.INFO)
 
 	violations := freezeRemovals(report)
+	contract, err := freezeContract(base, revised)
+	if err != nil {
+		return nil, fmt.Errorf("freeze gate: comparing the documents: %w", err)
+	}
+	violations = append(violations, contract...)
 	for _, change := range changes {
 		id := change.GetId()
 		if PermittedChanges[id] || permittedEnumGrowth(change) {

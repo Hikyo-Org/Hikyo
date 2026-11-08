@@ -135,7 +135,7 @@ func runApprovalPolicy(ctx context.Context, ios IO, args []string) error {
 		if err := client.Do(ctx, http.MethodGet, base+"/approval-policies", nil, &out); err != nil {
 			return err
 		}
-		return Render(ios.Stdout, f, approvalPolicyTable(out.Items))
+		return Render(ios.Stdout, f, approvalPolicyTable(out.Items, environmentLabeler(ctx, client, base, f)))
 	case "create":
 		if err := flags.checkNoPositionals("approval policy create"); err != nil {
 			return err
@@ -144,7 +144,7 @@ func runApprovalPolicy(ctx context.Context, ios IO, args []string) error {
 		if err := client.Do(ctx, http.MethodPost, base+"/approval-policies", input(), &out); err != nil {
 			return err
 		}
-		return Render(ios.Stdout, f, approvalPolicyTable([]apigen.ApprovalPolicy{out}))
+		return Render(ios.Stdout, f, approvalPolicyTable([]apigen.ApprovalPolicy{out}, environmentLabeler(ctx, client, base, f)))
 	case "update":
 		if len(flags.positionals) != 1 {
 			return failf(ExitUsage, "usage: hikyo approval policy update <policy> [flags]")
@@ -153,7 +153,7 @@ func runApprovalPolicy(ctx context.Context, ios IO, args []string) error {
 		if err := client.Do(ctx, http.MethodPut, base+"/approval-policies/"+url.PathEscape(flags.positional()), input(), &out); err != nil {
 			return err
 		}
-		return Render(ios.Stdout, f, approvalPolicyTable([]apigen.ApprovalPolicy{out}))
+		return Render(ios.Stdout, f, approvalPolicyTable([]apigen.ApprovalPolicy{out}, environmentLabeler(ctx, client, base, f)))
 	case "delete":
 		if len(flags.positionals) != 1 {
 			return failf(ExitUsage, "usage: hikyo approval policy delete <policy>")
@@ -163,12 +163,12 @@ func runApprovalPolicy(ctx context.Context, ios IO, args []string) error {
 	return failf(ExitInternal, "hikyo approval policy: unhandled subverb %q", sub)
 }
 
-func approvalPolicyTable(policies []apigen.ApprovalPolicy) Table {
+func approvalPolicyTable(policies []apigen.ApprovalPolicy, environmentLabel func(string) string) Table {
 	rows := make([][]string, 0, len(policies))
 	for _, p := range policies {
-		env := p.EnvironmentId
-		if env == "" {
-			env = "(all)"
+		env := "(all)"
+		if p.EnvironmentId != "" {
+			env = environmentLabel(p.EnvironmentId)
 		}
 		rows = append(rows, []string{p.Id, env, strconv.Itoa(int(p.MinApprovals)),
 			strconv.FormatBool(p.AllowSelfApproval), strconv.Itoa(int(p.RequestTtlSeconds)),
@@ -316,7 +316,7 @@ func approvalDisclosure(client *Client, environmentBase, requestID, purpose stri
 func approvalRequestTable(requests []apigen.ApprovalRequest) Table {
 	rows := make([][]string, 0, len(requests))
 	for _, r := range requests {
-		rows = append(rows, []string{r.Id, r.Requester, string(r.State),
+		rows = append(rows, []string{r.Id, idWithName(r.Requester, r.RequesterName), string(r.State),
 			fmt.Sprintf("%d/%d", r.Approvals, r.MinApprovals), strconv.Itoa(int(r.ChangeCount)),
 			r.ExpiresAt.UTC().Format(time.RFC3339)})
 	}

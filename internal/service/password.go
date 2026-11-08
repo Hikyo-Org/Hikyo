@@ -105,6 +105,11 @@ func (s *Auth) SetPassword(ctx context.Context, presented, password, proof strin
 				return ErrCredentialRace
 			}
 		}
+		// A password in the current epoch disqualifies federated proof, so a
+		// factorless account loses its personal values here.
+		if err := purgePersonalIfUnqualified(ctx, az, account, now); err != nil {
+			return err
+		}
 		if err := revokeDeveloperScope(ctx, az, account.PrincipalID, account.PrincipalID, domain.Scope{}, "password-changed", now); err != nil {
 			return err
 		}

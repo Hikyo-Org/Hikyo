@@ -618,6 +618,7 @@ type DeveloperCredential struct {
 	CreatedAt            string
 	ExpiresAt            string
 	RevokedAt            sql.NullString
+	PersonalConsent      int64
 }
 
 type DeveloperCredentialPolicy struct {
@@ -829,6 +830,13 @@ type KeyGroup struct {
 	CreatedAt string
 }
 
+type KeyPersonalRequiredEnvironment struct {
+	OrgID         string
+	ProjectID     string
+	KeyID         string
+	EnvironmentID string
+}
+
 type KeyPresenceEnvironment struct {
 	OrgID         string
 	ProjectID     string
@@ -995,6 +1003,24 @@ type Org struct {
 	RetentionRevisionCount int64
 	Origin                 string
 	RegistrationPolicyID   sql.NullString
+	IdentityHue            int64
+	IdentityMark           sql.NullString
+	IdentityImage          []byte
+	IdentityImageType      sql.NullString
+	IdentityImageVersion   sql.NullString
+}
+
+type OrgEmailInvitation struct {
+	ID                 string
+	OrgID              string
+	Email              string
+	Template           string
+	InviterPrincipalID string
+	AccountID          sql.NullString
+	TokenVerifier      []byte
+	CredentialEpoch    int64
+	CreatedAt          string
+	ExpiresAt          string
 }
 
 type PasswordCredential struct {
@@ -1024,6 +1050,29 @@ type PendingChange struct {
 	Source             string
 	Secret             int64
 	MaterialSecret     int64
+}
+
+type PersonalValue struct {
+	ID               string
+	OrgID            string
+	ProjectID        string
+	EnvironmentID    string
+	KeyID            string
+	OwnerPrincipalID string
+	Ciphertext       []byte
+	CreatedAt        string
+	UpdatedAt        string
+	SuspendedAt      sql.NullString
+}
+
+type PersonalValueNotice struct {
+	OrgID            string
+	ProjectID        string
+	EnvironmentID    string
+	KeyName          string
+	OwnerPrincipalID string
+	Cause            string
+	CreatedAt        string
 }
 
 type PinGeneration struct {
@@ -1138,6 +1187,11 @@ type Project struct {
 	MachineRevealGeneration int64
 	KeyLimitOverride        sql.NullInt64
 	KeyLimitRevision        int64
+	IdentityHue             int64
+	IdentityMark            sql.NullString
+	IdentityImage           []byte
+	IdentityImageType       sql.NullString
+	IdentityImageVersion    sql.NullString
 }
 
 type ProjectSchemaRevision struct {

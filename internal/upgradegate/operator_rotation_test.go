@@ -326,3 +326,61 @@ func TestOperatorUncommittedJournalAcceptsFreshAuthenticatedReplacement(t *testi
 		})
 	}
 }
+
+// The root native rollback reads custody the service account owns: only that exact
+// owner passes, and any other user is still refused.
+func TestInstalledOperatorOwnedByChecksTheNamedOwner(t *testing.T) {
+	prior := trustfixture.New(t)
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	file, err := openOperatorFile(t.Context(), dir, prior.PrimaryPublic, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file.close()
+	noop := func(OperatorCustody) error { return nil }
+	err = WithInstalledOperatorOwnedBy(t.Context(), dir, os.Geteuid()+1, prior.PrimaryPublic, noop)
+	if err == nil || !strings.Contains(err.Error(), "requires owned") {
+		t.Fatalf("custody owned by another user accepted: %v", err)
+	}
+	err = WithInstalledOperatorOwnedBy(t.Context(), dir, os.Geteuid(), prior.PrimaryPublic, noop)
+	if err == nil || !strings.Contains(err.Error(), "not bound to an installation") {
+		t.Fatalf("the named owner was refused at the ownership check: %v", err)
+	}
+}
+
+// Root reads the custody the service account owns: the callback runs for that exact owner.
+func TestInstalledOperatorOwnedByReadsAnotherOwnersCustody(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("handing custody to another user requires root")
+	}
+	const service = 65534
+	const instance = "ins_00000000000000000000000000000000"
+	prior := trustfixture.New(t)
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := InstallLegacyOperator(t.Context(), dir, instance, prior.PrimaryPublic, 0); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{dir, filepath.Join(dir, ".operator-custody.lock"), filepath.Join(dir, operatorCustodyName)} {
+		if err := os.Chown(path, service, service); err != nil {
+			t.Fatal(err)
+		}
+	}
+	called := false
+	err := WithInstalledOperatorOwnedBy(t.Context(), dir, service, prior.PrimaryPublic, func(custody OperatorCustody) error {
+		called = true
+		return custody.CheckSource(instance, 0)
+	})
+	if err != nil || !called {
+		t.Fatalf("the service account's custody was refused: called=%t err=%v", called, err)
+	}
+	err = WithInstalledOperatorOwnedBy(t.Context(), dir, os.Geteuid(), prior.PrimaryPublic, func(OperatorCustody) error { return nil })
+	if err == nil || !strings.Contains(err.Error(), "requires owned") {
+		t.Fatalf("custody owned by the service account accepted for root: %v", err)
+	}
+}

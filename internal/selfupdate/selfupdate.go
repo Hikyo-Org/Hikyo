@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/diagnostics"
@@ -53,6 +54,11 @@ type Installer struct {
 	executablePath func() (string, error)
 	config         Config
 	stageNightlies bool
+	// Each upgrade run builds its own Installer. Within that run, trust
+	// metadata is fetched once from the rate-limited raw host and reverified
+	// on every use.
+	trustMu      sync.Mutex
+	trustFetched map[string][]byte
 }
 
 // NewInstaller constructs the production updater with Hikyo's restricted
@@ -207,6 +213,11 @@ func resolveExecutable(executablePath func() (string, error)) (string, os.FileMo
 	return target, info.Mode().Perm(), nil
 }
 
+// ArchiveName is the signed binary archive name for one release platform.
+func ArchiveName(version, goos, goarch string) (string, error) {
+	return archiveName(version, goos, goarch)
+}
+
 func archiveName(version, goos, goarch string) (string, error) {
 	var osName, extension string
 	switch goos {
@@ -316,6 +327,12 @@ func (i *Installer) downloadURL(ctx context.Context, source string, limit int64)
 	if !strings.HasPrefix(source, "https://raw.githubusercontent.com/Hikyo-Org/Hikyo/") {
 		return nil, errors.New("selfupdate: untrusted stable metadata URL")
 	}
+	i.trustMu.Lock()
+	cached, ok := i.trustFetched[source]
+	i.trustMu.Unlock()
+	if ok && int64(len(cached)) <= limit {
+		return bytes.Clone(cached), nil
+	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
 	if err != nil {
 		return nil, err
@@ -337,6 +354,12 @@ func (i *Installer) downloadURL(ctx context.Context, source string, limit int64)
 	if int64(len(raw)) > limit {
 		return nil, errors.New("selfupdate: stable trust metadata exceeds size limit")
 	}
+	i.trustMu.Lock()
+	if i.trustFetched == nil {
+		i.trustFetched = map[string][]byte{}
+	}
+	i.trustFetched[source] = bytes.Clone(raw)
+	i.trustMu.Unlock()
 	return raw, nil
 }
 

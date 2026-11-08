@@ -109,6 +109,14 @@ type Cache struct {
 
 // caches is the closed cache registry.
 var caches = map[string]Cache{
+	"securityfeed.metadata": {
+		KeyConstructor: "internal/securityfeed.Repository: private installation feed state directory, provisioned root hash, fixed TUF role name and authenticated version/hash floor",
+		ProofGatedAt:   "not tenant proof-gated: common public metadata; go-tuf thresholds, expiry, durable rollback/equivocation and clock floors gate every refreshed catalog; cached metadata alone never authorizes execution",
+	},
+	"app.security-stage": {
+		KeyConstructor: "internal/app.cachedSecurityStageImage: installation upgrade StateDirectory/security-stage.json; exact target, original source/recovery tuple and authenticated route digest",
+		ProofGatedAt:   "not tenant proof-gated: public signed release payloads; preparedSecurityImageRoute reauthenticates every cached executable and bundle against current installed release trust/floor, while deployment exclusion and the database gate control application",
+	},
 	"store.audit-actor-kind": {
 		// Principals are instance-owned. The exact actor id is compared inside
 		// one transaction-owned slot, with no tenant chain or concatenation.
@@ -168,14 +176,19 @@ var caches = map[string]Cache{
 		ProofGatedAt:   "stored declarations require service authorization; caller-supplied syntax may compile before authorization; pure compiled programs contain no tenant results and are bounded to 128 entries",
 	},
 	"selfupdate.nightly-downloads": {
-		// On-disk directories under the operator CLI state directory, one per
-		// verified nightly, named by the signed release manifest digest
-		// (nightly-<sha256>) and, for assembled bundles, by the route digest
-		// plus the recovery-signed snapshot digest. Reuse never trusts the
-		// disk: every cached asset is rechecked against the immutable GitHub
-		// release inventory and the current signed trust before use.
+		// On-disk directories of a selfupdate.Installer state directory: the
+		// operator CLI's, and the StateDirectory/downloads used by security
+		// maintenance (the native installation's, prepared root-owned by
+		// hostupgrade.PrepareCacheDirectory, and the coordinator's). Entries are
+		// named by the signed release manifest digest (nightly-<sha256>[-<os>-<arch>],
+		// stable-<sha256>-<os>-<arch>, executable-<sha256>-<os>-<arch>) and, for
+		// assembled bundles, by the route digest plus the recovery-signed snapshot
+		// digest. Reuse never trusts the disk: online reuse rechecks the immutable
+		// GitHub release inventory and current signed trust; offline reuse
+		// (VerifyCachedRelease) re-extracts the signed archive under pinned trust
+		// and the durable snapshot floor.
 		KeyConstructor: "internal/selfupdate: release manifest SHA-256; bundle route digest + trust snapshot digest",
-		ProofGatedAt:   "not proof-gated: public signed release assets held by the operator process; no tenant material",
+		ProofGatedAt:   "not proof-gated: public signed release assets held by the operator or security maintenance process; no tenant material",
 	},
 }
 

@@ -93,7 +93,7 @@ func TestRegistryWellFormed(t *testing.T) {
 		}
 		// Outcome licensing (invariant 12): intent / unknown / disconnected
 		// only where the envelope section licenses them.
-		if spec.Outcomes[OutcomeIntent] && typ != EventRegistrationMailIntent && typ != EventAuditExportStarted && typ != EventAdapterPushIntent && typ != EventUpdateRequested && typ != EventDynamicLeaseTransitionIntent && typ != EventPKICertificateTransitionIntent {
+		if spec.Outcomes[OutcomeIntent] && typ != EventRegistrationMailIntent && typ != EventMemberEmailInvitationDispatch && typ != EventAuditExportStarted && typ != EventAdapterPushIntent && typ != EventUpdateRequested && typ != EventDynamicLeaseTransitionIntent && typ != EventPKICertificateTransitionIntent {
 			t.Errorf("%s: intent outcome licensed outside the INTENT-phase set", typ)
 		}
 		if spec.Outcomes[OutcomeUnknown] && typ != EventAdapterPushOutcome && typ != EventDynamicLeaseTransitionOutcome && typ != EventPKICertificateTransitionOutcome {
@@ -415,7 +415,7 @@ func TestValidateRefusesValuesOutsideClosedTaxonomies(t *testing.T) {
 			[]string{"login", "link", "reauth", "claim", "establish"}},
 		{"authority refusal cause", EventAuthAuthorityRefused, OutcomeFailure, TrailInstance, domain.Scope{}, "cause",
 			Payload{"cause": "purpose"},
-			[]string{"malformed", "unknown", "consumed", "expired", "epoch-superseded", "purpose"}},
+			[]string{"malformed", "unknown", "consumed", "expired", "epoch-superseded", "purpose", "linked-identity"}},
 		{"established credential kind", EventAuthCredentialEstablished, OutcomeSuccess, TrailInstance, domain.Scope{}, "established_credential_kind",
 			Payload{"authority_id": "cea_a", "account_id": "acc_a", "credential": "oidc", "established_credential_kind": "oidc"},
 			[]string{"password", "oidc", "oauth2"}},

@@ -42,6 +42,8 @@ type Client struct {
 	// lastStatus records the most recent response's 2xx status for DoStatus. A
 	// client serves one command at a time, so this needs no synchronization.
 	lastStatus int
+	// machine is true when Bearer is a machine credential rather than a session.
+	machine bool
 	// Capability metadata is scoped to this command's origin-bound client.
 	// It contains no authorization state; grants are still checked server-side.
 	meta       *apigen.Meta
@@ -378,7 +380,11 @@ func errorFromResponse(status int, header http.Header, payload []byte) error {
 		apigen.ErrorCodeConflict, apigen.ErrorCodeLimitExceeded,
 		// A vocabulary or size refusal is the same: the server answered.
 		apigen.ErrorCodeUnprocessable, apigen.ErrorCodePayloadTooLarge:
-		return failf(ExitRefused, "%s", message)
+		refusal := &Error{Code: ExitRefused, Err: fmt.Errorf("%s", message)}
+		if body.Error.Detail != nil {
+			refusal.Detail = *body.Error.Detail
+		}
+		return refusal
 	case apigen.ErrorCodeNotFound:
 		return failf(ExitNotFound, "%s", message)
 	case apigen.ErrorCodeInternal:

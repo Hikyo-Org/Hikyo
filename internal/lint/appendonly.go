@@ -340,9 +340,12 @@ var ResolutionSurfaceWriters = map[string]bool{
 	"InsertDeveloperCredential":      true,
 	"RevokeDeveloperCredential":      true,
 	"ClampDeveloperCredentialExpiry": true,
-	"SetCredentialPolicy":            true,
-	"ClampCredentialExpiry":          true,
-	"ClampIndefiniteCredentials":     true,
+	// #1235: losing qualification purges the owner's personal values in the
+	// same authentication transaction as the credential change.
+	"PurgePersonalValuesForOwner": true,
+	"SetCredentialPolicy":         true,
+	"ClampCredentialExpiry":       true,
+	"ClampIndefiniteCredentials":  true,
 	// Registration policy (#606). The policy tables are class=authn: the
 	// sign-up legs (#607, #608) resolve them before any principal exists.
 	// Administration is authorized at the chokepoint (registration-policy.*)
@@ -358,6 +361,16 @@ var ResolutionSurfaceWriters = map[string]bool{
 	"ConsumeRegistrationSignup":      true,
 	"SetLocalAccountEmail":           true,
 	"DeleteRegistrationSignup":       true,
+	// Email invitations of existing accounts (#1207). The table is class=authn:
+	// acceptance resolves an opaque bearer verifier for a caller who holds no
+	// grant in the inviting org. Send, list and revoke authorize
+	// manage-members at the org before these run; acceptance runs after the
+	// inviter's re-authorization, and erasure with the account it names.
+	"UpsertOrgEmailInvitation":        true,
+	"DeleteOrgEmailInvitationInOrg":   true,
+	"ConsumeOrgEmailInvitation":       true,
+	"PruneExpiredOrgEmailInvitations": true,
+	"eraseOrgEmailInvitations":        true,
 	// OIDC federation (#62). Issuer configuration is authorized at the
 	// chokepoint under `instance-config` before it runs; the write rides this
 	// surface because federation_issuers is class=authn, exactly as OIDC and

@@ -159,7 +159,13 @@ func validateFinalDefinitions(cur definitions.CurrentState, res definitions.Reso
 	if len(environments) > MaxEnvironmentsPerProject {
 		return definitionLimit("final definitions contain %d environments; a project holds at most %d", len(environments), MaxEnvironmentsPerProject)
 	}
-	for _, name := range environments {
+	// Only names this plan writes: a stored name that predates a grammar rule must
+	// not block every plan for the project.
+	written := slices.Clone(res.EnvCreates)
+	for _, renamed := range res.EnvRenames {
+		written = append(written, renamed.To)
+	}
+	for _, name := range written {
 		if err := checkName("environment name", name); err != nil {
 			return definitionInvalid("environment %q has an invalid name: %v", name, err)
 		}
@@ -261,7 +267,11 @@ func (s *Definitions) persistPlan(ctx context.Context, r store.Repos, az *authz.
 		if err != nil {
 			return PlanView{}, err
 		}
-		planDiff.EnvDeletions = append(planDiff.EnvDeletions, EnvDeletion{Name: del.Name, Occurrences: count})
+		personal, err := personalCountForEnvironment(ctx, r, p, del.ID)
+		if err != nil {
+			return PlanView{}, err
+		}
+		planDiff.EnvDeletions = append(planDiff.EnvDeletions, EnvDeletion{Name: del.Name, Occurrences: count, PersonalValues: personal})
 	}
 
 	// Pins: the digest, per-environment value revisions over EVERY environment

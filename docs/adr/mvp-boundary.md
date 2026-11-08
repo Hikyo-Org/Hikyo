@@ -1,5 +1,7 @@
 # Hikyo MVP boundary & acceptance criteria (ADR, locked 2026-08-06)
 
+> **Proposed declared amendment (2026-11-03, owner decisions O5 to O8 on 2026-11-06, [personal-values.md](./personal-values.md), operative when its implementation PR merges; cross-provider review waived by the owner on 2026-11-06, did not run and is not CLEAN; the amended tickets are not reopened yet):** personal values are admitted on owner demand, for unprotected environments only. Administrator-assigned per-person values stay out.
+
 > **Owner-locked declared amendment (2026-10-09, [#807](https://github.com/Hikyo-Org/Hikyo/issues/807), operative when its implementation PR merges; cross-provider review explicitly waived by the owner for this decision):** Bounded developer credentials requested by #807 are admitted to this implementation lane under the separate developer-credentials ADR. This does not admit JIT deploy tokens, automation renewals, historical delivery or ordinary human sessions for unattended launch. The normative lifecycle and acceptance contract is [developer-credentials.md](./developer-credentials.md). Historical statements below are superseded only within this bounded scope.
 
 > **Declared amendment (2026-09-26, [#159](https://github.com/Hikyo-Org/Hikyo/issues/159)):** the "GitLab deployment adapter" row's demand trigger has fired. GitLab CI/CD variable sync ships as the third compiled-in adapter over the same seam, with its deltas and total no-read closure fixed in [gitlab-adapter.md](./gitlab-adapter.md). Historical text below is preserved.
@@ -145,6 +147,8 @@ Amends [human-auth.md](./human-auth.md)/[permission-model.md](./permission-model
 New subsystem; shape decided in its ticket. **Minimum bar fixed here so a no-op cannot satisfy the promotion**: 1.0 ships at least scan-on-value-entry (pasted foreign credentials detected at save) backed by a normative ruleset whose provenance #39 decides (own patterns vs vendored gitleaks-class rules), with a true-positive/false-positive fixture corpus in CI as its acceptance criterion. Constraints: must not weaken `ew_` scannability-by-third-parties ([machine-identities](./machine-identities.md)); must not create a new plaintext disclosure path (scanning runs where plaintext already legitimately exists under the locked formulas — at value entry, never as a background decrypt-and-scan job with new authority); performance envelope fits the calibration floor. Additional shapes (leaked-`ew_`-token intake, push-protection API) are #39's to include or defer with triggers.
 
 ## 3. Hosted SaaS & billing — committed follow-on, not 1.0
+
+> **Advanced by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06):** topology, protection modes and upgrade rule are decided there. The self-hoster test and the billing rule below stay binding.
 
 **Decision: hosted SaaS (with billing for the hosted service only) is upgraded from "not precluded" ([#3](https://github.com/Hikyo-Org/Hikyo/issues/3)) to a named, committed follow-on effort — its own wayfinder map, started after 1.0 ships.** It is not 1.0 scope: it collides with locked no-self-registration ([human-auth](./human-auth.md)), the self-hosted trust boundary ([threat-model](./threat-model.md)), and this map's own destination.
 

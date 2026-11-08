@@ -49,7 +49,6 @@ export function RulesPanel({
               <strong>
                 <span className="member-name" title={person.id}>{person.name}</span> {person.id === you ? <Badge icon="draft">you</Badge> : null}
               </strong>
-              <span className="mono">{person.id}</span>
               {person.kind === 'machine' ? <MachineBadge /> : null}
               {personActions === undefined ? null : <div className="actions">{personActions(person)}</div>}
             </div>

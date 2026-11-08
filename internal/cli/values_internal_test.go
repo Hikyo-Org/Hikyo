@@ -70,11 +70,11 @@ func TestRollbackTableShowsFullImpactPreview(t *testing.T) {
 				Operation: "set", Status: "edited", Before: &before, After: &after,
 			}},
 		}}},
-	})
+	}, func(id string) string { return id + " (production)" })
 	if len(table.Rows) != 1 {
 		t.Fatalf("rollback preview rows = %+v", table.Rows)
 	}
-	want := []string{"env_prod", "true", "pcv_1", "LOG_LEVEL", "config", "set", "edited", "old", "new"}
+	want := []string{"env_prod (production)", "true", "pcv_1", "LOG_LEVEL", "config", "set", "edited", "old", "new"}
 	for i := range want {
 		if table.Rows[0][i] != want[i] {
 			t.Fatalf("rollback preview row[%d] = %q, want %q: %+v", i, table.Rows[0][i], want[i], table.Rows[0])

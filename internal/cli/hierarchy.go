@@ -246,6 +246,7 @@ func runEnv(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
+	project := base
 	base += "/environments"
 
 	switch sub {
@@ -322,10 +323,12 @@ func runEnv(ctx context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
+		// Read the name before the delete: afterwards there is nothing to ask.
+		label := environmentLabeler(ctx, client, project, f)(id)
 		if err := client.Do(ctx, http.MethodDelete, base+"/"+url.PathEscape(id), nil, nil); err != nil {
 			return err
 		}
-		fmt.Fprintf(ios.Stderr, "deleted environment %s\n", id)
+		fmt.Fprintf(ios.Stderr, "deleted environment %s\n", label)
 		return nil
 
 	}

@@ -99,6 +99,11 @@ const (
 	// pending registration_signups row, single-use. It crosses a mail client and
 	// a browser, so it carries full artifact entropy and redacts like `hs`/`hc`.
 	ArtifactSignup ArtifactType = "su"
+	// ArtifactEmailInvitation is the email-invitation token (#1207): mailed in
+	// a URL fragment, stored only as its verifier on the pending
+	// org_email_invitations row, single-use. It crosses a mail client and a
+	// browser, so it carries full artifact entropy and redacts like `su`.
+	ArtifactEmailInvitation ArtifactType = "ei"
 )
 
 // artifactFormatVersion is the grammar's `version` field. It exists so a

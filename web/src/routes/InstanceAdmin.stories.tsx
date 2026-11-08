@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { zCredentialPolicy, zOrgList, zRetentionHealth } from '@hikyo/zod';
+import { zCredentialPolicy, zCredentialPolicyResult, zOrgList, zRetentionHealth } from '@hikyo/zod';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
 import type { z } from 'zod';
 
@@ -11,10 +11,10 @@ import { openTab } from '../../.storybook/openTab.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 
 // The instance settings page owns three reads (the organisation directory, the
-// credential policy and retention health) and mounts four child panels with a
+// credential policy and retention health) and mounts five child panels with a
 // list read each. On this page an unmatched fetch does NOT fail loud: the
 // harness 404 renders as the honest "not disclosed" status, so every state
-// answers all seven rows explicitly. The route is `surfaceById('instance-admin')`.
+// answers all eight rows explicitly. The route is `surfaceById('instance-admin')`.
 const ORGS_URL = '/api/v1/orgs';
 const POLICY_URL = '/api/v1/instance/credential-policy';
 const HEALTH_URL = '/api/v1/instance/retention-health';
@@ -23,6 +23,7 @@ const PANEL_URLS: readonly string[] = [
   '/api/v1/instance/federation-issuers',
   '/api/v1/instance/saml-providers',
   '/api/v1/instance/saml-sp-keys',
+  '/api/v1/instance/security-maintenance',
 ];
 
 const orgs = {
@@ -79,6 +80,7 @@ const populated: readonly MockRoute[] = [
   { url: '/api/v1/instance/federation-issuers', body: { count: 0, items: [] } },
   { url: '/api/v1/instance/saml-providers', body: { providers: [] } },
   { url: '/api/v1/instance/saml-sp-keys', body: { keys: [] } },
+  { url: '/api/v1/instance/security-maintenance', body: { reported: false, unreadable: false } },
 ];
 
 // Every read answered the same way: the page-wide states.
@@ -121,7 +123,7 @@ export const SectionTabs: Story = {
     await expect((await canvas.findAllByRole('tab')).map((tab) => tab.textContent)).toEqual([
       'Hikyo configuration', 'Mailer', 'Organisations', 'Members', 'Policy', 'Audit', 'Developer credentials',
       'Identity providers', 'GitHub sign-in', 'SAML', 'Federation', 'Certificates',
-      'Retention health', 'Keys & crypto',
+      'Retention health', 'Security maintenance', 'Keys & crypto',
     ]);
     await expect(canvas.getByRole('tab', { name: 'Certificates' })).toHaveAttribute('aria-selected', 'true');
     await expect(canvas.getAllByRole('tab', { selected: true })).toHaveLength(1);
@@ -195,6 +197,45 @@ export const EditingCredentialPolicy: Story = {
     await expect(canvas.getByRole('checkbox', { name: /no expiry/i })).not.toBeChecked();
     await expect(canvas.getByRole('button', { name: 'Save credential policy' })).toBeEnabled();
     await expect(canvas.getByRole('complementary', { name: 'Edit credential policy' })).toBeVisible();
+  },
+};
+
+// Tightening the policy previews what it would affect before anything changes:
+// each live credential reads as its service account's name, with the tail of
+// its own ID to tell two of them apart.
+export const TighteningNamesAffectedCredentials: Story = {
+  parameters: {
+    app: app([
+      ...populated,
+      {
+        url: POLICY_URL,
+        method: 'PUT',
+        body: {
+          applied: false,
+          policy: { ...policy, max_finite_lifetime_seconds: 3600 },
+          clamped_count: 1,
+          affected: [{
+            id: 'scr_123e4567-e89b-12d3-a456-426614174501',
+            service_account_id: 'sac_123e4567-e89b-12d3-a456-426614174001',
+            service_account_name: 'ci-deployer',
+            reason: 'clamped',
+          }],
+        } satisfies z.input<typeof zCredentialPolicyResult>,
+      },
+    ]),
+  },
+  play: async ({ canvas }) => {
+    await openTab(canvas, 'Policy');
+    await userEvent.click(await canvas.findByRole('button', { name: 'edit' }));
+    const lifetime = canvas.getByLabelText('Maximum finite lifetime (seconds)');
+    await userEvent.clear(lifetime);
+    await userEvent.type(lifetime, '3600');
+    await userEvent.click(canvas.getByRole('button', { name: 'Save credential policy' }));
+    const impact = await canvas.findByRole('alert');
+    const row = within(impact).getByText(/credential ending 174501: clamped/).closest('li');
+    await expect(row).toHaveTextContent('ci-deployer, credential ending 174501: clamped');
+    await expect(row).toHaveAttribute('title', 'scr_123e4567-e89b-12d3-a456-426614174501');
+    await expect(within(impact).getByText('ci-deployer')).toHaveAttribute('title', 'sac_123e4567-e89b-12d3-a456-426614174001');
   },
 };
 

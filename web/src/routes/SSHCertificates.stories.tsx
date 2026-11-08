@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { zSshca, zSshcaList, zSshProfileList, zSshCertificateList } from '@hikyo/zod';
+import { zSshca, zSshcaList, zSshCertificate, zSshProfileList, zSshCertificateList } from '@hikyo/zod';
 import { expect, userEvent } from 'storybook/test';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -66,6 +66,8 @@ export const PhoneActionGrid: Story = {
     await expect(c!.top).toBeGreaterThanOrEqual(a!.bottom);
     await expect(Math.round(c!.top)).toBe(Math.round(d!.top));
     const table = row!.closest('table')!;
+    // Machine tables keep their columns: the Values card layout must not reach them.
+    await expect(getComputedStyle(table).display).toBe('table');
     await expect(getComputedStyle(table).fontSize).toBe(getComputedStyle(document.documentElement).getPropertyValue('--fs-xs').trim());
     await expect(getComputedStyle(table.parentElement!).overflowX).toBe('auto');
     // The story's own mounted root, not `document.documentElement` (the
@@ -104,3 +106,18 @@ export const CreateCa: Story = { play: async ({ canvas }) => {
   await expect(canvas.getByRole('textbox', { name: 'Name' })).toBeVisible();
   await expect(canvas.getByRole('button', { name: 'Create' })).toBeDisabled();
 } };
+// The requester reads as a name with the principal ID on hover; a certificate
+// whose requester cannot be named keeps the mono ID.
+const certificate = (n: number, extra: { requester_principal_name?: string }) => zSshCertificate.parse({
+  id: `sshcert_00000000-0000-7000-8000-00000000000${String(n)}`, ca_id: ca.id, ca_key_id: ca.keys[0]?.id, profile_id: 'sshprof_00000000-0000-7000-8000-000000000001',
+  serial: String(n), key_id: `fixture-${String(n)}`, principals: ['deploy'], public_key_fingerprint: 'SHA256:public-fixture', key_algorithm: 'ed25519', key_origin: 'generated',
+  valid_after: '2026-09-01T00:00:00Z', valid_before: '2099-01-01T00:00:00Z', requester_principal_id: `prn_00000000-0000-7000-8000-00000000000${String(n)}`,
+  requester_class: 'human', status: 'active', in_krl: false, created_at: '2026-09-01T00:00:00Z', ...extra,
+});
+export const RequesterNames: Story = {
+  parameters: { app: { responses: [...populated.slice(0, 2), { url: `${base}/ssh-certificates`, body: { items: [certificate(1, { requester_principal_name: 'Dana Jacobs' }), certificate(2, {})] } }] } },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByText('Dana Jacobs')).toHaveAttribute('title', 'prn_00000000-0000-7000-8000-000000000001');
+    await expect(canvas.getByText('prn_00000000-0000-7000-8000-000000000002')).toHaveClass('mono');
+  },
+};

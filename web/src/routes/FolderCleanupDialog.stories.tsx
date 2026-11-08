@@ -89,7 +89,7 @@ export const WideningRefused: Story = {
   play: async ({ canvas, userEvent }) => {
     await userEvent.click(canvas.getByRole('button', { name: /move 2 key\(s\)/i }));
     await userEvent.click(await canvas.findByRole('button', { name: /review access for HIKYO_ARGON2_TIME/i }));
-    await expect(await canvas.findByText('Dana Ruiz: Reveal (production)')).toBeVisible();
+    await expect(await canvas.findByText((_, el) => el?.tagName === 'LI' && /^Dana Ruiz ID ending …\S{6}: Reveal \(production\)$/.test(el.textContent))).toBeVisible();
   },
 };
 

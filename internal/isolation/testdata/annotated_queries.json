@@ -296,6 +296,13 @@
   },
   {
     "engine": "postgres",
+    "name": "ConsumeOrgEmailInvitation",
+    "annotation": "authn-resolution",
+    "hash": "b88d0b0cca57782f42d3c70f2bc57418e0748e14eb2ac48feaa0440cd37954e8",
+    "reason": "Acceptance CAS-consumes the verified row by id and verifier inside the grant transaction."
+  },
+  {
+    "engine": "postgres",
     "name": "ConsumeOutstandingAuthoritiesForAccount",
     "annotation": "authn-resolution",
     "hash": "5b7148c41eb4adca7ce1a134eb83c646fd65b8355615883c53db8030677c89f5"
@@ -610,6 +617,13 @@
   },
   {
     "engine": "postgres",
+    "name": "CountLiveOrgEmailInvitations",
+    "annotation": "authn-resolution",
+    "hash": "a0449a38adcbb325b3ac7daade83b25b5e27580aed21819b72f1d5460ecdc596",
+    "reason": "The send charges the per-organisation pending cap after authorizing manage-members at that org."
+  },
+  {
+    "engine": "postgres",
     "name": "CountLiveRemotePairingExchanges",
     "annotation": "authn-resolution",
     "hash": "23f6b6b0afefb41caa48a640f309546cc05c82f3de4bb804301aa7b87f4874fb",
@@ -841,6 +855,13 @@
   },
   {
     "engine": "postgres",
+    "name": "DeleteOrgEmailInvitationInOrg",
+    "annotation": "authn-resolution",
+    "hash": "4456747c850556dd28bad89f4b8b00f44079bcea8b3878d217d7bdef5062a6a7",
+    "reason": "Revocation deletes the addressed org's own row after authorizing manage-members at that org."
+  },
+  {
+    "engine": "postgres",
     "name": "DeleteOriginlessGrantsForPrincipal",
     "annotation": "authn-resolution",
     "hash": "a3995eb06a94904a81ecd77108d1e41c59a7780fbe45a91777e409dd71b7c5ec"
@@ -864,6 +885,20 @@
     "annotation": "authn-resolution",
     "hash": "a95c9027468e8b79a5b1e812b3383db1de090f940dd3ef81a0aa216aaaa92fa2",
     "reason": "Principal-generation revocation retires only unconsumed approvals by the exact principal; consumed handoffs retain session provenance."
+  },
+  {
+    "engine": "postgres",
+    "name": "DeletePersonalValueNoticesForOwner",
+    "annotation": "authn-resolution",
+    "hash": "84f5a98e14fa5f9f85e2ee25489513f3121fe4073e6a306d2f346604ae8459a7",
+    "reason": "Erasing a privacy subject destroys every personal-value notice the subject owns, across every project, in the erasure transaction, so no key name survives for an erased owner; the statement is keyed on the subject's own principal."
+  },
+  {
+    "engine": "postgres",
+    "name": "DeletePersonalValuesForOwner",
+    "annotation": "authn-resolution",
+    "hash": "afa087bcf2664e48cc8d26b858b32c2317488abb60853f6c180a741856af0473",
+    "reason": "Losing qualification through a credential change must delete the owner's values in that same authentication transaction, across every project, before any new factor can be enrolled (personal-values ADR, Which accounts qualify); the statement is keyed on the account's own principal and reads no ciphertext."
   },
   {
     "engine": "postgres",
@@ -1051,7 +1086,7 @@
     "engine": "postgres",
     "name": "DeveloperCredentialByVerifier",
     "annotation": "authn-resolution",
-    "hash": "13064116243d31fd5d4fdecce9fdc7696e0b93a65511dc22360abe29354723d2",
+    "hash": "40ed9bca1d6c981168704815c569654b3b86a8224d02c39c7557beb44e4f2e25",
     "reason": "Authentication resolves the presented verifier before any authorization proof can exist."
   },
   {
@@ -1307,6 +1342,20 @@
     "name": "GetOpsDiagnostics",
     "annotation": "instance-scoped",
     "hash": "a802e9ed5095b702172266766e4e06b874a5533c361ae6482cbd8fadcb9f44c3"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetOrgEmailInvitationByVerifier",
+    "annotation": "authn-resolution",
+    "hash": "2a6d77314548a5928a6961e8b1c14b9d7311cb450b74cb88e9a9d1f1ef1aff1e",
+    "reason": "Preview and acceptance resolve an opaque single-use bearer verifier for the caller's own session before any org authority exists."
+  },
+  {
+    "engine": "postgres",
+    "name": "GetOrgEmailInvitationInOrg",
+    "annotation": "authn-resolution",
+    "hash": "223e0dd2cded828df38d9cf5558b311bb70de35c93732c61c0c13ad110e8e82e",
+    "reason": "Revocation reads the addressed org's own row after authorizing manage-members at that org."
   },
   {
     "engine": "postgres",
@@ -1611,7 +1660,7 @@
     "engine": "postgres",
     "name": "InsertDeveloperCredential",
     "annotation": "authn-resolution",
-    "hash": "605f62cca774bfc7e45e4a8a22e259b7e2c9f715bdc8c1b31eec134ab41203ad",
+    "hash": "b33f36b6de47a154a93cdc5d9d401cbff66e6694a0c03c36f7c7535201689330",
     "reason": "Mint authenticated human delegation only after exact scope-bound reauthentication and tenant authorization in this transaction."
   },
   {
@@ -1879,7 +1928,7 @@
     "engine": "postgres",
     "name": "ListDeveloperCredentials",
     "annotation": "authn-resolution",
-    "hash": "5540825ba5ba33f32fdaf7ff60606953829a95de8fbf37a1c1377961e9f0d694",
+    "hash": "1b66c19a1916d1522bcb2179a5107c7d399a5631d225fd6cd6ee9c8554f4bb70",
     "reason": "Transaction-local lifecycle administration filters this metadata after self or project authorization; no bearer can be recovered."
   },
   {
@@ -1981,6 +2030,13 @@
   },
   {
     "engine": "postgres",
+    "name": "ListLiveOrgEmailInvitations",
+    "annotation": "authn-resolution",
+    "hash": "046088a27c73681965c73ccd239c4f525ded1778f6f3b6ec4f8b6e2d376d674a",
+    "reason": "The pending list is read after authorizing manage-members at the addressed org and never selects the matched account."
+  },
+  {
+    "engine": "postgres",
     "name": "ListLockoutRetentionOrigins",
     "annotation": "authn-resolution",
     "hash": "0ea3a89bd963a49290e9754d3a80305083fd49525fdcb5de4ba5a7e7184be6f4"
@@ -2036,9 +2092,16 @@
   },
   {
     "engine": "postgres",
+    "name": "ListOrgIDs",
+    "annotation": "instance-scoped",
+    "hash": "a7e3d1b63df6431c0e23223ffe3d6bc460fd9f86d1f326eb96f77e6e82911426",
+    "reason": "Recovery classification reads only org ids, without later-migration columns or the self-config binding join, so it runs on any verified source schema."
+  },
+  {
+    "engine": "postgres",
     "name": "ListOrgs",
     "annotation": "instance-scoped",
-    "hash": "c3985019d09e03cc0e095c5c111adbb5f96047cc8d76f38e504667b09beebedb"
+    "hash": "0fc62b32466aee46a0ec3a345375c6f9cf35602594602d337c41a9c230cf22f6"
   },
   {
     "engine": "postgres",
@@ -2059,6 +2122,20 @@
     "name": "ListPasswordCredsForReencrypt",
     "annotation": "authn-resolution",
     "hash": "e7a15ddf11fb2cec3d152f62218af861cfa158a0b575faf6b010b89e52396c7d"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListPersonalValueOwners",
+    "annotation": "authn-resolution",
+    "hash": "f2970a6d040c1d69fd5a57c1e103fbcb42f2c78f7992a5d9e9e5beb977fa4eec",
+    "reason": "A restore purges every personal value with a restore notice (personal-values ADR, restore); listing the distinct owners lets that purge visit only principals holding one, and reads no ciphertext."
+  },
+  {
+    "engine": "postgres",
+    "name": "ListPersonalValuesForRetention",
+    "annotation": "instance-scoped",
+    "hash": "0a8a3986a38a7d912883623440571fc6577a903aef76bc29f7ea3ec3776a6cf3",
+    "reason": "The personal-value retention sweep checks every value's owner against the live access predicate across all tenants (personal-values ADR, Retention); it reads metadata and the key name only, never ciphertext, and each row supplies the tenant chain its follow-up writes are scoped to."
   },
   {
     "engine": "postgres",
@@ -2371,6 +2448,13 @@
   },
   {
     "engine": "postgres",
+    "name": "OrgEmailInvitationMaxCredentialEpoch",
+    "annotation": "authn-resolution",
+    "hash": "98d9fd2defecd7e60525d79584d7fe0562077d89b3c6047aaaf3e3f3f420b86c",
+    "reason": "restore must outrun every attacker-controlled email invitation epoch stamp"
+  },
+  {
+    "engine": "postgres",
     "name": "PKIActiveIssuer",
     "annotation": "instance-scoped",
     "hash": "69a3dfa8ab1e939527eeedfea8da04406e60a93fbfb2a62ccdc2d1cef65cbdef",
@@ -2574,6 +2658,20 @@
   },
   {
     "engine": "postgres",
+    "name": "PersonalEligibleCandidates",
+    "annotation": "authn-resolution",
+    "hash": "8f368d55c6d2d20212730e3756f8d38146a33e680fe578219214ecb1fc849176",
+    "reason": "the personal-value counts denominator enumerates human principals that might hold reveal in one environment; authz evaluates each with the chokepoint's grant and rule logic and returns only a count."
+  },
+  {
+    "engine": "postgres",
+    "name": "PersonalOwnerHoldsInEnvironment",
+    "annotation": "authn-resolution",
+    "hash": "bc673c18998547d8bbc23c9e4f490c8c2b27378103eab5c50efccec9ec2eac3d",
+    "reason": "authorize() admits the owner's own personal-value list and delete in an environment where the principal holds a value or notice; returns a count, never ciphertext or another principal's row."
+  },
+  {
+    "engine": "postgres",
     "name": "PollCLILogin",
     "annotation": "authn-resolution",
     "hash": "680bf6e7f45de47e56c129ff9f87f608c2cd744d8a4e9601ef22ffa872295f51",
@@ -2659,6 +2757,13 @@
   },
   {
     "engine": "postgres",
+    "name": "PrivacyEraseOrgEmailInvitations",
+    "annotation": "authn-resolution",
+    "hash": "34703dcc0114e0161318e6428a9d268297d93c7c78aeb5720a4babd585c9ec43",
+    "reason": "Account erasure unbinds every invitation bound to the erased account; the row stays listed until it expires and can never validate."
+  },
+  {
+    "engine": "postgres",
     "name": "PrivacyErasePasswords",
     "annotation": "authn-resolution",
     "hash": "0a368ed3cb800554d13eed2a8e935e80d4220c30a5ff6c25660a186ba183d11b"
@@ -2741,6 +2846,13 @@
     "annotation": "authn-resolution",
     "hash": "291b0cd11d27ed0eebdce16b341f3dded7c766813c65d3cbec707292af37dd8c",
     "reason": "expired first-party login transaction metadata is removed opportunistically at issuance"
+  },
+  {
+    "engine": "postgres",
+    "name": "PruneExpiredOrgEmailInvitations",
+    "annotation": "authn-resolution",
+    "hash": "c1e8cffaba714e352920d4d678ce25c0d12bdefb109dc43c4a16822fccb59515",
+    "reason": "The hourly pruning run deletes only rows already past their expiry."
   },
   {
     "engine": "postgres",
@@ -2836,6 +2948,13 @@
     "name": "ReconcilePrincipal",
     "annotation": "authn-resolution",
     "hash": "ef38161256d15ae1edbe86469e611bdade74d77f20bd74f196fd1fd6370de983"
+  },
+  {
+    "engine": "postgres",
+    "name": "RecordPersonalValueNoticesForOwner",
+    "annotation": "authn-resolution",
+    "hash": "83bb4b9f7bfa66eec477d8f341e91dc163a498dec41dd577a2e7b3c99b664101",
+    "reason": "Losing qualification through a credential change must delete the owner's values in that same authentication transaction, across every project, before any new factor can be enrolled (personal-values ADR, Which accounts qualify); the statement is keyed on the account's own principal and copies names only."
   },
   {
     "engine": "postgres",
@@ -3494,6 +3613,13 @@
   },
   {
     "engine": "postgres",
+    "name": "UpsertOrgEmailInvitation",
+    "annotation": "authn-resolution",
+    "hash": "2fd1d32cc8f97baf533f1b1bc84a203f15521806780891244d666b0d72a8983e",
+    "reason": "A send writes or replaces the one pending row of an organisation and address; the operation authorized manage-members at that org."
+  },
+  {
+    "engine": "postgres",
     "name": "VerifiedAccountEmailExists",
     "annotation": "authn-resolution",
     "hash": "6d9ddf5a71405ca0230c9e26125844eaaeb6dc92ee15d4a73abbebc5361f3158",
@@ -3792,6 +3918,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "ConsumeOrgEmailInvitation",
+    "annotation": "authn-resolution",
+    "hash": "ae52839e352deaca2a0c5b565d83acd57eaa76a95fa3687df271342fae55e373",
+    "reason": "Acceptance CAS-consumes the verified row by id and verifier inside the grant transaction."
+  },
+  {
+    "engine": "sqlite",
     "name": "ConsumeOutstandingAuthoritiesForAccount",
     "annotation": "authn-resolution",
     "hash": "f1bbdcf248a4111592adc73223aec7342356e7c234ba27117f41d7358562edc9"
@@ -4078,6 +4211,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "CountLiveOrgEmailInvitations",
+    "annotation": "authn-resolution",
+    "hash": "3336a6e7812bd3d822995a857404c83264fa4ea6e97e1552adf6ed39f6e8f162",
+    "reason": "The send charges the per-organisation pending cap after authorizing manage-members at that org."
+  },
+  {
+    "engine": "sqlite",
     "name": "CountLiveRemotePairingExchanges",
     "annotation": "authn-resolution",
     "hash": "23f6b6b0afefb41caa48a640f309546cc05c82f3de4bb804301aa7b87f4874fb",
@@ -4309,6 +4449,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "DeleteOrgEmailInvitationInOrg",
+    "annotation": "authn-resolution",
+    "hash": "914df871adfc747c37f83fb89a22a0e15527915507d4ffd19174ff50cf2a96a0",
+    "reason": "Revocation deletes the addressed org's own row after authorizing manage-members at that org."
+  },
+  {
+    "engine": "sqlite",
     "name": "DeleteOriginlessGrantsForPrincipal",
     "annotation": "authn-resolution",
     "hash": "66f3008c7296dec9a50911b490f1d5c6f3a4b2e04b7188f47c3b014842483f67"
@@ -4332,6 +4479,20 @@
     "annotation": "authn-resolution",
     "hash": "4f6bbf6500f04a5ae7b777c6d252eca2022b2a9c824ace78348e8d8bcec5d0f5",
     "reason": "Principal-generation revocation retires only unconsumed approvals by the exact principal; consumed handoffs retain session provenance."
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeletePersonalValueNoticesForOwner",
+    "annotation": "authn-resolution",
+    "hash": "84f5a98e14fa5f9f85e2ee25489513f3121fe4073e6a306d2f346604ae8459a7",
+    "reason": "Erasing a privacy subject destroys every personal-value notice the subject owns, across every project, in the erasure transaction, so no key name survives for an erased owner; the statement is keyed on the subject's own principal."
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeletePersonalValuesForOwner",
+    "annotation": "authn-resolution",
+    "hash": "afa087bcf2664e48cc8d26b858b32c2317488abb60853f6c180a741856af0473",
+    "reason": "Losing qualification through a credential change must delete the owner's values in that same authentication transaction, across every project, before any new factor can be enrolled (personal-values ADR, Which accounts qualify); the statement is keyed on the account's own principal and reads no ciphertext."
   },
   {
     "engine": "sqlite",
@@ -4519,7 +4680,7 @@
     "engine": "sqlite",
     "name": "DeveloperCredentialByVerifier",
     "annotation": "authn-resolution",
-    "hash": "914282a5fb1b3f6b3c74264f51cbf84dd029213b4439842bf8f7b1d9c24d98e2",
+    "hash": "5eb866cf6e0bc61b3c74e4dc2f820abc5c9b92ddbdf688c5a0516538ecda0757",
     "reason": "Authentication resolves the presented verifier before any authorization proof can exist."
   },
   {
@@ -4775,6 +4936,20 @@
     "name": "GetOpsDiagnostics",
     "annotation": "instance-scoped",
     "hash": "02e196d1a8a8e6e0deaba49cd10fe2169a6fd1d83eb44a2c69bd258413afc2f6"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetOrgEmailInvitationByVerifier",
+    "annotation": "authn-resolution",
+    "hash": "0a6f771d28965d8486c73f3e4effa20de4ac5544ba56a9e2847e9ad9dbd29f75",
+    "reason": "Preview and acceptance resolve an opaque single-use bearer verifier for the caller's own session before any org authority exists."
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetOrgEmailInvitationInOrg",
+    "annotation": "authn-resolution",
+    "hash": "9539ca691010e5dfb65d046ed19528bb6c14d46b68f1c33c089c1f2829aa7b61",
+    "reason": "Revocation reads the addressed org's own row after authorizing manage-members at that org."
   },
   {
     "engine": "sqlite",
@@ -5079,7 +5254,7 @@
     "engine": "sqlite",
     "name": "InsertDeveloperCredential",
     "annotation": "authn-resolution",
-    "hash": "6e4808916e9797910f8a98379345b675f4018f50f1db23abae5054d5d0c5ec01",
+    "hash": "99cb7e356db91e7bdd063905089a4eb78ae93d48c1d0442873d4516c6b77f40e",
     "reason": "Mint authenticated human delegation only after exact scope-bound reauthentication and tenant authorization in this transaction."
   },
   {
@@ -5347,7 +5522,7 @@
     "engine": "sqlite",
     "name": "ListDeveloperCredentials",
     "annotation": "authn-resolution",
-    "hash": "5540825ba5ba33f32fdaf7ff60606953829a95de8fbf37a1c1377961e9f0d694",
+    "hash": "1b66c19a1916d1522bcb2179a5107c7d399a5631d225fd6cd6ee9c8554f4bb70",
     "reason": "Transaction-local lifecycle administration filters this metadata after self or project authorization; no bearer can be recovered."
   },
   {
@@ -5449,6 +5624,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "ListLiveOrgEmailInvitations",
+    "annotation": "authn-resolution",
+    "hash": "c164b0b3805416b88a189ad0c160fe797f59a60d735fe97ea9bcd0154de82f51",
+    "reason": "The pending list is read after authorizing manage-members at the addressed org and never selects the matched account."
+  },
+  {
+    "engine": "sqlite",
     "name": "ListLockoutRetentionOrigins",
     "annotation": "authn-resolution",
     "hash": "0ea3a89bd963a49290e9754d3a80305083fd49525fdcb5de4ba5a7e7184be6f4"
@@ -5504,9 +5686,16 @@
   },
   {
     "engine": "sqlite",
+    "name": "ListOrgIDs",
+    "annotation": "instance-scoped",
+    "hash": "a7e3d1b63df6431c0e23223ffe3d6bc460fd9f86d1f326eb96f77e6e82911426",
+    "reason": "Recovery classification reads only org ids, without later-migration columns or the self-config binding join, so it runs on any verified source schema."
+  },
+  {
+    "engine": "sqlite",
     "name": "ListOrgs",
     "annotation": "instance-scoped",
-    "hash": "c3985019d09e03cc0e095c5c111adbb5f96047cc8d76f38e504667b09beebedb"
+    "hash": "0fc62b32466aee46a0ec3a345375c6f9cf35602594602d337c41a9c230cf22f6"
   },
   {
     "engine": "sqlite",
@@ -5527,6 +5716,20 @@
     "name": "ListPasswordCredsForReencrypt",
     "annotation": "authn-resolution",
     "hash": "d05b767efd734b08508c8612835cc67d775d786fad8ccef6c6cd4b4cecd1afc6"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListPersonalValueOwners",
+    "annotation": "authn-resolution",
+    "hash": "f2970a6d040c1d69fd5a57c1e103fbcb42f2c78f7992a5d9e9e5beb977fa4eec",
+    "reason": "A restore purges every personal value with a restore notice (personal-values ADR, restore); listing the distinct owners lets that purge visit only principals holding one, and reads no ciphertext."
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListPersonalValuesForRetention",
+    "annotation": "instance-scoped",
+    "hash": "0a8a3986a38a7d912883623440571fc6577a903aef76bc29f7ea3ec3776a6cf3",
+    "reason": "The personal-value retention sweep checks every value's owner against the live access predicate across all tenants (personal-values ADR, Retention); it reads metadata and the key name only, never ciphertext, and each row supplies the tenant chain its follow-up writes are scoped to."
   },
   {
     "engine": "sqlite",
@@ -5839,6 +6042,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "OrgEmailInvitationMaxCredentialEpoch",
+    "annotation": "authn-resolution",
+    "hash": "98d9fd2defecd7e60525d79584d7fe0562077d89b3c6047aaaf3e3f3f420b86c",
+    "reason": "restore must outrun every attacker-controlled email invitation epoch stamp"
+  },
+  {
+    "engine": "sqlite",
     "name": "PKIActiveIssuer",
     "annotation": "instance-scoped",
     "hash": "69a3dfa8ab1e939527eeedfea8da04406e60a93fbfb2a62ccdc2d1cef65cbdef",
@@ -6042,6 +6252,20 @@
   },
   {
     "engine": "sqlite",
+    "name": "PersonalEligibleCandidates",
+    "annotation": "authn-resolution",
+    "hash": "8f368d55c6d2d20212730e3756f8d38146a33e680fe578219214ecb1fc849176",
+    "reason": "the personal-value counts denominator enumerates human principals that might hold reveal in one environment; authz evaluates each with the chokepoint's grant and rule logic and returns only a count."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PersonalOwnerHoldsInEnvironment",
+    "annotation": "authn-resolution",
+    "hash": "bc673c18998547d8bbc23c9e4f490c8c2b27378103eab5c50efccec9ec2eac3d",
+    "reason": "authorize() admits the owner's own personal-value list and delete in an environment where the principal holds a value or notice; returns a count, never ciphertext or another principal's row."
+  },
+  {
+    "engine": "sqlite",
     "name": "PollCLILogin",
     "annotation": "authn-resolution",
     "hash": "8b006341686dd864428f7b8adb02938ee3eeecd42cd2a08f0adfcd326728e7f0",
@@ -6127,6 +6351,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "PrivacyEraseOrgEmailInvitations",
+    "annotation": "authn-resolution",
+    "hash": "e02dbe7696a1988739456acb913d6d1ec74abe2c0869ab677488c0370b204add",
+    "reason": "Account erasure unbinds every invitation bound to the erased account; the row stays listed until it expires and can never validate."
+  },
+  {
+    "engine": "sqlite",
     "name": "PrivacyErasePasswords",
     "annotation": "authn-resolution",
     "hash": "0a368ed3cb800554d13eed2a8e935e80d4220c30a5ff6c25660a186ba183d11b"
@@ -6209,6 +6440,13 @@
     "annotation": "authn-resolution",
     "hash": "e0bb4d38a7e966dabec66e9b999fa11603f5e86383d98019c54cb6e978043706",
     "reason": "expired first-party login transaction metadata is removed opportunistically at issuance"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PruneExpiredOrgEmailInvitations",
+    "annotation": "authn-resolution",
+    "hash": "90bbaa9e8d15568cff3684ff8d346a74233ff348bda36883839499a1e6715a41",
+    "reason": "The hourly pruning run deletes only rows already past their expiry."
   },
   {
     "engine": "sqlite",
@@ -6304,6 +6542,13 @@
     "name": "ReconcilePrincipal",
     "annotation": "authn-resolution",
     "hash": "66ba2d7daadf156ad869f16ead2c023b833f5605b1680a7bd13005f13677f30e"
+  },
+  {
+    "engine": "sqlite",
+    "name": "RecordPersonalValueNoticesForOwner",
+    "annotation": "authn-resolution",
+    "hash": "83bb4b9f7bfa66eec477d8f341e91dc163a498dec41dd577a2e7b3c99b664101",
+    "reason": "Losing qualification through a credential change must delete the owner's values in that same authentication transaction, across every project, before any new factor can be enrolled (personal-values ADR, Which accounts qualify); the statement is keyed on the account's own principal and copies names only."
   },
   {
     "engine": "sqlite",
@@ -6945,6 +7190,13 @@
     "name": "UpdateSelfConfigRollout",
     "annotation": "instance-scoped",
     "hash": "4b23597f5cfc5d4fa2d483a4d9dfe9016efc240d557f7f00d4c059f9d8d8668c"
+  },
+  {
+    "engine": "sqlite",
+    "name": "UpsertOrgEmailInvitation",
+    "annotation": "authn-resolution",
+    "hash": "9e4935e9a0ed9122177dcad8c762fc9381538631a89905be70992b449119cd48",
+    "reason": "A send writes or replaces the one pending row of an organisation and address; the operation authorized manage-members at that org."
   },
   {
     "engine": "sqlite",

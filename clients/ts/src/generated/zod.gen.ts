@@ -280,6 +280,7 @@ export const zId = z.string().min(3).max(64).regex(/^[a-z]{2,8}_[0-9a-fA-F-]{36}
 export const zMintDeveloperCredentialRequest = z.object({
     key_ids: z.array(zId).max(10000),
     consent_current_and_future: z.literal(true),
+    personal_consent: z.boolean().optional().default(false),
     lifetime_seconds: z.coerce.bigint().gte(BigInt(1)).lte(BigInt(28800))
 });
 
@@ -293,7 +294,9 @@ export const zDeveloperCredential = z.object({
     created_at: z.iso.datetime(),
     expires_at: z.iso.datetime(),
     revoked_at: z.iso.datetime().optional(),
-    prefix_hint: z.string()
+    prefix_hint: z.string(),
+    personal_consent: z.boolean().optional(),
+    authority_principal_name: z.string().min(1).optional()
 });
 
 export const zDeveloperCredentialList = z.object({
@@ -855,6 +858,7 @@ export const zSshCertificate = z.object({
     valid_after: zTimestamp,
     valid_before: zTimestamp,
     requester_principal_id: zId,
+    requester_principal_name: z.string().min(1).optional(),
     requester_class: z.string(),
     status: z.enum([
         'active',
@@ -1185,6 +1189,39 @@ export const zPrincipalCapabilities = z.object({
     delivery_report_grant: zUnheldGrantReach
 });
 
+export const zSecurityMaintenancePublicStatus = z.object({
+    mode: z.string().optional(),
+    channel: z.string().optional(),
+    enrolled: z.boolean(),
+    phase: z.string(),
+    reason: z.string().optional(),
+    protection_gap: z.boolean(),
+    applicable: z.array(z.string()),
+    coverage: z.array(z.string()),
+    covered_components: z.array(z.string()),
+    coverage_through: z.string().optional(),
+    catalog_sequence: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    last_attempt: z.iso.datetime().optional(),
+    last_verified: z.iso.datetime().optional(),
+    known_until: z.iso.datetime().optional(),
+    running_version: z.string().optional(),
+    target_version: z.string().optional(),
+    action: z.string().optional(),
+    detail: z.string().optional()
+}).strict();
+
+/**
+ * `reported` is false when no status file is configured or the coordinator
+ * has not written one. `unreadable` is true when a file exists but cannot be
+ * read, is oversized or fails strict parsing; it is never a healthy state.
+ *
+ */
+export const zSecurityMaintenanceStatus = z.object({
+    reported: z.boolean(),
+    unreadable: z.boolean(),
+    status: zSecurityMaintenancePublicStatus.optional()
+}).strict();
+
 export const zInstanceUpdateBackend = z.enum([
     'flux',
     'compose',
@@ -1260,7 +1297,8 @@ export const zTotpCodeRequest = z.object({
 
 export const zDeveloperCredentialReauthIntent = z.object({
     lifetime_seconds: z.coerce.bigint().gte(BigInt(1)).lte(BigInt(28800)),
-    consent_current_and_future: z.literal(true)
+    consent_current_and_future: z.literal(true),
+    personal_consent: z.boolean().optional().default(false)
 });
 
 export const zTotpDeveloperCredentialReauthRequest = z.object({
@@ -1363,7 +1401,12 @@ export const zCliReauthApproved = z.object({
     redirect_uri: z.url()
 });
 
+/**
+ * Display policy for one environment. The organisation and project ids are the owning rows, resolved by the server after it authorized the caller for this environment; clients read names through their own authorized endpoints.
+ */
 export const zCliReauthEnvironmentPolicy = z.object({
+    org_id: zId,
+    project_id: zId,
     environment_id: zId,
     effective_window_seconds: z.int().gte(0),
     requires_webauthn: z.boolean()
@@ -1426,6 +1469,10 @@ export const zRecoveryBeginRequest = z.object({
 export const zRecoveryBeginResult = z.object({
     authority: z.string(),
     expires_at: zTimestamp
+});
+
+export const zEmailInvitationTokenRequest = z.object({
+    token: z.string().min(1).max(512)
 });
 
 export const zInvitationResult = z.object({
@@ -1537,6 +1584,19 @@ export const zRecoveryCodesResult = z.object({
     login: zLoginResult
 });
 
+/**
+ * The editable avatar of an organisation or project. `mark` is null when
+ * the monogram is derived from the name; `image_version` is a lowercase
+ * hex content hash of the uploaded image, null when there is none, and is
+ * what the image URL's `v` query parameter carries.
+ *
+ */
+export const zChromeIdentity = z.object({
+    hue: z.int().gte(0).lte(359),
+    mark: z.string().nullable(),
+    image_version: z.string().regex(/^[0-9a-f]{64}$/).nullable()
+});
+
 export const zOrg = z.object({
     id: zId,
     name: z.string(),
@@ -1544,7 +1604,19 @@ export const zOrg = z.object({
     metadata: z.record(z.string(), z.unknown()).nullish(),
     created_at: zTimestamp,
     origin: z.enum(['manual', 'registration']),
-    registration_policy_id: z.string().nullish()
+    registration_policy_id: z.string().nullish(),
+    identity: zChromeIdentity.optional()
+});
+
+/**
+ * A partial write: each field present replaces the stored one and an
+ * absent field is left unchanged, so saving one field never overwrites
+ * a concurrent change to the other.
+ *
+ */
+export const zIdentityRequest = z.object({
+    hue: z.int().gte(0).lte(359).optional(),
+    mark: z.string().max(128).nullish()
 });
 
 export const zOrgList = z.object({
@@ -1554,14 +1626,15 @@ export const zOrgList = z.object({
 
 /**
  * An organisation as a navigation destination: what the caller needs to
- * show it and route to it, and nothing else. Deliberately narrower than
+ * show it and route to it (name and chrome identity), and nothing else. Deliberately narrower than
  * `Org` — `metadata` and `active` are operator-set state that belongs to
  * `getOrg`, which authorizes; a member listing does not.
  *
  */
 export const zMyOrg = z.object({
     id: zId,
-    name: z.string()
+    name: z.string(),
+    identity: zChromeIdentity.optional()
 });
 
 export const zMyOrgList = z.object({
@@ -1594,7 +1667,8 @@ export const zProject = z.object({
     id: zId,
     org_id: zId,
     name: z.string(),
-    created_at: zTimestamp
+    created_at: zTimestamp,
+    identity: zChromeIdentity.optional()
 });
 
 export const zProjectList = z.object({
@@ -2002,6 +2076,92 @@ export const zCloneEnvironmentRequest = z.object({
     acknowledgements: zAcknowledgements.optional()
 });
 
+export const zSetPersonalValueRequest = z.object({
+    value: z.string().max(65536)
+});
+
+/**
+ * Why a personal value disappeared other than by its owner.
+ */
+export const zPersonalValueNoticeCause = z.enum([
+    'administrator',
+    'retention',
+    'restore',
+    'key_renamed',
+    'key_deleted',
+    'forbidden',
+    'qualification_lost'
+]);
+
+export const zPersonalValueEntry = z.object({
+    key_id: zId.optional(),
+    name: z.string().max(256),
+    set: z.boolean(),
+    updated_at: z.iso.datetime().optional(),
+    notice: zPersonalValueNoticeCause.optional(),
+    required: z.boolean().optional(),
+    suspended: z.boolean().optional(),
+    suspended_at: z.iso.datetime().optional(),
+    warnings: z.array(z.string().max(512)).max(32).optional(),
+    value: z.string().optional()
+});
+
+export const zPersonalValueList = z.object({
+    items: z.array(zPersonalValueEntry)
+});
+
+export const zPersonalValueHolder = z.object({
+    principal_id: zId,
+    username: z.string().optional(),
+    set: z.boolean(),
+    updated_at: z.iso.datetime().optional(),
+    notice: zPersonalValueNoticeCause.optional()
+});
+
+export const zPersonalValueCount = z.object({
+    key_id: zId,
+    name: z.string().max(256),
+    holders: z.int().gte(0),
+    notices: z.int().gte(0),
+    required: z.boolean()
+});
+
+export const zPersonalValueCounts = z.object({
+    eligible: z.int().gte(0),
+    items: z.array(zPersonalValueCount)
+});
+
+export const zPersonalOffboardingReceipt = z.object({
+    environment_id: zId,
+    environment_name: z.string().max(256),
+    key_name: z.string().max(256),
+    last_received_at: z.iso.datetime(),
+    changed_since: z.boolean()
+});
+
+export const zPersonalOffboardingServiceAccount = z.object({
+    id: zId,
+    name: z.string().max(256),
+    created_at: z.iso.datetime()
+});
+
+/**
+ * Names only, never values. What to rotate after someone leaves.
+ */
+export const zPersonalOffboardingReport = z.object({
+    principal_id: zId,
+    username: z.string(),
+    evidence_from: z.iso.datetime(),
+    generated_at: z.iso.datetime(),
+    received: z.array(zPersonalOffboardingReceipt),
+    service_accounts: z.array(zPersonalOffboardingServiceAccount),
+    limits: z.array(z.string().max(512))
+});
+
+export const zPersonalValueHolderList = z.object({
+    items: z.array(zPersonalValueHolder)
+});
+
 export const zSetValueRequest = z.object({
     value: z.string().max(65536),
     acknowledgements: zAcknowledgements.optional()
@@ -2066,7 +2226,8 @@ export const zDefinitionsKeyDeletion = z.object({
 
 export const zDefinitionsEnvironmentDeletion = z.object({
     name: z.string(),
-    occurrences: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+    occurrences: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    personal_values: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional()
 });
 
 export const zDefinitionsPlanDiff = z.object({
@@ -2105,6 +2266,7 @@ export const zDefinitionsLastApply = z.object({
     plan_id: zId,
     applied_at: zTimestamp,
     applied_by: z.string(),
+    applied_by_name: z.string().min(1).optional(),
     commit: z.string().max(256).optional(),
     ref: z.string().max(256).optional(),
     actor: z.string().max(256).optional(),
@@ -2661,6 +2823,7 @@ export const zSetCredentialPolicyRequest = z.object({
 export const zAffectedCredential = z.object({
     id: zId,
     service_account_id: zId,
+    service_account_name: z.string().min(1).optional(),
     expires_at: zTimestamp.optional(),
     reason: z.enum(['clamped', 'indefinite-withdrawn'])
 });
@@ -2694,6 +2857,48 @@ export const zRoleTemplate = z.enum([
     'admin',
     'operator'
 ]);
+
+export const zEmailInvitationSendRequest = z.object({
+    email: z.string().min(3).max(254),
+    template: zRoleTemplate
+});
+
+export const zEmailInvitation = z.object({
+    id: zId,
+    email: z.string(),
+    template: zRoleTemplate,
+    created_at: zTimestamp,
+    expires_at: zTimestamp
+});
+
+export const zEmailInvitationListing = z.object({
+    id: zId,
+    email: z.string(),
+    template: zRoleTemplate,
+    invited_by: zId,
+    created_at: zTimestamp,
+    expires_at: zTimestamp
+});
+
+export const zEmailInvitationList = z.object({
+    items: z.array(zEmailInvitationListing),
+    count: z.int().gte(0)
+});
+
+export const zEmailInvitationPreview = z.object({
+    org: zId,
+    org_name: z.string(),
+    template: zRoleTemplate,
+    expires_at: zTimestamp
+});
+
+export const zEmailInvitationAcceptance = z.object({
+    org: zId,
+    org_name: z.string(),
+    template: zRoleTemplate,
+    grants_created: z.int().gte(0),
+    signed_out: z.boolean()
+});
 
 export const zInviteMemberRequest = z.object({
     username: z.string().min(1).max(128),
@@ -3238,7 +3443,8 @@ export const zValueCell = z.object({
     revealed: z.boolean(),
     value: z.string().optional(),
     updated_at: zTimestamp.optional(),
-    updated_by: z.string().optional()
+    updated_by: z.string().optional(),
+    updated_by_name: z.string().min(1).optional()
 });
 
 export const zValueList = z.object({
@@ -3317,7 +3523,14 @@ export const zDeliveredKey = z.object({
         'forbidden',
         'optional',
         'set'
-    ])
+    ]),
+    personal: z.enum([
+        'value',
+        'withheld',
+        'notice',
+        'missing'
+    ]).optional(),
+    personal_reason: z.string().max(64).optional()
 });
 
 /**
@@ -3484,7 +3697,8 @@ export const zDefinitionsBundleKey = z.object({
     group: z.string().max(128),
     declaration: zKeyDeclaration,
     required_in: zDefinitionsBundlePresence,
-    forbidden_in: zDefinitionsBundlePresence
+    forbidden_in: zDefinitionsBundlePresence,
+    personal_required_in: zDefinitionsBundlePresence.optional()
 });
 
 export const zDefinitionsBundle = z.object({
@@ -3519,7 +3733,8 @@ export const zKeyPresence = z.object({
  */
 export const zKeyPresenceRules = z.object({
     required_in: zKeyPresence,
-    forbidden_in: zKeyPresence
+    forbidden_in: zKeyPresence,
+    personal_required_in: zKeyPresence.optional()
 });
 
 export const zKey = z.object({
@@ -4393,6 +4608,7 @@ export const zInstanceConnection = z.object({
     expires_at: zTimestamp.optional(),
     created_at: zTimestamp,
     created_by: z.string().max(64),
+    created_by_name: z.string().min(1).optional(),
     revoked_at: zTimestamp.optional(),
     last_used_at: zTimestamp.optional(),
     live: z.boolean()
@@ -4506,6 +4722,8 @@ export const zWorkspaceHandoffStepUp = z.object({
         'bypass'
     ]),
     environment: zId,
+    org_id: zId.optional(),
+    project_id: zId.optional(),
     key_ids: z.array(zId),
     expires_at: zTimestamp
 });
@@ -4826,7 +5044,8 @@ export const zTransitKey = z.object({
     created_at: zTimestamp,
     updated_at: zTimestamp,
     versions: z.array(zTransitKeyVersion),
-    callers: z.array(zTransitCaller)
+    callers: z.array(zTransitCaller),
+    principal_names: z.record(z.string(), z.string().min(1)).optional()
 });
 
 export const zTransitKeyList = z.object({
@@ -5025,6 +5244,11 @@ export const zOrgId = zId;
  * Project identifier.
  */
 export const zProjectId = zId;
+
+/**
+ * The `identity.image_version` being rendered; a cache-busting hint only.
+ */
+export const zIdentityImageVersion = z.string().regex(/^[0-9a-f]{64}$/);
 
 /**
  * Environment identifier.
@@ -5268,6 +5492,11 @@ export const zRemoteName = zEntityName;
  * Connection credential identifier.
  */
 export const zConnectionId = zId;
+
+/**
+ * Pending email invitation identifier.
+ */
+export const zEmailInvitationId = zId;
 
 /**
  * Session identifier, always one of the caller's own.
@@ -5565,7 +5794,7 @@ export const zShowCliReauthTransactionPath = z.object({
 });
 
 /**
- * Live transaction metadata without ids, bearers, or verifiers.
+ * Live transaction metadata without bearers or verifiers.
  */
 export const zShowCliReauthTransactionResponse = zCliReauthTransaction;
 
@@ -5694,6 +5923,50 @@ export const zSetOrgRetentionPath = z.object({
  */
 export const zSetOrgRetentionResponse = zRetentionPolicy;
 
+export const zSetOrgIdentityBody = zIdentityRequest;
+
+export const zSetOrgIdentityPath = z.object({
+    org: zId
+});
+
+/**
+ * The organisation with its updated identity.
+ */
+export const zSetOrgIdentityResponse = zOrg;
+
+export const zClearOrgIdentityImagePath = z.object({
+    org: zId
+});
+
+/**
+ * The organisation without an uploaded image.
+ */
+export const zClearOrgIdentityImageResponse = zOrg;
+
+export const zGetOrgIdentityImagePath = z.object({
+    org: zId
+});
+
+export const zGetOrgIdentityImageQuery = z.object({
+    v: z.string().regex(/^[0-9a-f]{64}$/).optional()
+});
+
+/**
+ * The stored image bytes with their exact content type.
+ */
+export const zGetOrgIdentityImageResponse = z.string();
+
+export const zSetOrgIdentityImageBody = z.string();
+
+export const zSetOrgIdentityImagePath = z.object({
+    org: zId
+});
+
+/**
+ * The organisation with its updated identity.
+ */
+export const zSetOrgIdentityImageResponse = zOrg;
+
 export const zDeleteProjectPath = z.object({
     org: zId,
     project: zId
@@ -5725,6 +5998,54 @@ export const zRenameProjectPath = z.object({
  * The renamed project.
  */
 export const zRenameProjectResponse = zProject;
+
+export const zSetProjectIdentityBody = zIdentityRequest;
+
+export const zSetProjectIdentityPath = z.object({
+    org: zId,
+    project: zId
+});
+
+/**
+ * The project with its updated identity.
+ */
+export const zSetProjectIdentityResponse = zProject;
+
+export const zClearProjectIdentityImagePath = z.object({
+    org: zId,
+    project: zId
+});
+
+/**
+ * The project without an uploaded image.
+ */
+export const zClearProjectIdentityImageResponse = zProject;
+
+export const zGetProjectIdentityImagePath = z.object({
+    org: zId,
+    project: zId
+});
+
+export const zGetProjectIdentityImageQuery = z.object({
+    v: z.string().regex(/^[0-9a-f]{64}$/).optional()
+});
+
+/**
+ * The stored image bytes with their exact content type.
+ */
+export const zGetProjectIdentityImageResponse = z.string();
+
+export const zSetProjectIdentityImageBody = z.string();
+
+export const zSetProjectIdentityImagePath = z.object({
+    org: zId,
+    project: zId
+});
+
+/**
+ * The project with its updated identity.
+ */
+export const zSetProjectIdentityImageResponse = zProject;
 
 export const zListEnvironmentsPath = z.object({
     org: zId,
@@ -6059,6 +6380,36 @@ export const zInviteOrgMemberPath = z.object({
  * The invited principal and its single-use authority.
  */
 export const zInviteOrgMemberResponse = zInvitationResult;
+
+export const zListOrgEmailInvitationsPath = z.object({
+    org: zId
+});
+
+/**
+ * The pending invitations.
+ */
+export const zListOrgEmailInvitationsResponse = zEmailInvitationList;
+
+export const zInviteOrgMemberByEmailBody = zEmailInvitationSendRequest;
+
+export const zInviteOrgMemberByEmailPath = z.object({
+    org: zId
+});
+
+/**
+ * The invitation was recorded.
+ */
+export const zInviteOrgMemberByEmailResponse = zEmailInvitation;
+
+export const zRevokeOrgEmailInvitationPath = z.object({
+    org: zId,
+    invitation: zId
+});
+
+/**
+ * Revoked.
+ */
+export const zRevokeOrgEmailInvitationResponse = z.void();
 
 export const zDeleteOrgRegistrationPolicyBody = zRegistrationPolicyDeleteRequest;
 
@@ -6654,6 +7005,102 @@ export const zRevealValuePath = z.object({
  */
 export const zRevealValueResponse = zValueCell;
 
+export const zListMyPersonalValuesPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * The caller's personal entries.
+ */
+export const zListMyPersonalValuesResponse = zPersonalValueList;
+
+export const zDeleteMyPersonalValuePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    key: zKeyName
+});
+
+/**
+ * Deleted or dismissed.
+ */
+export const zDeleteMyPersonalValueResponse = z.void();
+
+export const zSetMyPersonalValueBody = zSetPersonalValueRequest;
+
+export const zSetMyPersonalValuePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    key: zKeyName
+});
+
+/**
+ * The stored entry. It never echoes the value back.
+ */
+export const zSetMyPersonalValueResponse = zPersonalValueEntry;
+
+export const zRevealMyPersonalValuePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    key: zKeyName
+});
+
+/**
+ * The entry, plaintext included.
+ */
+export const zRevealMyPersonalValueResponse = zPersonalValueEntry;
+
+export const zListPersonalValueCountsPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * The counts.
+ */
+export const zListPersonalValueCountsResponse = zPersonalValueCounts;
+
+export const zGetPersonalOffboardingReportPath = z.object({
+    org: zId,
+    project: zId,
+    member: z.string().min(1).max(256)
+});
+
+/**
+ * The report.
+ */
+export const zGetPersonalOffboardingReportResponse = zPersonalOffboardingReport;
+
+export const zListPersonalValueMembersPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    key: zKeyName
+});
+
+/**
+ * The holders.
+ */
+export const zListPersonalValueMembersResponse = zPersonalValueHolderList;
+
+export const zDeletePersonalValueMemberPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    key: zKeyName,
+    member: z.string().min(1).max(256)
+});
+
+/**
+ * Deleted.
+ */
+export const zDeletePersonalValueMemberResponse = z.void();
+
 export const zRevealValueDiffBody = zRevealDiffRequest;
 
 export const zRevealValueDiffPath = z.object({
@@ -6975,6 +7422,11 @@ export const zGetRetentionHealthResponse = zRetentionHealth;
  * Current version and the newest release on the configured channel.
  */
 export const zGetUpdateStatusResponse = zUpdateStatus;
+
+/**
+ * Not reported, unreadable, or the coordinator's last published status.
+ */
+export const zGetSecurityMaintenanceResponse = zSecurityMaintenanceStatus;
 
 export const zRequestInstanceUpdateBody = zInstanceUpdateRequest;
 
@@ -7865,6 +8317,20 @@ export const zShowWorkspaceHandoffPath = z.object({
  * The live transaction's authoritative purpose and any bound step-up policy — identifiers only.
  */
 export const zShowWorkspaceHandoffResponse = zWorkspaceHandoffTransaction;
+
+export const zPreviewEmailInvitationBody = zEmailInvitationTokenRequest;
+
+/**
+ * The organisation, template and expiry the token offers.
+ */
+export const zPreviewEmailInvitationResponse = zEmailInvitationPreview;
+
+export const zAcceptEmailInvitationBody = zEmailInvitationTokenRequest;
+
+/**
+ * The invitation was accepted.
+ */
+export const zAcceptEmailInvitationResponse = zEmailInvitationAcceptance;
 
 /**
  * The caller's sessions.

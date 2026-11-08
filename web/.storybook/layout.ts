@@ -2,6 +2,37 @@ import { expect } from 'storybook/test'
 
 export const phone = () => globalThis.matchMedia('(max-width: 700px)').matches
 
+type Insets = { top?: number; right?: number; bottom?: number; left?: number }
+const EDGES = ['top', 'right', 'bottom', 'left'] as const
+
+/**
+ * A notched phone's safe-area insets. A browser tab reports none, so a story
+ * sets the shell's `--safe-*` properties (app.css `:root`, which read
+ * `env(safe-area-inset-*)`) directly. Returns the restore for `beforeEach`.
+ */
+export function safeArea(insets: Insets): () => void {
+  const root = document.documentElement
+  const saved = EDGES.map((edge) => root.style.getPropertyValue(`--safe-${edge}`))
+  for (const edge of EDGES) root.style.setProperty(`--safe-${edge}`, `${String(insets[edge] ?? 0)}px`)
+  return () => EDGES.forEach((edge, index) => root.style.setProperty(`--safe-${edge}`, saved[index] ?? ''))
+}
+
+/**
+ * Chromium resolves `env()` inside a custom property when it reports it, so a
+ * story cannot read the mapping from the computed style: it reads the
+ * stylesheet's own `:root` rule instead and checks each `--safe-*` is wired to
+ * its `env(safe-area-inset-*)`.
+ */
+export function safeAreaIsWiredToEnv(): boolean {
+  const rulesOf = (sheet: CSSStyleSheet) => {
+    try { return [...sheet.cssRules] } catch { return [] } // a cross-origin sheet is unreadable
+  }
+  return [...document.styleSheets]
+    .flatMap(rulesOf)
+    .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule && rule.selectorText === ':root')
+    .some((rule) => EDGES.every((edge) => rule.style.getPropertyValue(`--safe-${edge}`).includes(`env(safe-area-inset-${edge}`)))
+}
+
 /**
  * The page column starts at its container's left edge (DESIGN.md: the
  * left-aligned page column, keeping its max width), never centred.

@@ -26,6 +26,7 @@ import { Field } from '../ui/Field.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
 import { Sep } from '../ui/Sep.tsx';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
+import { NamedId } from '../ui/NamedId.tsx';
 import {
   canClearMatrixCell,
   copyRequiresProtectedConfirmation,
@@ -416,7 +417,7 @@ export function MatrixRowEditor({
                         <dt>Updated</dt>
                         <dd>{row.cell?.updated_at === undefined ? 'No published value' : formatTimestamp(row.cell.updated_at)}</dd>
                       </div>
-                      <div><dt>Updated by</dt><dd className="mono">{row.cell?.updated_by ?? 'unknown'}</dd></div>
+                      <div><dt>Updated by</dt><dd>{row.cell?.updated_by === undefined ? 'unknown' : <NamedId id={row.cell.updated_by} name={row.cell.updated_by_name} />}</dd></div>
                       <div>
                         <dt>Revision</dt>
                         <dd>{row.signal?.changed_in_revision === undefined ? 'No change signal' : `r${String(row.signal.changed_in_revision)}`}</dd>

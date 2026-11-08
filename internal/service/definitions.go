@@ -86,10 +86,12 @@ type KeyDeletion struct {
 	LiveIn []string `json:"live_in"`
 }
 
-// EnvDeletion is one deleted environment with its live-occurrence count.
+// EnvDeletion is one deleted environment with its live-occurrence count and
+// the number of personal values the deletion removes.
 type EnvDeletion struct {
-	Name        string `json:"name"`
-	Occurrences int64  `json:"occurrences"`
+	Name           string `json:"name"`
+	Occurrences    int64  `json:"occurrences"`
+	PersonalValues int64  `json:"personal_values"`
 }
 
 // PlanDiff is the rendered plan preview: the structural diff plus the concrete
@@ -147,10 +149,13 @@ type LastApply struct {
 	PlanID    string
 	AppliedAt time.Time
 	AppliedBy string
-	Commit    string
-	Ref       string
-	Actor     string
-	Revision  int64
+	// AppliedByName names AppliedBy, which the settings view already
+	// discloses. Empty when unresolved.
+	AppliedByName string
+	Commit        string
+	Ref           string
+	Actor         string
+	Revision      int64
 }
 
 // DefinitionsSettings is the settings view.
@@ -270,7 +275,8 @@ func (s *Definitions) GetSettings(ctx context.Context, actor Actor, scope domain
 			return err
 		}
 		out.LastApply = lastApplyOf(last)
-		return nil
+		out.LastApply.AppliedByName, err = newPrincipalNames().label(ctx, az, domain.PrincipalID(last.AppliedBy))
+		return err
 	})
 	return out, err
 }
@@ -317,7 +323,8 @@ func (s *Definitions) SetSettings(ctx context.Context, actor Actor, scope domain
 			return err
 		}
 		out.LastApply = lastApplyOf(last)
-		return nil
+		out.LastApply.AppliedByName, err = newPrincipalNames().label(ctx, az, domain.PrincipalID(last.AppliedBy))
+		return err
 	})
 	return out, err
 }
@@ -330,6 +337,10 @@ func buildCurrentState(ctx context.Context, cat store.CatalogueReader, envs stor
 		return definitions.CurrentState{}, err
 	}
 	presence, err := cat.ListPresence(ctx, p)
+	if err != nil {
+		return definitions.CurrentState{}, err
+	}
+	personal, err := cat.PersonalRequired(ctx, p)
 	if err != nil {
 		return definitions.CurrentState{}, err
 	}
@@ -353,6 +364,7 @@ func buildCurrentState(ctx context.Context, cat store.CatalogueReader, envs stor
 		cur.KeyGroups = append(cur.KeyGroups, definitions.KeyGroup{ID: g.ID, Name: g.Name})
 	}
 	presenceByKey := indexPresenceByKey(presence)
+	personalByKey := indexPresenceByKey(personal)
 	for _, row := range keys {
 		decl, err := schema.ParseDeclaration([]byte(row.Declaration))
 		if err != nil {
@@ -365,6 +377,7 @@ func buildCurrentState(ctx context.Context, cat store.CatalogueReader, envs stor
 			Deprecated: row.Deprecated, DeprecationNote: row.DeprecationNote,
 			GroupID: row.GroupID, Declaration: decl,
 			Required: rules.Required, Forbidden: rules.Forbidden,
+			PersonalRequired: personalRequiredOf(row.ID, personalByKey[row.ID]),
 		})
 	}
 	return cur, nil
@@ -408,6 +421,10 @@ func bundleFromState(cur definitions.CurrentState, withIDs bool) definitions.Bun
 			Declaration: k.Declaration,
 			RequiredIn:  bundlePresence(k.Required, envNameByID),
 			ForbiddenIn: bundlePresence(k.Forbidden, envNameByID),
+		}
+		if k.PersonalRequired.Mode == schema.PresenceExplicit {
+			personal := bundlePresence(k.PersonalRequired, envNameByID)
+			key.PersonalRequiredIn = &personal
 		}
 		if withIDs {
 			key.ID = k.ID

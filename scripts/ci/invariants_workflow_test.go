@@ -117,7 +117,7 @@ func invariantsWorkflowErrors(raw, ci []byte) []error {
 		fail("pull_request types %v: base edits must not start head-only tests", trigger.Types)
 	}
 	wantPaths := []string{
-		"**.go", "go.mod", "go.sum", ".github/**", "scripts/**", "release/**",
+		"**.go", "go.mod", "go.sum", ".golangci.yml", ".github/**", ".githooks/**", "scripts/**", "release/**",
 		"internal/store/**", "internal/lint/testdata/**", ".goreleaser.yaml", "web/e2e/**", "web/playwright.config.ts",
 	}
 	if !reflect.DeepEqual(trigger.Paths, wantPaths) {

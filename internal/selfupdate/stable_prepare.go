@@ -98,7 +98,7 @@ func (i *Installer) prepareStableRelease(ctx context.Context, status updatecheck
 	if (expected == nil && known.Release.Sequence > identity.Sequence) || (known.Release.Sequence == identity.Sequence && known.Release != identity) {
 		return PreparedNightly{}, errors.New("selfupdate: stable rollback or equivocation refused")
 	}
-	destination := filepath.Join(i.config.StateDir, "stable-"+string(identity.ManifestSHA256)+"-"+runtime.GOOS+"-"+runtime.GOARCH)
+	destination := CachedReleaseDirectory(i.config.StateDir, identity)
 	if _, statErr := os.Lstat(destination); statErr == nil {
 		verified, verifyErr := verifyPreparedStableDirectory(destination, snapshot)
 		if verifyErr != nil || verified.Identity() != identity {

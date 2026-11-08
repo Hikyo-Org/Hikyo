@@ -115,6 +115,10 @@ operations:
   # hierarchy
   getOrg:                      {webui: org-settings}
   renameOrg:                   {webui: org-settings}
+  setOrgIdentity:              {webui: org-settings}
+  setOrgIdentityImage:         {webui: org-settings}
+  clearOrgIdentityImage:       {webui: org-settings}
+  getOrgIdentityImage:         {webui: org-settings, reach: path}
   deleteOrg:                   {webui: org-settings}
   listProjects:                {webui: projects}
   createProject:               {webui: projects}
@@ -122,6 +126,10 @@ operations:
   setOrgRetention:             {webui: org-settings}
   getProject:                  {webui: project-settings}
   renameProject:               {webui: project-settings}
+  setProjectIdentity:          {webui: project-settings}
+  setProjectIdentityImage:     {webui: project-settings}
+  clearProjectIdentityImage:   {webui: project-settings}
+  getProjectIdentityImage:     {webui: project-settings, reach: path}
   deleteProject:               {webui: project-settings}
   listEnvironments:            {webui: project-settings}
   createEnvironment:           {webui: project-settings}
@@ -156,6 +164,14 @@ operations:
   applyOrgTemplate:            {webui: members}
   inviteInstanceMember:        {webui: instance-members}
   inviteOrgMember:             {webui: members}
+  # Email invitation of an existing account (#1207): sent, listed and revoked
+  # from the Members page; previewed and accepted on the public
+  # /invitations/accept page, which needs the person's own signed-in session.
+  inviteOrgMemberByEmail:      {webui: members}
+  listOrgEmailInvitations:     {webui: members}
+  revokeOrgEmailInvitation:    {webui: members}
+  previewEmailInvitation:      {webui: invitation-accept}
+  acceptEmailInvitation:       {webui: invitation-accept}
   getInstanceRegistrationPolicy:    {webui: instance-members}
   putInstanceRegistrationPolicy:    {webui: instance-members}
   deleteInstanceRegistrationPolicy: {webui: instance-members}
@@ -283,6 +299,7 @@ operations:
   deleteOidcProvider:          {webui: instance-admin}
   getRetentionHealth:          {webui: instance-admin}
   getUpdateStatus:             {webui: instance-admin}
+  getSecurityMaintenance:      {webui: instance-admin}
   # Legacy apply is retired (#638); the UI communicates its unsupported result
   # through status and never sends this mutation to an older remote helper.
   requestInstanceUpdate:       {webui: instance-admin, via: [getUpdateStatus]}
@@ -541,6 +558,14 @@ operations:
   transitHMAC:            {webui: transit-keys}
   transitVerifyHMAC:      {webui: transit-keys}
 
+  listMyPersonalValues: {webui: personal-values}
+  setMyPersonalValue: {webui: personal-values}
+  deleteMyPersonalValue: {webui: personal-values}
+  revealMyPersonalValue: {webui: personal-values}
+  listPersonalValueMembers: {webui: key-detail}
+  deletePersonalValueMember: {webui: key-detail}
+  listPersonalValueCounts: {webui: matrix}
+  getPersonalOffboardingReport: {webui: offboarding-report}
   mintDeveloperCredential: {exception: bounded-developer-delegation}
   listMyDeveloperCredentials: {exception: bounded-developer-delegation}
   revokeAllMyDeveloperCredentials: {exception: bounded-developer-delegation}

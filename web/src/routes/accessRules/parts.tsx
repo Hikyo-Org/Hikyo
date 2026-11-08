@@ -71,7 +71,7 @@ function LabelList({ labels, word }: { labels: Labels; word: 'protected' | 'secr
   return joined(
     labels.map((item) => (
       <Fragment key={item.label}>
-        {item.label}
+        <bdi>{item.label}</bdi>
         {item.flag ? <Lock word={word} /> : null}
       </Fragment>
     )),
@@ -82,7 +82,7 @@ export function KeyLabel({ world, item }: { world: World; item: KeyItem }) {
   const { text, secret } = itemLabel(world, item);
   return (
     <>
-      {text}
+      <bdi>{text}</bdi>
       {secret ? <Lock word="secret" /> : null}
     </>
   );

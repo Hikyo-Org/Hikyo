@@ -2,6 +2,7 @@ export { CLILogin } from '../../routes/CLILogin.tsx';
 export { CLIReauth } from '../../routes/CLIReauth.tsx';
 export { EnrolmentGate } from '../../routes/EnrolmentGate.tsx';
 export { EstablishCredential } from '../../routes/EstablishCredential.tsx';
+export { InvitationAccept } from '../../routes/InvitationAccept.tsx';
 export { Login } from '../../routes/Login.tsx';
 export { OIDCDone } from '../../routes/OIDCDone.tsx';
 export { SAMLDone } from '../../routes/SAMLDone.tsx';

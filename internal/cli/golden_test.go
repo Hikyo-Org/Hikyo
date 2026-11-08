@@ -251,6 +251,7 @@ func TestExitCodeMatrix(t *testing.T) {
 		{"key declare with trailing content after the declaration", []string{"key", "declare", "key_x", "--declaration", `{"rule":{"type":"string"}} {"rule":{"type":"integer"}}`, "--instance", "unknown-ref"}, cli.ExitUsage},
 		// An impossible presence spelling is likewise caught client-side.
 		{"key declare with an empty environment id", []string{"key", "declare", "key_x", "--declaration", "{}", "--required-in", "env_a,,env_b", "--instance", "unknown-ref"}, cli.ExitUsage},
+		{"key declare with an empty personal environment id", []string{"key", "declare", "key_x", "--declaration", "{}", "--personal-required-in", "env_a,,env_b", "--instance", "unknown-ref"}, cli.ExitUsage},
 		{"stray positional on key list", []string{"key", "list", "stray", "--instance", "unknown-ref"}, cli.ExitUsage},
 		{"extra positional on key delete", []string{"key", "delete", "key_x", "typo", "--instance", "unknown-ref"}, cli.ExitUsage},
 		{"extra positional on revision rollback", []string{"revision", "rollback", "12", "typo", "--instance", "unknown-ref"}, cli.ExitUsage},

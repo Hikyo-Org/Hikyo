@@ -15,7 +15,15 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
-var errNoDrillCandidate = errors.New("scratch principal has no eligible existing credential-management grant")
+// ErrNoDrillCandidate reports that no principal in the restored scratch holds
+// credential management at an organisation scope, so the lifecycle cannot run.
+var ErrNoDrillCandidate = errors.New("scratch principal has no eligible existing credential-management grant")
+
+// ErrNoCredentialScope is the narrower case of ErrNoDrillCandidate in which a
+// principal holding instance configuration listed every organisation and each is
+// the instance's own protected configuration. No tenant scope exists to prove
+// credentials in. A principal that cannot list organisations establishes nothing.
+var ErrNoCredentialScope = fmt.Errorf("%w: the only organisation is the instance configuration", ErrNoDrillCandidate)
 
 // AutoCredentialProof selects one existing principal in the restored scratch
 // database, reconciles it and exercises the normal credential lifecycle. No
@@ -35,6 +43,7 @@ func (s *Recovery) AutoCredentialProof(ctx context.Context, kr *crypto.Keyring) 
 		return errors.New("automatic scratch credential proof requires 1 to 1024 pending principals")
 	}
 	slices.SortFunc(status.Pending, func(a, b authz.PrincipalRef) int { return strings.Compare(string(a.ID), string(b.ID)) })
+	onlyProtected := false
 	for _, candidate := range status.Pending {
 		var scope domain.Scope
 		// Reconciliation makes grants readable. If the principal is unsuitable,
@@ -51,6 +60,10 @@ func (s *Recovery) AutoCredentialProof(ctx context.Context, kr *crypto.Keyring) 
 				if len(grants) > 4096 {
 					return errors.New("scratch principal grant inventory exceeds automatic proof bound")
 				}
+				caller, err := LocalPrincipal(candidate.ID).resolve(ctx, az, time.Now().UTC())
+				if err != nil {
+					return err
+				}
 				eligible := make([]domain.Scope, 0)
 				for _, grant := range grants {
 					// Instance-only authority does not invent an org enumeration.
@@ -59,7 +72,10 @@ func (s *Recovery) AutoCredentialProof(ctx context.Context, kr *crypto.Keyring) 
 					}
 				}
 				if len(eligible) == 0 {
-					return errNoDrillCandidate
+					if err := noteOnlyProtectedOrgs(ctx, r, az, caller, &onlyProtected); err != nil {
+						return err
+					}
+					return ErrNoDrillCandidate
 				}
 				slices.SortFunc(eligible, func(a, b domain.Scope) int {
 					// Existing project scopes avoid requesting broader navigation.
@@ -74,10 +90,6 @@ func (s *Recovery) AutoCredentialProof(ctx context.Context, kr *crypto.Keyring) 
 					}
 					return strings.Compare(string(a.Project), string(b.Project))
 				})
-				caller, err := LocalPrincipal(candidate.ID).resolve(ctx, az, time.Now().UTC())
-				if err != nil {
-					return err
-				}
 				for _, grantScope := range eligible {
 					resolved, found, err := automaticDrillProject(ctx, r.Projects(), az, caller, grantScope)
 					if err != nil {
@@ -88,10 +100,13 @@ func (s *Recovery) AutoCredentialProof(ctx context.Context, kr *crypto.Keyring) 
 						return nil
 					}
 				}
-				return errNoDrillCandidate
+				if err := noteOnlyProtectedOrgs(ctx, r, az, caller, &onlyProtected); err != nil {
+					return err
+				}
+				return ErrNoDrillCandidate
 			})
 		}, candidate.ID)
-		if errors.Is(err, errNoDrillCandidate) {
+		if errors.Is(err, ErrNoDrillCandidate) {
 			continue
 		}
 		if err != nil {
@@ -99,7 +114,40 @@ func (s *Recovery) AutoCredentialProof(ctx context.Context, kr *crypto.Keyring) 
 		}
 		return s.MintAndRevoke(ctx, kr, candidate.ID, scope)
 	}
-	return errNoDrillCandidate
+	if onlyProtected {
+		return ErrNoCredentialScope
+	}
+	return ErrNoDrillCandidate
+}
+
+// noteOnlyProtectedOrgs sets *only when the caller may list organisations and
+// every one is the protected configuration. A refusal leaves it unset; a failed
+// listing aborts the drill rather than hiding behind ErrNoDrillCandidate.
+func noteOnlyProtectedOrgs(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity, only *bool) error {
+	if *only {
+		return nil
+	}
+	proof, err := az.Authorize(ctx, caller, authz.OpOrgList, domain.Scope{})
+	if errors.Is(err, domain.ErrNotFound) || errors.Is(err, domain.ErrUnauthorized) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	// The scratch holds an older source schema; List would read later columns.
+	orgs, err := r.Orgs().ListIDs(ctx, proof)
+	if err != nil {
+		return err
+	}
+	for _, org := range orgs {
+		// A source schema older than the self-config binding has no protected
+		// organisation, and the lookup fails there: leave it unset, so the drill refuses.
+		if protected, err := az.IsProtectedOrg(ctx, org); err != nil || !protected {
+			return nil
+		}
+	}
+	*only = true
+	return nil
 }
 
 // Resolve project eligibility before committing the candidate's reconciliation.
@@ -121,16 +169,16 @@ func automaticDrillProject(ctx context.Context, projects store.ProjectReader, az
 	if err != nil {
 		return domain.Scope{}, false, err
 	}
-	rows, err := projects.List(ctx, proof)
+	ids, err := projects.ListIDs(ctx, proof)
 	if err != nil {
 		return domain.Scope{}, false, err
 	}
-	if len(rows) > 4096 {
+	if len(ids) > 4096 {
 		return domain.Scope{}, false, errors.New("scratch project inventory exceeds automatic proof bound")
 	}
-	slices.SortFunc(rows, func(a, b store.Project) int { return strings.Compare(a.ID, b.ID) })
-	for _, project := range rows {
-		candidate := domain.Scope{Org: scope.Org, Project: domain.ProjectID(project.ID)}
+	slices.Sort(ids)
+	for _, id := range ids {
+		candidate := domain.Scope{Org: scope.Org, Project: domain.ProjectID(id)}
 		held, err := az.CallerHolds(ctx, caller, authz.OpServiceAccountCreate, candidate)
 		if err != nil {
 			return domain.Scope{}, false, err

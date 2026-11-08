@@ -179,8 +179,12 @@ func (s *Auth) ApplyPrivacySubject(ctx context.Context, principal, action, expec
 			if err != nil {
 				return err
 			}
-			if err := az.ErasePrivacyAccount(ctx, a.ID, principal, tombstone); err != nil {
+			deleted, err := az.ErasePrivacyAccount(ctx, a.ID, principal, tombstone)
+			if err != nil {
 				return fmt.Errorf("privacy erasure: %w", err)
+			}
+			if err := personalErasureEvent(ctx, az, principal, deleted); err != nil {
+				return err
 			}
 		}
 		if err := privacyEvent(ctx, az, a, typ); err != nil {
@@ -195,6 +199,23 @@ func (s *Auth) ApplyPrivacySubject(ctx context.Context, principal, action, expec
 	})
 	return out, err
 }
+
+// personalErasureEvent records the personal values an erasure deleted, by
+// count only: the erased subject keeps no key names.
+func personalErasureEvent(ctx context.Context, az *authz.TxAuthorizer, principal string, deleted int64) error {
+	if deleted == 0 {
+		return nil
+	}
+	e, err := newAuditEvent(ctx, audit.EventPersonalValueDeleted, "", audit.Object{Type: "principal", ID: principal}, audit.OutcomeSuccess, "",
+		audit.Payload{"owner_principal_id": principal, "cause": PersonalCauseErasure, "count": int(deleted)})
+	if err != nil {
+		return err
+	}
+	e.Actor.Class = audit.ActorBreakGlass
+	e.Origin = audit.OriginCLI
+	return az.RecordAuthEvent(ctx, e)
+}
+
 func privacyEvent(ctx context.Context, az *authz.TxAuthorizer, a authz.PrivacyAccountView, typ audit.EventType) error {
 	e, err := newAuditEvent(ctx, typ, "", audit.Object{Type: "account", ID: a.ID}, audit.OutcomeSuccess, "", audit.Payload{"target_principal": a.PrincipalID, "authority": "local-host"})
 	if err != nil {
@@ -238,6 +259,9 @@ func (s *Auth) CorrectPrivacySubject(ctx context.Context, principal, username, d
 			if unicode.IsControl(r) {
 				return PrivacyReceipt{}, errors.New("privacy: identity labels must not contain control characters")
 			}
+		}
+		if hasDirectionControl(value) {
+			return PrivacyReceipt{}, errors.New("privacy: identity labels must not contain text direction controls")
 		}
 	}
 	var out PrivacyReceipt

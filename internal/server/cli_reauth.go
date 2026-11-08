@@ -80,7 +80,7 @@ func (a *API) ShowCLIReauthTransaction(ctx context.Context, req apigen.ShowCLIRe
 	}
 	environments := make([]apigen.CLIReauthEnvironmentPolicy, 0, len(result.Environments))
 	for _, environment := range result.Environments {
-		environments = append(environments, apigen.CLIReauthEnvironmentPolicy{EnvironmentId: apigen.ID(environment.EnvironmentID), EffectiveWindowSeconds: environment.EffectiveWindowSeconds, RequiresWebauthn: environment.RequiresWebAuthn})
+		environments = append(environments, apigen.CLIReauthEnvironmentPolicy{OrgId: apigen.ID(environment.OrgID), ProjectId: apigen.ID(environment.ProjectID), EnvironmentId: apigen.ID(environment.EnvironmentID), EffectiveWindowSeconds: environment.EffectiveWindowSeconds, RequiresWebauthn: environment.RequiresWebAuthn})
 	}
 	keyIDs := make([]apigen.ID, 0, len(result.KeyIDs))
 	for _, keyID := range result.KeyIDs {
@@ -97,7 +97,7 @@ func (a *API) ShowCLIReauthTransaction(ctx context.Context, req apigen.ShowCLIRe
 	var developerTarget *apigen.DeveloperCredentialReauthIntent
 	if result.DeveloperCredential != nil {
 		v := result.DeveloperCredential
-		developerTarget = &apigen.DeveloperCredentialReauthIntent{LifetimeSeconds: int64(v.Lifetime / time.Second), ConsentCurrentAndFuture: apigen.DeveloperCredentialReauthIntentConsentCurrentAndFuture(v.ConsentCurrentAndFuture)}
+		developerTarget = &apigen.DeveloperCredentialReauthIntent{LifetimeSeconds: int64(v.Lifetime / time.Second), ConsentCurrentAndFuture: apigen.DeveloperCredentialReauthIntentConsentCurrentAndFuture(v.ConsentCurrentAndFuture), PersonalConsent: &v.PersonalValues}
 	}
 	return apigen.ShowCLIReauthTransaction200JSONResponse{DeveloperCredential: developerTarget, SelfConfig: target, State: result.State, Purpose: apigen.CLIReauthTransactionPurpose(result.Purpose), Operation: apigen.CLIReauthTransactionOperation(result.Operation), Environments: environments, KeyIds: keyIDs, RedirectUri: result.RedirectURI, ExpiresAt: result.ExpiresAt}, nil
 }

@@ -620,6 +620,7 @@ type DeveloperCredential struct {
 	CreatedAt            pgtype.Timestamptz
 	ExpiresAt            pgtype.Timestamptz
 	RevokedAt            pgtype.Timestamptz
+	PersonalConsent      int32
 }
 
 type DeveloperCredentialPolicy struct {
@@ -831,6 +832,13 @@ type KeyGroup struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type KeyPersonalRequiredEnvironment struct {
+	OrgID         string
+	ProjectID     string
+	KeyID         string
+	EnvironmentID string
+}
+
 type KeyPresenceEnvironment struct {
 	OrgID         string
 	ProjectID     string
@@ -997,6 +1005,24 @@ type Org struct {
 	RetentionRevisionCount int64
 	Origin                 string
 	RegistrationPolicyID   pgtype.Text
+	IdentityHue            int32
+	IdentityMark           pgtype.Text
+	IdentityImage          []byte
+	IdentityImageType      pgtype.Text
+	IdentityImageVersion   pgtype.Text
+}
+
+type OrgEmailInvitation struct {
+	ID                 string
+	OrgID              string
+	Email              string
+	Template           string
+	InviterPrincipalID string
+	AccountID          pgtype.Text
+	TokenVerifier      []byte
+	CredentialEpoch    int64
+	CreatedAt          pgtype.Timestamptz
+	ExpiresAt          pgtype.Timestamptz
 }
 
 type PasswordCredential struct {
@@ -1026,6 +1052,29 @@ type PendingChange struct {
 	Source             string
 	Secret             bool
 	MaterialSecret     bool
+}
+
+type PersonalValue struct {
+	ID               string
+	OrgID            string
+	ProjectID        string
+	EnvironmentID    string
+	KeyID            string
+	OwnerPrincipalID string
+	Ciphertext       []byte
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	SuspendedAt      pgtype.Timestamptz
+}
+
+type PersonalValueNotice struct {
+	OrgID            string
+	ProjectID        string
+	EnvironmentID    string
+	KeyName          string
+	OwnerPrincipalID string
+	Cause            string
+	CreatedAt        pgtype.Timestamptz
 }
 
 type PinGeneration struct {
@@ -1140,6 +1189,11 @@ type Project struct {
 	MachineRevealGeneration int64
 	KeyLimitOverride        pgtype.Int8
 	KeyLimitRevision        int64
+	IdentityHue             int32
+	IdentityMark            pgtype.Text
+	IdentityImage           []byte
+	IdentityImageType       pgtype.Text
+	IdentityImageVersion    pgtype.Text
 }
 
 type ProjectSchemaRevision struct {

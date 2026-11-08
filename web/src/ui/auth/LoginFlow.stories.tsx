@@ -2,6 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { expect, userEvent, waitFor } from 'storybook/test';
 
+import { safeArea } from '../../../.storybook/layout.ts';
+
 import { LoginForm, type ProviderIdentity, type SignInBusy, type SignInIntent } from './LoginForm.tsx';
 import { SecondFactorChallenge } from './SecondFactorChallenge.tsx';
 import { SecondFactorSetup, type SetupStep } from './SecondFactorSetup.tsx';
@@ -319,5 +321,26 @@ export const SignUpThroughProvider: FlowStory = {
     await userEvent.click(canvas.getByRole('button', { name: 'Continue to GitHub' }));
     await expect(await canvas.findByRole('heading', { name: 'Signed in' })).toBeVisible();
     await expect(canvas.getByText('Redirected to GitHub with intent sign-up')).toBeVisible();
+  },
+};
+
+const NOTCH = { top: 47, right: 20, bottom: 34, left: 30 };
+
+/**
+ * The signed-out screens have no chrome to carry the safe-area insets: `.login`
+ * is the whole page, and its card stays clear of a notch, a rounded corner and
+ * the home indicator.
+ */
+export const PhoneClearsSafeArea: FlowStory = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  beforeEach: () => safeArea(NOTCH),
+  play: async ({ canvas, canvasElement }) => {
+    const card = (await canvas.findByRole('button', { name: 'Password' })).closest<HTMLElement>('.login__card')!;
+    const box = card.getBoundingClientRect();
+    await expect(box.top).toBeGreaterThanOrEqual(NOTCH.top);
+    await expect(box.left).toBeGreaterThanOrEqual(NOTCH.left);
+    await expect(window.innerWidth - box.right).toBeGreaterThanOrEqual(NOTCH.right);
+    const page = canvasElement.querySelector<HTMLElement>('.login')!;
+    await expect(Number.parseFloat(getComputedStyle(page).paddingBottom)).toBeGreaterThanOrEqual(NOTCH.bottom);
   },
 };

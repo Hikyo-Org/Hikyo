@@ -423,6 +423,9 @@ var pinnedContractSurface = map[string]bool{
 	// Reads the fixed Hikyo release authority only; no request member selects
 	// or relays an arbitrary upstream, and the response is public metadata.
 	"GET /api/v1/instance/update-status": true,
+	// Reads one operator-configured local file; no request member selects the
+	// path or relays anything on a caller's behalf.
+	"GET /api/v1/instance/security-maintenance": true,
 	// The public API controls only this instance's local Unix-socket helper.
 	// A remote WebUI reaches its remote Hikyo origin directly; no Hikyo server
 	// fetches or forwards an update request on a caller's behalf.
@@ -470,6 +473,11 @@ var pinnedContractSurface = map[string]bool{
 	"POST /api/v1/accounts/{principal}/credential-reset":                                       true,
 	"POST /api/v1/instance/invitations":                                                        true,
 	"POST /api/v1/orgs/{org}/invitations":                                                      true,
+	"POST /api/v1/orgs/{org}/email-invitations":                                                true,
+	"GET /api/v1/orgs/{org}/email-invitations":                                                 true,
+	"DELETE /api/v1/orgs/{org}/email-invitations/{invitation}":                                 true,
+	"POST /api/v1/me/invitations/preview":                                                      true,
+	"POST /api/v1/me/invitations/accept":                                                       true,
 	"GET /api/v1/instance/registration-policy":                                                 true,
 	"PUT /api/v1/instance/registration-policy":                                                 true,
 	"DELETE /api/v1/instance/registration-policy":                                              true,
@@ -605,6 +613,15 @@ var pinnedContractSurface = map[string]bool{
 	"DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}":      true,
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/reveal":       true,
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}/reveal": true,
+	// Personal values (#1235) read and write this instance's own rows only.
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values":                           true,
+	"PUT /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}":                     true,
+	"DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}":                  true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/reveal":             true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members":             true,
+	"DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members/{member}": true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-value-counts":                     true,
+	"GET /api/v1/orgs/{org}/projects/{project}/personal-offboarding-report/{member}":                                 true,
 	// Initial drafts stay local and never fetch data from another instance.
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}/initialize": true,
 	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/reveal-window":            true,
@@ -726,6 +743,17 @@ var pinnedContractSurface = map[string]bool{
 	// relays or forwards data on the caller's behalf.
 	"GET /api/v1/orgs/{org}/projects/{project}/capacity": true,
 	"PUT /api/v1/orgs/{org}/projects/{project}/capacity": true,
+
+	// Chrome identity (hue, mark, uploaded avatar) is stored in this instance's
+	// own org and project rows. Nothing is fetched, relayed or forwarded.
+	"PUT /api/v1/orgs/{org}/identity":                             true,
+	"GET /api/v1/orgs/{org}/identity/image":                       true,
+	"PUT /api/v1/orgs/{org}/identity/image":                       true,
+	"DELETE /api/v1/orgs/{org}/identity/image":                    true,
+	"PUT /api/v1/orgs/{org}/projects/{project}/identity":          true,
+	"GET /api/v1/orgs/{org}/projects/{project}/identity/image":    true,
+	"PUT /api/v1/orgs/{org}/projects/{project}/identity/image":    true,
+	"DELETE /api/v1/orgs/{org}/projects/{project}/identity/image": true,
 }
 
 func TestContractRouteSurfaceIsExhaustivelyPinned(t *testing.T) {

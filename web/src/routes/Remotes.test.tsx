@@ -109,6 +109,7 @@ describe('UpdateJobStatus', () => {
     const alert = rendered.container.querySelector('[role="alert"]');
     expect(alert).not.toBeNull();
     expect(alert?.textContent).toContain('job_9');
+    expect(alert?.textContent).toContain('Update to 1.4.0');
     expect(alert?.textContent).toContain('rollback-failed');
     expect(alert?.textContent).toContain('(rollback)');
     expect(alert?.textContent).toContain('health_probe');

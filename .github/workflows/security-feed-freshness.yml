@@ -1,0 +1,38 @@
+name: security-feed-freshness
+
+# Watches what installations read, separately from the workflow that publishes it. Inert
+# until the repository variable HIKYO_SECURITY_FEED_ENABLED is 'true'. This shares GitHub
+# with the publisher, so the runbook also names a check from outside GitHub.
+on:
+  schedule:
+    - cron: '43 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  freshness:
+    if: vars.HIKYO_SECURITY_FEED_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: scripts/ci/check-security-feed-freshness.sh
+      - name: Open one issue while the feed is not fresh
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title='Security feed is not fresh'
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq 'length')
+          if [ "$open" = 0 ]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" \
+              --body "Installations stop trusting the feed when \`timestamp.json\` expires, and then apply no security update. See the [failed check]($RUN_URL) and the runbook section Keeping the feed alive."
+          fi

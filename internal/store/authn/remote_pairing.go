@@ -264,7 +264,7 @@ func (r *Resolver) restorePairingNextEpoch(ctx context.Context, next int64) (int
 		return 0, err
 	}
 	if n == 0 {
-		return next, nil
+		return r.restoreEmailInvitationNextEpoch(ctx, next)
 	}
 	if n != 2 {
 		return 0, fmt.Errorf("authn: incomplete remote pairing schema")
@@ -282,7 +282,7 @@ func (r *Resolver) restorePairingNextEpoch(ctx context.Context, next int64) (int
 	if err != nil {
 		return 0, err
 	}
-	return max(next, v), nil
+	return r.restoreEmailInvitationNextEpoch(ctx, max(next, v))
 }
 
 func nullablePGTime(t pgtype.Timestamptz) time.Time {

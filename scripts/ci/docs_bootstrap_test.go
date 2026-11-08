@@ -78,7 +78,7 @@ if [ "$1" = -p ]; then printf 'pnpm@11.24.0\n'; fi
 			for _, tool := range []string{"corepack", "pnpm"} {
 				write(filepath.Join(bin, tool), "#!/bin/sh\nprintf '"+tool+" %s\\n' \"$*\" >>\"$FIXTURE/calls\"\n")
 			}
-			for _, name := range []string{"install-corepack.sh", "check-doc-status_test.sh", "check-oss-policy_test.sh", "check-docs-live_test.sh", "check-fallback-channel-test_test.sh"} {
+			for _, name := range []string{"install-corepack.sh", "check-doc-status_test.sh", "check-oss-policy_test.sh", "check-docs-live_test.sh", "check-fallback-channel-test_test.sh", "merge-security-feed_test.sh", "check-security-feed-freshness_test.sh"} {
 				write(filepath.Join(scripts, name), "#!/bin/sh\nprintf '"+name+"\\n' >>\"$FIXTURE/calls\"\n")
 			}
 			ci := "true"

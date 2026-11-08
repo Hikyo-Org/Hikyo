@@ -1778,10 +1778,11 @@ function TargetDetail({
                 These exist at the destination but Hikyo does not own them. Tick exactly the ones to
                 bring under management; nothing is adopted that you did not tick.
               </p>
-              {detail.data.conflicts.map((artifact) => (
+              {detail.data.conflicts.map((artifact, index, all) => (
                 <ConflictArtifact
                   key={artifact.id}
                   artifact={artifact}
+                  label={all.length === 1 ? 'Conflicting names' : `Conflicting names ${index + 1} of ${all.length}`}
                   ticked={ticked}
                   onToggle={(name) =>
                     setTicked((current) => {
@@ -1893,12 +1894,14 @@ function PlanChanges({ plan }: { readonly plan: AdapterPlan }) {
 
 function ConflictArtifact({
   artifact,
+  label,
   ticked,
   onToggle,
   busy,
   onAdopt,
 }: {
   readonly artifact: AdapterConflictArtifact;
+  readonly label: string;
   readonly ticked: ReadonlySet<string>;
   readonly onToggle: (name: string) => void;
   readonly busy: boolean;
@@ -1907,7 +1910,7 @@ function ConflictArtifact({
   const chosen = artifact.entries.filter((entry) => ticked.has(`${entry.surface}:${entry.effective_name}`));
   return (
     <div className="adapters__artifact">
-      <ul className="adapters__conflicts" aria-label={`Conflict artifact ${artifact.id}`}>
+      <ul className="adapters__conflicts" aria-label={label}>
         {artifact.entries.map((entry) => {
           const name = `${entry.surface}:${entry.effective_name}`;
           return (

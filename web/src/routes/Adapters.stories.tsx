@@ -53,15 +53,13 @@ const adapter = {
   id: ADAPTER, provider: 'github-actions', origin: 'https://api.github.com', credential_present: true, credential_set_at: '2026-10-01T08:00:00Z',
   credential_expires_at: null, authority_principal_id: 'prn_123e4567-e89b-12d3-a456-426614174023', state: 'active', created_at: '2026-10-01T08:00:00Z', targets: [target],
 } satisfies z.input<typeof zAdapter>;
+const targetDetail = {
+  target, conflicts: [],
+  mapping: [{ key_id: KEY, canonical_name: 'STRIPE_SECRET', surface: 'secret', effective_name: 'PAYMENTS_STRIPE_SECRET' }],
+} satisfies z.input<typeof zAdapterTargetDetail>;
 const withTarget = [
   { url, body: { items: [adapter] } satisfies z.input<typeof zAdapterList> },
-  {
-    url: `${base}/adapter-targets/${TARGET}`,
-    body: {
-      target, conflicts: [],
-      mapping: [{ key_id: KEY, canonical_name: 'STRIPE_SECRET', surface: 'secret', effective_name: 'PAYMENTS_STRIPE_SECRET' }],
-    } satisfies z.input<typeof zAdapterTargetDetail>,
-  },
+  { url: `${base}/adapter-targets/${TARGET}`, body: targetDetail },
   {
     url: `${base}/environments`,
     body: {
@@ -81,6 +79,31 @@ export const TargetDetailPanel: Story = {
     const panel = await canvas.findByRole('complementary', { name: 'Target detail' });
     await expect(await within(panel).findByRole('list', { name: 'Member keys' })).toHaveTextContent('STRIPE_SECRET');
     await expect(within(panel).getByText(/secrets\.PAYMENTS_STRIPE_SECRET/)).toBeVisible();
+  },
+};
+
+const CONFLICT = 'cfl_123e4567-e89b-12d3-a456-426614174030';
+
+// A conflict list is named for what it holds, not by its artifact's ID.
+export const ConflictsNamedForTheirContents: Story = {
+  parameters: { app: { responses: [
+    {
+      url: `${base}/adapter-targets/${TARGET}`,
+      body: {
+        ...targetDetail,
+        conflicts: [{
+          id: CONFLICT, destination_id: 42, repository_id: 42, target_generation: 1, created_at: '2026-10-12T08:00:00Z',
+          entries: [{ surface: 'secret', effective_name: 'PAYMENTS_STRIPE_SECRET' }],
+        }],
+      } satisfies z.input<typeof zAdapterTargetDetail>,
+    },
+    ...withTarget.filter((response) => response.url !== `${base}/adapter-targets/${TARGET}`),
+  ] } },
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: /staging/ }));
+    const panel = await canvas.findByRole('complementary', { name: 'Target detail' });
+    await expect(await within(panel).findByRole('list', { name: 'Conflicting names' })).toHaveTextContent('secret:PAYMENTS_STRIPE_SECRET');
+    await expect(panel).not.toHaveTextContent(CONFLICT);
   },
 };
 

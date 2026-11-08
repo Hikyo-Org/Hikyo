@@ -15,9 +15,12 @@ on:
       - '**.go'
       - go.mod
       - go.sum
+      - .golangci.yml
       - '.github/**'
+      - '.githooks/**'
       - 'scripts/**'
       - 'release/**'
+      # `.githooks/**`: the pre-push hook fixture runs inside ./scripts/ci.
       # Non-Go inputs these suites read: the lint driver checks the store's SQL,
       # migrations and upgrade genesis plus its embedded reviewed pins, and the
       # CI policy tests read the release configuration and the web e2e inventory.

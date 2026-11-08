@@ -31,6 +31,7 @@ import {
   type MatrixSignalCell,
 } from '../api/matrix.ts';
 import type { MatrixRef } from '../api/keys.ts';
+import { usePersonalMarks, type PersonalMark } from '../api/personal.ts';
 import {
   type EnvironmentList,
   type ValueCell,
@@ -161,6 +162,9 @@ export function Matrix({
 
   const environmentRows = matrix.environmentRows;
   const environments = matrix.environmentItems;
+  const environmentIds = useMemo(() => environments.map((environment) => environment.id), [environments]);
+  // Personal marks ride their own queries: a failed read means no mark, never a degraded column.
+  const personalMarks = usePersonalMarks(ref, environmentIds);
   // Per-environment degradation (#451): a column whose reads failed or were
   // denied. The catalogue loaded, so the grid renders; these columns show a
   // header banner and non-interactive cells instead of blanking the whole grid.
@@ -505,12 +509,14 @@ export function Matrix({
         const id = cellID(key.id, environment.id);
         const { state, stateGlyph } = cellState(valuesByCell.get(id), key, problemsByCell.get(id) ?? []);
         // A state glyph and its space take about two mono characters.
-        const text = stateGlyph === null ? state : `${state}--`;
+        const mark = personalMarks.get(id)?.text;
+        // The personal mark follows the state in the same cell, so the column holds both.
+        const text = `${stateGlyph === null ? state : `${state}--`}${mark === undefined ? '' : ` ${mark}`}`;
         if (text.length > longest.length) longest = text;
       }
       return [environment.id, longest];
     }));
-  }, [degradedByEnvironment, environments, groups, problemsByCell, valuesByCell]);
+  }, [degradedByEnvironment, environments, groups, personalMarks, problemsByCell, valuesByCell]);
   const pendingByEnvironment = useMemo(() => {
     const pending = new Map<string, readonly MatrixPendingEntry[]>();
     for (const row of environmentRows) {
@@ -1366,6 +1372,7 @@ export function Matrix({
                                 signal={signalsByCell.get(id)}
                                 draft={draftsByVersion.get(signalsByCell.get(id)?.pending?.versionId ?? "")}
                                 problems={problemsByCell.get(id) ?? []}
+                                personal={personalMarks.get(id)}
                                 onOpen={() =>
                                   setSelection({ keyId: key.id, environmentId: environment.id })
                                 }
@@ -1435,7 +1442,7 @@ export function Matrix({
             );
             if (degradedChange !== undefined) {
               throw new Error(
-                `cannot apply a change to the degraded environment ${degradedChange.environmentId}`,
+                `cannot apply a change to the degraded environment ${environments.find((candidate) => candidate.id === degradedChange.environmentId)?.name ?? degradedChange.environmentId}`,
               );
             }
             let normalizedCount = 0;
@@ -1795,6 +1802,7 @@ function MatrixCell({
   signal,
   draft,
   problems,
+  personal,
   onOpen,
 }: {
   cell: ValueCell | undefined;
@@ -1803,6 +1811,8 @@ function MatrixCell({
   signal: MatrixSignalCell | undefined;
   draft: MatrixPendingDraft | undefined;
   problems: readonly { readonly kind: string; readonly message: string }[];
+  /** Personal values for this cell: counts for a `manage-members` holder, otherwise the caller's own state. */
+  personal?: PersonalMark | undefined;
   onOpen: () => void;
 }) {
   const invalidDraft = draft?.advisory?.valid === false;
@@ -1830,6 +1840,7 @@ function MatrixCell({
     otherDraft ? 'another editor has a draft here' : null,
     invalidDraft ? 'your draft is invalid' : null,
     validationDeferred ? 'template schema validated at fetch' : null,
+    personal?.words ?? null,
   ].filter((word): word is string => word !== null);
   const label = `${keyRecord.name} in ${environment.name}: ${stateGlyph === null ? '' : 'problem, '}${state}${signalWords.length === 0 ? '' : `, ${signalWords.join(', ')}`}`;
 
@@ -1845,6 +1856,7 @@ function MatrixCell({
           {stateGlyph === null ? null : <><Glyph name={stateGlyph} /> </>}
           {state}
         </span>
+        {personal === undefined ? null : <span className="matrix-cell__personal" aria-hidden="true">{personal.text}</span>}
         {draftSense === null ? null : <span className="visually-hidden">draft</span>}
         {changedRevision === undefined ? null : (
           <span
@@ -1914,7 +1926,7 @@ function MatrixLegend() {
           <dd>a secret is set; <Glyph name="lock" label="lock" /> marks the key. Open the cell to reveal it, if permitted</dd>
           <dt className="mono">· absent</dt>
           <dd>not set here, so nothing is delivered</dd>
-          <dt className="mono"><Glyph name="alert" label="alert" /> required · absent</dt>
+          <dt className="mono"><Glyph name="alert" label="alert" /> required ·&nbsp;absent</dt>
           <dd>required in this environment and absent: publish is blocked</dd>
           <dt className="mono"><Glyph name="cross" label="cross" /> value</dt>
           <dd>the value is set but fails its declaration</dd>
@@ -1924,6 +1936,12 @@ function MatrixLegend() {
           <dd>an unpublished draft of your own</dd>
           <dt className="mono"><Glyph name="draft" label="another editor's draft" /></dt>
           <dd>another editor has a draft here</dd>
+          <dt className="mono">personal</dt>
+          <dd>your own value replaces the shared one when you run a program; <span className="mono">· missing</span>, <span className="mono">· removed</span> or <span className="mono">· suspended</span> say why it does not</dd>
+          <dt className="mono">3 personal</dt>
+          <dd>for whoever manages members: how many people hold their own value here</dd>
+          <dt className="mono">personal · 11/14</dt>
+          <dd>a personal value is required: how many of the people who can read and reveal here hold one</dd>
         </dl>
         <p>Choose any cell to inspect or edit it.</p>
       </div>

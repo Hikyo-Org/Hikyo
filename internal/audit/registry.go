@@ -176,7 +176,12 @@ const (
 	// instance-scoped org enumeration below.
 	EventOrgCreated EventType = "settings.org_created"
 	EventOrgRenamed EventType = "settings.org_renamed"
-	EventOrgDeleted EventType = "settings.org_deleted"
+	// settings.*_identity_changed records one edit of the chrome identity (hue,
+	// mark, uploaded image). Previous and new hue, mark and image content-hash
+	// version; NEVER image bytes.
+	EventOrgIdentityChanged     EventType = "settings.org_identity_changed"
+	EventProjectIdentityChanged EventType = "settings.project_identity_changed"
+	EventOrgDeleted             EventType = "settings.org_deleted"
 	// settings.org_read covers the instance-scoped org enumeration. The ADR's
 	// default-deny rule refuses `audited: none` to instance-class
 	// operations, and that is an operator read of cross-tenant metadata —
@@ -237,6 +242,22 @@ const (
 	// lives on the scope's trail so an org administrator can answer "who
 	// invited whom" without instance access.
 	EventMemberInvited EventType = "member.invited"
+	// member.email_invited, member.email_invitation_revoked and
+	// member.email_invitation_accepted are the organisation-trail events of the
+	// email invitation of an existing account (#1207). They carry only what the
+	// administrator typed (address and template) and the acceptance's own
+	// facts; none of them reveals whether the address matched an account. The
+	// instance trail records that: member.email_invitation_dispatch (written in
+	// the send transaction for every send, matched or not),
+	// member.email_invitation_mail_outcome (the background send's result) and
+	// member.email_invitation_refused (the cause of a uniform preview or accept
+	// refusal).
+	EventMemberEmailInvited              EventType = "member.email_invited"
+	EventMemberEmailInvitationRevoked    EventType = "member.email_invitation_revoked"
+	EventMemberEmailInvitationAccepted   EventType = "member.email_invitation_accepted"
+	EventMemberEmailInvitationDispatch   EventType = "member.email_invitation_dispatch"
+	EventMemberEmailInvitationMailResult EventType = "member.email_invitation_mail_outcome"
+	EventMemberEmailInvitationRefused    EventType = "member.email_invitation_refused"
 	// registration.* (#606, audit-model banner 2026-09-03). The policy events
 	// land on the scope's trail (tenant for an org policy, instance for the
 	// instance policy) and carry the authority reassignment every edit makes.
@@ -454,6 +475,18 @@ const (
 	// Ordinary config exports remain unaudited; per-key export disclosure records
 	// remain exclusive to secrets.
 	EventValuesExported EventType = "disclosure.values_exported"
+	// Personal values (#1235, personal-values ADR, Audit and limits). None
+	// carries plaintext or a fingerprint. `owner_principal_id` names whose
+	// value it was; the actor is the event's principal.
+	EventPersonalValueSet         EventType = "personal_value.set"
+	EventPersonalValueRevealed    EventType = "personal_value.revealed"
+	EventPersonalValueDelivered   EventType = "personal_value.delivered"
+	EventPersonalValueDeleted     EventType = "personal_value.deleted"
+	EventPersonalValueHoldersRead EventType = "personal_value.holders_read"
+	// counts_read and offboarding_report_read are metadata reads under
+	// manage-members (and audit-read for the report): names and counts only.
+	EventPersonalValueCountsRead       EventType = "personal_value.counts_read"
+	EventPersonalOffboardingReportRead EventType = "personal_value.offboarding_report_read"
 	// value.staged records an edit landing in the actor's own WORKING STATE
 	// (#51). It is deliberately its own type rather than a `value.set` with a
 	// flag: a draft delivers nothing, so an investigator asking "when did this
@@ -1181,7 +1214,7 @@ var registry = map[EventType]TypeSpec{
 			// oracle the response deliberately is not. `purpose` is a claim
 			// refusal (#610): a recovery-issued authority, or an account that
 			// already holds a credential.
-			"cause": {Kind: KindString, Required: true, Enum: []string{"malformed", "unknown", "consumed", "expired", "epoch-superseded", "purpose"}},
+			"cause": {Kind: KindString, Required: true, Enum: []string{"malformed", "unknown", "consumed", "expired", "epoch-superseded", "purpose", "linked-identity"}},
 		},
 	},
 	EventAuthThrottleCrossed: {
@@ -1581,10 +1614,12 @@ var registry = map[EventType]TypeSpec{
 	//
 	// A rename carries BOTH names: "renamed to prod" without the previous name
 	// makes the trail unable to answer what the operator actually changed.
-	EventOrgRenamed:     hierarchyEvent(renameSchema("name")),
-	EventOrgDeleted:     hierarchyEvent(Schema{"name": {Kind: KindFreeText, Required: true}}),
-	EventProjectRenamed: hierarchyEvent(renameSchema("name")),
-	EventProjectDeleted: hierarchyEvent(Schema{"name": {Kind: KindFreeText, Required: true}}),
+	EventOrgRenamed:             hierarchyEvent(renameSchema("name")),
+	EventOrgIdentityChanged:     hierarchyEvent(identitySchema()),
+	EventProjectIdentityChanged: hierarchyEvent(identitySchema()),
+	EventOrgDeleted:             hierarchyEvent(Schema{"name": {Kind: KindFreeText, Required: true}}),
+	EventProjectRenamed:         hierarchyEvent(renameSchema("name")),
+	EventProjectDeleted:         hierarchyEvent(Schema{"name": {Kind: KindFreeText, Required: true}}),
 	EventEnvParameterChanged: hierarchyEvent(Schema{
 		"name":    {Kind: KindFreeText, Required: true},
 		"pattern": {Kind: KindFreeText},
@@ -1634,6 +1669,9 @@ var registry = map[EventType]TypeSpec{
 		"schema_revision":  {Kind: KindInt, Required: true},
 		"rules_changed":    {Kind: KindBool, Required: true},
 		"presence_changed": {Kind: KindBool, Required: true},
+		// The `personal_required_in` setting (#1235). Optional: events
+		// recorded before it existed carry only `presence_changed`.
+		"personal_required_changed": {Kind: KindBool},
 	}),
 	EventKeyMetadataChanged: hierarchyEvent(Schema{
 		"name":      {Kind: KindFreeText, Required: true},
@@ -1734,6 +1772,85 @@ var registry = map[EventType]TypeSpec{
 		"name":           {Kind: KindFreeText, Required: true},
 		"classification": {Kind: KindString, Required: true},
 	}),
+	EventPersonalValueSet: hierarchyEvent(Schema{
+		"key_id":             {Kind: KindString, Required: true},
+		"name":               {Kind: KindFreeText, Required: true},
+		"owner_principal_id": {Kind: KindString, Required: true},
+	}),
+	EventPersonalValueRevealed: {
+		SchemaVersion: 1,
+		Retention:     RetentionAccess,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"key_id":             {Kind: KindString, Required: true},
+			"name":               {Kind: KindFreeText, Required: true},
+			"owner_principal_id": {Kind: KindString, Required: true},
+		},
+	},
+	// Who holds a personal value for a key is metadata an administrator reads
+	// under manage-members, so the read is on the tenant trail like grant lists.
+	EventPersonalValueHoldersRead: {
+		SchemaVersion: 1,
+		Retention:     RetentionAccess,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"key_id": {Kind: KindString, Required: true},
+			"name":   {Kind: KindFreeText, Required: true},
+			"count":  {Kind: KindInt, Required: true},
+		},
+	},
+	EventPersonalValueCountsRead: {
+		SchemaVersion: 1,
+		Retention:     RetentionAccess,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"keys": {Kind: KindInt, Required: true},
+		},
+	},
+	EventPersonalOffboardingReportRead: {
+		SchemaVersion: 1,
+		Retention:     RetentionAccess,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"subject_principal_id": {Kind: KindString, Required: true},
+			"received":             {Kind: KindInt, Required: true},
+			"service_accounts":     {Kind: KindInt, Required: true},
+		},
+	},
+	// One per key per delivery, under the fetch envelope's correlation.
+	EventPersonalValueDelivered: {
+		SchemaVersion: 1,
+		Retention:     RetentionAccess,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"key":                {Kind: KindFreeText, Required: true},
+			"owner_principal_id": {Kind: KindString, Required: true},
+			"credential_id":      {Kind: KindString, Required: true},
+			"scope":              {Kind: KindString, Required: true},
+		},
+	},
+	// cause is `owner` when the owner removed it, else the notice cause. A
+	// tenant record names one key; the instance record of a qualification
+	// purge or a privacy erasure (cause `erasure`) counts every value the
+	// owner lost across projects instead.
+	EventPersonalValueDeleted: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true, TrailInstance: true},
+		Schema: Schema{
+			"key_id":             {Kind: KindString},
+			"name":               {Kind: KindFreeText},
+			"count":              {Kind: KindInt},
+			"owner_principal_id": {Kind: KindString, Required: true},
+			"cause":              {Kind: KindString, Required: true},
+		},
+	},
 	// cell | diff | copy | clone | export | delivery | offline-serve — where
 	// the plaintext went. Never what it was. Offline-only provenance fields
 	// preserve the serving credential even when it has since been revoked.
@@ -2039,6 +2156,79 @@ var registry = map[EventType]TypeSpec{
 			"grants_created": {Kind: KindInt, Required: true},
 			"authority_id":   {Kind: KindString, Required: true},
 			"delivery":       {Kind: KindString, Required: true, Enum: []string{"file", "terminal", "stdout", "response"}},
+		},
+	},
+	EventMemberEmailInvited: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"invitation_id": {Kind: KindString, Required: true},
+			"email":         {Kind: KindFreeText, Required: true},
+			"template":      {Kind: KindString, Required: true},
+			"expires_at":    {Kind: KindString, Required: true},
+		},
+	},
+	EventMemberEmailInvitationRevoked: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"invitation_id": {Kind: KindString, Required: true},
+			"email":         {Kind: KindFreeText, Required: true},
+		},
+	},
+	EventMemberEmailInvitationAccepted: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"invitation_id":  {Kind: KindString, Required: true},
+			"principal_id":   {Kind: KindString, Required: true},
+			"account_id":     {Kind: KindString, Required: true},
+			"template":       {Kind: KindString, Required: true},
+			"grants_created": {Kind: KindInt, Required: true},
+		},
+	},
+	EventMemberEmailInvitationDispatch: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeIntent: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"invitation_id": {Kind: KindString, Required: true},
+			"org_id":        {Kind: KindString, Required: true},
+			"matched":       {Kind: KindBool, Required: true},
+		},
+	},
+	EventMemberEmailInvitationMailResult: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true, OutcomeFailure: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"intent_id":     {Kind: KindString, Required: true},
+			"invitation_id": {Kind: KindString, Required: true},
+			// mail_sent is false for an unmatched address, which is never dialled.
+			"mail_sent": {Kind: KindBool, Required: true},
+		},
+	},
+	EventMemberEmailInvitationRefused: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeFailure: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"cause": {Kind: KindString, Required: true, Enum: []string{
+				"malformed", "unknown", "other-account", "unmatched", "expired",
+				"epoch-superseded", "session", "org-gone", "inviter-unauthorized", "consumed",
+			}},
+			"step":          {Kind: KindString, Required: true, Enum: []string{"preview", "accept"}},
+			"invitation_id": {Kind: KindString},
+			"org_id":        {Kind: KindString},
 		},
 	},
 	EventRegistrationPolicyCreated: registrationPolicySpec(),
@@ -4128,6 +4318,20 @@ func renameSchema(field string) Schema {
 	return Schema{
 		"previous_" + field: {Kind: KindFreeText, Required: true},
 		field:               {Kind: KindFreeText, Required: true},
+	}
+}
+
+// identitySchema is the chrome-identity transition: the hue, the mark as free
+// text (it is caller text), and the image only as its content-hash version. The
+// image bytes are never a payload field.
+func identitySchema() Schema {
+	return Schema{
+		"previous_hue":           {Kind: KindInt, Required: true, NonNegative: true},
+		"hue":                    {Kind: KindInt, Required: true, NonNegative: true},
+		"previous_mark":          {Kind: KindFreeText},
+		"mark":                   {Kind: KindFreeText},
+		"previous_image_version": {Kind: KindString, Digest: true},
+		"image_version":          {Kind: KindString, Digest: true},
 	}
 }
 

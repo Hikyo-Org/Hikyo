@@ -180,6 +180,14 @@ func TestNightlyRouteReauthenticatesAllExactEvidence(t *testing.T) {
 		t.Run(fmt.Sprintf("transient=%t", transient), func(t *testing.T) {
 			installer, status, _, trust, _, _ := preparedNightlyFixture(t, nil)
 			installer.config.TransientBundles = transient
+			trustFetches := map[string]int{}
+			transport := installer.client.Transport
+			installer.client.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				if request.URL.Host == "raw.githubusercontent.com" {
+					trustFetches[request.URL.Path]++
+				}
+				return transport.RoundTrip(request)
+			})
 			target, err := installer.PrepareNightly(t.Context(), status)
 			if err != nil {
 				t.Fatal(err)
@@ -211,6 +219,14 @@ func TestNightlyRouteReauthenticatesAllExactEvidence(t *testing.T) {
 			directory, err := installer.AssembleNightlyRoute(t.Context(), target, []PreparedNightly{source})
 			if err != nil {
 				t.Fatal(err)
+			}
+			if len(trustFetches) == 0 {
+				t.Fatal("route preparation fetched no trust metadata")
+			}
+			for path, count := range trustFetches {
+				if count != 1 {
+					t.Fatalf("trust metadata %s fetched %d times in one run", path, count)
+				}
 			}
 			if _, err := os.Stat(target.BundleDirectory); transient != os.IsNotExist(err) {
 				t.Fatalf("superseded bundle retention: transient=%t err=%v", transient, err)

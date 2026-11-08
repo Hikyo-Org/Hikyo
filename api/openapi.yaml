@@ -858,7 +858,7 @@ paths:
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
-        "200": {description: "Live transaction metadata without ids, bearers, or verifiers.", content: {application/json: {schema: {$ref: "#/components/schemas/CLIReauthTransaction"}}}}
+        "200": {description: "Live transaction metadata without bearers or verifiers.", content: {application/json: {schema: {$ref: "#/components/schemas/CLIReauthTransaction"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
@@ -1406,6 +1406,169 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/orgs/{org}/identity:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+    put:
+      operationId: setOrgIdentity
+      tags: [hierarchy]
+      summary: Set the organisation's hue, mark or both.
+      description: |
+        Changes the organisation's chrome identity hue, short mark or both. A field
+        that is absent is left as stored, so a hue-only save cannot overwrite a
+        newer mark. `mark` is at most two grapheme clusters of free text or
+        emoji, without control characters or surrounding whitespace; an empty
+        mark falls back to the monogram derived from the name. The uploaded image is separate
+        (`setOrgIdentityImage`). Idempotent. A grant refusal is the uniform 404; a single-factor
+        session holding the capability gets 403.
+      x-hikyo-class: tenant
+      x-hikyo-operation: org.identity-set
+      x-hikyo-formula: [manage-members@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 14
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdentityRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The organisation with its updated identity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Org"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/identity/image:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+    get:
+      operationId: getOrgIdentityImage
+      tags: [hierarchy]
+      summary: Read the organisation's uploaded image.
+      description: |
+        Returns the stored bytes with the exact validated content type and
+        `X-Content-Type-Options: nosniff`. Visible to the callers `listMyOrgs`
+        shows the organisation to, which includes a member holding only a
+        project grant, and to any other caller holding `read@org`, such as an
+        instance operator on the organisation's settings page. Anyone else,
+        a machine credential, or no image is the uniform 404. `v` is the `identity.image_version` the caller is rendering and
+        only busts caches; it never selects a version.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 14
+      parameters:
+        - $ref: "#/components/parameters/IdentityImageVersion"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The stored image bytes with their exact content type.
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    put:
+      operationId: setOrgIdentityImage
+      tags: [hierarchy]
+      summary: Upload the organisation's image.
+      description: |
+        Raw body, `image/png`, `image/jpeg` or `image/webp` only, at most 256
+        KiB and 1024 by 1024 pixels. The magic bytes must match the declared
+        content type and the pixels must decode. SVG is never accepted: the
+        browser converts it to PNG before upload. Replaces any previous image.
+        A grant refusal is the uniform 404; a single-factor
+        session holding the capability gets 403.
+      x-hikyo-class: tenant
+      x-hikyo-operation: org.identity-image-set
+      x-hikyo-formula: [manage-members@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 14
+      requestBody:
+        required: true
+        content:
+          image/*:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The organisation with its updated identity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Org"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    delete:
+      operationId: clearOrgIdentityImage
+      tags: [hierarchy]
+      summary: Remove the organisation's uploaded image.
+      description: |
+        Clears the image so the mark (or the name-derived monogram) shows again.
+        Idempotent. A grant refusal is the uniform 404; a single-factor
+        session holding the capability gets 403.
+      x-hikyo-class: tenant
+      x-hikyo-operation: org.identity-image-clear
+      x-hikyo-formula: [manage-members@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 14
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The organisation without an uploaded image.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Org"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /api/v1/orgs/{org}/projects/{project}:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -1504,6 +1667,162 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/identity:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+    put:
+      operationId: setProjectIdentity
+      tags: [hierarchy]
+      summary: Set the project's hue, mark or both.
+      description: |
+        Changes the project's chrome identity hue, short mark or both. A field
+        that is absent is left as stored, so a hue-only save cannot overwrite a
+        newer mark. `mark` is at most two grapheme clusters of free text or
+        emoji, without control characters or surrounding whitespace; an empty
+        mark falls back to the monogram derived from the name. The uploaded image is separate
+        (`setProjectIdentityImage`). Idempotent. Refusal is the uniform 404.
+      x-hikyo-class: tenant
+      x-hikyo-operation: project.identity-set
+      x-hikyo-formula: [manage-projects@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 14
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdentityRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The project with its updated identity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/identity/image:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+    get:
+      operationId: getProjectIdentityImage
+      tags: [hierarchy]
+      summary: Read the project's uploaded image.
+      description: |
+        Returns the stored bytes with the exact validated content type and
+        `X-Content-Type-Options: nosniff`. Requires `read` at the project, like
+        `getProject`. `v` is the `identity.image_version` the caller is
+        rendering and only busts caches; it never selects a version.
+      x-hikyo-class: tenant
+      x-hikyo-operation: project.identity-image-get
+      x-hikyo-formula: [read@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 14
+      parameters:
+        - $ref: "#/components/parameters/IdentityImageVersion"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The stored image bytes with their exact content type.
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    put:
+      operationId: setProjectIdentityImage
+      tags: [hierarchy]
+      summary: Upload the project's image.
+      description: |
+        Raw body, `image/png`, `image/jpeg` or `image/webp` only, at most 256
+        KiB and 1024 by 1024 pixels. The magic bytes must match the declared
+        content type and the pixels must decode. SVG is never accepted: the
+        browser converts it to PNG before upload. Replaces any previous image.
+        Refusal is the uniform 404.
+      x-hikyo-class: tenant
+      x-hikyo-operation: project.identity-image-set
+      x-hikyo-formula: [manage-projects@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 14
+      requestBody:
+        required: true
+        content:
+          image/*:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The project with its updated identity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    delete:
+      operationId: clearProjectIdentityImage
+      tags: [hierarchy]
+      summary: Remove the project's uploaded image.
+      description: |
+        Clears the image so the mark (or the name-derived monogram) shows again.
+        Idempotent. Refusal is the uniform 404.
+      x-hikyo-class: tenant
+      x-hikyo-operation: project.identity-image-clear
+      x-hikyo-formula: [manage-projects@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 14
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The project without an uploaded image.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
 
   /api/v1/orgs/{org}/projects/{project}/environments:
     parameters:
@@ -2803,6 +3122,124 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/email-invitations:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+    get:
+      operationId: listOrgEmailInvitations
+      tags: [access]
+      summary: List the organisation's live pending email invitations.
+      description: |
+        Unexpired rows only, each as the administrator typed it. The answer never
+        names the account an address matched or whether it matched at all.
+        Recorded as a membership-surface read.
+      x-hikyo-class: tenant
+      x-hikyo-operation: email-invitation.list
+      x-hikyo-formula: [manage-members@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 16
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The pending invitations.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailInvitationList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      operationId: inviteOrgMemberByEmail
+      tags: [access]
+      summary: Invite the existing account holding an email address into this organisation.
+      description: |
+        Records one pending invitation for the address and a role template. The
+        request writes the same rows and answers the same `202` whether or not
+        the address belongs to a verified account, and it never contacts the mail
+        server; for a matching account one mail is sent in the background with a
+        single-use link that the person accepts while signed in. An unknown
+        address gets no mail. A send to an address that already has a pending
+        invitation replaces it and the earlier link stops working.
+
+        A body that does not match the request schema is refused by request
+        validation first, alike for every address. For a body that does, an
+        instance whose operator never stated its public origin answers `400`
+        naming the `no-public-origin` precondition, and one without a configured
+        mailer `mailer-unconfigured`, both before the address is read. A
+        malformed address or an unknown template is `400`. Sends are
+        bounded at 30 per hour per organisation and 200 live pending
+        invitations, both the uniform `429`.
+      x-hikyo-class: tenant
+      x-hikyo-operation: email-invitation.send
+      x-hikyo-formula: [manage-members@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 16
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailInvitationSendRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "202":
+          description: The invitation was recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailInvitation"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/email-invitations/{invitation}:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/EmailInvitationID"
+    delete:
+      operationId: revokeOrgEmailInvitation
+      tags: [access]
+      summary: Revoke one pending email invitation.
+      x-hikyo-class: tenant
+      x-hikyo-operation: email-invitation.revoke
+      x-hikyo-formula: [manage-members@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 16
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204":
+          description: Revoked.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "429":
           $ref: "#/components/responses/TooManyRequests"
         "500":
@@ -4774,6 +5211,306 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    get:
+      operationId: listMyPersonalValues
+      tags: [values]
+      summary: List the caller's own personal values and notices, masked.
+      description: |
+        Only the caller's own values and removal notices in this environment,
+        plus the checklist of keys required here (`personal_required_in`).
+        No grant reaches another person's personal value. The owner may list
+        and delete their own values whatever their grants: holding a value or
+        notice in the environment admits the caller when `read` does not.
+      x-hikyo-class: tenant
+      x-hikyo-operation: personal-value.list
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 15
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The caller's personal entries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonalValueList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/ValueKeyName"
+    put:
+      operationId: setMyPersonalValue
+      tags: [values]
+      summary: Set or replace the caller's own personal value for a declared key.
+      description: |
+        Uses the reveal reauthentication gate and needs an authenticator app
+        or passkey on the account. Schema rules never refuse the value; the
+        response names any rule it does not satisfy, as a warning. It is
+        never scanned. Setting a value dismisses a removal notice.
+      x-hikyo-class: tenant
+      x-hikyo-operation: personal-value.set
+      x-hikyo-formula: [read@environment, reveal@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 15
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetPersonalValueRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The stored entry. It never echoes the value back.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonalValueEntry"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    delete:
+      operationId: deleteMyPersonalValue
+      tags: [values]
+      summary: Delete the caller's own personal value and dismiss its notice.
+      description: |
+        Admitted whatever the caller's grants while they hold a value or
+        notice in the environment.
+      x-hikyo-class: tenant
+      x-hikyo-operation: personal-value.delete
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 15
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204":
+          description: Deleted or dismissed.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/reveal:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/ValueKeyName"
+    post:
+      operationId: revealMyPersonalValue
+      tags: [values]
+      summary: Read the caller's own personal value in plaintext.
+      x-hikyo-class: tenant
+      x-hikyo-operation: personal-value.reveal
+      x-hikyo-formula: [read@environment, reveal@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 15
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The entry, plaintext included.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonalValueEntry"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-value-counts:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    get:
+      operationId: listPersonalValueCounts
+      tags: [values]
+      summary: Count personal values and notices per key, for the matrix marks.
+      description: Counts only. No route returns another person's value.
+      x-hikyo-class: tenant
+      x-hikyo-operation: personal-value.counts
+      x-hikyo-formula: [manage-members@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 15
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonalValueCounts"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/personal-offboarding-report/{member}:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - name: member
+        in: path
+        required: true
+        description: A username or principal id.
+        schema: {type: string, minLength: 1, maxLength: 256}
+    get:
+      operationId: getPersonalOffboardingReport
+      tags: [values]
+      summary: List what to rotate after someone leaves the project.
+      description: |
+        Shared keys the person is recorded as receiving, by environment,
+        whether each changed since, and the service accounts they created.
+        Names only. Limited to the audit evidence window it states.
+      x-hikyo-class: tenant
+      x-hikyo-operation: personal-value.offboarding-report
+      x-hikyo-formula: [manage-members@project, audit-read@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 15
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonalOffboardingReport"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/ValueKeyName"
+    get:
+      operationId: listPersonalValueMembers
+      tags: [values]
+      summary: List who holds a personal value or notice for one key.
+      description: Metadata only. No route returns another person's value.
+      x-hikyo-class: tenant
+      x-hikyo-operation: personal-value.members
+      x-hikyo-formula: [manage-members@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 15
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The holders.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonalValueHolderList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members/{member}:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/ValueKeyName"
+      - name: member
+        in: path
+        required: true
+        description: A username or principal id holding a value or notice for this key.
+        schema: {type: string, minLength: 1, maxLength: 256}
+    delete:
+      operationId: deletePersonalValueMember
+      tags: [values]
+      summary: Delete another person's personal value and leave them a notice.
+      description: |
+        A person holding neither a value nor a notice for this key is answered
+        exactly as a nonexistent one.
+      x-hikyo-class: tenant
+      x-hikyo-operation: personal-value.delete-member
+      x-hikyo-formula: [manage-members@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 15
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /api/v1/orgs/{org}/projects/{project}/values/diff/reveal:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -5441,7 +6178,8 @@ paths:
         gate. An operator who wants the whole instance asks for the whole
         instance, and steps up to do it.
 
-        Identity only — id and name. An organisation's `metadata` is
+        Identity only: id, name and the chrome `identity` (hue, mark, image
+        version) the rail renders. An organisation's `metadata` is
         operator-set and is read through `getOrg`, which authorizes.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
@@ -6302,6 +7040,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UpdateStatus"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/instance/security-maintenance:
+    get:
+      operationId: getSecurityMaintenance
+      tags: [instance]
+      summary: Read the security-maintenance status the coordinator published.
+      description: |
+        The serving application never holds deployment credentials. The separate
+        maintenance coordinator writes a public status file and this operation
+        only reads it, on every request. Staleness is the caller's judgment from
+        `known_until` and `last_attempt`.
+      x-hikyo-class: instance
+      x-hikyo-operation: update.status-read
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "200":
+          description: Not reported, unreadable, or the coordinator's last published status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityMaintenanceStatus"
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
@@ -10518,6 +11291,95 @@ paths:
           $ref: "#/components/responses/Unauthenticated"
         "404":
           $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/me/invitations/preview:
+    post:
+      operationId: previewEmailInvitation
+      tags: [access]
+      summary: Show what an email invitation token offers the signed-in person.
+      description: |
+        SELF-SCOPED: needs the person's own signed-in human session. The token is
+        valid only when it names an unexpired pending invitation of the current
+        credential epoch that is bound to this session's own account. Every other
+        case (unknown token, another account, an address that matched no
+        account, expired, superseded, revoked, already accepted, an organisation
+        that is gone, an inviter who no longer holds the authority) is one
+        uniform `404`; the cause is recorded on the instance trail. Writes
+        nothing else.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 16
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailInvitationTokenRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The organisation, template and expiry the token offers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailInvitationPreview"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/me/invitations/accept:
+    post:
+      operationId: acceptEmailInvitation
+      tags: [access]
+      summary: Accept an email invitation as the signed-in person.
+      description: |
+        SELF-SCOPED: same validity rule and uniform `404` as the preview. In ONE
+        transaction the inviter's authority is re-checked, the role template is
+        applied to the person as the inviter would apply it, and the invitation
+        is consumed.
+
+        Accepting is an ordinary privilege increase: when the template creates
+        a grant, the person's generation advances, every session of theirs ends
+        (the current one included) and their developer credentials are revoked.
+        `signed_out` reports that. The response leaves a browser session's
+        cookies untouched; the browser page ends its own session once it has
+        shown the outcome.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 16
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailInvitationTokenRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The invitation was accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailInvitationAcceptance"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/Internal"
 
@@ -15278,6 +16140,14 @@ components:
       description: Project identifier.
       schema:
         $ref: "#/components/schemas/ID"
+    IdentityImageVersion:
+      name: v
+      in: query
+      required: false
+      description: The `identity.image_version` being rendered; a cache-busting hint only.
+      schema:
+        type: string
+        pattern: "^[0-9a-f]{64}$"
     EnvironmentID:
       name: environment
       in: path
@@ -15627,6 +16497,13 @@ components:
       in: path
       required: true
       description: Connection credential identifier.
+      schema:
+        $ref: "#/components/schemas/ID"
+    EmailInvitationID:
+      name: invitation
+      in: path
+      required: true
+      description: Pending email invitation identifier.
       schema:
         $ref: "#/components/schemas/ID"
     SessionID:
@@ -16186,6 +17063,13 @@ components:
           type: boolean
           const: true
           description: Explicit consent to every current and future published key in this environment until expiry.
+        personal_consent:
+          type: boolean
+          default: false
+          description: |
+            Explicit consent to deliver the minting person's current and future
+            personal values in this environment through this credential. Without
+            it, delivery names those keys only and `hikyo run` refuses them.
         lifetime_seconds:
           type: integer
           format: int64
@@ -16206,6 +17090,8 @@ components:
         expires_at: {type: string, format: date-time}
         revoked_at: {type: string, format: date-time}
         prefix_hint: {type: string}
+        personal_consent: {type: boolean}
+        authority_principal_name: {type: string, minLength: 1, description: Display name of the human who delegated the credential. Omitted when unnamed.}
     DeveloperCredentialList:
       type: object
       additionalProperties: false
@@ -17377,6 +18263,7 @@ components:
         valid_after: {$ref: "#/components/schemas/Timestamp"}
         valid_before: {$ref: "#/components/schemas/Timestamp"}
         requester_principal_id: {$ref: "#/components/schemas/ID"}
+        requester_principal_name: {type: string, minLength: 1, description: "Display name of the requester, present only when it can be named."}
         requester_class: {type: string}
         status:
           type: string
@@ -18026,6 +18913,79 @@ components:
           type: string
           description: Operator-safe reason remote apply is unsupported; manual upgrades remain available.
 
+    SecurityMaintenanceStatus:
+      type: object
+      x-hikyo-zod-strict: true
+      additionalProperties: false
+      required: [reported, unreadable]
+      description: |
+        `reported` is false when no status file is configured or the coordinator
+        has not written one. `unreadable` is true when a file exists but cannot be
+        read, is oversized or fails strict parsing; it is never a healthy state.
+      properties:
+        reported:
+          type: boolean
+        unreadable:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/SecurityMaintenancePublicStatus"
+
+    SecurityMaintenancePublicStatus:
+      type: object
+      x-hikyo-zod-strict: true
+      additionalProperties: false
+      required: [enrolled, phase, protection_gap, applicable, coverage, covered_components, catalog_sequence]
+      properties:
+        mode:
+          type: string
+        channel:
+          type: string
+        enrolled:
+          type: boolean
+        phase:
+          type: string
+        reason:
+          type: string
+        protection_gap:
+          type: boolean
+          description: A known advisory stays unremediated and the installation is stuck, not waiting for a schedule.
+        applicable:
+          type: array
+          items:
+            type: string
+        coverage:
+          type: array
+          items:
+            type: string
+        covered_components:
+          type: array
+          items:
+            type: string
+        coverage_through:
+          type: string
+        catalog_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+        last_attempt:
+          type: string
+          format: date-time
+        last_verified:
+          type: string
+          format: date-time
+        known_until:
+          type: string
+          format: date-time
+        running_version:
+          type: string
+        target_version:
+          type: string
+        action:
+          type: string
+          description: The exact local command an operator runs to leave a blocked state.
+        detail:
+          type: string
+
     InstanceUpdateBackend:
       type: string
       enum: [flux, compose, systemd]
@@ -18128,6 +19088,10 @@ components:
       properties:
         lifetime_seconds: {type: integer, format: int64, minimum: 1, maximum: 28800}
         consent_current_and_future: {type: boolean, const: true}
+        personal_consent:
+          type: boolean
+          default: false
+          description: The credential will also deliver the minting person's own personal values; bound into the ceremony.
     TotpDeveloperCredentialReauthRequest:
       type: object
       additionalProperties: false
@@ -18275,8 +19239,11 @@ components:
     CLIReauthEnvironmentPolicy:
       type: object
       additionalProperties: false
-      required: [environment_id, effective_window_seconds, requires_webauthn]
+      required: [org_id, project_id, environment_id, effective_window_seconds, requires_webauthn]
+      description: Display policy for one environment. The organisation and project ids are the owning rows, resolved by the server after it authorized the caller for this environment; clients read names through their own authorized endpoints.
       properties:
+        org_id: {$ref: "#/components/schemas/ID"}
+        project_id: {$ref: "#/components/schemas/ID"}
         environment_id: {$ref: "#/components/schemas/ID"}
         effective_window_seconds: {type: integer, minimum: 0}
         requires_webauthn: {type: boolean}
@@ -18378,6 +19345,113 @@ components:
             It creates no session: establish a password with it, then log in.
         expires_at:
           $ref: "#/components/schemas/Timestamp"
+
+    EmailInvitationSendRequest:
+      type: object
+      additionalProperties: false
+      required: [email, template]
+      properties:
+        email:
+          type: string
+          minLength: 3
+          maxLength: 254
+          description: |
+            The exact address, canonicalized as local sign-up does. Only a
+            verified address of an existing account can be reached.
+        template:
+          $ref: "#/components/schemas/RoleTemplate"
+
+    EmailInvitation:
+      type: object
+      additionalProperties: false
+      required: [id, email, template, created_at, expires_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/ID"
+        email:
+          type: string
+        template:
+          $ref: "#/components/schemas/RoleTemplate"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+
+    EmailInvitationListing:
+      type: object
+      additionalProperties: false
+      required: [id, email, template, invited_by, created_at, expires_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/ID"
+        email:
+          type: string
+        template:
+          $ref: "#/components/schemas/RoleTemplate"
+        invited_by:
+          $ref: "#/components/schemas/ID"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+
+    EmailInvitationList:
+      type: object
+      additionalProperties: false
+      required: [items, count]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailInvitationListing"
+        count:
+          type: integer
+          minimum: 0
+
+    EmailInvitationTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token:
+          type: string
+          minLength: 1
+          maxLength: 512
+          description: The single-use token from the invitation link's fragment.
+
+    EmailInvitationPreview:
+      type: object
+      additionalProperties: false
+      required: [org, org_name, template, expires_at]
+      properties:
+        org:
+          $ref: "#/components/schemas/ID"
+        org_name:
+          type: string
+        template:
+          $ref: "#/components/schemas/RoleTemplate"
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+
+    EmailInvitationAcceptance:
+      type: object
+      additionalProperties: false
+      required: [org, org_name, template, grants_created, signed_out]
+      properties:
+        org:
+          $ref: "#/components/schemas/ID"
+        org_name:
+          type: string
+        template:
+          $ref: "#/components/schemas/RoleTemplate"
+        grants_created:
+          type: integer
+          minimum: 0
+        signed_out:
+          type: boolean
+          description: |
+            True when grants were created: every session of the person ended,
+            the current one included, and they must sign in again.
 
     InviteMemberRequest:
       type: object
@@ -18574,6 +19648,48 @@ components:
             The registration policy that minted the org, a trail pointer with
             no foreign key (the org keeps it after the policy is deleted); null
             for a manual org.
+        identity:
+          $ref: "#/components/schemas/ChromeIdentity"
+
+    ChromeIdentity:
+      type: object
+      required: [hue, mark, image_version]
+      description: |
+        The editable avatar of an organisation or project. `mark` is null when
+        the monogram is derived from the name; `image_version` is a lowercase
+        hex content hash of the uploaded image, null when there is none, and is
+        what the image URL's `v` query parameter carries.
+      properties:
+        hue:
+          type: integer
+          minimum: 0
+          maximum: 359
+        mark:
+          type: [string, "null"]
+        image_version:
+          type: [string, "null"]
+          pattern: "^[0-9a-f]{64}$"
+
+    IdentityRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: |
+        A partial write: each field present replaces the stored one and an
+        absent field is left unchanged, so saving one field never overwrites
+        a concurrent change to the other.
+      properties:
+        hue:
+          type: integer
+          minimum: 0
+          maximum: 359
+        mark:
+          type: [string, "null"]
+          maxLength: 128
+          description: |
+            At most two grapheme clusters; no control or invisible format
+            characters and no surrounding whitespace. Empty selects the
+            name-derived monogram; null or absent leaves the stored mark.
 
     OrgList:
       type: object
@@ -18594,7 +19710,7 @@ components:
       required: [id, name]
       description: |
         An organisation as a navigation destination: what the caller needs to
-        show it and route to it, and nothing else. Deliberately narrower than
+        show it and route to it (name and chrome identity), and nothing else. Deliberately narrower than
         `Org` — `metadata` and `active` are operator-set state that belongs to
         `getOrg`, which authorizes; a member listing does not.
       properties:
@@ -18602,6 +19718,8 @@ components:
           $ref: "#/components/schemas/ID"
         name:
           type: string
+        identity:
+          $ref: "#/components/schemas/ChromeIdentity"
 
     MyOrgList:
       type: object
@@ -18674,6 +19792,8 @@ components:
           type: string
         created_at:
           $ref: "#/components/schemas/Timestamp"
+        identity:
+          $ref: "#/components/schemas/ChromeIdentity"
 
     ProjectList:
       type: object
@@ -19829,6 +20949,12 @@ components:
         updated_by:
           type: string
           description: The principal whose act produced this occurrence.
+        updated_by_name:
+          type: string
+          minLength: 1
+          description: |
+            Display name of `updated_by`, present only when it can be named
+            from a row the caller already reads.
 
     ValueList:
       type: object
@@ -19859,6 +20985,145 @@ components:
         surplus token is rejected by name. There is no blanket ignore-all input.
       items:
         type: string
+
+    SetPersonalValueRequest:
+      type: object
+      additionalProperties: false
+      required: [value]
+      properties:
+        value:
+          type: string
+          maxLength: 65536
+          description: The plaintext, sealed to this key, environment and owner. Never echoed back.
+    PersonalValueEntry:
+      type: object
+      additionalProperties: false
+      required: [name, set]
+      properties:
+        key_id: {$ref: "#/components/schemas/ID"}
+        name: {type: string, maxLength: 256}
+        set: {type: boolean}
+        updated_at: {type: string, format: date-time}
+        notice:
+          $ref: "#/components/schemas/PersonalValueNoticeCause"
+        required:
+          type: boolean
+          description: The key is `personal_required_in` this environment (the owner's checklist).
+        suspended:
+          type: boolean
+          description: |
+            The owner lost read, reveal or qualification without a credential
+            change. The value is kept but not delivered, and the retention
+            sweep deletes it 14 days after `suspended_at` unless access returns.
+        suspended_at: {type: string, format: date-time}
+        warnings:
+          type: array
+          maxItems: 32
+          items: {type: string, maxLength: 512}
+          description: |
+            Schema rules this value does not satisfy, returned by set and
+            reveal only (a list never decrypts). A warning to the owner only:
+            no rule ever refuses a personal value, at write or delivery.
+        value:
+          type: string
+          description: Present only on reveal.
+    PersonalValueNoticeCause:
+      type: string
+      description: Why a personal value disappeared other than by its owner.
+      enum: [administrator, retention, restore, key_renamed, key_deleted, forbidden, qualification_lost]
+    PersonalValueList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/PersonalValueEntry"}
+    PersonalValueHolder:
+      type: object
+      additionalProperties: false
+      required: [principal_id, set]
+      properties:
+        principal_id: {$ref: "#/components/schemas/ID"}
+        username: {type: string}
+        set: {type: boolean}
+        updated_at: {type: string, format: date-time}
+        notice:
+          $ref: "#/components/schemas/PersonalValueNoticeCause"
+    PersonalValueCount:
+      type: object
+      additionalProperties: false
+      required: [key_id, name, holders, notices, required]
+      properties:
+        key_id: {$ref: "#/components/schemas/ID"}
+        name: {type: string, maxLength: 256}
+        holders: {type: integer, minimum: 0, description: People holding a personal value for this key here.}
+        notices: {type: integer, minimum: 0, description: People with an unacknowledged removal notice.}
+        required: {type: boolean, description: The key is personal_required_in this environment.}
+    PersonalValueCounts:
+      type: object
+      additionalProperties: false
+      required: [eligible, items]
+      properties:
+        eligible:
+          type: integer
+          minimum: 0
+          description: The denominator of `11/14`, humans currently holding both read and reveal here.
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/PersonalValueCount"}
+    PersonalOffboardingReceipt:
+      type: object
+      additionalProperties: false
+      required: [environment_id, environment_name, key_name, last_received_at, changed_since]
+      properties:
+        environment_id: {$ref: "#/components/schemas/ID"}
+        environment_name: {type: string, maxLength: 256}
+        key_name: {type: string, maxLength: 256}
+        last_received_at: {type: string, format: date-time}
+        changed_since:
+          type: boolean
+          description: The shared value was published again after the person last received it.
+    PersonalOffboardingServiceAccount:
+      type: object
+      additionalProperties: false
+      required: [id, name, created_at]
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        name: {type: string, maxLength: 256}
+        created_at: {type: string, format: date-time}
+    PersonalOffboardingReport:
+      type: object
+      additionalProperties: false
+      required: [principal_id, username, evidence_from, generated_at, received, service_accounts, limits]
+      description: Names only, never values. What to rotate after someone leaves.
+      properties:
+        principal_id: {$ref: "#/components/schemas/ID"}
+        username: {type: string}
+        evidence_from:
+          type: string
+          format: date-time
+          description: The oldest audit record the report could read. Disclosures before it, or never audited, do not appear.
+        generated_at: {type: string, format: date-time}
+        received:
+          type: array
+          items: {$ref: "#/components/schemas/PersonalOffboardingReceipt"}
+          description: Shared keys the person is recorded as receiving, through their own session or a developer credential.
+        service_accounts:
+          type: array
+          items: {$ref: "#/components/schemas/PersonalOffboardingServiceAccount"}
+        limits:
+          type: array
+          items: {type: string, maxLength: 512}
+          description: Fixed statements of what the report cannot show or undo.
+    PersonalValueHolderList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/PersonalValueHolder"}
 
     SetValueRequest:
       type: object
@@ -20228,6 +21493,7 @@ components:
         declaration: {$ref: "#/components/schemas/KeyDeclaration"}
         required_in: {$ref: "#/components/schemas/DefinitionsBundlePresence"}
         forbidden_in: {$ref: "#/components/schemas/DefinitionsBundlePresence"}
+        personal_required_in: {$ref: "#/components/schemas/DefinitionsBundlePresence"}
 
     DefinitionsRename:
       type: object
@@ -20292,6 +21558,14 @@ components:
       properties:
         name: {type: string}
         occurrences: {type: integer, format: int64, minimum: 0}
+        personal_values:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >-
+            Personal values the deletion would remove, counted when the plan
+            was made. Apply removes whatever the environment holds then.
+            Absent from servers older than revision 15.
 
     DefinitionsPlanDiff:
       type: object
@@ -20358,6 +21632,7 @@ components:
         plan_id: {$ref: "#/components/schemas/ID"}
         applied_at: {$ref: "#/components/schemas/Timestamp"}
         applied_by: {type: string}
+        applied_by_name: {type: string, minLength: 1, description: "Display name of `applied_by` (a principal id), present only when it can be named."}
         commit: {type: string, maxLength: 256}
         ref: {type: string, maxLength: 256}
         actor: {type: string, maxLength: 256}
@@ -21037,6 +22312,22 @@ components:
             delivers (#51 -- values landed, and the change token moves with
             them); the other three are the declared presence rules for keys
             the snapshot does not carry.
+        personal:
+          type: string
+          enum: [value, withheld, notice, missing]
+          x-enum-varnames: [DeliveredKeyPersonalValue, DeliveredKeyPersonalWithheld, DeliveredKeyPersonalNotice, DeliveredKeyPersonalMissing]
+          description: |
+            Developer-credential delivery only (#1235). `value`: the value is
+            the credential's human's own personal value. `withheld`: they hold
+            one this fetch does not carry (see `personal_reason`). `notice`:
+            their value was removed and not yet acknowledged. `missing`: the
+            key is `personal_required_in` this environment and they hold no
+            value (consenting fetches only). A withheld, notice or missing key
+            never carries the shared value, and `hikyo run` refuses it.
+        personal_reason:
+          type: string
+          maxLength: 64
+          description: For `withheld`, one of consent, config_only, suspended. For `notice`, the cause. Absent for `missing`.
 
     DeliveryResponse:
       type: object
@@ -21541,6 +22832,10 @@ components:
           $ref: "#/components/schemas/ID"
         service_account_id:
           $ref: "#/components/schemas/ID"
+        service_account_name:
+          type: string
+          minLength: 1
+          description: Display name of the service account, omitted when it no longer resolves.
         expires_at:
           $ref: "#/components/schemas/Timestamp"
         reason:
@@ -22297,6 +23592,14 @@ components:
           $ref: "#/components/schemas/KeyPresence"
         forbidden_in:
           $ref: "#/components/schemas/KeyPresence"
+        personal_required_in:
+          $ref: "#/components/schemas/KeyPresence"
+          description: |
+            Environments where each developer must hold their own personal
+            value. `none` or `explicit` only: `all` is refused because it would
+            reach environments created later. Refused where the key is also
+            required or forbidden, and for a key in a group. Absent means `none`
+            on create; on a declaration update, absent keeps the stored setting.
 
     Key:
       type: object
@@ -24305,6 +25608,10 @@ components:
         created_by:
           type: string
           maxLength: 64
+        created_by_name:
+          type: string
+          minLength: 1
+          description: Display name of `created_by`, present only when it can be named.
         revoked_at:
           $ref: "#/components/schemas/Timestamp"
         last_used_at:
@@ -24604,6 +25911,12 @@ components:
         environment:
           $ref: "#/components/schemas/ID"
           description: The environment the elevation covers.
+        org_id:
+          $ref: "#/components/schemas/ID"
+          description: Owning organisation of the environment, for display. Present only when the caller may list that environment.
+        project_id:
+          $ref: "#/components/schemas/ID"
+          description: Owning project of the environment, for display. Present only when the caller may list that environment.
         key_ids:
           type: array
           items: {$ref: "#/components/schemas/ID"}
@@ -24932,6 +26245,12 @@ components:
         updated_at: {$ref: "#/components/schemas/Timestamp"}
         versions: {type: array, items: {$ref: "#/components/schemas/TransitKeyVersion"}}
         callers: {type: array, items: {$ref: "#/components/schemas/TransitCaller"}}
+        principal_names:
+          type: object
+          additionalProperties:
+            type: string
+            minLength: 1
+          description: Current names for callers who hold a grant in this key's tenant; not a user directory.
 
     TransitKeyList:
       type: object

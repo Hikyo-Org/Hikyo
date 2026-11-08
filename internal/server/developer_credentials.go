@@ -13,7 +13,7 @@ import (
 // service owns self-delegation, live authorization, reauthentication and policy.
 type DeveloperCredentialService interface {
 	Mint(context.Context, service.Actor, domain.Scope, service.MintDeveloperCredentialRequest) (service.MintedDeveloperCredential, error)
-	List(context.Context, service.Actor, domain.Scope) ([]service.DeveloperCredential, error)
+	List(context.Context, service.Actor, domain.Scope) ([]service.NamedDeveloperCredential, error)
 	Revoke(context.Context, service.Actor, domain.Scope, string, bool) error
 	Policy(context.Context, service.Actor) (time.Duration, error)
 	SetPolicy(context.Context, service.Actor, time.Duration) (time.Duration, error)
@@ -24,6 +24,9 @@ func (a *API) MintDeveloperCredential(ctx context.Context, req apigen.MintDevelo
 		return nil, domain.ErrInvalid
 	}
 	want := service.MintDeveloperCredentialRequest{ConsentCurrentAndFuture: bool(req.Body.ConsentCurrentAndFuture)}
+	if req.Body.PersonalConsent != nil {
+		want.PersonalConsent = *req.Body.PersonalConsent
+	}
 	for _, id := range req.Body.KeyIds {
 		want.KeyIDs = append(want.KeyIDs, string(id))
 	}
@@ -36,17 +39,18 @@ func (a *API) MintDeveloperCredential(ctx context.Context, req apigen.MintDevelo
 	if err != nil {
 		return nil, err
 	}
-	return apigen.MintDeveloperCredential200JSONResponse{Value: result.Value, Credential: wireDeveloperCredential(result.Credential)}, nil
+	return apigen.MintDeveloperCredential200JSONResponse{Value: result.Value, Credential: wireDeveloperCredential(service.NamedDeveloperCredential{DeveloperCredential: result.Credential})}, nil
 }
-func wireDeveloperCredential(c service.DeveloperCredential) apigen.DeveloperCredential {
-	out := apigen.DeveloperCredential{Id: c.ID, PrincipalId: string(c.PrincipalID), AuthorityPrincipalId: string(c.AuthorityPrincipal), OrgId: string(c.Scope.Org), ProjectId: string(c.Scope.Project), EnvironmentId: string(c.Scope.Env), CreatedAt: c.CreatedAt, ExpiresAt: c.ExpiresAt, PrefixHint: c.PrefixHint}
+func wireDeveloperCredential(c service.NamedDeveloperCredential) apigen.DeveloperCredential {
+	out := apigen.DeveloperCredential{Id: c.ID, PrincipalId: string(c.PrincipalID), AuthorityPrincipalId: string(c.AuthorityPrincipal), OrgId: string(c.Scope.Org), ProjectId: string(c.Scope.Project), EnvironmentId: string(c.Scope.Env), CreatedAt: c.CreatedAt, ExpiresAt: c.ExpiresAt, PrefixHint: c.PrefixHint, PersonalConsent: &c.PersonalConsent}
 	if !c.RevokedAt.IsZero() {
 		t := c.RevokedAt
 		out.RevokedAt = &t
 	}
+	out.AuthorityPrincipalName = optional(c.AuthorityPrincipalName)
 	return out
 }
-func developerCredentialList(items []service.DeveloperCredential) apigen.DeveloperCredentialList {
+func developerCredentialList(items []service.NamedDeveloperCredential) apigen.DeveloperCredentialList {
 	out := apigen.DeveloperCredentialList{Items: make([]apigen.DeveloperCredential, 0, len(items)), Count: len(items)}
 	for _, item := range items {
 		out.Items = append(out.Items, wireDeveloperCredential(item))
@@ -114,5 +118,6 @@ func developerCredentialReauthIntent(environment string, keys []string, value ap
 		return service.ReauthIntent{}, domain.ErrInvalid
 	}
 	ttl := time.Duration(value.LifetimeSeconds) * time.Second
-	return service.NewDeveloperCredentialReauthIntent(environment, keys, ttl, bool(value.ConsentCurrentAndFuture))
+	personal := value.PersonalConsent != nil && *value.PersonalConsent
+	return service.NewPersonalDeveloperCredentialReauthIntent(environment, keys, ttl, bool(value.ConsentCurrentAndFuture), personal)
 }

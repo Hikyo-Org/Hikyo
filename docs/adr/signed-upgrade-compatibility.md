@@ -1,5 +1,7 @@
 # Signed upgrade compatibility and platform orchestration
 
+> **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** "default is full stop on PostgreSQL HA" and the absence of an N-1 window, for all PostgreSQL HA deployments. The maintenance procedure remains the declared fallback. See its supersession register.
+
 > **Approved container custody exception (2026-09-13):** The owner explicitly
 > selected encrypted local custody for deployments enrolled in unattended
 > container upgrades, after disclosure that this grants the opted-in container
@@ -8,6 +10,22 @@
 > are [recorded separately](../design/unattended-container-upgrades.md); this
 > approval does not claim that container automation has shipped or that its
 > broader implementation has passed the existing safety gates.
+
+> **Automatic security maintenance amendment (proposed 2026-11-04, #1068):** The
+> [security-maintenance ADR](./security-maintenance.md) applies the proven
+> pre-schema-write abort below to a failure before write intent: the journal's own source
+> image may lift the backup fence and serve, and its coordinator may restore that image.
+> It also lets an automatic scratch drill record that no credential scope exists when
+> nothing can hold one. Operative only when its reviewed PR merges.
+>
+> **Owner decision, 2026-11-04 (operative with the same PR):** a failed security-maintenance
+> update rolls back automatically to its proven pre-update snapshot while durable maintenance
+> proves no tenant write could have committed since. This supersedes, for that window only, the
+> statements below that a restore after possible schema writes is operator-held and that there
+> is no automatic database or old-image rollback. It restores the exact pre-update state,
+> keeping the restore epoch and incarnation, so it does not use the recovery semantics of
+> `restore run`, which stay required
+> for any older backup. After the final gate has opened writes, nothing here applies.
 
 > **Client nightly self-update amendment (2026-09-26, owner requested):** On
 > platforms without a supported server host (macOS and Windows), `hikyo upgrade`,

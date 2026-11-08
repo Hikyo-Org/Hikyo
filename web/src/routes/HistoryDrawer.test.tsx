@@ -371,7 +371,12 @@ describe('HistoryDrawer head', () => {
   });
 
   it('prefers the publisher name and retains the full principal ID in title', async () => {
-    expect(shortPrincipal('usr_0192b4c1-7a2e-7f3b-9c11-3f2a1b')).toBe('usr_0192b4c1…');
+    expect(shortPrincipal('usr_0192b4c1-7a2e-7f3b-9c11-3f2a1b')).toBe('usr_…1-3f2a1b');
+    // Two principals minted together share the head and differ only in the tail.
+    expect(shortPrincipal('prn_0192b4c1-7a2e-7f3b-9c11-aaaaaaaa1111')).not.toBe(
+      shortPrincipal('prn_0192b4c1-7a2e-7f3b-9c11-aaaaaaaa2222'),
+    );
+    expect(shortPrincipal('prn_0192b4c1-7a2e-7f3b-9c11-aaaa0bad1111')).toBe('prn_…0bad1111');
     expect(shortPrincipal('usr_admin')).toBe('usr_admin');
     const { container } = await renderForm(drawer());
     expect(container.querySelector('dd > span.mono[title="usr_admin"]')?.textContent).toBe('Alex Lee');

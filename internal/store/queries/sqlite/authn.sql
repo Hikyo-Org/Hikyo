@@ -597,7 +597,13 @@ SELECT org_id, project_id, id FROM environments WHERE id = ?;
 -- Not annotated, and it does not need to be: orgs is class=org chain=id, and
 -- the id equality is that chain as a top-level conjunct.
 -- name: GetOrgIdentity :one
-SELECT id, name FROM orgs WHERE id = ?;
+SELECT id, name, identity_hue, identity_mark, identity_image_version FROM orgs WHERE id = ?;
+
+-- The org chrome image is read for the navigation rail, so it rides the same
+-- proof-free path as GetOrgIdentity: the caller proves visibility by finding
+-- the org in OrgsForPrincipal or by holding org.get. Same chain shape.
+-- name: GetOrgIdentityImage :one
+SELECT identity_image, identity_image_type, identity_image_version FROM orgs WHERE id = ?;
 
 -- Restore reconciliation (#76, ops spec section  11). All four run under local host
 -- authority: after a restore every session is dead and every grant inert, so

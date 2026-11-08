@@ -144,13 +144,13 @@ func runAccessPolicy(ctx context.Context, ios IO, args []string) error {
 		if err := client.Do(ctx, http.MethodGet, base+"/access-policies", nil, &out); err != nil {
 			return err
 		}
-		return Render(ios.Stdout, f, accessPolicyTable(out.Items))
+		return Render(ios.Stdout, f, accessPolicyTable(out.Items, environmentLabeler(ctx, client, base, f)))
 	case "create":
 		var out apigen.AccessPolicy
 		if err := client.Do(ctx, http.MethodPost, base+"/access-policies", input(), &out); err != nil {
 			return err
 		}
-		return Render(ios.Stdout, f, accessPolicyTable([]apigen.AccessPolicy{out}))
+		return Render(ios.Stdout, f, accessPolicyTable([]apigen.AccessPolicy{out}, environmentLabeler(ctx, client, base, f)))
 	case "update":
 		var current apigen.AccessPolicyList
 		if err := client.Do(ctx, http.MethodGet, base+"/access-policies", nil, &current); err != nil {
@@ -169,7 +169,7 @@ func runAccessPolicy(ctx context.Context, ios IO, args []string) error {
 			if err := client.Do(ctx, http.MethodPut, base+"/access-policies/"+url.PathEscape(flags.positional()), body, &out); err != nil {
 				return err
 			}
-			return Render(ios.Stdout, f, accessPolicyTable([]apigen.AccessPolicy{out}))
+			return Render(ios.Stdout, f, accessPolicyTable([]apigen.AccessPolicy{out}, environmentLabeler(ctx, client, base, f)))
 		}
 		return failf(ExitNotFound, "access policy %q not found", flags.positional())
 	case "delete":
@@ -213,12 +213,12 @@ func mergeAccessPolicyInput(current apigen.AccessPolicy, requested apigen.Access
 
 // accessPolicyTable renders project-wide coverage as "(all)" and durations
 // in Go duration notation, retaining the policy list for JSON output.
-func accessPolicyTable(policies []apigen.AccessPolicy) Table {
+func accessPolicyTable(policies []apigen.AccessPolicy, environmentLabel func(string) string) Table {
 	rows := make([][]string, 0, len(policies))
 	for _, p := range policies {
-		env := p.EnvironmentId
-		if env == "" {
-			env = "(all)"
+		env := "(all)"
+		if p.EnvironmentId != "" {
+			env = environmentLabel(p.EnvironmentId)
 		}
 		caps := make([]string, 0, len(p.Capabilities))
 		for _, c := range p.Capabilities {
@@ -373,7 +373,7 @@ func accessRequestTable(requests []apigen.AccessRequest, queue *apigen.AccessQue
 		if r.ExpiresAt != nil {
 			until = r.ExpiresAt.UTC().Format(time.RFC3339)
 		}
-		rows = append(rows, []string{r.Id, r.Requester, strings.Join(caps, ","), state,
+		rows = append(rows, []string{r.Id, idWithName(r.Requester, r.RequesterName), strings.Join(caps, ","), state,
 			fmt.Sprintf("%d/%d", r.Approvals, r.MinApprovals), until})
 	}
 	var json any = apigen.AccessQueue{Items: requests}

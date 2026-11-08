@@ -42,6 +42,7 @@ for its ripple register.
 | flat-model ADR | [flat-model.md](./flat-model.md) |
 | github-adapter ADR | [github-adapter.md](./github-adapter.md) |
 | gitlab-adapter ADR | [gitlab-adapter.md](./gitlab-adapter.md) |
+| hosted-service ADR | [hosted-service.md](./hosted-service.md) |
 | human-auth ADR | [human-auth.md](./human-auth.md) |
 | import-paths ADR | [import-paths.md](./import-paths.md) |
 | inheritance-model ADR (superseded) | [inheritance-model.md](./inheritance-model.md) |
@@ -56,9 +57,11 @@ for its ripple register.
 | ops-spec ADR | [ops-spec.md](./ops-spec.md) |
 | oss-mechanics ADR | [oss-mechanics.md](./oss-mechanics.md) |
 | permission-model ADR | [permission-model.md](./permission-model.md) |
+| personal-values ADR (accepted) | [personal-values.md](./personal-values.md) |
 | revision-model ADR | [revision-model.md](./revision-model.md) |
 | saml-sp ADR | [saml-sp.md](./saml-sp.md) |
 | schema-model ADR | [schema-model.md](./schema-model.md) |
+| security-maintenance ADR (proposed) | [security-maintenance.md](./security-maintenance.md) |
 | scim-provisioning ADR | [scim-provisioning.md](./scim-provisioning.md) |
 | secret-scanning ADR | [secret-scanning.md](./secret-scanning.md) |
 | source-of-truth ADR | [source-of-truth.md](./source-of-truth.md) |

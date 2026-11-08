@@ -110,6 +110,9 @@ func transitKeyResponse(v service.TransitKeyView) (apigen.TransitKey, error) {
 		}
 		out.Callers = append(out.Callers, entry)
 	}
+	if len(v.PrincipalNames) > 0 {
+		out.PrincipalNames = &v.PrincipalNames
+	}
 	return out, nil
 }
 

@@ -26,6 +26,7 @@ const live = {
   expires_at: '2027-01-01T00:00:00Z',
   created_at: '2026-01-01T00:00:00Z',
   created_by: 'usr_root',
+  created_by_name: 'Root Admin',
   last_used_at: '2026-02-01T00:00:00Z',
   live: true,
 };
@@ -146,6 +147,9 @@ describe('ConnectionCredentials inventory', () => {
 
     expect(container.textContent).toContain('production peer');
     expect(container.textContent).toContain('retired peer');
+    // The creator is named where the server named them, and stays an ID otherwise.
+    expect(container.textContent).toContain('by Root Admin');
+    expect(container.textContent).toContain('by usr_root');
     expect(container.querySelector('.connection__prefix')?.textContent).toContain('hik_1_cn_abc');
     expect(container.querySelector('[data-state="live"]')?.textContent).toBe('live');
     expect(container.querySelector('[data-state="revoked"]')?.textContent).toBe('revoked');

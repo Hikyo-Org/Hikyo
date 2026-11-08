@@ -1,17 +1,17 @@
 -- hikyo:reason Mint authenticated human delegation only after exact scope-bound reauthentication and tenant authorization in this transaction.
 -- hikyo:authn-resolution
 -- name: InsertDeveloperCredential :exec
-INSERT INTO developer_credentials (id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);
+INSERT INTO developer_credentials (id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at,personal_consent) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);
 
 -- hikyo:reason Authentication resolves the presented verifier before any authorization proof can exist.
 -- hikyo:authn-resolution
 -- name: DeveloperCredentialByVerifier :one
-SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at FROM developer_credentials WHERE verifier = ?;
+SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at,personal_consent FROM developer_credentials WHERE verifier = ?;
 
 -- hikyo:reason Transaction-local lifecycle administration filters this metadata after self or project authorization; no bearer can be recovered.
 -- hikyo:authn-resolution
 -- name: ListDeveloperCredentials :many
-SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at FROM developer_credentials ORDER BY created_at,id;
+SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at,personal_consent FROM developer_credentials ORDER BY created_at,id;
 
 -- hikyo:reason Terminal security invalidation writes authentication state atomically with its authorizing mutation.
 -- hikyo:authn-resolution

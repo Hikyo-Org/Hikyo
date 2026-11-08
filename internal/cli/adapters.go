@@ -25,7 +25,7 @@ type adapterCredentialSource struct {
 	file  string
 }
 
-func renderAdapterTargetMutation(out io.Writer, format Format, payload []byte) error {
+func renderAdapterTargetMutation(out io.Writer, format Format, payload []byte, environmentLabel func(string) string) error {
 	var discriminator struct {
 		Kind *apigen.AdapterMoveKind `json:"kind"`
 	}
@@ -43,7 +43,7 @@ func renderAdapterTargetMutation(out io.Writer, format Format, payload []byte) e
 	if err := json.Unmarshal(payload, &target); err != nil {
 		return failf(ExitInternal, "the server's target response did not match the contract: %v", err)
 	}
-	return Render(out, format, targetTable(apigen.AdapterTargetList{Items: []apigen.AdapterTarget{target}}))
+	return Render(out, format, targetTable(apigen.AdapterTargetList{Items: []apigen.AdapterTarget{target}}, environmentLabel))
 }
 
 func (s adapterCredentialSource) read(ios IO) ([]byte, error) {
@@ -772,7 +772,7 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 			if err := client.Do(ctx, http.MethodPatch, path, body, &response); err != nil {
 				return err
 			}
-			return renderAdapterTargetMutation(ios.Stdout, f, response)
+			return renderAdapterTargetMutation(ios.Stdout, f, response, environmentLabeler(ctx, client, base, f))
 		}
 		if err := client.Do(ctx, http.MethodPatch, path, body, &out); err != nil {
 			return err
@@ -940,7 +940,7 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 		if err := client.Do(ctx, http.MethodGet, base+"/adapters/"+url.PathEscape(adapterID)+"/targets", nil, &out); err != nil {
 			return err
 		}
-		return Render(ios.Stdout, f, targetTable(out))
+		return Render(ios.Stdout, f, targetTable(out, environmentLabeler(ctx, client, base, f)))
 	case "add":
 		envID := prepared.environment
 		provider, err := adapterProvider(ctx, client, base, adapterID)
@@ -966,7 +966,7 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 		if err := client.Do(ctx, http.MethodPost, base+"/adapters/"+url.PathEscape(adapterID)+"/targets", input, &out); err != nil {
 			return err
 		}
-		return Render(ios.Stdout, f, targetTable(apigen.AdapterTargetList{Items: []apigen.AdapterTarget{out}}))
+		return Render(ios.Stdout, f, targetTable(apigen.AdapterTargetList{Items: []apigen.AdapterTarget{out}}, environmentLabeler(ctx, client, base, f)))
 	case "show":
 		target := flags.positional()
 		path := base + "/adapter-targets/" + url.PathEscape(target)
@@ -986,7 +986,7 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 		if err := client.Do(ctx, http.MethodGet, path, nil, &out); err != nil {
 			return err
 		}
-		return Render(ios.Stdout, f, targetTable(apigen.AdapterTargetList{Items: []apigen.AdapterTarget{out.Target}}))
+		return Render(ios.Stdout, f, targetTable(apigen.AdapterTargetList{Items: []apigen.AdapterTarget{out.Target}}, environmentLabeler(ctx, client, base, f)))
 	case "remove":
 		path := base + "/adapter-targets/" + url.PathEscape(flags.positional())
 		if keep {
@@ -1004,7 +1004,7 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 		if err := client.Do(ctx, http.MethodPost, base+"/adapter-targets/"+url.PathEscape(flags.positional())+"/pause", nil, &out); err != nil {
 			return err
 		}
-		return Render(ios.Stdout, f, targetTable(apigen.AdapterTargetList{Items: []apigen.AdapterTarget{out}}))
+		return Render(ios.Stdout, f, targetTable(apigen.AdapterTargetList{Items: []apigen.AdapterTarget{out}}, environmentLabeler(ctx, client, base, f)))
 	case "resume":
 		// Resume pushes again, so it runs the manual-sync ceremony over the
 		// adapter's environment set before the request.
@@ -1160,7 +1160,7 @@ func adapterListTable(list apigen.AdapterList) Table {
 	}
 	return Table{Columns: []string{"ID", "PROVIDER", "ORIGIN", "CREDENTIAL", "CREDENTIAL EXPIRES", "TARGETS"}, Rows: rows, JSON: list}
 }
-func targetTable(list apigen.AdapterTargetList) Table {
+func targetTable(list apigen.AdapterTargetList, environmentLabel func(string) string) Table {
 	rows := [][]string{}
 	for _, t := range list.Items {
 		destination := t.DestinationOwner
@@ -1187,7 +1187,7 @@ func targetTable(list apigen.AdapterTargetList) Table {
 		for _, key := range t.Keys {
 			names = append(names, key.Name)
 		}
-		rows = append(rows, []string{string(t.Id), string(t.EnvironmentId), destination, t.NamePrefix, string(t.SyncStatus), revision, attempted, string(t.LastErrorClass), retryAt, attention, strings.Join(names, ","), strings.Join(t.FailureNames, ","), strings.Join(t.Warnings, ","), strings.Join(adapterConflictNames(t.Conflicts), ",")})
+		rows = append(rows, []string{string(t.Id), environmentLabel(string(t.EnvironmentId)), destination, t.NamePrefix, string(t.SyncStatus), revision, attempted, string(t.LastErrorClass), retryAt, attention, strings.Join(names, ","), strings.Join(t.FailureNames, ","), strings.Join(t.Warnings, ","), strings.Join(adapterConflictNames(t.Conflicts), ",")})
 	}
 	return Table{Columns: []string{"ID", "ENVIRONMENT", "DESTINATION", "PREFIX", "STATUS", "REVISION", "ATTEMPTED", "ERROR", "RETRY AT", "ATTENTION", "KEYS", "FAILURES", "WARNINGS", "CONFLICTS"}, Rows: rows, JSON: list}
 }

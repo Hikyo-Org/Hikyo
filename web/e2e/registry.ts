@@ -40,7 +40,7 @@ export const FLOWS: readonly Flow[] = [
   // `establish-credential` (#568) is a new SURFACE and rides `login.spec.ts`
   // (group 1 on main) for the closure reason the SCIM and audit entries below
   // spell out: a spec file a PR adds to a `ci.yml` group never runs on that PR.
-  { id: 'login', spec: 'flows/login.spec.ts', surfaces: ['login', 'signup', 'oidc-done', 'saml-done', 'establish-credential'] },
+  { id: 'login', spec: 'flows/login.spec.ts', surfaces: ['login', 'signup', 'oidc-done', 'saml-done', 'establish-credential', 'invitation-accept'] },
   // `settings` moved to the account flow when the skeleton's session list grew
   // into the whole account & security surface (#60): the chrome flow is about
   // navigation, and a surface with six panels of its own earns its own flow.
@@ -84,6 +84,10 @@ export const FLOWS: readonly Flow[] = [
     surfaces: ['instance-admin', 'instance-members', 'instance-config'],
   },
   { id: 'reveal', spec: 'flows/reveal.spec.ts', surfaces: ['values'] },
+  // Personal values (#1235) are new SURFACES and ride `reveal.spec.ts` (group 4
+  // on main): a spec file a PR adds to a `ci.yml` group never runs on that PR.
+  // The set and reveal legs reuse the reveal ceremony this spec already drives.
+  { id: 'personal-values', spec: 'flows/reveal.spec.ts', surfaces: ['personal-values', 'offboarding-report'] },
   { id: 'matrix', spec: 'flows/matrix.spec.ts', surfaces: ['matrix'] },
   // Secret-scanning warn dialog (#74, SS2/SS4 [UI]) rides the matrix editing
   // surface, a config value carrying a credential warns, and the canary never

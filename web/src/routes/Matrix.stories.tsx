@@ -9,9 +9,11 @@ import {
   zKeyGroupList,
   zKeyList,
   zPendingDraftList,
+  zPersonalValueCounts,
+  zPersonalValueList,
   zValueList,
 } from '@hikyo/zod';
-import { expect, userEvent, waitFor } from 'storybook/test';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
@@ -672,6 +674,66 @@ export const CellMarks: Story = {
   },
 };
 
+// Shared by the 360px and 320px stories below.
+async function expectLegendStaysOnScreen(canvasElement: HTMLElement): Promise<void> {
+  const toggle = await waitFor(() => {
+    const found = canvasElement.querySelector<HTMLElement>('.matrix__legend-toggle');
+    if (found === null || canvasElement.querySelector('.matrix__table thead th:first-child') === null) throw new Error('matrix not rendered');
+    return found;
+  });
+  // In the demo the head wraps and the toggle lands at the row's left; the story's head does not, so put it there.
+  toggle.closest<HTMLElement>('.matrix__legend')!.style.order = '-1';
+  // The shell pads the page 10px a side (the story has no chrome to do it): the popover anchors to that card and stays inside it.
+  const card = toggle.closest<HTMLElement>('.matrix')!;
+  card.style.marginInline = '10px';
+  await userEvent.click(toggle);
+  const body = canvasElement.querySelector<HTMLElement>('.matrix__legend-body')!;
+  const box = body.getBoundingClientRect();
+  // ... and is still a popover you can read, not squeezed to the toggle's width.
+  await expect(box.width).toBeGreaterThanOrEqual(200);
+  await expect(box.left).toBeGreaterThanOrEqual(card.getBoundingClientRect().left);
+  await expect(box.right).toBeLessThanOrEqual(card.getBoundingClientRect().right);
+  // Every term and description fits its column, not just the box around them.
+  for (const dt of body.querySelectorAll<HTMLElement>('dt')) {
+    const range = document.createRange();
+    range.selectNodeContents(dt);
+    await expect(range.getBoundingClientRect().right).toBeLessThanOrEqual(dt.getBoundingClientRect().right + 0.5);
+  }
+  for (const dd of body.querySelectorAll<HTMLElement>('dd')) {
+    const range = document.createRange();
+    range.selectNodeContents(dd);
+    await expect(range.getBoundingClientRect().right).toBeLessThanOrEqual(dd.getBoundingClientRect().right + 0.5);
+    await expect(dd.getBoundingClientRect().width).toBeGreaterThanOrEqual(100);
+  }
+  // Where it sits over the sticky key column, the popover is what is on top.
+  const covered = [...canvasElement.querySelectorAll<HTMLElement>('.matrix__table :is(th, td):first-child')].flatMap((cell) => {
+    const r = cell.getBoundingClientRect();
+    const [left, right, top, bottom] = [Math.max(r.left, box.left), Math.min(r.right, box.right), Math.max(r.top, box.top), Math.min(r.bottom, box.bottom, window.innerHeight - 1)];
+    return left < right && top < bottom ? [{ x: (left + right) / 2, y: (top + bottom) / 2 }] : [];
+  });
+  await expect(covered.length).toBeGreaterThan(0);
+  for (const { x, y } of covered) await expect(body.contains(document.elementFromPoint(x, y))).toBe(true);
+}
+
+// The legend opens as a popover under its toggle. On the narrowest phone the
+// toggle sits at the left of the head, and a popover anchored to it ran off the
+// left edge; it also opened under the sticky key heading it overlaps.
+export const PhoneLegendStaysOnScreen: Story = {
+  globals: { viewport: { value: 'phoneNarrow', isRotated: false } },
+  play: async ({ canvasElement }) => {
+    await expectLegendStaysOnScreen(canvasElement);
+  },
+};
+
+// The narrowest phone (320px) has 40px less room than 360: the same checks.
+export const PhoneLegendStaysOnScreenMinimum: Story = {
+  parameters: { viewport: { options: { phone320: { name: 'Phone 320', styles: { width: '320px', height: '640px' }, type: 'mobile' } } } },
+  globals: { viewport: { value: 'phone320', isRotated: false } },
+  play: async ({ canvasElement }) => {
+    await expectLegendStaysOnScreen(canvasElement);
+  },
+};
+
 // A phone: the sticky key column drops to the touch target, one
 // glyph per key; the name moves into a tap/hover popover anchored to the icon,
 // and the envs picker moves out of the now icon-only header into the head row.
@@ -878,5 +940,83 @@ export const Failed: Story = {
     await expect(
       await canvas.findByText('The environment matrix could not be loaded. Reload to try again.'),
     ).toBeVisible();
+  },
+};
+
+// Personal marks. Someone who manages members sees counts per cell (staging);
+// a developer sees only their own state (development, where the counts read is
+// refused). Every mark is words, inside the cell, so each environment stays one
+// column; the cell's accessible name carries the long form. The own list is read
+// only where counts failed: staging's counts answered, so its own list is never read.
+const personalCounts = {
+  eligible: 14,
+  items: [
+    { key_id: keyId(4), name: 'DATABASE_URL', holders: 11, notices: 0, required: true },
+    { key_id: keyId(7), name: 'STRIPE_SECRET_KEY', holders: 3, notices: 1, required: false },
+  ],
+} satisfies z.input<typeof zPersonalValueCounts>;
+const ownPersonal = {
+  items: [
+    { key_id: keyId(4), name: 'DATABASE_URL', set: false, required: true },
+    { key_id: keyId(7), name: 'STRIPE_SECRET_KEY', set: true, updated_at: '2026-10-01T08:00:00Z' },
+    { key_id: keyId(12), name: 'OTEL_EXPORTER_OTLP_HEADERS', set: false, notice: 'administrator' },
+  ],
+} satisfies z.input<typeof zPersonalValueList>;
+const stagingOwnReads: string[] = [];
+const personalRows: readonly MockRoute[] = [
+  { url: `${PROJECT_URL}/environments/${STG}/personal-value-counts`, body: personalCounts },
+  {
+    url: `${PROJECT_URL}/environments/${STG}/personal-values`,
+    handler: (request) => {
+      stagingOwnReads.push(request.url);
+      return new Response(null, { status: 500 });
+    },
+  },
+  { url: `${PROJECT_URL}/environments/${DEV}/personal-value-counts`, status: 403, body: { error: { code: 'forbidden', message: 'not permitted' } } },
+  { url: `${PROJECT_URL}/environments/${DEV}/personal-values`, body: ownPersonal },
+];
+const personalApp = app([...personalRows, ...catalogue({}), ...allReady]);
+
+const expectPersonalMarks = async (canvas: ReturnType<typeof within>, canvasElement: HTMLElement, phone: boolean) => {
+  const counted = await canvas.findByRole('button', { name: /^DATABASE_URL in staging:.*personal value required, 11 of 14 people hold one/ });
+  await expect(counted.querySelector('.matrix-cell__personal')?.textContent).toBe('personal · 11/14');
+  const holders = canvas.getByRole('button', { name: /^STRIPE_SECRET_KEY in staging:/ });
+  await expect(holders.querySelector('.matrix-cell__personal')?.textContent).toBe('3 personal · 1 notice');
+  const missing = canvas.getByRole('button', { name: /^DATABASE_URL in development:.*a personal value is required here and you have not set one/ });
+  await expect(missing.querySelector('.matrix-cell__personal')?.textContent).toBe('personal · missing');
+  const removed = canvas.getByRole('button', { name: /^OTEL_EXPORTER_OTLP_HEADERS in development:.*an administrator deleted it/ });
+  await expect(removed.querySelector('.matrix-cell__personal')?.textContent).toBe('personal · removed');
+  // Production has no counts or own list: no mark, and the column is not degraded.
+  await expect(canvas.getByRole('button', { name: /^DATABASE_URL in production:/ }).querySelector('.matrix-cell__personal')).toBeNull();
+  await expect(canvasElement.querySelector('.matrix__cell--degraded')).toBeNull();
+  // One column per environment: the mark sits inside the cell, never beside it.
+  const header = canvasElement.querySelectorAll('.matrix__table thead th');
+  const row = counted.closest('tr');
+  await expect(row?.querySelectorAll('td:not(.matrix__filler)').length).toBe(header.length - 2);
+  // The mark never bleeds into the next column.
+  const mark = counted.querySelector('.matrix-cell__personal');
+  if (!(mark instanceof HTMLElement)) throw new Error('mark missing');
+  await expect(mark.getBoundingClientRect().right).toBeLessThanOrEqual(counted.getBoundingClientRect().right + 0.5);
+  // At desktop width the column is sized for it, so it shows in full. A phone
+  // squeezes the column toward its header: the value gives way first, then the
+  // mark ellipsises (shortcut: a long mark is cut on a phone, the cell's name keeps
+  // the words; widen the phone column floor if the counts must always show).
+  if (!phone) await expect(mark.scrollWidth).toBeLessThanOrEqual(mark.clientWidth);
+  // Counts answered for staging, so the caller's own list there was never fetched.
+  await expect(stagingOwnReads).toEqual([]);
+};
+
+export const PersonalMarks: Story = {
+  parameters: personalApp,
+  play: async ({ canvas, canvasElement }) => {
+    await expectPersonalMarks(canvas, canvasElement, false);
+  },
+};
+
+export const PhonePersonalMarks: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  parameters: personalApp,
+  play: async ({ canvas, canvasElement }) => {
+    await expectPersonalMarks(canvas, canvasElement, true);
   },
 };

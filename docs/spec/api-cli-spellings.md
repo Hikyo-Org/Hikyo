@@ -319,6 +319,17 @@ hikyo instance-config oauth2-provider delete  <slug>
 
 REST: `GET|PUT|DELETE /api/v1/instance/oauth2-providers/{slug}`, `GET /api/v1/instance/oauth2-providers`. Put validates the origin (`https`, host only, no path or query) and the profile; runs no discovery.
 
+### Email invitation of an existing account ([email-invitations.md](./email-invitations.md), #1207)
+
+```
+hikyo access invitation send   <email> --template T [--org <org>] [-o table|json]
+hikyo access invitation list   [--org <org>] [-o table|json]
+hikyo access invitation revoke <id> [--org <org>]
+hikyo access invitation accept [--yes] [-o table|json]     # token or full link on standard input
+```
+
+REST: `POST|GET /api/v1/orgs/{org}/email-invitations`, `DELETE /api/v1/orgs/{org}/email-invitations/{invitation}`, `POST /api/v1/me/invitations/preview|accept`. `accept` never takes the token as an argument (argv reaches shell history and process lists); it reads the bare token or the link `.../invitations/accept#token=...` from standard input, previews, and asks for confirmation on the terminal unless `--yes`. When the response has `signed_out: true` it deletes the stored session and tells the person to run `hikyo login`. Human session only.
+
 ### Registration policy (one per scope; `manage-members` at that scope ∧ reauth on write)
 
 ```
@@ -416,10 +427,10 @@ The rotation families are `rotate-token-key`, `rotate-scanning-key`, `rotate-dek
 
 ### Revision and enum baseline
 
-**Source inventory, 2026-10-23, including instance audit query and export;
+**Source inventory, 2026-11-05, including chrome identity;
 final freeze baseline pending.** The earlier revision-2 inventory is historical.
-`api/spec.go` advertises **API revision 13** and `api/openapi.yaml` contains
-406 operations:
+`api/spec.go` advertises **API revision 14** and `api/openapi.yaml` contains
+414 operations:
 
 | Minimum revision | Operation count |
 | --- | ---: |
@@ -436,6 +447,7 @@ final freeze baseline pending.** The earlier revision-2 inventory is historical.
 | 11 | 3 |
 | 12 | 7 |
 | 13 | 2 |
+| 14 | 8 |
 
 Revision 12 introduces only the seven manual pairing operations: authenticated
 request preparation, invitation creation/list/revocation, local completion,
@@ -443,8 +455,12 @@ and the two capability-gated PAKE redemption endpoints. Existing operations
 keep their original minimum revisions. New clients refuse these pairing
 operations against a server advertising an earlier API revision.
 
-Revision 13 introduces only `queryInstanceAudit` and `exportInstanceAudit`,
-the instance audit trail routes.
+Revision 13 introduces `queryInstanceAudit` and `exportInstanceAudit`, the
+instance audit trail routes.
+
+Revision 14 introduces the eight chrome identity operations: `setOrgIdentity`, `getOrgIdentityImage`, `setOrgIdentityImage`,
+`clearOrgIdentityImage` and their four project twins. They are additive; the
+optional `identity` member on `Org`, `MyOrg` and `Project` is likewise additive.
 
 These are source counts, not a candidate test result. Refresh them after
 outstanding API changes, including #805, land. Retain published minima rather
