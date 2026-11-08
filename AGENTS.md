@@ -63,6 +63,18 @@ but it is not a substitute for this signature.
 
   The hook checks every commit between `hikyo-upstream/main`, or `hikyo-upstream/dev`
   when that leaves fewer, and each branch being pushed. Keep the hook installed; do not bypass it with `--no-verify`.
+- The hook also runs `scripts/ci/storybook-suite.sh` (about 4 minutes) when a push
+  changes `web/`, `clients/ts/`, `.nvmrc`, the root `package.json`, that script or
+  `docs/site/scripts/test-csp.mjs`; a pass is cached per exact input bytes and modes,
+  and a cached pass skips the checkout checks. Otherwise push from a clean checkout
+  holding the pushed inputs (no changes to them, no `.env*` files under `web/` or
+  `clients/ts/`). Install its browser once with `pnpm --dir web run e2e:install`.
+  For WIP pushes only, set `HIKYO_PREPUSH_STORYBOOK=skip`; CI still runs the suite.
+  Signatures are never skippable.
+- For `web/` changes, also run the affected flow specs before requesting review and
+  list them in the PR Evidence:
+  `pnpm --dir web run build && pnpm --dir web exec playwright test --project=desktop e2e/flows/<spec>.spec.ts`
+  (add `--project=mobile` for mobile; `pnpm --dir web run e2e:install` once).
 - Commit normally with signing enabled. If `git commit -S -s` itself fails to
   sign, stop and report the exact error. Never disable or bypass signing.
 - Before every push, verify the complete pull-request range, using the base branch

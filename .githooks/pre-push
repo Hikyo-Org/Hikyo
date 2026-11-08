@@ -3,19 +3,98 @@ set -eu
 
 _remote_name=$1
 repo_root=$(git rev-parse --show-toplevel)
-zero=0000000000000000000000000000000000000000
 base=refs/remotes/hikyo-upstream/main
 dev=refs/remotes/hikyo-upstream/dev
+# Everything the Storybook suite reads from the repository (see
+# scripts/ci/storybook-suite.sh): web and the client package it aliases, the
+# Node and pnpm pins, the suite itself and the CSP checker build:demo runs.
+# ci-storybook.yml triggers on exactly this list (plus its own file and setup
+# helpers); a Go test keeps them equal.
+storybook_paths='web clients/ts .nvmrc package.json scripts/ci/storybook-suite.sh docs/site/scripts/test-csp.mjs'
+
+case "${HIKYO_PREPUSH_STORYBOOK:-}" in
+	'' | skip) ;;
+	*)
+		printf 'pre-push: HIKYO_PREPUSH_STORYBOOK must be unset or "skip", got "%s"\n' "$HIKYO_PREPUSH_STORYBOOK" >&2
+		exit 1
+		;;
+esac
+
+# Hash of every Storybook input at REV, bytes and file modes (a tree entry
+# carries both), so a mode-only change such as a non-executable suite is a new key.
+storybook_key() {
+	# shellcheck disable=SC2086 # the paths contain no whitespace or glob characters
+	entries=$(git ls-tree "$1" -- $storybook_paths) || return 1
+	printf '%s\n' "$entries" | git hash-object --stdin
+}
+
+# Succeed only when the working tree holds exactly the bytes with key $1.
+# Every failure is explicit: set -e is off inside functions run as `f || ...`.
+worktree_has_key() {
+	head_key=$(storybook_key HEAD) || return 1
+	[ "$1" = "$head_key" ] || return 1
+	# shellcheck disable=SC2086 # the paths contain no whitespace or glob characters
+	dirty=$(git status --porcelain --untracked-files=all -- $storybook_paths) || return 1
+	[ -z "$dirty" ] || return 1
+	# Ignored .env files change the build without changing any tree OID.
+	env_files=$(find web clients/ts -name node_modules -prune -o -name '.env*' -print) || return 1
+	[ -z "$env_files" ] || return 1
+}
+
+# Require the Storybook suite to have passed for exactly the pushed frontend bytes.
+require_storybook() {
+	# CI executes the committed suite, and a core.fileMode=false clone would run
+	# an executable working copy over a non-executable commit.
+	suite=$(git ls-tree "$1" -- scripts/ci/storybook-suite.sh) || return 1
+	case "$suite" in
+		'100755 '*) ;;
+		*)
+			printf 'pre-push: %s does not commit scripts/ci/storybook-suite.sh as an executable file (mode 100755)\n' "$1" >&2
+			return 1
+			;;
+	esac
+	key=$(storybook_key "$1") || return 1
+	stamps=$(git rev-parse --path-format=absolute --git-common-dir) || return 1
+	stamps=$stamps/hikyo-storybook-passes
+	if [ -f "$stamps" ] && grep -Fx -- "$key" "$stamps" >/dev/null; then
+		return 0
+	fi
+	worktree_has_key "$key" || {
+		printf 'pre-push: %s changes the frontend, and the Storybook suite has not passed for those exact bytes.\n' "$1" >&2
+		printf 'pre-push: check out and clean the branch you are pushing (no modified or untracked files under the Storybook inputs, and no .env files under web/ or clients/ts/), or push from the worktree that has it, then push again.\n' >&2
+		return 1
+	}
+	printf 'pre-push: running the Storybook suite (about 4 minutes; HIKYO_PREPUSH_STORYBOOK=skip skips it for WIP pushes)\n' >&2
+	(cd "$repo_root" && scripts/ci/storybook-suite.sh </dev/null) || {
+		printf 'pre-push: the Storybook suite failed; fix it before pushing (if its browser is missing, run pnpm --dir web run e2e:install once)\n' >&2
+		return 1
+	}
+	# Edits made while the suite ran must not be stamped.
+	worktree_has_key "$key" || {
+		printf 'pre-push: the frontend files changed while the Storybook suite ran; push again once they are stable\n' >&2
+		return 1
+	}
+	{
+		grep -Fvx -- "$key" "$stamps" 2>/dev/null || :
+		printf '%s\n' "$key"
+	} | tail -n 50 >"$stamps.$$" || return 1
+	mv "$stamps.$$" "$stamps" || return 1
+}
 
 git rev-parse --verify "$base^{commit}" >/dev/null 2>&1 || {
 	printf 'pre-push: missing %s; fetch canonical Hikyo main into that reference first\n' "$base" >&2
 	exit 1
 }
 
-while read -r local_ref local_oid _remote_ref _remote_oid; do
-	case "$local_ref:$local_oid" in
-		refs/heads/*:"$zero") continue ;;
-		refs/heads/*:*) ;;
+while read -r local_ref local_oid remote_ref _remote_oid; do
+	# Git marks a deletion with a (delete) local ref and an all-zero object of the
+	# repository's hash length, 40 or 64. Otherwise check a push whose local
+	# OR remote ref is a branch: `git push origin HEAD` and SHA pushes name only
+	# the remote branch, `main:refs/tags/v1` only the local one. Tag-to-tag pushes
+	# stay unchecked, as before.
+	[ "$local_ref" != "(delete)" ] || continue
+	case "$local_ref:$remote_ref" in
+		refs/heads/*:* | *:refs/heads/*) ;;
 		*) continue ;;
 	esac
 
@@ -26,4 +105,13 @@ while read -r local_ref local_oid _remote_ref _remote_oid; do
 		range_base=$dev
 	fi
 	"$repo_root/scripts/ci/check-commit-signatures.sh" "$range_base" "$local_oid" "$repo_root"
+
+	# shellcheck disable=SC2086 # as above
+	frontend=$(git diff --name-only "$(git merge-base "$range_base" "$local_oid")" "$local_oid" -- $storybook_paths)
+	[ -n "$frontend" ] || continue
+	if [ "${HIKYO_PREPUSH_STORYBOOK:-}" = skip ]; then
+		printf 'pre-push: WARNING: skipping the Storybook suite for %s; CI still runs it in the advisory and full suites\n' "$local_ref" >&2
+		continue
+	fi
+	require_storybook "$local_oid" || exit 1
 done

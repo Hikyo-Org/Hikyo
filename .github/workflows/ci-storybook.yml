@@ -1,0 +1,70 @@
+# Advisory early signal for the Storybook, theme and static-demo suite that
+# otherwise runs only after a feature PR merges into dev. It runs the same
+# commands as ci.yml's `storybook` job (scripts/ci/storybook-suite.sh, kept in
+# step by a drift test) on the exact PR head. It is not a required context, and
+# the full suites still run on dev and in the merge queue.
+# The suite needs no secrets: it runs read-only with a restored pnpm store and
+# no cache writer.
+name: ci-advisory-storybook
+
+on:
+  # No `edited`: a base-branch edit cannot change what head-only tests read.
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'web/**'
+      - 'clients/ts/**'
+      - .nvmrc
+      - package.json
+      - docs/site/scripts/test-csp.mjs
+      - scripts/ci/storybook-suite.sh
+      # Workflow-only setup helpers; the pre-push hook does not run them.
+      - scripts/ci/install-corepack.sh
+      - scripts/ci/export-pnpm-cache.sh
+      - .github/workflows/ci-storybook.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: advisory-storybook-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  storybook:
+    name: storybook, theme and static demo suite
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
+    timeout-minutes: 15
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Check out the exact PR head without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      # The container user does not own the workspace, and checkout drops its
+      # temporary safe.directory on exit, so trust the workspace for this call only.
+      - name: Verify the checkout is the PR head
+        run: test "$(git -c safe.directory="$PWD" rev-parse HEAD)" = "$EXPECTED_HEAD"
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: Install Corepack and enable pnpm
+        run: ./scripts/ci/install-corepack.sh
+      - name: Select explicit pnpm cache path and ABI
+        id: pnpm-cache
+        run: ./scripts/ci/export-pnpm-cache.sh
+      # Restore only. The trusted main-branch writer in ci.yml owns this cache.
+      - name: Restore pnpm store
+        id: pnpm-store
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ci-cache/pnpm/store
+          key: pnpm-store-v2-playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-${{ hashFiles('.nvmrc', 'web/package.json', 'web/pnpm-lock.yaml', 'web/pnpm-workspace.yaml', 'clients/ts/package.json', 'clients/ts/pnpm-lock.yaml', 'clients/ts/pnpm-workspace.yaml') }}
+          restore-keys: |
+            pnpm-store-v2-playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-
+      - name: Storybook, theme and static demo suite
+        run: ./scripts/ci/storybook-suite.sh
