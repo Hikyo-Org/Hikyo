@@ -103,6 +103,12 @@ require_storybook() {
 # and tool failures cannot be told apart.
 require_golangci() {
 	printf 'pre-push: running the golangci-lint ratchet on new Go code (HIKYO_PREPUSH_GOLANGCI=skip skips it for WIP pushes)\n' >&2
+	# The pushed commit's script, or the hook checkout's when the commit predates it.
+	if git cat-file -e "$1:scripts/ci/golangci-lint-new.sh" 2>/dev/null; then
+		ratchet=scripts/ci/golangci-lint-new.sh
+	else
+		ratchet=$repo_root/scripts/ci/golangci-lint-new.sh
+	fi
 	status=0
 	(
 		# From a linked worktree git exports GIT_DIR (and friends) for that
@@ -122,15 +128,13 @@ require_golangci() {
 		trap cleanup EXIT
 		trap 'exit 130' HUP INT TERM
 		git worktree add -q --detach "$tmp" "$1" || exit 64
-		ratchet=$tmp/scripts/ci/golangci-lint-new.sh
-		[ -e "$ratchet" ] || ratchet=$repo_root/scripts/ci/golangci-lint-new.sh
 		cd "$tmp" && "$ratchet" "$2" </dev/null
 	) || status=$?
 	[ "$status" -ne 0 ] || return 0
 	if [ "$status" -eq 64 ]; then
-		printf 'pre-push: the golangci-lint ratchet could not start or finish its setup (worktree, merge base or package listing); reproduce: check out %s (detached) and run scripts/ci/golangci-lint-new.sh %s\n' "$1" "$2" >&2
+		printf 'pre-push: the golangci-lint ratchet could not start or finish its setup (worktree, merge base or package listing); reproduce: check out %s (detached) and run %s %s\n' "$1" "$ratchet" "$2" >&2
 	else
-		printf 'pre-push: golangci-lint reported issues or could not run; see the output above, or reproduce: check out %s (detached) and run scripts/ci/golangci-lint-new.sh %s\n' "$1" "$2" >&2
+		printf 'pre-push: golangci-lint reported issues or could not run; see the output above, or reproduce: check out %s (detached) and run %s %s\n' "$1" "$ratchet" "$2" >&2
 	fi
 	return 1
 }

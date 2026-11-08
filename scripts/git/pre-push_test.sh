@@ -292,7 +292,7 @@ commit_change internal/x.go
 : >"$logs/golangci-fail"
 echo 1 >"$logs/golangci-fail"
 expect_refused 'reported issues' gl
-grep -F 'scripts/ci/golangci-lint-new.sh refs/remotes/hikyo-upstream/main' "$out" >/dev/null || fail 'reproduce hint missing'
+grep -F "check out $(git rev-parse gl) (detached) and run scripts/ci/golangci-lint-new.sh refs/remotes/hikyo-upstream/main" "$out" >/dev/null || fail 'reproduce hint does not name the pushed commit and its script'
 expect_count golangci $((before + 2))
 echo 5 >"$logs/golangci-fail"
 expect_refused 'reported issues or could not run' gl
@@ -423,6 +423,11 @@ lw_push other-noscript:other-noscript || fail 'script-less commit was refused'
 expect_count golangci $((before + 1))
 [ "$(last 2)" = "$(git rev-parse other-noscript)" ] || fail 'fallback script linted the wrong commit'
 [ "$(marker)" = checkout ] || fail "fallback ran the $(marker) copy, want the pushing checkout's"
+# Its reproduce hint names the checkout's script, which the pushed commit lacks.
+echo 1 >"$logs/golangci-fail"
+if lw_push other-noscript:other-noscript-red; then fail 'failing fallback lint was accepted'; fi
+rm "$logs/golangci-fail"
+grep -F "/lw/scripts/ci/golangci-lint-new.sh refs/remotes/hikyo-upstream/main" "$out" >/dev/null || fail 'fallback reproduce hint does not name the checkout script'
 # A pushed commit with neither the script nor a .golangci.yml: the fallback
 # script gets --config pointing at the pushing checkout's real config file.
 git switch -q -c other-noboth other-good

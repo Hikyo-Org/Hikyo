@@ -236,8 +236,10 @@ type golangciConfig struct {
 		} `yaml:"exclusions"`
 	} `yaml:"linters"`
 	Issues struct {
-		MaxPerLinter int `yaml:"max-issues-per-linter"`
-		MaxSame      int `yaml:"max-same-issues"`
+		// Pointers: a missing key falls back to golangci-lint's caps (50 and 3),
+		// which must not read as the pinned 0.
+		MaxPerLinter *int `yaml:"max-issues-per-linter"`
+		MaxSame      *int `yaml:"max-same-issues"`
 	} `yaml:"issues"`
 }
 
@@ -267,8 +269,13 @@ func golangciConfigProblems(raw string) []string {
 		check("exclusion path", config.Linters.Exclusions.Rules[0].Path, `_test\.go`)
 		check("exclusion linters", config.Linters.Exclusions.Rules[0].Linters, []string{"gosec"})
 	}
-	check("max-issues-per-linter", config.Issues.MaxPerLinter, 0)
-	check("max-same-issues", config.Issues.MaxSame, 0)
+	uncapped := func(name string, got *int) {
+		if got == nil || *got != 0 {
+			problems = append(problems, name+" must be set to 0 (no cap)")
+		}
+	}
+	uncapped("max-issues-per-linter", config.Issues.MaxPerLinter)
+	uncapped("max-same-issues", config.Issues.MaxSame)
 	return problems
 }
 
@@ -290,7 +297,9 @@ func TestGolangciConfigIsPinned(t *testing.T) {
 		"issue cap": func(s string) string {
 			return strings.Replace(s, "max-issues-per-linter: 0", "max-issues-per-linter: 50", 1)
 		},
-		"formatters section": func(s string) string { return s + "formatters:\n  enable: [gofmt]\n" },
+		"per-linter cap dropped": func(s string) string { return strings.Replace(s, "  max-issues-per-linter: 0\n", "", 1) },
+		"same-issue cap dropped": func(s string) string { return strings.Replace(s, "  max-same-issues: 0\n", "", 1) },
+		"formatters section":     func(s string) string { return s + "formatters:\n  enable: [gofmt]\n" },
 	} {
 		mutated := mutate(raw)
 		if mutated == raw {
