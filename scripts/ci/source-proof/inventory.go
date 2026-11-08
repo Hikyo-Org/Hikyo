@@ -162,7 +162,7 @@ func expectedJobs(selected selectedRun) map[string]expectedJob {
 			wanted[fmt.Sprintf("%sweb (%s, %d)", prefix, project, group)] = expectedJob{Guard: guard, Steps: steps}
 		}
 	}
-	for shard := 0; shard < 4; shard++ {
+	for shard := 0; shard < 6; shard++ {
 		wanted[fmt.Sprintf("%sisolation shard (%d)", prefix, shard)] = expectedJob{Guard: guard, Steps: []string{"Test assigned isolation cases on SQLite and PostgreSQL"}}
 		wanted[fmt.Sprintf("%sfuzz shard (%d)", prefix, shard)] = expectedJob{Guard: guard, Steps: []string{"Fuzz every target for bounded work"}}
 	}

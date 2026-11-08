@@ -1278,7 +1278,7 @@ jobs:
           retention-days: 30
 
   # Fast package/build checks stay together; the historically dominant
-  # internal/isolation package runs on four independent PostgreSQL runners.
+  # internal/isolation package runs on six independent PostgreSQL runners.
   # Cross-platform proof for local repository scanning (#153): the scanner
   # engine's path, CRLF, symlink, budget and git-fixture tests on the two
   # non-Linux client platforms (Linux runs them in test_core). The macOS leg
@@ -1629,7 +1629,7 @@ jobs:
           planner="$RUNNER_TEMP/analysis-shards"
           go build -o "$planner" "$trusted_planner"
           race_count=12
-          shard_count=4
+          shard_count=6
           if "$planner" --supports-all-v1 >"$RUNNER_TEMP/planner-capability" 2>"$RUNNER_TEMP/planner-capability-error"; then
             test "$(cat "$RUNNER_TEMP/planner-capability")" = analysis-shards-all-v1
             plan=$("$planner" all --root . --race-shards "$race_count" --shards "$shard_count")
