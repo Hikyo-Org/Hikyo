@@ -237,14 +237,23 @@ commit_change package.json
 expect_ok pkg
 expect_count suite $((before + 1))
 
-# 16. A mode-only change is a new key: a non-executable suite cannot reuse
-# the pass stamped for the same bytes, and fails when the hook runs it.
+# 16. A mode-only change is a new key, and a non-executable committed suite is
+# refused before any stamp or run: CI executes the committed file.
 git switch -q -c mode pkg
 chmod -x scripts/ci/storybook-suite.sh
 git add scripts/ci/storybook-suite.sh
 git commit -q -m 'drop the suite executable bit'
 before=$(count suite)
-expect_refused 'the Storybook suite failed' mode
+expect_refused 'storybook-suite.sh as an executable file' mode
+expect_count suite "$before"
+# A core.fileMode=false clone ignores the working copy's executable bit, so the
+# committed mode itself must refuse.
+git switch -q -c mode-ignored pkg
+git config core.fileMode false
+git update-index --chmod=-x scripts/ci/storybook-suite.sh
+git commit -q -m 'commit the suite without its executable bit'
+expect_refused 'storybook-suite.sh as an executable file' mode-ignored
+git config --unset core.fileMode
 expect_count suite "$before"
 
 printf 'pre-push fixture: signatures run first; the suite runs once per frontend key and is skipped on stamps, branch deletions, non-frontend pushes and explicit opt-out; dirty, foreign or failing runs refuse\n'

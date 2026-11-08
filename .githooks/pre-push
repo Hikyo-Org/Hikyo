@@ -9,8 +9,7 @@ dev=refs/remotes/hikyo-upstream/dev
 # scripts/ci/storybook-suite.sh): web and the client package it aliases, the
 # Node and pnpm pins, the suite itself and the CSP checker build:demo runs.
 # ci-storybook.yml triggers on exactly this list (plus its own file and setup
-# helpers); a Go test
-# keeps them equal.
+# helpers); a Go test keeps them equal.
 storybook_paths='web clients/ts .nvmrc package.json scripts/ci/storybook-suite.sh docs/site/scripts/test-csp.mjs'
 
 case "${HIKYO_PREPUSH_STORYBOOK:-}" in
@@ -44,6 +43,16 @@ worktree_has_key() {
 
 # Require the Storybook suite to have passed for exactly the pushed frontend bytes.
 require_storybook() {
+	# CI executes the committed suite, and a core.fileMode=false clone would run
+	# an executable working copy over a non-executable commit.
+	suite=$(git ls-tree "$1" -- scripts/ci/storybook-suite.sh) || return 1
+	case "$suite" in
+		'100755 '*) ;;
+		*)
+			printf 'pre-push: %s does not commit scripts/ci/storybook-suite.sh as an executable file (mode 100755)\n' "$1" >&2
+			return 1
+			;;
+	esac
 	key=$(storybook_key "$1") || return 1
 	stamps=$(git rev-parse --path-format=absolute --git-common-dir) || return 1
 	stamps=$stamps/hikyo-storybook-passes
