@@ -48,7 +48,10 @@ echo committed >>"$logs/marker.log"
 echo "\$1 \$(git rev-parse HEAD) \$(pwd -P)" >>"$logs/golangci.log"
 [ ! -f "$logs/golangci-fail" ] || exit "\$(cat "$logs/golangci-fail")"
 ! grep -q BAD internal/x.go 2>/dev/null || { echo 'stub: new issue' >&2; exit 1; }
-! grep -q BADCFG .golangci.yml 2>/dev/null || { echo 'stub: bad config' >&2; exit 1; }
+# Like the real script: a tree with its own .golangci.yml uses it (no --config);
+# otherwise the config next to this script is passed with --config.
+if [ -f .golangci.yml ]; then cfg=.golangci.yml; echo tree >>"$logs/config.log"; else cfg=\$(dirname "\$0")/../../.golangci.yml; echo "--config \$cfg" >>"$logs/config.log"; fi
+! grep -q BADCFG "\$cfg" 2>/dev/null || { echo 'stub: bad config' >&2; exit 1; }
 [ ! -e wip.go ] || { echo 'stub: stray wip.go linted' >&2; exit 1; }
 STUB
 chmod +x .githooks/pre-push scripts/ci/*.sh
@@ -270,6 +273,7 @@ git update-index --chmod=-x scripts/ci/storybook-suite.sh
 git commit -q -m 'commit the suite without its executable bit'
 expect_refused 'storybook-suite.sh as an executable file' mode-ignored
 git config --unset core.fileMode
+git checkout -q -- scripts/ci/storybook-suite.sh # the work tree still has the executable bit the index dropped
 expect_count suite "$before"
 
 # 17. The golangci-lint ratchet runs on Go changes only, and failure, opt-out
@@ -291,7 +295,7 @@ expect_refused 'reported issues' gl
 grep -F 'scripts/ci/golangci-lint-new.sh refs/remotes/hikyo-upstream/main' "$out" >/dev/null || fail 'reproduce hint missing'
 expect_count golangci $((before + 2))
 echo 5 >"$logs/golangci-fail"
-expect_refused 'tool failed (exit 5' gl
+expect_refused 'reported issues or could not run' gl
 echo 64 >"$logs/golangci-fail"
 expect_refused 'could not start or finish its setup' gl
 rm "$logs/golangci-fail"
@@ -356,8 +360,7 @@ expect_count golangci $((before + 2))
 
 # 18. Real pushes from a linked worktree, where git exports GIT_DIR for that
 # worktree to the hook: the ratchet still lints exactly the pushed commit, with
-# the pushed commit's config and script, in a stable path that is never reused
-# while taken.
+# the pushed commit's config and script, in a fresh directory per push.
 git switch -q go
 git init -q --bare "$root/remote.git"
 git remote add bare "$root/remote.git"
@@ -372,6 +375,7 @@ git worktree add -q "$root/lw" -b lw-co "$base"
 } >"$root/lw-script"
 cat "$root/lw-script" >"$root/lw/scripts/ci/golangci-lint-new.sh"
 marker() { tail -n 1 "$logs/marker.log"; }
+config() { tail -n 1 "$logs/config.log"; }
 git branch -q other-good "$base"
 git switch -q other-good
 commit_change internal/x.go
@@ -389,22 +393,18 @@ grep -F 'reported issues' "$out" >/dev/null || fail 'linked-worktree refusal mes
 lw_push other-good:other-good || fail 'good commit pushed from a linked worktree was refused'
 [ "$(last 2)" = "$good_oid" ] || fail "linked-worktree push linted $(last 2), want $good_oid"
 [ "$(marker)" = committed ] || fail "ran the $(marker) copy of the ratchet script, want the pushed commit's"
-# The lint tree is the stable per-repository path, and is gone afterwards.
-stable=$(cd "$gitdir" && pwd -P)/hikyo-golangci-lint
-[ "$(last 3-)" = "$stable" ] || fail "lint ran in '$(last 3-)', want $stable"
-[ ! -e "$stable" ] || fail 'stable lint path left behind'
-# A taken stable path is neither waited on nor deleted: a fresh path is used.
-mkdir "$stable"
-echo mine >"$stable/marker"
+# The lint tree is a fresh directory per push, and is gone afterwards.
+first_dir=$(last 3-)
+[ ! -e "$first_dir" ] || fail 'lint directory left behind'
+[ "$(config)" = tree ] || fail "the pushed tree has a config, but the ratchet got '$(config)'"
 git branch -q other-good2 other-good
-lw_push other-good2:other-good2 || fail 'push with a taken stable path was refused'
-[ "$(last 3-)" != "$stable" ] || fail 'a taken stable path was reused'
-[ -f "$stable/marker" ] || fail 'another run worktree was deleted'
-rm -r "$stable"
+lw_push other-good2:other-good2 || fail 'second linked-worktree push was refused'
+[ "$(last 3-)" != "$first_dir" ] || fail 'two pushes shared a lint directory'
 # A dirty .golangci.yml in the pushing checkout does not change the verdict...
 echo BADCFG >>"$root/lw/.golangci.yml"
 git branch -q other-good3 other-good
 lw_push other-good3:other-good3 || fail 'dirty config in the pushing checkout changed the verdict'
+[ "$(config)" = tree ] || fail "the pushed tree's own config was not used: '$(config)'"
 git -C "$root/lw" checkout -q -- .golangci.yml
 # ...but one committed on the pushed branch does.
 git switch -q -c other-badcfg other-good
@@ -412,6 +412,7 @@ echo BADCFG >>.golangci.yml
 git commit -q -am 'bad config'
 git switch -q go
 if lw_push other-badcfg:other-badcfg; then fail 'committed bad config was accepted'; fi
+grep -F 'bad config' "$out" >/dev/null || fail 'the committed bad config was not what refused the push'
 # A pushed commit without the script falls back to the pushing checkout's copy.
 git switch -q -c other-noscript other-good
 git rm -q scripts/ci/golangci-lint-new.sh
@@ -422,6 +423,16 @@ lw_push other-noscript:other-noscript || fail 'script-less commit was refused'
 expect_count golangci $((before + 1))
 [ "$(last 2)" = "$(git rev-parse other-noscript)" ] || fail 'fallback script linted the wrong commit'
 [ "$(marker)" = checkout ] || fail "fallback ran the $(marker) copy, want the pushing checkout's"
+# A committed script without its executable bit fails closed, as in CI, which
+# runs it directly: the push is refused, not silently run through the fallback.
+git switch -q -c other-nox other-good
+chmod -x scripts/ci/golangci-lint-new.sh
+git commit -q -am 'script not executable'
+git switch -q go
+before=$(count golangci)
+if lw_push other-nox:other-nox; then fail 'a non-executable committed script was accepted'; fi
+grep -F 'reported issues or could not run' "$out" >/dev/null || fail 'non-executable script refusal message missing'
+expect_count golangci "$before"
 git worktree remove --force "$root/lw"
 
 printf 'pre-push fixture: signatures run first; the suite runs once per frontend key and is skipped on stamps, branch deletions, non-frontend pushes and explicit opt-out; dirty, foreign or failing runs refuse; the golangci-lint ratchet runs on Go changes only and honours its own opt-out\n'

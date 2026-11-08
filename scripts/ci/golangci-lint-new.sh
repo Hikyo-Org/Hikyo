@@ -4,12 +4,14 @@
 # existing baseline is not enforced. Used by the pre-push hook and by
 # ci-golangci.yml (advisory); never part of a required job.
 # Usage: scripts/ci/golangci-lint-new.sh BASE
-# It lints the work tree it runs in (the hook runs it in a detached worktree at
-# the pushed commit); the tool pin and .golangci.yml come from this script's checkout.
+# It lints the work tree it runs in (the hook runs this script from a detached
+# worktree at the pushed commit, so the tool pin, .golangci.yml and this script
+# all come from that commit).
 set -eu
 
-# Exit codes: 1 findings (golangci-lint's own), 64 this script could not set up
-# (the hook tells the two apart); golangci-lint's other codes pass through.
+# Exit 64: this script could not set up. Any other non-zero code comes from
+# golangci-lint run through `go run`, which maps every tool exit to 1, so
+# findings and tool failures look alike.
 fail() {
 	printf 'golangci-lint-new: %s\n' "$*" >&2
 	exit 64
@@ -56,8 +58,9 @@ else
 fi
 
 printf 'golangci-lint-new: linting new code since %s (%s)\n' "$base" "$*" >&2
-# The config next to the work tree's root is found on its own (and findings get
-# paths relative to it); this script's checkout supplies one only when the tree has none.
+# golangci-lint finds .golangci.yml at the work tree's root by itself, and then
+# reports paths relative to it. --config is only the fallback for a tree without
+# one: the config of the checkout this script lives in.
 if [ -f .golangci.yml ]; then
 	exec "$script_dir/run-go-tool.sh" golangci-lint run -j 2 --new-from-merge-base="$base" "$@"
 fi

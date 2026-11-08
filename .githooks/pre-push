@@ -97,8 +97,10 @@ require_storybook() {
 # .golangci.yml come from that commit too (the hook checkout's copy of the
 # script is used only when the commit has none), so the work tree you push from,
 # whichever branch it has checked out and any uncommitted or untracked file never
-# change the verdict, and it matches ci-advisory-golangci. Exit codes of the
-# ratchet: 1 findings, 64 its own setup failed, anything else a tool failure.
+# change the verdict, and it matches ci-advisory-golangci. Exit 64 is the hook's
+# or the script's own setup failing; any other non-zero code is golangci-lint
+# (run through `go run`, which turns every tool exit code into 1), so findings
+# and tool failures cannot be told apart.
 require_golangci() {
 	printf 'pre-push: running the golangci-lint ratchet on new Go code (HIKYO_PREPUSH_GOLANGCI=skip skips it for WIP pushes)\n' >&2
 	status=0
@@ -107,35 +109,29 @@ require_golangci() {
 		# worktree; every git command in the lint tree would read its HEAD.
 		# shellcheck disable=SC2046 # a list of variable names
 		unset $(git rev-parse --local-env-vars)
-		common=$(git rev-parse --path-format=absolute --git-common-dir) || exit 64
-		# A stable path keeps the Go build cache warm (action IDs include the
-		# directory). mkdir is the lock: if the path is taken (a concurrent push,
-		# or a leftover after a kill) use a fresh one, which is correct but cold;
-		# never wait on or delete another run's worktree.
-		tmp=$common/hikyo-golangci-lint
-		mkdir "$tmp" 2>/dev/null || tmp=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-golangci.XXXXXX") || exit 64
+		# The Go build cache keys on source paths; -trimpath makes the fresh
+		# directory of every push hit the cache of the last one.
+		GOFLAGS="${GOFLAGS:+$GOFLAGS }-trimpath"
+		export GOFLAGS
+		tmp=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-golangci.XXXXXX") || exit 64
 		# shellcheck disable=SC2329 # run by the EXIT trap
 		cleanup() {
 			cd "$repo_root" || :
-			if ! git worktree remove --force "$tmp" >/dev/null 2>&1; then
-				rm -rf "$tmp"
-				git worktree prune
-			fi
-			rm -rf "$tmp"
+			git worktree remove --force "$tmp" >/dev/null 2>&1 || { rm -rf "$tmp"; git worktree prune; }
 		}
 		trap cleanup EXIT
 		trap 'exit 64' HUP INT TERM
 		git worktree add -q --detach "$tmp" "$1" || exit 64
 		ratchet=$tmp/scripts/ci/golangci-lint-new.sh
-		[ -x "$ratchet" ] || ratchet=$repo_root/scripts/ci/golangci-lint-new.sh
+		[ -e "$ratchet" ] || ratchet=$repo_root/scripts/ci/golangci-lint-new.sh
 		cd "$tmp" && "$ratchet" "$2" </dev/null
 	) || status=$?
 	[ "$status" -ne 0 ] || return 0
-	case "$status" in
-		1) printf 'pre-push: golangci-lint reported issues in the new code (or type errors, which are always reported in full); fix them, or reproduce with scripts/ci/golangci-lint-new.sh %s\n' "$2" >&2 ;;
-		64) printf 'pre-push: the golangci-lint ratchet could not start or finish its setup (worktree, merge base or package listing; not a finding); reproduce with scripts/ci/golangci-lint-new.sh %s\n' "$2" >&2 ;;
-		*) printf 'pre-push: the golangci-lint tool failed (exit %s: build, load or configuration failure, not a finding); reproduce with scripts/ci/golangci-lint-new.sh %s\n' "$status" "$2" >&2 ;;
-	esac
+	if [ "$status" -eq 64 ]; then
+		printf 'pre-push: the golangci-lint ratchet could not start or finish its setup (worktree, merge base or package listing); reproduce with scripts/ci/golangci-lint-new.sh %s\n' "$2" >&2
+	else
+		printf 'pre-push: golangci-lint reported issues or could not run; see the output above, or reproduce with scripts/ci/golangci-lint-new.sh %s\n' "$2" >&2
+	fi
 	return 1
 }
 
