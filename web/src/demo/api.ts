@@ -78,7 +78,7 @@ export function createDemoFetch(role: DemoRole, options: Options = {}): typeof f
         if (fixture !== undefined) return json(fixture);
         if (path === '/api/v1/auth/whoami') return json(whoami);
         if (path === '/api/v1/runtime/status') return json({ state: 'ready', phase: null });
-        if (path === '/api/v1/meta') return json({ server_version: 'browser-demo', instance_identity: 'hikyo-browser-demo', api_revision: 1, protocol_capabilities: ['delivery-target-report/1'] });
+        if (path === '/api/v1/meta') return json({ server_version: 'browser-demo', api_revision: 1, protocol_capabilities: ['delivery-target-report/1'] });
         if (path === '/api/v1/me/orgs') return json(list([{ id: org.id, name: org.name }]));
         if (path === '/api/v1/orgs') return json(list([org]));
         if (path === orgRoot) return json(org);

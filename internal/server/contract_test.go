@@ -705,10 +705,11 @@ func TestOIDCStartRefusesEnvironmentOutsideReauth(t *testing.T) {
 
 func TestOIDCBrowserCallbackRefusalRedirectsWithoutSessionCookie(t *testing.T) {
 	auth := stubAuth{oidcCallback: func(context.Context, string, string, string, string, string, string, string) (service.OIDCCallbackResult, error) {
-		return service.OIDCCallbackResult{Browser: true, Purpose: "reauth", State: "refused-state"}, domain.ErrUnauthenticated
+		return service.OIDCCallbackResult{Browser: true, Purpose: "link", State: "refused-state"}, domain.ErrUnauthenticated
 	}}
 	srv := newTestServer(t, auth, stubOrgs{})
-	callback := callNoRedirect(t, srv, api.PathPrefix+"/auth/oidc/corp/callback?code=code&state=refused-state")
+	// The redirect and its purpose come from the caller's marker, not the transaction.
+	callback := callNoRedirect(t, srv, api.PathPrefix+"/auth/oidc/corp/callback?code=code&state=refused-state", &http.Cookie{Name: "__Host-hikyo-oidc-browser-refused-state", Value: "reauth"})
 	if got := callback.Header.Get("Location"); got != "/auth/oidc/done?error=unauthenticated&purpose=reauth&state=refused-state" {
 		t.Fatalf("callback location = %q", got)
 	}

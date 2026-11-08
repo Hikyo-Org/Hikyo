@@ -145,17 +145,23 @@ type callbackCeremony struct{ flow, slug, code, state string }
 // sessionBound starts a link ceremony, which binds the transaction to session.
 func (r *callbackRig) sessionBound(t *testing.T, flow, session string) callbackCeremony {
 	t.Helper()
+	return r.linkStart(t, flow, session, false)
+}
+
+// linkStart starts a session-bound link ceremony, browser-started or not.
+func (r *callbackRig) linkStart(t *testing.T, flow, session string, browser bool) callbackCeremony {
+	t.Helper()
 	r.serial++
 	subject := "callback-user-" + strconv.Itoa(r.serial)
 	if flow == "oidc" {
-		start, err := r.auth.OIDCStart(t.Context(), "idp", "link", "", "", "", session, r.boot.password, false)
+		start, err := r.auth.OIDCStart(t.Context(), "idp", "link", "", "", "", session, r.boot.password, browser)
 		if err != nil {
 			t.Fatal(err)
 		}
 		code, state := driveIdP(t, start.AuthURL+"&sub="+subject)
 		return callbackCeremony{flow: flow, slug: "idp", code: code, state: state}
 	}
-	start, err := r.auth.OAuth2Start(t.Context(), "github", "link", "", "", "", session, r.boot.password, false)
+	start, err := r.auth.OAuth2Start(t.Context(), "github", "link", "", "", "", session, r.boot.password, browser)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,6 +218,7 @@ func TestCallbackAdmission(t *testing.T) {
 				t.Run("fault_resolving_the_credential", func(t *testing.T) { r.faultIsNotBinding(t, flow) })
 				t.Run("dead_credential_is_not_the_outcome_of_a_failed_login", func(t *testing.T) { r.deadCredentialProbe(t, flow) })
 				t.Run("browser_callback_returns_to_the_spa", func(t *testing.T) { r.browserOverload(t, flow) })
+				t.Run("browser_refusal_follows_only_the_marker", func(t *testing.T) { r.browserRefusalFollowsTheMarker(t, flow) })
 				t.Run("login_without_a_credential_is_not_charged", func(t *testing.T) { r.loginUncharged(t, flow) })
 			})
 		}
@@ -610,6 +617,48 @@ func (r *callbackRig) browserOverload(t *testing.T, flow string) {
 	}
 	if got := r.spent(t, flow); got != spent {
 		t.Errorf("browser overload spent the ceremony: %d -> %d", spent, got)
+	}
+}
+
+// A refusal answers from the caller's own marker cookie alone: without it, a
+// browser-started state, fresh or spent, answers exactly as a non-browser one,
+// so a presented state reveals neither that it exists nor its purpose.
+func (r *callbackRig) browserRefusalFollowsTheMarker(t *testing.T, flow string) {
+	r.fresh(t)
+	owner := r.login(t)
+	other := r.login(t)
+	baseline := r.callback(t.Context(), r.linkStart(t, flow, owner.SessionToken, false), other.SessionToken)
+	if baseline.Code != http.StatusUnauthorized {
+		t.Fatalf("non-browser mismatch = %d %q, want 401", baseline.Code, baseline.Body.String())
+	}
+	browser := r.linkStart(t, flow, owner.SessionToken, true)
+	for _, tc := range []struct{ name, bearer string }{
+		{"fresh_other_session", other.SessionToken},
+		{"spent_other_session", other.SessionToken},
+		{"spent_no_credential", ""},
+	} {
+		rec := r.callback(t.Context(), browser, tc.bearer)
+		if rec.Code != baseline.Code || rec.Body.String() != baseline.Body.String() || rec.Header().Get("Location") != "" {
+			t.Errorf("%s: browser state without marker = %d Location=%q %q, want the non-browser answer %q",
+				tc.name, rec.Code, rec.Header().Get("Location"), rec.Body.String(), baseline.Body.String())
+		}
+	}
+	fresh := r.linkStart(t, flow, owner.SessionToken, true)
+	if rec := r.callback(t.Context(), fresh, ""); rec.Code != baseline.Code || rec.Body.String() != baseline.Body.String() {
+		t.Errorf("fresh browser state with no credential = %d %q, want the non-browser answer", rec.Code, rec.Body.String())
+	}
+	// A genuine browser still returns to the SPA, carrying the purpose its own
+	// marker names, even for a state the transaction did not start in a browser.
+	for _, browserStarted := range []bool{true, false} {
+		c := r.linkStart(t, flow, owner.SessionToken, browserStarted)
+		rec := r.callback(t.Context(), c, other.SessionToken, callbackCookie("__Host-hikyo-oidc-browser-", c.state, "login"))
+		location, err := url.Parse(rec.Header().Get("Location"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rec.Code != http.StatusSeeOther || location.Path != "/auth/oidc/done" || location.Query().Get("error") != "unauthenticated" || location.Query().Get("purpose") != "login" {
+			t.Errorf("marker refusal (browser-started=%v) = %d Location=%q, want the done page with the marker's purpose", browserStarted, rec.Code, location)
+		}
 	}
 }
 

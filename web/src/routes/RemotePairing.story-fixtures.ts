@@ -38,7 +38,7 @@ export function createPairingFixture() {
   let prepared = false;
   const responses: readonly MockRoute[] = [
     { url: '/api/v1/me/orgs', body: zMyOrgList.parse({ items: [], count: 0 }) },
-    { url: '/api/v1/meta', body: zMeta.parse({ server_version: 'storybook-local', api_revision: 12, protocol_capabilities: [], instance_identity: 'storybook-local-instance' }) },
+    { url: '/api/v1/meta', body: zMeta.parse({ server_version: 'storybook-local', api_revision: 12, protocol_capabilities: [] }) },
     { url: '/api/v1/instance/directory', body: zDirectoryListing.parse({ identity: 'storybook-local-instance', version: 'storybook-local', orgs: [], org_count: 0, project_count: 0 }) },
     { url: '/api/v1/instance/connections', body: zInstanceConnectionList.parse({ items: [], count: 0 }) },
     { url: '/api/v1/instance/workspace-origins', body: zWorkspaceOriginList.parse({ items: [], count: 0 }) },

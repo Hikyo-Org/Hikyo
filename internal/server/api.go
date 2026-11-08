@@ -170,7 +170,6 @@ type API struct {
 	Runtime      RuntimeStatusSource
 	SelfConfig   *service.SelfConfig
 	Mail         MailService
-	Discovery    *service.Discovery
 	Auth         AuthService
 	SAMLAuth     SAMLAuthService
 	Orgs         OrgService
@@ -295,7 +294,8 @@ func bearer(ctx context.Context) string {
 // ---------------------------------------------------------------------------
 
 // GetMeta applies the public discovery allowance before returning the closed,
-// tenant-free protocol capability and instance-identity response.
+// tenant-free protocol capability response. Instance identity is served only
+// on the authenticated directory, never here (multi-instance ADR).
 func (a *API) GetMeta(ctx context.Context, _ apigen.GetMetaRequestObject) (apigen.GetMetaResponseObject, error) {
 	// Under the instance-wide pre-auth admission limits like every other
 	// pre-auth path, with its own looser per-IP allowance: `login` calls this
@@ -315,14 +315,6 @@ func (a *API) GetMeta(ctx context.Context, _ apigen.GetMetaRequestObject) (apige
 	// The local floor and first-party CLI login transports are advertised
 	// independently of the browser's provider choices. Provider discovery stays
 	// on auth/methods; this list selects only the supported transport.
-	var identity *string
-	if a.Discovery != nil {
-		value, err := a.Discovery.InstanceIdentity(ctx)
-		if err != nil {
-			return nil, err
-		}
-		identity = &value
-	}
 	// The delivery-target report tokens (#788, ADR D10): one per accepted
 	// vocabulary. An integration reports only when one is advertised.
 	capabilities := []apigen.ProtocolCapability{"local-password", "loopback-handoff", "device-code"}
@@ -330,7 +322,6 @@ func (a *API) GetMeta(ctx context.Context, _ apigen.GetMetaRequestObject) (apige
 		capabilities = append(capabilities, apigen.ProtocolCapability(token))
 	}
 	return apigen.GetMeta200JSONResponse{
-		InstanceIdentity:     identity,
 		ServerVersion:        a.Version,
 		ApiRevision:          api.Revision,
 		ProtocolCapabilities: capabilities,

@@ -89,7 +89,9 @@ first green run containing that commit closes it.
 ## Freeze and promote
 
 Create a separate fixed branch from a verified dev commit. This example uses
-`release/1.1.0`; select the actual version first. Keep the receipt temporary:
+`release/1.1.0`; select the actual version first. Run the proof from a clean
+checkout of current `hikyo-upstream/main`, whose job inventory matches the
+approved definitions dev runs. Keep the receipt temporary:
 
 ```sh
 promotion_work=$(mktemp -d)

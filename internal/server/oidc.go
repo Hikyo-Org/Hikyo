@@ -170,8 +170,11 @@ func (a *API) OidcCallback(ctx context.Context, req apigen.OidcCallbackRequestOb
 		}
 	}
 	result, err := a.Auth.OIDCCallback(ctx, string(req.Provider), code, state, iss, idpErr, bindingCookie, bearer(ctx))
-	if !result.Browser && errors.Is(err, admission.ErrOverloaded) && browserPurpose != "" {
-		result = service.OIDCCallbackResult{Browser: true, Purpose: browserPurpose, State: state}
+	if err != nil {
+		// A refusal's shape and purpose come only from the caller's own marker
+		// cookie, never from the transaction, so a presented state reveals
+		// neither its existence nor its purpose.
+		result = service.OIDCCallbackResult{Browser: browserPurpose != "", Purpose: browserPurpose, State: state}
 	}
 	if result.Browser {
 		errorCode := ""
@@ -239,7 +242,9 @@ func oidcBrowserCallbackResponse(result service.OIDCCallbackResult, errorCode st
 func oidcBrowserMarker(state, purpose string) *http.Cookie {
 	return &http.Cookie{
 		Name: browserCookieName(state), Value: purpose, Path: "/",
-		MaxAge: int((10 * time.Minute) / time.Second), Secure: true, HttpOnly: true,
+		// Twice the transaction lifetime, so a genuine browser returning after the
+		// transaction expired still holds the marker that shapes its refusal.
+		MaxAge: int((20 * time.Minute) / time.Second), Secure: true, HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	}
 }

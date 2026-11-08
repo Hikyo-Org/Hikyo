@@ -325,6 +325,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	if cfg.UpdaterSocket != "" {
 		return nil, fmt.Errorf("boot: HIKYO_UPDATER_SOCKET: %w", updater.ErrRemoteApplyDisabled)
 	}
+	applyMemoryLimit(cfg, log)
 	sc := storeConfig(cfg)
 
 	// Every resource acquired below has one temporary owner — this guard —
