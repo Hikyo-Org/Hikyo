@@ -88,6 +88,7 @@ printf 'url=https://example.invalid/tool\nsha256=%s\n' "$(printf %s "$good" | tr
 printf 'url=https://example.invalid/tool\nsha256=abc\n' >"$pin"; refuse 'short sha'
 printf 'sha256=%s\nurl=https://example.invalid/tool\n' "$good" >"$pin"; refuse 'swapped keys'
 printf 'url=https://example.invalid/tool\nsha256=%s\nextra=1\n' "$good" >"$pin"; refuse 'extra line'
+printf 'url=https://example.invalid/tool\nsha256=%s\nextra=1' "$good" >"$pin"; refuse 'unterminated extra line'
 printf 'url=https://example.invalid/tool\n' >"$pin"; refuse 'missing sha'
 refuse 'missing pin' absent
 refuse 'path traversal name' ../tool

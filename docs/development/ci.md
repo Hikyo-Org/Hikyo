@@ -61,7 +61,7 @@ requires the existing custody secret configuration.
 
 ## The complete workflow map
 
-The source contains 39 YAML workflow files. GitHub's sidebar also contains
+The source contains 40 YAML workflow files. GitHub's sidebar also contains
 provider-generated and historical entries; deleting YAML does not erase history.
 
 | Responsibility | Files | Why they remain separate |
@@ -168,6 +168,12 @@ GitHub release downloads return transient 504s that outlast a short retry, so
 tools that CI installs from a release are pinned in one place and fetched by one
 helper. Each `scripts/ci/pinned-tools/<name>.pin` holds exactly two lines,
 `url=<https url>` and `sha256=<64 lowercase hex>`; change a tool by editing its pin.
+The ShellCheck, `kind-linux-amd64`, Cosign and `helm-linux-amd64` pins replaced
+downloads that the frozen full-suite inventory fingerprints, so
+`frozenToolPins` in `scripts/ci/pinned_tool_reuse_workflow_test.go` locks their
+exact content. Bumping one of them is a reviewed coverage change: update its
+`frozenToolPins` entry in the same PR, keep the restored frozen steps and the
+baseline hashes unchanged, and confirm `go test ./scripts/ci` still passes.
 
 `scripts/ci/fetch-pinned-tool.sh <name> <output>` reads the pin beside itself,
 uses `${PINNED_TOOL_CACHE:-$HOME/.cache/hikyo-pinned-tools}/<name>/<sha256>` when

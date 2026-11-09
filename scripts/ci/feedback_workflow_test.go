@@ -171,6 +171,8 @@ func requireFeedbackWorkflow(raw []byte) error {
 			if step.If != feedbackPrerequisiteCondition("shellcheck") || step.Continue || len(step.Env) != 0 ||
 				!strings.HasPrefix(step.Run, `bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" bash -euo pipefail <<'INSTALL_SHELLCHECK'`+"\n") ||
 				strings.Count(step.Run, `bash "$FAST_FEEDBACK_TOOLS_DIR/fetch-pinned-tool.sh" shellcheck-linux-x86_64 "$archive"`) != 1 ||
+				strings.Count(step.Run, `tar -xJf "$archive" -C "$RUNNER_TEMP/shellcheck" --strip-components=1`) != 1 ||
+				strings.Count(step.Run, `echo "$RUNNER_TEMP/shellcheck" >> "$GITHUB_PATH"`) != 1 ||
 				strings.Contains(step.Run, "source/") || strings.Contains(step.Run, "curl") {
 				return fmt.Errorf("shell and workflow-only checks require verified pinned ShellCheck in the Go/tooling lane")
 			}
@@ -342,6 +344,12 @@ func TestFeedbackWorkflowRejectsSkippedOrFailOpenLanes(t *testing.T) {
 		},
 		"helper loaded from source": func(j map[string]any) {
 			mutateFeedbackShellcheck(j, "run", strings.Replace(feedbackShellcheckRun(j), `"$FAST_FEEDBACK_TOOLS_DIR/fetch-pinned-tool.sh"`, `source/scripts/ci/fetch-pinned-tool.sh`, 1))
+		},
+		"shellcheck archive not extracted": func(j map[string]any) {
+			mutateFeedbackShellcheck(j, "run", strings.Replace(feedbackShellcheckRun(j), `tar -xJf "$archive" -C "$RUNNER_TEMP/shellcheck" --strip-components=1`+"\n", "", 1))
+		},
+		"shellcheck not added to PATH": func(j map[string]any) {
+			mutateFeedbackShellcheck(j, "run", strings.Replace(feedbackShellcheckRun(j), `echo "$RUNNER_TEMP/shellcheck" >> "$GITHUB_PATH"`+"\n", "", 1))
 		},
 		"shellcheck outside the feedback budget": func(j map[string]any) {
 			mutateFeedbackShellcheck(j, "run", strings.Replace(feedbackShellcheckRun(j), `bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" bash -euo pipefail`, `bash -euo pipefail`, 1))

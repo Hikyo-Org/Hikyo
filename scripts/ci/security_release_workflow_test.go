@@ -333,8 +333,10 @@ func TestReleaseEvidenceOnlyUploadsAfterVerificationAndCleanup(t *testing.T) {
 	for _, step := range w.Jobs["validate"].Steps {
 		if step.Name == "Install pinned verifier for published stable OCI signatures" {
 			installed = step.Uses == "" && step.If == "${{ !contains(needs.resolve.outputs.tag, '-nightly.') }}" &&
-				strings.Contains(step.Run, `./scripts/ci/fetch-pinned-tool.sh cosign-linux-amd64 "$HOME/.cosign/cosign"`) &&
-				strings.Contains(step.Run, `echo "$HOME/.cosign" >>"$GITHUB_PATH"`)
+				strings.Contains(step.Run, `./scripts/ci/fetch-pinned-tool.sh cosign-linux-amd64 "$HOME/.cosign/cosign"
+chmod +x "$HOME/.cosign/cosign"
+echo "$HOME/.cosign" >>"$GITHUB_PATH"
+"$HOME/.cosign/cosign" version`)
 		}
 		if step.Name == "Download and authenticate actual release bytes" && !installed {
 			t.Fatal("stable published verifier requires pinned cosign before download verification")

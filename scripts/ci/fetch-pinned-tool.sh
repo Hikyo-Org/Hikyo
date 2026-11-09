@@ -33,7 +33,8 @@ output=${2:-}
 pin="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/pinned-tools/$name.pin"
 [[ -f $pin ]] || die "no pin file for $name"
 # Exactly two lines, url= then sha256=, nothing else.
-{ IFS= read -r url_line && IFS= read -r sha_line && ! IFS= read -r _; } <"$pin" ||
+# read -d '' consumes the rest of the file, so trailing text without a newline is refused too.
+{ IFS= read -r url_line && IFS= read -r sha_line && ! IFS= read -r -d '' trailing && [[ -z $trailing ]]; } <"$pin" ||
 	die "malformed pin file for $name"
 [[ $url_line =~ ^url=(https://[^[:space:]]+)$ ]] || die "pin url for $name must be an https URL"
 url=${BASH_REMATCH[1]}
