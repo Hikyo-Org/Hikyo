@@ -297,13 +297,12 @@ func serveGitHub(fixture, authority, listen string, extra []string) error {
 			_ = json.NewEncoder(w).Encode(releases)
 		case host == "github.com" && strings.HasPrefix(r.URL.Path, "/Hikyo-Org/Hikyo/releases/download/"):
 			parts := strings.Split(r.URL.Path, "/")
-			directory := directories[parts[len(parts)-2]]
-			name := parts[len(parts)-1]
-			if directory == "" || filepath.Base(name) != name {
+			file, ok := releaseAsset(directories[parts[len(parts)-2]], parts[len(parts)-1])
+			if !ok {
 				http.NotFound(w, r)
 				return
 			}
-			http.ServeFile(w, r, filepath.Join(directory, name))
+			http.ServeFile(w, r, file)
 		case host == "raw.githubusercontent.com" && strings.HasPrefix(r.URL.Path, "/Hikyo-Org/Hikyo/refs/heads/main/release/trust/"):
 			file := trust[strings.TrimPrefix(r.URL.Path, "/Hikyo-Org/Hikyo/refs/heads/main/release/trust/")]
 			if file == "" {
@@ -427,4 +426,12 @@ func printTOTP(uri string) error {
 	}
 	fmt.Println(code)
 	return nil
+}
+
+// releaseAsset confines a download to one plain file name inside its release directory.
+func releaseAsset(directory, name string) (string, bool) {
+	if directory == "" || name == "." || !filepath.IsLocal(name) || filepath.Base(name) != name {
+		return "", false
+	}
+	return filepath.Join(directory, name), true
 }
