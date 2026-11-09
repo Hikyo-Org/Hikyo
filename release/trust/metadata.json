@@ -1,10 +1,10 @@
 {
-  "source_commit": "2ac7bb36633d3ae0a99d7724968ca8c3cbf18334",
-  "release_tag": "v1.0.0",
+  "source_commit": "c56b8b44820a6e088920759f974aabc456d737ef",
+  "release_tag": "v1.1.0",
   "schema": "hikyo.dev/trust-metadata/v1",
-  "sequence": 2,
-  "highest_release": "1.0.0",
-  "highest_release_sequence": 1,
+  "sequence": 3,
+  "highest_release": "1.1.0",
+  "highest_release_sequence": 2,
   "recovery": {
     "id": "recovery-1",
     "sha256": "1eb7ad2092668b73621c21a1eeb801ed6391bc794df1909abce8e1d45e03a229"
@@ -28,6 +28,11 @@
       "version": "1.0.0",
       "sequence": 1,
       "manifest_sha256": "038fabba9529eb9880aa86002ecc2102d2c4f0c0fc75393da9c928f6accf6094"
+    },
+    {
+      "version": "1.1.0",
+      "sequence": 2,
+      "manifest_sha256": "c06afd918c13a5f43e57dd6d85c32075c0dacc0605f5506cdf4b564c5ecffe84"
     }
   ],
   "pending_release": null
