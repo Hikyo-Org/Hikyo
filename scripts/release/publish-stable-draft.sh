@@ -71,10 +71,12 @@ cmp -s "$scratch/before" "$scratch/after" || { printf 'publication: draft change
 # release.yml stages placeholder reviewer instructions; publishing them ships that text as the release message.
 jq -e '(.body // "") | sub("^\\s+"; "") | . != "" and (startswith("Signed draft.") | not)' "$scratch/recheck.json" >/dev/null || \
   { printf 'publication: write the release notes on the draft before publishing\n' >&2; exit 1; }
+# Publish the notes that passed, so a later save on the draft cannot replace them.
+jq -j '.body' "$scratch/recheck.json" >"$scratch/notes.md"
 if [ "$("$script_dir/release-channel.sh" "$tag")" = prerelease ]; then
-  "$GH_BIN" release edit "$tag" --repo "$repository" --draft=false --prerelease=true --latest=false
+  "$GH_BIN" release edit "$tag" --repo "$repository" --draft=false --prerelease=true --latest=false --notes-file "$scratch/notes.md"
 else
-  "$GH_BIN" release edit "$tag" --repo "$repository" --draft=false --prerelease=false --latest
+  "$GH_BIN" release edit "$tag" --repo "$repository" --draft=false --prerelease=false --latest --notes-file "$scratch/notes.md"
 fi
 "$GH_BIN" release download "$tag" --repo "$repository" --dir "$scratch/public"
 original_id=$(jq -er '.id' "$scratch/release.json")

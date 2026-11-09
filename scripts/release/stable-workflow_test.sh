@@ -99,7 +99,12 @@ case "$*" in
     for last; do :; done
     cp "$FIXTURE_SCRATCH/manifest.json" "$last/release-manifest.json"
     touch "$FIXTURE_SCRATCH/downloaded" ;;
-  'release edit '*) touch "$FIXTURE_SCRATCH/published" "$FIXTURE_SCRATCH/edited" ;;
+  'release edit '*)
+    while [ "$#" -gt 0 ]; do
+      [ "$1" != --notes-file ] || cp "$2" "$FIXTURE_SCRATCH/published-notes"
+      shift
+    done
+    touch "$FIXTURE_SCRATCH/published" "$FIXTURE_SCRATCH/edited" ;;
   *) printf 'unexpected gh invocation: %s\n' "$*" >&2; exit 2 ;;
 esac
 SH
@@ -186,6 +191,7 @@ fi
 [ ! -e "$scratch/published" ] || exit 1
 "$script_dir/publish-stable-draft.sh" owner/repo v1.0.0 "$digest" "$scratch" >/dev/null
 [ -e "$scratch/published" ] || exit 1
+[ "$(cat "$scratch/published-notes")" = 'Release notes.' ] || { printf 'stable fixture: published notes differ from the checked notes\n' >&2; exit 1; }
 rm "$scratch/edited"
 for FIXTURE_MODE in public-mutable bad-signature bad-oci; do
   export FIXTURE_MODE
