@@ -69,7 +69,7 @@ jq -S '[.id,.tag_name,.draft,(.assets | sort_by(.id) | map({id,name,size,updated
 jq -S '[.id,.tag_name,.draft,(.assets | sort_by(.id) | map({id,name,size,updated_at,digest}))]' "$scratch/recheck.json" >"$scratch/after"
 cmp -s "$scratch/before" "$scratch/after" || { printf 'publication: draft changed during verification\n' >&2; exit 1; }
 # release.yml stages placeholder reviewer instructions; publishing them ships that text as the release message.
-jq -e '(.body // "") | test("\\S") and (startswith("Signed draft.") | not)' "$scratch/recheck.json" >/dev/null || \
+jq -e '(.body // "") | sub("^\\s+"; "") | . != "" and (startswith("Signed draft.") | not)' "$scratch/recheck.json" >/dev/null || \
   { printf 'publication: write the release notes on the draft before publishing\n' >&2; exit 1; }
 if [ "$("$script_dir/release-channel.sh" "$tag")" = prerelease ]; then
   "$GH_BIN" release edit "$tag" --repo "$repository" --draft=false --prerelease=true --latest=false

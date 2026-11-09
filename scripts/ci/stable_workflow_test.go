@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -112,17 +113,20 @@ func TestStableSigningAndPublicationStaySeparate(t *testing.T) {
 			t.Fatalf("local publication must not sign or delegate unsupported permissions: %s", forbidden)
 		}
 	}
-	// publish-stable-draft.sh refuses the staged placeholder by this prefix; keep both in step.
-	for name, marker := range map[string]string{
-		filepath.Join(".github", "workflows", "release.yml"):           `--notes "Signed draft.`,
-		filepath.Join("scripts", "release", "publish-stable-draft.sh"): `startswith("Signed draft.")`,
-	} {
-		data, err := os.ReadFile(filepath.Join(repositoryRoot(t), name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !strings.Contains(string(data), marker) {
-			t.Fatalf("draft placeholder guard drifted: %s lacks %s", name, marker)
-		}
+	// publish-stable-draft.sh refuses the staged placeholder by its prefix; keep both in step.
+	workflow, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	notes := regexp.MustCompile(`(?m)^[^#\n]*--notes "([^"]*)"`).FindAllSubmatch(workflow, -1)
+	if len(notes) != 1 || !strings.HasPrefix(string(notes[0][1]), "Signed draft.") {
+		t.Fatalf("release.yml must stage exactly one draft whose notes start with the guarded prefix, got %q", notes)
+	}
+	guard, err := os.ReadFile(filepath.Join(repositoryRoot(t), "scripts", "release", "publish-stable-draft.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`(?m)^jq -e .*startswith\("Signed draft\."\)`).Match(guard) {
+		t.Fatal("publish-stable-draft.sh no longer refuses the staged placeholder prefix")
 	}
 }
