@@ -4,7 +4,7 @@
 # before use, falling back to a bounded exponential-backoff download on a miss.
 # The key hashes the pin file, so changing a URL or checksum rotates the entry.
 # No PR can publish here. Privileged release jobs and the no-cache arm64 lanes
-# (kind-linux-arm64) never read it and download with backoff only.
+# (kind-linux-arm64, helm-linux-arm64) never read it and download with backoff only.
 name: cache-seed-tools
 
 on:
