@@ -112,4 +112,17 @@ func TestStableSigningAndPublicationStaySeparate(t *testing.T) {
 			t.Fatalf("local publication must not sign or delegate unsupported permissions: %s", forbidden)
 		}
 	}
+	// publish-stable-draft.sh refuses the staged placeholder by this prefix; keep both in step.
+	for name, marker := range map[string]string{
+		filepath.Join(".github", "workflows", "release.yml"):           `--notes "Signed draft.`,
+		filepath.Join("scripts", "release", "publish-stable-draft.sh"): `startswith("Signed draft.")`,
+	} {
+		data, err := os.ReadFile(filepath.Join(repositoryRoot(t), name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(data), marker) {
+			t.Fatalf("draft placeholder guard drifted: %s lacks %s", name, marker)
+		}
+	}
 }
