@@ -326,10 +326,15 @@ func TestReleaseEvidenceOnlyUploadsAfterVerificationAndCleanup(t *testing.T) {
 	if !strings.Contains(resolve, "git/ref/heads/main") || !strings.Contains(resolve, "git/tags/$source") {
 		t.Fatal("trusted harness and peeled tag must be independently resolved")
 	}
+	if err := requirePinnedToolContent("cosign-linux-amd64"); err != nil {
+		t.Fatal(err)
+	}
 	installed := false
 	for _, step := range w.Jobs["validate"].Steps {
 		if step.Name == "Install pinned verifier for published stable OCI signatures" {
-			installed = step.Uses == "sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6" && step.With["cosign-release"] == "v3.1.3" && step.If == "${{ !contains(needs.resolve.outputs.tag, '-nightly.') }}"
+			installed = step.Uses == "" && step.If == "${{ !contains(needs.resolve.outputs.tag, '-nightly.') }}" &&
+				strings.Contains(step.Run, `./scripts/ci/fetch-pinned-tool.sh cosign-linux-amd64 "$HOME/.cosign/cosign"`) &&
+				strings.Contains(step.Run, `echo "$HOME/.cosign" >>"$GITHUB_PATH"`)
 		}
 		if step.Name == "Download and authenticate actual release bytes" && !installed {
 			t.Fatal("stable published verifier requires pinned cosign before download verification")

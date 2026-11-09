@@ -25,6 +25,7 @@ for activation, promotion and operator commands.
 | Refresh the bounded feedback compiler cache | `cache-seed-feedback-backend` | Daily or manual, trusted main only. Compiles application, CLI and CI tooling exports without DWARF in a fresh dedicated directory, checks its size and file count, then publishes the version-2 seed that the application and tooling feedback lanes read. Dispatch it manually after this workflow changes or a `go.mod`/`go.sum` change lands. |
 | Refresh the production-fixture compiler cache | `cache-seed-feedback` | Daily or manual, trusted main only. Publishes the version-1 CLI/CI seed with default compiler flags. Only `source-artifact-security` in the full suite reads it; feedback no longer does. |
 | Refresh the shared race compiler cache | `cache-seed-race` | Daily or manual, trusted main only. Compiles every race-instrumented package and test dependency without running tests, then publishes the single cache that all merge-group race shards and the reliability race suite restore. Run it manually after a `go.mod`/`go.sum` change lands. |
+| Refresh the pinned tool downloads | `cache-seed-tools` | Daily or manual, trusted main only. Downloads each checksum-pinned release file (ShellCheck, kind, Cosign, Node, Helm, the Calico manifest) with bounded backoff and publishes one entry per `scripts/ci/pinned-tools/<name>.pin`. `lint`, `supply-chain-checks`, `k8s-e2e`, reliability and `ci-feedback` restore it so a GitHub release outage does not fail them. Dispatch it manually after a pin file changes. |
 | Run repository invariants before queueing | `ci-advisory-invariants` | Advisory, per PR push touching Go code, the golangci-lint config, workflows, Git hooks, scripts, release policy, or the store, lint fixture and web e2e inputs those suites read. Runs the `internal/boundary`, `internal/lint` and `scripts/ci` suites on the exact PR head. Not a required context; the queue still runs everything. |
 | Run the Storybook suite before merge | `ci-advisory-storybook` | Advisory, per PR push touching `web/`, `clients/ts/`, `.nvmrc`, the root `package.json`, `docs/site/scripts/test-csp.mjs`, `scripts/ci/storybook-suite.sh` or the workflow's setup helpers (`install-corepack.sh`, `export-pnpm-cache.sh`). Runs the same commands as the `storybook` job in `ci.yml` (story tests in both palettes, production build, theme and docs checks, static demo) on the exact PR head in the Playwright container. The pre-push hook runs the same script locally. Not a required context; `ci-dev` and the queue still run the job. |
 | Lint new Go code | `ci-advisory-golangci` | Advisory, per PR push touching Go files, `go.mod`, `go.sum`, `.golangci.yml`, `scripts/ci/golangci-lint-new.sh`, its version pin or `scripts/ci/run-go-tool.sh`. Runs golangci-lint (version in `scripts/ci/golangci-lint-version`, rules in `.golangci.yml`: errcheck, errorlint, errchkjson, noctx, wastedassign, unused, staticcheck `SA*`/`QF1001`/`QF1003`, gosec G115/G204/G306 outside tests) and reports only issues on lines changed since the merge base, so the existing baseline is not enforced. Run it locally with `scripts/ci/golangci-lint-new.sh <base>`; the pre-push hook runs it too (`HIKYO_PREPUSH_GOLANGCI=skip` opts out). Lints only the default build (not other-OS files or `ui`, `k8se2e`, `floor*` tags); type errors are always reported in full. Restores caches only, saves none. Not a required context and in no required job or fast-feedback lane. |
@@ -76,6 +77,7 @@ provider-generated and historical entries; deleting YAML does not erase history.
 | Performance | `benchmark-control.yml`, `pr-benchmark.yml`, `codspeed.yml`, `matrix-performance.yml`, `floor-bench.yml` | Budget control, PR measurement, main measurement, browser measurement, and native floor enforcement retain distinct trust/hardware contracts. |
 | Maintenance | `reliability.yml` | Original daily security and weekly integration/race/channel checks, plus one manual menu. |
 | Compiler cache seeds | `ci-feedback-backend-cache.yml`, `ci-feedback-cache.yml`, `ci-race-cache.yml` | Trusted-main-only producers of Go build entries. PR feedback, source-artifact validation, race shards and the reliability race suite only read them. One shared race entry replaces twelve per-shard entries that could not fit the 10 GB repository cache budget together. |
+| Pinned tool seed | `ci-tool-cache.yml` | Trusted-main-only producer of the pinned release-file entries. Every other workflow only restores them, and the helper verifies each file's SHA-256 before use, so a poisoned or stale entry cannot run. |
 | Release acceptance | `release-acceptance.yml`, `ops-floor.yml`, `aws-acceptance.yml` | Manual secret-bearing acceptance is separate from PR-capable operations validation. |
 | Publication | `nightly-promote.yml`, `nightly.yml`, `nightly-manual.yml`, `release.yml`, `apple-release-recovery.yml`, `security-release.yml`, `security-feed.yml`, `docs.yml` | Promotion, nightly, stable tags, the security feed, and Pages retain separate credentials and gates. Promotion opens its PR as the nightly App, because a PR opened with the workflow token starts no CI. |
 
@@ -159,6 +161,38 @@ validation is manual recovery plus a weekly cache-writing run. Stable releases
 and nightlies reuse exact-commit full source proof; a nightly is built from main,
 never from dev. Preserve pins, signatures, cache
 ownership, native runners, budget admission, and protected publication.
+
+## Pinned tool downloads
+
+GitHub release downloads return transient 504s that outlast a short retry, so
+tools that CI installs from a release are pinned in one place and fetched by one
+helper. Each `scripts/ci/pinned-tools/<name>.pin` holds exactly two lines,
+`url=<https url>` and `sha256=<64 lowercase hex>`; change a tool by editing its pin.
+
+`scripts/ci/fetch-pinned-tool.sh <name> <output>` reads the pin beside itself,
+uses `${PINNED_TOOL_CACHE:-$HOME/.cache/hikyo-pinned-tools}/<name>/<sha256>` when
+that file's checksum matches, and otherwise downloads with curl's exponential
+backoff (no `--retry-delay`, so it waits 1, 2, 4 seconds and on, bounded by
+`--retry-max-time 300`). A download that does not match its pin fails closed and
+is never cached or written. `--prefetch <name>` only fills the cache. It also
+works outside CI, with the default cache directory.
+
+Readers that may use caches (`ci.yml` `lint`, `supply-chain-checks` and
+`k8s-e2e`, `reliability.yml`, `ci-feedback.yml`) add a restore-only
+`actions/cache/restore` step before the helper. Its path
+`~/.cache/hikyo-pinned-tools/<name>` and key
+`pinned-tool-v1-${{ runner.os }}-<name>-${{ hashFiles('.../pinned-tools/<name>.pin') }}`
+must be byte-identical to the seed's, because the entry version derives from the
+path string; `TestPinnedToolReuseDrift` enforces this, including that each restore
+runs before the step that first fetches its tool. A missed or failed restore
+falls through to the download, with one exception: the `ci-feedback.yml` restore
+keeps the one-minute step limit of its other restores, so a hung cache service
+fails that lane (as the existing frontend restore does) instead of falling through.
+Lanes that forbid caches (`floor-bench.yml`, `release-acceptance.yml`) and the
+privileged release, nightly and security jobs call the helper with backoff only.
+`kind-linux-arm64` and `helm-linux-arm64` are therefore not seeded. Helm is also
+installed from its pinned archive instead of `azure/setup-helm`, which checks
+nothing it downloads.
 
 ## Documentation prerequisites
 

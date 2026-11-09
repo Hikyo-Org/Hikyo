@@ -1,0 +1,63 @@
+# Single writer for the pinned release-file cache read by ci.yml, ci-feedback.yml
+# and reliability.yml. GitHub release downloads return transient 504s; the
+# readers restore a checksum-pinned file from this cache and verify it again
+# before use, falling back to a bounded exponential-backoff download on a miss.
+# The key hashes the pin file, so changing a URL or checksum rotates the entry.
+# No PR can publish here. Privileged release jobs and the no-cache arm64 lanes
+# (kind-linux-arm64) never read it and download with backoff only.
+name: cache-seed-tools
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-tool-cache-main
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        tool:
+          - shellcheck-linux-x86_64
+          - kind-linux-amd64
+          - cosign-linux-amd64
+          - node-linux-x64
+          - helm-linux-amd64
+          - calico-manifest
+    steps:
+      - name: Check out immutable trusted main without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      # Lookup only: cache-hit is exact-key only and nothing is restored.
+      - name: Look up this pinned tool without restoring it
+        id: tool-seed
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/hikyo-pinned-tools/${{ matrix.tool }}
+          key: pinned-tool-v1-${{ runner.os }}-${{ matrix.tool }}-${{ hashFiles(format('scripts/ci/pinned-tools/{0}.pin', matrix.tool)) }}
+          lookup-only: true
+      - name: Download and verify the pinned tool
+        if: steps.tool-seed.outputs.cache-hit != 'true'
+        env:
+          TOOL: ${{ matrix.tool }}
+        run: ./scripts/ci/fetch-pinned-tool.sh --prefetch "$TOOL"
+      - name: Save pinned tool from trusted main only
+        if: >-
+          success() && steps.tool-seed.outputs.cache-hit != 'true' &&
+          (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/hikyo-pinned-tools/${{ matrix.tool }}
+          key: ${{ steps.tool-seed.outputs.cache-primary-key }}
