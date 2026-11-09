@@ -165,14 +165,7 @@ kind create cluster --name "$CLUSTER" --image "$NODE_IMAGE" \
 export KUBECONFIG="$kubeconfig"
 # kindnet does not enforce NetworkPolicy. This is the pinned upstream Calico
 # manifest, installed only into the newly owned disposable cluster.
-curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error \
-    https://raw.githubusercontent.com/projectcalico/calico/v3.33.0/manifests/calico.yaml \
-    --output "$work/calico.yaml"
-calico_hash=$(openssl dgst -sha256 "$work/calico.yaml" | awk '{print $NF}')
-[[ "$calico_hash" == 2de8f47595fb9c41b3f47d7b767a1f8e72ecf84057af834738ff12689a234da5 ]] || {
-    echo 'chart-kind: Calico manifest checksum mismatch' >&2
-    exit 1
-}
+./scripts/ci/fetch-pinned-tool.sh calico-manifest "$work/calico.yaml"
 kubectl create --filename "$work/calico.yaml" >/dev/null
 kubectl --namespace kube-system rollout status daemonset/calico-node --timeout=180s
 kubectl --namespace kube-system rollout status deployment/calico-kube-controllers --timeout=180s

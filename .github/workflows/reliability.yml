@@ -205,17 +205,15 @@ jobs:
         run: ./scripts/ci/install-corepack.sh
       # A pinned, checksummed binary download, the k8s-e2e job's pattern: kind
       # is a single static binary, no third-party action needed.
+      - name: Restore pinned kind
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/hikyo-pinned-tools/kind-linux-amd64
+          key: pinned-tool-v1-${{ runner.os }}-kind-linux-amd64-${{ hashFiles('scripts/ci/pinned-tools/kind-linux-amd64.pin') }}
       - name: Install kind (pinned archive)
-        env:
-          KIND_VERSION: v0.32.0
-          KIND_SHA256: 50030de23cf40a18505f20426f6a8506bedf13c6e509244bd1fa9463721b0f54
         run: |
           binary="$RUNNER_TEMP/kind"
-          curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error \
-            --retry 4 --retry-delay 2 --retry-all-errors \
-            "https://github.com/kubernetes-sigs/kind/releases/download/$KIND_VERSION/kind-linux-amd64" \
-            --output "$binary"
-          printf '%s  %s\n' "$KIND_SHA256" "$binary" | sha256sum --check --strict
+          ./scripts/ci/fetch-pinned-tool.sh kind-linux-amd64 "$binary"
           chmod +x "$binary"
           sudo install "$binary" /usr/local/bin/kind
           kind version

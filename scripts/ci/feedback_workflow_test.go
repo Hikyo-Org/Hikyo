@@ -131,7 +131,7 @@ func requireFeedbackWorkflow(raw []byte) error {
 	if !pinnedBase || !buildReader || !runnerABI || buildReaders != 1 {
 		return fmt.Errorf("feedback needs a verified integration base and bounded compatible read-only Go build cache")
 	}
-	shellcheckInstallers, releasePythonInstallers := 0, 0
+	shellcheckInstallers, shellcheckRestores, releasePythonInstallers := 0, 0, 0
 	setupCounts := map[string]int{}
 	for index, step := range job.Steps {
 		if step.Continue {
@@ -168,10 +168,16 @@ func requireFeedbackWorkflow(raw []byte) error {
 		}
 		if step.Name == "Install verified pinned ShellCheck" {
 			shellcheckInstallers++
-			if step.If != feedbackPrerequisiteCondition("shellcheck") || step.Continue ||
-				step.Env["SHELLCHECK_VERSION"] != "v0.11.0" || step.Env["SHELLCHECK_SHA256"] != "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198" ||
-				!strings.Contains(step.Run, "sha256sum --check --strict") {
+			if step.If != feedbackPrerequisiteCondition("shellcheck") || step.Continue || len(step.Env) != 0 ||
+				!strings.HasPrefix(step.Run, `bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" bash -euo pipefail <<'INSTALL_SHELLCHECK'`+"\n") ||
+				strings.Count(step.Run, `bash "$FAST_FEEDBACK_TOOLS_DIR/fetch-pinned-tool.sh" shellcheck-linux-x86_64 "$archive"`) != 1 ||
+				strings.Count(step.Run, `tar -xJf "$archive" -C "$RUNNER_TEMP/shellcheck" --strip-components=1`) != 1 ||
+				strings.Count(step.Run, `echo "$RUNNER_TEMP/shellcheck" >> "$GITHUB_PATH"`) != 1 ||
+				strings.Contains(step.Run, "source/") || strings.Contains(step.Run, "curl") {
 				return fmt.Errorf("shell and workflow-only checks require verified pinned ShellCheck in the Go/tooling lane")
+			}
+			if err := requireFeedbackShellcheckPin(); err != nil {
+				return err
 			}
 		}
 		if step.Name == "Prepare trusted release contract dependencies" {
@@ -187,6 +193,14 @@ func requireFeedbackWorkflow(raw []byte) error {
 		if strings.Contains(step.Uses, "cache/restore@") {
 			switch step.Name {
 			case "Restore bounded feedback Go cache", "Restore frontend dependencies":
+			case "Restore pinned ShellCheck":
+				shellcheckRestores++
+				if step.If != feedbackPrerequisiteCondition("shellcheck") || step.Continue || !reflect.DeepEqual(step.With, map[string]string{
+					"path": "~/.cache/hikyo-pinned-tools/shellcheck-linux-x86_64",
+					"key":  "pinned-tool-v1-${{ runner.os }}-shellcheck-linux-x86_64-${{ hashFiles('feedback-tools/scripts/ci/pinned-tools/shellcheck-linux-x86_64.pin') }}",
+				}) {
+					return fmt.Errorf("the pinned ShellCheck restore must match the seeded path and key, with no fallback")
+				}
 			default:
 				return fmt.Errorf("every cache restore must use an approved planned prerequisite: %q", step.Name)
 			}
@@ -216,6 +230,9 @@ func requireFeedbackWorkflow(raw []byte) error {
 			return fmt.Errorf("source and tooling must not persist credentials")
 		}
 	}
+	if shellcheckRestores != 1 {
+		return fmt.Errorf("feedback requires exactly one pinned ShellCheck restore")
+	}
 	if shellcheckInstallers != 1 {
 		return fmt.Errorf("feedback requires exactly one pinned ShellCheck installer")
 	}
@@ -228,6 +245,11 @@ func requireFeedbackWorkflow(raw []byte) error {
 		}
 	}
 	return nil
+}
+
+// The helper reads the pin beside itself, in the immutable tooling checkout.
+func requireFeedbackShellcheckPin() error {
+	return requirePinnedToolContent("shellcheck-linux-x86_64")
 }
 
 func feedbackPrerequisiteCondition(name string) string {
@@ -315,7 +337,40 @@ func TestFeedbackWorkflowRejectsSkippedOrFailOpenLanes(t *testing.T) {
 		},
 		"shellcheck fail open": func(j map[string]any) { mutateFeedbackShellcheck(j, "continue-on-error", true) },
 		"unpinned shellcheck": func(j map[string]any) {
+			mutateFeedbackShellcheck(j, "run", strings.Replace(feedbackShellcheckRun(j), "shellcheck-linux-x86_64", "shellcheck-linux-aarch64", 1))
+		},
+		"shellcheck unverified download": func(j map[string]any) {
+			mutateFeedbackShellcheck(j, "run", strings.Replace(feedbackShellcheckRun(j), `bash "$FAST_FEEDBACK_TOOLS_DIR/fetch-pinned-tool.sh" shellcheck-linux-x86_64 "$archive"`, `curl --output "$archive" https://example.invalid/shellcheck.tar.xz`, 1))
+		},
+		"helper loaded from source": func(j map[string]any) {
+			mutateFeedbackShellcheck(j, "run", strings.Replace(feedbackShellcheckRun(j), `"$FAST_FEEDBACK_TOOLS_DIR/fetch-pinned-tool.sh"`, `source/scripts/ci/fetch-pinned-tool.sh`, 1))
+		},
+		"shellcheck archive not extracted": func(j map[string]any) {
+			mutateFeedbackShellcheck(j, "run", strings.Replace(feedbackShellcheckRun(j), `tar -xJf "$archive" -C "$RUNNER_TEMP/shellcheck" --strip-components=1`+"\n", "", 1))
+		},
+		"shellcheck not added to PATH": func(j map[string]any) {
+			mutateFeedbackShellcheck(j, "run", strings.Replace(feedbackShellcheckRun(j), `echo "$RUNNER_TEMP/shellcheck" >> "$GITHUB_PATH"`+"\n", "", 1))
+		},
+		"shellcheck outside the feedback budget": func(j map[string]any) {
+			mutateFeedbackShellcheck(j, "run", strings.Replace(feedbackShellcheckRun(j), `bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" bash -euo pipefail`, `bash -euo pipefail`, 1))
+		},
+		"shellcheck env reintroduced": func(j map[string]any) {
 			mutateFeedbackShellcheck(j, "env", map[string]any{"SHELLCHECK_VERSION": "v0.10.0"})
+		},
+		"restore key drift": func(j map[string]any) {
+			mutateFeedbackNamedStepWith(j, "Restore pinned ShellCheck", "key", "pinned-tool-v1-${{ runner.os }}-shellcheck-linux-x86_64-${{ hashFiles('source/scripts/ci/pinned-tools/shellcheck-linux-x86_64.pin') }}")
+		},
+		"restore path drift": func(j map[string]any) {
+			mutateFeedbackNamedStepWith(j, "Restore pinned ShellCheck", "path", "~/.cache/hikyo-pinned-tools")
+		},
+		"restore fallback added": func(j map[string]any) {
+			mutateFeedbackNamedStepWith(j, "Restore pinned ShellCheck", "restore-keys", "pinned-tool-v1-")
+		},
+		"restore loses prerequisite": func(j map[string]any) {
+			mutateFeedbackNamedStep(j, "Restore pinned ShellCheck", "if", "false")
+		},
+		"restore without reserve": func(j map[string]any) {
+			mutateFeedbackNamedStep(j, "Check budget before ShellCheck restore", "run", "true")
 		},
 		"bulk test fallback": func(j map[string]any) {
 			mutateFeedbackReuseWith(j, "restore-keys", "go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-")
@@ -390,6 +445,26 @@ func mutateFeedbackNamedStep(j map[string]any, name, key string, value any) {
 		step := valueStep.(map[string]any)
 		if step["name"] == name {
 			step[key] = value
+			return
+		}
+	}
+}
+
+func feedbackShellcheckRun(j map[string]any) string {
+	for _, valueStep := range j["steps"].([]any) {
+		step := valueStep.(map[string]any)
+		if step["name"] == "Install verified pinned ShellCheck" {
+			return step["run"].(string)
+		}
+	}
+	return ""
+}
+
+func mutateFeedbackNamedStepWith(j map[string]any, name, key string, value any) {
+	for _, valueStep := range j["steps"].([]any) {
+		step := valueStep.(map[string]any)
+		if step["name"] == name {
+			step["with"].(map[string]any)[key] = value
 			return
 		}
 	}
