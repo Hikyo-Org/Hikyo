@@ -50,6 +50,10 @@ jq --arg version "$nightly_version" '
 	"$bundle/nightly-manifest.json" "$bundle" "$fixture_dir/hikyo@nightly.rb" Hikyo-Org/Hikyo
 grep -Fx 'cask "hikyo@nightly" do' "$fixture_dir/hikyo@nightly.rb" >/dev/null
 grep -Fx '  conflicts_with cask: "hikyo"' "$fixture_dir/hikyo@nightly.rb" >/dev/null
+[ "$(tail -n 4 "$fixture_dir/hikyo@nightly.rb")" = '  conflicts_with cask: "hikyo"
+
+  binary "hikyo"
+end' ] || { printf 'cask fixture: nightly stanza groups are not separated for brew style\n' >&2; exit 1; }
 grep -Fx "  version \"$nightly_version\"" "$fixture_dir/hikyo@nightly.rb" >/dev/null
 # Channel confusion must never render a stable cask from nightly metadata.
 for scenario in stable-as-nightly nightly-as-stable; do
