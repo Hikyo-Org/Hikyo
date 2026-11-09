@@ -40,7 +40,8 @@ scripts/release/ceremony.sh publish VERSION REVIEWED_MANIFEST_SHA256
 scripts/release/ceremony.sh sync-trust VERSION
 ```
 
-Wait for the draft build before review, inspect the release notes and evidence,
+Wait for the draft build before review, replace the draft's placeholder with
+release notes, inspect them and the evidence,
 and wait for local publication verification before syncing trust. Merge the trust PR after review
 and green CI before the next release. The [complete guide](online-signing.md)
 explains each boundary and retry behavior.
