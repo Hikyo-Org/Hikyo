@@ -152,6 +152,22 @@ app's response headers through; an Ingress controller that adds its own HSTS
 sends browsers two policies with different lifetimes. See
 [security response headers](/docs/configuration/#security-response-headers).
 
+### Operator environment
+
+The delivery operator reads these variables at startup and refuses a malformed
+value. The chart sets the first five from its values; run outside the chart,
+set them yourself.
+
+| Variable | Default | Purpose | Set by the chart |
+| --- | --- | --- | --- |
+| `HIKYO_OPERATOR_NAMESPACES` | empty (watch cluster-wide) | Comma-separated namespaces to watch. Each must be a valid, unique namespace name. | `operator.namespaces` |
+| `HIKYO_OPERATOR_NATIVE_SECRET_TYPES` | `false` | Allow native Secret types; see [Native Secret types](#native-secret-types). | `operator.nativeSecretTypes` |
+| `HIKYO_OPERATOR_TRIGGER_ROLLOUTS` | `true` | Restart consenting workloads when a managed Secret changes; see [Rollout triggering](#rollout-triggering). | `operator.triggerRollouts` |
+| `HIKYO_OPERATOR_STATUS_REPORTING` | `true` | Report each `HikyoSecret`'s conditions to its Hikyo server when the server advertises support. | `operator.statusReporting` |
+| `HIKYO_OPERATOR_NAMESPACE` | `POD_NAMESPACE` | The operator's own namespace, where its stamp-root Secret lives. Startup fails when neither is set. | the pod's namespace |
+| `HIKYO_OPERATOR_METRICS_ADDR` | `:8080` | Metrics listener. | no; the chart exposes the default port |
+| `HIKYO_OPERATOR_HEALTH_ADDR` | `:8081` | Health and readiness listener. | no; the chart exposes the default port |
+
 ## Network policy
 
 The chart always renders one NetworkPolicy for the server pods. The default

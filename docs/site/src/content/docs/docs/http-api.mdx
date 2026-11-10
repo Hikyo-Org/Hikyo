@@ -35,6 +35,25 @@ or an OIDC federation binding.
 - Responses may gain fields within `/api/v1`; clients must ignore unknown fields.
 - Open enums may gain values; closed enums do not, apart from one declared one-time growth: `mldsa65` on the Transit and PKI key-algorithm enums.
 
+- A response that names a principal, service account or similar owner by id may
+  carry a sibling `*_name` display name (for example `updated_by_name`). It is
+  present only when the name can be resolved from a row the caller already
+  reads, is optional, and is a label: use the id for identity and never parse or compare
+  names. The CLI prints `id (name)` in tables; `-o json` keeps the API shape, including
+  `*_name`.
+
+## Change events
+
+`GET /api/v1/orgs/{org}/projects/{project}/events` is a server-sent stream of metadata
+only (`revision.published`, `pending.staged`, `cell.changed`); it never carries
+values and `Last-Event-ID` replays nothing. A client that sends
+`Accept: text/event-stream; hikyo-topology=1` also receives `environments.changed`
+(`type` and `project_id` only) after an environment is created, cloned, renamed,
+reordered or deleted, subject to current project read permission. Clients must
+ignore event types they do not know. Delivery is per node and advisory, so poll
+the environment listing too; the web app does so every 30 seconds and refetches
+after a reconnect.
+
 The contract records operation-specific authorization, accepted artifact types,
 and the minimum API revision. Generate clients from the checked-in document,
 then preserve unknown response fields and enum values.

@@ -143,6 +143,25 @@ all environments and retained history. There is no environment DEK. The old
 boolean `--instance` spelling collided with the shared target flag and never
 executed successfully. Use `--instance-scope` for that scope.
 
+### Other key rotations
+
+These ceremonies each need `--yes` to proceed:
+
+- `hikyo rotate-token-key --yes` creates a new token key; clients need one full
+  fetch and there is no restart wave.
+- `hikyo rotate-scanning-key --yes` creates a new scanning key and drops every
+  dismissal.
+- `hikyo rotate-master-key --yes` creates a new master key and re-wraps every
+  tier-3 key under it. No data is re-encrypted and DEK versions are unchanged. It
+  is refused while a root-key rotation is in flight.
+- `hikyo rotate-root-key --prepare|--verify|--finalize` rotates the root key in
+  three runs, exactly one phase per run, so it survives a crash between them.
+  `--prepare` seals the master under the new root read from the server's
+  `HIKYO_NEW_ROOT_KEY_FILE`; no key material crosses the wire. After you install
+  the new root at the primary source, `--verify` confirms it is there, and
+  `--finalize` retires the old root wrapper. After `--finalize` the old root no
+  longer boots the instance, so verify first.
+
 Most list and show commands accept `-o table|json`. JSON shapes may gain fields;
 automation must ignore unknown fields.
 
@@ -266,6 +285,32 @@ never printed, logged, or placed in the browser URL.
 Display-once credentials use a new mode-`0600` file, an interactive terminal,
 or explicit `--dangerously-print`. Revealed key values also support the protected
 native clipboard destination described below.
+
+## Every command and flag
+
+[CLI help](/docs/cli-help/) is the exact `hikyo help` output for this release,
+generated from the same snapshot the CLI tests pin. Use it for the full verb and
+flag list of every family. The notes below cover behaviour the help text does
+not spell out.
+
+- **Retention.** A bounded `org retention set` or `project retention set` needs
+  both `--max-age` (a positive whole-second duration) and a positive
+  `--last-revisions`. An organisation can instead pass `--unlimited`; a project
+  can pass `--inherit` to clear its override and follow the organisation policy.
+- **Approvals.** `revision`, `pin` and `approval request` commands select an
+  environment with `--env`. Approval policies are project-scoped: `--covers ENV`
+  limits one policy to an environment, and omitting it covers every
+  environment. See [Change approvals](/docs/values-workflows/#change-approvals).
+- **Temporary access.** `access request emergency` defaults `--duration` to 1h,
+  capped by the policy's `--max-duration`. See
+  [Identity and access](/docs/identity-and-access/#temporary-access).
+- **Restores.** `instance-config apply` takes
+  `--confirm-restored-credentials` (adopt refuses it) to confirm you reviewed the restored
+  credentials and reconciled access grants after a restore.
+- **Scanning.** `--config`, `--suppressions` and `--timeout` apply to every scan
+  mode, including `--staged`, `--unstaged`, `--history` and `--range`.
+- **Listing.** `ssh-ca`, `ssh-profile` and `ssh-cert` `list` take no positional
+  argument.
 
 ## Protected clipboard copy
 
@@ -435,15 +480,18 @@ declaration offline, then `values import --from-dotenv .env` for the values. See
 
 ```text
 hikyo definitions scaffold --from <.env>
-hikyo definitions export [--portable] [--output-file PATH]
+hikyo definitions export [--portable] [--output-file PATH] [--project P]
 hikyo definitions check --file PATH [-o table|json]
 hikyo definitions plan --file PATH [-o table|json]
 hikyo definitions apply --plan ID [--file PATH] [--allow-delete] [--confirm-widening <principal>]...
+    [--commit C] [--ref R] [--actor A] [-o table|json]
 ```
 
 `scaffold` is a pure offline transform: it reads only the named `.env`, contacts
 no server, and emits an additive bundle every key of which is `config` with a
-`TODO: classify` marker. `check` exits `0` equal, `1` different, `2` on error.
+`TODO: classify` marker. `export --project P` selects the project to
+export. `apply --commit`, `--ref` and `--actor` attach source commit, ref and
+automation-actor labels to the apply. `check` exits `0` equal, `1` different, `2` on error.
 
 ## Managed Hikyo configuration
 

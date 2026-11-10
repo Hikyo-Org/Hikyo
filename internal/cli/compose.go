@@ -29,10 +29,10 @@ import (
 // behind a small helper here so the snapshot/generation format rework can be
 // reconciled in one place per primitive.
 //
-// Test seam: HIKYO_COMPOSE_DOCKER overrides the resolved `docker` executable for
-// `compose sync|doctor`. It is deliberately kept out of the help text — not part
-// of the CLI's stable surface, only a test/override hook — documented here and
-// in the api-cli-spellings "Compose delivery" section.
+// HIKYO_COMPOSE_DOCKER overrides the resolved `docker` executable for
+// `compose sync|doctor`. It is a documented environment override (client
+// variables in the user docs), kept out of the help text because it is not a
+// flag; it is also the seam tests use.
 
 const (
 	composeConfigName = "hikyo-compose.yaml"

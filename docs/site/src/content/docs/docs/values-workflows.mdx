@@ -38,6 +38,66 @@ resulting state and applies protection and change-approval policies.
 own authorization and validation gates; they do not use this separate draft
 publication step.
 
+## Change approvals
+
+A change-approval policy makes a publication wait for review. An administrator
+with `project-settings` creates a policy for one environment (`--covers`) or,
+when omitted, every environment in the project:
+
+```bash
+hikyo approval policy create --org example --project backend \
+  --covers <env-id> --min-approvals 2 --ttl 86400 \
+  --approver principal:<principal-id> --approver group:<group-id>:<binding-id> \
+  --bypasser <principal-id>
+hikyo approval policy list
+hikyo approval policy update <policy-id> ...   # same flags as create; replaces the policy
+hikyo approval policy delete <policy-id>
+```
+
+Defaults are `--min-approvals 1` and `--ttl 86400` (request expiry in seconds).
+`--allow-self-approval` lets the requester count as an approver, `--disabled`
+saves the policy without enforcing it, and `--approver` and `--bypasser` repeat.
+An approver is a principal or a SCIM-mapped group binding. `update` replaces the
+whole policy, so repeat every flag you want to keep.
+
+With a policy in force, `values publish` of a covered environment stages a
+review request instead of publishing, and prints the request. Anyone with read
+on the environment can list requests. To approve or reject, you must be a
+current approver on the policy and hold `publish` on the environment, and the
+requester cannot approve their own request unless the policy sets
+`--allow-self-approval`:
+
+```bash
+hikyo approval request list --env <env-id>
+hikyo approval request approve <request-id> --env <env-id>
+hikyo approval request reject <request-id> --env <env-id>
+hikyo approval request merge <request-id> --env <env-id>
+hikyo approval request bypass <request-id> --env <env-id> --reason "incident 4821"
+```
+
+An approval covers one exact change set. The requester merges it, through the
+ordinary publish path, once enough approvals are in; nobody else can merge
+another person's staged drafts. Editing the drafts, a new revision landing in
+the environment, or changing the policy (including its approver list)
+invalidates the request the next time anyone votes or merges. An approval stops
+counting once its voter is no longer an eligible approver or loses `publish`; an
+approved request that falls below quorum this way is invalidated at merge.
+Requests expire after the policy's `--ttl`. The requester, if also a named bypasser on the policy, can merge their
+own request without quorum with `bypass`. It needs `--reason` (at most 512
+characters), is audited, and cannot change the policy.
+
+Approve, reject and bypass each consume a reauthentication window bound to that
+action and the request's keys. Merge consumes one only in a protected
+environment, as any publish there does. A live window is reused; a protected
+environment, or a window of `0s`, needs a new passkey ceremony for each
+decision, in the browser or through the CLI's browser handoff. A covered environment refuses a
+publish that spans several environments, so publish it alone. Value changes
+that skip draft publication (`values copy`, `values import`, bulk apply and
+cloning onto an existing environment) are also refused for a covered
+environment, since they cannot be reviewed. The browser exposes the same flow under **Change
+approvals** in the project. The server reports `hikyo_approval_requests_open`
+and `hikyo_approval_requests_expired` on the operational listener.
+
 ## Set from a protected file
 
 ```bash
@@ -118,6 +178,13 @@ runs, naming exactly the secret keys the command will open, and continues once
 you approve. Either way the session token rotates and is stored. `--dev`
 instances default to a 15-minute window; raise an environment's window with
 `hikyo project-settings set --env <env-id> --reauth-window-seconds 300`.
+
+The browser reauthentication and workspace approval pages name the
+organisation, project, environment and each key they cover, with the end of each
+id beside the name. The change-approval page names the requester, the voters and
+each key. Names are read through your own access, so one
+you cannot read stays an id, and the approve button waits until the lookups
+settle. Check that the named environment and keys are the ones you started.
 
 ## Import an existing `.env`
 

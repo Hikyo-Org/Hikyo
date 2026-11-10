@@ -30,6 +30,48 @@ identity provider; the web app keeps the display name read-only and hides the
 internal username. Accounts that sign in only through a provider can still edit
 their display name without a local password.
 
+## Second factor at sign-in
+
+An account with an enrolled authenticator app or passkey must present it when it
+signs in with its password in the browser: the password step ends in a challenge
+and no session exists until the factor is accepted. This is not skippable and
+does not depend on policy. CLI sign-in follows the same rule: browser and device
+login run the ceremony in the browser, and `hikyo login --local` is refused for
+an account that has a factor (see [Identity and access](/docs/identity-and-access/#human-sessions)).
+
+`HIKYO_SECOND_FACTOR` sets the instance policy for accounts that have no factor
+yet. With `required`, a password sign-in succeeds only into a restricted session
+that can enrol a factor (TOTP or passkey), generate recovery codes, read
+`whoami` and sign out, until a factor is enrolled. With `optional`, such an
+account signs in on its password alone. A fresh installation defaults to
+`required`. Only an instance whose managed configuration was adopted before
+upgrading is seeded `optional`, so its posture does not change until an operator
+changes the managed value. See [managed configuration](/docs/managed-configuration/)
+and [server configuration](/docs/configuration/#second-factor-at-sign-in).
+
+## Set or change a password
+
+```bash
+hikyo account password set
+hikyo account password change
+```
+
+Both prompt on the controlling terminal with echo off and never accept secrets
+as flags. `set` and `change` are aliases. Both ask for your current password or,
+on an account with none, a code from its confirmed authenticator app. Both then ask twice for the
+new password, which must be at least 12 characters. Saving replaces the current
+session and revokes every other session. A passkey-only account with neither a
+password nor TOTP is refused, with a pointer to the browser.
+
+An account that signs in only through a provider has no local credential. In
+**Account & security**, verify with the linked provider first; that proof expires
+five minutes after verification and covers one credential change, which can be setting a
+first password, enrolling TOTP or a passkey, or generating recovery codes. It
+never authorizes revealing a secret or linking and unlinking identities. `account password set|change` and `account factor enrol-totp` refuse a
+provider-only account up front in the CLI and print where to continue;
+`account recovery-codes regenerate` leaves the decision to the server.
+Unlinking a provider is refused when it would leave no usable way to sign in.
+
 ## Enrol TOTP
 
 Start enrolment while logged in:

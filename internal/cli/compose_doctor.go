@@ -402,8 +402,8 @@ func renderComposeFindings(w io.Writer, f Format, findings []compose.Finding) er
 // ---------------------------------------------------------------------------
 
 // dockerBinary resolves the docker executable. HIKYO_COMPOSE_DOCKER overrides
-// PATH resolution — the test seam, documented in the handoff/package doc only,
-// deliberately kept out of the help text.
+// PATH resolution; it is a documented environment override and the test seam,
+// kept out of the help text because it is not a flag.
 func dockerBinary(ios IO) (string, bool) {
 	if v := ios.Env.Getenv("HIKYO_COMPOSE_DOCKER"); v != "" {
 		return v, true

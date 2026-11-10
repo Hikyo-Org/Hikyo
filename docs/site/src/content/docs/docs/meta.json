@@ -65,6 +65,7 @@
     "compliance-operations",
     "---Reference---",
     "cli-reference",
+    "cli-help",
     "http-api"
   ]
 }

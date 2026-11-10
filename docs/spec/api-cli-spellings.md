@@ -207,9 +207,9 @@ dimension is a hard error (exit 2) naming both sources.
 has no target) and an optional `slug` (the state-dir / default-runtime-dir path
 segment; `^[a-z0-9][a-z0-9-]*$`).
 
-**Not a documented flag:** `HIKYO_COMPOSE_DOCKER` overrides the resolved `docker`
-executable for `compose sync|doctor`. It is a test seam, kept out of the help
-text and documented only here and in the package doc.
+**Not a flag:** `HIKYO_COMPOSE_DOCKER` is a documented environment override of the
+resolved `docker` executable for `compose sync|doctor`. It is listed under client
+variables in the user docs and kept out of the help text.
 
 ### `sync` pre-render gate — interpretation of "same checks" (for human disposition)
 

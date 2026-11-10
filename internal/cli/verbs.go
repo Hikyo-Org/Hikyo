@@ -267,7 +267,7 @@ contexts:
 
 managed configuration:
   hikyo instance-config status [-o table|json]
-  hikyo instance-config adopt [--yes] [--confirm-restored-credentials]
+  hikyo instance-config adopt [--yes]
                                                  preview or adopt effective settings
   hikyo instance-config apply --revision N --expected-generation N
       [--idempotency-key KEY] [--confirm-restored-credentials]
@@ -698,7 +698,7 @@ access:
   hikyo access request list --env E [-o table|json]
   hikyo access request create --env E --capability C --duration 1h --reason R
   hikyo access request approve|reject|cancel|revoke <request> --env E
-  hikyo access request emergency --env E --capability C --reason R [--duration 30m]
+  hikyo access request emergency --env E --capability C --reason R [--duration D]
   hikyo project-settings get --env E [-o table|json]
   hikyo project-settings set --env E [--protected true|false] [--reauth-window-seconds N|inherit]
   hikyo project-settings machine-reveal get|set --enabled true|false
