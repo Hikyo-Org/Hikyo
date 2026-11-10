@@ -77,7 +77,7 @@ matching verified Windows archive.
 The checkout's `release/trust` must already be independently authenticated and
 contain the current recovery-authorized stable policy and catalog. A checkout
 whose trust synchronization is incomplete must stop here: `main` synchronizes
-its trusted catalog to the 1.0.0 stable record only when the separate
+its trusted catalog to the %STABLE_VERSION% stable record only when the separate
 trust-sync pull request merges, so verify from a checkout of `main` on or
 after that merge; an earlier checkout fails this procedure even when the
 bundle itself is authentic. Do not bootstrap trust from the downloaded
@@ -92,18 +92,20 @@ explains the maintainer-owned authorization boundary.
   : "${verification_state:?Persistent verification-state file is required}"
   bundle=$(mktemp -d)
   printf 'Download directory: %s\n' "$bundle"
-  gh release download v1.0.0 --repo Hikyo-Org/Hikyo --dir "$bundle"
+  version=%STABLE_VERSION%
+  gh release download "v$version" --repo Hikyo-Org/Hikyo --dir "$bundle"
+  commit=$(gh api "repos/Hikyo-Org/Hikyo/commits/v$version" --jq .sha)
   go run ./scripts/release/stable verify --trust release/trust \
     --state "$verification_state" --directory "$bundle" \
-    --version 1.0.0 --commit 2ac7bb36633d3ae0a99d7724968ca8c3cbf18334 \
+    --version "$version" --commit "$commit" \
     --latest --published
   printf 'Verified stable bundle: %s\n' "$bundle"
 )
 ```
 
-Once a later stable release has superseded 1.0.0, the bundle remains
+Once a later stable release supersedes a version, its bundle remains
 authentic but is no longer the signed latest release: historical verification
-then replaces the `--latest` selection.
+then replaces the `--latest` selection. For example, for the superseded 1.0.0:
 
 ```sh
 go run ./scripts/release/stable verify --trust release/trust \
@@ -116,7 +118,7 @@ The [per-release ceremony policy](/release/signing/#per-release-ceremony)
 records that an older authorized release requires explicit historical
 verification and cannot be presented as latest.
 
-Success prints the authenticated `identity` with version `1.0.0` and
+Success prints the authenticated `identity` with version `%STABLE_VERSION%` and
 `published_oci_verified: true`, followed by the verified bundle directory.
 Only then extract the matching platform archive or install a native package
 below. Retain the state file across verifications for rollback and equivocation
@@ -261,7 +263,7 @@ continue with the copy-to-PATH instructions above.
 
 ### Verify a stable DMG
 
-Enter the published stable tag `v1.0.0` and a path for a persistent verification
+Enter the published stable tag `v%STABLE_VERSION%` and a path for a persistent verification
 state file outside the download directory. Keep that state file across future
 verifications to preserve remembered rollback and equivocation protection.
 

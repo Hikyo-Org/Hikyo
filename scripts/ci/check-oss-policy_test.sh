@@ -79,6 +79,14 @@ for page in index.html docs/installation/index.html; do
 	cp "$repo_root/docs/site/dist/$page" "$fixture_dir/site/$page"
 done
 
+printf '%%STABLE_VERSION%%\n' >"$fixture_dir/site/leaked-token.txt"
+if "$repo_root/scripts/ci/check-oss-policy.sh" "$fixture_dir" "$fixture_dir/site" >"$fixture_dir/token-refusal.log" 2>&1; then
+	printf 'OSS policy fixture failed: an unsubstituted stable version token was accepted\n' >&2
+	exit 1
+fi
+grep -F "$fixture_dir/site/leaked-token.txt" "$fixture_dir/token-refusal.log" >/dev/null
+rm "$fixture_dir/site/leaked-token.txt"
+
 for page in docs security support governance implementation-status trademark contributing license; do
 	sed "s#https://hikyo.app/$page/#https://example.invalid/$page/#g" \
 		"$repo_root/docs/site/dist/$page/index.html" >"$fixture_dir/site/$page/index.html"

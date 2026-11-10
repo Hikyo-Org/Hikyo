@@ -78,8 +78,9 @@ Do not run `build 1.0.0` until designs and final-candidate acceptance are done.
    `scripts/release/ceremony.sh sync-trust VERSION`. It re-verifies the public
    release and opens a PR containing its signed metadata and catalog. Review
    and merge it promptly after green CI, then pull main. Merging redeploys
-   hikyo.app, so the landing page, docs and demo name the new version; that
-   deployment fails unless the live landing page links it. The next build
+   hikyo.app: the landing page and docs name the new version, and the demo
+   is rebuilt with them. That deployment fails unless the live landing page
+   links the new version. The next build
    refuses to start until this synchronization is complete, and it checks the
    same landing page link.
 

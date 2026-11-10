@@ -191,8 +191,8 @@ require_text "$site_root/docs/getting-started/index.html" 'Build Hikyo from sour
 require_text "$site_root/docs/getting-started/index.html" 'authority is single-use'
 # The published stable version is recorded by the release ceremony's trust sync.
 stable_version=$(jq -er '.highest_release' "$repo_root/release/trust/metadata.json")
-if grep -rlF '%STABLE_VERSION%' "$site_root" >/dev/null; then
-	printf 'OSS policy gate: %s contains an unsubstituted %%STABLE_VERSION%% token\n' "$site_root" >&2
+if leaked=$(grep -rlF '%STABLE_VERSION%' "$site_root"); then
+	printf 'OSS policy gate: unsubstituted %%STABLE_VERSION%% token in:\n%s\n' "$leaked" >&2
 	exit 1
 fi
 for page in index.html docs/installation/index.html; do
