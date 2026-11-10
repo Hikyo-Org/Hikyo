@@ -181,7 +181,7 @@ revisions:                                         --env selects the environment
   hikyo rotate-dek --instance-scope --yes           new instance DEK version (old stays readable)
   hikyo rotate-dek --org O --project P --yes         new project DEK version; follow with reencrypt
   hikyo rotate-master-key --yes                     new master; re-wrap every tier-3 key
-  hikyo rotate-root-key --prepare|--verify|--finalize  crash-safe root rotation, one phase per run
+  hikyo rotate-root-key --prepare|--verify|--finalize --yes  crash-safe root rotation, one phase per run
   hikyo reencrypt --org O --project P                complete a project rotate-dek; --instance-scope for instance
     --instance <ref> selects the server; --instance-scope selects its DEK, never --env.
 

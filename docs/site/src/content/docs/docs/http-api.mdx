@@ -44,15 +44,17 @@ or an OIDC federation binding.
 
 ## Change events
 
-`GET /api/v1/orgs/{org}/projects/{project}/events` is a server-sent stream of metadata
-only (`revision.published`, `pending.staged`, `cell.changed`); it never carries
+`GET /api/v1/orgs/{org}/projects/{project}/events` accepts only a human session;
+service-account credentials are refused even with project read. It is a
+server-sent stream of metadata only (`revision.published`, `pending.staged`, `cell.changed`); it never carries
 values and `Last-Event-ID` replays nothing. A client that sends
 `Accept: text/event-stream; hikyo-topology=1` also receives `environments.changed`
 (`type` and `project_id` only) after an environment is created, cloned, renamed,
 reordered or deleted, subject to current project read permission. Clients must
-ignore event types they do not know. Delivery is per node and advisory, so poll
-the environment listing too; the web app does so every 30 seconds and refetches
-after a reconnect.
+ignore event types they do not know. Delivery is per node and advisory, so a client
+must not rely on it alone: poll the environment listing, and refresh the working
+set (revisions, drafts and cells) periodically and after every reconnect. The web
+app polls every 30 seconds and refetches after a reconnect.
 
 The contract records operation-specific authorization, accepted artifact types,
 and the minimum API revision. Generate clients from the checked-in document,

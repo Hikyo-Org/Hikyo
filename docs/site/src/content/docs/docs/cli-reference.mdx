@@ -154,7 +154,7 @@ These ceremonies each need `--yes` to proceed:
 - `hikyo rotate-master-key --yes` creates a new master key and re-wraps every
   tier-3 key under it. No data is re-encrypted and DEK versions are unchanged. It
   is refused while a root-key rotation is in flight.
-- `hikyo rotate-root-key --prepare|--verify|--finalize` rotates the root key in
+- `hikyo rotate-root-key --prepare|--verify|--finalize --yes` rotates the root key in
   three runs, exactly one phase per run, so it survives a crash between them.
   `--prepare` seals the master under the new root read from the server's
   `HIKYO_NEW_ROOT_KEY_FILE`; no key material crosses the wire. After you install
