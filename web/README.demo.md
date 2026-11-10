@@ -25,7 +25,9 @@ provisioning, and account security also open as read-only screens with sample
 records. Browsing and supported detail controls remain usable; actions that
 change data or connect to another instance are disabled.
 
-Real login/MFA, imports, key/folder management, revision restore/pinning/diff,
+Demo admin can also declare new keys with New key; like values, they last only
+for the tab. Real login/MFA, imports, editing or deleting key declarations,
+folder management, revision restore/pinning/diff,
 and copying across environments remain unavailable. The app's usual dialogs,
 layout, themes, matrix navigation, masking, and form controls remain in use.
 

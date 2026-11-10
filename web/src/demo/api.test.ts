@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createClient, createConfig } from '@hikyo/runtime-core';
-import { listValuesOp, publishPendingChangesOp, setValueOp } from '@hikyo/operations';
+import { createKeyOp, initializeValueOp, listValuesOp, publishPendingChangesOp, setValueOp } from '@hikyo/operations';
 import {
   zDefinitionsSettings, zEnvironmentList, zEnvironmentSettings, zEnvironmentSignals, zError,
   zFolderList, zGrantList, zKeyList, zMeta, zMyOrgList, zOrg, zPendingChange, zPendingDraftList,
@@ -79,7 +79,7 @@ describe('browser demo API', () => {
     expect(detail.can_delete).toBe(false);
     const definitionsPath = `${project}/definitions/settings`;
     const definitions = zDefinitionsSettings.parse(await (await fetch(definitionsPath)).json());
-    expect(definitions.can_declare_keys).toBe(false);
+    expect(definitions.can_declare_keys).toBe(id === 'admin');
     expect(definitions.can_edit_definitions).toBe(false);
     const capacityPath = `${project}/capacity`;
     const capacity = zProjectCapacity.parse(await (await fetch(capacityPath)).json());
@@ -328,6 +328,32 @@ describe('browser demo API', () => {
     const nextSignals = zEnvironmentSignals.parse(await (await fetch(`${env()}/signals`)).json());
     expect(nextSignals.cells.find((cell) => cell.name === 'LOG_LEVEL')).not.toHaveProperty('changed_in_revision');
     expect(nextSignals.cells.find((cell) => cell.name === 'FEATURE_CHECKOUT')?.changed_in_revision).toBe(3n);
+  });
+
+  it('lets only the admin declare a tab-local key that then takes values like any other', async () => {
+    const fetch = createDemoFetch('admin', { origin });
+    const client = createClient(createConfig({ baseUrl: origin, fetch }));
+    const declaration = { rule: { type: 'string' as const, allow_empty: false } };
+    const key = await parsed(createKeyOp, { client, path: { org: DEMO_IDS.org, project: DEMO_IDS.project },
+      body: { name: 'SENTRY_DSN', classification: 'config', folder_path: 'observability', declaration } });
+    expect(key).toMatchObject({ name: 'SENTRY_DSN', folder_path: 'observability', presence: { required_in: { mode: 'none' } } });
+    expect(zKeyList.parse(await (await fetch(`${project}/keys`)).json()).items.map((item) => item.name)).toContain('SENTRY_DSN');
+    expect(zFolderList.parse(await (await fetch(`${project}/folders`)).json()).items.map((item) => item.path)).toContain('observability');
+    const path = { org: DEMO_IDS.org, project: DEMO_IDS.project, environment: DEMO_IDS.development };
+    const draft = await parsed(initializeValueOp, { client, path: { ...path, key: key.id }, body: { value: 'https://sentry.example.test/1' } });
+    await parsed(publishPendingChangesOp, { client, path, body: { version_ids: [draft.version_id] } });
+    const values = await parsed(listValuesOp, { client, path });
+    expect(values.items.find((cell) => cell.name === 'SENTRY_DSN')?.value).toBe('https://sentry.example.test/1');
+    const create = (body: object): RequestInit => ({ method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
+    expect((await fetch(`${project}/keys`, create({ name: 'SENTRY_DSN', classification: 'config', declaration }))).status).toBe(409);
+    const bounded = await fetch(`${project}/keys`, create({ name: 'RETRIES', classification: 'config', declaration: { rule: { type: 'integer', min: 0, max: 5 } } }));
+    expect(bounded.status).toBe(201);
+    expect(await bounded.json()).toMatchObject({ declaration: { rule: { min: 0, max: 5 } } });
+    expect((await fetch(`${project}/keys`, create({ name: 'bad name', classification: 'config', declaration }))).status).toBe(400);
+    for (const role of ['viewer', 'developer'] as const) {
+      expect((await createDemoFetch(role, { origin })(`${project}/keys`, create({ name: 'OTHER', classification: 'config', declaration }))).status).toBe(403);
+    }
+    expect(zKeyList.parse(await (await createDemoFetch('admin', { origin })(`${project}/keys`)).json()).count).toBe(6);
   });
 
   it('never forwards unsupported API calls or remote traffic, but can fetch same-origin static assets', async () => {
