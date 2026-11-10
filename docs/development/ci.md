@@ -133,7 +133,7 @@ changes `internal/cli/testdata/help.txt`, `api/openapi.yaml` or
 <reason>` trailer in the final trailer block of a non-merge commit in the PR
 range opts out. On failure, the check names the page that usually needs the
 update. Feedback tooling comes from the PR's integration merge, so the check
-applies to every PR once it lands on that PR's base.
+applies to a PR once the check is on that PR's base branch.
 
 Every merge group selects all domains from the trusted
 [job registry](../../scripts/ci/ci-job-registry.json), using the immutable current
