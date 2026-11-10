@@ -154,7 +154,8 @@ export function Matrix({
   const selfConfig = useSelfConfig();
   const systemManaged = selfConfig.data?.binding?.org_id === ref.org && selfConfig.data.binding.project_id === ref.project;
   const canDeclareKeys = definitionsSettings.data?.can_declare_keys === true;
-  const declarationsLocked = isDemo || gitManaged || systemManaged || !canDeclareKeys;
+  // The demo adapter grants declaration through can_declare_keys like a real server.
+  const declarationsLocked = gitManaged || systemManaged || !canDeclareKeys;
   // Cleanup only moves keys between folders, which republishes nothing and so
   // needs `definitions-edit` alone.
   const foldersLocked =

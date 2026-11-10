@@ -11,7 +11,7 @@ export const DEMO_ACCOUNTS: readonly {
 }[] = [
   { id: 'viewer', label: 'Viewer', name: 'Sam Rivera', description: 'Browse config values. Secrets stay masked; editing and publishing are disabled.' },
   { id: 'developer', label: 'Developer', name: 'Dana Chen', description: 'Edit and stage development and staging values. Publishing and secret reveal are disabled.' },
-  { id: 'admin', label: 'Demo admin', name: 'Alex Lee', description: 'Edit, publish and reveal sample values in every environment. Settings remain read-only.' },
+  { id: 'admin', label: 'Demo admin', name: 'Alex Lee', description: 'Declare keys, then edit, publish and reveal sample values in every environment. Settings remain read-only.' },
 ];
 
 export const DEMO_IDS = {
