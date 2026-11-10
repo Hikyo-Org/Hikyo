@@ -98,7 +98,10 @@ scripts/ci/fast-feedback.sh --lane=go --go-scope=tooling
 scripts/ci/fast-feedback.sh --lane=frontend
 ```
 
-The application scope owns Go packages outside `scripts/` and module verification.
+The application scope owns Go packages outside `scripts/`, module verification and
+`docs-impact`, which fails a change to `internal/cli/testdata/help.txt`,
+`api/openapi.yaml` or `internal/config/variables.go` without a user docs change
+or a `Docs-Impact: none - <reason>` trailer.
 The tooling scope owns Go packages under `scripts/`, ShellCheck, Actionlint and
 read-only documentation validation. Their package and check unions match the
 unscoped Go lane. Unknown lanes/scopes fail, and frontend refuses Go scopes.

@@ -6,7 +6,7 @@ owner=$(CDPATH='' cd -- "$script_dir/../.." && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-feedback-lanes.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/repo" "$work/bin" "$work/tools/scripts/ci" "$work/tools/docs/site/scripts"
-cp "$script_dir/feedback-plan.sh" "$work/tools/scripts/ci/"
+cp "$script_dir/feedback-plan.sh" "$script_dir/check-docs-impact.sh" "$work/tools/scripts/ci/"
 cp "$owner/docs/site/scripts/prepare-content.mjs" "$work/tools/docs/site/scripts/"
 cd "$work/repo"
 git init -q
@@ -200,4 +200,16 @@ commit_fixture
 run_lane --lane=frontend >/dev/null
 refuse --lane=go
 refuse
+# A contract change without user docs fails the application scope until a
+# commit carries the opt-out trailer.
+printf 'package lanes\n' >fixture.go
+mkdir -p api
+printf 'openapi: 3.1.0\n' >api/openapi.yaml
+commit_fixture
+refuse --lane=go --go-scope=application
+grep -F 'docs-impact: a user-visible surface changed' "$work/output" >/dev/null
+git add .
+git -c commit.gpgsign=false commit -q --allow-empty -m 'chore: fixture' -m 'Docs-Impact: none - fixture contract'
+run_lane --lane=go --go-scope=application >/dev/null
+grep -F 'docs-impact: opted out' "$work/output" >/dev/null
 printf 'fast-feedback lane fixtures: complete lane/scope unions, ownership, invalid selections and independent failure refusal passed\n'

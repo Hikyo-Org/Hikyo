@@ -204,6 +204,14 @@ Before you request review, run the checks for what you touched:
 - Run the formatter and linters so the `lint` gate does not bounce the pull
   request.
 
+User-visible changes (a CLI command or flag, an `/api/v1` operation or field, a
+server setting) update the matching page under
+`docs/site/src/content/docs/docs/` in the same pull request. The `docs-impact`
+feedback check enforces this for `internal/cli/testdata/help.txt`,
+`api/openapi.yaml` and `internal/config/variables.go`; if no docs change is
+needed, add a `Docs-Impact: none - <reason>` trailer to a commit, in the final
+trailer block next to `Signed-off-by`.
+
 You do not need to reproduce the full release gate locally; CI is the source of
 truth for that.
 

@@ -346,5 +346,6 @@ printf 'fast-feedback fixture: clean/ref/dirty/whitespace/Go/filename/dependency
 
 bash "$script_dir/fast-feedback-lanes_test.sh"
 bash "$script_dir/fast-feedback-plan_test.sh"
+sh "$script_dir/check-docs-impact_test.sh"
 bash "$script_dir/fast-feedback-deadline_test.sh"
 bash "$script_dir/dependency-compatibility_test.sh"
