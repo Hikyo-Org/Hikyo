@@ -1,4 +1,4 @@
-import { zEnvironmentList, zEnvironmentSignals, zKey, zKeyList, zPendingChange, zPendingDraftList, zSetValueRequest, zValueList } from '@hikyo/zod';
+import { zEnvironmentList, zEnvironmentSignals, zKey, zKeyList, zPendingChange, zPendingDraftList, zPersonalValueCounts, zSetValueRequest, zValueList } from '@hikyo/zod';
 import type { z } from 'zod';
 import { ORG, PRJ } from '../../src/testkit/ids.ts';
 import { authenticatedIdentity } from '../../src/testkit/identity.ts';
@@ -48,6 +48,8 @@ export function installMatrixFixture() {
     if (path === `${projectUrl}/key-groups` || path === `${projectUrl}/folders`) return json({ items: [], count: 0 });
     if (path === `${projectUrl}/definitions/settings`) return json({ definitions_source: 'db', can_declare_keys: true, can_edit_definitions: true });
     if (path === `${projectUrl}/events`) return new Response(new ReadableStream<Uint8Array>({ start(controller) { stream = controller; controller.enqueue(new TextEncoder().encode(': connected\n\n')); } }), { headers: { 'Content-Type': 'text/event-stream' } });
+    // Matrix personal marks: no personal values, so the caller's own list is never needed.
+    if (/\/environments\/[^/]+\/personal-value-counts$/.test(path)) return json({ eligible: 0, items: [] } satisfies z.input<typeof zPersonalValueCounts>);
     const match = path.match(/\/environments\/([^/]+)\/(values|signals|settings|pending)(?:\/([^/]+))?$/);
     if (match !== null) {
       const [, env, resource, key] = match;
