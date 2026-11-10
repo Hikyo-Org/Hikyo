@@ -95,6 +95,7 @@ func TestAccessSyntaxRejectedBeforeAuthentication(t *testing.T) {
 		{"request missing duration", []string{"request", "create", "--capability", "read", "--reason", "incident"}, "--duration"},
 		{"request subsecond duration", []string{"request", "create", "--capability", "read", "--reason", "incident", "--duration", "999ms"}, "--duration"},
 		{"request duration overflow", []string{"request", "create", "--capability", "read", "--reason", "incident", "--duration", "2147483648s"}, "--duration"},
+		{"emergency subsecond duration", []string{"request", "emergency", "--capability", "read", "--reason", "incident", "--duration", "500ms"}, "--duration"},
 		{"emergency negative duration", []string{"request", "emergency", "--capability", "read", "--reason", "incident", "--duration", "-1s"}, "--duration"},
 		{"emergency duration overflow", []string{"request", "emergency", "--capability", "read", "--reason", "incident", "--duration", "2147483648s"}, "--duration"},
 		{"approve missing id", []string{"request", "approve"}, "<request>"},

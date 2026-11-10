@@ -597,7 +597,7 @@ decisions address one environment. Every verb is human-session only.
 - `access request approve <request>` / `access request reject <request>`: cast one vote; the approve that reaches the quorum grants.
 - `access request cancel <request>`: the requester withdraws an open request.
 - `access request revoke <request>`: end granted access now (holder, approver or member manager).
-- `access request emergency --capability C --reason R [--duration 30m]`: emergency access for a named principal; runs the environment's reauthentication ceremony (inline TOTP where the window slides).
+- `access request emergency --capability C --reason R [--duration D]` (defaults to 1h, capped by the policy maximum): emergency access for a named principal; runs the environment's reauthentication ceremony (inline TOTP where the window slides).
 
 ## Member access rules ([member-access-rules.md](../adr/member-access-rules.md), proposed amendment)
 

@@ -200,10 +200,12 @@ hikyo access policy delete <policy-id>
 Defaults are `--max-duration 8h`, `--min-approvals 1` and `--ttl 86400` (seconds
 a request may wait for a decision). `--approver` and `--bypasser` repeat, and
 an approver is a principal or a SCIM-mapped group binding. `--allow-self-approval`
-lets the requester count as an approver, `--disabled` saves the policy without
+lets a requester who is also an approver approve their own request, `--disabled` saves the policy without
 offering it, and `--clear-bypassers` on `update` empties the emergency set.
-Changing a policy invalidates open requests at their next decision; access
-already granted keeps its expiry.
+Naming bypassers on an enabled policy also requires that you could grant every
+offered capability yourself. A policy's environment cannot be changed; create a
+replacement policy instead. Changing a policy invalidates open requests at
+their next decision; access already granted keeps its expiry.
 
 ```bash
 hikyo access request create --env <env-id> --capability reveal --duration 1h --reason "incident 4821"
@@ -217,7 +219,8 @@ hikyo access request revoke <request-id> --env <env-id>
 Anyone who can read the environment can list requests and file one. The
 request must fall within the covering policy's capabilities and `--max-duration`,
 and needs a `--reason`. To approve or reject you must be a current approver of
-the policy and able to grant every requested capability yourself; the requester
+the policy; to approve you must also be able to grant every requested
+capability yourself; the requester
 cannot approve their own request unless the policy allows it. A rejection
 resolves the request at once; the approval that reaches `--min-approvals` writes
 the time-bound grants. The requester can `cancel` an open request. `revoke` ends
