@@ -134,6 +134,20 @@ The skill covers signing, local validation, and an optional playground.
 - Keep commit messages in the Conventional Commits style already used in the
   history (`feat(web): …`, `fix(app): …`, `test(web): …`).
 
+## Keep user docs current
+
+A user-visible change updates its user docs in the same PR. That means a CLI
+command or flag, an `/api/v1` operation or field, a server setting, or behaviour
+an operator or user relies on. Edit the matching page under
+`docs/site/src/content/docs/docs/`: `cli-reference.mdx`, `configuration.mdx`,
+the feature page (`http-api.mdx` only for contract-wide API rules), and
+`upgrades.mdx` when operators must act.
+The `docs-impact` feedback check fails when `internal/cli/testdata/help.txt`,
+`api/openapi.yaml` or `internal/config/variables.go` changes without a change
+under `docs/site/src/content/docs/` or `docs/operations/`. When no docs change is
+needed, add a `Docs-Impact: none - <reason>` trailer to a commit in the PR, in
+the final trailer block next to `Signed-off-by`.
+
 ## Reviewing changes
 
 - Before requesting human review, have a fresh-context agent review the complete
@@ -142,6 +156,8 @@ The skill covers signing, local validation, and an optional playground.
   preference) or Pre-existing (present before this PR, so not the author's
   regression). Cite a file and line as evidence. Start the report with the count,
   and say plainly when nothing needs fixing.
+- A user-visible change with no docs update and no stated `Docs-Impact: none`
+  reason is an Important finding.
 - Fix every confirmed finding, Nits included. Record evidence only for a finding
   you reject as wrong. Fix a Pre-existing finding at its root cause in this PR
   when it is in scope; otherwise open an issue for it.

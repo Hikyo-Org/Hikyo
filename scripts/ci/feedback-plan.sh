@@ -29,7 +29,7 @@ feedback_plan_build() {
 	local path package existing duplicate
 	local remaining_go=()
 	web=false client=false workflows=false docs=false all_go=false
-	release_admission=false audit_collector=false
+	release_admission=false audit_collector=false docs_impact=false
 	feedback_go_files=() feedback_go_packages=() shell_files=()
 	while IFS= read -r -d '' path; do
 		case "$path" in
@@ -37,6 +37,9 @@ feedback_plan_build() {
 		esac
 		case "$path" in
 			scripts/ops/audit-collector/* | docs/operations/audit-collector.md) audit_collector=true ;;
+		esac
+		case "$path" in
+			internal/cli/testdata/help.txt | api/openapi.yaml | internal/config/variables.go) docs_impact=true ;;
 		esac
 		case "$path" in
 			web/*) web=true ;;
@@ -90,6 +93,8 @@ feedback_plan_select() {
 			if [ "${#go_files[@]}" -gt 0 ]; then feedback_checks+=(go-format); fi
 			if [ "$all_go" = true ] && [ "$scope" != tooling ]; then feedback_checks+=(go-mod-verify); fi
 			if [ "${#go_packages[@]}" -gt 0 ]; then feedback_checks+=(go-compile); fi
+			# After the Go checks, so a compile error is reported before missing docs.
+			if [ "$scope" != tooling ] && [ "$docs_impact" = true ]; then feedback_checks+=(docs-impact); fi
 			if [ "$scope" != application ]; then
 				if [ "${#shell_files[@]}" -gt 0 ]; then feedback_checks+=(shellcheck); fi
 				if [ "$workflows" = true ]; then feedback_checks+=(actionlint); fi
@@ -113,6 +118,7 @@ feedback_plan_select() {
 feedback_check_prerequisites() {
 	case "$1" in
 		audit-collector) feedback_check_needs=(python) ;;
+		docs-impact) feedback_check_needs=() ;;
 		release-admission) feedback_check_needs=(python releaseDependencies) ;;
 		go-format | go-mod-verify | go-compile) feedback_check_needs=(go) ;;
 		shellcheck) feedback_check_needs=(shellcheck) ;;

@@ -126,6 +126,15 @@ The runner timeout includes checkout, dependency setup, and execution. A timeout
 is failed feedback, not proof of a completed check. Shared hosted runner queue
 capacity prevents a universal five-minute promise without measured capacity.
 
+The `docs-impact` feedback check (Go lane, application scope) fails a PR that
+changes `internal/cli/testdata/help.txt`, `api/openapi.yaml` or
+`internal/config/variables.go` without changing user docs under
+`docs/site/src/content/docs/` or `docs/operations/`. A `Docs-Impact: none -
+<reason>` trailer in the final trailer block of a non-merge commit in the PR
+range opts out. On failure, the check names the page that usually needs the
+update. Feedback tooling comes from the PR's integration merge, so the check
+applies to every PR once it lands on that PR's base.
+
 Every merge group selects all domains from the trusted
 [job registry](../../scripts/ci/ci-job-registry.json), using the immutable current
 base's [classifier](../../scripts/ci/classify-changed-paths.sh). All previous test,
