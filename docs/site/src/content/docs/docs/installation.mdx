@@ -4,7 +4,7 @@ description: Install a verified Hikyo stable release, evaluate locally, or prepa
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/installation.mdx
 ---
 
-Hikyo [1.0.0 is released](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0).
+Hikyo [%STABLE_VERSION% is released](https://github.com/Hikyo-Org/Hikyo/releases/tag/v%STABLE_VERSION%).
 Stable downloads include Linux, macOS and Windows archives, Linux packages,
 notarized macOS DMGs, a container image and a Helm chart. Verify the complete
 signed bundle before installation. Signed nightlies remain unsupported
@@ -14,7 +14,7 @@ prereleases; source builds are available for local evaluation and development.
 
 | Goal | Path | Result |
 | --- | --- | --- |
-| Install stable 1.0 | [Stable downloads](#stable-downloads) | Verified release archives, packages, image and chart |
+| Install stable %STABLE_VERSION% | [Stable downloads](#stable-downloads) | Verified release archives, packages, image and chart |
 | Try Hikyo locally | [Getting started](/docs/getting-started/) | Loopback-only server, SQLite, embedded web UI |
 | Try the latest `main` build | [Unsigned development snapshot](#unsigned-development-snapshots) | Exact-commit archive for six desktop/server targets |
 | Install the macOS CLI | [macOS DMG and Homebrew](#macos-dmg-and-homebrew) | Apple Silicon or Intel executable from a published release |
@@ -40,19 +40,19 @@ with exact chart pins and explicit activation. These recipes refuse stable 1.0.0
 
 ## Stable downloads
 
-Download the complete [v1.0.0 release bundle](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0)
+Download the complete [v%STABLE_VERSION% release bundle](https://github.com/Hikyo-Org/Hikyo/releases/tag/v%STABLE_VERSION%)
 and follow [stable bundle verification](#verify-a-stable-bundle).
 Use independently authenticated trust material and preserve the verifier's
 cross-release state. Stop if public trust synchronization or verification is
 incomplete; do not replace verification with a checksum from the same download.
 
-| Distribution | 1.0.0 artifact |
+| Distribution | %STABLE_VERSION% artifact |
 | --- | --- |
 | Linux, macOS and Windows | Archives for x86_64 and arm64, with the CLI and embedded browser UI |
 | Linux packages | DEB, RPM, APK and Arch packages for amd64 and arm64 |
 | macOS CLI | Developer ID signed, notarized and stapled DMGs for Apple Silicon and Intel |
-| Container image | `ghcr.io/hikyo-org/hikyo:1.0.0`, Linux amd64 and arm64 |
-| Helm chart | `oci://ghcr.io/hikyo-org/charts/hikyo`, version `1.0.0` |
+| Container image | `ghcr.io/hikyo-org/hikyo:%STABLE_VERSION%`, Linux amd64 and arm64 |
+| Helm chart | `oci://ghcr.io/hikyo-org/charts/hikyo`, version `%STABLE_VERSION%` |
 
 Use the image and chart digests in the release notes for repeatable deployments.
 For native installation, Compose and Helm runtime inputs, continue with

@@ -189,8 +189,14 @@ require_text "$site_root/docs/index.html" 'href="/docs/installation/"'
 reject_text "$site_root/docs/index.html" 'href="/hikyo/'
 require_text "$site_root/docs/getting-started/index.html" 'Build Hikyo from source'
 require_text "$site_root/docs/getting-started/index.html" 'authority is single-use'
+# The published stable version is recorded by the release ceremony's trust sync.
+stable_version=$(jq -er '.highest_release' "$repo_root/release/trust/metadata.json")
+if grep -rlF '%STABLE_VERSION%' "$site_root" >/dev/null; then
+	printf 'OSS policy gate: %s contains an unsubstituted %%STABLE_VERSION%% token\n' "$site_root" >&2
+	exit 1
+fi
 for page in index.html docs/installation/index.html; do
-	require_text "$site_root/$page" 'href="https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0"'
+	require_text "$site_root/$page" "href=\"https://github.com/Hikyo-Org/Hikyo/releases/tag/v$stable_version\""
 	reject_text "$site_root/$page" 'has no published stable release yet'
 	reject_text "$site_root/$page" 'active 0.x development'
 done

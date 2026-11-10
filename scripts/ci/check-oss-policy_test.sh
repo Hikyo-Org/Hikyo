@@ -9,7 +9,8 @@ trap 'rm -rf "$fixture_dir"' EXIT HUP INT TERM
 "$repo_root/scripts/ci/check-oss-policy.sh" "$repo_root" "$repo_root/docs/site/dist"
 
 mkdir -p "$fixture_dir/site/.well-known"
-mkdir -p "$fixture_dir/release/repository"
+mkdir -p "$fixture_dir/release/repository" "$fixture_dir/release/trust"
+cp "$repo_root/release/trust/metadata.json" "$fixture_dir/release/trust/metadata.json"
 mkdir -p "$fixture_dir/.github/ISSUE_TEMPLATE" "$fixture_dir/.github/workflows"
 mkdir -p "$fixture_dir/docs/adr" "$fixture_dir/docs/site/src/content/docs/docs"
 for path in README.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LICENSE; do
@@ -59,14 +60,15 @@ cp "$repo_root/docs/site/src/content/docs/docs/meta.json" \
 # Prove the complete synthetic fixture passes before interpreting refusals.
 "$repo_root/scripts/ci/check-oss-policy.sh" "$fixture_dir" "$fixture_dir/site"
 
+stable_release=https://github.com/Hikyo-Org/Hikyo/releases/tag/v$(jq -er '.highest_release' "$repo_root/release/trust/metadata.json")
 for page in index.html docs/installation/index.html; do
-	sed 's#https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0#https://example.invalid/unpublished#g' \
+	sed "s#$stable_release#https://example.invalid/unpublished#g" \
 		"$repo_root/docs/site/dist/$page" >"$fixture_dir/site/$page"
 	if "$repo_root/scripts/ci/check-oss-policy.sh" "$fixture_dir" "$fixture_dir/site" >"$fixture_dir/release-refusal.log" 2>&1; then
 		printf 'OSS policy fixture failed: missing stable release link on %s was accepted\n' "$page" >&2
 		exit 1
 	fi
-	grep -F 'releases/tag/v1.0.0' "$fixture_dir/release-refusal.log" >/dev/null
+	grep -F "$stable_release" "$fixture_dir/release-refusal.log" >/dev/null
 	cp "$repo_root/docs/site/dist/$page" "$fixture_dir/site/$page"
 	printf '\nHikyo has no published stable release yet\n' >>"$fixture_dir/site/$page"
 	if "$repo_root/scripts/ci/check-oss-policy.sh" "$fixture_dir" "$fixture_dir/site" >"$fixture_dir/release-refusal.log" 2>&1; then

@@ -77,8 +77,11 @@ Do not run `build 1.0.0` until designs and final-candidate acceptance are done.
 4. **Record published trust:** run
    `scripts/release/ceremony.sh sync-trust VERSION`. It re-verifies the public
    release and opens a PR containing its signed metadata and catalog. Review
-   and merge after green CI, then pull main. The next build refuses to start
-   until this synchronization is complete.
+   and merge it promptly after green CI, then pull main. Merging redeploys
+   hikyo.app, so the landing page, docs and demo name the new version; that
+   deployment fails unless the live landing page links it. The next build
+   refuses to start until this synchronization is complete, and it checks the
+   same landing page link.
 
 There is one human review/publication boundary. With one maintainer it does not
 provide independent two-person approval. GitHub account security, protected
