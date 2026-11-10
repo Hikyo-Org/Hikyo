@@ -124,6 +124,11 @@ else
 		Dockerfile.release | .dockerignore | scripts/release/prepare-image-root.sh | scripts/release/prepare-image-root_test.sh)
 			select_class image
 			;;
+		# The docs site renders the published stable version recorded here.
+		release/trust/metadata.json)
+			select_class release
+			select_class docs
+			;;
 		release/* | scripts/release/* | scripts/lib/* | install/*)
 			select_class release
 			;;

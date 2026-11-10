@@ -13,6 +13,7 @@ import {
   remarkStructure,
 } from 'fumadocs-core/mdx-plugins';
 import { remarkLLMs } from 'fumadocs-core/mdx-plugins/remark-llms';
+import { remarkStableVersion } from './src/lib/release.mjs';
 
 // PostHog is the only third party the site talks to, and only after opt-in. Its
 // origin has to reach the Content-Security-Policy so `array.js` (script-src) and
@@ -60,6 +61,8 @@ if (postHogEnabled) {
 }
 
 const remarkPlugins = [
+  // First, so headings, search structure and llms export see the version.
+  remarkStableVersion,
   remarkHeading,
   remarkCodeTab,
   remarkNpm,

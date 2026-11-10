@@ -28,7 +28,7 @@
 </div>
 
 > [!IMPORTANT]
-> [Hikyo 1.0.0 is released](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0).
+> [The latest stable Hikyo release](https://github.com/Hikyo-Org/Hikyo/releases/latest) is published.
 > Use the [installation guide](https://hikyo.app/docs/installation/) for verified
 > downloads. Distribution status and remaining qualification are recorded under
 > [`CAP-PUBLIC-RELEASE`](./docs/status/README.md#cap-public-release).
