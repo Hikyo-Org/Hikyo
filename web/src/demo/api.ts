@@ -4,7 +4,7 @@ import { zCreateKeyRequest, zPublishRequest, zSetValueRequest } from '@hikyo/zod
 import { ZodError } from 'zod';
 import { createReadOnlyFixtures } from './readOnlyFixtures.ts';
 import { DEMO_ACCOUNTS, DEMO_IDS, demoCanEdit, type DemoRole } from './config.ts';
-import { environments, fixtureTime, folders as fixtureFolders, grants, initialValue, keys as fixtureKeys, org, principalIds, project, retention } from './fixtures.ts';
+import { environments, fixtureTime, folders, grants, initialValue, keys as fixtureKeys, org, principalIds, project, retention } from './fixtures.ts';
 
 type Draft = { version_id: string; environment_id: string; key: Key; operation: 'set' | 'unset'; value?: string; staged_from_revision: number; created_at: string };
 type Options = { origin?: string; assetFetch?: typeof fetch; analyticsOrigins?: readonly string[] };
@@ -31,9 +31,8 @@ export function createDemoFetch(role: DemoRole, options: Options = {}): typeof f
   if (account === undefined) throw new Error('Unknown demo account');
   const sessionTime = new Date().toISOString();
   const readOnlyFixture = createReadOnlyFixtures(role, sessionTime);
-  // Keys and folders the demo admin declares live only in this tab, like values.
+  // Keys the demo admin declares live only in this tab, like values.
   const keys = [...fixtureKeys];
-  const folders = [...fixtureFolders];
   const drafts = new Map<string, Draft>();
   const published = new Map<string, string | undefined>();
   const revisions = new Map(environments.map((environment) => [environment.id, 1]));
@@ -109,10 +108,16 @@ export function createDemoFetch(role: DemoRole, options: Options = {}): typeof f
         const body = zCreateKeyRequest.parse(await request.json());
         request.signal.throwIfAborted();
         if (keys.some((key) => key.name === body.name)) return refusal(409, `A key named ${body.name} already exists.`);
+        // Like the server: folder paths follow the namespace grammar, and declaring a key creates no folder row.
         const folder_path = body.folder_path ?? '';
-        if (folder_path !== '' && !folders.some((folder) => folder.path === folder_path)) {
-          folders.push({ id: `fld_11111111-1111-4111-8111-${String(folders.length + 1).padStart(12, '0')}`, org_id: org.id, project_id: project.id, path: folder_path, created_at: new Date().toISOString() });
+        const segments = folder_path.split('/');
+        if (folder_path !== '' && (segments.length > 32 || segments.some((segment) => segment === '' || segment === '.' || segment === '..' || segment.trim() !== segment || /\p{Cc}/u.test(segment)))) {
+          return refusal(400, 'The folder path must be slash-separated names without empty, "." or ".." segments.');
         }
+        const inverted = [body.declaration.rule, ...(body.declaration.any_of ?? [])].some((item) => item !== undefined && (
+          (item.min !== undefined && item.max !== undefined && item.min > item.max) ||
+          (item.min_length !== undefined && item.max_length !== undefined && item.min_length > item.max_length)));
+        if (inverted) return refusal(400, 'A rule minimum exceeds its maximum.');
         // The request schema coerces int64 bounds to bigint; the stored Key and its JSON use numbers.
         type ParsedRule = NonNullable<typeof body.declaration.rule>;
         const plainRule = ({ min, max, ...rule }: ParsedRule) => ({ ...rule, ...(min === undefined ? {} : { min: Number(min) }), ...(max === undefined ? {} : { max: Number(max) }) });
