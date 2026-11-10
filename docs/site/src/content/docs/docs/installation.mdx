@@ -163,17 +163,17 @@ Debian (`.deb`), RPM (`.rpm`), Alpine (`.apk`), and Arch Linux
 (`.pkg.tar.zst`). Download the **complete** release bundle first and verify it
 with a trusted verifier and recovery-authorized trust material.
 Follow [stable bundle verification](#verify-a-stable-bundle) for
-1.0.0, or the [signed-nightly runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/signed-nightlies.md)
+%STABLE_VERSION%, or the [signed-nightly runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/signed-nightlies.md)
 for a nightly. Do not install a package copied out of an unverified or draft bundle.
 
 After verification, install the matching local file. These examples show amd64
-names for version `1.0.0`:
+names for version `%STABLE_VERSION%`:
 
 ```sh
-sudo apt install ./hikyo_1.0.0_amd64.deb
-sudo dnf install --nogpgcheck ./hikyo-1.0.0-1.x86_64.rpm
-sudo apk add --allow-untrusted ./hikyo_1.0.0_x86_64.apk
-sudo pacman -U ./hikyo-1.0.0-1-x86_64.pkg.tar.zst
+sudo apt install ./hikyo_%STABLE_VERSION%_amd64.deb
+sudo dnf install --nogpgcheck ./hikyo-%STABLE_VERSION%-1.x86_64.rpm
+sudo apk add --allow-untrusted ./hikyo_%STABLE_VERSION%_x86_64.apk
+sudo pacman -U ./hikyo-%STABLE_VERSION%-1-x86_64.pkg.tar.zst
 ```
 
 `--nogpgcheck` and `--allow-untrusted` disable native repository signatures,
@@ -369,7 +369,7 @@ Hikyo fails closed when these boundaries are missing. Continue with the
 
 ## Platform support
 
-Stable 1.0.0 archives, unsigned development snapshots and signed nightlies cover
+Stable archives, unsigned development snapshots and signed nightlies cover
 Linux, macOS, and Windows on `x86_64` and `arm64`. Source builds follow Go's
 supported host platforms. The Unix-socket local evaluation flow is for Linux
 and macOS; Windows CLI connections require HTTPS. Platform qualification limits
