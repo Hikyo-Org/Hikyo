@@ -128,6 +128,9 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	if err := normalizeGoReuseDiskPreparation(workflow.Jobs); err != nil {
 		return err
 	}
+	if err := normalizePinnedToolReuse(workflow.Jobs); err != nil {
+		return err
+	}
 	if err := normalizeSnapshotConcurrency(workflow.Jobs["release-snapshot"]); err != nil {
 		return err
 	}

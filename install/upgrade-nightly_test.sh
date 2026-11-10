@@ -244,10 +244,15 @@ class BootstrapBoundaries(unittest.TestCase):
     # policy. The recovery pin, policy signature (OpenSSL), policy validation,
     # delegation checks and certificate claims run for real; only Cosign is a
     # recording stand-in unless real Cosign is on PATH (see the last test).
-    stable_commit = '2ac7bb36633d3ae0a99d7724968ca8c3cbf18334'
+    # Expectations come from the committed trust, which each published release advances.
+    def committed_path(self):
+        return pathlib.Path(sys.argv[1]).parent.parent / 'release/trust'
+
+    def committed(self, name='metadata'):
+        return json.loads((self.committed_path() / (name + '.json')).read_text())
 
     def stable_fixture(self, cosign_status=0):
-        trust = pathlib.Path(sys.argv[1]).parent.parent / 'release/trust'
+        trust = self.committed_path()
         for name in ('recovery-1.pub', 'metadata.json', 'metadata.sigstore.json', 'catalog.json', 'catalog.sigstore.json', 'stable-policy.json', 'stable-policy.sigstore.json', 'stable-trusted-root.json'):
             shutil.copy(trust / name, self.root / name)
         shutil.copy(trust / 'nightly/policy.json', self.root / 'policy.json')
@@ -272,16 +277,18 @@ class BootstrapBoundaries(unittest.TestCase):
     def test_workflow_signed_committed_trust_authorizes_with_exact_cosign_argv(self):
         manifest = self.stable_fixture()
         self.run_verify('authorize', self.root, manifest, self.state, self.cosign)
-        identity = 'https://github.com/Hikyo-Org/Hikyo/.github/workflows/release.yml@refs/tags/v1.0.0'
+        metadata, catalog = self.committed(), self.committed('catalog')
+        ref = 'refs/tags/' + metadata['release_tag']
+        identity = 'https://github.com/Hikyo-Org/Hikyo/.github/workflows/release.yml@' + ref
         expected = []
         for name in ('metadata', 'catalog'):
             expected += ['verify-blob', '--bundle', str(self.root / (name + '.sigstore.json')), '--trusted-root', str(self.root / 'stable-trusted-root.json'),
                 '--certificate-identity', identity, '--certificate-oidc-issuer', 'https://token.actions.githubusercontent.com',
-                '--certificate-github-workflow-repository', 'Hikyo-Org/Hikyo', '--certificate-github-workflow-ref', 'refs/tags/v1.0.0',
-                '--certificate-github-workflow-sha', self.stable_commit, str(self.root / (name + '.json')), '--']
+                '--certificate-github-workflow-repository', 'Hikyo-Org/Hikyo', '--certificate-github-workflow-ref', ref,
+                '--certificate-github-workflow-sha', metadata['source_commit'], str(self.root / (name + '.json')), '--']
         self.assertEqual((self.root / 'cosign.argv').read_text().splitlines(), expected)
         floor = json.loads((self.state / 'bootstrap-trust.json').read_text())
-        self.assertEqual((floor['metadata_sequence'], floor['catalog_sequence']), (2, 4))
+        self.assertEqual((floor['metadata_sequence'], floor['catalog_sequence']), (metadata['sequence'], catalog['sequence']))
 
     def test_workflow_path_refuses_failed_cosign_without_state(self):
         manifest = self.stable_fixture(cosign_status=1)
@@ -304,7 +311,7 @@ class BootstrapBoundaries(unittest.TestCase):
 
     def test_workflow_path_refuses_altered_metadata_digest(self):
         manifest = self.stable_fixture()
-        self.edit('metadata.json', lambda value: value.update(sequence=3))
+        self.edit('metadata.json', lambda value: value.update(sequence=value['sequence'] + 1))
         self.refuse(manifest, 'catalog does not bind the authenticated metadata')
 
     def test_workflow_path_refuses_policy_digest_and_inventory_mismatches(self):
@@ -336,7 +343,7 @@ class BootstrapBoundaries(unittest.TestCase):
         manifest = self.stable_fixture()
         self.cosign = pathlib.Path(shutil.which('cosign'))
         self.run_verify('authorize', self.root, manifest, self.state, self.cosign)
-        self.edit('metadata.json', lambda value: value.update(sequence=3))
+        self.edit('metadata.json', lambda value: value.update(sequence=value['sequence'] + 1))
         self.state = self.root / 'state2'
         self.state.mkdir(mode=0o700)
         self.refuse(manifest, 'stable workflow signature verification failed: metadata')
@@ -344,7 +351,7 @@ class BootstrapBoundaries(unittest.TestCase):
     # Variants re-sign every document with a fixture recovery key (substituted
     # into the extracted verifier, as authorization_fixture does) so that one
     # mutated delegation field is the only reason to refuse. Metadata and
-    # catalog sit above the committed 2/4 floor so the floor cannot mask a
+    # catalog sit one above the committed trust, clear of the verifier's pinned floor, so it cannot mask a
     # dropped check. Cosign is the recording stand-in, which accepts anything.
     def delegated_variant(self, metadata=None, policy=None, recovery_signed=False):
         manifest = self.stable_fixture()
@@ -360,7 +367,7 @@ class BootstrapBoundaries(unittest.TestCase):
             return hashlib.sha256((self.root / (name + '.json')).read_bytes()).hexdigest()
         def metadata_change(value):
             value['recovery']['sha256'] = key_digest
-            value['sequence'] = 3
+            value['sequence'] += 1
             if metadata:
                 metadata(value)
         self.edit('metadata.json', metadata_change)
@@ -368,7 +375,7 @@ class BootstrapBoundaries(unittest.TestCase):
             self.edit('stable-policy.json', policy)
         sign('stable-policy')
         def catalog_change(value):
-            value['sequence'], value['stable_metadata_sha256'], value['stable_policy_sha256'] = 5, digest('metadata'), digest('stable-policy')
+            value['sequence'], value['stable_metadata_sha256'], value['stable_policy_sha256'] = value['sequence'] + 1, digest('metadata'), digest('stable-policy')
             current = json.loads((self.root / 'stable-policy.json').read_text())
             value['nightly_policies'], value['bridges'] = current['nightly_policies'], current['bridges']
         self.edit('catalog.json', catalog_change)
@@ -386,7 +393,7 @@ class BootstrapBoundaries(unittest.TestCase):
         manifest = self.delegated_variant(metadata=legacy, recovery_signed=True)
         self.run_verify('authorize', self.root, manifest, self.state)
         def stale(value):
-            value['sequence'], value['stable_policy_sha256'] = 6, 'a' * 64
+            value['sequence'], value['stable_policy_sha256'] = value['sequence'] + 1, 'a' * 64
         self.edit('catalog.json', stale)
         self.sign_variant('catalog')
         self.assertIn('catalog does not bind exact stable delegation', subprocess.run([sys.executable, str(self.verifier), 'authorize', str(self.root), str(manifest), str(self.state)], capture_output=True, text=True).stderr)
@@ -396,21 +403,23 @@ class BootstrapBoundaries(unittest.TestCase):
         self.run_verify('authorize', self.root, manifest, self.state, self.cosign)
 
     def test_delegated_metadata_checks_each_refuse(self):
+        committed = self.committed()
+        top, above = committed['highest_release'], committed['highest_release_sequence'] + 1
         def release(**change):
-            return lambda value: value['releases'][0].update(change)
+            return lambda value: next(entry for entry in value['releases'] if entry['version'] == top).update(change)
         def many(*changes):
             return lambda value: [change(value) for change in changes]
         authority = 'stable workflow metadata exceeds delegated authority'
         cases = {
             'event type': (lambda value: value['event'].update(type='release-candidate'), authority),
-            'pending release': (lambda value: value.update(pending_release={'version': '1.0.1', 'sequence': 2, 'manifest_sha256': 'a' * 64}), authority),
+            'pending release': (lambda value: value.update(pending_release={'version': '9.9.9', 'sequence': above, 'manifest_sha256': 'a' * 64}), authority),
             'tag differs from highest release': (lambda value: value.update(release_tag='v1.0.1'), authority),
             'highest release missing': (lambda value: value.update(highest_release=None), authority),
             'highest sequence not an integer': (lambda value: value.update(highest_release_sequence='1'), authority),
             'commit not hexadecimal': (lambda value: value.update(source_commit='x' * 40), authority),
             'commit too short': (lambda value: value.update(source_commit='a' * 39), authority),
             'primary key revoked after delegation': (lambda value: value['primary_keys'][0].update(revoked=True), authority),
-            'release sequence above highest': (lambda value: value['releases'].append({'version': '1.0.1', 'sequence': 2, 'manifest_sha256': 'a' * 64}), 'stable metadata highest release is absent or exceeded'),
+            'release sequence above highest': (lambda value: value['releases'].append({'version': '9.9.9', 'sequence': above, 'manifest_sha256': 'a' * 64}), 'stable metadata highest release is absent or exceeded'),
             'highest release absent': (release(version='0.9.0'), 'stable metadata highest release is absent or exceeded'),
             'releases not a list': (lambda value: value.update(releases={}), 'invalid stable release inventory'),
             'release sequence not an integer': (release(sequence='1'), 'invalid stable release inventory'),
@@ -453,7 +462,7 @@ class BootstrapBoundaries(unittest.TestCase):
             'minimum sequence boolean': ({'minimum_release_sequence': True}, invalid),
             'primary key digest malformed': ({'primary_keys_sha256': 'nothex'}, invalid),
             'primary key digest differs from metadata': ({'primary_keys_sha256': 'a' * 64}, 'stable workflow metadata exceeds delegated authority'),
-            'minimum sequence above highest release': ({'minimum_release_sequence': 2}, 'stable workflow metadata exceeds delegated authority'),
+            'minimum sequence above highest release': ({'minimum_release_sequence': self.committed()['highest_release_sequence'] + 1}, 'stable workflow metadata exceeds delegated authority'),
         }
         for name, (change, message) in cases.items():
             with self.subTest(name):

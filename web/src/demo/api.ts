@@ -1,10 +1,10 @@
 import { client } from '@hikyo/runtime';
 import type { Key, Revision } from '@hikyo/client';
-import { zPublishRequest, zSetValueRequest } from '@hikyo/zod';
+import { zCreateKeyRequest, zPublishRequest, zSetValueRequest } from '@hikyo/zod';
 import { ZodError } from 'zod';
 import { createReadOnlyFixtures } from './readOnlyFixtures.ts';
 import { DEMO_ACCOUNTS, DEMO_IDS, demoCanEdit, type DemoRole } from './config.ts';
-import { environments, fixtureTime, folders, grants, initialValue, keys, org, principalIds, project, retention } from './fixtures.ts';
+import { environments, fixtureTime, folders, grants, initialValue, keys as fixtureKeys, org, principalIds, project, retention } from './fixtures.ts';
 
 type Draft = { version_id: string; environment_id: string; key: Key; operation: 'set' | 'unset'; value?: string; staged_from_revision: number; created_at: string };
 type Options = { origin?: string; assetFetch?: typeof fetch; analyticsOrigins?: readonly string[] };
@@ -31,6 +31,8 @@ export function createDemoFetch(role: DemoRole, options: Options = {}): typeof f
   if (account === undefined) throw new Error('Unknown demo account');
   const sessionTime = new Date().toISOString();
   const readOnlyFixture = createReadOnlyFixtures(role, sessionTime);
+  // Keys the demo admin declares live only in this tab, like values.
+  const keys = [...fixtureKeys];
   const drafts = new Map<string, Draft>();
   const published = new Map<string, string | undefined>();
   const revisions = new Map(environments.map((environment) => [environment.id, 1]));
@@ -88,7 +90,7 @@ export function createDemoFetch(role: DemoRole, options: Options = {}): typeof f
         if (path === `${projectRoot}/retention`) return json({ ...retention, inherited: true });
         if (path === `${projectRoot}/capacity`) return json({ key_limit_override: null, instance_default: 1000, instance_maximum: 10000,
           effective_limit: 1000, key_count: keys.length, environment_count: environments.length, revision: 0, inherited: true, capped: false });
-        if (path === `${projectRoot}/definitions/settings`) return json({ definitions_source: 'db', can_declare_keys: false, can_edit_definitions: false });
+        if (path === `${projectRoot}/definitions/settings`) return json({ definitions_source: 'db', can_declare_keys: role === 'admin', can_edit_definitions: false });
         if (path === `${projectRoot}/machine-reveal`) return json({ enabled: false });
         if (path === `${projectRoot}/environments`) return json(list(environments));
         if (path === `${projectRoot}/folders`) return json(list(folders));
@@ -100,6 +102,33 @@ export function createDemoFetch(role: DemoRole, options: Options = {}): typeof f
         if (path === '/api/v1/auth/methods') return json({ local_login_enabled: false, providers: [], signup_open: false, signup_paused: true, signup_methods: [] });
         const key = keys.find((candidate) => path === `${projectRoot}/keys/${candidate.id}` || path === `${projectRoot}/keys/${candidate.name}`);
         if (key !== undefined) return json(key);
+      }
+      if (method === 'POST' && path === `${projectRoot}/keys`) {
+        if (role !== 'admin') return refusal(403, 'Only the demo admin can declare sample keys.');
+        const body = zCreateKeyRequest.parse(await request.json());
+        request.signal.throwIfAborted();
+        if (keys.some((key) => key.name === body.name)) return refusal(409, `A key named ${body.name} already exists.`);
+        // Like the server: folder paths follow the namespace grammar, and declaring a key creates no folder row.
+        const folder_path = body.folder_path ?? '';
+        const segments = folder_path.split('/');
+        if (folder_path !== '' && (segments.length > 32 || segments.some((segment) => segment === '' || segment === '.' || segment === '..' || segment.trim() !== segment || /\p{Cc}/u.test(segment)))) {
+          return refusal(400, 'The folder path must be slash-separated names without empty, "." or ".." segments.');
+        }
+        const inverted = [body.declaration.rule, ...(body.declaration.any_of ?? [])].some((item) => item !== undefined && (
+          (item.min !== undefined && item.max !== undefined && item.min > item.max) ||
+          (item.min_length !== undefined && item.max_length !== undefined && item.min_length > item.max_length)));
+        if (inverted) return refusal(400, 'A rule minimum exceeds its maximum.');
+        // The request schema coerces int64 bounds to bigint; the stored Key and its JSON use numbers.
+        type ParsedRule = NonNullable<typeof body.declaration.rule>;
+        const plainRule = ({ min, max, ...rule }: ParsedRule) => ({ ...rule, ...(min === undefined ? {} : { min: Number(min) }), ...(max === undefined ? {} : { max: Number(max) }) });
+        const { rule, any_of } = body.declaration;
+        const declaration = { ...(rule === undefined ? {} : { rule: plainRule(rule) }), ...(any_of === undefined ? {} : { any_of: any_of.map(plainRule) }) };
+        const key: Key = { id: `key_11111111-1111-4111-8111-${String(keys.length + 1).padStart(12, '0')}`, org_id: org.id, project_id: project.id,
+          name: body.name, classification: body.classification, folder_path, description: body.description ?? '', deprecated: body.deprecated ?? false,
+          deprecation_note: body.deprecation_note ?? '', declaration,
+          presence: body.presence ?? { required_in: { mode: 'none' }, forbidden_in: { mode: 'none' } }, group_id: '', created_at: new Date().toISOString() };
+        keys.push(key);
+        return json(key, 201);
       }
       const environment = environments.find((candidate) => path.startsWith(`${projectRoot}/environments/${candidate.id}/`));
       if (environment === undefined) return refusal(404, 'This feature is not included in the browser demo.');

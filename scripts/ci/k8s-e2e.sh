@@ -91,24 +91,14 @@ if [ "$(uname -s)" = Linux ]; then
 	tool_dir="$image_root/tools"
 	mkdir -p "$tool_dir"
 	node_archive="$tool_dir/node.tar.xz"
-	curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error \
-		--retry 4 --retry-delay 2 --retry-all-errors \
-		https://nodejs.org/dist/v26.12.1/node-v26.12.1-linux-x64.tar.xz \
-		--output "$node_archive"
-	printf '%s  %s\n' \
-		6170b2d474e1c626f43cff3adc118df9fe3b573258a4fc3d850c8dbc6b079bbd \
-		"$node_archive" | sha256sum --check --strict
-	tar -xJf "$node_archive" -C "$tool_dir"
-	export PATH="$tool_dir/node-v26.12.1-linux-x64/bin:$PATH"
+	./scripts/ci/fetch-pinned-tool.sh node-linux-x64 "$node_archive"
+	mkdir -p "$tool_dir/node"
+	tar -xJf "$node_archive" -C "$tool_dir/node" --strip-components=1
+	export PATH="$tool_dir/node/bin:$PATH"
+	node --version
 
 	helm_archive="$tool_dir/helm.tar.gz"
-	curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error \
-		--retry 4 --retry-delay 2 --retry-all-errors \
-		https://get.helm.sh/helm-v4.2.3-linux-amd64.tar.gz \
-		--output "$helm_archive"
-	printf '%s  %s\n' \
-		e9b88b4ee95b18c706839c28d3a0220e5bc470e9cd9262410c90793c45ff8b7c \
-		"$helm_archive" | sha256sum --check --strict
+	./scripts/ci/fetch-pinned-tool.sh helm-linux-amd64 "$helm_archive"
 	tar -xzf "$helm_archive" -C "$tool_dir"
 	export PATH="$tool_dir/linux-amd64:$PATH"
 fi

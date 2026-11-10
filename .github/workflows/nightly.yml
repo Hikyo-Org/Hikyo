@@ -826,10 +826,14 @@ jobs:
           fi
           ./scripts/release/nightly-changelog.sh "$previous_commit" "$COMMIT" \
             >>"$RUNNER_TEMP/nightly-notes.md"
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Install pinned Cosign
         if: needs.build-artifacts.outputs.skip != 'true'
-        with:
-          cosign-release: v3.1.3
+        run: |
+          mkdir -p "$HOME/.cosign"
+          ./scripts/ci/fetch-pinned-tool.sh cosign-linux-amd64 "$HOME/.cosign/cosign"
+          chmod +x "$HOME/.cosign/cosign"
+          echo "$HOME/.cosign" >>"$GITHUB_PATH"
+          "$HOME/.cosign/cosign" version
       - name: Sign complete nightly manifest with GitHub OIDC
         if: needs.build-artifacts.outputs.skip != 'true'
         run: |
@@ -988,9 +992,13 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ needs.publish.outputs.commit }}
             org.opencontainers.image.version=${{ needs.publish.outputs.version }}
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-        with:
-          cosign-release: v3.1.3
+      - name: Install pinned Cosign
+        run: |
+          mkdir -p "$HOME/.cosign"
+          ./scripts/ci/fetch-pinned-tool.sh cosign-linux-amd64 "$HOME/.cosign/cosign"
+          chmod +x "$HOME/.cosign/cosign"
+          echo "$HOME/.cosign" >>"$GITHUB_PATH"
+          "$HOME/.cosign/cosign" version
       - name: Verify payloads, smoke, sign and promote current nightly
         id: verified-image
         env:
@@ -998,12 +1006,17 @@ jobs:
           IMAGE_DIGEST: ${{ steps.image.outputs.digest || steps.existing.outputs.digest }}
           IMAGE_BUILT: ${{ steps.image.outcome == 'success' && steps.existing.outputs.exists != 'true' }}
         run: ./scripts/release/nightly-image.sh promote
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
-        with:
-          version: v4.2.3
+      - name: Install pinned Helm
+        run: |
+          helm_dir="$RUNNER_TEMP/helm"
+          mkdir -p "$helm_dir"
+          ./scripts/ci/fetch-pinned-tool.sh helm-linux-amd64 "$RUNNER_TEMP/helm.tar.gz"
+          tar -xzf "$RUNNER_TEMP/helm.tar.gz" -C "$helm_dir" --strip-components=1
+          echo "$helm_dir" >>"$GITHUB_PATH"
+          "$helm_dir/helm" version
       - name: Verify Helm before it receives the publication token
-        # setup-helm does not check its download. This is the linux-amd64 binary
-        # from the archive matching get.helm.sh's published v4.2.3 checksum.
+        # The helper checks the archive against its pinned checksum. This is the
+        # linux-amd64 binary from the archive matching get.helm.sh's published v4.2.3 checksum.
         run: printf 'aeb4645b9e6658948efa290e28dd23ae75a16fb73f137942f2294fd5c7fcb573  %s\n' "$(command -v helm)" | sha256sum -c -
       - name: Prepare chart inspection dependency
         run: |

@@ -93,16 +93,17 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
-        with:
-          version: v4.2.3
+      - name: Install pinned Helm
+        run: |
+          helm_dir="$RUNNER_TEMP/helm"
+          mkdir -p "$helm_dir"
+          ./scripts/ci/fetch-pinned-tool.sh helm-linux-arm64 "$RUNNER_TEMP/helm.tar.gz"
+          tar -xzf "$RUNNER_TEMP/helm.tar.gz" -C "$helm_dir" --strip-components=1
+          echo "$helm_dir" >>"$GITHUB_PATH"
+          "$helm_dir/helm" version
       - name: Install pinned native arm64 kind
         run: |
-          curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error \
-            --retry 4 --retry-delay 2 --retry-all-errors \
-            https://github.com/kubernetes-sigs/kind/releases/download/v0.32.0/kind-linux-arm64 \
-            --output "$RUNNER_TEMP/kind"
-          printf '%s  %s\n' b92cd615e97585de8ddade28ed5cd7feb4248d717c233eea5b03c37298900f5d "$RUNNER_TEMP/kind" | sha256sum --check --strict
+          ./scripts/ci/fetch-pinned-tool.sh kind-linux-arm64 "$RUNNER_TEMP/kind"
           chmod +x "$RUNNER_TEMP/kind"
           sudo install "$RUNNER_TEMP/kind" /usr/local/bin/kind
       - name: Measure and enforce the declared floor

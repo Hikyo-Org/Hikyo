@@ -1,8 +1,8 @@
 {
   "stable_policy_sha256": "0fe2cb70af971a694e15f68ddfa9a92646e0584a360f3df1893da12290f37203",
   "schema": "hikyo.dev/upgrade-trust/v1",
-  "sequence": 4,
-  "stable_metadata_sha256": "1f3344ee9ac4e219a9abbbf910f4e1fa139277b529128d8a730ee585ec1c9aab",
+  "sequence": 5,
+  "stable_metadata_sha256": "1ebbc605a471d0ab544d68ba7d98bd09ff5c24b9cc1ade66649ac05106a68c22",
   "nightly_policies": [
     "afaeb19fc0299f700234a74aa0817f77ce0833853b327a9d9d9d126d25d5b04f"
   ],
