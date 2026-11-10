@@ -185,7 +185,7 @@ case "${1:-help}" in
 		[ "$#" -eq 2 ] || fail 'usage: ceremony.sh review VERSION'
 		download_verify "$2"
 		printf 'Verified draft directory: %s\nManifest SHA-256: %s\n' "$download" "$manifest_sha"
-		printf 'Review release notes and acceptance evidence before running:\n  scripts/release/ceremony.sh publish %s %s\n' "$2" "$manifest_sha"
+		printf 'Replace the draft placeholder with release notes on GitHub, review them and the acceptance evidence, then run:\n  scripts/release/ceremony.sh publish %s %s\n' "$2" "$manifest_sha"
 		;;
 	publish)
 		[ "$#" -eq 3 ] || fail 'usage: ceremony.sh publish VERSION REVIEWED_MANIFEST_SHA256'

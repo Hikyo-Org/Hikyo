@@ -82,12 +82,29 @@ case "$*" in
         post-mutable) immutable=false ;;
       esac
     fi
-    jq -nc --argjson release "$release_id" --arg tag "$tag" --argjson id "$id" --argjson draft "$draft" --argjson immutable "$immutable" '{id:$release,tag_name:$tag,draft:$draft,immutable:(($draft|not) and $immutable),assets:[{id:$id,name:"release-manifest.json",size:1,updated_at:"2026-01-01"}]}' ;;
+    body='Release notes.'
+    placeholder='Signed draft. Review version, source commit, provenance and manifest SHA-256 before publishing from the local online ceremony.'
+    # Notes go bad only on the final fetch, so a guard reading the first fetch fails these cases.
+    if [ -f "$FIXTURE_SCRATCH/downloaded" ]; then
+      case "$FIXTURE_MODE" in
+        placeholder-notes) body=$placeholder ;;
+        indented-placeholder-notes) body=$(printf '\n  %s' "$placeholder") ;;
+        empty-notes) body=' ' ;;
+      esac
+    fi
+    # v1.1.0 went public with the placeholder; a retry on a public release must still verify.
+    [ ! -f "$FIXTURE_SCRATCH/published" ] || body=$placeholder
+    jq -nc --argjson release "$release_id" --arg tag "$tag" --argjson id "$id" --argjson draft "$draft" --argjson immutable "$immutable" --arg body "$body" '{body:$body,id:$release,tag_name:$tag,draft:$draft,immutable:(($draft|not) and $immutable),assets:[{id:$id,name:"release-manifest.json",size:1,updated_at:"2026-01-01"}]}' ;;
   'release download '*)
     for last; do :; done
     cp "$FIXTURE_SCRATCH/manifest.json" "$last/release-manifest.json"
     touch "$FIXTURE_SCRATCH/downloaded" ;;
-  'release edit '*) touch "$FIXTURE_SCRATCH/published" "$FIXTURE_SCRATCH/edited" ;;
+  'release edit '*)
+    while [ "$#" -gt 0 ]; do
+      [ "$1" != --notes-file ] || cp "$2" "$FIXTURE_SCRATCH/published-notes"
+      shift
+    done
+    touch "$FIXTURE_SCRATCH/published" "$FIXTURE_SCRATCH/edited" ;;
   *) printf 'unexpected gh invocation: %s\n' "$*" >&2; exit 2 ;;
 esac
 SH
@@ -158,7 +175,7 @@ jq -nc --arg commit "$commit" '{version:"1.0.0",source_commit:$commit,artifacts:
 digest=$(sha256_file "$scratch/manifest.json")
 export PATH="$scratch/bin:$PATH"
 export FIXTURE_PUBLICATION=true
-for FIXTURE_MODE in bad-signature bad-oci red-release changed-draft mutable lookup-failed missing-release malformed-pages malformed-release-rows wrong-row-tag-type invalid-unrelated-id duplicate-release invalid-release-id fractional-release-id zero-release-id wrong-selected-id wrong-selected-tag replaced-release recheck-lookup-failed recheck-missing recheck-wrong-tag; do
+for FIXTURE_MODE in bad-signature bad-oci red-release changed-draft mutable lookup-failed missing-release malformed-pages malformed-release-rows wrong-row-tag-type invalid-unrelated-id duplicate-release invalid-release-id fractional-release-id zero-release-id wrong-selected-id wrong-selected-tag replaced-release recheck-lookup-failed recheck-missing recheck-wrong-tag placeholder-notes indented-placeholder-notes empty-notes; do
   export FIXTURE_MODE
   rm -f "$scratch/downloaded" "$scratch/published"
   if "$script_dir/publish-stable-draft.sh" owner/repo v1.0.0 "$digest" "$scratch" >"$scratch/error" 2>&1; then
@@ -174,6 +191,7 @@ fi
 [ ! -e "$scratch/published" ] || exit 1
 "$script_dir/publish-stable-draft.sh" owner/repo v1.0.0 "$digest" "$scratch" >/dev/null
 [ -e "$scratch/published" ] || exit 1
+[ "$(cat "$scratch/published-notes")" = 'Release notes.' ] || { printf 'stable fixture: published notes differ from the checked notes\n' >&2; exit 1; }
 rm "$scratch/edited"
 for FIXTURE_MODE in public-mutable bad-signature bad-oci; do
   export FIXTURE_MODE

@@ -62,14 +62,15 @@ Do not run `build 1.0.0` until designs and final-candidate acceptance are done.
 2. **Review:** run `scripts/release/ceremony.sh review VERSION`. It downloads the
    complete draft, verifies signatures, identity, closed inventory, provenance,
    rollback state and actual OCI signatures, and prints the local directory
-   and manifest SHA-256. Inspect release notes, acceptance evidence and source
-   changes. Keep that exact hash.
+   and manifest SHA-256. Replace the draft's placeholder text with the release
+   notes on GitHub; publish refuses the placeholder or empty notes. Inspect the notes,
+   acceptance evidence and source changes. Keep that exact hash.
 3. **Publish:** run
    `scripts/release/ceremony.sh publish VERSION REVIEWED_MANIFEST_SHA256`.
    The helper downloads and verifies again, rejects a changed hash, and asks
    for confirmation of the exact version and hash. The local publication helper
-   from clean current main checks the tag, CI, draft, OCI subjects and asset
-   inventory immediately before publishing. It uses your existing administrator
+   from clean current main checks the tag, CI, draft, OCI subjects, asset
+   inventory and release notes immediately before publishing. It uses your existing administrator
    `gh` login to read immutable-release settings; GitHub's standard workflow
    token cannot read that administration endpoint. It requires immutable
    releases, then redownloads and verifies the public result. Wait for the
