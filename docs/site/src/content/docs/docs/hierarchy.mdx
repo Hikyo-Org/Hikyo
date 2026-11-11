@@ -30,6 +30,26 @@ Deleting a project is irreversible and shreds its encryption key.
 Use one project for values that share owners, deployment environments, and an
 access policy. Split projects when any of those boundaries differ.
 
+## Organisation and project badges
+
+Each organisation and project has a badge shown in the navigation rail and
+switchers: a hue, a short mark and an optional image. By default the mark is a
+monogram derived from the name and the hue is `195`. Edit them under
+**Identity** in Organisation settings or Project settings. A hue is `0` to
+`359`. A mark is free text or emoji of at most two visible characters; empty
+selects the monogram. An image can be PNG, JPEG or WebP, up to 256 KiB and 1024
+by 1024 pixels. An SVG is converted to PNG in the browser, and the server
+refuses SVG itself. The badge appears for a sole organisation only in its
+settings.
+
+Changing an organisation badge needs `manage-members` on the organisation and a
+second-factor session;
+changing a project badge needs `manage-projects` on the organisation. Each change
+is audited with the previous and new hue, mark and image version, never the image
+bytes. The API is `PUT /api/v1/orgs/{org}/identity` (and the project twin) with a
+partial `{hue, mark}` body, plus `PUT`, `DELETE` and `GET` on `.../identity/image`.
+An absent field keeps its stored value.
+
 ## Environment
 
 An environment is one complete value state for a project. It is not a layer.

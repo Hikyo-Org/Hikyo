@@ -207,9 +207,9 @@ dimension is a hard error (exit 2) naming both sources.
 has no target) and an optional `slug` (the state-dir / default-runtime-dir path
 segment; `^[a-z0-9][a-z0-9-]*$`).
 
-**Not a documented flag:** `HIKYO_COMPOSE_DOCKER` overrides the resolved `docker`
-executable for `compose sync|doctor`. It is a test seam, kept out of the help
-text and documented only here and in the package doc.
+**Not a flag:** `HIKYO_COMPOSE_DOCKER` is a documented environment override of the
+resolved `docker` executable for `compose sync|doctor`. It is listed under client
+variables in the user docs and kept out of the help text.
 
 ### `sync` pre-render gate — interpretation of "same checks" (for human disposition)
 
@@ -597,7 +597,7 @@ decisions address one environment. Every verb is human-session only.
 - `access request approve <request>` / `access request reject <request>`: cast one vote; the approve that reaches the quorum grants.
 - `access request cancel <request>`: the requester withdraws an open request.
 - `access request revoke <request>`: end granted access now (holder, approver or member manager).
-- `access request emergency --capability C --reason R [--duration 30m]`: emergency access for a named principal; runs the environment's reauthentication ceremony (inline TOTP where the window slides).
+- `access request emergency --capability C --reason R [--duration D]` (defaults to 1h, capped by the policy maximum): emergency access for a named principal; runs the environment's reauthentication ceremony (inline TOTP where the window slides).
 
 ## Member access rules ([member-access-rules.md](../adr/member-access-rules.md), proposed amendment)
 

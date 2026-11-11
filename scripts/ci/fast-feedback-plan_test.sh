@@ -80,11 +80,11 @@ expect '.docs and (.lanes.tooling.checks | map(.id)) == ["docs"] and .lanes.tool
 plan all web/file.ts
 expect '.web and (.client | not) and (.lanes.frontend.checks | map(.id)) == ["web-typecheck", "web-lint", "web-test"] and .lanes.frontend.prerequisites.clientDependencies and .lanes.frontend.prerequisites.webDependencies'
 plan all internal/cli/testdata/help.txt
-expect '(.lanes.go.checks | map(.id)) == ["docs-impact"] and .lanes.tooling.checks == [] and .lanes.go.prerequisites.go == false'
+expect '(.lanes.go.checks | map(.id)) == ["docs-impact"] and .docs and (.lanes.tooling.checks | map(.id)) == ["docs"] and .lanes.go.prerequisites.go == false'
 plan all internal/config/variables.go
 expect '(.lanes.go.checks | map(.id)) == ["go-format", "go-compile", "docs-impact"]'
 plan tooling internal/cli/testdata/help.txt scripts/owner.go
-expect '(.lanes.go.checks | map(.id)) == ["docs-impact"] and (.lanes.tooling.checks | map(.id)) == ["go-format", "go-compile"]'
+expect '(.lanes.go.checks | map(.id)) == ["docs-impact"] and (.lanes.tooling.checks | map(.id)) == ["go-format", "go-compile", "docs"]'
 plan all api/openapi.yaml
 expect '(.lanes.go.checks | map(.id)) == ["docs-impact"] and .client and .web and (.lanes.frontend.checks | map(.id)) == ["client-typecheck", "client-test", "web-typecheck", "web-lint", "web-test"]'
 plan all docs/operations/audit-collector.md scripts/ci/aws-acceptance/test_runner.py

@@ -139,6 +139,20 @@ does not fetch an address to find an account. Callback tokens are discarded
 after use. GitHub's upstream two-factor state does not establish Hikyo disclosure
 assurance; use a local authenticator or passkey for that operation.
 
+## Claim an invitation with a provider
+
+An administrator-issued invitation (`hikyo access member invite`, or **Members →
+Invite**) can be claimed through an enabled OIDC or OAuth2 provider instead of a
+password. The invitee opens `/establish`, pastes the invitation authority and
+chooses the provider button; SAML is not offered. The authority is checked
+before the browser leaves for the provider, then consumed on return, and the
+invitee lands signed in with that identity linked. The sign-in page itself
+offers no claim. The provider identity must not already be linked to an
+account. An account that already holds any credential (password, TOTP, passkey
+or external identity) refuses a claim, as does a recovery-issued authority. Every
+refusal reads as the same sentence, so the page does not reveal which check
+failed. See [identity and access](/docs/identity-and-access/#claim-an-invitation-with-a-provider).
+
 ## Open registration deliberately
 
 Open **Members → Open registration** at organisation or instance scope. Admit

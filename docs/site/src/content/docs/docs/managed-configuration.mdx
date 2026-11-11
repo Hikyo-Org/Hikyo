@@ -145,7 +145,8 @@ limit, admission memory budget, backup directory and trusted proxy CIDRs in
 that node's entry. Trusted proxy policy is exclusively node-local.
 
 TLS uses `HIKYO_TLS_CERT_PEM` and `HIKYO_TLS_KEY_PEM` contents in the same entry.
-Adapter, OIDC and dynamic egress use their `*_EGRESS_POLICY_JSON` contents.
+Adapter, OIDC and dynamic egress use `HIKYO_ADAPTER_EGRESS_POLICY_JSON`,
+`HIKYO_OIDC_EGRESS_POLICY_JSON` and `HIKYO_DYNAMIC_EGRESS_POLICY_JSON` contents.
 Initial file aliases import once; private TLS files must have mode `0400` or
 `0600`. After adoption, edit and Apply the managed contents instead of expecting
 an old file path or SIGHUP to override them. A mismatched certificate/key pair

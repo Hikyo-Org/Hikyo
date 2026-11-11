@@ -132,6 +132,13 @@ silently: adoption requires an exact conflict artifact, generation,
 destination, and `(surface, name)` pairs. If multiple exact-match artifacts are
 eligible, pass `--artifact` explicitly.
 
+A retried converge raises each conflict once, per target, generation, surface
+and name, instead of minting a new artifact per attempt, and `adapter show` lists
+only conflicts for the target's current generation; older ones stay in the audit
+history but can no longer be adopted. Adoption retries a transient provider lease; genuine
+contention on a ledger name or provider lease is a conflict (HTTP `409`), not a
+server error.
+
 `hikyo adapter show` includes every target's sync status, converged revision,
 failed names, and pending conflict artifacts. Its table view prints the pending
 `surface:name` pairs; JSON retains the full artifact id, generation,
@@ -308,7 +315,10 @@ catch-up converge, and prints the published revision it reaches.
 newest wins, a second request supersedes the first, and neither bypasses
 adoption nor prunes beyond the ledger.
 
-**Removal** keeps the explicit retain-or-prune decision described above. The
+**Removal** keeps the explicit retain-or-prune decision described above. A
+deleted adapter releases its origin: you can create a new adapter at the same
+origin in the same project at once, while an active or moving adapter still
+reserves it. The
 browser offers the same choice in a dialog with neither option preselected, for
 one target (*Remove*) and for the whole adapter (*Delete adapter*).
 

@@ -250,6 +250,9 @@ FIXTURE_TOOLS_ROOT="$work/tooling" FIXTURE_SOURCE_ROOT="$repo" \
 # Docs-only inputs use the real checker from the tooling owner against source.
 rm -rf .github scripts/ci
 cp "$script_dir/../../.nvmrc" .nvmrc
+# A consumed docs input present at the base, so only the later loop changes it.
+mkdir -p internal/cli/testdata
+printf '# Fixture\n\nContent\n' >internal/cli/testdata/help.txt
 commit_fixture
 docs_base=$(git rev-parse HEAD)
 for path in SECURITY.md SUPPORT.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LICENSE docs/status/README.md docs/release/signing.md docs/release/online-signing.md docs/release/apple-signing.md docs/release/legacy-offline-signing.md install/upgrade-nightly.sh; do
@@ -271,7 +274,7 @@ FAST_FEEDBACK_BASE="$docs_base" FAST_FEEDBACK_TOOLS_DIR="$script_dir" refuse 're
 [ ! -e docs/site/public ] && [ ! -e docs/site/src ]
 # Each consumed policy/site/runtime input, including deletions, selects docs.
 selection_base=$(git rev-parse HEAD)
-for path in SECURITY.md SUPPORT.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LICENSE docs/status/README.md docs/release/signing.md docs/release/online-signing.md docs/release/apple-signing.md docs/release/legacy-offline-signing.md install/upgrade-nightly.sh docs/site/scripts/prepare-content.mjs .nvmrc package.json pnpm-lock.yaml pnpm-workspace.yaml; do
+for path in SECURITY.md SUPPORT.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LICENSE internal/cli/testdata/help.txt docs/status/README.md docs/release/signing.md docs/release/online-signing.md docs/release/apple-signing.md docs/release/legacy-offline-signing.md install/upgrade-nightly.sh docs/site/scripts/prepare-content.mjs .nvmrc package.json pnpm-lock.yaml pnpm-workspace.yaml; do
 	if [ -f "$path" ]; then
 		mv "$path" "$work/input-backup"
 		FAST_FEEDBACK_BASE="$selection_base" run_feedback --working-tree --plan

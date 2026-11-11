@@ -34,7 +34,7 @@ contexts:
 
 managed configuration:
   hikyo instance-config status [-o table|json]
-  hikyo instance-config adopt [--yes] [--confirm-restored-credentials]
+  hikyo instance-config adopt [--yes]
                                                  preview or adopt effective settings
   hikyo instance-config apply --revision N --expected-generation N
       [--idempotency-key KEY] [--confirm-restored-credentials]
@@ -181,7 +181,7 @@ revisions:                                         --env selects the environment
   hikyo rotate-dek --instance-scope --yes           new instance DEK version (old stays readable)
   hikyo rotate-dek --org O --project P --yes         new project DEK version; follow with reencrypt
   hikyo rotate-master-key --yes                     new master; re-wrap every tier-3 key
-  hikyo rotate-root-key --prepare|--verify|--finalize  crash-safe root rotation, one phase per run
+  hikyo rotate-root-key --prepare|--verify|--finalize --yes  crash-safe root rotation, one phase per run
   hikyo reencrypt --org O --project P                complete a project rotate-dek; --instance-scope for instance
     --instance <ref> selects the server; --instance-scope selects its DEK, never --env.
 
@@ -465,7 +465,7 @@ access:
   hikyo access request list --env E [-o table|json]
   hikyo access request create --env E --capability C --duration 1h --reason R
   hikyo access request approve|reject|cancel|revoke <request> --env E
-  hikyo access request emergency --env E --capability C --reason R [--duration 30m]
+  hikyo access request emergency --env E --capability C --reason R [--duration D]
   hikyo project-settings get --env E [-o table|json]
   hikyo project-settings set --env E [--protected true|false] [--reauth-window-seconds N|inherit]
   hikyo project-settings machine-reveal get|set --enabled true|false

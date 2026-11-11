@@ -11,6 +11,7 @@ const inputs = [
   'docs/status/README.md', 'docs/release/signing.md', 'docs/release/online-signing.md',
   'docs/release/apple-signing.md',
   'docs/release/legacy-offline-signing.md', 'LICENSE', 'install/upgrade-nightly.sh',
+  'internal/cli/testdata/help.txt',
 ];
 async function put(root, path, content) {
   await mkdir(dirname(join(root, path)), { recursive: true });
@@ -61,6 +62,11 @@ test('external source check catches bad links without creating, removing, or ove
   const missing = await unchanged('--check', '--source-root', source);
   assert.equal(missing.status, 1, 'missing consumed inputs fail');
   assert.match(missing.stderr, /ENOENT.*LICENSE/);
+  await put(source, 'LICENSE', '# Fixture\n\nContent\n');
+  await rm(join(source, 'internal/cli/testdata/help.txt'));
+  const noHelp = await unchanged('--check', '--source-root', source);
+  assert.equal(noHelp.status, 1, 'a missing CLI help snapshot fails');
+  assert.match(noHelp.stderr, /ENOENT.*help\.txt/);
   for (const args of [['--source-root', source], ['--check', '--source-root'], ['--check', '--unknown'], ['--check', '--check']]) {
     assert.equal((await unchanged(...args)).status, 1, 'unsupported arguments must fail before generation');
   }
@@ -68,5 +74,7 @@ test('external source check catches bad links without creating, removing, or ove
   await put(tooling, 'CONTRIBUTING.md', '# Contributing\n\n[Feedback](scripts/dev/README.md)\n');
   assert.equal(run().status, 0);
   assert.match(await readFile(join(tooling, 'docs/site/src/content/docs/contributing.mdx'), 'utf8'), /https:\/\/github.com\/Hikyo-Org\/Hikyo\/blob\/main\/scripts\/dev\/README.md/);
+  const cliHelp = await readFile(join(tooling, 'docs/site/src/content/docs/docs/cli-help.md'), 'utf8');
+  assert.match(cliHelp, /^---\ntitle: CLI help\n[\s\S]*edit\/main\/internal\/cli\/verbs\.go\n---\n\n```text\n# Fixture\n\nContent\n```\n$/);
   assert.equal(await readFile(join(tooling, 'docs/site/public/upgrade-nightly.sh'), 'utf8'), '# Fixture\n\nContent\n');
 });

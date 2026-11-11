@@ -120,6 +120,9 @@ invokes `docker compose up -d` only when a target stamp moved. The shipped
 `install/systemd/hikyo-compose-sync.service` and `.timer` show a 5-minute
 one-shot schedule with `RuntimeDirectory=hikyo` and
 `LoadCredentialEncrypted=`. Copy and edit them; Hikyo ships no generator.
+Both commands find `docker` on `PATH`; set `HIKYO_COMPOSE_DOCKER` to an
+executable path when the service user's `PATH` lacks it; see
+[configuration](/docs/configuration/#client-variables).
 
 ## Credential channels and limits
 
