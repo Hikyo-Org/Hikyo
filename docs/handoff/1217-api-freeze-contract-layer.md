@@ -99,7 +99,7 @@ violation. Each refused item is a named case in
 | Closed enum value removed from a response header, fixture and `Hikyo-Audit-Receipt` | Refused. Permanent fixture `remove-response-header-enum-value-fails` |
 | Closed enum growth in a response header, `Hikyo-Audit-Receipt` to `[v1, mldsa65]` or `[v1, mldsa44]` | Refused. Permanent fixture `grow-closed-response-header-enum-fails` |
 | Request media type renamed within the JSON family | Refused |
-| Property removed from an unreferenced component (`AuditExportReceipt`, `AuditExportReceiptLine`) | Refused, because the layer walks every component. This is the fail-closed interim, not an owner decision: the decision is still pending, see "Owner decisions to confirm" |
+| Property removed from an unreferenced component (`AuditExportReceipt`, `AuditExportReceiptLine`) | Refused, because the layer walks every component. Owner decision 2026-11-12: option A, keep components frozen, see "Owner decisions to confirm" |
 | Deleted `allOf`, `anyOf`, `oneOf`, `prefixItems` branch in parameter or header schemas and in parameter or header `content` | Refused |
 | Deleted `prefixItems` entry in a request or response body | Refused |
 | Deleted `patternProperties`, `dependentSchemas`, `dependentRequired` or discriminator entries | Refused |
@@ -211,15 +211,16 @@ decision 3.
 
 ## Owner decisions to confirm
 
-1. **Pending: are unreferenced components part of the promise?** Today the
-   layer freezes them. Removing a property from `AuditExportReceipt` is
+1. **Decided 2026-11-12, option A: unreferenced components are part of the
+   promise.** The owner took the recommendation as written; no gate, spec or
+   ADR change follows. Options considered: the layer freezes them. Removing a property from `AuditExportReceipt` is
    refused, and so is removing, renaming or inlining any component schema,
    even where the inlined shape is identical. Two root schemas have no
    reference from any operation: `AuditExportReceiptLine` and
    `AdapterVisibility`. `AuditExportReceipt` is reachable only through the
    first. The export descriptions promise the receipt schemas, so the
    question is real. Options:
-   - **A. Freeze components (the interim, no change).** Every component is
+   - **A. Freeze components (chosen, no change).** Every component is
      frozen whether or not an operation reads it. Cost: the receipt schemas
      stay undiscoverable from the operations, so generated clients carry no
      receipt type. Recommended: it keeps the receipt schemas as promised
