@@ -562,7 +562,7 @@ func TestFreezeContractRefusesDirectionlessAndMisreadChanges(t *testing.T) {
 			"          headers:\n            X-Mode: {schema: {enum: " + values + "}}\n"
 	}
 	encoded := func(header string) string {
-		return contractThing(`"requestBody":{"content":{"multipart/form-data":{"schema":{"type":"object"},"encoding":{"f":{"headers":{"X-Enc":{"schema":` + header + `}}}}}}}},` + contractOK)
+		return contractThing(`"requestBody":{"content":{"multipart/form-data":{"schema":{"type":"object"},"encoding":{"f":{"headers":{"X-Enc":{"schema":` + header + `}}}}}}},` + contractOK)
 	}
 	component := func(header, schema string) string {
 		return contractDoc(`{"/api/v1/thing":{"post":{"requestBody":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/In"}}}},` +
