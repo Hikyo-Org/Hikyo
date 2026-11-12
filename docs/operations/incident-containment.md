@@ -1,6 +1,6 @@
 # Incident containment and credential recovery runbook (DRAFT)
 
-> **Draft, pending the [proposed incident-containment ADR](../adr/incident-containment.md).**
+> **Draft, pending the implementation of the [accepted incident-containment ADR](../adr/incident-containment.md).**
 > It is for [#1039](https://github.com/Hikyo-Org/Hikyo/issues/1039). The ADR is not
 > accepted, so the owner has not approved any new containment state, capability or
 > command. This runbook uses only commands and behavior that exist on `dev` at
@@ -159,7 +159,7 @@ a session created by a still-valid old password or factor cannot read or regrant
    and deletes them after 14 days (`PersonalRetentionWindow`,
    `internal/service/personal.go:696`). If the person must stay without authority for
    longer, tell them, or regrant read and reveal where the incident allows. The
-   proposed ADR (O8) would pause this clock.
+   accepted ADR (O8) will pause this clock once implemented.
 
 2. Issue the final reset. Use the tier that applies:
 
@@ -356,7 +356,7 @@ compromise using independent evidence, because restore does not establish that f
 ## What the ADR would change
 
 None of the following exists yet. They are listed so the owner can see which manual
-steps the proposed decisions would replace.
+steps the accepted decisions will replace once implemented.
 
 - An incident record with per-item `pending`, `done`, `unknown` and `out of scope`
   outcomes, replacing the external journal for non-host incidents.

@@ -1,13 +1,13 @@
-# Scoped incident containment and credential recovery (ADR, proposed 2026-11-12)
+# Scoped incident containment and credential recovery (ADR, accepted 2026-11-12)
 
-> **Status: proposed with [#1039](https://github.com/Hikyo-Org/Hikyo/issues/1039), not accepted.**
-> The owner has not decided. Merging the pull request that carries this file records the
-> proposal and its alternatives. It does not select an option, change product behavior,
-> add a command, a capability or a schema, or amend any locked ADR. The recommendations
-> below are the author's. Each open decision is listed in [Decisions for the owner](#decisions-for-the-owner)
-> and again in [Still open](#still-open). The evidence is in the
-> [verified inventory](../design/incident-containment.md), and the interim procedure is the
-> [draft runbook](../operations/incident-containment.md).
+> **Status: accepted by the owner on 2026-11-12 as recommended, options O1 to O8 as listed in the [Decision record](#decision-record). Operative per scope only when the implementation pull requests merge.**
+> Accepting this ADR selects the options. It adds no command, capability or schema today,
+> and it authorizes no implementation, release or production change. The amendments it
+> declares take effect with the implementation, as the [oss-mechanics ADR](./oss-mechanics.md)
+> requires. Independent Spec review ran on the proposal. Cross-provider review did not run
+> and is not CLEAN. Maintainer security review and the human merge gate remain required.
+> The evidence is in the [verified inventory](../design/incident-containment.md), and the
+> interim procedure is the [draft runbook](../operations/incident-containment.md).
 
 Goal, from the issue: an authorized operator can deliberately contain affected
 authority, enumerate unresolved cleanup, replace compromised credentials and follow a
@@ -78,8 +78,9 @@ These come from locked ADRs and the issue. Every option below respects them.
 
 ## Decisions for the owner
 
-Each decision lists the options, what each costs, and a recommendation. The recommended
-options are consistent with each other and form the design described afterwards.
+Each decision lists the options, what each costs, and the recommendation the owner
+accepted. The accepted options are consistent with each other and form the design
+described afterwards.
 
 ### O1. The mechanism for the first supported workflow
 
@@ -242,7 +243,7 @@ existing manual sweep and a `contained` state would start that clock.
 **Recommendation: A.** Containment must not destroy a person's data as a side effect. The
 interim runbook warns about the clock for the manual sweep.
 
-## Proposed design under the recommended options
+## Design under the accepted options
 
 ### Scopes and what each does at once
 
@@ -357,10 +358,10 @@ and cannot restore a revoked credential. A failed upstream cleanup stays visible
 incident until the operator closes it, and closing with open items requires an explicit
 `closed with residuals` outcome that lists them.
 
-## Declared amendments if accepted
+## Declared amendments
 
-Per the [oss-mechanics ADR](./oss-mechanics.md), these would be recorded as banners on the
-amended ADRs in the implementation PR. Nothing here amends them today.
+Per the [oss-mechanics ADR](./oss-mechanics.md), each is recorded as a declared-amendment
+banner on the amended ADR, operative when the implementation pull request merges.
 
 - [human-auth](./human-auth.md): a contained account cannot sign in, which is a
   narrower form of the privacy restriction already accepted. The "local accounts can never
@@ -411,26 +412,28 @@ needs its own reviewed PR.
 3. **List non-terminal leases above environment level**, as read-only listings under the
    existing `lease-inspect` formula.
 
-## Still open
+## Decision record
 
-These need the owner. None is decided by this proposal.
+The owner accepted every recommendation on 2026-11-12 ("as recommended").
 
-1. O1: the mechanism (A ledger only, B ledger plus a reversible account state, C
-   generalized states). Recommended B.
-2. O2: capability and assurance (A new atom, B reuse `credential-reset`, C host-local
-   only). Recommended B.
-3. O3: last manager and lockout (A refuse, B refuse with host override, C allow).
-   Recommended A.
-4. O4: release semantics (A separate act that never revives, B immediate, C none).
-   Recommended A.
-5. O5: durability (A computed, B durable ledger, C ledger plus receipt). Recommended B.
-6. O6: upstream reach (A local plus attestation, B call providers). Recommended A, with
-   replace-before-clear.
-7. O7: instance scope (A none in product, B host gate, C epoch bump). Recommended A.
-8. O8: personal values during containment (A pause the clock, B accept deletion).
-   Recommended A.
+| Decision | Accepted option |
+| --- | --- |
+| O1 mechanism | B: ledger plus a reversible `contained` principal state |
+| O2 capability and assurance | B: reuse `credential-reset`, no new atom |
+| O3 last manager and lockout | A: refuse, no override |
+| O4 release | A: separate act that never revives anything |
+| O5 durability | B: durable ledger |
+| O6 upstream reach | A: local outcomes plus attestation, with replace-before-clear |
+| O7 instance scope | A: no in-product lockdown |
+| O8 personal values | A: pause the personal-values deletion clock |
 
-Acceptance of this ADR would not authorize an implementation, a release or a production
+The elaborations under O2 and O3 (containing a linked-identity account over the network,
+an org-scope holder opening a project or adapter incident, the credential-retention
+reading of the instance-capability floor, and the separate recovery lookup under O1) are
+this ADR's reading of the accepted options. They are open to change in the implementation
+review.
+
+Acceptance of this ADR does not authorize an implementation, a release or a production
 change. The issue's acceptance items that need running software (real session and
 delegation failure tests, adversarial remint during containment, restart and concurrency
 tests, an interface exercise on desktop, mobile and CLI, and an isolated recovery rehearsal)
@@ -438,6 +441,7 @@ remain to be delivered by the implementation.
 
 ## Review record
 
-Independent Standards and Spec review applies per the owner's 2026-10-29 policy;
-cross-provider review is not required. The outcome is recorded on the pull request. The
-Maintainer security review and the human merge gate remain required.
+Independent Spec review ran in two rounds against issue #1039; its findings were
+addressed in the text. Independent Standards review is recorded on the pull request.
+Cross-provider review did not run and is not CLEAN. Maintainer security review and the
+human merge gate remain required.

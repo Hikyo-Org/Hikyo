@@ -2,11 +2,11 @@
 
 Issue: [#1039](https://github.com/Hikyo-Org/Hikyo/issues/1039), finding F5 of
 [#1032](https://github.com/Hikyo-Org/Hikyo/issues/1032).
-Status: draft for the owner. This document holds the evidence and the mechanics.
+Status: supporting evidence for the accepted ADR. This document holds the evidence and the mechanics.
 The decisions, with their alternatives, are in the
-[proposed ADR](../adr/incident-containment.md), and the operator procedure is the
+[accepted ADR](../adr/incident-containment.md), and the operator procedure is the
 [draft runbook](../operations/incident-containment.md). Nothing here changes product
-behavior, and no decision in it is accepted until the owner accepts the ADR.
+behavior, and the decisions are the ADR's, accepted by the owner on 2026-11-12.
 
 Inventory verified against `dev` at `426bf59ceb8787234d425f1d5bd2055569fd92d3`
 (2026-11-12). The issue pins its evidence to `f14fbec07`, which predates the merged
@@ -246,7 +246,7 @@ marked unverified.
 
 ## 5. Design sketch under the recommended options
 
-The mechanics are in the [ADR](../adr/incident-containment.md#proposed-design-under-the-recommended-options).
+The mechanics are in the [ADR](../adr/incident-containment.md#design-under-the-accepted-options).
 This section records only what the map adds.
 
 - **State seam.** A `contained` principal state reuses the `privacy_state = 'active'`
