@@ -28,6 +28,14 @@ Destinations:
   exist as groups and the run logs their owner.
 - **(d)** Another issue.
 
+Criterion 6's no-read API closure does not depend on any record below. Two
+required unit tests in `internal/adapter/awssm/client_test.go` own it:
+`TestNoValueReadPathExists` pins the adapter API to nine value-blind methods and
+its wire registry to eight Secrets Manager operations, none a read, and
+`TestProductionSourceNeverNamesAValueRead` fails if production source names
+`GetSecretValue`, `BatchGetSecretValue` or another value-read operation. The
+live `iam-denial` group adds AWS's own explicit refusal on top.
+
 Criteria are the #158 acceptance list: 1 configuration, 2 authentication,
 3 lifecycle without `GetSecretValue`, 4 encoding and per-key outcomes,
 5 loud failure modes, 6 end-to-end harness plus live smoke.
