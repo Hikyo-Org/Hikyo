@@ -364,7 +364,7 @@ func TestCustodyHoldsHybridIdentityThroughRewrapAndRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	if err := publish(handle, ciphertext, true); err != nil {
+	if err := publish(handle, fileName, ciphertext, true); err != nil {
 		t.Fatal(err)
 	}
 

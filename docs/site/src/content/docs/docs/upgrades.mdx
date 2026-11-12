@@ -77,7 +77,11 @@ independent attestation key and root escrow, wrapped with a secret derived from
 rewrapped the next time `sudo hikyo upgrade` runs from a terminal; it asks for
 the passphrase once more and never again. This explicitly chosen local custody
 model does not provide an off-host recovery copy. Preserve the encrypted vault
-together with the root key through your recovery process.
+together with the root key through your recovery process. The server cannot reach
+this root-only vault, so `hikyo rotate-root-key` does not re-seal it: after a
+root rotation `sudo hikyo upgrade` reports that custody did not open under the
+root key in use. Keep the retired root key until a host re-seal procedure is
+documented.
 After each completed upgrade the command keeps only the encrypted backup taken
 before the current schema under `/var/lib/hikyo-upgrade`; earlier `backup-*`,
 `bundle-*` and `evidence-*` directories there are removed. Copy any backup you
