@@ -8,7 +8,8 @@
 # Usage: start-floci-emulator.sh <certificate-directory>
 # Prints the environment assignments the isolation tests read.
 set -eu
-"$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
+# stdout is only the KEY=value lines the workflow evaluates; helpers talk on stderr.
+"$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh" >&2
 
 # floci/floci 2.4.0 multi-arch index (linux/amd64 and linux/arm64).
 FLOCI_IMAGE='floci/floci@sha256:5ee85db604c4aa74ac76e07ea5cc83086f37bb472bf3dbb97e34019e48efae9c'

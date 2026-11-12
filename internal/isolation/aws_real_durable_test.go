@@ -36,7 +36,7 @@ func runRealAWSSuite(t *testing.T, s *realAWSSandbox) {
 	live := !s.emulated()
 	if !t.Run("auth-boundaries", func(t *testing.T) {
 		if live {
-			t.Skip("not in the live smoke: the Floci lane and the controlled tests own auth-boundaries (workload modes, expiry and identity refusal), see docs/testing/aws-acceptance-matrix.md")
+			t.Skip("not in the live smoke (option A): the Floci lane owns configured-identity refusal, the lifecycle credential fence covers static-session expiry live, and the controlled tests own workload modes and their expiry, see docs/testing/aws-acceptance-matrix.md")
 		}
 		runRealAWSAuthBoundaries(t, s)
 	}) {
@@ -57,7 +57,7 @@ func runRealAWSSuite(t *testing.T, s *realAWSSandbox) {
 	t.Run("iam-denial", func(t *testing.T) { runRealAWSIAMDenial(t, s) })
 	t.Run("adoption-witness", func(t *testing.T) {
 		if live {
-			t.Skip("not in the live smoke: the smoke manifest has only the static writer; the Floci lane owns adoption-witness, see docs/testing/aws-acceptance-matrix.md")
+			t.Skip("not in the live smoke (option A): the Floci lane owns adoption-witness, whose metadata and version semantics match AWS, see docs/testing/aws-acceptance-matrix.md")
 		}
 		runRealAWSAdoptionWitness(t, s)
 	})

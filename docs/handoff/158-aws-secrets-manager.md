@@ -26,9 +26,12 @@ multi-target seam (targets, outbox, health, pause/resume, retain-or-prune).
   (#1300) runs the same suite body on both engines; moto keeps
   `TestAWSSecretsManagerEmulatorLifecycle` until Floci matches AWS first-version
   staging.
-- **Accepted gaps (option A, 2026-11-12):** real STS AssumeRole/WebIdentity,
-  authentic workload-mode STS expiry and end-to-end KMS denial keep only
-  controlled-test coverage. Static-session expiry stays live through the
+- **Accepted gaps (option A, 2026-11-12):** AWS's trust-policy evaluation for
+  AssumeRole/WebIdentity, authentic workload-mode STS expiry and end-to-end KMS
+  denial keep only controlled-test coverage. The STS request shape (`RoleArn`,
+  `ExternalId`, `DurationSeconds`, `RoleSessionName`, web identity token) and
+  `AccessDenied` classification are pinned by `TestSTSCredentialAcquisition`
+  and `TestSTSCredentialAccessDeniedIsAuthClass`. Static-session expiry stays live through the
   `lifecycle` credential fence. Ambient discovery
   moves to #1185.
 - **Retired:** the hosted `aws-acceptance.yml` workflow, its runner, evidence
@@ -46,11 +49,15 @@ multi-target seam (targets, outbox, health, pause/resume, retain-or-prune).
   `docs/release/acceptance-1.0.md`.
 - **Remaining step:** the owner's one live run, following
   [aws-sandbox.md](../testing/aws-sandbox.md):
-  1. In CloudShell, run `smoke-sandbox.sh check`, then `provision`.
-  2. Store the manifest and four descriptors locally in a private directory.
+  1. In CloudShell, run `smoke-sandbox.sh check`, then `provision`, and note
+     the `RUN` and teardown command it prints before creating anything.
+  2. Write the manifest and four descriptors from the clipboard into a private
+     directory, checking each with `jq -e .`.
   3. After the 900-second expired session lapses, run the smoke command.
-  4. Rerun any individual failure under a new prefix within the window.
-  5. Run `teardown`, then `check` again, and record the result on #158.
+  4. Rerun any individual failure under a new prefix within the window, then
+     run the coverage check, which must print nothing.
+  5. Run `teardown` promptly (the access keys stay active until then), then
+     `check` again, and record the result on #158.
 - **Cloud leftovers:** seven earlier KMS keys had deletion windows ending by
   2026-11-03, so they should be gone; `check` flags any customer key that is
   not pending deletion, and any leftover `hikyo-e2e-*` secret. The historical IAM user

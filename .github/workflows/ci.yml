@@ -200,7 +200,8 @@ jobs:
           tar -xJf "$archive" -C "$shellcheck_dir" --strip-components=1
           "$shellcheck_dir/shellcheck" \
             .githooks/* scripts/git/*.sh scripts/lib/*.sh scripts/ci/*.sh \
-            scripts/release/*.sh scripts/security/*.sh scripts/bench/*.sh scripts/compose-demo.sh install/install.sh.in install/upgrade-nightly*.sh
+            scripts/release/*.sh scripts/security/*.sh scripts/bench/*.sh scripts/compose-demo.sh install/install.sh.in install/upgrade-nightly*.sh \
+            docs/testing/aws-sandbox/*.sh
           echo "$shellcheck_dir" >>"$GITHUB_PATH"
       - name: Require full commit pins for workflow actions
         run: go test ./scripts/ci -run '^TestWorkflowActionPins' -count=1
@@ -1760,6 +1761,7 @@ jobs:
       - name: Test assigned isolation cases on SQLite and PostgreSQL
         env:
           HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test
+          HIKYO_TEST_FLOCI_REQUIRED: "1"
           ISOLATION_PLAN: ${{ needs.analysis_shards.outputs.isolation_plan }}
           ISOLATION_SHARD: ${{ matrix.shard }}
         run: |

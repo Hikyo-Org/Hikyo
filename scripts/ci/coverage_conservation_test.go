@@ -131,6 +131,9 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	if err := normalizeGoReuseDiskPreparation(workflow.Jobs); err != nil {
 		return err
 	}
+	if err := normalizeAWSSandboxShellcheck(workflow.Jobs["lint"]); err != nil {
+		return err
+	}
 	if err := normalizePinnedToolReuse(workflow.Jobs); err != nil {
 		return err
 	}

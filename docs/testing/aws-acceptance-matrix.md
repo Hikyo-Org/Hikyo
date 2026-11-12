@@ -1,12 +1,16 @@
 # AWS Secrets Manager acceptance coverage (#158)
 
 This map assigns each of the 46 records of the hosted real-AWS gate (the
-`TEST_NAMES` list of `scripts/ci/aws-acceptance/runner.py`) to exactly one
-owner. The change that adds this live smoke (#1338) also deletes that workflow
-and runner; their history is in
+`TEST_NAMES` list of `scripts/ci/aws-acceptance/runner.py` at commit
+`a8f3cf477`) to exactly one owner. The change that adds this live smoke (#1338)
+also deletes that workflow and runner; their history is in
 [aws-acceptance-history.md](aws-acceptance-history.md). Coverage moves; none is
 dropped silently. The rows marked **accepted (option A, 2026-11-12)** lose their
 only end-to-end proof with the smaller live gate; the owner accepted that.
+
+**Status:** the live smoke (c) has not run yet. Rows assigned to (c) state what
+that run must prove; they become evidence only once the owner posts its result
+on #158.
 
 Destinations:
 
@@ -30,18 +34,18 @@ Criteria are the #158 acceptance list: 1 configuration, 2 authentication,
 
 | Records (`TestAWSSecretsManagerRealSmoke/…`) | # | To | Covered by, and why | Crit. |
 |---|---|---|---|---|
-| suite root | 1 | (c) | Live smoke root. The lane runs the same body. | 6 |
-| `lifecycle`, `/sqlite`, `/postgres` | 3 | (c) | Live smoke. Skipped on Floci (first-version gap below); the create, update and delete flow stays in required CI through moto's `TestAWSSecretsManagerEmulatorLifecycle`. | 3, 4, 6 |
-| `promoted-replay`, `/finish-loss`, `/marker-refusal`, each `/sqlite`, `/postgres` | 7 | (c) | Live smoke. Also runs in (a). | 3, 6 |
+| suite root | 1 | (c) | Live smoke root (pending its first run). The lane runs the same body. | 6 |
+| `lifecycle`, `/sqlite`, `/postgres` | 3 | (c) | Assigned to the live smoke, pending its first run. Skipped on Floci (first-version gap below); the create, update and delete flow stays in required CI through moto's `TestAWSSecretsManagerEmulatorLifecycle`. | 3, 4, 6 |
+| `promoted-replay`, `/finish-loss`, `/marker-refusal`, each `/sqlite`, `/postgres` | 7 | (c) | Assigned to the live smoke, pending its first run. Also runs in (a). | 3, 6 |
 | `preflight-static` | 1 | (a) | Provisioned role session, identity bound through Floci STS. The live smoke also runs it first, with its IAM users. | 2, 6 |
-| `iam-denial` | 1 | (c), (a) | Live smoke with the static writer: cross-writer `TagResource` deny, then the writer's `GetSecretValue` on its own secret. The writer policy has no Allow for that read, so the denial code alone would not show which policy refused it. The explicit/implicit distinction comes only from the deny kind the test classifies from AWS's access-denied message (`classifyAWSDeny`): AWS reports "explicit deny in an identity-based policy" whenever a Deny statement matches, here only `NeverReadValues`, and "no identity-based policy allows" when nothing does. The live run passes only on the explicit identity-policy kind; an implicit, other-policy or missing deny kind fails it. A writer force delete must also be refused with the explicit identity-policy kind (`NeverForceDelete`), and the secret must stay live. Floci runs the same group but checks only the code of the value-read deny (it grants no read, so explicit and implicit look alike) and skips the force-delete probe (no condition evaluation, so it would really delete). | 3, 6 |
+| `iam-denial` | 1 | (c), (a) | Assigned to the live smoke (pending its first run) with the static writer: cross-writer `TagResource` deny, then the writer's `GetSecretValue` on its own secret. The writer policy has no Allow for that read, so the denial code alone would not show which policy refused it. The explicit/implicit distinction comes only from the deny kind the test classifies from AWS's access-denied message (`classifyAWSDeny`): AWS reports "explicit deny in an identity-based policy" whenever a Deny statement matches, here only `NeverReadValues`, and "no identity-based policy allows" when nothing does. The live run will pass only on the explicit identity-policy kind; an implicit, other-policy or missing deny kind fails it. A writer force delete must also be refused with the explicit identity-policy kind (`NeverForceDelete`), and the secret must stay live. Floci runs the same group but checks only the code of the value-read deny (it grants no read, so explicit and implicit look alike) and skips the force-delete probe (no condition evaluation, so it would really delete). | 3, 6 |
 | `adoption-witness`, its three scenarios, each `/sqlite`, `/postgres` | 10 | (a) | Static writer; metadata and version semantics match AWS. | 3, 5 |
 | `auth-boundaries`, `/configured-identity-refusal` | 2 | (a) | Account-mismatch half on Floci. The region half needs an AWS regional origin: `TestRouteResolution`, `TestAccountAndRegionMovementIsRefused`. | 5 |
-| `auth-boundaries/expired-static` | 1 | (c), (b) | Live smoke: the `lifecycle` credential fence installs `static-expired.json`, an authentic 900 s session that has lapsed (the owner waits 16 minutes), and the real AWS call must fail the durable job with an auth error and no mutation. It asserts the auth class, not STS's expiry code. Controlled: `TestFailureClassesFailLoud` (expired credentials), `TestClientRefreshesExpiredCredentials`. | 2, 5 |
-| `auth-boundaries/expired-{assume-role,web-identity,ambient}` | 3 | (b) | Same controlled tests, which use synthetic or injected failures. Workload modes cannot reach an emulator (below). **Accepted (option A, 2026-11-12):** authentic workload-mode STS expiry keeps no end-to-end proof. | 2, 5 |
-| `role-auth`, `/assume-role`, `/web-identity`, each `/sqlite`, `/postgres`; `preflight-assume-role`, `preflight-web-identity` | 9 | (b) | `TestWorkloadIdentityRequiresInstanceOptIn`, `TestWorkloadIdentityAlwaysUsesAWSSTS`, `TestWorkloadIdentityRejectsNonAWSDestinations`, `TestTenantEndpointCannotReceiveWorkloadIdentity`, `TestDescriptorContract`. **Accepted (option A, 2026-11-12):** real STS AssumeRole, ExternalId trust and WebIdentity acquisition keep no end-to-end proof. | 2 |
+| `auth-boundaries/expired-static` | 1 | (c), (b) | Assigned to the live smoke, pending its first run: the `lifecycle` credential fence installs `static-expired.json`, an authentic 900 s session that has lapsed (the owner waits 16 minutes), and the real AWS call must fail the durable job with no mutation. **Asserts `ErrorClassAuth` only**, not STS's `ExpiredTokenException` code, so any auth-class refusal satisfies it. Controlled: `TestFailureClassesFailLoud` (expired credentials) and `TestClientRefreshesExpiredCredentials`. | 2, 5 |
+| `auth-boundaries/expired-{assume-role,web-identity,ambient}` | 3 | (b) | `TestFailureClassesFailLoud` (expired credentials) only injects a pre-classified error (`ErrProviderAuth` joined with an `ExpiredTokenException` response) into the fake API and checks the class; `TestClientRefreshesExpiredCredentials` checks credential refresh with a fake provider. Neither talks to STS. Workload modes cannot reach an emulator (below). **Accepted (option A, 2026-11-12):** authentic workload-mode STS expiry keeps no end-to-end proof. | 2, 5 |
+| `role-auth`, `/assume-role`, `/web-identity`, each `/sqlite`, `/postgres`; `preflight-assume-role`, `preflight-web-identity` | 9 | (b) | `TestWorkloadIdentityRequiresInstanceOptIn`, `TestWorkloadIdentityAlwaysUsesAWSSTS`, `TestWorkloadIdentityRejectsNonAWSDestinations`, `TestTenantEndpointCannotReceiveWorkloadIdentity`, `TestDescriptorContract`. Acquisition: `TestSTSCredentialAcquisition` serves AWS's STS wire format from an in-process handler on the regional STS host and asserts that `AssumeRole` sends `RoleArn`, `ExternalId`, `DurationSeconds` and `RoleSessionName`, signed with the source credentials, and that `AssumeRoleWithWebIdentity` sends the token file's contents unsigned. `TestSTSCredentialAccessDeniedIsAuthClass` maps an STS `AccessDenied` to the auth class for both modes. **Accepted (option A, 2026-11-12):** AWS's own trust-policy evaluation (ExternalId match, OIDC issuer trust) keeps no end-to-end proof. | 2 |
 | `role-auth/ambient`, `/sqlite`, `/postgres`; `preflight-ambient` | 4 | (d) #1185 | Real IMDS, ECS and IRSA discovery. Opt-in and routing stay in the (b) tests above. | 2 |
-| `kms-denial`, `/sqlite`, `/postgres`; `preflight-kms-denied` | 4 | (b) | `TestFailureClassesFailLoud` (kms denial). Floci never authorizes the caller's KMS use (the lane asserts this). **Accepted (option A, 2026-11-12):** no end-to-end KMS denial remains. | 5 |
+| `kms-denial`, `/sqlite`, `/postgres`; `preflight-kms-denied` | 4 | (b) | `TestFailureClassesFailLoud` (kms denial), which only injects a pre-classified error (`ErrProviderAuth` joined with an `EncryptionFailure` response) into the fake API and checks the class and outcome. Floci never authorizes the caller's KMS use (the lane asserts this). **Accepted (option A, 2026-11-12):** no end-to-end KMS denial remains. | 5 |
 | **Total** | **46** | | | |
 
 Outside the 46 records:

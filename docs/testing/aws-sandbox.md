@@ -34,9 +34,11 @@ bash docs/testing/aws-sandbox/smoke-sandbox.sh provision
 `check` is read-only. Review its output first: any customer KMS key that is not
 `PendingDeletion` is marked for review, and it lists leftover `hikyo-e2e-*`
 secrets and `hikyo-smoke-*` users and policies. `provision` and `teardown`
-refuse to run unless the caller is the account root user. `provision` prints a
-random `RUN` (10 lowercase hex digits) inside its teardown command. Pass your
-own 10-hex-digit value as the optional argument to choose it. The fixed length
+refuse to run unless the caller is the account root user. Before it creates
+anything, `provision` prints a random `RUN` (10 lowercase hex digits) and the
+exact teardown command on stderr, and it prints them again if it fails or is
+interrupted midway. Note the command before the run goes further. Pass your own
+10-hex-digit value as the optional argument to choose `RUN`. The fixed length
 keeps one run's `hikyo-e2e-RUN*` policy patterns from reaching another run.
 
 `provision` creates, all in eu-central-1:
@@ -48,6 +50,8 @@ keeps one run's `hikyo-e2e-RUN*` policy patterns from reaching another run.
   user policies at 2048 characters, which the writer policy exceeds);
 - per user, one 3-hour `GetSessionToken` session, plus a second 900-second writer
   session. Long-term access keys stay in shell variables and are never printed.
+  They stay active, with their policies attached, from `provision` until
+  `teardown` deactivates them, so tear down as soon as the smoke ends.
 
 It prints the nonsecret manifest, then four single-line descriptors
 (`static.json`, `static-expired.json`, `oracle.json`, `cleanup.json`), then the
@@ -56,20 +60,28 @@ do not paste it into chat, and clear the CloudShell screen after copying.
 
 ## 2. Local custody
 
-Run on the machine that has the repository and Go toolchain. Paste each block
-with `cat > file` so no secret enters shell history.
+Run on the machine that has the repository and Go toolchain. Do not paste a
+descriptor into a terminal: macOS truncates a pasted terminal line at 1024
+bytes, and a session token can come close to that. Copy one line in CloudShell,
+then write it from the clipboard and check that it is complete JSON:
 
 ```sh
 umask 077
 DIR=$(mktemp -d "$HOME/hikyo-smoke.XXXXXX")   # created 0700
 cd "$DIR"
-cat > manifest.json        # paste the manifest line, press Enter, then Ctrl-D
-cat > static.json          # paste the descriptor line, Enter, Ctrl-D
-cat > static-expired.json
-cat > oracle.json
-cat > cleanup.json
+pbpaste > manifest.json && jq -e . manifest.json >/dev/null && echo ok
+# copy the next line in CloudShell before each command
+pbpaste > static.json && jq -e . static.json >/dev/null && echo ok
+pbpaste > static-expired.json && jq -e . static-expired.json >/dev/null && echo ok
+pbpaste > oracle.json && jq -e . oracle.json >/dev/null && echo ok
+pbpaste > cleanup.json && jq -e . cleanup.json >/dev/null && echo ok
+pbcopy </dev/null          # clear the clipboard
 ls -l                      # expect -rw------- on all five files
 ```
+
+Each command must print `ok`; `jq` fails on a truncated or partial line, so copy
+that line again. On Linux, use `wl-paste` or `xclip -selection clipboard -o`
+instead of `pbpaste`.
 
 The manifest has the layout of
 [manifest.example.json](aws-sandbox/manifest.example.json): account, region,
@@ -103,10 +115,12 @@ set -o pipefail
 HIKYO_TEST_AWS_REAL_MANIFEST="$DIR/manifest.json" HIKYO_TEST_AWS_REAL_REQUIRED=1 HIKYO_TEST_AWS_REAL_MUTATIONS=approved \
 HIKYO_TEST_POSTGRES_DSN='postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test' \
   go test -json ./internal/isolation -run '^TestAWSSecretsManagerRealSmoke$' -count=1 -parallel=1 -timeout=30m |
-  jq -r 'select(.Action == "pass" or .Action == "skip" or .Action == "fail" or .Action == "build-fail") | "\(.Action) \(.Test // .ImportPath // .Package)"'
+  jq -r 'select(.Action == "pass" or .Action == "skip" or .Action == "fail" or .Action == "build-fail") | "\(.Action) \(.Test // .ImportPath // .Package)"' |
+  tee "$DIR/outcomes-0.txt"
 ```
 
-The `jq` filter prints only outcomes with test or package names, which is the
+The `jq` filter prints only outcomes with test or package names, and `tee` keeps
+them in `outcomes-0.txt` (reruns use `outcomes-1.txt` and so on). That is the
 evidence to post on #158: `pass` for `preflight-static`, `iam-denial`, and
 `lifecycle` and `promoted-replay` with their subtests on `sqlite` and
 `postgres`, and `skip` for `auth-boundaries` and `adoption-witness`. Do not publish `-v` or
@@ -130,6 +144,12 @@ identities are checked first. A failed `lifecycle` engine:
   go test -json ./internal/isolation -run '^TestAWSSecretsManagerRealSmoke$/^(preflight-static|lifecycle)$/^postgres$' -count=1 -parallel=1 -timeout=30m
 ```
 
+A failed `promoted-replay` case (here `finish-loss` on PostgreSQL):
+
+```sh
+  go test -json ./internal/isolation -run '^TestAWSSecretsManagerRealSmoke$/^(preflight-static|promoted-replay)$/^finish-loss$/^postgres$' -count=1 -parallel=1 -timeout=30m
+```
+
 `iam-denial` probes `static/sqlite/document`, which only `lifecycle` on SQLite
 creates in the same prefix, so rerun it together with that engine (6 creates):
 
@@ -138,8 +158,23 @@ creates in the same prefix, so rerun it together with that engine (6 creates):
 ```
 
 with the same environment and `jq` filter, pointing
-`HIKYO_TEST_AWS_REAL_MANIFEST` at the new copy. A failed run's cleanup force-deletes the ARNs it recorded; `check` lists
-anything left, and teardown removes it.
+`HIKYO_TEST_AWS_REAL_MANIFEST` at the new copy and teeing into the next
+`"$DIR/outcomes-N.txt"`. A failed run's cleanup force-deletes the ARNs it
+recorded; `check` lists anything left, and teardown removes it.
+
+Before teardown, check that the first run and its reruns together passed every
+required leaf. This prints the leaves that never passed; empty output means the
+smoke is complete:
+
+```sh
+printf 'TestAWSSecretsManagerRealSmoke/%s\n' preflight-static iam-denial \
+  lifecycle/sqlite lifecycle/postgres \
+  promoted-replay/finish-loss/sqlite promoted-replay/finish-loss/postgres \
+  promoted-replay/marker-refusal/sqlite promoted-replay/marker-refusal/postgres |
+  sort > "$DIR/required.txt"
+awk '$1 == "pass" { print $2 }' "$DIR"/outcomes-*.txt | sort -u |
+  comm -23 "$DIR/required.txt" -
+```
 
 ## 5. Teardown
 
@@ -150,10 +185,16 @@ bash docs/testing/aws-sandbox/smoke-sandbox.sh teardown <RUN>
 bash docs/testing/aws-sandbox/smoke-sandbox.sh check
 ```
 
-Teardown first force-deletes any secret left under `hikyo-e2e-RUN/` or a rerun
-prefix `hikyo-e2e-RUNrN/` (a test timeout skips the test's own cleanup), restoring
-a pending deletion first. It then deletes the users' access keys, policies and
-users, deletes the alias, and schedules the key for deletion in 7 days. The final
+Teardown revokes first: it deactivates the run users' access keys, detaches
+every policy from them and deletes their inline policies. It then force-deletes
+every secret whose name starts with `hikyo-e2e-RUN`, which is what the policies
+grant and covers `hikyo-e2e-RUN/` and the rerun prefixes `hikyo-e2e-RUNrN/` (a
+test timeout skips the test's own cleanup), restoring a pending deletion first.
+Then it deletes the access keys and users, deletes only the customer-managed
+policies named `hikyo-smoke-RUN-*` (anything else it detached stays), deletes
+the alias, and schedules the key tagged `hikyo-smoke=RUN` for deletion in 7
+days. Any failed listing aborts teardown instead of reading as empty; rerun it
+after fixing the cause. The final
 `check` must show no `hikyo-e2e-*` secrets, no `hikyo-smoke-*` users or policies,
 and the key in `PendingDeletion`. Then delete
 the local directory (`rm -rf "$DIR"`).
@@ -189,8 +230,10 @@ run after the 2-hour mutation window. See the
 [AWS authorization reference](https://docs.aws.amazon.com/service-authorization/latest/reference/list_secretsmanager.html).
 
 `smoke-sandbox.sh` also takes `--endpoint-url` and `--ca-bundle`, only to dry-run
-the script against a local Floci emulator. It refuses any `amazonaws.com`
-endpoint.
+the script against a local Floci emulator. `--endpoint-url` accepts only
+`localhost`, `127.0.0.0/8`, `::1` and RFC1918 IPv4 addresses, and `--ca-bundle`
+needs `--endpoint-url`. `TestAWSSandboxScript*` in `internal/isolation` checks
+these refusals and the recovery output against a stub `aws`, with no AWS calls.
 
 ## Child-process replay custody
 
