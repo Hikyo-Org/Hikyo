@@ -12,7 +12,8 @@ Criterion 6 of #158: value delivery to AWS, a production API with no value-read
 operation, replay safety and cleanup. `preflight-static` binds the three
 identities, `lifecycle` and `promoted-replay` run on SQLite and on PostgreSQL,
 and `iam-denial` is to prove, once the smoke has run, that the writer's value
-read and force delete are refused by the explicit denies in its policy. Every other group skips or is logged, and
+read and force delete are refused by the explicit denies in its policy. Every
+other group skips or is logged, and
 [aws-acceptance-matrix.md](aws-acceptance-matrix.md) names its owner. The
 smoke uses one static writer (an IAM user with a temporary session), a separate
 oracle identity that alone may call `GetSecretValue` on synthetic secrets, and a
