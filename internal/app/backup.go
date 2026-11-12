@@ -175,6 +175,9 @@ func RunBackup(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 	}
 }
 
+// recipientHint is the usual cause of a stray argument on the verbs that take recipients.
+const recipientHint = " (repeat --recipient for each recipient)"
+
 type recipientList []string
 
 func (r *recipientList) String() string     { return strings.Join(*r, ",") }
@@ -188,6 +191,9 @@ func runBackupExport(ctx context.Context, cfg *config.Config, log *slog.Logger, 
 	var recipients recipientList
 	fs.Var(&recipients, "recipient", "age public recipient; repeatable (required unless --passphrase-file is set)")
 	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if err := refuseStrayArgs("export", fs, recipientHint); err != nil {
 		return err
 	}
 
@@ -234,6 +240,21 @@ func runBackupExport(ctx context.Context, cfg *config.Config, log *slog.Logger, 
 	fmt.Fprintf(stderr, "wrote %s (%d bytes, %s schema %d)\n",
 		result.Path, result.Bytes, result.Manifest.Engine, result.Manifest.SchemaVersion)
 	return nil
+}
+
+// refuseStrayArgs refuses what Go's flag parser leaves behind. It stops at the
+// first non-flag argument, so `--recipient A B` would otherwise parse as one
+// recipient and silently drop B: an archive B cannot open, reported as written.
+func refuseStrayArgs(verb string, fs *flag.FlagSet, hint string) error {
+	if fs.NArg() == 0 {
+		return nil
+	}
+	quoted := make([]string, 0, fs.NArg())
+	for _, arg := range fs.Args() {
+		quoted = append(quoted, fmt.Sprintf("%q", arg))
+	}
+	return fmt.Errorf("hikyo backup %s: unexpected argument(s) %s: every value needs its own flag%s, and flags stop being read at the first argument that is not one",
+		verb, strings.Join(quoted, ", "), hint)
 }
 
 // exportOptions resolves the recipient policy from flags then configuration.
@@ -285,6 +306,9 @@ func runBackupKeygen(args []string, stderr io.Writer, terminalSession *disclose.
 	dangerous := fs.Bool("dangerously-print", false, "write the identity to stdout, and to whatever collects it")
 	hybrid := fs.Bool("hybrid", false, "mint a post-quantum hybrid identity (X25519 + ML-KEM-768) instead of X25519")
 	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if err := refuseStrayArgs("keygen", fs, ""); err != nil {
 		return err
 	}
 	if *outputFile != "" && *dangerous {
