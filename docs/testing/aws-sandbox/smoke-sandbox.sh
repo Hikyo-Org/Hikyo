@@ -75,8 +75,13 @@ parse_global() {
 		--endpoint-url)
 			[[ $# -ge 2 ]] || die "--endpoint-url needs a value"
 			local host=${2#*://}
-			host=${host%%[:/]*}
-			[[ $host != *amazonaws.com ]] || die "--endpoint-url must not target amazonaws.com"
+			host=$(tr '[:upper:]' '[:lower:]' <<<"${host%%[:/]*}")
+			host=${host%.}
+			case $host in
+			amazonaws.com | *.amazonaws.com | *.amazonaws.com.cn | api.aws | *.api.aws)
+				die "--endpoint-url must not target AWS"
+				;;
+			esac
 			AWS_EXTRA+=(--endpoint-url "$2")
 			DRY_RUN=1
 			shift 2
@@ -98,6 +103,22 @@ banner() {
 	if ((DRY_RUN)); then
 		printf '*** DRY RUN against an emulator, not AWS ***\n' >&2
 	fi
+}
+
+# provision and teardown run as the account root user (with MFA); resolves ACCOUNT.
+require_root() {
+	local arn
+	arn=$(aws_ sts get-caller-identity --query Arn --output text)
+	ACCOUNT=$(cut -d: -f5 <<<"$arn")
+	[[ $ACCOUNT =~ ^[0-9]{12}$ ]] || die "could not resolve the account"
+	((DRY_RUN)) || [[ $arn == "arn:aws:iam::$ACCOUNT:root" ]] || die "run as the account root user, not $arn"
+}
+
+# list_run_secrets PREFIX: ARN and deletion date of every secret whose name starts
+# with PREFIX, including secrets already scheduled for deletion.
+list_run_secrets() {
+	aws_ secretsmanager list-secrets --include-planned-deletion --filters "Key=name,Values=$1" \
+		--query 'SecretList[].[ARN,Name,DeletedDate]' --output text
 }
 
 # Resolve a key id from the alias; empty when the alias is gone.
@@ -124,6 +145,9 @@ cmd_check() {
 			"$(jq -r '.DeletionDate // "-"' <<<"$meta")" "$(jq -r '.Description // "-"' <<<"$meta")" "${aliases:--}" "$mark"
 	done
 	((found)) || printf '(none)\n'
+	local secrets
+	secrets=$(list_run_secrets hikyo-e2e-)
+	printf 'Leftover hikyo-e2e-* secrets (REVIEW, teardown removes its own run):\n%s\n' "${secrets:-(none)}"
 	printf 'Leftover hikyo-smoke-* IAM users:\n'
 	local users
 	users=$(aws_ iam list-users --query "Users[?starts_with(UserName,'hikyo-smoke-')].UserName" --output text)
@@ -168,11 +192,11 @@ mint_descriptor() {
 
 cmd_provision() {
 	local run=${1:-}
-	[[ -n $run ]] || run=$(LC_ALL=C tr -dc 'a-f0-9' </dev/urandom | head -c 10)
+	# od reads exactly 5 bytes, so no pipe stage dies of SIGPIPE under pipefail.
+	[[ -n $run ]] || run=$(od -An -N5 -tx1 /dev/urandom | tr -d ' \n')
 	valid_run "$run"
 	banner
-	ACCOUNT=$(aws_ sts get-caller-identity --query Account --output text)
-	[[ $ACCOUNT =~ ^[0-9]{12}$ ]] || die "could not resolve the account"
+	require_root
 	AUTH_EXPIRES_AT=$(stamp 7200)
 	CLEANUP_EXPIRES_AT=$(stamp 10800)
 	RUN_SECRET_ARN_PATTERN="arn:aws:secretsmanager:$REGION:$ACCOUNT:secret:hikyo-e2e-$run*"
@@ -256,6 +280,17 @@ cmd_teardown() {
 	[[ -n $run ]] || die "teardown needs RUN"
 	valid_run "$run"
 	banner
+	require_root
+	# Secrets left by an interrupted smoke (a test timeout skips cleanup). Restore
+	# a pending deletion first so the force delete is immediate and unambiguous.
+	local arn name deleted
+	while read -r arn name deleted; do
+		[[ -n $arn ]] || continue
+		[[ $name =~ ^hikyo-e2e-${run}(r[0-9]+)?/ ]] || continue
+		[[ $deleted == None ]] || aws_ secretsmanager restore-secret --secret-id "$arn" >/dev/null
+		aws_ secretsmanager delete-secret --secret-id "$arn" --force-delete-without-recovery >/dev/null
+		printf 'secret %s force-deleted\n' "$name"
+	done <<<"$(list_run_secrets "hikyo-e2e-$run")"
 	local actor user id pol
 	for actor in writer oracle cleanup; do
 		user=hikyo-smoke-$run-$actor
