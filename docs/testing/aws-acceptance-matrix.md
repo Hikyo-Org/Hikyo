@@ -15,10 +15,12 @@ Destinations:
   staging (below), moto keeps running `TestAWSSecretsManagerEmulatorLifecycle`
   in required CI via `scripts/ci/start-aws-emulator.sh`.
 - **(b)** Existing controlled or unit tests, named below.
-- **(c)** Live real-AWS static-key smoke (`lifecycle` and `promoted-replay`):
-  `TestAWSSecretsManagerRealSmoke` with a smoke manifest holding only the
-  static writer, run locally per [aws-sandbox.md](aws-sandbox.md). Every other
-  group skips with its owner from this map.
+- **(c)** Live real-AWS static-key smoke (`preflight-static`, `lifecycle`,
+  `iam-denial` and `promoted-replay`): `TestAWSSecretsManagerRealSmoke` with a
+  smoke manifest holding only the static writer, run locally per
+  [aws-sandbox.md](aws-sandbox.md). `auth-boundaries` and `adoption-witness`
+  skip with their owner from this map; `role-auth` and `kms-denial` no longer
+  exist as groups and the run logs their owner.
 - **(d)** Another issue.
 
 Criteria are the #158 acceptance list: 1 configuration, 2 authentication,
@@ -29,9 +31,9 @@ Criteria are the #158 acceptance list: 1 configuration, 2 authentication,
 |---|---|---|---|---|
 | suite root | 1 | (c) | Live smoke root. The lane runs the same body. | 6 |
 | `lifecycle`, `/sqlite`, `/postgres` | 3 | (c) | Live smoke. Skipped on Floci (first-version gap below); the create, update and delete flow stays in required CI through moto's `TestAWSSecretsManagerEmulatorLifecycle`. | 3, 4, 6 |
-| `promoted-replay`, `/finish-loss`, `/marker-refusal`, each `/sqlite`, `/postgres` | 7 | (c) | Live smoke. Also runs in (a), including the second-process replay child. | 3, 6 |
+| `promoted-replay`, `/finish-loss`, `/marker-refusal`, each `/sqlite`, `/postgres` | 7 | (c) | Live smoke. Also runs in (a). | 3, 6 |
 | `preflight-static` | 1 | (a) | Provisioned role session, identity bound through Floci STS. The live smoke also runs it first, with its IAM users. | 2, 6 |
-| `iam-denial` | 1 | (a) | Floci enforces resource-ARN scoping (cross-writer `TagResource` deny) and refuses the writer's value read. No Allow grants that read, so the lane cannot tell the explicit `NeverReadValues` deny from an implicit one; (c) keeps that distinction. | 3, 6 |
+| `iam-denial` | 1 | (c), (a) | Live smoke with the static writer: cross-writer `TagResource` deny; the writer's `GetSecretValue` on its own secret must be denied by an explicit identity-policy deny (`NeverReadValues`), classified from AWS's access-denied message, and an implicit or unstated deny fails; a writer force delete must be explicitly denied (`NeverForceDelete`) and the secret must stay live. Floci runs the same group but checks only the code of the value-read deny (it grants no read, so explicit and implicit look alike) and skips the force-delete probe (no condition evaluation, so it would really delete). | 3, 6 |
 | `adoption-witness`, its three scenarios, each `/sqlite`, `/postgres` | 10 | (a) | Static writer; metadata and version semantics match AWS. | 3, 5 |
 | `auth-boundaries`, `/configured-identity-refusal` | 2 | (a) | Account-mismatch half on Floci. The region half needs an AWS regional origin: `TestRouteResolution`, `TestAccountAndRegionMovementIsRefused`. | 5 |
 | `auth-boundaries/expired-static` | 1 | (b) | `TestFailureClassesFailLoud` (expired credentials), `TestClientRefreshesExpiredCredentials`, `TestAWSRealFixtureAuthExpiryClassification`. Floci and AWS STS refuse sessions under 900 s, so authentic expiry needs a 15-minute wait. | 2, 5 |
@@ -46,9 +48,9 @@ Outside the 46 records:
 | Test or property | To | Notes |
 |---|---|---|
 | `TestAWSSecretsManagerEmulatorLifecycle` | moto | Unchanged, on digest-pinned moto in required CI. Moves to Floci when the lane's first-version canary fails. |
-| `TestAWSSecretsManagerReplayProcess` | (a), (c) | Child process launched by `promoted-replay`. |
-| `TestAWSReal*` fixture guards (scope, budget, oracle, replay, metadata, convergence) | (b) | Run without a provider in the CI isolation shards. |
-| Policy conditions: `aws:CurrentTime` windows, `secretsmanager:KmsKeyArn`, `RecoveryWindowInDays`, `ForceDeleteWithoutRecovery`, `kms:ViaService`, `kms:CallerAccount`, `kms:EncryptionContext:SecretARN` | (c) | Floci never populates these keys. The lane strips exactly these from Allow statements, fails on any other unknown key, and asserts that the unstripped writer template still cannot `CreateSecret`. Conditional denies on these keys never match on Floci (for example the writer's `NeverForceDelete`), so they too stay with (c). |
+| `TestAWSSecretsManagerReplayProcess` | (c) | Child process launched by `lifecycle`, so only the live smoke runs it (Floci skips `lifecycle`). |
+| `TestAWSReal*` fixture guards (scope, budget, oracle, replay, metadata, convergence, deny classification) | (b) | Run without a provider in the CI isolation shards. |
+| Policy conditions: `aws:CurrentTime` windows, `secretsmanager:KmsKeyArn`, `RecoveryWindowInDays`, `ForceDeleteWithoutRecovery`, `kms:ViaService`, `kms:CallerAccount`, `kms:EncryptionContext:SecretARN` | (c) | Floci never populates these keys. The lane strips exactly these from Allow statements, fails on any other unknown key, and asserts that the unstripped writer template still cannot `CreateSecret`. The live smoke's creates, writes and KMS use must satisfy these conditions, and its `iam-denial` force-delete probe proves the conditional `NeverForceDelete` deny. Floci never matches conditional denies. |
 
 ## Floci fidelity checks
 

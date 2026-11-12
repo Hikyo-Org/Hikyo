@@ -565,7 +565,7 @@ not an instantaneous provider hard cap. Unknown costs hold new spending, not
 necessary approved cleanup. Automatic retries, recurring jobs, paid upgrades
 and unrelated resources remain outside the authorization.
 
-All operations target account `099256073061`, region `eu-central-1`.
+All operations target account `<sandbox-account>`, region `eu-central-1`.
 Each attempt permits at most 32 synthetic secret creations, one replacement
 KMS key, the same eight roles, one temporary boundary and at most one OIDC
 provider. The first banked generation retains 176 reservations and adds 32,
@@ -654,7 +654,7 @@ The owner requested continued work until AWS acceptance passes and reuse of
 access while #158 remains open. The previously retired setup identity and
 fixture have not been recreated. The saved owner Playwright session was
 recovered by navigating its blank tab, then verified against account
-`099256073061` in `eu-central-1`. No login cookies or credentials were exported.
+`<sandbox-account>` in `eu-central-1`. No login cookies or credentials were exported.
 This owner session is for setup and read-only investigation; acceptance still
 uses the dedicated non-root roles. Billing showed USD 0.00 estimated charges
 on the Free plan, which does not establish final gross usage.
@@ -729,7 +729,7 @@ These counts include containers. Evidence JSON SHA256 is
 The reviewed diagnostics bootstrap, PR #999, merged as
 `92080565e4d1bcdb33d217b2a77528975d89d2b5`.
 
-The additional one-time authorization was consumed in account `099256073061`,
+The additional one-time authorization was consumed in account `<sandbox-account>`,
 region `eu-central-1`: 27 new conservative creation reservations plus the prior
 21 total 48 of the approved lifetime cap of 53. Unused numerical allowance does
 not authorize another run. No further AWS acceptance run or resource creation
@@ -744,7 +744,7 @@ unfiltered list including scheduled deletion; neither exists. Those two checks
 are UI evidence, distinct from direct API ResourceNotFound proof.
 
 The remaining Web Identity/PostgreSQL secret was recovered as the exact ARN
-`arn:aws:secretsmanager:eu-central-1:099256073061:secret:hikyo-e2e-20261018b/web-identity/postgres/role-document-vmN1Vj`.
+`arn:aws:secretsmanager:eu-central-1:<sandbox-account>:secret:hikyo-e2e-20261018b/web-identity/postgres/role-document-vmN1Vj`.
 It is bound to the replacement key below and PendingDeletion after an exact
 seven-day deletion request at `2026-10-19T09:40:57Z`. The console's
 "Deleted on 10/19/2026" text is a request-date label. Its final deletion timestamp
@@ -757,7 +757,7 @@ All eight owned roles, their eight inline policies, the created OIDC provider
 and the exact KMS alias are verified absent. The dedicated GitHub environment
 is deleted and its exact GET returns 404; repository OIDC defaults were not
 changed. The replacement key
-`arn:aws:kms:eu-central-1:099256073061:key/10908b8d-fe54-40e3-9210-a3eefea709b6`
+`arn:aws:kms:eu-central-1:<sandbox-account>:key/10908b8d-fe54-40e3-9210-a3eefea709b6`
 is API-verified PendingDeletion with an exact seven-day window and scheduled
 deletion at `2026-10-26T09:54:54.536Z`. Physical deletion is pending. The old key
 remains scheduled for `2026-10-25T19:57:36.420Z` and was not targeted.

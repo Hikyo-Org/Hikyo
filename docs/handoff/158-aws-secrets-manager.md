@@ -2,19 +2,6 @@
 
 Issue: https://github.com/Hikyo-Org/Hikyo/issues/158. Built on the #157
 multi-target seam (targets, outbox, health, pause/resume, retain-or-prune).
-Current task authorization includes implementation of formerly post-1.0
-issues. The ADR claims owner authorization on 2026-09-26, but the live #158
-comment list contains no September 26 authorization comment;
-that specific authorization reference is not independently corroborated there.
-The August 24 deferral and unchanged v1.1 milestone remain visible alongside
-the conditional promotion. Owner comment 6220607066 corrected the audit labels
-to release:1.0 plus release:decision on October 16; this records conditional
-relevance, not final promotion or acceptance. The parent/#79 owner retains
-that conditional status in the release ledger. No review waiver is implied; the only cloud
-operation now planned is the owner-run live smoke below. The ADR amendment is declared in `docs/adr/mvp-boundary.md` (declared amendment 8 and
-the §4.1 row) with a banner on `docs/adr/deployment-adapter.md`; the
-owner-approved review disposition below now governs both AWS portions.
-Historical cross-provider SKIP remains; no additional formal pass is required.
 
 ## Current status, 2026-11-12
 
@@ -28,9 +15,11 @@ Historical cross-provider SKIP remains; no additional formal pass is required.
   `TestAWSSecretsManagerRealSmoke` with a smoke manifest: one static writer
   (plus its authentic expired session for the credential fence), separate
   oracle and cleanup IAM users, and one customer KMS key. That manifest runs
-  the `lifecycle` and `promoted-replay` groups on SQLite and PostgreSQL, caps
-  creates at 16 (14 nominal) and skips every other group with its owner from
-  the map. Individual failed tests may be rerun under a new prefix.
+  `preflight-static`, `lifecycle` and `promoted-replay` on SQLite and
+  PostgreSQL, and `iam-denial`, which proves the writer's value read and force
+  delete are refused by explicit identity-policy denies. It caps creates at 17
+  (15 nominal) and skips or logs every other group with its owner from the
+  map. The real lane accepts no other manifest shape. Individual failed tests may be rerun under a new prefix.
   Only the oracle identity may call `GetSecretValue`; the writer policy
   denies it explicitly.
 - **Isolated harness:** the Floci CI lane `TestAWSSecretsManagerEmulatorAcceptance`
@@ -60,9 +49,26 @@ Historical cross-provider SKIP remains; no additional formal pass is required.
   3. After the 900-second expired session lapses, run the smoke command.
   4. Rerun any individual failure under a new prefix within the window.
   5. Run `teardown`, then `check` again, and record the result on #158.
-- **Cloud leftovers:** seven earlier KMS keys were scheduled for deletion by
-  2026-11-03; `check` confirms their state read-only. The historical IAM user
+- **Cloud leftovers:** seven earlier KMS keys had deletion windows ending by
+  2026-11-03, so they should be gone; `check` flags any customer key that is
+  not pending deletion, and any leftover `hikyo-e2e-*` secret. The historical IAM user
   `hikyo-158-setup` remains for the owner to decide.
+
+## Authorization record
+
+Current task authorization includes implementation of formerly post-1.0
+issues. The ADR claims owner authorization on 2026-09-26, but the live #158
+comment list contains no September 26 authorization comment;
+that specific authorization reference is not independently corroborated there.
+The August 24 deferral and unchanged v1.1 milestone remain visible alongside
+the conditional promotion. Owner comment 6220607066 corrected the audit labels
+to release:1.0 plus release:decision on October 16; this records conditional
+relevance, not final promotion or acceptance. The parent/#79 owner retains
+that conditional status in the release ledger. No review waiver is implied; the only cloud
+operation now planned is the owner-run live smoke above. The ADR amendment is declared in `docs/adr/mvp-boundary.md` (declared amendment 8 and
+the §4.1 row) with a banner on `docs/adr/deployment-adapter.md`; the
+owner-approved review disposition below now governs both AWS portions.
+Historical cross-provider SKIP remains; no additional formal pass is required.
 
 Dated history before 2026-11-12, including the hosted-run results, merge-queue
 repairs and integration notes, is in
@@ -222,8 +228,8 @@ with the same (empty) prefix in one account are allowed.
 - `internal/isolation/aws_real_durable_test.go` and `aws_real_fixture_test.go`:
   real AWS service/outbox tests with separate writer, synthetic oracle and
   cleanup identities. Both datastore engines are mandatory. A smoke manifest
-  (static writer only) caps creates at 16; the historical five-writer
-  manifest keeps 32. A persistent local single-use marker refuses
+  (static writer only, the only real-lane shape) caps creates at 17; the
+  Floci lane keeps 32. A persistent local single-use marker refuses
   same-namespace reruns. See the
   [smoke runbook](../testing/aws-sandbox.md).
 - `internal/isolation/aws_emulator_acceptance_test.go`: the Floci lane.
@@ -243,7 +249,8 @@ with the same (empty) prefix in one account are allowed.
   rechecked the hashes and repair paths. No runtime acceptance is claimed.
   Package-review SOUND is not substantive or runtime acceptance.
   Real AWS acceptance, CI, signing/DCO and verified merge remain mandatory.
-  This #158-only disposition does not authorize resources, spending, release,
+  (Under option A, 2026-11-12, that real AWS acceptance is the owner's one
+  live smoke.) This #158-only disposition does not authorize resources, spending, release,
   Cloudflare, other ADRs or a global quota/provider-policy change.
 
 - The owner's live smoke run under option A (see the current status above).

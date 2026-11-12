@@ -9,9 +9,11 @@ path. History lives in [aws-acceptance-history.md](aws-acceptance-history.md).
 ## What the smoke covers
 
 Criterion 6 of #158: value delivery to AWS, a production API with no value-read
-operation, replay safety and cleanup. Two groups run, each on SQLite and on
-PostgreSQL: `lifecycle` and `promoted-replay`. Every other group skips loudly,
-and [aws-acceptance-matrix.md](aws-acceptance-matrix.md) names its owner. The
+operation, replay safety and cleanup. `preflight-static` binds the three
+identities, `lifecycle` and `promoted-replay` run on SQLite and on PostgreSQL,
+and `iam-denial` proves the writer's value read and force delete are refused by
+the explicit denies in its policy. Every other group skips or is logged, and
+[aws-acceptance-matrix.md](aws-acceptance-matrix.md) names its owner. The
 smoke uses one static writer (an IAM user with a temporary session), a separate
 oracle identity that alone may call `GetSecretValue` on synthetic secrets, and a
 separate cleanup identity. All values are synthetic, and the production adapter
@@ -95,8 +97,9 @@ HIKYO_TEST_POSTGRES_DSN='postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test' \
 ```
 
 The `jq` filter prints only outcomes with test or package names, which is the
-evidence to post on #158: `pass` for `lifecycle` and `promoted-replay` and their subtests on
-`sqlite` and `postgres`, and `skip` for every other group. Do not publish `-v` or
+evidence to post on #158: `pass` for `preflight-static`, `iam-denial`, and
+`lifecycle` and `promoted-replay` with their subtests on `sqlite` and
+`postgres`, and `skip` for `auth-boundaries` and `adoption-witness`. Do not publish `-v` or
 raw `-json` output without checking it for sensitive material. A missing
 manifest skips locally but fails with the required switch, and a present manifest
 without the mutation switch fails before AWS use. Stop the database container
