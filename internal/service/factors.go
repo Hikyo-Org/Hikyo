@@ -979,7 +979,6 @@ func (s *Auth) attemptRecovery(ctx context.Context, username, code string) (Reco
 	// Phase 2 — match. Every non-matching path scans a set of the same size so
 	// timing does not distinguish an unknown subject from a wrong code.
 	cause := ""
-	matchIdx := -1
 	switch {
 	case !resolved:
 		s.burnRecoveryMatch(ctx, code)
@@ -1003,7 +1002,7 @@ func (s *Auth) attemptRecovery(ctx context.Context, username, code string) (Reco
 			cause = "batch-unreadable"
 			break
 		}
-		matchIdx = crypto.MatchRecoveryCode(code, verifiers)
+		matchIdx := crypto.MatchRecoveryCode(code, verifiers)
 		zeroVerifiers(verifiers)
 		if matchIdx < 0 {
 			cause = "no-match"

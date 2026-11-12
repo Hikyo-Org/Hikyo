@@ -131,8 +131,7 @@ func cancelAdapterMove(ctx context.Context, db adapterDB, chain domain.Scope, mo
 	stamp := at
 	for _, target := range move.Targets {
 
-		lookupResult, err := db.adapterMoveQueries().cancelTarget(ctx, target.TargetID, chain.Org, chain.Project, target.EnvironmentID)
-		if err != nil {
+		if _, err := db.adapterMoveQueries().cancelTarget(ctx, target.TargetID, chain.Org, chain.Project, target.EnvironmentID); err != nil {
 			return AdapterMove{}, adapter.ErrSuperseded
 		}
 		// Superseded siblings are no longer claimable. Close only their
@@ -141,7 +140,7 @@ func cancelAdapterMove(ctx context.Context, db adapterDB, chain domain.Scope, mo
 			OrgID: string(chain.Org), ProjectID: string(chain.Project), EnvironmentID: target.EnvironmentID}, at); err != nil {
 			return AdapterMove{}, err
 		}
-		lookupResult, err = db.adapterMoveQueries().cancelTarget(ctx, target.TargetID, chain.Org, chain.Project, target.EnvironmentID)
+		lookupResult, err := db.adapterMoveQueries().cancelTarget(ctx, target.TargetID, chain.Org, chain.Project, target.EnvironmentID)
 		if err != nil {
 			return AdapterMove{}, err
 		}

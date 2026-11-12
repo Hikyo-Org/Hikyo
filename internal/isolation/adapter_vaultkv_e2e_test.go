@@ -654,9 +654,8 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 		t.Fatalf("removal deleted metadata: %v", meta)
 	}
 
-	retainedMetadata := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil)
 	server.must(t, http.MethodPatch, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", map[string]any{"custom_metadata": map[string]string{vaultkv.PendingKey: "unknown"}})
-	retainedMetadata = server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil)
+	retainedMetadata := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil)
 	for _, wholeAdapter := range []bool{false, true} {
 		if wholeAdapter {
 			_, err = svc.Delete(ctx, operator, scope, created.Adapter.ID, false)

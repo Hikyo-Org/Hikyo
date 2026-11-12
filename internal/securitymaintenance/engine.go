@@ -333,7 +333,7 @@ func (e *Engine) Reconcile(ctx context.Context, confirm string) (Status, error) 
 			return errors.New("reconciliation requires a healthy installation; complete the owning upgrade recovery first")
 		}
 		restored := state.Enrollment.Instance != observed.Instance || state.Enrollment.Incarnation != observed.Incarnation || state.Enrollment.RestoreEpoch != observed.RestoreEpoch
-		token := ""
+		var token string
 		switch {
 		case restored:
 			token = observed.Incarnation

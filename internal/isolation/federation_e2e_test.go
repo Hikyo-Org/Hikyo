@@ -1631,12 +1631,12 @@ func runFederationLifecycle(t *testing.T, db *store.DB) {
 	// because the point here is the EVENT, not the artifact class — and a
 	// federated token would additionally have to clear the restore predicate the
 	// line above just armed.
-	res, err := r.del.Fetch(t.Context(), "", scopeEnv(orgA, prjA1, envA1), "", service.FetchOptions{})
+	_, err := r.del.Fetch(t.Context(), "", scopeEnv(orgA, prjA1, envA1), "", service.FetchOptions{})
 	if err == nil {
 		t.Fatal("an empty artifact fetched successfully; the surface is not authenticating")
 	}
 	human := service.LocalPrincipal(identAdmin)
-	res, err = r.del.FetchAs(t.Context(), human, scopeEnv(orgA, prjA1, envA1), "", service.FetchOptions{})
+	res, err := r.del.FetchAs(t.Context(), human, scopeEnv(orgA, prjA1, envA1), "", service.FetchOptions{})
 	if err != nil {
 		t.Fatalf("identity.delivery_fetched (full): %v", err)
 	}

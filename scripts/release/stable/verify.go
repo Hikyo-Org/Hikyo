@@ -267,10 +267,6 @@ func lockFloor(path string, current releasetrust.SnapshotFloor) (releasetrust.Sn
 	return floor, unlock, nil
 }
 
-func migrateLegacyFloor(raw []byte, current releasetrust.SnapshotFloor) (releasetrust.SnapshotFloor, error) {
-	return releasetrust.DecodeVerificationFloor(raw, current)
-}
-
 func saveFloor(path string, floor releasetrust.SnapshotFloor) error {
 	if path == "" {
 		return nil

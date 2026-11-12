@@ -1059,7 +1059,6 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 	// A valid callback establishes held-head identity. Final proof adds queue
 	// membership; any incomplete or uncertain exit verifies a blocking verdict.
 	p := pull{Number: 1, State: "open", Head: reference{SHA: hint.HeadSHA, Repo: q.repo}, Base: reference{SHA: hint.HeadSHA, Ref: hint.HeadBranch, Repo: q.repo}}
-	b := newBinding(q.repo.ID, p, nil)
 	policy, err := q.policy(ctx)
 	if err != nil {
 		return err
@@ -1109,7 +1108,7 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 		return err
 	}
 	p.Base.SHA = members[0].Base.SHA
-	b = newBinding(q.repo.ID, p, &r)
+	b := newBinding(q.repo.ID, p, &r)
 	b.BaseRef = sha256.Sum256(append(snap.Digest[:], []byte(r.HeadBranch)...))
 	if err := q.reconciliation.changedBinding(ctx, p, b); err != nil {
 		return err

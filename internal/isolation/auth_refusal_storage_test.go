@@ -415,7 +415,7 @@ func assertRefusalCommittedAccounting(t *testing.T, db *store.DB, accepted, atte
 func refusalAccountingSnapshot(t *testing.T, db *store.DB) (audit.RefusalWindow, int64) {
 	t.Helper()
 	var window audit.RefusalWindow
-	state := ""
+	var state string
 	var sealed int64
 	if db.Engine() == store.EnginePostgres {
 		var err error

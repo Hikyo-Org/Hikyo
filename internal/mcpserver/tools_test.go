@@ -169,7 +169,6 @@ func TestEnvironmentToolPagesThroughCursor(t *testing.T) {
 		}
 		next, ok := structured["next_cursor"].(string)
 		if !ok || next == "" {
-			cursor = ""
 			break
 		}
 		cursor = next

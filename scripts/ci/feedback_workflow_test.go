@@ -699,10 +699,6 @@ func TestFeedbackSeedWorkflowTrustAndBounds(t *testing.T) {
 	}
 }
 
-func requireFeedbackSeed(workflow map[string]any) error {
-	return requireFeedbackSeedProfile(workflow, false)
-}
-
 func requireFeedbackSeedProfile(workflow map[string]any, compact bool) error {
 	cachePath, cachePrefix := ".ci-cache/go-feedback", "go-feedback-v1-"
 	expectedEnv := map[string]any{"GOCACHE": "${{ github.workspace }}/" + cachePath}

@@ -664,7 +664,6 @@ func mergePublicationTargets(next *securitymaintenance.Catalog, records []securi
 		}
 		if index < 0 {
 			next.Targets = append(next.Targets, record)
-			index = len(next.Targets) - 1
 		} else {
 			existing := &next.Targets[index]
 			if existing.Image != record.Image {

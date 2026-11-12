@@ -184,10 +184,6 @@ func (q *queueController) refuseAdmission(ctx context.Context, t *admissionTrace
 	if t.FeedbackRead && ((r == nil) != (t.Run == nil) || r != nil && !sameSourceEvent(*r, *t.Run)) {
 		return errors.New("useful feedback attempt moved during admission failure publication")
 	}
-	own, err := q.ownedChecks(ctx, p)
-	if err != nil {
-		return err
-	}
 	final, err := q.readPR(ctx, p.Number)
 	if err != nil {
 		return err
@@ -209,7 +205,7 @@ func (q *queueController) refuseAdmission(ctx context.Context, t *admissionTrace
 	if (finalRun == nil) != (r == nil) || finalRun != nil && !sameSourceEvent(*finalRun, *r) {
 		return errors.New("feedback attempt moved in the admission publication reserve")
 	}
-	own, err = q.ownedChecks(ctx, final)
+	own, err := q.ownedChecks(ctx, final)
 	if err != nil {
 		return err
 	}

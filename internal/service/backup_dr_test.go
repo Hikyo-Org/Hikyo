@@ -120,7 +120,7 @@ func TestPruneLoopStopsAfterFirstFailedUnlink(t *testing.T) {
 	name := func(days int) string {
 		return "hikyo-sqlite-" + now.AddDate(0, 0, -days).Format("20060102T150405Z") + ".age"
 	}
-	newest, middle, oldest := name(1), name(300), name(400)
+	middle, oldest := name(300), name(400)
 	for _, n := range []string{middle, oldest} {
 		if err := os.WriteFile(filepath.Join(dir, n), []byte("a"), 0o600); err != nil {
 			t.Fatal(err)
@@ -131,7 +131,7 @@ func TestPruneLoopStopsAfterFirstFailedUnlink(t *testing.T) {
 		attempts = append(attempts, filepath.Base(path))
 		return errors.New("unlink refused")
 	}}
-	newest = filepath.Base(recordPruneArtifact(t, svc, dir, now.Add(-24*time.Hour)).Path)
+	newest := filepath.Base(recordPruneArtifact(t, svc, dir, now.Add(-24*time.Hour)).Path)
 	_, err := svc.Prune(t.Context(), dir, PrunePolicy{RetainCount: 1, RetainDays: 180})
 	if err == nil {
 		t.Fatal("a prune whose unlink failed returned no error")

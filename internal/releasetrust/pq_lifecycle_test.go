@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust/testfixture"
 	"github.com/gofrs/flock"
@@ -477,5 +476,3 @@ func TestPQReleaseRequiresTheSnapshotStageFloor(t *testing.T) {
 		t.Fatal("a refusal must return the input floor")
 	}
 }
-
-func sha(raw []byte) string { return string(releaseidentity.Hash(raw)) }
