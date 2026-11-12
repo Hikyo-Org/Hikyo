@@ -158,6 +158,9 @@ func TestSTSCredentialAcquisition(t *testing.T) {
 				t.Errorf("DurationSeconds = %q, want %q (descriptor sessionDuration)", form.Get("DurationSeconds"), tc.duration)
 			}
 			for key, want := range tc.wantForm {
+				if _, sent := form[key]; want == "" && sent {
+					t.Errorf("%s sent as %q, want it absent", key, form.Get(key))
+				}
 				if form.Get(key) != want {
 					t.Errorf("%s = %q, want %q", key, form.Get(key), want)
 				}

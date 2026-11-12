@@ -89,7 +89,7 @@ teardown_cmd() {
 
 # Printed once from the main shell (not command-substitution subshells).
 recovery_notice() {
-	[[ $BASHPID == "$$" && -z ${RECOVERY_SHOWN:-} ]] || return 0
+	((BASH_SUBSHELL == 0)) && [[ -z ${RECOVERY_SHOWN:-} ]] || return 0
 	RECOVERY_SHOWN=1
 	printf 'provision failed or stopped midway. RUN=%s. Remove what it created with:\n  %s\n' "$RUN_ID" "$(teardown_cmd "$RUN_ID")" >&2
 }
@@ -173,12 +173,17 @@ list_run_secrets() {
 		--query 'SecretList[].[ARN,Name,DeletedDate]' --output text
 }
 
-# Resolve a key id from the alias; empty when the alias is gone.
-# A failed list returns non-zero (command substitution does not inherit set -e).
+# Resolve a key id from the alias; empty when the alias is gone. A failed list
+# returns non-zero (command substitution does not inherit set -e). No --query:
+# with text output the CLI applies a query per page, so an absent alias would
+# print one None per page. JSON output merges every page first.
 alias_key() {
-	local id
-	id=$(aws_ kms list-aliases --query "Aliases[?AliasName=='alias/hikyo-smoke-$1'].TargetKeyId | [0]" --output text) || return 1
-	[[ $id == None ]] || printf '%s' "$id"
+	local json
+	json=$(aws_ kms list-aliases) || return 1
+	jq -r --arg n "alias/hikyo-smoke-$1" '[.Aliases[] | select(.AliasName == $n)] |
+		if length > 1 then error("duplicate \($n)")
+		elif length == 1 then (.[0].TargetKeyId // error("\($n) has no target key"))
+		else empty end' <<<"$json"
 }
 
 cmd_check() {
@@ -318,7 +323,7 @@ cmd_provision() {
 	printf '===== end manifest.json =====\n'
 	local file
 	for file in static static-expired oracle cleanup; do
-		printf '===== %s.json (SECRET, paste with cat > %s.json) =====\n' "$file" "$file"
+		printf '===== %s.json (SECRET, copy this line, then: pbpaste > %s.json && jq -e . %s.json) =====\n' "$file" "$file" "$file"
 		case $file in
 		static) printf '%s\n' "$d_static" ;;
 		static-expired) printf '%s\n' "$d_expired" ;;
@@ -372,14 +377,25 @@ cmd_teardown() {
 	# grant (hikyo-e2e-RUN*), so it covers the fixture prefix hikyo-e2e-RUN/ and
 	# the rerun prefixes hikyo-e2e-RUNrN/, and the fixed-length RUN keeps it off
 	# other runs. A narrower regex would leave behind what the policies allow.
-	# Restore a pending deletion first so the force delete is immediate.
-	local secrets arn name deleted
+	# DeleteSecret refuses a secret scheduled for deletion, so restore it first.
+	# The API does not say whether a deleted secret is scheduled or already being
+	# force-deleted, and only the scheduled one can be restored; a refused restore
+	# is therefore read as a force deletion under way. Force delete is idempotent
+	# for a deleted secret. Any secret still refused is reported, the rest of
+	# teardown (users, policies, key) still runs, and teardown then exits non-zero.
+	local secrets arn name deleted out pending=()
 	secrets=$(list_run_secrets "hikyo-e2e-$run")
 	while read -r arn name deleted; do
 		[[ -n $arn ]] || continue
 		[[ $name == "hikyo-e2e-$run"* ]] || continue
-		[[ $deleted == None ]] || aws_ secretsmanager restore-secret --secret-id "$arn" >/dev/null
-		aws_ secretsmanager delete-secret --secret-id "$arn" --force-delete-without-recovery >/dev/null
+		if [[ $deleted != None ]] && ! out=$(aws_ secretsmanager restore-secret --secret-id "$arn" 2>&1 </dev/null); then
+			printf 'secret %s: restore refused, treating it as a force deletion under way: %s\n' "$name" "$out" >&2
+		fi
+		if ! out=$(aws_ secretsmanager delete-secret --secret-id "$arn" --force-delete-without-recovery 2>&1 </dev/null); then
+			printf 'secret %s: force delete refused: %s\n' "$name" "$out" >&2
+			pending+=("$name")
+			continue
+		fi
 		printf 'secret %s force-deleted\n' "$name"
 	done <<<"$secrets"
 	for user in ${present[@]+"${present[@]}"}; do
@@ -407,13 +423,14 @@ cmd_teardown() {
 	for key in $keys; do
 		meta=$(aws_ kms describe-key --key-id "$key" --query 'KeyMetadata.[KeyManager,KeyState]' --output text)
 		[[ $meta =~ ^CUSTOMER[[:space:]]+(Enabled|Disabled)$ ]] || continue
-		tag=$(aws_ kms list-resource-tags --key-id "$key" --query "Tags[?TagKey=='hikyo-smoke'].TagValue | [0]" --output text)
+		tag=$(aws_ kms list-resource-tags --key-id "$key" | jq -r '[.Tags[] | select(.TagKey == "hikyo-smoke") | .TagValue] | first // ""')
 		[[ $tag == "$run" ]] || continue
 		aws_ kms schedule-key-deletion --key-id "$key" --pending-window-in-days 7 >/dev/null
 		aws_ kms describe-key --key-id "$key" --query 'KeyMetadata.[KeyId,KeyState,DeletionDate]' --output text
 		found=1
 	done
 	((found)) || printf 'no live key tagged hikyo-smoke=%s; already handled\n' "$run"
+	((${#pending[@]} == 0)) || die "secrets not yet deleted: ${pending[*]}; rerun teardown in a few minutes, then check"
 }
 
 REST=()
