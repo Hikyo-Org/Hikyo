@@ -405,7 +405,7 @@ func (s *queueReconciliation) ensureBlocking(ctx context.Context, cause error) e
 				return err
 			}
 			p := pull{Number: b.PR, Head: reference{SHA: b.Head}}
-			return s.finishGroupFailure(ctx, p, b, latest, cause, s.groupFailure())
+			return s.finishGroupFailure(ctx, p, b, latest, s.groupFailure())
 		}
 		return nil
 	}
@@ -432,7 +432,7 @@ func (s *queueReconciliation) ensureBlocking(ctx context.Context, cause error) e
 		if scanErr != nil || latest == nil {
 			return errors.Join(scanErr, errors.New("uncertain queued creation; no effective blocking identity confirmed"))
 		}
-		return s.failOwnedBarrier(ctx, p, b, latest, cause, unsafeProofRefusal)
+		return s.failOwnedBarrier(ctx, p, b, latest, unsafeProofRefusal)
 	}
 	result := pending("Current held-head proof is incomplete; admission and merging remain blocked.")
 	written, writeErr := s.publishRecord(ctx, p, b, latest, result)
@@ -440,7 +440,7 @@ func (s *queueReconciliation) ensureBlocking(ctx context.Context, cause error) e
 		// Never retry the uncertain CREATE. Only the complete inventory captured
 		// before it may authorize a failure on that known owned record.
 		if latest != nil && scanErr == nil {
-			return errors.Join(writeErr, s.failOwnedBarrier(ctx, p, b, latest, writeErr, unsafeProofRefusal))
+			return errors.Join(writeErr, s.failOwnedBarrier(ctx, p, b, latest, unsafeProofRefusal))
 		}
 		return errors.Join(scanErr, writeErr)
 	}
@@ -450,7 +450,7 @@ func (s *queueReconciliation) ensureBlocking(ctx context.Context, cause error) e
 		return errors.Join(scanErr, finalErr, errors.New("newest owned blocking barrier could not be confirmed"))
 	}
 	if s.terminalGroupCause(cause) {
-		return s.finishGroupFailure(ctx, p, b, current, cause, s.groupFailure())
+		return s.finishGroupFailure(ctx, p, b, current, s.groupFailure())
 	}
 	return scanErr
 }
@@ -491,7 +491,7 @@ func (s *queueReconciliation) groupFailure() outcome {
 	return unsafeProofRefusal
 }
 
-func (s *queueReconciliation) finishGroupFailure(ctx context.Context, p pull, b binding, selected *check, cause error, result outcome) error {
+func (s *queueReconciliation) finishGroupFailure(ctx context.Context, p pull, b binding, selected *check, result outcome) error {
 	q := s.q
 	policy, err := q.policy(ctx)
 	if err != nil {
@@ -508,10 +508,10 @@ func (s *queueReconciliation) finishGroupFailure(ctx context.Context, p pull, b 
 	if live == nil || live.Status != "completed" || !sameGroupProof(*s.finishedGroup, finishedGroupProof{run: *live, policy: policy, snapshot: snapshot}) {
 		return errors.New("completed group identity moved before failure publication")
 	}
-	return s.failOwnedBarrier(ctx, p, b, selected, cause, result)
+	return s.failOwnedBarrier(ctx, p, b, selected, result)
 }
 
-func (s *queueReconciliation) failOwnedBarrier(ctx context.Context, p pull, b binding, selected *check, cause error, result outcome) error {
+func (s *queueReconciliation) failOwnedBarrier(ctx context.Context, p pull, b binding, selected *check, result outcome) error {
 	q := s.q
 	own, err := q.listOwnedChecks(ctx, q.expectedHead)
 	latest := newestQueueCheck(own)
@@ -520,9 +520,6 @@ func (s *queueReconciliation) failOwnedBarrier(ctx context.Context, p pull, b bi
 	}
 	if blockingQueueCheck(latest) && (latest.Status == "completed" || s.finishedGroup == nil) {
 		return nil
-	}
-	if cause == nil {
-		cause = errors.New("queued blocking barrier could not be established")
 	}
 	payload, err := q.checkPayload(b, result)
 	if err != nil {

@@ -240,7 +240,7 @@ func (s *SelfConfig) Apply(ctx context.Context, actor Actor, req SelfConfigApply
 				return err
 			}
 		}
-		committed, err := r.SelfConfig().CommitJob(ctx, p, job.ID, commitAt)
+		committed, err := r.SelfConfig().CommitJob(ctx, p, job.ID)
 		if err != nil {
 			return err
 		}

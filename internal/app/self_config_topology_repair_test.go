@@ -85,7 +85,7 @@ func topologyOwnerFixtureCommit(t *testing.T, srv *Server, principal domain.Prin
 				return err
 			}
 		}
-		committed, err := repo.CommitJob(ctx, p, id, at)
+		committed, err := repo.CommitJob(ctx, p, id)
 		if err != nil {
 			return err
 		}
