@@ -30,9 +30,11 @@ bash docs/testing/aws-sandbox/smoke-sandbox.sh provision
 ```
 
 `check` is read-only. Review its output first: any customer KMS key that is not
-`PendingDeletion` or any leftover `hikyo-smoke-*` user is marked for review.
-`provision` prints a random `RUN` inside its teardown command. Pass your own
-`[a-z0-9]{8,12}` value as the optional argument to choose it.
+`PendingDeletion` is marked for review, and it lists leftover `hikyo-e2e-*`
+secrets and `hikyo-smoke-*` users and policies. `provision` and `teardown`
+refuse to run unless the caller is the account root user. `provision` prints a
+random `RUN` inside its teardown command. Pass your own `[a-z0-9]{8,12}` value as
+the optional argument to choose it.
 
 `provision` creates, all in eu-central-1:
 
@@ -79,20 +81,26 @@ can start only after `static-expired.json` has expired. **Wait at least 16
 minutes after `provision`** before `go test`, and finish within the 2-hour
 window (`expires_at` in the manifest).
 
-Start PostgreSQL with `scripts/ci/start-ci-postgres.sh` (it prints nothing; it
-publishes `127.0.0.1:5432` with user `hikyo`, password `hikyo`, database
-`hikyo_test`). From the repository root:
+Start PostgreSQL with `scripts/ci/start-ci-postgres.sh`. It pulls a pinned image
+and starts container `hikyo-ci-postgres` on `127.0.0.1:5432` with user `hikyo`,
+password `hikyo` and database `hikyo_test`; it fails if that container name or
+port is already in use. From the repository root:
 
 ```sh
+set -o pipefail
 HIKYO_TEST_AWS_REAL_MANIFEST="$DIR/manifest.json" HIKYO_TEST_AWS_REAL_REQUIRED=1 HIKYO_TEST_AWS_REAL_MUTATIONS=approved \
 HIKYO_TEST_POSTGRES_DSN='postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test' \
-  go test ./internal/isolation -run '^TestAWSSecretsManagerRealSmoke$' -count=1 -parallel=1 -timeout=30m
+  go test -json ./internal/isolation -run '^TestAWSSecretsManagerRealSmoke$' -count=1 -parallel=1 -timeout=30m |
+  jq -r 'select(.Action == "pass" or .Action == "skip" or .Action == "fail" or .Action == "build-fail") | "\(.Action) \(.Test // .ImportPath // .Package)"'
 ```
 
-Do not use `-v` or publish raw logs without checking them for sensitive
-material. A missing manifest skips locally but fails with the required switch,
-and a present manifest without the mutation switch fails before AWS use. Stop
-the database container afterwards (`docker rm -f hikyo-ci-postgres`).
+The `jq` filter prints only outcomes with test or package names, which is the
+evidence to post on #158: `pass` for `lifecycle` and `promoted-replay` and their subtests on
+`sqlite` and `postgres`, and `skip` for every other group. Do not publish `-v` or
+raw `-json` output without checking it for sensitive material. A missing
+manifest skips locally but fails with the required switch, and a present manifest
+without the mutation switch fails before AWS use. Stop the database container
+afterwards (`docker rm -f hikyo-ci-postgres`).
 
 ## 4. Rerunning one failed test
 
@@ -109,8 +117,8 @@ match `hikyo-e2e-<RUN>*`, so these prefixes need no new IAM. Rerun inside the
 ```
 
 with the same environment, pointing `HIKYO_TEST_AWS_REAL_MANIFEST` at the new
-copy. Reconcile any uncertain secrets from the failed run (the cleanup identity
-force-deletes recorded ARNs) before reusing a namespace.
+copy. A failed run's cleanup force-deletes the ARNs it recorded; `check` lists
+anything left, and teardown removes it.
 
 ## 5. Teardown
 
@@ -121,9 +129,12 @@ bash docs/testing/aws-sandbox/smoke-sandbox.sh teardown <RUN>
 bash docs/testing/aws-sandbox/smoke-sandbox.sh check
 ```
 
-Teardown deletes the users' access keys, policies and users, deletes the alias,
-and schedules the key for deletion in 7 days. The final `check` must show no
-`hikyo-smoke-*` users or policies and the key in `PendingDeletion`. Then delete
+Teardown first force-deletes any secret left under `hikyo-e2e-RUN/` or a rerun
+prefix `hikyo-e2e-RUNrN/` (a test timeout skips the test's own cleanup), restoring
+a pending deletion first. It then deletes the users' access keys, policies and
+users, deletes the alias, and schedules the key for deletion in 7 days. The final
+`check` must show no `hikyo-e2e-*` secrets, no `hikyo-smoke-*` users or policies,
+and the key in `PendingDeletion`. Then delete
 the local directory (`rm -rf "$DIR"`).
 
 ## Policy templates and tokens
@@ -162,7 +173,7 @@ endpoint.
 
 ## Child-process replay custody
 
-`promoted-replay` launches the already-built test executable, not a new Go build.
+`lifecycle` launches the already-built test executable, not a new Go build.
 A bounded anonymous stdin pipe carries the original test root and database DSN;
 argv and environment contain neither. The writer descriptor stays sealed in SQL
 until the child uses the normal loader. Oracle and cleanup credentials are not
