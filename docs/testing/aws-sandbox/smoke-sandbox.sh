@@ -180,7 +180,7 @@ list_run_secrets() {
 alias_key() {
 	local json
 	json=$(aws_ kms list-aliases) || return 1
-	jq -r --arg n "alias/hikyo-smoke-$1" '[.Aliases[] | select(.AliasName == $n)] |
+	jq -r --arg n "alias/hikyo-smoke-$1" '[(.Aliases // [])[] | select(.AliasName == $n)] |
 		if length > 1 then error("duplicate \($n)")
 		elif length == 1 then (.[0].TargetKeyId // error("\($n) has no target key"))
 		else empty end' <<<"$json"
@@ -323,7 +323,7 @@ cmd_provision() {
 	printf '===== end manifest.json =====\n'
 	local file
 	for file in static static-expired oracle cleanup; do
-		printf '===== %s.json (SECRET, copy this line, then: pbpaste > %s.json && jq -e . %s.json) =====\n' "$file" "$file" "$file"
+		printf '===== %s.json (SECRET: copy the next line and write it as in section 2 of the runbook) =====\n' "$file"
 		case $file in
 		static) printf '%s\n' "$d_static" ;;
 		static-expired) printf '%s\n' "$d_expired" ;;
@@ -398,6 +398,7 @@ cmd_teardown() {
 		fi
 		printf 'secret %s force-deleted\n' "$name"
 	done <<<"$secrets"
+	((${#pending[@]} == 0)) || printf 'secrets not yet deleted: %s; continuing teardown\n' "${pending[*]}" >&2
 	for user in ${present[@]+"${present[@]}"}; do
 		keys=$(aws_ iam list-access-keys --user-name "$user" --query 'AccessKeyMetadata[].AccessKeyId' --output text)
 		for id in $keys; do
@@ -423,7 +424,7 @@ cmd_teardown() {
 	for key in $keys; do
 		meta=$(aws_ kms describe-key --key-id "$key" --query 'KeyMetadata.[KeyManager,KeyState]' --output text)
 		[[ $meta =~ ^CUSTOMER[[:space:]]+(Enabled|Disabled)$ ]] || continue
-		tag=$(aws_ kms list-resource-tags --key-id "$key" | jq -r '[.Tags[] | select(.TagKey == "hikyo-smoke") | .TagValue] | first // ""')
+		tag=$(aws_ kms list-resource-tags --key-id "$key" | jq -r '[(.Tags // [])[] | select(.TagKey == "hikyo-smoke") | .TagValue] | first // ""')
 		[[ $tag == "$run" ]] || continue
 		aws_ kms schedule-key-deletion --key-id "$key" --pending-window-in-days 7 >/dev/null
 		aws_ kms describe-key --key-id "$key" --query 'KeyMetadata.[KeyId,KeyState,DeletionDate]' --output text

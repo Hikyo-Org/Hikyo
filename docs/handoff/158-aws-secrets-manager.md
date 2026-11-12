@@ -16,8 +16,9 @@ multi-target seam (targets, outbox, health, pause/resume, retain-or-prune).
   (plus its authentic expired session for the credential fence), separate
   oracle and cleanup IAM users, and one customer KMS key. That manifest runs
   `preflight-static`, `lifecycle` and `promoted-replay` on SQLite and
-  PostgreSQL, and `iam-denial`, which proves the writer's value read and force
-  delete are refused by explicit identity-policy denies. It caps creates at 17
+  PostgreSQL, and `iam-denial`, which is to prove (pending the owner's run)
+  that the writer's value read and force delete are refused by explicit
+  identity-policy denies. It caps creates at 17
   (15 nominal) and skips or logs every other group with its owner from the
   map. The real lane accepts no other manifest shape. Individual failed tests may be rerun under a new prefix.
   Only the oracle identity may call `GetSecretValue`; the writer policy

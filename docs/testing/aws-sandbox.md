@@ -11,8 +11,8 @@ path. History lives in [aws-acceptance-history.md](aws-acceptance-history.md).
 Criterion 6 of #158: value delivery to AWS, a production API with no value-read
 operation, replay safety and cleanup. `preflight-static` binds the three
 identities, `lifecycle` and `promoted-replay` run on SQLite and on PostgreSQL,
-and `iam-denial` proves the writer's value read and force delete are refused by
-the explicit denies in its policy. Every other group skips or is logged, and
+and `iam-denial` is to prove, once the smoke has run, that the writer's value
+read and force delete are refused by the explicit denies in its policy. Every other group skips or is logged, and
 [aws-acceptance-matrix.md](aws-acceptance-matrix.md) names its owner. The
 smoke uses one static writer (an IAM user with a temporary session), a separate
 oracle identity that alone may call `GetSecretValue` on synthetic secrets, and a
@@ -176,12 +176,14 @@ printf 'TestAWSSecretsManagerRealSmoke/%s\n' preflight-static iam-denial \
 } | sort > "$DIR/required.txt"
 awk '$1 == "pass" { print $2 }' "$DIR"/outcomes-*.txt | sort -u |
   comm -23 "$DIR/required.txt" -
-grep -h '^fail TestAWSSecretsManagerRealSmoke$' "$DIR"/outcomes-*.txt
+grep -hE '^(fail|build-fail) (TestAWSSecretsManagerRealSmoke|github.com/Hikyo-Org/hikyo/internal/isolation)$' "$DIR"/outcomes-*.txt
 ```
 
-A later rerun's root `pass` does not cancel an earlier root `fail`: the second
-command prints every root failure, and each one needs its cause (usually a
-cleanup the test reported) checked and recorded with the evidence. `check`
+A later rerun's `pass` does not cancel an earlier failure: the second command
+prints every root and package failure, and each one needs its cause checked
+and recorded with the evidence. A root failure usually means a cleanup the test
+reported. A package failure with no root line means that run timed out or did
+not build, so its cleanup never ran. `check`
 after teardown must still come back clean.
 
 ## 5. Teardown
