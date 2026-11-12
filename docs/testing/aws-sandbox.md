@@ -35,8 +35,9 @@ bash docs/testing/aws-sandbox/smoke-sandbox.sh provision
 `PendingDeletion` is marked for review, and it lists leftover `hikyo-e2e-*`
 secrets and `hikyo-smoke-*` users and policies. `provision` and `teardown`
 refuse to run unless the caller is the account root user. `provision` prints a
-random `RUN` inside its teardown command. Pass your own `[a-z0-9]{8,12}` value as
-the optional argument to choose it.
+random `RUN` (10 lowercase hex digits) inside its teardown command. Pass your
+own 10-hex-digit value as the optional argument to choose it. The fixed length
+keeps one run's `hikyo-e2e-RUN*` policy patterns from reaching another run.
 
 `provision` creates, all in eu-central-1:
 
@@ -69,6 +70,15 @@ cat > oracle.json
 cat > cleanup.json
 ls -l                      # expect -rw------- on all five files
 ```
+
+The manifest has the layout of
+[manifest.example.json](aws-sandbox/manifest.example.json): account, region,
+`authorization_id`, `budget_usd`, `prefix`, `kms_key_arn`, `expires_at`, the
+`static` writer (`credential_file`, `expired_credential_file`, `principal_arn`),
+and the `oracle` and `cleanup` identities (`credential_file`, `principal_arn`).
+File names are relative to the manifest's directory. Each descriptor is one JSON
+line with `mode` `static`, `region`, `access_key_id`, `secret_access_key` and
+`session_token`.
 
 The fixture refuses symlinks, non-regular files, group or world permissions,
 files over 32 KiB, and a manifest past its `expires_at`. The first run writes a
@@ -113,14 +123,22 @@ the same `static.json`, `static-expired.json`, `oracle.json` and `cleanup.json`
 into it. Write a new `manifest.json` that is the original with only `prefix`
 changed to `hikyo-e2e-<RUN>r1/` (then `r2`, and so on). The policy templates
 match `hikyo-e2e-<RUN>*`, so these prefixes need no new IAM. Rerun inside the
-2-hour window, narrowing with `-run`:
+2-hour window, narrowing with `-run` and keeping `preflight-static` so the
+identities are checked first. A failed `lifecycle` engine:
 
 ```sh
-  go test ./internal/isolation -run '^TestAWSSecretsManagerRealSmoke$/^lifecycle$/^postgres$' -count=1 -parallel=1 -timeout=30m
+  go test -json ./internal/isolation -run '^TestAWSSecretsManagerRealSmoke$/^(preflight-static|lifecycle)$/^postgres$' -count=1 -parallel=1 -timeout=30m
 ```
 
-with the same environment, pointing `HIKYO_TEST_AWS_REAL_MANIFEST` at the new
-copy. A failed run's cleanup force-deletes the ARNs it recorded; `check` lists
+`iam-denial` probes `static/sqlite/document`, which only `lifecycle` on SQLite
+creates in the same prefix, so rerun it together with that engine (6 creates):
+
+```sh
+  go test -json ./internal/isolation -run '^TestAWSSecretsManagerRealSmoke$/^(preflight-static|lifecycle|iam-denial)$/^sqlite$' -count=1 -parallel=1 -timeout=30m
+```
+
+with the same environment and `jq` filter, pointing
+`HIKYO_TEST_AWS_REAL_MANIFEST` at the new copy. A failed run's cleanup force-deletes the ARNs it recorded; `check` lists
 anything left, and teardown removes it.
 
 ## 5. Teardown
