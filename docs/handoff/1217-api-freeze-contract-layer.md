@@ -99,7 +99,7 @@ violation. Each refused item is a named case in
 | Closed enum value removed from a response header, fixture and `Hikyo-Audit-Receipt` | Refused. Permanent fixture `remove-response-header-enum-value-fails` |
 | Closed enum growth in a response header, `Hikyo-Audit-Receipt` to `[v1, mldsa65]` or `[v1, mldsa44]` | Refused. Permanent fixture `grow-closed-response-header-enum-fails` |
 | Request media type renamed within the JSON family | Refused |
-| Property removed from an unreferenced component (`AuditExportReceipt`, `AuditExportReceiptLine`) | Refused. Owner decision taken by default: the gate is extended to components, with no spec edit. See below |
+| Property removed from an unreferenced component (`AuditExportReceipt`, `AuditExportReceiptLine`) | Refused, because the layer walks every component. This is the fail-closed interim, not an owner decision: the decision is still pending, see "Owner decisions to confirm" |
 | Deleted `allOf`, `anyOf`, `oneOf`, `prefixItems` branch in parameter or header schemas and in parameter or header `content` | Refused |
 | Deleted `prefixItems` entry in a request or response body | Refused |
 | Deleted `patternProperties`, `dependentSchemas`, `dependentRequired` or discriminator entries | Refused |
@@ -118,6 +118,68 @@ violation. Each refused item is a named case in
 | First review of this work: directionless edits under `not`, `if` and `oneOf` (real spec `PrepareRemotePairingRequest`), YAML 1.1 booleans (real spec `UpdateStatus.channel` `off`), request encoding headers, deep refs, a ref into `paths` | Refused, in `TestFreezeContractRefusesDirectionlessAndMisreadChanges` and the real-spec test. The ref into `paths` is an error rather than a panic |
 | Every change inside an existing callback refused, additions included (#1125) | Accepted, unchanged. `api/openapi.yaml` declares no callbacks. Revisit when one is needed |
 | `$ref` inside response-header `content` makes diffing fail with an error | Accepted, unchanged. It fails closed, without a specific diagnostic |
+
+## Reproduction on `dev` at `426bf59ce`
+
+The issue body described the guard as dormant; it has been live since
+`v1.0.0` was cut. Each gap already has a case from #1232 that fails if the gap reopens, so
+no case was added for this pass. Run verbosely with
+`GOMAXPROCS=2 go test -p 2 ./api -run 'TestFreezeContractRefuses' -v -count=1`,
+every case below passed, meaning `CheckFreeze` refuses it, except the three
+subtests in the last row, which live in another test function and failed for a
+fixture reason, since repaired (below). Each passing case logs the violation
+named here at the mutated location, not an incidental one. The `content` deletion cases also
+add an `x-other` extension to keep the object non-empty; the deletion itself
+is reported separately (`.../content/application~1json removed`).
+
+| Gap | Case (`TestFreezeContractRefusesForbiddenChanges` unless noted) | Violation logged |
+|---|---|---|
+| Security alternative next to `{}` | `security alternative removed, anonymous kept`, `security emptied`; real spec `samlStart ...` | `hikyo-contract-changed` at `.../post/security` |
+| Closed enum value removed from a response header | `response header enum value removed`; real spec `Hikyo-Audit-Receipt enum value removed` | `hikyo-contract-removed` at `.../headers/hikyo-audit-receipt/schema/enum` (the real-spec case mutates the first of the four export operations only) |
+| Closed enum growth in a response header | `response header enum grown`, `... by mldsa65`; real spec `... grown by mldsa65`, `... mldsa44` | `hikyo-contract-added` at the same `enum` |
+| Request media type rename in the JSON family | `request media type renamed to ...` (vendor, problem+json) | `hikyo-contract-removed` on `application~1json` and `hikyo-contract-added` on the new name |
+| Component schema no operation references | `property removed from an unreferenced component`; real spec `AuditExportReceipt ...`, `AuditExportReceiptLine ...` | `hikyo-contract-removed` at `/components/schemas/<name>/properties/...` |
+| Deleted `allOf`, `anyOf`, `oneOf`, `prefixItems` branch in parameter or header schema or `content` | `<keyword> branch deleted in param`, `header`, `param-content`, `header-content` (16 cases) | `hikyo-contract-changed` at `.../schema/<keyword>` |
+| Deleted body `prefixItems` entry | `prefixItems entry deleted in request`, `... in response` | `hikyo-contract-changed` at `.../schema/prefixItems` |
+| Deleted `patternProperties`, `dependentSchemas`, `dependentRequired`, discriminator entry | `<keyword> entry deleted in param`, `header` | `hikyo-contract-removed` or `-changed` at `.../schema/<keyword>` |
+| Media type swapped, `content` replaced by `schema`, `content` deleted, enum or type change inside `content` | `media type swapped in ...`, `... content replaced by schema`, `... content deleted`, `enum value removed in ...`, `type changed in ...` | `hikyo-contract-added` and `-removed` on the media type, `-added` on `schema`, `-removed` on `enum`, `-changed` on `type` |
+| Link, encoding and callback changes | `link ... changed`, `encoding ... changed`, `encoding header removed`, `property removed inside an encoding header`, `callback expression removed`, `... renamed` | `hikyo-contract-changed` at the link or encoding keyword; `-removed` at `.../headers/x-enc` (header removed) or `.../headers/x-enc/schema/properties/eb` (property removed); `-changed` at `.../callbacks/cb` |
+| Request narrowing | `items added to a request array`, `additionalProperties false added ...`, `not added ...`, `pattern added ...`, `required names an undeclared request property`, `required grows inside a parameter schema` | `hikyo-contract-added` at the added keyword |
+| Nested header schema change, OAuth flows, server variables, parameter serialization, malformed `x-extensible-enum` | the remaining cases in the same test | `hikyo-contract-changed` or `-removed` at the exact keyword |
+| Request encoding header gains `items`, `additionalProperties`, a required property | `TestFreezeContractRefusesDirectionlessAndMisreadChanges/request_encoding_header_gains_*` | **Failed at `426bf59ce` for a fixture reason, repaired by #1298, see below** |
+
+### Mutation sweep of the real spec
+
+A scratch probe, not committed, took every node of `api/openapi.yaml` outside
+prose (28,377 of 30,399), deleted it, and for strings and booleans also edited
+it, then ran the document layer against the original, on `426bf59ce`. Deleting
+a list element replaced it with a marker, so list shrinkage is not covered here
+(the explicit cases cover it), and neither are additions or numeric edits. A
+mutation that left a `$ref` unresolvable errored, which is the fail-closed side
+(2,197 deletions, 4,810 edits). The only mutations the layer let through were
+257 shapes, every one a `required` edit: an entry dropped from a component
+schema that no response reaches (checked independently by following `$ref`s
+from every response, header and callback), or a parameter's `required` going
+from true to false. The ADR counts both as additive, so the sweep found no gap.
+
+### Items already satisfied without a diff
+
+- The `docs/handoff/oasdiff-freeze-policy.md` wording was corrected by #1232
+  ("The guard is live, not dormant").
+- The issue's "Done when" item on `docs/release/acceptance-1.0.md` is met:
+  rows S1 and the API/CLI freeze row link #1217 and this handoff.
+
+### Three failing subtests at `426bf59ce`, not caused by the gate
+
+`request_encoding_header_gains_items`, `..._additionalProperties` and
+`..._a_required_property` failed at `426bf59ce` with `gate errored: ... failed
+to unmarshal data`. The `encoded` fixture in
+`TestFreezeContractRefusesDirectionlessAndMisreadChanges` closed
+`"requestBody"` with one `}` too many, so neither side parsed. This pass did
+not edit them; [#1292](https://github.com/Hikyo-Org/Hikyo/issues/1292) was
+repaired in [#1298](https://github.com/Hikyo-Org/Hikyo/pull/1298). With the
+extra `}` removed in a scratch copy before that, the gate refused all three
+with one `hikyo-contract-*` violation each, and they pass on the rebased tree.
 
 ## Known false refusals, accepted
 
@@ -149,11 +211,32 @@ decision 3.
 
 ## Owner decisions to confirm
 
-1. **Unreferenced components are frozen.** Removing a property from
-   `AuditExportReceipt` is refused, and so is removing, renaming or inlining
-   any component schema, even where the inlined shape is identical. The
-   alternative, referencing the receipt schemas from the export operations,
-   would itself be a spec change checked against v1.0.0.
+1. **Pending: are unreferenced components part of the promise?** Today the
+   layer freezes them. Removing a property from `AuditExportReceipt` is
+   refused, and so is removing, renaming or inlining any component schema,
+   even where the inlined shape is identical. Two root schemas have no
+   reference from any operation: `AuditExportReceiptLine` and
+   `AdapterVisibility`. `AuditExportReceipt` is reachable only through the
+   first. The export descriptions promise the receipt schemas, so the
+   question is real. Options:
+   - **A. Freeze components (the interim, no change).** Every component is
+     frozen whether or not an operation reads it. Cost: the receipt schemas
+     stay undiscoverable from the operations, so generated clients carry no
+     receipt type. Recommended: it keeps the receipt schemas as promised
+     and needs neither an ADR amendment nor any change to the gate or the
+     spec.
+   - **B. Reference the schemas from the spec.** Measured against v1.0.0 on
+     this tree: pointing the `application/x-ndjson` response schema at
+     `AuditExportReceiptLine` is refused (`hikyo-contract-added` on `$ref`,
+     `hikyo-contract-removed` on `type`), because it changes an existing
+     media type's schema. A second response media type that references it
+     passes the gate, but it documents a media type the server does not
+     serve, and the freeze makes that permanent. Doing B honestly therefore
+     needs an ADR amendment to `api-cli-surface.md`.
+   - **C. Exempt unreferenced components from the gate.** Code change in
+     `reach` and `components`. Cost: the receipt schemas the descriptions
+     promise become editable after the freeze, which contradicts those
+     descriptions.
 2. **The allowlist false refusals above** (`response-header-added`,
    `response-property-deprecated`, the `ID` description edit) stay refused
    until the allowlist is changed deliberately.
