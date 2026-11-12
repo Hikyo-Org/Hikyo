@@ -1,6 +1,9 @@
 # Rule set taken from the static-analysis findings that recurred in PR review.
-# The gate is new-code-only (scripts/ci/golangci-lint-new.sh): the existing
+# This is the new-code pass of scripts/ci/golangci-lint-new.sh: the existing
 # baseline is not enforced, only issues on lines changed since the merge base.
+# wastedassign, unused and staticcheck SA4006/SA4009 hold at zero and run in the
+# strict pass (.golangci-strict.yml) on whole changed packages, so they are left
+# out here to avoid reporting a finding twice.
 version: "2"
 linters:
   default: none
@@ -9,15 +12,14 @@ linters:
     - errorlint
     - errchkjson
     - noctx
-    - wastedassign
-    - unused
     - staticcheck
     - gosec
   settings:
     # A configured list replaces staticcheck's default (SA, S, ST and QF checks);
     # only the checks that recurred in review are kept, not style suggestions.
+    # SA4006 and SA4009 belong to the strict pass.
     staticcheck:
-      checks: ["SA*", "QF1001", "QF1003"]
+      checks: ["SA*", "-SA4006", "-SA4009", "QF1001", "QF1003"]
     gosec:
       includes: [G115, G204, G306]
   exclusions:

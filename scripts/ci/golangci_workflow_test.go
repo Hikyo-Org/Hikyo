@@ -260,9 +260,10 @@ func golangciConfigProblems(raw string) []string {
 	slices.Sort(enabled)
 	check("version", config.Version, "2")
 	check("linters.default", config.Linters.Default, "none")
-	check("linters.enable", enabled, []string{"errcheck", "errchkjson", "errorlint", "gosec", "noctx", "staticcheck", "unused", "wastedassign"})
-	// A configured list replaces staticcheck's default of SA, S, ST and QF.
-	check("staticcheck.checks", config.Linters.Settings.Staticcheck.Checks, []string{"SA*", "QF1001", "QF1003"})
+	check("linters.enable", enabled, []string{"errcheck", "errchkjson", "errorlint", "gosec", "noctx", "staticcheck"})
+	// A configured list replaces staticcheck's default of SA, S, ST and QF. SA4006
+	// and SA4009 are excluded because the strict config owns them.
+	check("staticcheck.checks", config.Linters.Settings.Staticcheck.Checks, []string{"SA*", "-SA4006", "-SA4009", "QF1001", "QF1003"})
 	check("gosec.includes", config.Linters.Settings.Gosec.Includes, []string{"G115", "G204", "G306"})
 	check("exclusion rules", len(config.Linters.Exclusions.Rules), 1)
 	if len(config.Linters.Exclusions.Rules) == 1 {
@@ -287,8 +288,13 @@ func TestGolangciConfigIsPinned(t *testing.T) {
 	for name, mutate := range map[string]func(string) string{
 		"extra linter":   func(s string) string { return strings.Replace(s, "    - gosec\n", "    - gosec\n    - revive\n", 1) },
 		"dropped linter": func(s string) string { return strings.Replace(s, "    - noctx\n", "", 1) },
+		"strict linter back": func(s string) string {
+			return strings.Replace(s, "    - gosec\n", "    - gosec\n    - wastedassign\n", 1)
+		},
+		"SA4006 back": func(s string) string { return strings.Replace(s, `"-SA4006", `, "", 1) },
+		"SA4009 back": func(s string) string { return strings.Replace(s, `"-SA4009", `, "", 1) },
 		"default staticcheck": func(s string) string {
-			return strings.Replace(s, `      checks: ["SA*", "QF1001", "QF1003"]`+"\n", "", 1)
+			return strings.Replace(s, `      checks: ["SA*", "-SA4006", "-SA4009", "QF1001", "QF1003"]`+"\n", "", 1)
 		},
 		"widened staticcheck": func(s string) string { return strings.Replace(s, `"QF1003"`, `"QF*"`, 1) },
 		"widened gosec":       func(s string) string { return strings.Replace(s, "[G115, G204, G306]", "[G115, G204, G306, G104]", 1) },

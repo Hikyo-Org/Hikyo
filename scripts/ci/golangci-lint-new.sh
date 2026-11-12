@@ -7,7 +7,7 @@
 # never part of a required job.
 # Usage: scripts/ci/golangci-lint-new.sh BASE
 # It lints the work tree it runs in (the hook runs this script from a detached
-# worktree at the pushed commit, so the tool pin, .golangci.yml and this script
+# worktree at the pushed commit, so the tool pin, both configs and this script
 # all come from that commit).
 set -eu
 

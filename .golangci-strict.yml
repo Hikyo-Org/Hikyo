@@ -1,5 +1,6 @@
 # These rules hold at zero across the repo, so the strict pass of
-# scripts/ci/golangci-lint-new.sh checks whole changed packages, not just new lines.
+# scripts/ci/golangci-lint-new.sh checks whole changed packages, not just new lines
+# (.golangci.yml leaves them out). A moved file counts as a change to both packages.
 # Package scope suffices: unused reports only unexported identifiers, and
 # wastedassign, SA4006 and SA4009 are function-local, so a finding can only
 # appear in a package whose files changed.

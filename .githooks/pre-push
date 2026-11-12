@@ -92,9 +92,10 @@ require_storybook() {
 	mv "$stamps.$$" "$stamps" || return 1
 }
 
-# Lint the new Go code of the pushed commit $1 against $2. It runs in a
+# Run the golangci-lint ratchet (new-code rules, then the strict rules on whole
+# changed packages) for the pushed commit $1 against $2. It runs in a
 # detached worktree at exactly that commit, and the ratchet script, its pin and
-# .golangci.yml come from that commit too (the hook checkout's copy of the
+# both configs come from that commit too (the hook checkout's copy of the
 # script is used only when the commit has none), so the work tree you push from,
 # whichever branch it has checked out and any uncommitted or untracked file never
 # change the verdict, and it matches ci-advisory-golangci. Exit 64 is the hook's
@@ -102,7 +103,7 @@ require_storybook() {
 # (run through `go run`, which turns every tool exit code into 1), so findings
 # and tool failures cannot be told apart.
 require_golangci() {
-	printf 'pre-push: running the golangci-lint ratchet on new Go code (HIKYO_PREPUSH_GOLANGCI=skip skips it for WIP pushes)\n' >&2
+	printf 'pre-push: running the golangci-lint ratchet (new code, then strict rules on changed packages) (HIKYO_PREPUSH_GOLANGCI=skip skips it for WIP pushes)\n' >&2
 	# The pushed commit's script, or the hook checkout's when the commit predates it.
 	if git cat-file -e "$1:scripts/ci/golangci-lint-new.sh" 2>/dev/null; then
 		ratchet=scripts/ci/golangci-lint-new.sh
