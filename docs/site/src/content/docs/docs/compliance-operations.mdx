@@ -107,3 +107,48 @@ Project automation is restricted to its owning project subtree. It cannot
 become an instance-wide collector by selecting a different route. A routine
 encrypted backup remains the supported broader off-box copy; do not replace
 it with a project credential granted authority outside its project.
+
+## Rejected authentication and early refusals
+
+Invalid, unknown, expired or revoked session and machine credentials, conflicting
+cookie and bearer credentials, malformed DPoP proofs, CSRF mismatches and
+admission refusals (per-source, per-account backoff and per-session limits, and
+discovery throttles) keep the same uniform response. Hikyo also counts them in a bounded summary event, `auth.request_refused`, on the
+instance security trail. Failed passwords, developer credentials, federation and
+SCIM binding mismatches keep their own events and are not counted a second time;
+authenticated denials stay `grant.denied`.
+
+Read the summaries with the instance audit view or the `hikyo audit query` and
+`hikyo audit export` commands shown above, adding `--operation auth.request_refused`.
+They are instance events with the same access requirements as the rest of that
+trail; tenant audit views do not include them.
+
+- A summary covers a 60-second datastore-time window and appears shortly after
+  the window closes, not instantly.
+- Each window yields at most five summaries, one per stage: `artifact`,
+  `credential-conflict`, `proof`, `csrf` and `admission`. Each carries the
+  `count` of updates committed to the window, plus an `unsampled_count` for
+  requests beyond the shared limit of 32 samples per window. The first 32
+  samples of a window win, so an early flood can crowd out a later source.
+- A sample holds the canonical source IP, a server-generated request id and the
+  matched operation name, or `unmatched`. It never holds a credential, proof,
+  password, attempted username, request body, raw path or query, or user-agent text.
+- The request id matches the `X-Hikyo-Request-ID` response header, so a replay of
+  a revoked token can be tied to its sample. Under a flood a given request may
+  have no sample.
+- Counts are attempts, not people, tokens or accounts. A summary does not say why
+  a credential was refused, and no account is locked out by it.
+- If recording fails or exceeds its 100 ms deadline, the refusal response is
+  unchanged and the failure shows in `hikyo_auth_refusal_accounting_failures_total`.
+  Hikyo does not claim lossless recording during a datastore outage. Alert on
+  that counter, on `hikyo_auth_refusal_accounting_healthy` being `0`, and on a
+  pending window older than about 65 seconds (datastore time, so check clock
+  health when reading the age). The series are listed in the
+  [metrics reference](/docs/configuration/#operational-metrics).
+
+An empty result is not evidence that no attempts happened: a window is published
+only after it ends, and while recording is pending, failing or unmonitored nothing
+distinguishes quiet from blind. Check the health series first.
+
+Source addresses come from the configured trusted-proxy policy only. Forwarded
+headers from other peers are ignored.

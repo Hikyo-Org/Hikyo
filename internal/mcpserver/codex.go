@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+
+	"github.com/Hikyo-Org/hikyo/internal/audit"
 )
 
 // CodexPath is an explicit stateless compatibility boundary. The modern /mcp
@@ -131,6 +133,7 @@ func codexVersionError(w http.ResponseWriter, id json.RawMessage) {
 
 func (h *handler) serveCodexLifecycle(w http.ResponseWriter, r *http.Request, envelope rpcEnvelope, params map[string]json.RawMessage) {
 	if h.admission != nil && !h.admission.AllowDiscovery(h.sourceIP(r)) {
+		audit.NoteRefusal(r.Context(), audit.RefusalAdmission)
 		w.Header().Set("Retry-After", "60")
 		http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 		return

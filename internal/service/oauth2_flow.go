@@ -172,7 +172,7 @@ func (s *Auth) OAuth2Start(ctx context.Context, slug, purpose, intent, signupOrg
 	// unthrottled Argon2 oracle; the per-IP admission slot is already held, so
 	// this adds only the account-scoped delay, never a second slot.
 	if purpose != purposeLogin && purpose != purposeClaim {
-		if s.Admission.AccountDelay(account.ID) > 0 {
+		if s.Admission.AccountInBackoff(ctx, account.ID) {
 			return OIDCStartResult{}, admission.ErrOverloaded
 		}
 	}

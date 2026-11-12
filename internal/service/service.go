@@ -263,6 +263,7 @@ func (a Actor) resolveSelf(ctx context.Context, az *authz.TxAuthorizer, now time
 		return authz.Identity{Principal: a.principal}, nil
 	}
 	if a.bearer == "" {
+		audit.NoteRefusal(ctx, audit.RefusalArtifact)
 		return authz.Identity{}, domain.ErrUnauthenticated
 	}
 	return az.AuthenticateSelfSurface(ctx, a.bearer, now)

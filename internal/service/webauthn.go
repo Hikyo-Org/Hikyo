@@ -922,7 +922,7 @@ func (s *Auth) finishAssertionElevation(ctx context.Context, presented string, r
 	expectedBinding := ceremony.OperationBinding
 
 	// Per-account admission (A2): the account is known up front for step-up and
-	// reauth, so check AccountDelay + Enter the expensive-work budget before the
+	// reauth, so check AccountInBackoff + Enter the expensive-work budget before the
 	// signature verification, exactly as the factor proof paths do. Held across
 	// the verification and the write tx; a bad assertion advances the backoff.
 	release, err := s.enterFactorBudget(ctx, account.ID)

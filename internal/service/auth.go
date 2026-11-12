@@ -348,7 +348,7 @@ func (s *Auth) LocalLogin(ctx context.Context, username, password string, artifa
 	// no work at all, denying logins to everyone else — the throttle becoming
 	// the outage. An account in backoff is refused outright with the same
 	// uniform overload answer every other pre-auth path gives.
-	if delay := s.Admission.AccountDelay(username); delay > 0 {
+	if s.Admission.AccountInBackoff(ctx, username) {
 		return LoginResult{}, admission.ErrOverloaded
 	}
 

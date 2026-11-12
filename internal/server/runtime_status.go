@@ -43,6 +43,7 @@ func NewMaintenance(source RuntimeStatusSource, ui fs.FS, options PublicOptions)
 func (a *API) GetRuntimeStatus(ctx context.Context, _ apigen.GetRuntimeStatusRequestObject) (apigen.GetRuntimeStatusResponseObject, error) {
 	if a.Admission != nil {
 		if err := a.Admission.AdmitDiscovery(audit.FromContext(ctx).SourceIP); err != nil {
+			audit.NoteRefusal(ctx, audit.RefusalAdmission)
 			return runtimeStatusResponse{apigen.GetRuntimeStatus429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}}, nil
 		}
 	}
