@@ -2,9 +2,11 @@ package isolation
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -13,60 +15,32 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
-	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
 // This external negative oracle can attempt GetSecretValue only on an exact
 // synthetic ARN recorded by this run. It never broadens the production client.
-// SDK acquisition is independent of awssm.Client; a second STS check binds the
-// probe's credentials to the same approved role before the negative request.
-func (s *realAWSSandbox) denialActor(t *testing.T, mode, raw string) externalAWS {
+// A second STS identity check binds the probe's credentials to the same
+// approved principal before the negative request.
+func (s *realAWSSandbox) denialActor(t *testing.T, raw string) externalAWS {
 	t.Helper()
 	d, err := awssm.ParseDescriptor(raw)
-	if err != nil {
+	if err != nil || d.Mode != awssm.AuthStatic {
 		t.Fatal("invalid IAM negative descriptor")
 	}
-	var creds aws.Credentials
-	if d.Mode == awssm.AuthStatic {
-		creds = aws.Credentials{AccessKeyID: d.AccessKeyID, SecretAccessKey: d.SecretKey, SessionToken: d.SessionToken}
-	} else {
-		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-		defer cancel()
-		cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(s.manifest.Region), config.WithHTTPClient(&http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}))
-		if err != nil {
-			t.Fatal("IAM negative credential source unavailable")
-		}
-		provider := cfg.Credentials
-		if d.Mode == awssm.AuthAssumeRole {
-			provider = stscreds.NewAssumeRoleProvider(sts.NewFromConfig(cfg), d.RoleARN, func(o *stscreds.AssumeRoleOptions) {
-				o.ExternalID = aws.String(d.ExternalID)
-				o.RoleSessionName = "hikyo-acceptance-denial"
-				o.Duration = 15 * time.Minute
-			})
-		}
-		// writer() isolated the ambient chain and bound both workload modes
-		// to the approved projected token and exact role ARN. No profile,
-		// container source or instance metadata fallback is available.
-		creds, err = provider.Retrieve(ctx)
-		if err != nil || creds.SessionToken == "" {
-			t.Fatal("IAM negative temporary credentials unavailable")
-		}
-	}
+	creds := aws.Credentials{AccessKeyID: d.AccessKeyID, SecretAccessKey: d.SecretKey, SessionToken: d.SessionToken}
 	encoded, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: s.manifest.Region, AccessKeyID: creds.AccessKeyID, SecretKey: creds.SecretAccessKey, SessionToken: creds.SessionToken, STSOrigin: s.stsOrigin})
 	if err != nil {
 		t.Fatal("cannot bind IAM negative identity")
 	}
-	s.client(t, string(encoded), false, s.manifest.Writers[mode].PrincipalARN)
+	s.client(t, string(encoded), s.manifest.Writers["static"].PrincipalARN)
 	crypto.Zero(encoded)
 	return externalAWS{origin: s.origin, region: s.manifest.Region, account: s.manifest.Account, roots: s.roots, allowed: s.allowed, creds: creds}
 }
 
 func runRealAWSIAMDenial(t *testing.T, s *realAWSSandbox) {
 	t.Helper()
-	// One additional cleanup-owned synthetic canary stays live in the ambient
-	// namespace. It is in the full approved run but outside the static writer.
+	// One additional cleanup-owned synthetic canary stays live in a namespace
+	// no writer owns. It is inside the approved run but outside the static writer.
 	name := s.manifest.Prefix + "ambient/iam-canary"
 	var seeded struct {
 		ARN string `json:"ARN"`
@@ -94,19 +68,19 @@ func runRealAWSIAMDenial(t *testing.T, s *realAWSSandbox) {
 			t.Fatal(err)
 		}
 	}
-	s.checkWriterDenials(t, "static", own, name)
+	s.checkWriterDenials(t, own, name)
 }
 
-func (s *realAWSSandbox) checkWriterDenials(t *testing.T, mode, ownName, foreignName string) {
+func (s *realAWSSandbox) checkWriterDenials(t *testing.T, ownName, foreignName string) {
 	t.Helper()
-	raw, writer := s.writer(t, mode)
-	probe := s.denialActor(t, mode, raw)
+	raw, writer := s.writer(t, "static")
+	probe := s.denialActor(t, raw)
 	defer func() { probe.creds = aws.Credentials{} }()
 	if !s.manifest.ExpiresAt.After(time.Now()) {
 		t.Fatal("IAM negative run window expired")
 	}
 	ownARN, foreignARN := s.arn(t, ownName), s.arn(t, foreignName)
-	if !strings.HasPrefix(ownName, s.manifest.Prefix+mode+"/") || strings.HasPrefix(foreignName, s.manifest.Prefix+mode+"/") {
+	if !strings.HasPrefix(ownName, s.manifest.Prefix+"static/") || strings.HasPrefix(foreignName, s.manifest.Prefix+"static/") {
 		t.Fatal("IAM negative namespaces are not distinct")
 	}
 	// A broad policy causes only a harmless synthetic tag, followed by a hard
@@ -118,8 +92,44 @@ func (s *realAWSSandbox) checkWriterDenials(t *testing.T, mode, ownName, foreign
 	}
 	// Use the writer's OWN namespace after a successful value delivery, so a
 	// namespace or missing-secret error cannot masquerade as the no-read deny.
-	if err := externalAWSCall(t.Context(), probe, "GetSecretValue", map[string]any{"SecretId": ownARN, "VersionStage": "AWSCURRENT"}, nil); !realAWSCode(err, "AccessDeniedException") {
+	err = externalAWSCall(t.Context(), probe, "GetSecretValue", map[string]any{"SecretId": ownARN, "VersionStage": "AWSCURRENT"}, nil)
+	if !realAWSCode(err, "AccessDeniedException") {
 		t.Fatal("AWS did not deny a writer's synthetic value read")
+	}
+	if s.emulated() {
+		t.Log("explicit versus implicit deny skipped on the emulator: it grants no read, so it cannot tell NeverReadValues from an implicit deny, see docs/testing/aws-acceptance-matrix.md")
+		t.Log("NeverForceDelete probe skipped on the emulator: it evaluates no condition keys, so the conditional deny never matches and the probe would delete the secret, see docs/testing/aws-acceptance-matrix.md")
+		return
+	}
+	// An implicit deny also yields AccessDenied. Only AWS's own statement that
+	// an identity-based policy explicitly denied proves NeverReadValues applied.
+	switch realAWSDeny(err) {
+	case realAWSDenyExplicitIdentity:
+	case realAWSDenyImplicit:
+		t.Fatal("AWS denied the writer's value read only implicitly; NeverReadValues did not apply")
+	case realAWSDenyExplicitOther:
+		t.Fatal("AWS denied the writer's value read by a policy other than the identity-based NeverReadValues")
+	default:
+		t.Fatal("AWS did not state the deny kind for the writer's value read")
+	}
+	// NeverForceDelete is a conditional deny. The secret must be live before
+	// the probe, so surviving it proves the deny and not an earlier deletion.
+	s.requireLive(t, ownARN, "before the force-delete probe")
+	err = externalAWSCall(t.Context(), probe, "DeleteSecret", map[string]any{"SecretId": ownARN, "ForceDeleteWithoutRecovery": true}, nil)
+	if !realAWSCode(err, "AccessDeniedException") || realAWSDeny(err) != realAWSDenyExplicitIdentity {
+		t.Fatal("AWS did not explicitly deny the writer's force delete")
+	}
+	s.requireLive(t, ownARN, "after the denied force delete")
+}
+
+// requireLive reads metadata through the cleanup actor, never a value.
+func (s *realAWSSandbox) requireLive(t *testing.T, arn, when string) {
+	t.Helper()
+	var meta struct {
+		DeletedDate *float64 `json:"DeletedDate"`
+	}
+	if err := s.call(t.Context(), false, "DescribeSecret", arn, map[string]any{}, &meta); err != nil || meta.DeletedDate != nil {
+		t.Fatal("writer's own secret is not live " + when)
 	}
 }
 
@@ -205,4 +215,44 @@ func readRealAWSConsentMetadata(ctx context.Context, api awssm.API, before awssm
 		return awssm.SecretMetadata{}, errors.New("explicit consent metadata did not settle")
 	}
 	return meta, nil
+}
+
+func TestAWSRealFixtureDenyClassification(t *testing.T) {
+	const prefix = "User: arn:aws:iam::123456789012:user/w is not authorized to perform: secretsmanager:GetSecretValue on resource: arn:aws:secretsmanager:eu-west-1:123456789012:secret:x-AbCdEf "
+	for name, c := range map[string]struct {
+		message string
+		want    realAWSDenyKind
+	}{
+		"explicit-identity": {prefix + "with an explicit deny in an identity-based policy", realAWSDenyExplicitIdentity},
+		"explicit-trailing": {prefix + "with an explicit deny in an identity-based policy.", realAWSDenyExplicitIdentity},
+		"implicit":          {prefix + "because no identity-based policy allows the secretsmanager:GetSecretValue action", realAWSDenyImplicit},
+		"scp":               {prefix + "with an explicit deny in a service control policy", realAWSDenyExplicitOther},
+		"resource-based":    {prefix + "with an explicit deny in a resource-based policy", realAWSDenyExplicitOther},
+		"empty":             {"", realAWSDenyUnknown},
+		"unrelated":         {"Access to the resource is denied", realAWSDenyUnknown},
+		"lookalike-without": {prefix + "without an explicit deny in an identity-based policy", realAWSDenyUnknown},
+		"lookalike-no":      {prefix + "no explicit deny in an identity-based policy", realAWSDenyUnknown},
+		"lookalike-hyphen":  {prefix + "with an explicit deny in an identity-based-policy", realAWSDenyExplicitOther},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := classifyAWSDeny(c.message); got != c.want {
+				t.Fatalf("classified %q, want %q", got, c.want)
+			}
+		})
+	}
+	// The fixture keeps the enum only: neither the message nor its ARNs reach
+	// the error, and a non-AccessDenied failure carries no classification.
+	for code, want := range map[string]realAWSDenyKind{"AccessDeniedException": realAWSDenyExplicitIdentity, "ThrottlingException": realAWSDenyUnknown} {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"__type":"` + code + `","Message":"` + prefix + `with an explicit deny in an identity-based policy"}`))
+		}))
+		roots := x509.NewCertPool()
+		roots.AddCert(server.Certificate())
+		err := externalAWSCall(t.Context(), externalAWS{origin: server.URL, region: "eu-west-1", roots: roots, creds: aws.Credentials{AccessKeyID: "AKIAEXAMPLE", SecretAccessKey: "x"}}, "GetSecretValue", map[string]any{}, nil)
+		server.Close()
+		if !realAWSCode(err, code) || realAWSDeny(err) != want || strings.Contains(err.Error(), "arn:") {
+			t.Fatalf("%s: wrong deny classification or leaked message", code)
+		}
+	}
 }

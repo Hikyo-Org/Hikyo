@@ -2,6 +2,7 @@ package isolation
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
@@ -579,7 +580,9 @@ func externalAWSCall(ctx context.Context, env externalAWS, operation string, in,
 	}
 	if resp.StatusCode != http.StatusOK {
 		var e struct {
-			Type string `json:"__type"`
+			Type     string `json:"__type"`
+			Message  string `json:"message"`
+			MessageC string `json:"Message"`
 		}
 		if err := json.Unmarshal(raw, &e); err != nil || e.Type == "" {
 			e.Type = resp.Header.Get("X-Amzn-ErrorType")
@@ -589,7 +592,11 @@ func externalAWSCall(ctx context.Context, env externalAWS, operation string, in,
 			code = code[i+1:]
 		}
 		code, _, _ = strings.Cut(code, ":")
-		return &realAWSResponseError{code: code, status: resp.StatusCode}
+		failure := &realAWSResponseError{code: code, status: resp.StatusCode}
+		if code == "AccessDeniedException" {
+			failure.deny = classifyAWSDeny(cmp.Or(e.Message, e.MessageC))
+		}
+		return failure
 	}
 	if out != nil && json.Unmarshal(raw, out) != nil {
 		return errors.New("AWS fixture response invalid")

@@ -319,7 +319,7 @@ func TestAWSSecretsManagerReplayProcess(t *testing.T) {
 	}
 	t.Cleanup(func() { db.Close() })
 	h := &realAWSDurable{t: t, db: db, s: s, keyring: loadAndRegisterKeyring(t, db, bytes.Clone(input.Root)), clock: input.Clock, origin: s.origin}
-	h.configureRuntime("static")
+	h.configureRuntime()
 	h.worker.ID = fmt.Sprintf("real-aws-replay-%d", os.Getpid())
 	loader, ok := h.worker.Loader.(awsRealLoader)
 	if !ok {
