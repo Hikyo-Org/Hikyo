@@ -1,0 +1,298 @@
+#!/usr/bin/env bash
+# Provision, inspect and tear down the sandbox for the local real-AWS smoke
+# (`TestAWSSecretsManagerRealSmoke`, hikyo #158). Meant for AWS CloudShell in
+# eu-central-1, signed in as the sandbox account owner with MFA.
+#
+#   smoke-sandbox.sh check
+#   smoke-sandbox.sh provision [RUN]     RUN is [a-z0-9]{8,12}; random if omitted
+#   smoke-sandbox.sh teardown RUN
+#
+# provision creates one customer KMS key plus three IAM users (writer, oracle,
+# cleanup), renders the policy templates next to this script, mints 3-hour
+# GetSessionToken sessions and prints the manifest and descriptors to stdout.
+# Long-term access keys live only in shell variables. Nothing secret is written
+# to disk or logged; stdout carries the session credentials, so do not tee it.
+#
+# The global flags --endpoint-url and --ca-bundle exist only to dry-run this
+# script against a local emulator (Floci). They are refused for amazonaws.com.
+set -euo pipefail
+
+REGION=eu-central-1
+HERE=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+AWS_EXTRA=()
+DRY_RUN=0
+
+die() {
+	printf 'error: %s\n' "$*" >&2
+	exit 1
+}
+
+aws_() {
+	command aws --region "$REGION" --output json ${AWS_EXTRA[@]+"${AWS_EXTRA[@]}"} "$@"
+}
+
+need() {
+	local tool
+	for tool in aws jq; do
+		command -v "$tool" >/dev/null || die "$tool is required"
+	done
+}
+
+stamp() { date -u -d "+$1 seconds" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v "+${1}S" +%Y-%m-%dT%H:%M:%SZ; }
+
+valid_run() { [[ $1 =~ ^[a-z0-9]{8,12}$ ]] || die "RUN must match [a-z0-9]{8,12}: $1"; }
+
+# render TEMPLATE: substitute every ${TOKEN} from the environment, refuse leftovers.
+render() {
+	local out
+	out=$(sed \
+		-e "s|\${ACCOUNT}|$ACCOUNT|g" \
+		-e "s|\${REGION}|$REGION|g" \
+		-e "s|\${KMS_KEY_ARN}|$KMS_KEY_ARN|g" \
+		-e "s|\${RUN_SECRET_ARN_PATTERN}|$RUN_SECRET_ARN_PATTERN|g" \
+		-e "s|\${WRITER_SECRET_ARN_PATTERN}|$WRITER_SECRET_ARN_PATTERN|g" \
+		-e "s|\${AUTH_EXPIRES_AT}|$AUTH_EXPIRES_AT|g" \
+		-e "s|\${CLEANUP_EXPIRES_AT}|$CLEANUP_EXPIRES_AT|g" \
+		"$HERE/$1")
+	# shellcheck disable=SC2016 # the literal token marker is intended
+	[[ $out != *'${'* ]] || die "unresolved token left in $1"
+	jq -c . <<<"$out" || die "rendered $1 is not valid JSON"
+}
+
+# attach USER POLICY_NAME TEMPLATE: create a customer-managed policy and attach it.
+attach() {
+	local doc arn
+	doc=$(render "$3")
+	# Managed, not inline: IAM caps a user's inline policies at 2048 characters
+	# in total, and the rendered writer policy alone exceeds that.
+	arn=$(aws_ iam create-policy --policy-name "$1-$2" --policy-document "$doc" --query Policy.Arn --output text)
+	aws_ iam attach-user-policy --user-name "$1" --policy-arn "$arn"
+}
+
+parse_global() {
+	while (($#)); do
+		case $1 in
+		--endpoint-url)
+			[[ $# -ge 2 ]] || die "--endpoint-url needs a value"
+			local host=${2#*://}
+			host=${host%%[:/]*}
+			[[ $host != *amazonaws.com ]] || die "--endpoint-url must not target amazonaws.com"
+			AWS_EXTRA+=(--endpoint-url "$2")
+			DRY_RUN=1
+			shift 2
+			;;
+		--ca-bundle)
+			[[ $# -ge 2 ]] || die "--ca-bundle needs a value"
+			AWS_EXTRA+=(--ca-bundle "$2")
+			shift 2
+			;;
+		*)
+			REST+=("$1")
+			shift
+			;;
+		esac
+	done
+}
+
+banner() {
+	if ((DRY_RUN)); then
+		printf '*** DRY RUN against an emulator, not AWS ***\n' >&2
+	fi
+}
+
+# Resolve a key id from the alias; empty when the alias is gone.
+alias_key() {
+	aws_ kms list-aliases --query "Aliases[?AliasName=='alias/hikyo-smoke-$1'].TargetKeyId | [0]" --output text 2>/dev/null | sed 's/^None$//'
+}
+
+cmd_check() {
+	banner
+	local keys id
+	keys=$(aws_ kms list-keys --query 'Keys[].KeyId' --output text)
+	printf 'Customer KMS keys in %s:\n' "$REGION"
+	local found=0
+	for id in $keys; do
+		local meta
+		meta=$(aws_ kms describe-key --key-id "$id" --query KeyMetadata)
+		[[ $(jq -r .KeyManager <<<"$meta") == CUSTOMER ]] || continue
+		found=1
+		local state aliases mark=''
+		state=$(jq -r .KeyState <<<"$meta")
+		[[ $state == PendingDeletion ]] || mark='  REVIEW'
+		aliases=$(aws_ kms list-aliases --key-id "$id" --query 'Aliases[].AliasName' --output text)
+		printf '%s state=%s deletion=%s desc=%s aliases=%s%s\n' "$id" "$state" \
+			"$(jq -r '.DeletionDate // "-"' <<<"$meta")" "$(jq -r '.Description // "-"' <<<"$meta")" "${aliases:--}" "$mark"
+	done
+	((found)) || printf '(none)\n'
+	printf 'Leftover hikyo-smoke-* IAM users:\n'
+	local users
+	users=$(aws_ iam list-users --query "Users[?starts_with(UserName,'hikyo-smoke-')].UserName" --output text)
+	printf '%s\n' "${users:-(none)}"
+	local pols
+	pols=$(aws_ iam list-policies --scope Local --query "Policies[?starts_with(PolicyName,'hikyo-smoke-')].PolicyName" --output text)
+	printf 'Leftover hikyo-smoke-* managed policies:\n%s\n' "${pols:-(none)}"
+	if aws_ iam get-user --user-name hikyo-158-setup >/dev/null 2>&1; then
+		printf 'Historical IAM user hikyo-158-setup: EXISTS  REVIEW\n'
+	else
+		printf 'Historical IAM user hikyo-158-setup: absent\n'
+	fi
+}
+
+# mint_descriptor USER ACCESS_KEY SECRET SECONDS: GetSessionToken with the user's
+# long-term key (retried for IAM propagation), verify the session's principal is
+# the user ARN, print the one-line descriptor. Secrets reach aws and jq only
+# through the environment of that one command, never argv.
+mint_descriptor() {
+	local out s_ak s_sk s_tok principal desc
+	for _ in $(seq 12); do
+		if out=$(AWS_ACCESS_KEY_ID=$2 AWS_SECRET_ACCESS_KEY=$3 AWS_SESSION_TOKEN='' \
+			command aws --region "$REGION" --output json ${AWS_EXTRA[@]+"${AWS_EXTRA[@]}"} \
+			sts get-session-token --duration-seconds "$4" 2>/dev/null); then
+			break
+		fi
+		out=''
+		sleep 5
+	done
+	[[ -n $out ]] || die "no session token for $1 after 12 attempts (IAM propagation?)"
+	s_ak=$(jq -r .Credentials.AccessKeyId <<<"$out")
+	s_sk=$(jq -r .Credentials.SecretAccessKey <<<"$out")
+	s_tok=$(jq -r .Credentials.SessionToken <<<"$out")
+	principal=$(AWS_ACCESS_KEY_ID=$s_ak AWS_SECRET_ACCESS_KEY=$s_sk AWS_SESSION_TOKEN=$s_tok \
+		command aws --region "$REGION" --output text ${AWS_EXTRA[@]+"${AWS_EXTRA[@]}"} sts get-caller-identity --query Arn)
+	[[ $principal == "arn:aws:iam::$ACCOUNT:user/$1" ]] || die "session principal for $1 is not its user ARN"
+	desc=$(S_AK=$s_ak S_SK=$s_sk S_TOK=$s_tok REGION=$REGION jq -cn \
+		'{mode:"static",region:$ENV.REGION,access_key_id:$ENV.S_AK,secret_access_key:$ENV.S_SK,session_token:$ENV.S_TOK}')
+	((${#desc} <= 4096)) || die "descriptor for $1 exceeds 4096 bytes"
+	printf '%s' "$desc"
+}
+
+cmd_provision() {
+	local run=${1:-}
+	[[ -n $run ]] || run=$(LC_ALL=C tr -dc 'a-f0-9' </dev/urandom | head -c 10)
+	valid_run "$run"
+	banner
+	ACCOUNT=$(aws_ sts get-caller-identity --query Account --output text)
+	[[ $ACCOUNT =~ ^[0-9]{12}$ ]] || die "could not resolve the account"
+	AUTH_EXPIRES_AT=$(stamp 7200)
+	CLEANUP_EXPIRES_AT=$(stamp 10800)
+	RUN_SECRET_ARN_PATTERN="arn:aws:secretsmanager:$REGION:$ACCOUNT:secret:hikyo-e2e-$run*"
+	WRITER_SECRET_ARN_PATTERN="arn:aws:secretsmanager:$REGION:$ACCOUNT:secret:hikyo-e2e-$run*/static/*"
+
+	[[ -z $(alias_key "$run") ]] || die "alias/hikyo-smoke-$run already exists"
+	KMS_KEY_ARN=$(aws_ kms create-key \
+		--description "hikyo #158 smoke $run" \
+		--tags "TagKey=hikyo-smoke,TagValue=$run" \
+		--query KeyMetadata.Arn --output text)
+	aws_ kms create-alias --alias-name "alias/hikyo-smoke-$run" --target-key-id "$KMS_KEY_ARN" >/dev/null
+
+	local actor user ak_json ak sk d
+	local d_static d_expired d_oracle d_cleanup
+	for actor in writer oracle cleanup; do
+		user=hikyo-smoke-$run-$actor
+		aws_ iam create-user --user-name "$user" --tags "Key=hikyo-smoke,Value=$run" >/dev/null
+		case $actor in
+		writer)
+			attach "$user" writer writer.policy.json
+			attach "$user" static-lifecycle static-lifecycle.policy.json
+			;;
+		oracle) attach "$user" oracle oracle.policy.json ;;
+		cleanup) attach "$user" cleanup cleanup.policy.json ;;
+		esac
+		ak_json=$(aws_ iam create-access-key --user-name "$user")
+		ak=$(jq -r .AccessKey.AccessKeyId <<<"$ak_json")
+		sk=$(jq -r .AccessKey.SecretAccessKey <<<"$ak_json")
+		ak_json=''
+		d=$(mint_descriptor "$user" "$ak" "$sk" 10800)
+		case $actor in
+		writer) d_static=$d ;;
+		oracle) d_oracle=$d ;;
+		cleanup) d_cleanup=$d ;;
+		esac
+		d=''
+
+		# The lifecycle fence needs an authentic expired static session: the
+		# shortest STS allows is 900 s, so it is usable only after 15 minutes.
+		if [[ $actor == writer ]]; then
+			d_expired=$(mint_descriptor "$user" "$ak" "$sk" 900)
+		fi
+		ak=''
+		sk=''
+	done
+
+	printf '===== manifest.json (nonsecret) =====\n'
+	jq -cn --arg account "$ACCOUNT" --arg region "$REGION" --arg run "$run" --arg key "$KMS_KEY_ARN" \
+		--arg exp "$AUTH_EXPIRES_AT" --arg p "arn:aws:iam::$ACCOUNT:user/hikyo-smoke-$run-" \
+		'{account:$account,region:$region,authorization_id:("owner-smoke-"+$run),budget_usd:1,prefix:("hikyo-e2e-"+$run+"/"),
+		  kms_key_arn:$key,expires_at:$exp,
+		  writers:{static:{credential_file:"static.json",expired_credential_file:"static-expired.json",principal_arn:($p+"writer")}},
+		  oracle:{credential_file:"oracle.json",principal_arn:($p+"oracle")},
+		  cleanup:{credential_file:"cleanup.json",principal_arn:($p+"cleanup")}}'
+	printf '===== end manifest.json =====\n'
+	local file
+	for file in static static-expired oracle cleanup; do
+		printf '===== %s.json (SECRET, paste with cat > %s.json) =====\n' "$file" "$file"
+		case $file in
+		static) printf '%s\n' "$d_static" ;;
+		static-expired) printf '%s\n' "$d_expired" ;;
+		oracle) printf '%s\n' "$d_oracle" ;;
+		cleanup) printf '%s\n' "$d_cleanup" ;;
+		esac
+		printf '===== end %s.json =====\n' "$file"
+	done
+	printf 'static-expired.json expires 15 minutes after provision; start the smoke only after that, and before %s.\n' "$AUTH_EXPIRES_AT"
+	printf 'Sessions expire at %s (writer/oracle window) and %s (cleanup window).\n' "$AUTH_EXPIRES_AT" "$CLEANUP_EXPIRES_AT"
+	printf 'Teardown when finished:\n  bash %s teardown %s\n' "$HERE/smoke-sandbox.sh" "$run"
+}
+
+tolerate_missing() {
+	local out
+	if ! out=$("$@" 2>&1); then
+		[[ $out == *NoSuchEntity* || $out == *NotFound* ]] || die "$out"
+	fi
+}
+
+cmd_teardown() {
+	local run=${1:-}
+	[[ -n $run ]] || die "teardown needs RUN"
+	valid_run "$run"
+	banner
+	local actor user id pol
+	for actor in writer oracle cleanup; do
+		user=hikyo-smoke-$run-$actor
+		for id in $(aws_ iam list-access-keys --user-name "$user" --query 'AccessKeyMetadata[].AccessKeyId' --output text 2>/dev/null); do
+			tolerate_missing aws_ iam delete-access-key --user-name "$user" --access-key-id "$id"
+		done
+		for pol in $(aws_ iam list-attached-user-policies --user-name "$user" --query 'AttachedPolicies[].PolicyArn' --output text 2>/dev/null); do
+			tolerate_missing aws_ iam detach-user-policy --user-name "$user" --policy-arn "$pol"
+			tolerate_missing aws_ iam delete-policy --policy-arn "$pol"
+		done
+		for pol in $(aws_ iam list-user-policies --user-name "$user" --query 'PolicyNames[]' --output text 2>/dev/null); do
+			tolerate_missing aws_ iam delete-user-policy --user-name "$user" --policy-name "$pol"
+		done
+		tolerate_missing aws_ iam delete-user --user-name "$user"
+		printf 'user %s removed\n' "$user"
+	done
+	local key
+	key=$(alias_key "$run")
+	if [[ -z $key ]]; then
+		printf 'alias/hikyo-smoke-%s not found; key already handled\n' "$run"
+		return 0
+	fi
+	aws_ kms delete-alias --alias-name "alias/hikyo-smoke-$run" >/dev/null
+	aws_ kms schedule-key-deletion --key-id "$key" --pending-window-in-days 7 >/dev/null
+	aws_ kms describe-key --key-id "$key" --query 'KeyMetadata.[KeyId,KeyState,DeletionDate]' --output text
+}
+
+REST=()
+parse_global "$@"
+set -- ${REST[@]+"${REST[@]}"}
+need
+[[ $# -ge 1 ]] || die "usage: smoke-sandbox.sh [--endpoint-url URL --ca-bundle FILE] check | provision [RUN] | teardown RUN"
+sub=$1
+shift
+case $sub in
+check) cmd_check ;;
+provision) cmd_provision "$@" ;;
+teardown) cmd_teardown "$@" ;;
+*) die "unknown subcommand: $sub" ;;
+esac
