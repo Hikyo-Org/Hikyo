@@ -213,13 +213,13 @@ decision 3.
 
 1. **Decided 2026-11-12, option A: unreferenced components are part of the
    promise.** The owner took the recommendation as written; no gate, spec or
-   ADR change follows. Options considered: the layer freezes them. Removing a property from `AuditExportReceipt` is
-   refused, and so is removing, renaming or inlining any component schema,
+   ADR change follows. The layer freezes them: removing a property from
+   `AuditExportReceipt` is refused, and so is removing, renaming or inlining any component schema,
    even where the inlined shape is identical. Two root schemas have no
    reference from any operation: `AuditExportReceiptLine` and
    `AdapterVisibility`. `AuditExportReceipt` is reachable only through the
-   first. The export descriptions promise the receipt schemas, so the
-   question is real. Options:
+   first. The export descriptions promise the receipt schemas. Options
+   considered:
    - **A. Freeze components (chosen, no change).** Every component is
      frozen whether or not an operation reads it. Cost: the receipt schemas
      stay undiscoverable from the operations, so generated clients carry no
