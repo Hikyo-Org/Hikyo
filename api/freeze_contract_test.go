@@ -153,6 +153,17 @@ func hasContractViolation(vs []api.Violation) bool {
 	return slices.ContainsFunc(vs, func(v api.Violation) bool { return strings.HasPrefix(v.ID, "hikyo-contract-") })
 }
 
+// logContractViolations shows which violation refused a case, so a pass can be
+// checked against the location it was meant to refuse.
+func logContractViolations(t *testing.T, vs []api.Violation) {
+	t.Helper()
+	for _, v := range vs {
+		if strings.HasPrefix(v.ID, "hikyo-contract-") {
+			t.Log(v)
+		}
+	}
+}
+
 func TestFreezeContractRefusesForbiddenChanges(t *testing.T) {
 	type refusal struct{ name, base, revised string }
 	var cases []refusal
@@ -295,11 +306,7 @@ func TestFreezeContractRefusesForbiddenChanges(t *testing.T) {
 			if !hasContractViolation(violations) {
 				t.Fatalf("the document-coordinate layer did not refuse it:\n%s", render(violations))
 			}
-			for _, v := range violations {
-				if strings.HasPrefix(v.ID, "hikyo-contract-") {
-					t.Log(v)
-				}
-			}
+			logContractViolations(t, violations)
 		})
 	}
 }
@@ -354,6 +361,7 @@ func TestFreezeContractRefusesForbiddenChangesInTheRealSpec(t *testing.T) {
 			if !hasContractViolation(violations) {
 				t.Fatalf("the document-coordinate layer did not refuse it:\n%s", render(violations))
 			}
+			logContractViolations(t, violations)
 		})
 	}
 }
