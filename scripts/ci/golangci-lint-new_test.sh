@@ -142,7 +142,15 @@ change "with space/s.go" "café/c.go"
 run || fail 'odd names failed'
 expect_call "./café ./with space"
 
-# 4d. A go list failure aborts instead of silently dropping the package.
+# 4d. A file moved to another package directory lints both: the old directory
+# holds whatever the move left unused.
+git switch -q -c moved main
+git mv a/extra.go b/extra.go
+git commit -q -m 'move extra.go'
+run || fail 'rename failed'
+expect_call './a ./b'
+
+# 4e. A go list failure aborts instead of silently dropping the package.
 change a/a.go
 : >"$GO_LIST_FAIL"
 if run; then fail 'go list failure was swallowed'; fi
@@ -204,18 +212,15 @@ case "$(sed -n 1p "$calls")" in
 esac
 sed -n 2p "$calls" | grep -F -x 'golangci-lint run -j 2 --config .golangci-strict.yml ./...' >/dev/null || fail "strict pass of the config-less tree got '$(sed -n 2p "$calls")'"
 
-# 8b. A tree without its own .golangci-strict.yml gets the script checkout's copy.
+# 8b. A tree without its own .golangci-strict.yml skips the strict pass with a note.
 git switch -q -c nostrict main
 git rm -q .golangci-strict.yml
 echo '# x' >>a/a.go
 git add a/a.go
 git commit -q -m 'no strict config'
 run || fail 'strict-config-less tree failed'
-case "$(sed -n 2p "$calls")" in
-	"golangci-lint run -j 2 --config "*"/scripts/ci/../../.golangci-strict.yml ./...") ;;
-	*) fail "strict-config-less run-go-tool got '$(sed -n 2p "$calls")'" ;;
-esac
-sed -n 1p "$calls" | grep -F -x 'golangci-lint run -j 2 --new-from-merge-base=main ./...' >/dev/null || fail "pass 1 of the strict-config-less tree got '$(sed -n 1p "$calls")'"
+[ "$(cat "$calls")" = 'golangci-lint run -j 2 --new-from-merge-base=main ./...' ] || fail "strict-config-less run-go-tool got '$(cat "$calls")'"
+grep -F 'no .golangci-strict.yml in this tree; skipping the strict pass' "$out" >/dev/null || fail 'strict skip note missing'
 
 # 9. A failing `git diff` is a setup failure (64), never "nothing to lint":
 # the shim fails the Nth diff call and passes everything else through.
