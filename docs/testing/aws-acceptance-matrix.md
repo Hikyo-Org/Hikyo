@@ -1,9 +1,11 @@
 # AWS Secrets Manager acceptance coverage (#158)
 
-This map assigns each of the 46 records of the retired real-AWS gate
-(`TEST_NAMES` in `scripts/ci/aws-acceptance/runner.py`) to exactly one owner.
-Coverage moves; none is dropped silently. The two rows marked **owner
-decision** lose their only end-to-end proof once the live gate shrinks.
+This map assigns each of the 46 records of the retired real-AWS gate (the
+`TEST_NAMES` list of the deleted hosted runner, see
+[aws-acceptance-history.md](aws-acceptance-history.md)) to exactly one owner.
+Coverage moves; none is dropped silently. The two rows marked **accepted
+(option A, 2026-11-12)** lose their only end-to-end proof with the smaller live
+gate; the owner accepted that.
 
 Destinations:
 
@@ -13,7 +15,10 @@ Destinations:
   staging (below), moto keeps running `TestAWSSecretsManagerEmulatorLifecycle`
   in required CI via `scripts/ci/start-aws-emulator.sh`.
 - **(b)** Existing controlled or unit tests, named below.
-- **(c)** Live real-AWS static-key smoke (`lifecycle` and `promoted-replay`).
+- **(c)** Live real-AWS static-key smoke (`lifecycle` and `promoted-replay`):
+  `TestAWSSecretsManagerRealSmoke` with a smoke manifest holding only the
+  static writer, run locally per [aws-sandbox.md](aws-sandbox.md). Every other
+  group skips with its owner from this map.
 - **(d)** Another issue.
 
 Criteria are the #158 acceptance list: 1 configuration, 2 authentication,
@@ -25,15 +30,15 @@ Criteria are the #158 acceptance list: 1 configuration, 2 authentication,
 | suite root | 1 | (c) | Live smoke root. The lane runs the same body. | 6 |
 | `lifecycle`, `/sqlite`, `/postgres` | 3 | (c) | Live smoke. Skipped on Floci (first-version gap below); the create, update and delete flow stays in required CI through moto's `TestAWSSecretsManagerEmulatorLifecycle`. | 3, 4, 6 |
 | `promoted-replay`, `/finish-loss`, `/marker-refusal`, each `/sqlite`, `/postgres` | 7 | (c) | Live smoke. Also runs in (a), including the second-process replay child. | 3, 6 |
-| `preflight-static` | 1 | (a) | Provisioned role session, identity bound through Floci STS. | 2, 6 |
+| `preflight-static` | 1 | (a) | Provisioned role session, identity bound through Floci STS. The live smoke also runs it first, with its IAM users. | 2, 6 |
 | `iam-denial` | 1 | (a) | Floci enforces resource-ARN scoping (cross-writer `TagResource` deny) and refuses the writer's value read. No Allow grants that read, so the lane cannot tell the explicit `NeverReadValues` deny from an implicit one; (c) keeps that distinction. | 3, 6 |
 | `adoption-witness`, its three scenarios, each `/sqlite`, `/postgres` | 10 | (a) | Static writer; metadata and version semantics match AWS. | 3, 5 |
 | `auth-boundaries`, `/configured-identity-refusal` | 2 | (a) | Account-mismatch half on Floci. The region half needs an AWS regional origin: `TestRouteResolution`, `TestAccountAndRegionMovementIsRefused`. | 5 |
 | `auth-boundaries/expired-static` | 1 | (b) | `TestFailureClassesFailLoud` (expired credentials), `TestClientRefreshesExpiredCredentials`, `TestAWSRealFixtureAuthExpiryClassification`. Floci and AWS STS refuse sessions under 900 s, so authentic expiry needs a 15-minute wait. | 2, 5 |
 | `auth-boundaries/expired-{assume-role,web-identity,ambient}` | 3 | (b) | Same tests. Workload modes cannot reach an emulator (below). | 2, 5 |
-| `role-auth`, `/assume-role`, `/web-identity`, each `/sqlite`, `/postgres`; `preflight-assume-role`, `preflight-web-identity` | 9 | (b) | `TestWorkloadIdentityRequiresInstanceOptIn`, `TestWorkloadIdentityAlwaysUsesAWSSTS`, `TestWorkloadIdentityRejectsNonAWSDestinations`, `TestTenantEndpointCannotReceiveWorkloadIdentity`, `TestDescriptorContract`. **Owner decision:** real STS AssumeRole, ExternalId trust and WebIdentity acquisition keep no end-to-end proof. | 2 |
+| `role-auth`, `/assume-role`, `/web-identity`, each `/sqlite`, `/postgres`; `preflight-assume-role`, `preflight-web-identity` | 9 | (b) | `TestWorkloadIdentityRequiresInstanceOptIn`, `TestWorkloadIdentityAlwaysUsesAWSSTS`, `TestWorkloadIdentityRejectsNonAWSDestinations`, `TestTenantEndpointCannotReceiveWorkloadIdentity`, `TestDescriptorContract`. **Accepted (option A, 2026-11-12):** real STS AssumeRole, ExternalId trust and WebIdentity acquisition keep no end-to-end proof. | 2 |
 | `role-auth/ambient`, `/sqlite`, `/postgres`; `preflight-ambient` | 4 | (d) #1185 | Real IMDS, ECS and IRSA discovery. Opt-in and routing stay in the (b) tests above. | 2 |
-| `kms-denial`, `/sqlite`, `/postgres`; `preflight-kms-denied` | 4 | (b) | `TestFailureClassesFailLoud` (kms denial). Floci never authorizes the caller's KMS use (the lane asserts this). **Owner decision:** no end-to-end KMS denial remains. | 5 |
+| `kms-denial`, `/sqlite`, `/postgres`; `preflight-kms-denied` | 4 | (b) | `TestFailureClassesFailLoud` (kms denial). Floci never authorizes the caller's KMS use (the lane asserts this). **Accepted (option A, 2026-11-12):** no end-to-end KMS denial remains. | 5 |
 | **Total** | **46** | | | |
 
 Outside the 46 records:

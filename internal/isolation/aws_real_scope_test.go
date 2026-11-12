@@ -122,6 +122,80 @@ func TestAWSRealFixtureScope(t *testing.T) {
 
 // The emulator branch accepts only a static writer behind a non-AWS origin, and
 // neither lane loads the other's manifest.
+// The live smoke (#158 option A) holds one static writer, its expired
+// session and separate oracle and cleanup IAM users.
+func realAWSSmokeManifestFixture(now time.Time) realAWSManifest {
+	m := realAWSManifestFixture(now)
+	user := func(name string) realAWSActor {
+		return realAWSActor{CredentialFile: name + ".json", PrincipalARN: "arn:aws:iam::123456789012:user/hikyo-smoke-" + name}
+	}
+	static := user("writer")
+	static.ExpiredCredentialFile = "static-expired.json"
+	m.Writers = map[string]realAWSActor{"static": static}
+	m.Oracle, m.Cleanup = user("oracle"), user("cleanup")
+	return m
+}
+
+func TestAWSRealFixtureSmokeScope(t *testing.T) {
+	now := time.Date(2026, 11, 12, 12, 0, 0, 0, time.UTC)
+	smoke := realAWSSmokeManifestFixture(now)
+	if err := smoke.validateLane(now, false); err != nil {
+		t.Fatal(err)
+	}
+	if !smoke.smoke() || smoke.maxCreations() != realAWSSmokeMaxCreations || realAWSManifestFixture(now).smoke() || realAWSManifestFixture(now).maxCreations() != realAWSMaxCreations {
+		t.Fatal("smoke shape or budget misclassified")
+	}
+	for name, mutate := range map[string]func(*realAWSManifest){
+		"no-static": func(m *realAWSManifest) { m.Writers = map[string]realAWSActor{"kms-denied": m.Writers["static"]} },
+		"two-writers": func(m *realAWSManifest) {
+			m.Writers["kms-denied"] = realAWSActor{CredentialFile: "k.json", PrincipalARN: "arn:aws:iam::123456789012:user/k"}
+		},
+		"no-expired": func(m *realAWSManifest) {
+			a := m.Writers["static"]
+			a.ExpiredCredentialFile = ""
+			m.Writers["static"] = a
+		},
+		"workload-input": func(m *realAWSManifest) {
+			a := m.Writers["static"]
+			a.TokenFile = "static.jwt"
+			m.Writers["static"] = a
+		},
+		"source-input": func(m *realAWSManifest) {
+			a := m.Writers["static"]
+			a.SourceFile = "source.json"
+			m.Writers["static"] = a
+		},
+		"shared-principal": func(m *realAWSManifest) { m.Cleanup.PrincipalARN = m.Oracle.PrincipalARN },
+		"foreign-account":  func(m *realAWSManifest) { m.Oracle.PrincipalARN = "arn:aws:iam::111122223333:user/oracle" },
+		"group-principal":  func(m *realAWSManifest) { m.Oracle.PrincipalARN = "arn:aws:iam::123456789012:group/oracle" },
+		"no-oracle-file":   func(m *realAWSManifest) { m.Oracle.CredentialFile = "" },
+		"no-kms-key":       func(m *realAWSManifest) { m.KMSKeyARN = "" },
+		"expired-window":   func(m *realAWSManifest) { m.ExpiresAt = now },
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := realAWSSmokeManifestFixture(now)
+			mutate(&m)
+			if m.validate(now) == nil {
+				t.Fatal("invalid smoke manifest accepted")
+			}
+		})
+	}
+	// Exactly the smoke budget, shared by writer and cleanup creates.
+	s := &realAWSSandbox{manifest: smoke, owned: make(map[string]string)}
+	s.manifest.ExpiresAt = time.Now().Add(time.Hour)
+	for i := range realAWSSmokeMaxCreations {
+		if err := s.reserveCreate(fmt.Sprintf("%sstatic/sqlite/secret-%d", smoke.Prefix, i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if s.reserveCreate(smoke.Prefix+"static/sqlite/over") == nil {
+		t.Fatal("smoke exceeded its creation budget")
+	}
+	if !matchesAWSPrincipal(smoke.Oracle.PrincipalARN, smoke.Oracle.PrincipalARN) || matchesAWSPrincipal("arn:aws:sts::123456789012:assumed-role/hikyo-smoke-oracle/session", smoke.Oracle.PrincipalARN) {
+		t.Fatal("IAM user principal binding is not exact")
+	}
+}
+
 func TestAWSRealFixtureEmulatorScope(t *testing.T) {
 	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
 	emulated := func() realAWSManifest {

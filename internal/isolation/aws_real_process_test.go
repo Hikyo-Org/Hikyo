@@ -344,7 +344,7 @@ func TestAWSSecretsManagerReplayProcess(t *testing.T) {
 // Import original reservations without allocating a fresh budget. Historical
 // replacement ARNs consume distinct reservations even when their names match.
 func importAWSReplayCustody(input awsReplayInput) (*realAWSSandbox, error) {
-	if len(input.Creations) == 0 || len(input.Creations) > realAWSMaxCreations || len(input.Owned) == 0 || len(input.Owned) > len(input.Creations) {
+	if len(input.Creations) == 0 || len(input.Creations) > input.Manifest.maxCreations() || len(input.Owned) == 0 || len(input.Owned) > len(input.Creations) {
 		return nil, errors.New("invalid replay creation provenance")
 	}
 	s := &realAWSSandbox{manifest: input.Manifest, owned: make(map[string]string), replayOnly: true}
@@ -413,7 +413,7 @@ func TestAWSRealReplayCustodyImport(t *testing.T) {
 	}{
 		{"missing-reservation", func(in *awsReplayInput) { in.Creations = nil }},
 		{"replacement-without-reservation", func(in *awsReplayInput) { in.Creations = []string{name} }},
-		{"over-budget", func(in *awsReplayInput) { in.Creations = make([]string, realAWSMaxCreations+1) }},
+		{"over-budget", func(in *awsReplayInput) { in.Creations = make([]string, in.Manifest.maxCreations()+1) }},
 		{"foreign-reservation", func(in *awsReplayInput) { in.Creations[0] = "foreign/name" }},
 		{"foreign-arn", func(in *awsReplayInput) {
 			delete(in.Owned, arn)
