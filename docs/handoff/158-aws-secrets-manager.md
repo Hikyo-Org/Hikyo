@@ -27,8 +27,9 @@ multi-target seam (targets, outbox, health, pause/resume, retain-or-prune).
   `TestAWSSecretsManagerEmulatorLifecycle` until Floci matches AWS first-version
   staging.
 - **Accepted gaps (option A, 2026-11-12):** AWS's trust-policy evaluation for
-  AssumeRole/WebIdentity, authentic workload-mode STS expiry and end-to-end KMS
-  denial keep only controlled-test coverage. The STS request shape (`RoleArn`,
+  AssumeRole/WebIdentity has no coverage. Authentic workload-mode STS expiry and
+  end-to-end KMS denial keep only controlled tests that inject pre-classified
+  errors. The STS request shape (`RoleArn`,
   `ExternalId`, `DurationSeconds`, `RoleSessionName`, web identity token) and
   `AccessDenied` classification are pinned by `TestSTSCredentialAcquisition`
   and `TestSTSCredentialAccessDeniedIsAuthClass`. Static-session expiry stays live through the

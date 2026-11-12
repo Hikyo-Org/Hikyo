@@ -163,18 +163,26 @@ with the same environment and `jq` filter, pointing
 recorded; `check` lists anything left, and teardown removes it.
 
 Before teardown, check that the first run and its reruns together passed every
-required leaf. This prints the leaves that never passed; empty output means the
-smoke is complete:
+required leaf and the suite root, which carries the cleanup and its
+force-delete checks. This prints what never passed; empty output means every
+part passed at least once:
 
 ```sh
+{ echo TestAWSSecretsManagerRealSmoke
 printf 'TestAWSSecretsManagerRealSmoke/%s\n' preflight-static iam-denial \
   lifecycle/sqlite lifecycle/postgres \
   promoted-replay/finish-loss/sqlite promoted-replay/finish-loss/postgres \
-  promoted-replay/marker-refusal/sqlite promoted-replay/marker-refusal/postgres |
-  sort > "$DIR/required.txt"
+  promoted-replay/marker-refusal/sqlite promoted-replay/marker-refusal/postgres
+} | sort > "$DIR/required.txt"
 awk '$1 == "pass" { print $2 }' "$DIR"/outcomes-*.txt | sort -u |
   comm -23 "$DIR/required.txt" -
+grep -h '^fail TestAWSSecretsManagerRealSmoke$' "$DIR"/outcomes-*.txt
 ```
+
+A later rerun's root `pass` does not cancel an earlier root `fail`: the second
+command prints every root failure, and each one needs its cause (usually a
+cleanup the test reported) checked and recorded with the evidence. `check`
+after teardown must still come back clean.
 
 ## 5. Teardown
 
@@ -189,7 +197,12 @@ Teardown revokes first: it deactivates the run users' access keys, detaches
 every policy from them and deletes their inline policies. It then force-deletes
 every secret whose name starts with `hikyo-e2e-RUN`, which is what the policies
 grant and covers `hikyo-e2e-RUN/` and the rerun prefixes `hikyo-e2e-RUNrN/` (a
-test timeout skips the test's own cleanup), restoring a pending deletion first.
+test timeout skips the test's own cleanup). A secret in a scheduled deletion is
+restored first, because AWS refuses to delete it otherwise; the API cannot tell
+that apart from a force deletion already under way, so a refused restore is
+treated as one and the force delete is repeated, which AWS accepts.
+A secret that still cannot be deleted is named, the rest of teardown runs, and
+teardown exits non-zero: rerun it a few minutes later.
 Then it deletes the access keys and users, deletes only the customer-managed
 policies named `hikyo-smoke-RUN-*` (anything else it detached stays), deletes
 the alias, and schedules the key tagged `hikyo-smoke=RUN` for deletion in 7
