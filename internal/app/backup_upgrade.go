@@ -63,7 +63,10 @@ func runUpgradeExport(ctx context.Context, cfg *config.Config, args []string, ou
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if fs.NArg() != 0 || *bundleDir == "" || *dir == "" {
+	if err := refuseStrayArgs("upgrade-export", fs, recipientHint); err != nil {
+		return err
+	}
+	if *bundleDir == "" || *dir == "" {
 		return errors.New("upgrade-export requires --bundle DIR and --out DIR")
 	}
 	options, err := exportOptions(cfg, recipients, "")
@@ -163,7 +166,10 @@ func runUpgradeDrill(ctx context.Context, args []string, out io.Writer, trust Tr
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if fs.NArg() != 0 || *bundleDir == "" || *source == "" || *receiptFile == "" || *identityFile == "" || *rootFile == "" || *dir == "" || *signingKey == "" || (*sqlitePath == "") == (*postgresFile == "") {
+	if err := refuseStrayArgs("upgrade-drill", fs, ""); err != nil {
+		return err
+	}
+	if *bundleDir == "" || *source == "" || *receiptFile == "" || *identityFile == "" || *rootFile == "" || *dir == "" || *signingKey == "" || (*sqlitePath == "") == (*postgresFile == "") {
 		return errors.New("upgrade-drill requires bundle, archive, receipt, separate custody files, signer, output and exactly one empty scratch target")
 	}
 	diagnostics.Printf(ctx, 1, "upgrade drill: verifying release bundle and receipt")
