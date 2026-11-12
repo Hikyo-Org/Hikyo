@@ -179,8 +179,8 @@ func TestAWSSandboxScriptProvisionPrintsRecovery(t *testing.T) {
 	if err == nil {
 		t.Fatalf("create-key must fail on the stub:\n%s", stderr)
 	}
-	if got := strings.Count(stderr, " teardown 0123456789"); got < 2 {
-		t.Fatalf("want the teardown command before the first create and after the failure, got %d:\n%s", got, stderr)
+	if got := strings.Count(stderr, " teardown 0123456789"); got != 2 {
+		t.Fatalf("want the teardown command once before the first create and once after the failure, got %d:\n%s", got, stderr)
 	}
 	if !strings.Contains(stderr, "--endpoint-url https://127.0.0.1:4566 teardown 0123456789") {
 		t.Fatalf("teardown command must keep the emulator flags:\n%s", stderr)
