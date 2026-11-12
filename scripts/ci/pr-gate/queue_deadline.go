@@ -184,6 +184,13 @@ func (q *queueController) refuseAdmission(ctx context.Context, t *admissionTrace
 	if t.FeedbackRead && ((r == nil) != (t.Run == nil) || r != nil && !sameSourceEvent(*r, *t.Run)) {
 		return errors.New("useful feedback attempt moved during admission failure publication")
 	}
+	// This scan also publishes a fresh owned pending barrier if the listing or
+	// identity check fails before a later read does. Its recovery side effect is
+	// required even though the final publication independently repeats the
+	// ownership scan.
+	if _, err := q.ownedChecks(ctx, p); err != nil {
+		return err
+	}
 	final, err := q.readPR(ctx, p.Number)
 	if err != nil {
 		return err
