@@ -263,7 +263,9 @@ recurring in review (unchecked errors, `==` on errors, `http.Get` without a
 context, ignored `json.Marshal` errors, staticcheck
 `SA*` bugs plus `QF1001` and `QF1003` (not its style checks), unsafe integer narrowing, subprocess
 arguments, file modes), and reports only issues on lines you changed since the
-merge base. It lints a temporary worktree at the pushed commit, so any branch
+merge base. A second strict pass applies `.golangci-strict.yml` (wastedassign,
+unused, staticcheck `SA4006` and `SA4009`) to every whole changed package, since
+those rules hold at zero across the repo. It lints a temporary worktree at the pushed commit, so any branch
 can be pushed from any worktree, and uncommitted files and uncommitted local edits to
 `.golangci.yml` are ignored (the pushed commit's config, pin and script apply); fetch `hikyo-upstream` first, as
 a stale base widens "new code". Only the default build for your platform is

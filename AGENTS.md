@@ -75,7 +75,9 @@ but it is not a substitute for this signature.
   Go code. It runs golangci-lint (errcheck, errorlint, errchkjson, noctx,
   wastedassign, unused, staticcheck `SA*`/`QF1001`/`QF1003`, and gosec G115/G204/G306 outside tests, from
   `.golangci.yml`) and flags only issues on lines changed since the merge base, so
-  the existing baseline never blocks you. It lints a temporary worktree at the
+  the existing baseline never blocks you. A second strict pass runs wastedassign, unused and
+  staticcheck SA4006/SA4009 (`.golangci-strict.yml`) on every whole changed package,
+  because those rules hold at zero across the repo. It lints a temporary worktree at the
   pushed commit, with that commit's config, pin and script, so any branch can be
   pushed from any worktree, and uncommitted files and uncommitted edits to `.golangci.yml` are ignored.
   Fetch `hikyo-upstream` first: a stale base widens "new code". Only the default
