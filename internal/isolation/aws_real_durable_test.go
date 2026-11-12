@@ -27,11 +27,25 @@ func TestAWSSecretsManagerRealSmoke(t *testing.T) {
 
 // The emulator lane runs this same body. The subtests an emulator cannot honor
 // are logged, not created, and each is owned elsewhere per
-// docs/testing/aws-acceptance-matrix.md. The real path keeps every name and
-// order that scripts/ci/aws-acceptance/runner.py expects.
+// docs/testing/aws-acceptance-matrix.md. A smoke manifest (static writer only)
+// runs lifecycle and promoted-replay; every other group skips with its owner.
 func runRealAWSSuite(t *testing.T, s *realAWSSandbox) {
 	t.Helper()
-	if !t.Run("auth-boundaries", func(t *testing.T) { runRealAWSAuthBoundaries(t, s) }) {
+	group := func(name, smokeOwner string, body func(*testing.T)) {
+		t.Run(name, func(t *testing.T) {
+			if smokeOwner != "" && s.manifest.smoke() {
+				t.Skip("not in the live smoke: the smoke manifest has only the static writer; " + smokeOwner + " owns " + name + ", see docs/testing/aws-acceptance-matrix.md")
+			}
+			body(t)
+		})
+	}
+	const floci, controlled = "the Floci lane", "the controlled tests"
+	if !t.Run("auth-boundaries", func(t *testing.T) {
+		if s.manifest.smoke() {
+			t.Skip("not in the live smoke: no expired or workload writers; " + floci + " and " + controlled + " own auth-boundaries, see docs/testing/aws-acceptance-matrix.md")
+		}
+		runRealAWSAuthBoundaries(t, s)
+	}) {
 		t.Fatal("auth boundary preflight failed before mutations")
 	}
 	if s.emulated() {
@@ -48,11 +62,11 @@ func runRealAWSSuite(t *testing.T, s *realAWSSandbox) {
 		t.Log("role-auth skipped on the emulator: workload identity cannot reach it, see docs/testing/aws-acceptance-matrix.md")
 		t.Log("kms-denial skipped on the emulator: it never authorizes the caller's KMS use, see docs/testing/aws-acceptance-matrix.md")
 	} else {
-		t.Run("role-auth", func(t *testing.T) { runRealAWSRoleAuth(t, s) })
-		t.Run("kms-denial", func(t *testing.T) { runRealAWSKMSDenial(t, s) })
+		group("role-auth", controlled, func(t *testing.T) { runRealAWSRoleAuth(t, s) })
+		group("kms-denial", controlled, func(t *testing.T) { runRealAWSKMSDenial(t, s) })
 	}
-	t.Run("iam-denial", func(t *testing.T) { runRealAWSIAMDenial(t, s) })
-	t.Run("adoption-witness", func(t *testing.T) { runRealAWSAdoptionWitness(t, s) })
+	group("iam-denial", floci, func(t *testing.T) { runRealAWSIAMDenial(t, s) })
+	group("adoption-witness", floci, func(t *testing.T) { runRealAWSAdoptionWitness(t, s) })
 	t.Run("promoted-replay", func(t *testing.T) { runRealAWSPromotedReplay(t, s) })
 }
 

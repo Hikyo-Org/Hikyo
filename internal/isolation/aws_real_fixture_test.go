@@ -74,6 +74,24 @@ var realAWSKeyID = regexp.MustCompile(`^(?:[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[
 var realAWSName = regexp.MustCompile(`^[A-Za-z0-9/_+=.@-]{1,512}$`)
 var realAWSRole = regexp.MustCompile(`^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$`)
 
+// The live smoke's static actors are IAM users holding GetSessionToken
+// credentials; workload and AssumeRole writers stay roles.
+var realAWSStaticPrincipal = regexp.MustCompile(`^arn:aws:iam::[0-9]{12}:(?:role|user)/[A-Za-z0-9+=,.@_/-]+$`)
+
+// smoke reports the live real-AWS smoke shape: only the static writer, which
+// runs exactly the lifecycle and promoted-replay groups (#158 option A).
+func (m realAWSManifest) smoke() bool { return m.Emulator == nil && len(m.Writers) == 1 }
+
+// maxCreations is the cumulative CreateSecret ceiling for one run. The smoke
+// creates 14 (10 lifecycle, 4 promoted-replay) and keeps two for ambiguous
+// creates; a rerun needs a new prefix and so a new budget.
+func (m realAWSManifest) maxCreations() int {
+	if m.smoke() {
+		return realAWSSmokeMaxCreations
+	}
+	return realAWSMaxCreations
+}
+
 // validateLane refuses an emulator manifest on the real lane and the reverse.
 func (m realAWSManifest) validateLane(now time.Time, emulator bool) error {
 	if (m.Emulator != nil) != emulator {
@@ -146,6 +164,9 @@ func (m realAWSManifest) validateEmulator() error {
 }
 
 func (m realAWSManifest) validateReal() error {
+	if m.smoke() {
+		return m.validateSmoke()
+	}
 	if len(m.Writers) != 5 {
 		return errors.New("real AWS fixture requires static, ambient, assume-role, web-identity and kms-denied writers")
 	}
@@ -176,6 +197,30 @@ func (m realAWSManifest) validateReal() error {
 	source := m.Writers["assume-role"]
 	if source.SourceFile == "" || !realAWSRole.MatchString(source.PrincipalARN) || !realAWSRole.MatchString(source.SourcePrincipalARN) || !strings.HasPrefix(source.SourcePrincipalARN, "arn:aws:iam::"+m.Account+":role/") || seen[source.SourcePrincipalARN] {
 		return errors.New("assume-role fixture requires a separate sandbox source role")
+	}
+	return nil
+}
+
+// validateSmoke accepts exactly one static writer plus separate oracle and
+// cleanup identities. Lifecycle's credential fence needs the static writer's
+// authentic expired session; role and workload inputs belong to the full suite.
+func (m realAWSManifest) validateSmoke() error {
+	static, ok := m.Writers["static"]
+	if !ok {
+		return errors.New("real AWS smoke requires exactly the static writer")
+	}
+	if static.ExpiredCredentialFile == "" {
+		return errors.New("real AWS smoke requires a protected expired temporary static descriptor")
+	}
+	if static.SourceFile != "" || static.SourcePrincipalARN != "" || static.TokenFile != "" || static.WorkloadRoleARN != "" || static.ExpiredSourceFile != "" || static.ExpiredTokenFile != "" {
+		return errors.New("real AWS smoke takes no source or workload inputs")
+	}
+	seen := make(map[string]bool)
+	for _, a := range []realAWSActor{m.Oracle, m.Cleanup, static} {
+		if a.CredentialFile == "" || !realAWSStaticPrincipal.MatchString(a.PrincipalARN) || !strings.HasPrefix(a.PrincipalARN, "arn:aws:iam::"+m.Account+":") || seen[a.PrincipalARN] {
+			return errors.New("real AWS smoke actors require distinct explicit IAM principals in the sandbox account")
+		}
+		seen[a.PrincipalARN] = true
 	}
 	return nil
 }
@@ -221,6 +266,7 @@ func decodeAWSManifest(raw []byte) (realAWSManifest, error) {
 }
 
 const realAWSMaxCreations = 32
+const realAWSSmokeMaxCreations = 16
 
 // The owner-approved absolute ceiling does not replace the separately reviewed
 // combined gross admission or a stricter per-fixture budget.
@@ -290,7 +336,7 @@ func openRealAWSSandbox(t *testing.T, path string, emulator bool) *realAWSSandbo
 	t.Cleanup(func() { s.clean(t) })
 	// Verify every supplied identity before any test starts its first write.
 	modes := []string{"static", "ambient", "assume-role", "web-identity", "kms-denied"}
-	if emulator {
+	if emulator || m.smoke() {
 		modes = []string{"static"}
 	}
 	for _, mode := range modes {
@@ -362,7 +408,7 @@ func (s *realAWSSandbox) descriptor(t *testing.T, a realAWSActor) string {
 	defer crypto.Zero(raw)
 	d, err := awssm.ParseDescriptor(string(raw))
 	if err != nil || d.Region != s.manifest.Region || d.STSOrigin != s.stsOrigin {
-		// runner.py classifies this exact text; on the emulator "AWS STS" is its STS origin.
+		// On the emulator "AWS STS" is its STS origin.
 		t.Fatal("AWS fixture descriptor must match the approved region and use AWS STS")
 	}
 	return string(raw)
@@ -498,8 +544,8 @@ func (s *realAWSSandbox) reserveCreate(name string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(s.creations) >= realAWSMaxCreations {
-		return errors.New("AWS full-suite creation budget exhausted")
+	if len(s.creations) >= s.manifest.maxCreations() {
+		return errors.New("AWS run creation budget exhausted")
 	}
 	s.creations = append(s.creations, name)
 	if s.t != nil {
