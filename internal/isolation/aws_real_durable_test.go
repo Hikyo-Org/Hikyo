@@ -22,18 +22,35 @@ import (
 // One opt-in entry point owns the entire real-provider suite and its single
 // creation budget. Subtests must not load independent sandbox registries.
 func TestAWSSecretsManagerRealSmoke(t *testing.T) {
-	s := loadRealAWSSandbox(t)
+	runRealAWSSuite(t, loadRealAWSSandbox(t))
+}
+
+// The emulator lane runs this same body. The subtests an emulator cannot honor
+// are logged, not created, and each is owned elsewhere per
+// docs/testing/aws-acceptance-matrix.md. The real path keeps every name and
+// order that scripts/ci/aws-acceptance/runner.py expects.
+func runRealAWSSuite(t *testing.T, s *realAWSSandbox) {
+	t.Helper()
 	if !t.Run("auth-boundaries", func(t *testing.T) { runRealAWSAuthBoundaries(t, s) }) {
 		t.Fatal("auth boundary preflight failed before mutations")
 	}
-	t.Run("lifecycle", func(t *testing.T) {
-		forEngines(t, func(t *testing.T, db *store.DB) {
-			h := newRealAWSDurable(t, db, s, "static")
-			h.lifecycle()
+	if s.emulated() {
+		t.Log("lifecycle skipped on Floci: it never makes the first PutSecretValue version AWSCURRENT, moto and the live smoke own it, see docs/testing/aws-acceptance-matrix.md")
+	} else {
+		t.Run("lifecycle", func(t *testing.T) {
+			forEngines(t, func(t *testing.T, db *store.DB) {
+				h := newRealAWSDurable(t, db, s, "static")
+				h.lifecycle()
+			})
 		})
-	})
-	t.Run("role-auth", func(t *testing.T) { runRealAWSRoleAuth(t, s) })
-	t.Run("kms-denial", func(t *testing.T) { runRealAWSKMSDenial(t, s) })
+	}
+	if s.emulated() {
+		t.Log("role-auth skipped on the emulator: workload identity cannot reach it, see docs/testing/aws-acceptance-matrix.md")
+		t.Log("kms-denial skipped on the emulator: it never authorizes the caller's KMS use, see docs/testing/aws-acceptance-matrix.md")
+	} else {
+		t.Run("role-auth", func(t *testing.T) { runRealAWSRoleAuth(t, s) })
+		t.Run("kms-denial", func(t *testing.T) { runRealAWSKMSDenial(t, s) })
+	}
 	t.Run("iam-denial", func(t *testing.T) { runRealAWSIAMDenial(t, s) })
 	t.Run("adoption-witness", func(t *testing.T) { runRealAWSAdoptionWitness(t, s) })
 	t.Run("promoted-replay", func(t *testing.T) { runRealAWSPromotedReplay(t, s) })
@@ -55,7 +72,7 @@ func runRealAWSRoleAuth(t *testing.T, s *realAWSSandbox) {
 				}
 				// Client construction must refuse these very same descriptors
 				// without the node operator's explicit workload opt-in.
-				c, err := awssm.NewClient(awssm.ClientConfig{Origin: h.origin, Credential: h.descriptor, Deadline: 15 * time.Second})
+				c, err := awssm.NewClient(s.endpointConfig(awssm.ClientConfig{Origin: h.origin, Credential: h.descriptor, Deadline: 15 * time.Second}))
 				if c != nil {
 					c.Forget()
 				}
@@ -72,7 +89,7 @@ func runRealAWSRoleAuth(t *testing.T, s *realAWSSandbox) {
 					if err != nil {
 						t.Fatal("cannot encode negative role fixture")
 					}
-					negative, err := awssm.NewClient(awssm.ClientConfig{Origin: h.origin, Credential: string(bad), WorkloadIdentity: true, Deadline: 15 * time.Second})
+					negative, err := awssm.NewClient(s.endpointConfig(awssm.ClientConfig{Origin: h.origin, Credential: string(bad), WorkloadIdentity: true, Deadline: 15 * time.Second}))
 					crypto.Zero(bad)
 					if err != nil {
 						t.Fatal("negative role fixture did not reach STS")
@@ -141,7 +158,7 @@ func newRealAWSDurableFixture(t *testing.T, db *store.DB, s *realAWSSandbox, mod
 	execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_real_aws_reveal','usr_alice','reveal','org_a','prj_a1','env_a1',`+ts+`)`)
 	// Fixture declarations only; values and publication go through services.
 	execRaw(t, db, `INSERT INTO keys (id,org_id,project_id,name,folder_path,classification,description,deprecated,deprecation_note,declaration,required_mode,forbidden_mode,group_id,created_at) VALUES ('key_real_alpha','org_a','prj_a1','ALPHA','','secret','',FALSE,'','{"rule":{"type":"string"}}','none','none',NULL,`+ts+`)`)
-	h := &realAWSDurable{t: t, db: db, s: s, keyring: probeKeyring(t, db), clock: time.Now().UTC(), descriptor: raw, origin: "https://secretsmanager." + s.manifest.Region + ".amazonaws.com", prefix: s.manifest.Prefix + mode + "/" + string(db.Engine()) + "/"}
+	h := &realAWSDurable{t: t, db: db, s: s, keyring: probeKeyring(t, db), clock: time.Now().UTC(), descriptor: raw, origin: s.origin, prefix: s.manifest.Prefix + mode + "/" + string(db.Engine()) + "/"}
 	h.configureRuntime(mode)
 	t.Cleanup(func() { h.descriptor = "" })
 	return h
@@ -152,7 +169,7 @@ func (h *realAWSDurable) configureRuntime(mode string) {
 		if config.Origin != h.origin {
 			return nil, errors.New("real AWS fixture origin changed")
 		}
-		client, err := awssm.NewClient(awssm.ClientConfig{Origin: config.Origin, Credential: credential, WorkloadIdentity: mode != "static" && mode != "kms-denied", Deadline: 15 * time.Second})
+		client, err := awssm.NewClient(h.s.endpointConfig(awssm.ClientConfig{Origin: config.Origin, Credential: credential, WorkloadIdentity: mode != "static" && mode != "kms-denied", Deadline: 15 * time.Second}))
 		if err != nil {
 			return nil, err
 		}

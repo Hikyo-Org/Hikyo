@@ -95,7 +95,12 @@ func runRealAWSAuthBoundaries(t *testing.T, s *realAWSSandbox) {
 	s.mu.Lock()
 	creations, mutations := len(s.creations), len(s.ops)
 	s.mu.Unlock()
-	for _, mode := range []string{"static", "assume-role", "ambient", "web-identity"} {
+	expiredModes := []string{"static", "assume-role", "ambient", "web-identity"}
+	if s.emulated() {
+		expiredModes = nil
+		t.Log("expired-* skipped on the emulator: STS refuses sessions under 900 s, see docs/testing/aws-acceptance-matrix.md")
+	}
+	for _, mode := range expiredModes {
 		t.Run("expired-"+mode, func(t *testing.T) {
 			raw, _ := s.writer(t, mode)
 			a := s.manifest.Writers[mode]
@@ -136,7 +141,7 @@ func runRealAWSAuthBoundaries(t *testing.T, s *realAWSSandbox) {
 			if !realAWSExpiredRefusal(negativeErr, mode == "ambient" || mode == "web-identity") {
 				t.Fatal("real regional STS did not establish expiry-specific refusal")
 			}
-			client, err := awssm.NewClient(awssm.ClientConfig{Origin: s.cleanup.origin, Credential: raw, WorkloadIdentity: mode != "static", Deadline: 15 * time.Second})
+			client, err := awssm.NewClient(s.endpointConfig(awssm.ClientConfig{Origin: s.cleanup.origin, Credential: raw, WorkloadIdentity: mode != "static", Deadline: 15 * time.Second}))
 			if err != nil {
 				t.Fatal("expired auth fixture did not reach credential acquisition")
 			}
@@ -162,6 +167,10 @@ func runRealAWSAuthBoundaries(t *testing.T, s *realAWSSandbox) {
 		if !errors.Is(err, adapter.ErrDestinationID) || api.otherCalls != 0 {
 			t.Fatal("configured account mismatch reached provider metadata or was accepted")
 		}
+		if s.emulated() {
+			t.Log("region mismatch skipped on the emulator: it needs an AWS regional origin, see docs/testing/aws-acceptance-matrix.md")
+			return
+		}
 		d, err := awssm.ParseDescriptor(raw)
 		if err != nil {
 			t.Fatal("invalid approved region fixture")
@@ -175,7 +184,7 @@ func runRealAWSAuthBoundaries(t *testing.T, s *realAWSSandbox) {
 			t.Fatal("cannot encode region refusal fixture")
 		}
 		defer crypto.Zero(encoded)
-		mismatched, err := awssm.NewClient(awssm.ClientConfig{Origin: s.cleanup.origin, Credential: string(encoded), Deadline: 15 * time.Second})
+		mismatched, err := awssm.NewClient(s.endpointConfig(awssm.ClientConfig{Origin: s.cleanup.origin, Credential: string(encoded), Deadline: 15 * time.Second}))
 		if mismatched != nil {
 			mismatched.Forget()
 		}

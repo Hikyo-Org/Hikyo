@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -52,6 +55,16 @@ type realAWSManifest struct {
 	Writers         map[string]realAWSActor `json:"writers"`
 	Oracle          realAWSActor            `json:"oracle"`
 	Cleanup         realAWSActor            `json:"cleanup"`
+	// Emulator redirects the same suite to an AWS-compatible emulator (#158).
+	// Absent means real AWS and keeps every real-path check unchanged.
+	Emulator *realAWSEmulator `json:"emulator,omitempty"`
+}
+
+type realAWSEmulator struct {
+	Origin      string `json:"origin"`
+	STSOrigin   string `json:"sts_origin,omitempty"`
+	CAFile      string `json:"ca_file"`
+	AllowedCIDR string `json:"allowed_cidr"`
 }
 
 var realAWSPrefix = regexp.MustCompile(`^hikyo-e2e-[a-z0-9]{8,32}/$`)
@@ -61,7 +74,27 @@ var realAWSKeyID = regexp.MustCompile(`^(?:[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[
 var realAWSName = regexp.MustCompile(`^[A-Za-z0-9/_+=.@-]{1,512}$`)
 var realAWSRole = regexp.MustCompile(`^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$`)
 
+// validateLane refuses an emulator manifest on the real lane and the reverse.
+func (m realAWSManifest) validateLane(now time.Time, emulator bool) error {
+	if (m.Emulator != nil) != emulator {
+		return errors.New("AWS sandbox manifest does not match the lane that loaded it")
+	}
+	return m.validate(now)
+}
+
 func (m realAWSManifest) validate(now time.Time) error {
+	if err := m.validateScope(now); err != nil {
+		return err
+	}
+	if m.Emulator != nil {
+		return m.validateEmulator()
+	}
+	return m.validateReal()
+}
+
+// validateScope holds the account, region, budget, run window and key checks
+// shared by real AWS and the emulator.
+func (m realAWSManifest) validateScope(now time.Time) error {
 	if !realAWSAccount.MatchString(m.Account) || m.Account == "000000000000" || !realAWSRegion.MatchString(m.Region) || strings.HasPrefix(m.Region, "cn-") || strings.HasPrefix(m.Region, "us-gov-") {
 		return errors.New("real AWS fixture requires an explicit commercial AWS account and region")
 	}
@@ -75,6 +108,44 @@ func (m realAWSManifest) validate(now time.Time) error {
 	if !keyScopeOK || !realAWSKeyID.MatchString(keyID) {
 		return errors.New("real AWS fixture requires an existing customer key in the approved account and region")
 	}
+	return nil
+}
+
+func (m realAWSManifest) validateEmulator() error {
+	e := m.Emulator
+	origins := []string{e.Origin}
+	if e.STSOrigin != "" {
+		origins = append(origins, e.STSOrigin)
+	}
+	for _, origin := range origins {
+		canonical, err := adapter.CanonicalOrigin(adapter.AWSSecretsManagerProvider, origin)
+		if err != nil || canonical != origin || awssm.ValidateOrigin(origin) != nil {
+			return errors.New("emulator fixture requires canonical https origins")
+		}
+		u, err := url.Parse(origin)
+		if err != nil || strings.HasSuffix(u.Hostname(), ".amazonaws.com") || strings.HasSuffix(u.Hostname(), ".amazonaws.com.cn") {
+			return errors.New("emulator fixture must not name an AWS endpoint")
+		}
+	}
+	// The replay child has no fixture directory, so the CA path must be absolute.
+	if _, err := netip.ParsePrefix(e.AllowedCIDR); err != nil || !filepath.IsAbs(e.CAFile) {
+		return errors.New("emulator fixture requires an allowed CIDR and an absolute CA file path")
+	}
+	static, ok := m.Writers["static"]
+	if len(m.Writers) != 1 || !ok {
+		return errors.New("emulator fixture requires exactly the static writer")
+	}
+	seen := make(map[string]bool)
+	for _, a := range []realAWSActor{m.Oracle, m.Cleanup, static} {
+		if a.CredentialFile == "" || !realAWSRole.MatchString(a.PrincipalARN) || !strings.HasPrefix(a.PrincipalARN, "arn:aws:iam::"+m.Account+":") || seen[a.PrincipalARN] {
+			return errors.New("emulator actors require distinct explicit roles in the sandbox account")
+		}
+		seen[a.PrincipalARN] = true
+	}
+	return nil
+}
+
+func (m realAWSManifest) validateReal() error {
 	if len(m.Writers) != 5 {
 		return errors.New("real AWS fixture requires static, ambient, assume-role, web-identity and kms-denied writers")
 	}
@@ -160,13 +231,18 @@ type realAWSSandbox struct {
 	manifest        realAWSManifest
 	dir             string
 	oracle, cleanup externalAWS
-	mu              sync.Mutex
-	owned           map[string]string   // exact ARN -> name; never delete by a reusable name
-	current         map[string]string   // name -> most recently recorded ARN; historical ARNs stay owned
-	creations       []string            // cumulative reservations, including failed/ambiguous creates; never refunded
-	replayOnly      bool                // child replay cannot create or reset the parent budget
-	ops             []string            // operation names only, no headers, descriptors, or values
-	putAttempts     map[string][]string // exact ARN -> sent version tokens; never values or credentials
+	// Bound once by bindEndpoint: the Secrets Manager origin, and for an
+	// emulator its STS origin, trusted roots and egress allowance.
+	origin, stsOrigin string
+	roots             *x509.CertPool
+	allowed           []netip.Prefix
+	mu                sync.Mutex
+	owned             map[string]string   // exact ARN -> name; never delete by a reusable name
+	current           map[string]string   // name -> most recently recorded ARN; historical ARNs stay owned
+	creations         []string            // cumulative reservations, including failed/ambiguous creates; never refunded
+	replayOnly        bool                // child replay cannot create or reset the parent budget
+	ops               []string            // operation names only, no headers, descriptors, or values
+	putAttempts       map[string][]string // exact ARN -> sent version tokens; never values or credentials
 }
 
 func loadRealAWSSandbox(t *testing.T) *realAWSSandbox {
@@ -182,6 +258,13 @@ func loadRealAWSSandbox(t *testing.T) *realAWSSandbox {
 	if os.Getenv("HIKYO_TEST_POSTGRES_DSN") == "" {
 		t.Fatal("real AWS acceptance requires both datastore engines")
 	}
+	return openRealAWSSandbox(t, path, false)
+}
+
+// The real loader refuses an emulator manifest and the emulator test refuses
+// a real one, so neither lane can run against the other's endpoint.
+func openRealAWSSandbox(t *testing.T, path string, emulator bool) *realAWSSandbox {
+	t.Helper()
 	raw, err := readAWSProtectedFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -191,10 +274,13 @@ func loadRealAWSSandbox(t *testing.T) *realAWSSandbox {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := m.validate(time.Now()); err != nil {
+	if err := m.validateLane(time.Now(), emulator); err != nil {
 		t.Fatal(err)
 	}
 	s := &realAWSSandbox{t: t, manifest: m, dir: filepath.Dir(path), owned: make(map[string]string)}
+	if err := s.bindEndpoint(); err != nil {
+		t.Fatal(err)
+	}
 	s.oracle = s.staticActor(t, m.Oracle)
 	s.cleanup = s.staticActor(t, m.Cleanup)
 	if s.oracle.creds.AccessKeyID == s.cleanup.creds.AccessKeyID {
@@ -203,9 +289,15 @@ func loadRealAWSSandbox(t *testing.T) *realAWSSandbox {
 	t.Cleanup(func() { s.oracle.creds = aws.Credentials{}; s.cleanup.creds = aws.Credentials{} })
 	t.Cleanup(func() { s.clean(t) })
 	// Verify every supplied identity before any test starts its first write.
-	for _, mode := range []string{"static", "ambient", "assume-role", "web-identity", "kms-denied"} {
+	modes := []string{"static", "ambient", "assume-role", "web-identity", "kms-denied"}
+	if emulator {
+		modes = []string{"static"}
+	}
+	for _, mode := range modes {
 		if !t.Run("preflight-"+mode, func(t *testing.T) {
-			s.validateExpiredInputs(t, mode)
+			if !emulator {
+				s.validateExpiredInputs(t, mode)
+			}
 			s.writer(t, mode)
 		}) {
 			t.Fatal("sandbox identity preflight failed before mutations")
@@ -217,6 +309,41 @@ func loadRealAWSSandbox(t *testing.T) *realAWSSandbox {
 		t.Fatal(err)
 	}
 	return s
+}
+
+// bindEndpoint is the one place a sandbox learns where to send requests. The
+// parent loader and the replay child both call it. Real AWS keeps the regional
+// origin and system roots; an emulator brings its own origins, CA and CIDR.
+func (s *realAWSSandbox) bindEndpoint() error {
+	s.origin = "https://secretsmanager." + s.manifest.Region + ".amazonaws.com"
+	s.stsOrigin, s.roots, s.allowed = "", nil, nil
+	e := s.manifest.Emulator
+	if e == nil {
+		return nil
+	}
+	pem, err := os.ReadFile(e.CAFile)
+	if err != nil {
+		return errors.New("emulator CA file is unreadable")
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(pem) {
+		return errors.New("emulator CA file holds no certificate")
+	}
+	prefix, err := netip.ParsePrefix(e.AllowedCIDR)
+	if err != nil {
+		return errors.New("emulator allowed CIDR is invalid")
+	}
+	s.origin, s.stsOrigin, s.roots, s.allowed = e.Origin, e.STSOrigin, roots, []netip.Prefix{prefix}
+	return nil
+}
+
+func (s *realAWSSandbox) emulated() bool { return s.manifest.Emulator != nil }
+
+// endpointConfig adds the bound trust and egress settings to a client config.
+// Real AWS leaves them nil.
+func (s *realAWSSandbox) endpointConfig(cfg awssm.ClientConfig) awssm.ClientConfig {
+	cfg.RootCAs, cfg.AllowedCIDRs, cfg.STSAllowedCIDRs = s.roots, s.allowed, s.allowed
+	return cfg
 }
 
 func (s *realAWSSandbox) file(path string) string {
@@ -234,7 +361,8 @@ func (s *realAWSSandbox) descriptor(t *testing.T, a realAWSActor) string {
 	}
 	defer crypto.Zero(raw)
 	d, err := awssm.ParseDescriptor(string(raw))
-	if err != nil || d.Region != s.manifest.Region || d.STSOrigin != "" {
+	if err != nil || d.Region != s.manifest.Region || d.STSOrigin != s.stsOrigin {
+		// runner.py classifies this exact text; on the emulator "AWS STS" is its STS origin.
 		t.Fatal("AWS fixture descriptor must match the approved region and use AWS STS")
 	}
 	return string(raw)
@@ -256,7 +384,7 @@ func matchesAWSPrincipal(actual, expected string) bool {
 
 func (s *realAWSSandbox) client(t *testing.T, raw string, workload bool, principal string) *awssm.Client {
 	t.Helper()
-	c, err := awssm.NewClient(awssm.ClientConfig{Origin: "https://secretsmanager." + s.manifest.Region + ".amazonaws.com", Credential: raw, WorkloadIdentity: workload, Deadline: 15 * time.Second})
+	c, err := awssm.NewClient(s.endpointConfig(awssm.ClientConfig{Origin: s.origin, Credential: raw, WorkloadIdentity: workload, Deadline: 15 * time.Second}))
 	if err != nil {
 		t.Fatal("AWS fixture client configuration refused")
 	}
@@ -276,7 +404,7 @@ func (s *realAWSSandbox) staticActor(t *testing.T, a realAWSActor) externalAWS {
 		t.Fatal("oracle and cleanup require protected temporary static descriptors")
 	}
 	s.client(t, raw, false, a.PrincipalARN)
-	return externalAWS{origin: "https://secretsmanager." + s.manifest.Region + ".amazonaws.com", account: s.manifest.Account, region: s.manifest.Region, creds: aws.Credentials{AccessKeyID: d.AccessKeyID, SecretAccessKey: d.SecretKey, SessionToken: d.SessionToken}}
+	return externalAWS{origin: s.origin, account: s.manifest.Account, region: s.manifest.Region, roots: s.roots, allowed: s.allowed, creds: aws.Credentials{AccessKeyID: d.AccessKeyID, SecretAccessKey: d.SecretKey, SessionToken: d.SessionToken}}
 }
 
 // isolateAWSChain prevents an unrelated local profile, ECS endpoint, or IMDS

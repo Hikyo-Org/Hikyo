@@ -115,6 +115,51 @@ func TestAWSRealFixtureScope(t *testing.T) {
 	}
 }
 
+// The emulator branch accepts only a static writer behind a non-AWS origin, and
+// neither lane loads the other's manifest.
+func TestAWSRealFixtureEmulatorScope(t *testing.T) {
+	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+	emulated := func() realAWSManifest {
+		m := realAWSManifestFixture(now)
+		m.Writers = map[string]realAWSActor{"static": {CredentialFile: "static.json", PrincipalARN: "arn:aws:iam::123456789012:role/static"}}
+		m.Emulator = &realAWSEmulator{Origin: "https://127.0.0.1:5444", STSOrigin: "https://127.0.0.1:5444", CAFile: "/certs/ca.pem", AllowedCIDR: "127.0.0.1/32"}
+		return m
+	}
+	if err := emulated().validateLane(now, true); err != nil {
+		t.Fatal(err)
+	}
+	if emulated().validateLane(now, false) == nil || realAWSManifestFixture(now).validateLane(now, true) == nil {
+		t.Fatal("AWS sandbox manifest loaded by the wrong lane")
+	}
+	if err := realAWSManifestFixture(now).validateLane(now, false); err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]func(*realAWSManifest){
+		"aws-origin":    func(m *realAWSManifest) { m.Emulator.Origin = "https://secretsmanager.eu-west-1.amazonaws.com" },
+		"aws-sts":       func(m *realAWSManifest) { m.Emulator.STSOrigin = "https://sts.eu-west-1.amazonaws.com" },
+		"plaintext":     func(m *realAWSManifest) { m.Emulator.Origin = "http://127.0.0.1:5444" },
+		"non-canonical": func(m *realAWSManifest) { m.Emulator.Origin = "https://127.0.0.1:5444/" },
+		"missing-cidr":  func(m *realAWSManifest) { m.Emulator.AllowedCIDR = "" },
+		"missing-ca":    func(m *realAWSManifest) { m.Emulator.CAFile = "" },
+		"relative-ca":   func(m *realAWSManifest) { m.Emulator.CAFile = "ca.pem" },
+		"extra-writer":  func(m *realAWSManifest) { m.Writers["ambient"] = m.Oracle },
+		"no-static": func(m *realAWSManifest) {
+			m.Writers = map[string]realAWSActor{"ambient": {CredentialFile: "a.json", PrincipalARN: "arn:aws:iam::123456789012:role/a"}}
+		},
+		"shared-identity":  func(m *realAWSManifest) { m.Cleanup = m.Oracle },
+		"emulator-account": func(m *realAWSManifest) { m.Account = "000000000000" },
+	}
+	for name, change := range cases {
+		t.Run(name, func(t *testing.T) {
+			m := emulated()
+			change(&m)
+			if m.validateLane(now, true) == nil {
+				t.Fatal("unsafe fixture scope accepted")
+			}
+		})
+	}
+}
+
 func TestAWSRealFixtureBudgetBound(t *testing.T) {
 	now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
 	for _, scenario := range []struct {

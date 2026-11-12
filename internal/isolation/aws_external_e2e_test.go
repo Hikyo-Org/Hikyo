@@ -31,11 +31,16 @@ import (
 // External AWS Secrets Manager coverage (#158). Both tests skip locally and
 // fail when their REQUIRED switch is set (HIKYO_TEST_AWS_EMULATOR_REQUIRED,
 // HIKYO_TEST_AWS_REAL_REQUIRED), so a CI job that is meant to run one cannot
-// pass vacuously. CI runs the emulator leg against a digest-pinned moto
-// started by scripts/ci/start-aws-emulator.sh.
+// pass vacuously. CI runs the lifecycle leg against a digest-pinned moto
+// started by scripts/ci/start-aws-emulator.sh, and the acceptance leg against
+// a digest-pinned Floci with IAM enforcement on, started by
+// scripts/ci/start-floci-emulator.sh (HIKYO_TEST_FLOCI_*). Floci cannot run
+// the product's create flow yet (docs/testing/aws-acceptance-matrix.md).
 //
 //   - TestAWSSecretsManagerEmulatorLifecycle runs against an AWS-compatible
-//     emulator (LocalStack or Floci) on an HTTPS endpoint:
+//     emulator (moto in CI) on an HTTPS endpoint. The
+//     acceptance test (aws_emulator_acceptance_test.go) reads the same
+//     variables under the HIKYO_TEST_FLOCI_ prefix:
 //     HIKYO_TEST_AWS_ENDPOINT, HIKYO_TEST_AWS_ACCOUNT (required with the
 //     endpoint; a non-zero 12-digit account, because LocalStack's default
 //     000000000000 parses to 0 and is refused as a destination id),
@@ -66,35 +71,57 @@ func requireExternalAWS(t *testing.T, required, missing string) {
 }
 
 func TestAWSSecretsManagerEmulatorLifecycle(t *testing.T) {
-	endpoint := os.Getenv("HIKYO_TEST_AWS_ENDPOINT")
-	if endpoint == "" {
-		requireExternalAWS(t, "HIKYO_TEST_AWS_EMULATOR_REQUIRED", "HIKYO_TEST_AWS_ENDPOINT")
-	}
-	account := os.Getenv("HIKYO_TEST_AWS_ACCOUNT")
-	if account == "" {
-		t.Fatal("HIKYO_TEST_AWS_ENDPOINT is set but HIKYO_TEST_AWS_ACCOUNT is not; configure the emulator with a non-zero 12-digit account (000000000000 is refused as a destination id)")
-	}
+	emulator := loadAWSEmulatorEnv(t, "HIKYO_TEST_AWS", "HIKYO_TEST_AWS_EMULATOR_REQUIRED")
 	env := externalAWS{
-		origin: endpoint, account: account, region: envOr("HIKYO_TEST_AWS_REGION", "us-east-1"),
-		creds: aws.Credentials{AccessKeyID: "AKIAHIKYOEMULATOR001", SecretAccessKey: "emulator-secret"},
-	}
-	if raw := os.Getenv("HIKYO_TEST_AWS_ALLOWED_CIDR"); raw != "" {
-		env.allowed = append(env.allowed, netip.MustParsePrefix(raw))
-	}
-	if path := os.Getenv("HIKYO_TEST_AWS_CA_FILE"); path != "" {
-		pem, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		env.roots = x509.NewCertPool()
-		if !env.roots.AppendCertsFromPEM(pem) {
-			t.Fatal("HIKYO_TEST_AWS_CA_FILE holds no certificate")
-		}
+		origin: emulator.endpoint, account: emulator.account, region: emulator.region,
+		creds:   aws.Credentials{AccessKeyID: "AKIAHIKYOEMULATOR001", SecretAccessKey: "emulator-secret"},
+		allowed: emulator.allowed, roots: emulator.roots,
 	}
 	runExternalAWSLifecycle(t, env)
 	runExternalAWSConcurrentWrites(t, env)
 	runExternalAWSReplacementRace(t, env)
 	runExternalAWSAdoptionReplay(t, env)
+}
+
+// awsEmulatorEnv is the shared HIKYO_TEST_AWS_* contract of both emulator tests.
+type awsEmulatorEnv struct {
+	endpoint, account, region, caFile, allowedCIDR string
+	allowed                                        []netip.Prefix
+	roots                                          *x509.CertPool
+}
+
+// loadAWSEmulatorEnv reads <prefix>_ENDPOINT, _ACCOUNT, _REGION, _ALLOWED_CIDR
+// and _CA_FILE; the required switch makes a missing endpoint fatal.
+func loadAWSEmulatorEnv(t *testing.T, vp, required string) awsEmulatorEnv {
+	t.Helper()
+	endpoint := os.Getenv(vp + "_ENDPOINT")
+	if endpoint == "" {
+		requireExternalAWS(t, required, vp+"_ENDPOINT")
+	}
+	account := os.Getenv(vp + "_ACCOUNT")
+	if account == "" {
+		t.Fatal(vp + "_ENDPOINT is set but " + vp + "_ACCOUNT is not; configure the emulator with a non-zero 12-digit account (000000000000 is refused as a destination id)")
+	}
+	env := awsEmulatorEnv{endpoint: strings.TrimSuffix(endpoint, "/"), account: account, region: envOr(vp+"_REGION", "us-east-1"),
+		caFile: os.Getenv(vp + "_CA_FILE"), allowedCIDR: os.Getenv(vp + "_ALLOWED_CIDR")}
+	if env.allowedCIDR != "" {
+		p, err := netip.ParsePrefix(env.allowedCIDR)
+		if err != nil {
+			t.Fatal(vp + "_ALLOWED_CIDR is not a CIDR prefix")
+		}
+		env.allowed = append(env.allowed, p)
+	}
+	if env.caFile != "" {
+		pem, err := os.ReadFile(env.caFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		env.roots = x509.NewCertPool()
+		if !env.roots.AppendCertsFromPEM(pem) {
+			t.Fatal(vp + "_CA_FILE holds no certificate")
+		}
+	}
+	return env
 }
 
 func envOr(key, fallback string) string {
