@@ -383,16 +383,26 @@ cmd_teardown() {
 	# is therefore read as a force deletion under way. Force delete is idempotent
 	# for a deleted secret. Any secret still refused is reported, the rest of
 	# teardown (users, policies, key) still runs, and teardown then exits non-zero.
-	local secrets arn name deleted out pending=()
+	# A secret this loop restored but could not force-delete is scheduled for
+	# deletion again, so an abandoned rerun cannot leave it live.
+	local secrets arn name deleted out restored pending=()
 	secrets=$(list_run_secrets "hikyo-e2e-$run")
 	while read -r arn name deleted; do
 		[[ -n $arn ]] || continue
 		[[ $name == "hikyo-e2e-$run"* ]] || continue
-		if [[ $deleted != None ]] && ! out=$(aws_ secretsmanager restore-secret --secret-id "$arn" 2>&1 </dev/null); then
-			printf 'secret %s: restore refused, treating it as a force deletion under way: %s\n' "$name" "$out" >&2
+		restored=0
+		if [[ $deleted != None ]]; then
+			if out=$(aws_ secretsmanager restore-secret --secret-id "$arn" 2>&1 </dev/null); then
+				restored=1
+			else
+				printf 'secret %s: restore refused, treating it as a force deletion under way: %s\n' "$name" "$out" >&2
+			fi
 		fi
 		if ! out=$(aws_ secretsmanager delete-secret --secret-id "$arn" --force-delete-without-recovery 2>&1 </dev/null); then
 			printf 'secret %s: force delete refused: %s\n' "$name" "$out" >&2
+			if ((restored)) && ! out=$(aws_ secretsmanager delete-secret --secret-id "$arn" --recovery-window-in-days 7 2>&1 </dev/null); then
+				printf 'secret %s: LIVE, could not schedule its deletion again: %s\n' "$name" "$out" >&2
+			fi
 			pending+=("$name")
 			continue
 		fi

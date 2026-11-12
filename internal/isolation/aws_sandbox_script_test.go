@@ -18,9 +18,27 @@ import (
 // fails every call; with it, it answers as a root caller in an empty account,
 // with STUB_ALIASES as the merged list-aliases JSON and STUB_SECRETS as the
 // list-secrets rows. Restores of ARNs containing "force" and force deletes of
-// ARNs containing "stuck" are refused.
+// ARNs containing "stuck" are refused. STUB_USERS adds the run's users, each with
+// one access key, one foreign and one run policy attached, and two customer
+// keys of which only k-run carries the run's tag.
 const awsStubScript = `#!/bin/sh
 printf '%s\n' "$*" >> "$STUB_LOG"
+if [ -n "$STUB_USERS" ]; then
+	case "$*" in
+	*"iam get-user"*) echo '{}'; exit 0 ;;
+	*"iam list-access-keys"*) echo AKIASTUB; exit 0 ;;
+	*"iam list-attached-user-policies"*) printf 'arn:aws:iam::aws:policy/Foreign\tarn:aws:iam::123456789012:policy/hikyo-smoke-0123456789-writer\n'; exit 0 ;;
+	*"iam list-user-policies"*) exit 0 ;;
+	*"iam list-policies"*) echo arn:aws:iam::123456789012:policy/hikyo-smoke-0123456789-writer; exit 0 ;;
+	*"iam update-access-key"* | *"iam detach-user-policy"* | *"iam delete-access-key"* | *"iam delete-user"* | *"iam delete-policy"*) exit 0 ;;
+	*"kms list-keys"*) printf 'k-run\tk-other\n'; exit 0 ;;
+	*"kms describe-key"*KeyManager*) printf 'CUSTOMER\tEnabled\n'; exit 0 ;;
+	*"kms describe-key"*) printf 'k-run\tPendingDeletion\t2026-11-19\n'; exit 0 ;;
+	*"kms list-resource-tags"*k-run*) echo '{"Tags":[{"TagKey":"hikyo-smoke","TagValue":"0123456789"}]}'; exit 0 ;;
+	*"kms list-resource-tags"*) echo '{"Tags":[{"TagKey":"hikyo-smoke","TagValue":"abcdef0123"}]}'; exit 0 ;;
+	*"kms schedule-key-deletion"* | *"kms delete-alias"*) exit 0 ;;
+	esac
+fi
 if [ -n "$STUB_PROVISION" ]; then
 	case "$*" in
 	*"sts get-caller-identity"*) echo "arn:aws:iam::123456789012:root"; exit 0 ;;
@@ -29,7 +47,7 @@ if [ -n "$STUB_PROVISION" ]; then
 	*"secretsmanager list-secrets"*) printf '%s' "$STUB_SECRETS"; exit 0 ;;
 	*"restore-secret"*force*) echo "An error occurred (InvalidRequestException)" >&2; exit 254 ;;
 	*"restore-secret"*) exit 0 ;;
-	*"delete-secret"*stuck*) echo "An error occurred (InvalidRequestException)" >&2; exit 254 ;;
+	*"delete-secret"*stuck*--force-delete-without-recovery*) echo "An error occurred (InvalidRequestException)" >&2; exit 254 ;;
 	*"delete-secret"*) exit 0 ;;
 	*"iam list-policies"* | *"kms list-keys"*) exit 0 ;;
 	esac
@@ -79,6 +97,10 @@ func requireSandboxTools(t *testing.T) {
 	t.Helper()
 	for _, tool := range []string{"bash", "jq"} {
 		if _, err := exec.LookPath(tool); err != nil {
+			// CI images carry both tools, so a missing one there is a broken runner, not a skip.
+			if os.Getenv("CI") != "" {
+				t.Fatalf("%s is not installed", tool)
+			}
 			t.Skipf("%s is not installed", tool)
 		}
 	}
@@ -217,10 +239,11 @@ func TestAWSSandboxScriptTeardownSecretSweep(t *testing.T) {
 		prefix + "scheduled\thikyo-e2e-0123456789/b\t2026-11-12T10:00:00+00:00",
 		prefix + "force\thikyo-e2e-0123456789/c\t2026-11-12T10:00:00+00:00",
 		prefix + "force-stuck\thikyo-e2e-0123456789r1/d\t2026-11-12T10:00:00+00:00",
+		prefix + "stuck\thikyo-e2e-0123456789/f\t2026-11-12T10:00:00+00:00",
 		prefix + "other\thikyo-e2e-abcdef0123/e\tNone",
 	}, "\n") + "\n"
 	stderr, calls, err := runSandboxScript(t, append([]string{"STUB_SECRETS=" + rows}, awsAccountStub...), "--endpoint-url", "https://127.0.0.1:4566", "teardown", "0123456789")
-	if err == nil || !strings.Contains(stderr, "secrets not yet deleted: hikyo-e2e-0123456789r1/d") {
+	if err == nil || !strings.Contains(stderr, "secrets not yet deleted: hikyo-e2e-0123456789r1/d hikyo-e2e-0123456789/f") {
 		t.Fatalf("want a loud failure naming the stuck secret, got %v:\n%s", err, stderr)
 	}
 	has := func(op, arn string) bool {
@@ -237,13 +260,75 @@ func TestAWSSandboxScriptTeardownSecretSweep(t *testing.T) {
 		"scheduled":   {true, true},
 		"force":       {true, true},
 		"force-stuck": {true, true},
+		"stuck":       {true, true},
 		"other":       {false, false},
 	} {
 		if got := [2]bool{has("restore-secret", arn), has("delete-secret", arn)}; got != want {
 			t.Errorf("%s: restore, delete = %v, want %v", arn, got, want)
 		}
 	}
+	// A secret restored here but not force-deleted is scheduled again, never left live.
+	for _, call := range calls {
+		if strings.Contains(call, "--recovery-window-in-days") && !strings.Contains(call, "--secret-id "+prefix+"stuck ") {
+			t.Errorf("only the restored, refused secret is rescheduled: %q", call)
+		}
+	}
+	if !strings.Contains(strings.Join(calls, "\n"), "--secret-id "+prefix+"stuck --recovery-window-in-days 7") {
+		t.Errorf("the restored, refused secret was left live: %q", calls)
+	}
 	if !strings.Contains(strings.Join(calls, "\n"), "kms list-keys") {
 		t.Fatalf("a refused secret must not stop the rest of teardown: %q", calls)
+	}
+}
+
+// Teardown revokes every run user's keys and policies before it touches any
+// secret, deletes only the run's own policy and key, and only detaches the rest.
+func TestAWSSandboxScriptTeardownRevokesFirstAndStaysInNamespace(t *testing.T) {
+	requireSandboxTools(t)
+	const prefix = "arn:aws:secretsmanager:eu-central-1:123456789012:secret:"
+	stub := append([]string{"STUB_USERS=1", "STUB_SECRETS=" + prefix + "a\thikyo-e2e-0123456789/a\tNone\n"}, awsAccountStub...)
+	stderr, calls, err := runSandboxScript(t, stub, "--endpoint-url", "https://127.0.0.1:4566", "teardown", "0123456789")
+	if err != nil {
+		t.Fatalf("teardown failed: %v\n%s", err, stderr)
+	}
+	first := func(op string) int {
+		for i, call := range calls {
+			if strings.Contains(call, op) {
+				return i
+			}
+		}
+		return -1
+	}
+	count := func(op string) (n int) {
+		for _, call := range calls {
+			if strings.Contains(call, op) {
+				n++
+			}
+		}
+		return n
+	}
+	sweep := first("secretsmanager delete-secret")
+	if sweep < 0 {
+		t.Fatalf("no secret was deleted: %q", calls)
+	}
+	for _, actor := range []string{"writer", "oracle", "cleanup"} {
+		user := "--user-name hikyo-smoke-0123456789-" + actor
+		for _, op := range []string{"iam update-access-key " + user, "iam detach-user-policy " + user} {
+			if i := first(op); i < 0 || i > sweep {
+				t.Errorf("%q must run before the secret sweep (at %d, sweep at %d)", op, i, sweep)
+			}
+		}
+	}
+	if got := count("iam detach-user-policy"); got != 6 {
+		t.Errorf("want both policies detached from all three users, got %d detaches", got)
+	}
+	if count("policy/Foreign") != 3 || count("iam delete-policy --policy-arn arn:aws:iam::aws:policy/Foreign") != 0 {
+		t.Errorf("the foreign policy must be detached but never deleted: %q", calls)
+	}
+	if count("iam delete-policy --policy-arn arn:aws:iam::123456789012:policy/hikyo-smoke-0123456789-writer") != 1 {
+		t.Errorf("the run policy must be deleted once: %q", calls)
+	}
+	if count("kms schedule-key-deletion --key-id k-run") != 1 || count("kms schedule-key-deletion --key-id k-other") != 0 {
+		t.Errorf("only the key tagged with this run may be scheduled for deletion: %q", calls)
 	}
 }
