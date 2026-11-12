@@ -1,11 +1,12 @@
 # AWS Secrets Manager acceptance coverage (#158)
 
-This map assigns each of the 46 records of the retired real-AWS gate (the
-`TEST_NAMES` list of the deleted hosted runner, see
-[aws-acceptance-history.md](aws-acceptance-history.md)) to exactly one owner.
-Coverage moves; none is dropped silently. The two rows marked **accepted
-(option A, 2026-11-12)** lose their only end-to-end proof with the smaller live
-gate; the owner accepted that.
+This map assigns each of the 46 records of the hosted real-AWS gate (the
+`TEST_NAMES` list of `scripts/ci/aws-acceptance/runner.py`) to exactly one
+owner. The change that adds this live smoke (#1338) also deletes that workflow
+and runner; their history is in
+[aws-acceptance-history.md](aws-acceptance-history.md). Coverage moves; none is
+dropped silently. The rows marked **accepted (option A, 2026-11-12)** lose their
+only end-to-end proof with the smaller live gate; the owner accepted that.
 
 Destinations:
 
@@ -33,11 +34,11 @@ Criteria are the #158 acceptance list: 1 configuration, 2 authentication,
 | `lifecycle`, `/sqlite`, `/postgres` | 3 | (c) | Live smoke. Skipped on Floci (first-version gap below); the create, update and delete flow stays in required CI through moto's `TestAWSSecretsManagerEmulatorLifecycle`. | 3, 4, 6 |
 | `promoted-replay`, `/finish-loss`, `/marker-refusal`, each `/sqlite`, `/postgres` | 7 | (c) | Live smoke. Also runs in (a). | 3, 6 |
 | `preflight-static` | 1 | (a) | Provisioned role session, identity bound through Floci STS. The live smoke also runs it first, with its IAM users. | 2, 6 |
-| `iam-denial` | 1 | (c), (a) | Live smoke with the static writer: cross-writer `TagResource` deny; the writer's `GetSecretValue` on its own secret must be denied by an explicit identity-policy deny (`NeverReadValues`), classified from AWS's access-denied message, and an implicit or unstated deny fails; a writer force delete must be explicitly denied (`NeverForceDelete`) and the secret must stay live. Floci runs the same group but checks only the code of the value-read deny (it grants no read, so explicit and implicit look alike) and skips the force-delete probe (no condition evaluation, so it would really delete). | 3, 6 |
+| `iam-denial` | 1 | (c), (a) | Live smoke with the static writer: cross-writer `TagResource` deny, then the writer's `GetSecretValue` on its own secret. The writer policy has no Allow for that read, so the denial code alone would not show which policy refused it. The explicit/implicit distinction comes only from the deny kind the test classifies from AWS's access-denied message (`classifyAWSDeny`): AWS reports "explicit deny in an identity-based policy" whenever a Deny statement matches, here only `NeverReadValues`, and "no identity-based policy allows" when nothing does. The live run passes only on the explicit identity-policy kind; an implicit, other-policy or missing deny kind fails it. A writer force delete must also be refused with the explicit identity-policy kind (`NeverForceDelete`), and the secret must stay live. Floci runs the same group but checks only the code of the value-read deny (it grants no read, so explicit and implicit look alike) and skips the force-delete probe (no condition evaluation, so it would really delete). | 3, 6 |
 | `adoption-witness`, its three scenarios, each `/sqlite`, `/postgres` | 10 | (a) | Static writer; metadata and version semantics match AWS. | 3, 5 |
 | `auth-boundaries`, `/configured-identity-refusal` | 2 | (a) | Account-mismatch half on Floci. The region half needs an AWS regional origin: `TestRouteResolution`, `TestAccountAndRegionMovementIsRefused`. | 5 |
-| `auth-boundaries/expired-static` | 1 | (b) | `TestFailureClassesFailLoud` (expired credentials), `TestClientRefreshesExpiredCredentials`. Floci and AWS STS refuse sessions under 900 s, so authentic expiry needs a 15-minute wait. | 2, 5 |
-| `auth-boundaries/expired-{assume-role,web-identity,ambient}` | 3 | (b) | Same tests. Workload modes cannot reach an emulator (below). | 2, 5 |
+| `auth-boundaries/expired-static` | 1 | (c), (b) | Live smoke: the `lifecycle` credential fence installs `static-expired.json`, an authentic 900 s session that has lapsed (the owner waits 16 minutes), and the real AWS call must fail the durable job with an auth error and no mutation. It asserts the auth class, not STS's expiry code. Controlled: `TestFailureClassesFailLoud` (expired credentials), `TestClientRefreshesExpiredCredentials`. | 2, 5 |
+| `auth-boundaries/expired-{assume-role,web-identity,ambient}` | 3 | (b) | Same controlled tests, which use synthetic or injected failures. Workload modes cannot reach an emulator (below). **Accepted (option A, 2026-11-12):** authentic workload-mode STS expiry keeps no end-to-end proof. | 2, 5 |
 | `role-auth`, `/assume-role`, `/web-identity`, each `/sqlite`, `/postgres`; `preflight-assume-role`, `preflight-web-identity` | 9 | (b) | `TestWorkloadIdentityRequiresInstanceOptIn`, `TestWorkloadIdentityAlwaysUsesAWSSTS`, `TestWorkloadIdentityRejectsNonAWSDestinations`, `TestTenantEndpointCannotReceiveWorkloadIdentity`, `TestDescriptorContract`. **Accepted (option A, 2026-11-12):** real STS AssumeRole, ExternalId trust and WebIdentity acquisition keep no end-to-end proof. | 2 |
 | `role-auth/ambient`, `/sqlite`, `/postgres`; `preflight-ambient` | 4 | (d) #1185 | Real IMDS, ECS and IRSA discovery. Opt-in and routing stay in the (b) tests above. | 2 |
 | `kms-denial`, `/sqlite`, `/postgres`; `preflight-kms-denied` | 4 | (b) | `TestFailureClassesFailLoud` (kms denial). Floci never authorizes the caller's KMS use (the lane asserts this). **Accepted (option A, 2026-11-12):** no end-to-end KMS denial remains. | 5 |
@@ -62,7 +63,7 @@ image.
 |---|---|---|
 | KMS denial from an identity policy on the key ARN | A role with an explicit `Deny` on `kms:GenerateDataKey`/`kms:Decrypt` for the CMK still creates and writes secrets with that CMK. | Vacuous on Floci: `kms-denial` to (b). The lane pins this gap. |
 | Web identity | Floci refuses an unknown-issuer token. Moot: the product sends workload credentials only to AWS regional STS (`awssm/auth.go`), and `sts_origin` is static-only. | All workload modes leave the lane. |
-| Authentic credential expiry | Floci STS rejects `DurationSeconds` below 900 for `AssumeRole` and `GetSessionToken`, through the Go SDK too. A 900 s `AssumeRole` session is refused after expiry with `ExpiredTokenException` by both STS and Secrets Manager, which the adapter classifies as auth (`awssm/client.go`). | Authentic, but proving it takes a 15-minute wait per run: `expired-*` to (b); no waiting or timeout changes. |
+| Authentic credential expiry | Floci STS rejects `DurationSeconds` below 900 for `AssumeRole` and `GetSessionToken`, through the Go SDK too. A 900 s `AssumeRole` session is refused after expiry with `ExpiredTokenException` by both STS and Secrets Manager, which the adapter classifies as auth (`awssm/client.go`). | Authentic, but proving it takes a 15-minute wait per run. The live smoke takes that wait once for `expired-static` (the `lifecycle` credential fence); workload `expired-*` stays with (b). No CI waits or timeout changes. |
 | Ambient | Not reachable on any emulator (as web identity). | (d) #1185. |
 | Pending deletion and restore | 30-day deletion sets `DeletedDate`; writes, tags, staging and same-name creates return `InvalidRequestException`; `ListSecrets` hides it unless asked; `RestoreSecret` clears it; force delete removes it. | Matches AWS. |
 | Value-less `CreateSecret` | 2.4.0 creates an empty `AWSCURRENT` version (id = `ClientRequestToken` or a GUID). AWS creates none. Fixed on Floci `main` (#8039, nightly 2026-11-11), not yet released. | The adapter sees an untagged `AWSCURRENT` and reports `exists, unowned`. |

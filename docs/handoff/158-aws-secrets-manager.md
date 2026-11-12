@@ -26,8 +26,10 @@ multi-target seam (targets, outbox, health, pause/resume, retain-or-prune).
   (#1300) runs the same suite body on both engines; moto keeps
   `TestAWSSecretsManagerEmulatorLifecycle` until Floci matches AWS first-version
   staging.
-- **Accepted gaps (option A, 2026-11-12):** real STS AssumeRole/WebIdentity and
-  end-to-end KMS denial keep only controlled-test coverage. Ambient discovery
+- **Accepted gaps (option A, 2026-11-12):** real STS AssumeRole/WebIdentity,
+  authentic workload-mode STS expiry and end-to-end KMS denial keep only
+  controlled-test coverage. Static-session expiry stays live through the
+  `lifecycle` credential fence. Ambient discovery
   moves to #1185.
 - **Retired:** the hosted `aws-acceptance.yml` workflow, its runner, evidence
   schema, failure-text assertions, SHA-pinned approvals, historical cleanup,
