@@ -23,7 +23,7 @@ require (
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-jose/go-jose/v4 v4.1.9
 	github.com/go-webauthn/webauthn v0.18.2
-	github.com/gofrs/flock v0.13.1
+	github.com/gofrs/flock v0.13.2
 	github.com/google/cel-go v0.29.2
 	github.com/google/certificate-transparency-go v1.4.0
 	github.com/google/go-containerregistry v0.22.1
@@ -55,7 +55,7 @@ require (
 	github.com/sigstore/sigstore-go v1.4.0
 	github.com/theupdateframework/go-tuf/v2 v2.4.2
 	github.com/transparency-dev/merkle v0.0.2
-	github.com/wneessen/go-mail v0.8.1
+	github.com/wneessen/go-mail v0.8.2
 	golang.org/x/crypto v0.58.0
 	golang.org/x/image v0.47.0
 	golang.org/x/net v0.62.0
