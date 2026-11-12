@@ -29,6 +29,11 @@ type Rotation struct {
 	// root rotation both re-read it here rather than holding it in memory. Nil
 	// refuses those two rotations loudly.
 	RootKey RootKeySource
+	// Custody re-seals operator custody that is wrapped by the root key, so the
+	// vault opens under whichever root is valid at each phase. Nil means no
+	// custody is reachable from this process (a host vault is root-only and is
+	// not).
+	Custody RootCustody
 	// Budget applies the §179 fail-closed default to master-key rewrapping and
 	// root-key source I/O/hierarchy-lock contention. Nil disables limits only.
 	Budget *Budget
@@ -46,6 +51,22 @@ type RootKeySource interface {
 	// source, for rotate-root-key --prepare. It errors when no new-root source
 	// is configured, so the request never carries key material.
 	Next(ctx context.Context) ([]byte, error)
+}
+
+// RootCustody keeps root-wrapped operator custody usable across a root rotation.
+// Neither method receives or returns key material beyond the roots it is given;
+// the caller zeroes them.
+type RootCustody interface {
+	// Stage seals custody under next beside the vault wrapped by current, so the
+	// vault opens under either root while the master is dual-wrapped. It is a
+	// no-op when no custody is enrolled.
+	Stage(ctx context.Context, current, next []byte) error
+	// Check fails, changing nothing, when custody cannot open under root. Run
+	// before the irreversible finalize.
+	Check(ctx context.Context, root []byte) error
+	// Commit makes custody open under root alone, once the old root wrapper is
+	// retired. It is idempotent.
+	Commit(ctx context.Context, root []byte) error
 }
 
 func (s *Rotation) now() time.Time {
@@ -343,6 +364,16 @@ func (s *Rotation) rootRotatePrepare(ctx context.Context, actor Actor) (RootKeyR
 	}
 	wrapper.CreatedAt = store.CanonTime(s.now())
 	epoch := wrapper.RootKeyEpoch
+	// Staged after the keyring accepted the rotation: a refused prepare (one is
+	// already in flight) must not overwrite the staged vault that rotation
+	// depends on. Staged before the transaction: a crash after the dual wrapper
+	// commits but before staging would leave custody that only the retired root
+	// opens, and the old root is gone from the server by verify.
+	if s.Custody != nil {
+		if err := s.stageCustody(ctx, newRoot); err != nil {
+			return RootKeyRotation{}, err
+		}
+	}
 	err = s.rootRotationTx(ctx, actor, audit.EventRootKeyRotationPrepared, epoch,
 		func(ctx context.Context, r store.Repos, p authz.Proof) error {
 			return r.Keys().RootKeyRotatePrepare(ctx, p, wrapper)
@@ -354,6 +385,18 @@ func (s *Rotation) rootRotatePrepare(ctx context.Context, actor Actor) (RootKeyR
 		return RootKeyRotation{}, err
 	}
 	return RootKeyRotation{Phase: string(RootRotatePrepare), Epoch: epoch}, nil
+}
+
+func (s *Rotation) stageCustody(ctx context.Context, newRoot []byte) error {
+	current, err := s.RootKey.Current(ctx)
+	if err != nil {
+		return fmt.Errorf("service: read primary root key: %w", err)
+	}
+	defer crypto.Zero(current)
+	if err := s.Custody.Stage(ctx, current, newRoot); err != nil {
+		return fmt.Errorf("service: re-seal upgrade custody under the new root key: %w", err)
+	}
+	return nil
 }
 
 func (s *Rotation) rootRotateVerify(ctx context.Context, actor Actor) (RootKeyRotation, error) {
@@ -399,6 +442,13 @@ func (s *Rotation) rootRotateFinalize(ctx context.Context, actor Actor) (RootKey
 		return RootKeyRotation{}, err
 	}
 
+	// Before the destructive step: custody that cannot open under the installed
+	// root keeps the old wrapper, and the operator can still repair it.
+	if s.Custody != nil {
+		if err := s.Custody.Check(ctx, primary); err != nil {
+			return RootKeyRotation{}, fmt.Errorf("%w: upgrade custody does not open under the installed root key, so the old root wrapper was kept: %w", domain.ErrConflict, err)
+		}
+	}
 	var newEpoch uint32
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, p, err := authorize(ctx, az, actor, authz.OpRotateRootKey, domain.Scope{}, s.now())
@@ -428,6 +478,16 @@ func (s *Rotation) rootRotateFinalize(ctx context.Context, actor Actor) (RootKey
 	}
 	// The old root no longer boots; the running process should stop warning.
 	s.Keyring.ClearRootRotationPending()
+	// After the commit, not before: the store can still refuse finalize (a
+	// rollback that needs both roots), and custody must keep opening under the
+	// old root until it does not. Custody already opens under the new root
+	// through its staged file, so a failure here weakens only the retirement of
+	// the old root.
+	if s.Custody != nil {
+		if err := s.Custody.Commit(ctx, primary); err != nil {
+			return RootKeyRotation{}, fmt.Errorf("service: the root key rotation is finalized but the upgrade custody vault is still wrapped under the retired root as well (it opens under the new root): %w", err)
+		}
+	}
 	return RootKeyRotation{Phase: string(RootRotateFinalize), Epoch: newEpoch}, nil
 }
 

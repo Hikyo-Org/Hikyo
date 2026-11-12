@@ -72,7 +72,7 @@ func BindLocalEnrollment(directory string, rootKey []byte, instance string, publ
 		return nil, err
 	}
 	defer dir.Close()
-	if err := publish(dir, ciphertext, true); err != nil {
+	if err := publish(dir, fileName, ciphertext, true); err != nil {
 		return nil, err
 	}
 	complete = true

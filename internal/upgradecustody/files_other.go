@@ -10,9 +10,15 @@ import (
 func custodyDirectory(string, bool, int) (*os.File, error) {
 	return nil, errors.New("local operator custody is unsupported on this platform")
 }
-func publish(*os.File, []byte, bool) error {
+func publish(*os.File, string, []byte, bool) error {
 	return errors.New("local operator custody is unsupported on this platform")
 }
-func read(*os.File, int) ([]byte, error) {
+func read(*os.File, string, int) ([]byte, error) {
 	return nil, errors.New("local operator custody is unsupported on this platform")
+}
+func promoteStaged(*os.File) error {
+	return errors.New("local operator custody is unsupported on this platform")
+}
+func discardStaged(*os.File) error {
+	return errors.New("local operator custody is unsupported on this platform")
 }

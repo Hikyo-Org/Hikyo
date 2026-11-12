@@ -302,7 +302,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		// mean a subscriber saw half the events.
 		Values:    valuesSvc,
 		Revisions: revisionsSvc,
-		Rotation:  &service.Rotation{DB: db, Keyring: kr, RootKey: rotationSource, Budget: budget},
+		Rotation:  &service.Rotation{DB: db, Keyring: kr, RootKey: rotationSource, Custody: unattendedRootCustody(cfg), Budget: budget},
 		Reencrypt: reencryptSvc,
 		Pins:      &service.Pins{DB: db, Keyring: kr, Auth: authSvc},
 		Reveal:    &service.Reveal{DB: db, Auth: authSvc},

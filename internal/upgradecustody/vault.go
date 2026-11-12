@@ -28,10 +28,13 @@ import (
 )
 
 const (
-	fileName      = "operator.age"
-	vaultFormat   = "hikyo.operator-custody/v1"
-	maxCiphertext = 16 << 10
-	maxPlaintext  = 8 << 10
+	fileName = "operator.age"
+	// stagedFileName holds the record sealed under the next root key while a
+	// root rotation is in flight; see StageRootRotation.
+	stagedFileName = "operator.next.age"
+	vaultFormat    = "hikyo.operator-custody/v1"
+	maxCiphertext  = 16 << 10
+	maxPlaintext   = 8 << 10
 )
 
 // Vault holds unlocked material in memory until Close. Callers own and must
@@ -106,7 +109,7 @@ func create(directory string, passphrase, rootKey []byte, instance string, owner
 	if err != nil {
 		return nil, err
 	}
-	if err := publish(dir, ciphertext, false); err != nil {
+	if err := publish(dir, fileName, ciphertext, false); err != nil {
 		return nil, err
 	}
 	ok = true
@@ -177,7 +180,7 @@ func rewrap(directory string, current, next []byte, instance string, owner int) 
 		return err
 	}
 	defer dir.Close()
-	return publish(dir, ciphertext, true)
+	return publish(dir, fileName, ciphertext, true)
 }
 
 // Open decrypts custody only after checking directory/file ownership and modes.
@@ -187,7 +190,7 @@ func Open(directory string, passphrase []byte, instance string) (*Vault, error) 
 }
 
 func open(directory string, passphrase []byte, instance string, owner int) (*Vault, error) {
-	r, err := unseal(directory, passphrase, instance, owner)
+	r, err := unsealEither(directory, passphrase, instance, owner)
 	if err != nil {
 		return nil, err
 	}
@@ -199,6 +202,30 @@ func open(directory string, passphrase []byte, instance string, owner int) (*Vau
 var ErrUnlock = errors.New("operator custody unlock failed")
 
 func unseal(directory string, passphrase []byte, instance string, owner int) (record, error) {
+	return unsealFile(directory, fileName, passphrase, instance, owner)
+}
+
+// unsealEither opens custody for a caller that holds only the installed root.
+// While a root rotation is in flight the live file may still be wrapped under
+// the retired root, so a root that does not open it is tried against the staged
+// file. Only open uses it: rewrap and fresh-enrollment binding replace the live
+// file and must start from the live record. A promotion between the two reads
+// moves the staged file over the live one, so the live file is read once more.
+func unsealEither(directory string, secret []byte, instance string, owner int) (record, error) {
+	r, err := unseal(directory, secret, instance, owner)
+	if !errors.Is(err, ErrUnlock) {
+		return r, err
+	}
+	if staged, stagedErr := unsealFile(directory, stagedFileName, secret, instance, owner); stagedErr == nil {
+		return staged, nil
+	}
+	if again, againErr := unseal(directory, secret, instance, owner); againErr == nil {
+		return again, nil
+	}
+	return r, err
+}
+
+func unsealFile(directory, name string, passphrase []byte, instance string, owner int) (record, error) {
 	if len(passphrase) == 0 || len(passphrase) > 1024 {
 		return record{}, errors.New("invalid operator passphrase")
 	}
@@ -207,7 +234,7 @@ func unseal(directory string, passphrase []byte, instance string, owner int) (re
 		return record{}, err
 	}
 	defer dir.Close()
-	ciphertext, err := read(dir, owner)
+	ciphertext, err := read(dir, name, owner)
 	if err != nil {
 		return record{}, err
 	}

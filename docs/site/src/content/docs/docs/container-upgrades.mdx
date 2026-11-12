@@ -37,6 +37,14 @@ secret derived from its root key. A compromised runtime that can read that root
 key also has recovery authority. Keep the encrypted vault and root key in your
 recovery process; local custody does not provide an off-host copy.
 
+`hikyo rotate-root-key --prepare` re-seals this vault under the new root key
+beside the current one, so it opens under either root while the rotation is in
+flight. `--finalize` makes the new root the only one that opens it and replaces
+the root escrow inside it. Finalize is refused, keeping the old root wrapper, if
+the vault does not open under the installed root key. A vault that an earlier
+release left wrapped under a retired root cannot be re-sealed without that root,
+and `--prepare` is refused with an unlock error until custody is recreated.
+
 Watchtower or your Kubernetes image updater chooses the new image. Hikyo verifies
 that exact release and its permitted migration route. It never changes the target
 to a newer release discovered during boot. The server needs no Docker socket,
