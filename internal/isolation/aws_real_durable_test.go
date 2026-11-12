@@ -35,7 +35,7 @@ func runRealAWSSuite(t *testing.T, s *realAWSSandbox) {
 		t.Fatal("auth boundary preflight failed before mutations")
 	}
 	if s.emulated() {
-		t.Log("lifecycle skipped on Floci: it never makes the first PutSecretValue version AWSCURRENT, moto and the live smoke own it, see docs/testing/aws-acceptance-matrix.md")
+		t.Log("lifecycle skipped on Floci: its first-version staging differs from AWS, moto and the live smoke own it, see the first-version gap in docs/testing/aws-acceptance-matrix.md")
 	} else {
 		t.Run("lifecycle", func(t *testing.T) {
 			forEngines(t, func(t *testing.T, db *store.DB) {
