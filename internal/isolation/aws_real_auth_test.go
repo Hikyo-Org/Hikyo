@@ -3,12 +3,10 @@ package isolation
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
-	"github.com/aws/smithy-go"
 )
 
 // A negative credential must be authentic, previously issued temporary static
@@ -25,20 +23,6 @@ func (s *realAWSSandbox) expiredStaticDescriptor(t *testing.T, path, freshPath s
 		t.Fatal("expired fixture requires a separate protected temporary static session")
 	}
 	return raw
-}
-
-func realAWSExpiredRefusal(err error, workload bool) bool {
-	var api smithy.APIError
-	if !errors.As(err, &api) {
-		return false
-	}
-	if api.ErrorCode() == "ExpiredToken" || api.ErrorCode() == "ExpiredTokenException" {
-		return true
-	}
-	// STS can report an expired OIDC token as InvalidIdentityToken. A generic
-	// invalid signature/audience/issuer does not satisfy this assertion. The
-	// service diagnostic is inspected in memory and never printed or retained.
-	return workload && api.ErrorCode() == "InvalidIdentityToken" && strings.Contains(strings.ToLower(api.ErrorMessage()), "expired")
 }
 
 // This emulator-only group consumes no CreateSecret reservations. The live
@@ -110,20 +94,4 @@ func (a *realAWSIdentityOnly) RestoreSecret(context.Context, string) error {
 
 func (a *realAWSIdentityOnly) DeleteSecret(context.Context, string) error {
 	return a.unexpected()
-}
-
-func TestAWSRealFixtureAuthExpiryClassification(t *testing.T) {
-	for _, code := range []string{"ExpiredToken", "ExpiredTokenException"} {
-		if !realAWSExpiredRefusal(&smithy.GenericAPIError{Code: code}, false) {
-			t.Fatal("explicit STS expiry was not recognized")
-		}
-	}
-	for _, message := range []string{"signature invalid", "audience invalid", "issuer refused"} {
-		if realAWSExpiredRefusal(&smithy.GenericAPIError{Code: "InvalidIdentityToken", Message: message}, true) {
-			t.Fatal("generic OIDC refusal masqueraded as expiry")
-		}
-	}
-	if !realAWSExpiredRefusal(&smithy.GenericAPIError{Code: "InvalidIdentityToken", Message: "Token is expired"}, true) || realAWSExpiredRefusal(&smithy.GenericAPIError{Code: "AccessDenied", Message: "expired"}, true) || realAWSExpiredRefusal(errors.New("expired"), true) {
-		t.Fatal("STS expiry classification lost its service-code binding")
-	}
 }

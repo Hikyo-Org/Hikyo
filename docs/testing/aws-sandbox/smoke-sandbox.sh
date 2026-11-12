@@ -4,7 +4,7 @@
 # eu-central-1, signed in as the sandbox account owner with MFA.
 #
 #   smoke-sandbox.sh check
-#   smoke-sandbox.sh provision [RUN]     RUN is [a-z0-9]{8,12}; random if omitted
+#   smoke-sandbox.sh provision [RUN]     RUN is 10 lowercase hex digits; random if omitted
 #   smoke-sandbox.sh teardown RUN
 #
 # provision creates one customer KMS key plus three IAM users (writer, oracle,
@@ -40,7 +40,9 @@ need() {
 
 stamp() { date -u -d "+$1 seconds" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v "+${1}S" +%Y-%m-%dT%H:%M:%SZ; }
 
-valid_run() { [[ $1 =~ ^[a-z0-9]{8,12}$ ]] || die "RUN must match [a-z0-9]{8,12}: $1"; }
+# Fixed length, and no "r": no RUN is a prefix of another RUN or of a rerun
+# prefix RUNrN, so the hikyo-e2e-RUN* patterns of two runs never overlap.
+valid_run() { [[ $1 =~ ^[0-9a-f]{10}$ ]] || die "RUN must be 10 lowercase hex digits: $1"; }
 
 # render TEMPLATE: substitute every ${TOKEN} from the environment, refuse leftovers.
 render() {
@@ -307,15 +309,23 @@ cmd_teardown() {
 		tolerate_missing aws_ iam delete-user --user-name "$user"
 		printf 'user %s removed\n' "$user"
 	done
-	local key
-	key=$(alias_key "$run")
-	if [[ -z $key ]]; then
-		printf 'alias/hikyo-smoke-%s not found; key already handled\n' "$run"
-		return 0
+	# Policies a partial provision created but never attached.
+	for pol in $(aws_ iam list-policies --scope Local --query "Policies[?starts_with(PolicyName,'hikyo-smoke-$run-')].Arn" --output text); do
+		tolerate_missing aws_ iam delete-policy --policy-arn "$pol"
+	done
+	if [[ -n $(alias_key "$run") ]]; then
+		aws_ kms delete-alias --alias-name "alias/hikyo-smoke-$run" >/dev/null
 	fi
-	aws_ kms delete-alias --alias-name "alias/hikyo-smoke-$run" >/dev/null
-	aws_ kms schedule-key-deletion --key-id "$key" --pending-window-in-days 7 >/dev/null
-	aws_ kms describe-key --key-id "$key" --query 'KeyMetadata.[KeyId,KeyState,DeletionDate]' --output text
+	# Find the key by its tag, so a key created before its alias is found too.
+	local key found=0
+	for key in $(aws_ kms list-keys --query 'Keys[].KeyId' --output text); do
+		[[ $(aws_ kms describe-key --key-id "$key" --query 'KeyMetadata.[KeyManager,KeyState]' --output text) =~ ^CUSTOMER[[:space:]]+(Enabled|Disabled)$ ]] || continue
+		[[ $(aws_ kms list-resource-tags --key-id "$key" --query "Tags[?TagKey=='hikyo-smoke'].TagValue | [0]" --output text) == "$run" ]] || continue
+		aws_ kms schedule-key-deletion --key-id "$key" --pending-window-in-days 7 >/dev/null
+		aws_ kms describe-key --key-id "$key" --query 'KeyMetadata.[KeyId,KeyState,DeletionDate]' --output text
+		found=1
+	done
+	((found)) || printf 'no live key tagged hikyo-smoke=%s; already handled\n' "$run"
 }
 
 REST=()
