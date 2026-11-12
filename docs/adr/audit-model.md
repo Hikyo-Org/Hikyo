@@ -1,5 +1,7 @@
 # Hikyo audit logging & event model (ADR, locked 2026-08-02)
 
+> **Declared amendment (2026-11-12, [#1039](https://github.com/Hikyo-Org/Hikyo/issues/1039), owner-accepted in the [incident-containment ADR](./incident-containment.md), operative when its implementation pull request merges; cross-provider review did not run and is not CLEAN):** The closed registry gains instance-trail event types for incident opened, item intent, item outcome, principal contained, principal released and incident closed, correlated by incident id. Historical text below is preserved.
+
 > **Proposed declared amendment (2026-11-03, owner decisions O5 to O8 on 2026-11-06, [personal-values.md](./personal-values.md), operative when its implementation PR merges; cross-provider review waived by the owner on 2026-11-06, did not run and is not CLEAN; the amended tickets are not reopened yet):** new events `personal_value.set`, `.revealed`, `.delivered` (access class, under the fetch envelope) and `.deleted` (security class, with cause). None carry plaintext or a value fingerprint.
 
 > **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** the tenant trail's commit order spanning orgs, for all PostgreSQL deployments, and the visibility of instance actions and placement of org-owned issuer events, for Sealed orgs. See its supersession register.
