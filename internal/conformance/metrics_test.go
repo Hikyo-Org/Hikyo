@@ -122,6 +122,13 @@ func pinnedMetricRegistry() []metricFamily {
 		{Name: "hikyo_pki_certificates_unknown", MaxSeries: 1},
 		{Name: "hikyo_pki_issuers_on_hold", MaxSeries: 1},
 		{Name: "hikyo_pki_gauges_known", MaxSeries: 1},
+		// Authentication refusal accounting health (#1034): label-free, so no
+		// source, request, principal or token can multiply series under a flood.
+		{Name: "hikyo_auth_refusal_accounting_healthy", MaxSeries: 1},
+		{Name: "hikyo_auth_refusal_accounting_failures_total", MaxSeries: 1},
+		{Name: "hikyo_auth_refusal_pending_window_timestamp_seconds", MaxSeries: 1},
+		{Name: "hikyo_auth_refusal_writers_in_flight", MaxSeries: 1},
+		{Name: "hikyo_auth_refusal_writers_waiting", MaxSeries: 1},
 	}
 }
 
@@ -142,6 +149,10 @@ func (stubMeasuredSources) PKISnapshot() (int64, int64, int64, error) { return 0
 func (stubMeasuredSources) TransitSnapshot() (int64, int64, int64, error) { return 0, 0, 0, nil }
 func (stubMeasuredSources) AccessSnapshot() (int64, int64, error)         { return 0, 0, nil }
 
+type stubRefusalHealth struct{}
+
+func (stubRefusalHealth) RefusalHealth() service.RefusalHealth { return service.RefusalHealth{} }
+
 // scrapeOperationalMetrics returns the /metrics body of a fresh operational
 // handler. NewMetrics pre-registers every label combination eagerly, so the
 // scrape emits the complete series set (at zero) without driving any traffic.
@@ -154,6 +165,7 @@ func scrapeOperationalMetrics(t *testing.T) string {
 	metrics.SetTransitSource(stubMeasuredSources{})
 	metrics.SetPKISource(stubMeasuredSources{})
 	metrics.SetAccessSource(stubMeasuredSources{})
+	metrics.SetRefusalSource(stubRefusalHealth{})
 	_ = metrics.ObserveMCP(http.NotFoundHandler(), nil, mcpserver.AllToolNames())
 	handler := server.NewOperational(nil, stubRetentionHealth{}, metrics)
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)

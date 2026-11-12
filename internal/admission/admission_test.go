@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/audit"
 )
 
 func fixedClock(t *time.Time) func() time.Time { return func() time.Time { return *t } }
@@ -494,5 +496,32 @@ func TestLimiterStateIsBounded(t *testing.T) {
 	}
 	if accounts > MaxTrackedSubjects {
 		t.Errorf("tracking %d accounts, bound is %d", accounts, MaxTrackedSubjects)
+	}
+}
+
+// An account in failure backoff is refused before any dedicated event writer
+// runs, so the refusal itself must reach the request's security signal (#1034).
+func TestAccountInBackoffRecordsAdmissionRefusalOnlyWhenRefusing(t *testing.T) {
+	now := time.Date(2026, 11, 12, 12, 0, 0, 0, time.UTC)
+	l, err := New(Config{BudgetMiB: DefaultBudgetMiB, ArgonMemoryKiB: 64 * 1024, Now: fixedClock(&now)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := audit.WithRefusalReceipt(context.Background(), "192.0.2.7", "0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fee")
+	if l.AccountInBackoff(ctx, "someone@example.test") {
+		t.Fatal("an account with no failures was refused")
+	}
+	if _, ok := audit.PendingRefusal(ctx); ok {
+		t.Fatal("an admitted attempt left a refusal")
+	}
+	for i := 0; i <= FailuresBeforeBackoff; i++ {
+		l.RecordFailure("someone@example.test")
+	}
+	if !l.AccountInBackoff(ctx, "someone@example.test") {
+		t.Fatal("an account past the failure threshold was admitted")
+	}
+	got, ok := audit.PendingRefusal(ctx)
+	if !ok || got.Stage != audit.RefusalAdmission {
+		t.Fatalf("backoff refusal not recorded as admission: %+v ok=%v", got, ok)
 	}
 }

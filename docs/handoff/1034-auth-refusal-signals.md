@@ -1,8 +1,9 @@
 # #1034 authentication refusal signals: decision packet
 
-Status: **Producer implemented in PR #1074. Scoped local and hosted source checks pass; maintainer security review and merge proof remain HOLD.**
-The owner explicitly waived cross-provider review for #1034 only. Maintainer
-security review and the human merge gate remain. This does not close #1034.
+Status: **Producer merged via PR #1074 (with the #1035 readers and PR #1084 pre-auth admission rework; issue #1040 itself stays open) and present on `dev`. Post-merge follow-up adds the operator site documentation and pins the five health series in the metrics registry.**
+The owner explicitly waived cross-provider review for #1034 only. The sections
+below record the pre-merge proof and are historical; "HOLD" entries describe the
+state at that time. Exact-head `dev` proof for the follow-up is in its PR.
 
 Source inspected: `24e198b32a3ffd8d4013207b2f974d76ec49be6f`, the live
 `Hikyo-Org/Hikyo` main on 2026-10-28. Scope: refusal producer, vocabulary,

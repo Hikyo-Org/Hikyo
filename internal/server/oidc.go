@@ -27,6 +27,7 @@ import (
 func (a *API) AuthMethods(ctx context.Context, req apigen.AuthMethodsRequestObject) (apigen.AuthMethodsResponseObject, error) {
 	if a.Admission != nil {
 		if err := a.Admission.AdmitDiscovery(audit.FromContext(ctx).SourceIP); err != nil {
+			audit.NoteRefusal(ctx, audit.RefusalAdmission)
 			return apigen.AuthMethods429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}, nil
 		}
 	}

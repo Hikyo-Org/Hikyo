@@ -133,7 +133,7 @@ func (s *Auth) verifyPassword(ctx context.Context, accountID string, cred authz.
 // first to bound resource exhaustion, the second to bound online brute force of
 // a six-digit code whose skew window admits roughly three valid values.
 func (s *Auth) enterFactorBudget(ctx context.Context, accountID string) (func(), error) {
-	if delay := s.Admission.AccountDelay(accountID); delay > 0 {
+	if s.Admission.AccountInBackoff(ctx, accountID) {
 		return nil, admission.ErrOverloaded
 	}
 	return s.Admission.Enter(ctx, audit.FromContext(ctx).SourceIP)
@@ -912,7 +912,7 @@ type RecoveryResult struct {
 // enforced by the DB CHECK), advances the generation and deletes every session
 // — all in one transaction. A losing CAS discards the authority (finding B22).
 func (s *Auth) ConsumeRecoveryCode(ctx context.Context, username, code string) (RecoveryResult, error) {
-	if delay := s.Admission.AccountDelay(username); delay > 0 {
+	if s.Admission.AccountInBackoff(ctx, username) {
 		return RecoveryResult{}, admission.ErrOverloaded
 	}
 	release, err := s.Admission.Enter(ctx, audit.FromContext(ctx).SourceIP)
