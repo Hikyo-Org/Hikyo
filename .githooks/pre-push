@@ -29,7 +29,7 @@ esac
 # Inputs of the new-code golangci-lint ratchet besides **/*.go; the script
 # lints everything when one of these changes. ci-golangci.yml triggers on
 # exactly these plus **/*.go and itself; a Go test keeps them equal.
-golangci_paths='go.mod go.sum .golangci.yml scripts/ci/golangci-lint-version scripts/ci/golangci-lint-new.sh scripts/ci/run-go-tool.sh'
+golangci_paths='go.mod go.sum .golangci.yml .golangci-strict.yml scripts/ci/golangci-lint-version scripts/ci/golangci-lint-new.sh scripts/ci/run-go-tool.sh'
 
 # Hash of every Storybook input at REV, bytes and file modes (a tree entry
 # carries both), so a mode-only change such as a non-executable suite is a new key.

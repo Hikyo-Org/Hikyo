@@ -21,6 +21,7 @@ fail() {
 base=$1
 script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd) || fail 'cannot locate this script'
 config=$script_dir/../../.golangci.yml
+strict_config=$script_dir/../../.golangci-strict.yml
 # Every command whose status matters is run on its own, never inside a test or
 # a pipeline, where its failure would read as "no changes".
 top=$(git rev-parse --show-toplevel) || fail 'not inside a git work tree'
@@ -30,7 +31,7 @@ merge_base=$(git merge-base "$base" HEAD) || fail "no merge base between $base a
 
 # Inputs that change what every package is checked against: lint all of them.
 # ci-golangci.yml triggers on exactly these (plus **/*.go); a Go test keeps them equal.
-everything='go.mod go.sum .golangci.yml scripts/ci/golangci-lint-version scripts/ci/golangci-lint-new.sh scripts/ci/run-go-tool.sh'
+everything='go.mod go.sum .golangci.yml .golangci-strict.yml scripts/ci/golangci-lint-version scripts/ci/golangci-lint-new.sh scripts/ci/run-go-tool.sh'
 
 # shellcheck disable=SC2086 # the paths contain no whitespace or glob characters
 changed_inputs=$(git diff --name-only "$merge_base" HEAD -- $everything) || fail "git diff failed against $merge_base"
@@ -68,11 +69,24 @@ else
 	fi
 fi
 
-printf 'golangci-lint-new: linting new code since %s (%s)\n' "$base" "$*" >&2
+# Two passes over the same packages; the second runs even when the first fails.
+# Either status, other than this script's own 64, is the tool's and is returned.
+printf 'golangci-lint-new: new code since %s (%s)\n' "$base" "$*" >&2
 # golangci-lint finds .golangci.yml at the work tree's root by itself, and then
 # reports paths relative to it. --config is only the fallback for a tree without
-# one: the config of the checkout this script lives in.
+# one: the config of the checkout this script lives in. The strict config likewise.
+new_status=0
 if [ -f .golangci.yml ]; then
-	exec "$script_dir/run-go-tool.sh" golangci-lint run -j 2 --new-from-merge-base="$base" "$@"
+	"$script_dir/run-go-tool.sh" golangci-lint run -j 2 --new-from-merge-base="$base" "$@" || new_status=$?
+else
+	"$script_dir/run-go-tool.sh" golangci-lint run -j 2 --config "$config" --new-from-merge-base="$base" "$@" || new_status=$?
 fi
-exec "$script_dir/run-go-tool.sh" golangci-lint run -j 2 --config "$config" --new-from-merge-base="$base" "$@"
+printf 'golangci-lint-new: strict rules on whole packages (%s)\n' "$*" >&2
+strict_status=0
+if [ -f .golangci-strict.yml ]; then
+	"$script_dir/run-go-tool.sh" golangci-lint run -j 2 --config .golangci-strict.yml "$@" || strict_status=$?
+else
+	"$script_dir/run-go-tool.sh" golangci-lint run -j 2 --config "$strict_config" "$@" || strict_status=$?
+fi
+[ "$new_status" -eq 0 ] || exit "$new_status"
+exit "$strict_status"

@@ -1,0 +1,18 @@
+# These rules hold at zero across the repo, so the strict pass of
+# scripts/ci/golangci-lint-new.sh checks whole changed packages, not just new lines.
+# Package scope suffices: unused reports only unexported identifiers, and
+# wastedassign, SA4006 and SA4009 are function-local, so a finding can only
+# appear in a package whose files changed.
+version: "2"
+linters:
+  default: none
+  enable:
+    - wastedassign
+    - unused
+    - staticcheck
+  settings:
+    staticcheck:
+      checks: ["SA4006", "SA4009"]
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
