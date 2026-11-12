@@ -177,7 +177,7 @@ func (a *awsEmulatorAdmin) post(ctx context.Context, service, contentType, targe
 	if err != nil {
 		return nil, fmt.Errorf("emulator %s transport failed", service)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
 	if err != nil || len(raw) > 1<<20 {
 		return nil, fmt.Errorf("emulator %s response unreadable or too large", service)
