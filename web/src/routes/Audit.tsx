@@ -56,7 +56,12 @@ function refusalText(error: unknown, scope: AuditScope): string {
           : scope.environment === undefined || scope.environment === ''
             ? 'this project'
             : 'this environment';
-      return `This trail is not available, or you may not read it. Reading it needs the audit-read grant on ${where} with a second factor in this session. A member manager can grant it under Members.`;
+      // Grants inherit downward only: the scope dialog preselects an environment,
+      // and that grant never satisfies the whole-project trail.
+      const environmentHint = where === 'this project'
+        ? ' A grant on one environment covers only that environment: choose it under Environment.'
+        : '';
+      return `This trail is not available, or you may not read it. Reading it needs the audit-read grant on ${where} with a second factor in this session.${environmentHint} A member manager can grant it under Members.`;
     }
     if (error.status === 400) {
       return error.detail ?? 'The filter is not valid.';

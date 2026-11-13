@@ -539,7 +539,7 @@ export function Members({ scope }: { scope: MembersScope }) {
 
                 {grants.isSuccess || rulesPanelVisible ? (
                   <div id="members-rules">
-                    {rulesPanelVisible && rules.isError ? <Alert>{rulesListingText(rules.error)}</Alert> : null}
+                    {rulesPanelVisible && rules.isError ? <Alert>{rulesListingText(rules.error, grants.isSuccess)}</Alert> : null}
                     {rulesPanelVisible && !rules.isSuccess && !rules.isError ? <p role="status">Loading access rules…</p> : null}
                     {rulePeople.length === 0 ? (
                       grants.isSuccess || rules.isSuccess ? <p role="status">{needle === '' ? scopedRulesOnly ? 'No delegable rules are disclosed here.' : 'No members with access here yet.' : `No member matches “${find.trim()}”.`}</p> : null
@@ -653,7 +653,7 @@ export function Members({ scope }: { scope: MembersScope }) {
             {scopedRulesOnly ? (
               <p role="status">This list contains only rules inside your delegated access. Scope-wide grants and other rules are not disclosed, so it cannot answer who has access across the project.</p>
             ) : rules.isError ? (
-              <Alert>{rulesListingText(rules.error)}</Alert>
+              <Alert>{rulesListingText(rules.error, grants.isSuccess)}</Alert>
             ) : !rules.isSuccess || !topologyReady || catalogues.isPending ? (
               <p role="status">Loading the grants, rules, topology and key names before answering…</p>
             ) : (

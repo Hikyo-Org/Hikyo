@@ -168,9 +168,18 @@ export function ruleFailureText(error: unknown): string {
   return refusalText(error);
 }
 
-/** Why the rule listing is not shown, in the membership listing's words. */
-export function rulesListingText(error: unknown): string {
-  if (error instanceof ApiError && error.status === 404) return 'You hold no manage-members here, so access rules are not shown.';
+/**
+ * Why the rule listing is not shown, in the membership listing's words.
+ * `managesOrg` is a loaded org grant listing: it needs the same manage-members
+ * atom, so a rule 404 then means rules do not apply here (the instance's own
+ * configuration organisation refuses every rule operation), not a missing grant.
+ */
+export function rulesListingText(error: unknown, managesOrg = false): string {
+  if (error instanceof ApiError && error.status === 404) {
+    return managesOrg
+      ? 'Access rules do not apply here, so only scope-wide access is shown. The instance configuration organisation is managed with scope-wide grants only.'
+      : 'You hold no manage-members here, so access rules are not shown.';
+  }
   if (error instanceof ApiError && error.status === 403) return 'Access rules need a second factor. Present your authenticator code or passkey, then reload.';
   return refusalText(error);
 }

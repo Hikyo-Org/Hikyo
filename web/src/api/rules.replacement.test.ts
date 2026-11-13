@@ -3,7 +3,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 
 import { ALL, type Rule } from '../routes/accessRules/model.ts';
 import { ApiError } from './client.ts';
-import { removeRule, RuleSaveFailure, ruleFailureText, saveRule } from './rules.ts';
+import { removeRule, RuleSaveFailure, ruleFailureText, rulesListingText, saveRule } from './rules.ts';
 
 const writes = vi.hoisted(() => ({ parsed: vi.fn(), ok: vi.fn() }));
 vi.mock('./client.ts', async (original) => ({
@@ -61,4 +61,11 @@ for (const status of [400, 401, 403, 404, 409, 429]) {
 it('keeps 5xx responses uncertain even when their operation is known', async () => {
   writes.parsed.mockRejectedValue(new ApiError(503, 'request failed with 503', undefined, undefined, [], undefined, replaceRulesOp));
   await expect(saveRule('org_a', null, before)).rejects.toBeInstanceOf(RuleSaveFailure);
+});
+
+it('does not blame manage-members for a rule 404 once the org grant listing loaded', () => {
+  const missing = new ApiError(404, 'not found');
+  expect(rulesListingText(missing)).toBe('You hold no manage-members here, so access rules are not shown.');
+  expect(rulesListingText(missing, true)).toMatch(/^Access rules do not apply here/);
+  expect(rulesListingText(new ApiError(403, 'step up'), true)).toMatch(/second factor/);
 });
