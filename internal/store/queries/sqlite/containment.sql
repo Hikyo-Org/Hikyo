@@ -30,6 +30,26 @@ SET containment_state = 'none',
     contained_incident_id = NULL
 WHERE id = sqlc.arg(principal_id) AND kind = 'human' AND containment_state = 'contained';
 
+-- Release starts a fresh retention window (incident-containment ADR, O8): a
+-- suspension recorded before containment must not survive a contain and release
+-- that no sweep saw, or a later access loss would delete from the old clock. A
+-- privacy-restricted or erased owner keeps privacy's running clock.
+-- hikyo:reason Release clears the retention suspension of the released principal's own personal values in the same transaction, so a clock started before containment cannot expire a value after release; it touches no ciphertext, leaves a privacy-restricted owner's clock running and clears nothing while the principal is contained.
+-- hikyo:authn-resolution
+-- name: ClearPersonalSuspensionForOwner :execrows
+UPDATE personal_values SET suspended_at = NULL
+WHERE owner_principal_id = sqlc.arg(owner_principal_id)
+  AND suspended_at IS NOT NULL
+  AND owner_principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active' AND principals.containment_state = 'none');
+
+-- The containment sweep consumes the outstanding authorities of the principal's
+-- account whatever its privacy state: restricted, contained, released and then
+-- privacy-released must not leave a pre-containment authority redeemable.
+-- hikyo:reason Containment resolves the account id of the principal it holds, whatever the principal's privacy state, so its outstanding credential authorities are consumed in the same transaction; it returns one identifier and no secret.
+-- hikyo:authn-resolution
+-- name: GetAccountIDForContainmentSweep :one
+SELECT id FROM accounts WHERE principal_id = sqlc.arg(principal_id);
+
 -- The one read of the state: the personal-value retention sweep and credential
 -- establishment. The columns come back so the caller decides: only a principal
 -- that privacy leaves active is held by containment, and a restricted or erased

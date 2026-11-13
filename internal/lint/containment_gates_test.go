@@ -43,6 +43,20 @@ func TestContainmentGatesCatchesMissingCondition(t *testing.T) {
 		"query NotEqualRestricted tests",
 		"query BangEqualRestricted tests",
 		"query LoudPrivacy tests",
+		"query QuotedAliasPredicate tests",
+		"query StringAliasPredicate tests",
+		"query QuotedIdentifierPredicate tests",
+		"query QuotedDashesUngated tests",
+		"query OrInsideGroup tests",
+		"query OrAtTopLevel tests",
+		"query OrBothInGroup tests",
+		"query NegatedGroup tests",
+		"query NegatedCondition tests",
+		"query CaseOnly tests",
+		"query SelectListOnly tests",
+		"query ContainmentInOtherSubquery tests",
+		"query BareContainmentInSubquery tests",
+		"query UnionHalfGated tests",
 		"query ExemptedButGated is exempted but already carries",
 		"exempted query Vanished has no privacy_state",
 	}
@@ -50,7 +64,7 @@ func TestContainmentGatesCatchesMissingCondition(t *testing.T) {
 	if len(findings) != len(want) {
 		t.Errorf("want exactly %d findings, got %d:\n%v", len(want), len(findings), findings)
 	}
-	for _, clean := range []string{"query GatedBoth ", "query BareGated ", "query NoPrivacyAtAll ", "query Exempted ", "query LiteralInComment ", "query CommentedPrivacyOnly ", "query ReversedGated ", "query InListGated ", "query NotEqualGated ", "query LoudGated "} {
+	for _, clean := range []string{"query GatedBoth ", "query BareGated ", "query NoPrivacyAtAll ", "query Exempted ", "query LiteralInComment ", "query CommentedPrivacyOnly ", "query ReversedGated ", "query InListGated ", "query NotEqualGated ", "query LoudGated ", "query QuotedDashesGated ", "query OrElsewhereGated ", "query OrInJoinGated ", "query BothInSubquery ", "query UnionBothGated "} {
 		for _, f := range findings {
 			if strings.Contains(f, clean) {
 				t.Errorf("clean query flagged: %s", f)

@@ -21,16 +21,18 @@ func TestRecoveryLookupCatchesBypasses(t *testing.T) {
 	eachContext(t, "./testdata/badrecovery", func(t *testing.T, pkgs []*packages.Package) {
 		path := Module + "/internal/lint/testdata/badrecovery"
 		findings := CheckRecoveryLookup(pkgs, []RecoveryRule{
-			{Name: "RecoveryAccountByID", Allowed: map[string][]string{path: {"ResetAllowed", "NeverCalled"}}},
+			{Name: "RecoveryAccountByID", Allowed: map[string][]string{path: {"ResetAllowed", "NeverCalled", "licensedType.Reset"}}},
 		})
 		file := filepath.Join("testdata", "badrecovery", "badrecovery.go")
-		for _, marker := range []string{"func SignIn", "func ViaAssertion", "func ViaMethodValue"} {
+		for _, marker := range []string{"func SignIn", "func ViaAssertion", "func ViaMethodValue", "func (*otherType) Reset"} {
 			assertFindings(t, findings, []string{fmt.Sprintf("badrecovery.go:%d:", fixtureLine(t, file, marker))})
 		}
 		assertFindings(t, findings, []string{"NeverCalled (stale allowlist entry)"})
-		for _, finding := range findings {
-			if strings.Contains(finding, fmt.Sprintf("badrecovery.go:%d:", fixtureLine(t, file, "func ResetAllowed"))) {
-				t.Errorf("licensed caller flagged: %s", finding)
+		for _, licensed := range []string{"func ResetAllowed", "func (licensedType) Reset"} {
+			for _, finding := range findings {
+				if strings.Contains(finding, fmt.Sprintf("badrecovery.go:%d:", fixtureLine(t, file, licensed))) {
+					t.Errorf("licensed caller flagged: %s", finding)
+				}
 			}
 		}
 	})

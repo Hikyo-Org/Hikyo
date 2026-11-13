@@ -1,14 +1,20 @@
-package migrate
+package isolation
 
 import (
+	"database/sql"
+	"fmt"
+	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/authn"
+	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 )
 
 // A recovery drill runs the CURRENT resolver against a scratch database at the
@@ -17,36 +23,63 @@ import (
 // without referencing them; the current resolver must not run there at all.
 func TestHistoricalRecoveryBeforeContainmentSQLite(t *testing.T) {
 	cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "before-containment.db")}
-	seedBeforeContainment(t, cfg)
-	db := migrationFixtureSQL(t, cfg)
-	historical := authn.NewHistoricalRecoverySQLite(db, 87)
-	assertBeforeContainmentReads(t, historical)
+	db, err := sql.Open("sqlite", store.SQLiteDSN(cfg.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	seedBeforeContainment(t, cfg, func(stmt string) error { _, err := db.ExecContext(t.Context(), stmt); return err })
+	assertBeforeContainmentReads(t, authn.NewHistoricalRecoverySQLite(db, 87))
 	if _, err := authn.NewSQLite(db).Grants(t.Context(), "usr_before"); err == nil {
 		t.Fatal("the current resolver read a schema that predates the containment columns")
 	}
 }
 
 func TestHistoricalRecoveryBeforeContainmentPostgres(t *testing.T) {
-	cfg := postgresTestConfig(t, "before_containment")
-	seedBeforeContainment(t, cfg)
+	dsn := postgresTestDSN(t)
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	database := fmt.Sprintf("%s_before_containment_%d", strings.TrimPrefix(parsed.Path, "/"), time.Now().UnixNano())
+	admin, err := pgx.Connect(t.Context(), dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = admin.Exec(t.Context(), `DROP DATABASE IF EXISTS `+pq(database)+` WITH (FORCE)`)
+		_ = admin.Close(t.Context())
+	})
+	if _, err := admin.Exec(t.Context(), `CREATE DATABASE `+pq(database)); err != nil {
+		t.Fatal(err)
+	}
+	parsed.Path = "/" + database
+	cfg := store.Config{Engine: store.EnginePostgres, DSN: parsed.String()}
 	conn, err := pgx.Connect(t.Context(), cfg.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close(t.Context()) })
+	seedBeforeContainment(t, cfg, func(stmt string) error { _, err := conn.Exec(t.Context(), stmt); return err })
 	assertBeforeContainmentReads(t, authn.NewHistoricalRecoveryPG(conn, 87))
 	if _, err := authn.NewPG(conn).Grants(t.Context(), "usr_before"); err == nil {
 		t.Fatal("the current resolver read a schema that predates the containment columns")
 	}
 }
 
-func seedBeforeContainment(t *testing.T, cfg store.Config) {
+func seedBeforeContainment(t *testing.T, cfg store.Config, exec func(string) error) {
 	t.Helper()
-	if err := RunUpTo(t.Context(), cfg, 87); err != nil {
+	if err := migrate.RunUpTo(t.Context(), cfg, 87); err != nil {
 		t.Fatal(err)
 	}
-	execUpgrade(t, cfg, `INSERT INTO principals (id, kind, created_at) VALUES ('usr_before', 'human', '2026-01-01T00:00:00Z')`)
-	execUpgrade(t, cfg, `INSERT INTO grants (id, principal_id, capability, created_at) VALUES ('g_before', 'usr_before', 'instance-config', '2026-01-01T00:00:00Z')`)
+	for _, stmt := range []string{
+		`INSERT INTO principals (id, kind, created_at) VALUES ('usr_before', 'human', '2026-01-01T00:00:00Z')`,
+		`INSERT INTO grants (id, principal_id, capability, created_at) VALUES ('g_before', 'usr_before', 'instance-config', '2026-01-01T00:00:00Z')`,
+	} {
+		if err := exec(stmt); err != nil {
+			t.Fatalf("seed exec: %v", err)
+		}
+	}
 }
 
 func assertBeforeContainmentReads(t *testing.T, r *authn.Resolver) {

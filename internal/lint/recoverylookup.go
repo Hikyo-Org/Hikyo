@@ -15,7 +15,10 @@ type RecoveryRule struct {
 	// query). Matching is by name alone, so a renamed receiver, a local
 	// interface, a method value or a type assertion cannot route around it.
 	Name string
-	// Allowed maps a package path to the functions in it that may name Name.
+	// Allowed maps a package path to the functions in it that may name Name. A
+	// method is keyed "Receiver.Method" (the receiver's type name, without a
+	// pointer or type arguments) and a plain function by its name, so a method of
+	// the same name on another type in the package is not licensed with it.
 	Allowed map[string][]string
 }
 
@@ -25,15 +28,15 @@ type RecoveryRule struct {
 // query only from the resolver's single private helper.
 var RecoveryLookupRules = []RecoveryRule{
 	{Name: "RecoveryAccountByID", Allowed: map[string][]string{
-		Module + "/internal/service": {"EstablishCredential"},
-		Module + "/internal/authz":   {"RecoveryAccountByID"},
+		Module + "/internal/service": {"Auth.EstablishCredential"},
+		Module + "/internal/authz":   {"TxAuthorizer.RecoveryAccountByID"},
 	}},
 	{Name: "RecoveryAccountByPrincipal", Allowed: map[string][]string{
-		Module + "/internal/service": {"ResetCredential", "BreakGlassResetCredential"},
-		Module + "/internal/authz":   {"RecoveryAccountByPrincipal"},
+		Module + "/internal/service": {"Auth.ResetCredential", "Auth.BreakGlassResetCredential"},
+		Module + "/internal/authz":   {"TxAuthorizer.RecoveryAccountByPrincipal"},
 	}},
 	{Name: "GetAccountForRecovery", Allowed: map[string][]string{
-		Module + "/internal/store/authn": {"recoveryAccount"},
+		Module + "/internal/store/authn": {"Resolver.recoveryAccount"},
 	}},
 }
 
@@ -43,12 +46,12 @@ var RecoveryLookupRules = []RecoveryRule{
 // own entry here, in the same change that introduces it.
 var ContainmentSetterRules = []RecoveryRule{
 	{Name: "ContainPrincipal", Allowed: map[string][]string{
-		Module + "/internal/authz":       {"ContainPrincipal"},
-		Module + "/internal/store/authn": {"ContainPrincipal"},
+		Module + "/internal/authz":       {"TxAuthorizer.ContainPrincipal"},
+		Module + "/internal/store/authn": {"Resolver.ContainPrincipal"},
 	}},
 	{Name: "ReleasePrincipalContainment", Allowed: map[string][]string{
-		Module + "/internal/authz":       {"ReleasePrincipalContainment"},
-		Module + "/internal/store/authn": {"ReleasePrincipalContainment"},
+		Module + "/internal/authz":       {"TxAuthorizer.ReleasePrincipalContainment"},
+		Module + "/internal/store/authn": {"Resolver.ReleasePrincipalContainment"},
 	}},
 }
 
@@ -79,7 +82,7 @@ func checkSelectorConfinement(pkgs []*packages.Package, rules []RecoveryRule, la
 			for _, decl := range file.Decls {
 				owner := ""
 				if fn, ok := decl.(*ast.FuncDecl); ok {
-					owner = fn.Name.Name
+					owner = declName(fn)
 				}
 				ast.Inspect(decl, func(n ast.Node) bool {
 					sel, ok := n.(*ast.SelectorExpr)
@@ -116,4 +119,29 @@ func checkSelectorConfinement(pkgs []*packages.Package, rules []RecoveryRule, la
 		}
 	}
 	return findings
+}
+
+// declName is the allowlist key of a function declaration: "Receiver.Method"
+// for a method, the bare name for a function.
+func declName(fn *ast.FuncDecl) string {
+	if fn.Recv == nil || len(fn.Recv.List) == 0 {
+		return fn.Name.Name
+	}
+	typ := fn.Recv.List[0].Type
+	for {
+		switch t := typ.(type) {
+		case *ast.StarExpr:
+			typ = t.X
+		case *ast.ParenExpr:
+			typ = t.X
+		case *ast.IndexExpr:
+			typ = t.X
+		case *ast.IndexListExpr:
+			typ = t.X
+		case *ast.Ident:
+			return t.Name + "." + fn.Name.Name
+		default:
+			return fn.Name.Name
+		}
+	}
 }

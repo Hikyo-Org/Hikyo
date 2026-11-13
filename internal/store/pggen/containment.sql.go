@@ -11,6 +11,27 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearPersonalSuspensionForOwner = `-- name: ClearPersonalSuspensionForOwner :execrows
+UPDATE personal_values SET suspended_at = NULL
+WHERE owner_principal_id = $1
+  AND suspended_at IS NOT NULL
+  AND owner_principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active' AND principals.containment_state = 'none')
+`
+
+// Release starts a fresh retention window (incident-containment ADR, O8): a
+// suspension recorded before containment must not survive a contain and release
+// that no sweep saw, or a later access loss would delete from the old clock. A
+// privacy-restricted or erased owner keeps privacy's running clock.
+// hikyo:reason Release clears the retention suspension of the released principal's own personal values in the same transaction, so a clock started before containment cannot expire a value after release; it touches no ciphertext, leaves a privacy-restricted owner's clock running and clears nothing while the principal is contained.
+// hikyo:authn-resolution
+func (q *Queries) ClearPersonalSuspensionForOwner(ctx context.Context, ownerPrincipalID string) (int64, error) {
+	result, err := q.db.Exec(ctx, clearPersonalSuspensionForOwner, ownerPrincipalID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const containPrincipal = `-- name: ContainPrincipal :execrows
 
 UPDATE principals
@@ -86,6 +107,22 @@ func (q *Queries) GetAccountForRecovery(ctx context.Context, arg GetAccountForRe
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const getAccountIDForContainmentSweep = `-- name: GetAccountIDForContainmentSweep :one
+SELECT id FROM accounts WHERE principal_id = $1
+`
+
+// The containment sweep consumes the outstanding authorities of the principal's
+// account whatever its privacy state: restricted, contained, released and then
+// privacy-released must not leave a pre-containment authority redeemable.
+// hikyo:reason Containment resolves the account id of the principal it holds, whatever the principal's privacy state, so its outstanding credential authorities are consumed in the same transaction; it returns one identifier and no secret.
+// hikyo:authn-resolution
+func (q *Queries) GetAccountIDForContainmentSweep(ctx context.Context, principalID string) (string, error) {
+	row := q.db.QueryRow(ctx, getAccountIDForContainmentSweep, principalID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
 
 const getPrincipalContainment = `-- name: GetPrincipalContainment :one

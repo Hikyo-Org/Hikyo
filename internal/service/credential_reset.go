@@ -160,7 +160,11 @@ func (s *Auth) ResetCredential(ctx context.Context, actor Actor, targetPrincipal
 			refused = ErrNoResetTarget
 			return nil
 		}
-		out, err = s.mintResetAuthority(ctx, az, caller.Principal, account, "credential-reset", "network", delivery, authorityID, verifier, now)
+		// Sampled under the target's row lock, inside this attempt: a containment that
+		// committed while the call waited for the lock has a contained_at at or
+		// before this instant, so the authority is never older than the containment
+		// it would be refused for. The earlier sample serves only the caller's resolution.
+		out, err = s.mintResetAuthority(ctx, az, caller.Principal, account, "credential-reset", "network", delivery, authorityID, verifier, s.now())
 		return err
 	})
 	if err != nil {
@@ -217,7 +221,6 @@ func (s *Auth) BreakGlassResetCredential(ctx context.Context, targetPrincipal, d
 	if err != nil {
 		return ResetResult{}, err
 	}
-	now := s.now()
 	target := domain.PrincipalID(targetPrincipal)
 	var out ResetResult
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
@@ -235,7 +238,8 @@ func (s *Auth) BreakGlassResetCredential(ctx context.Context, targetPrincipal, d
 		if err != nil {
 			return err
 		}
-		out, err = s.mintResetAuthority(ctx, az, "", account, "break-glass", "local-host", delivery, authorityID, verifier, now)
+		// Sampled under the target's row lock, inside this attempt (see ResetCredential).
+		out, err = s.mintResetAuthority(ctx, az, "", account, "break-glass", "local-host", delivery, authorityID, verifier, s.now())
 		return err
 	})
 	if err != nil {

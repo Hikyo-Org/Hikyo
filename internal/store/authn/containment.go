@@ -43,20 +43,35 @@ func (r *Resolver) ContainPrincipal(ctx context.Context, p domain.PrincipalID, a
 	if err := r.retirePendingProofs(ctx, p); err != nil {
 		return err
 	}
-	// The privacy-owner read ignores privacy_state, so a restricted principal's
+	// The account read ignores privacy_state, so a restricted principal's
 	// authorities are swept too: restricted, contained, released and then
 	// privacy-released must not leave a pre-containment authority redeemable.
-	account, err := r.PrivacyAccount(ctx, string(p))
+	accountID, err := r.containmentSweepAccount(ctx, p)
 	if err != nil {
 		return ignoreDomainNotFound(err)
 	}
-	return r.ConsumeOutstandingAuthorities(ctx, account.ID, at)
+	return r.ConsumeOutstandingAuthorities(ctx, accountID, at)
+}
+
+func (r *Resolver) containmentSweepAccount(ctx context.Context, p domain.PrincipalID) (string, error) {
+	var (
+		id  string
+		err error
+	)
+	if r.sq != nil {
+		id, err = r.sq.GetAccountIDForContainmentSweep(ctx, string(p))
+	} else {
+		id, err = r.pg.GetAccountIDForContainmentSweep(ctx, string(p))
+	}
+	return id, notFoundOr(err)
 }
 
 // ReleasePrincipalContainment returns the principal to none. Containment removed
 // nothing, so release restores nothing. It advances the generation again, and
 // retires pending proofs again, so that nothing that predates containment ever
-// revives (O4).
+// revives (O4). It also clears the owner's personal-value retention
+// suspensions, so release starts a fresh window even when no sweep ran between
+// containment and release (O8); a privacy-restricted owner's clock keeps running.
 func (r *Resolver) ReleasePrincipalContainment(ctx context.Context, p domain.PrincipalID) error {
 	if err := r.LockPrincipalRow(ctx, p); err != nil {
 		return err
@@ -71,7 +86,15 @@ func (r *Resolver) ReleasePrincipalContainment(ctx context.Context, p domain.Pri
 	if err := containmentWritten(n, err); err != nil {
 		return err
 	}
-	return r.retirePendingProofs(ctx, p)
+	if err := r.retirePendingProofs(ctx, p); err != nil {
+		return err
+	}
+	if r.sq != nil {
+		_, err = r.sq.ClearPersonalSuspensionForOwner(ctx, string(p))
+	} else {
+		_, err = r.pg.ClearPersonalSuspensionForOwner(ctx, string(p))
+	}
+	return err
 }
 
 func containmentWritten(n int64, err error) error {
