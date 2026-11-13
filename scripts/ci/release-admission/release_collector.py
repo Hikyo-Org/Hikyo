@@ -276,8 +276,8 @@ class Collector:
                 self._map((*destination, 'files', path), blob_index, ('content',), 'whole-git-base64-utf8')
         if 'go.mod' in files:
             directives = re.findall(r'(?m)^go\s+(\S+)\s*$', files['go.mod'])
-            m.require(directives == ['1.27.3'] and re.search(r'(?m)^go 1\.27\.3$', files['go.mod'])
-                      is not None, 'literal-go-1.27.3')
+            m.require(directives == ['1.27.4'] and re.search(r'(?m)^go 1\.27\.4$', files['go.mod'])
+                      is not None, 'literal-go-1.27.4')
         return {'files': files, 'absence': {'commitSHA': commit['sha'], 'path': 'go.work',
                                            'gitTreeEntry': None}}
 

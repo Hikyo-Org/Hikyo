@@ -60,7 +60,7 @@ they never manufacture a durable safety hold.
 
 ## Release evidence and source roles
 
-The fixed policy owns repository/owner IDs, authority, Go 1.27.3, root
+The fixed policy owns repository/owner IDs, authority, Go 1.27.4, root
 `go.work` absence, the fifteen trusted regular Git blobs, seven historical
 helper pins, exact 49 candidate and 48 queue jobs, and all original bounds.
 The inventories include three isolation, three fuzz and twelve race shards.

@@ -33,7 +33,7 @@ def sha(label):
 
 
 def file_bytes(version):
-    return {path: ('module synthetic.invalid/hikyo\n\ngo 1.27.3\n' if path == 'go.mod'
+    return {path: ('module synthetic.invalid/hikyo\n\ngo 1.27.4\n' if path == 'go.mod'
                    else f'synthetic {version} {path}\n') for path in policy.TRUSTED_FILES}
 
 

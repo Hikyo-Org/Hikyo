@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import hashlib
 import re
 
-MODEL_SHA256 = 'f40c07b2204c3305b434836015c99f30af4dfc893a0ce0e4f0318c17ea844a19'
+MODEL_SHA256 = '410c94bea656d2a9b9f00d6499d7c600a08a934dc9f2316c66454603e196f78c'
 MODEL_TEST_SHA256 = 'f06b2e173ff499070ae8718d65870534510a585339b8fc451462baaea6dc5985'
 POLICY_NAME = 'hikyo-158-fixture'
 OWNER_OPERATIONS = ('CreateKey', 'DeletePolicyVersion', 'CreatePolicyVersion', 'CreatePolicy')

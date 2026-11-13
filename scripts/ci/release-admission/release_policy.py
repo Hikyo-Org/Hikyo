@@ -5,8 +5,8 @@ import hashlib
 from bounded import digest, require, strict_json
 
 _DESIGN_PINS = {
-    'POLICY.md': (32023, '1ba3622c6ccf641398e943036603a5f00d8eda371c5fe2ff1ad06489bc852745'),
-    'CONTRACTS.json': (30360, '6e927f791d6ecfe32575296731c5287f379b122edeb945e069449e9d7b77ef04'),
+    'POLICY.md': (32023, '9e81a2b5c29f9edb8fe6d2772b9ddd1475f72f38ed41fe9c8032f964ab58ecf5'),
+    'CONTRACTS.json': (30360, 'bb92cf14fe361b50c0db76925b2e4f1d055c918fab4c171fff955c15ebcade0c'),
     'CONFORMANCE-CASES.json': (12499, '859f4685e7eb21db5c08d1d7cae59ff3c1082b7c0978acff52741090ee8b0a82'),
 }
 _constants = {'repository': {'owner': 'Hikyo-Org',
@@ -31,7 +31,7 @@ _constants = {'repository': {'owner': 'Hikyo-Org',
                   'scripts/ci/pr-gate/queue.go',
                   'scripts/ci/start-ci-postgres.sh'],
  'requiredAbsentPaths': ['go.work'],
- 'goDirective': '1.27.3',
+ 'goDirective': '1.27.4',
  'requiredCIJobs': {'candidate': {'candidate-proof': 'success',
                                   'validation / analysis_shards': 'success',
                                   'validation / app-build': 'success',
@@ -612,7 +612,7 @@ ROOT_HOLD_REASONS = frozenset(_constants['rootSafetyHoldReasons'])
 EVIDENCE_MODE = 'explicit-post-merge-release-approval'
 ACCEPTANCE_SERIES = 'hikyo-158-banked-series-20261022'
 HORIZON = '2026-10-26T12:22:56Z'
-GO_DIRECTIVE = '1.27.3'
+GO_DIRECTIVE = '1.27.4'
 REQUIRED_ABSENT_PATHS = frozenset({'go.work'})
 COLLECTION_REQUESTS = 1200
 COLLECTION_RAW_BYTES = 24_000_000
