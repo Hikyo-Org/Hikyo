@@ -15,7 +15,6 @@ import (
 //   - dollar-quoted and backslash-escaped (E'...') string literals are not read;
 //   - a bracket-quoted ([privacy_state]) or single-quoted column reference is
 //     not read as a column;
-//   - an ON condition of an outer join is treated like a WHERE filter;
 //   - a CASE expression, a SELECT-list expression and a NOT-negated group never
 //     count as a gate, but other boolean constructs (IS TRUE, IS DISTINCT FROM,
 //     function calls) around a condition are not interpreted;
@@ -121,8 +120,9 @@ func scanQuoted(sql string, start int) (string, int) {
 }
 
 type sqlBreak struct {
-	pos  int
-	word string
+	pos   int
+	word  string
+	outer bool // a JOIN that is LEFT, RIGHT or FULL [OUTER]
 }
 
 type sqlGroup struct {
@@ -196,7 +196,7 @@ func scanSQLScopes(text string) *sqlScopes {
 				s.cases = append(s.cases, [2]int{caseStarts[len(caseStarts)-1], j})
 				caseStarts = caseStarts[:len(caseStarts)-1]
 			case sqlBreakWords[word]:
-				top.breaks = append(top.breaks, sqlBreak{pos: i, word: word})
+				top.breaks = append(top.breaks, sqlBreak{pos: i, word: word, outer: word == "join" && outerJoinPrefix(prevWord(text, i))})
 			}
 			i = j
 		default:
@@ -207,6 +207,10 @@ func scanSQLScopes(text string) *sqlScopes {
 		s.cases = append(s.cases, [2]int{start, len(text)})
 	}
 	return s
+}
+
+func outerJoinPrefix(word string) bool {
+	return word == "outer" || word == "left" || word == "right" || word == "full"
 }
 
 func nextWord(text string, from int) string {
@@ -263,12 +267,15 @@ func (s *sqlScopes) site(text string, pos int) gateSite {
 	anchor := pos
 	for g := s.innermost(pos); ; g = s.groups[g].parent {
 		grp := s.groups[g]
-		lo, hi, kind, setOps := 0, grp.end, "", 0
+		lo, hi, kind, setOps, outer := 0, grp.end, "", 0, false
 		if grp.subquery {
 			for _, br := range grp.breaks {
 				switch {
 				case br.pos <= anchor:
 					kind, lo = br.word, br.pos
+					if br.word == "join" {
+						outer = br.outer
+					}
 					if sqlSetOpWords[br.word] {
 						setOps++
 					}
@@ -279,7 +286,9 @@ func (s *sqlScopes) site(text string, pos int) gateSite {
 		} else {
 			lo = grp.start
 		}
-		if grp.negated || (grp.subquery && !sqlFilterClauses[kind]) {
+		// The ON of an outer join does not filter its preserved side, so no
+		// condition in it counts, whichever side the principal is on.
+		if grp.negated || (grp.subquery && (!sqlFilterClauses[kind] || kind == "on" && outer)) {
 			site.required = false
 		}
 		for _, or := range grp.ors {

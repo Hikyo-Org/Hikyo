@@ -159,3 +159,21 @@ SELECT id FROM principals AS p WHERE p.`privacy_state` = 'active' AND p.`contain
 
 -- name: QuotedBareGated :one
 SELECT id FROM principals WHERE "privacy_state" = 'active' AND "containment_state" = 'none';
+
+-- name: LeftJoinOnGate :many
+SELECT p.id FROM principals AS p LEFT JOIN grants AS g ON g.principal_id = p.id AND p.containment_state = 'none' WHERE p.privacy_state = 'active';
+
+-- name: LeftOuterJoinOnGate :many
+SELECT p.id FROM principals AS p LEFT OUTER JOIN grants AS g ON g.principal_id = p.id AND p.containment_state = 'none' WHERE p.privacy_state = 'active';
+
+-- name: FullJoinOnGate :many
+SELECT p.id FROM principals AS p FULL JOIN grants AS g ON g.principal_id = p.id AND p.containment_state = 'none' WHERE p.privacy_state = 'active';
+
+-- name: RightJoinPrincipalOnRight :many
+SELECT p.id FROM grants AS g RIGHT JOIN principals AS p ON g.principal_id = p.id AND p.containment_state = 'none' WHERE p.privacy_state = 'active';
+
+-- name: InnerJoinOnGate :many
+SELECT p.id FROM grants AS g INNER JOIN principals AS p ON g.principal_id = p.id AND p.containment_state = 'none' WHERE p.privacy_state = 'active';
+
+-- name: LeftJoinWhereGate :many
+SELECT p.id FROM principals AS p LEFT JOIN grants AS g ON g.principal_id = p.id WHERE p.privacy_state = 'active' AND p.containment_state = 'none';
