@@ -1,8 +1,6 @@
 package main
 
 import (
-	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -25,7 +23,7 @@ func TestRunReachesOnlyPinnedLoopbackCredentialEndpoint(t *testing.T) {
 				server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.Method == http.MethodGet && r.URL.Path == api.PathPrefix+"/meta" {
 						w.Header().Set("Content-Type", "application/json")
-						_ = json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), apigen.Meta{ServerVersion: "fixture", ApiRevision: api.Revision})
+						_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture", ApiRevision: api.Revision})
 						return
 					}
 					requests <- r.Method + " " + r.URL.Path

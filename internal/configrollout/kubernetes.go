@@ -8,6 +8,7 @@ package configrollout
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json/jsontext"
@@ -18,6 +19,7 @@ import (
 	"net"
 	"net/netip"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -29,6 +31,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	utiljson "k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes"
 )
@@ -310,8 +313,35 @@ func allowed(v Variable) bool {
 	}
 	return sourceVariable(v)
 }
+
+// recordJSON encodes values that are hashed or persisted. Kubernetes API
+// values, at any depth, go through the library's own serializer: their
+// omitempty tags follow encoding/json (v1), and a later binary recomputes the
+// digests of records an earlier one wrote.
+var recordJSON = json.JoinOptions(jsonwire.Stable, json.WithMarshalers(json.MarshalToFunc(func(enc *jsontext.Encoder, value any) error {
+	// v2 passes a pointer to the value being encoded.
+	if !strings.HasPrefix(reflect.TypeOf(value).Elem().PkgPath(), "k8s.io/") {
+		return errors.ErrUnsupported
+	}
+	// The library replaces invalid UTF-8; v2 refuses it, which keeps digest fail-closed.
+	if _, err := json.Marshal(value); err != nil {
+		return err
+	}
+	raw, err := utiljson.Marshal(value)
+	if err != nil {
+		return err
+	}
+	return enc.WriteValue(raw)
+})))
+
+// digest hashes the canonical JSON of value. A value v2 cannot encode (invalid
+// UTF-8) gets a fresh random digest rather than the hash of nothing, so two
+// unencodable values never compare equal and every digest check refuses them.
 func digest(value any) string {
-	raw, _ := json.Marshal(value, jsonwire.Stable)
+	raw, err := json.Marshal(value, recordJSON)
+	if err != nil {
+		raw = []byte(rand.Text())
+	}
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
 }
@@ -471,7 +501,7 @@ func (k *Kubernetes) prepare(ctx context.Context, intent Intent, changes []Chang
 	}
 	p.AfterSpecDigest = digest(d.Spec)
 	plan := &Plan{data: p, digest: digest(p)}
-	if len(mustJSON(record{Digest: plan.digest, Plan: p})) > maxRecordBytes {
+	if raw, err := json.Marshal(record{Digest: plan.digest, Plan: p}, recordJSON); err != nil || len(raw) > maxRecordBytes {
 		return nil, ErrInvalid
 	}
 	return plan, nil
@@ -713,7 +743,6 @@ func cloneData(data map[string][]byte) map[string][]byte {
 	}
 	return out
 }
-func mustJSON(v any) []byte { raw, _ := json.Marshal(v, jsonwire.Stable); return raw }
 func decode(raw []byte, out any) error {
 	if len(raw) == 0 || len(raw) > maxRecordBytes {
 		return ErrConflict
@@ -744,14 +773,21 @@ func (k *Kubernetes) updateSecret(ctx context.Context, s *corev1.Secret) (*corev
 	}
 	return out, nil
 }
-func putRecord(s *corev1.Secret, key string, v any) {
+func putRecord(s *corev1.Secret, key string, v any) error {
+	raw, err := json.Marshal(v, recordJSON)
+	if err != nil {
+		return err
+	}
 	if s.Data == nil {
 		s.Data = map[string][]byte{}
 	}
-	s.Data[key] = mustJSON(v)
+	s.Data[key] = raw
+	return nil
 }
 func (k *Kubernetes) saveReceipt(ctx context.Context, s *corev1.Secret, receipt Receipt) (Receipt, error) {
-	putRecord(s, receiptKey, receipt)
+	if err := putRecord(s, receiptKey, receipt); err != nil {
+		return Receipt{}, err
+	}
 	if _, err := k.updateSecret(ctx, s); err != nil {
 		return Receipt{}, err
 	}
@@ -832,7 +868,9 @@ func (k *Kubernetes) Submit(ctx context.Context, intent Intent, expectedPlanDige
 			return Receipt{}, ErrConflict
 		}
 		r = record{Digest: plan.digest, Plan: plan.data}
-		putRecord(s[k.target.RequestSecret], requestKey, r)
+		if err := putRecord(s[k.target.RequestSecret], requestKey, r); err != nil {
+			return Receipt{}, err
+		}
 		updated, err := k.updateSecret(ctx, s[k.target.RequestSecret])
 		if err != nil {
 			return Receipt{}, err
@@ -864,7 +902,9 @@ func (k *Kubernetes) Submit(ctx context.Context, intent Intent, expectedPlanDige
 		if version(s[k.target.RollbackSecret]) != r.Plan.Resources.Rollback {
 			return Receipt{}, ErrConflict
 		}
-		putRecord(s[k.target.RollbackSecret], rollbackKey, rollback)
+		if err := putRecord(s[k.target.RollbackSecret], rollbackKey, rollback); err != nil {
+			return Receipt{}, err
+		}
 		updated, err := k.updateSecret(ctx, s[k.target.RollbackSecret])
 		if err != nil {
 			return Receipt{}, err

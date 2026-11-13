@@ -2,8 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -136,7 +134,7 @@ func verifyDirectory(t publicTrust, directory, version, commit, state string, la
 	if err := saveFloor(state, snapshot.Floor()); err != nil {
 		return err
 	}
-	return json.MarshalEncode(jsontext.NewEncoder(output, jsonwire.Stable), struct {
+	return jsonwire.Encode(output, struct {
 		Identity           releaseidentity.Identity `json:"identity"`
 		PublishedInventory bool                     `json:"published_oci_verified"`
 	}{release.Identity(), published})

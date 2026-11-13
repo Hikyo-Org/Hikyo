@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	_ "embed"
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -157,7 +156,10 @@ func render(dir string) error {
 	if fileHash(filepath.Join(public, "operator.pub")) != b.OperatorPin {
 		return errors.New("operator pin differs from selected binding")
 	}
-	inventoryBytes, _ := json.Marshal(inventory, jsonwire.Stable)
+	inventoryBytes, err := json.Marshal(inventory, jsonwire.Stable)
+	if err != nil {
+		return err
+	}
 	inventoryHash := sha256.Sum256(inventoryBytes)
 	if fmt.Sprintf("%x", inventoryHash) != b.Bundle {
 		return errors.New("public bundle inventory differs from selected binding")
@@ -175,7 +177,7 @@ func render(dir string) error {
 		return errors.New("fixture template rendering failed")
 	}
 	output.WriteString("\n---\n")
-	if json.MarshalEncode(jsontext.NewEncoder(&output, jsonwire.Stable), cm) != nil {
+	if jsonwire.Encode(&output, cm) != nil {
 		return errors.New("public mount encoding failed")
 	}
 	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(output.Bytes()), 4096)

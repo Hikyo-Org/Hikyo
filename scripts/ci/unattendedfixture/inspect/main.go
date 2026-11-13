@@ -3,8 +3,6 @@ package main
 
 import (
 	"context"
-	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"fmt"
 	"os"
 
@@ -23,7 +21,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	if err := json.MarshalEncode(jsontext.NewEncoder(os.Stdout, jsonwire.Stable), struct {
+	if err := jsonwire.Encode(os.Stdout, struct {
 		Instance    string `json:"instance"`
 		Version     string `json:"version"`
 		Maintenance bool   `json:"maintenance"`

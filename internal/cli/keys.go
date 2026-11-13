@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 )
 
@@ -394,7 +395,7 @@ func runKeyGroup(ctx context.Context, ios IO, args []string) error {
 // expected means the caller's intent is not what the first one says.
 func decodeDeclaration(raw string, out *apigen.KeyDeclaration) error {
 	err := decodeStrictDocument(strings.NewReader(raw), out)
-	if errors.Is(err, errTrailingJSON) {
+	if errors.Is(err, jsonwire.ErrTrailing) {
 		return errors.New("trailing content after the declaration document")
 	}
 	return err

@@ -115,7 +115,7 @@ func run(ctx context.Context, args []string) error {
 		if err := mutate(ctx, *dir, db, kr, args[0]); err != nil {
 			return errors.New("supported fixture mutation refused")
 		}
-		return json.MarshalEncode(jsontext.NewEncoder(os.Stdout, jsonwire.Stable), map[string]any{"action": args[0], "committed_at_utc": time.Now().UTC()})
+		return jsonwire.Encode(os.Stdout, map[string]any{"action": args[0], "committed_at_utc": time.Now().UTC()})
 	case "hold":
 		return holdFixtureCatalogue(ctx, cfg)
 	default:
@@ -182,7 +182,7 @@ func writePrivate(path string, value any) error {
 	if err != nil {
 		return errors.New("refusing to overwrite protected output")
 	}
-	if err := json.MarshalEncode(jsontext.NewEncoder(f, jsonwire.Stable), value); err != nil {
+	if err := jsonwire.Encode(f, value); err != nil {
 		f.Close()
 		return errors.New("protected output failed")
 	}

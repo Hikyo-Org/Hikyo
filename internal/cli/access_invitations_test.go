@@ -12,6 +12,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 const invitationOrg = "org_01989abc-def0-7123-8123-000000000001"
@@ -37,7 +38,7 @@ func (f *invitationFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	fail := func(status int, code, detail string) {
 		w.WriteHeader(status)
-		_ = writeJSONLine(w, map[string]any{"error": map[string]any{"code": code, "message": "refused", "detail": detail}})
+		_ = jsonwire.Encode(w, map[string]any{"error": map[string]any{"code": code, "message": "refused", "detail": detail}})
 	}
 	base := "/api/v1/orgs/" + invitationOrg + "/email-invitations"
 	switch {
@@ -58,9 +59,9 @@ func (f *invitationFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			f.t.Errorf("send body = %+v, want dana@example.test as viewer", body)
 		}
 		w.WriteHeader(http.StatusAccepted)
-		_ = writeJSONLine(w, apigen.EmailInvitation{Id: "inv_1", Email: body.Email, Template: body.Template, ExpiresAt: invitationExpiry})
+		_ = jsonwire.Encode(w, apigen.EmailInvitation{Id: "inv_1", Email: body.Email, Template: body.Template, ExpiresAt: invitationExpiry})
 	case r.Method == http.MethodGet && r.URL.Path == base:
-		_ = writeJSONLine(w, apigen.EmailInvitationList{Count: 1, Items: []apigen.EmailInvitationListing{
+		_ = jsonwire.Encode(w, apigen.EmailInvitationList{Count: 1, Items: []apigen.EmailInvitationListing{
 			{Id: "inv_1", Email: "dana@example.test", Template: "viewer", InvitedBy: "usr_9", ExpiresAt: invitationExpiry}}})
 	case r.Method == http.MethodDelete && r.URL.Path == base+"/inv_1":
 		w.WriteHeader(http.StatusNoContent)
@@ -77,7 +78,7 @@ func (f *invitationFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail(404, "not_found", "")
 			return
 		}
-		_ = writeJSONLine(w, apigen.EmailInvitationPreview{Org: invitationOrg, OrgName: "Acme", Template: "viewer", ExpiresAt: invitationExpiry})
+		_ = jsonwire.Encode(w, apigen.EmailInvitationPreview{Org: invitationOrg, OrgName: "Acme", Template: "viewer", ExpiresAt: invitationExpiry})
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/me/invitations/accept":
 		var body apigen.EmailInvitationTokenRequest
 		_ = json.UnmarshalRead(r.Body, &body)
@@ -85,7 +86,7 @@ func (f *invitationFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if f.onAccept != nil {
 			f.onAccept()
 		}
-		_ = writeJSONLine(w, apigen.EmailInvitationAcceptance{Org: invitationOrg, OrgName: "Acme", Template: "viewer", GrantsCreated: 2, SignedOut: f.signedOut})
+		_ = jsonwire.Encode(w, apigen.EmailInvitationAcceptance{Org: invitationOrg, OrgName: "Acme", Template: "viewer", GrantsCreated: 2, SignedOut: f.signedOut})
 	default:
 		http.NotFound(w, r)
 	}

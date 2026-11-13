@@ -444,14 +444,7 @@ func tagList(tags map[string]string) []map[string]string {
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/x-amz-json-1.1")
-	encodeLine(w, v)
-}
-
-// encodeLine writes v the way encoding/json's Encoder did: v1 bytes plus a newline.
-func encodeLine(w http.ResponseWriter, v any) {
-	if raw, err := json.Marshal(v, jsonwire.Stable); err == nil {
-		_, _ = w.Write(append(raw, '\n'))
-	}
+	_ = jsonwire.Encode(w, v)
 }
 
 func writeError(w http.ResponseWriter, status int, code, retryAfter string) {
@@ -461,5 +454,5 @@ func writeError(w http.ResponseWriter, status int, code, retryAfter string) {
 		w.Header().Set("Retry-After", retryAfter)
 	}
 	w.WriteHeader(status)
-	encodeLine(w, map[string]string{"__type": code, "message": "awssmtest " + code})
+	_ = jsonwire.Encode(w, map[string]string{"__type": code, "message": "awssmtest " + code})
 }

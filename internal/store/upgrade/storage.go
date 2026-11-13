@@ -186,6 +186,10 @@ func (s *Session) persist(ctx context.Context, state State, insert bool) error {
 	if err != nil {
 		return err
 	}
+	floor, err := encodeFloor(state.Floor)
+	if err != nil {
+		return err
+	}
 	incarnation, _ := state.RecoveryIncarnation.MarshalText()
 	maintenance := 0
 	if state.Maintenance {
@@ -195,7 +199,7 @@ func (s *Session) persist(ctx context.Context, state State, insert bool) error {
 	if insert {
 		query = `INSERT INTO upgrade_control(singleton,format,instance_id,applied_json,migration_digest,restore_epoch,incarnation,generation,maintenance,trust_domain,floor_json,release_root_digest,schema_digest) VALUES(1,1,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`
 	}
-	result, err := s.conn.ExecContext(ctx, query, state.InstanceID, string(applied), string(state.MigrationDigest), state.RestoreEpoch, string(incarnation), state.Generation, maintenance, string(state.TrustDomain), encodeFloor(state.Floor), string(state.ReleaseRootDigest), string(state.SchemaDigest))
+	result, err := s.conn.ExecContext(ctx, query, state.InstanceID, string(applied), string(state.MigrationDigest), state.RestoreEpoch, string(incarnation), state.Generation, maintenance, string(state.TrustDomain), floor, string(state.ReleaseRootDigest), string(state.SchemaDigest))
 	if err != nil {
 		return err
 	}

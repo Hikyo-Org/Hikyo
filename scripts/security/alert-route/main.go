@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"flag"
@@ -239,7 +238,7 @@ func run(args []string, out io.Writer) error {
 			if err := save(path, st); err != nil {
 				return err
 			}
-			return json.MarshalEncode(jsontext.NewEncoder(out, jsonwire.Stable), map[string]string{"mode": "enrolled-no-delivery", "configuration": st.Config})
+			return jsonwire.Encode(out, map[string]string{"mode": "enrolled-no-delivery", "configuration": st.Config})
 		}
 		b, err := readBounded(path)
 		if err != nil {
@@ -281,7 +280,7 @@ func run(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if err := json.MarshalEncode(jsontext.NewEncoder(out, jsonwire.Stable), r); err != nil {
+	if err := jsonwire.Encode(out, r); err != nil {
 		return err
 	}
 	if len(health) > 0 || len(r.Escalate) > 0 {

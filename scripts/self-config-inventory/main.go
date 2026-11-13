@@ -5,7 +5,6 @@ package main
 
 import (
 	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"fmt"
 	"os"
 
@@ -14,8 +13,7 @@ import (
 )
 
 func main() {
-	encoder := jsontext.NewEncoder(os.Stdout, jsonwire.Stable, jsontext.WithIndent("  "))
-	if err := json.MarshalEncode(encoder, config.VariableInventory()); err != nil {
+	if err := jsonwire.Encode(os.Stdout, config.VariableInventory(), jsontext.WithIndent("  ")); err != nil {
 		fmt.Fprintln(os.Stderr, "self-configuration inventory: cannot write metadata")
 		os.Exit(1)
 	}

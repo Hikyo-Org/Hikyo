@@ -5,7 +5,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"net"
@@ -58,7 +57,7 @@ func listeners(ctx context.Context, dir string) error {
 			return err
 		}
 	}
-	return json.MarshalEncode(jsontext.NewEncoder(os.Stdout, jsonwire.Stable), out)
+	return jsonwire.Encode(os.Stdout, out)
 }
 
 func (c publicControl) stageOperationalTargets(ctx context.Context, pods []observedPod) error {

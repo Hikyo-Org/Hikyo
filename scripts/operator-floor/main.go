@@ -253,7 +253,7 @@ func serve() error {
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), out)
+		_ = jsonwire.Encode(w, out)
 	})
 	srv := httptest.NewUnstartedServer(h)
 	_ = srv.Listener.Close()

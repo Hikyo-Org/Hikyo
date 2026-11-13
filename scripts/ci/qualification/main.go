@@ -162,7 +162,7 @@ func run(args []string, out io.Writer) error {
 			return err
 		}
 	}
-	return json.MarshalEncode(jsontext.NewEncoder(out, jsonwire.Stable, jsontext.WithIndent("  ")), i)
+	return jsonwire.Encode(out, i, jsontext.WithIndent("  "))
 }
 
 func git(root string, args ...string) (string, error) {

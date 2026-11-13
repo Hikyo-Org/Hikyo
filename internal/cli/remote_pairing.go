@@ -235,7 +235,7 @@ func readPairingContinuation(ios IO, path string) (string, error) {
 	}
 	var prepared apigen.RemotePairingPrepared
 	err = decodeStrictDocument(strings.NewReader(raw), &prepared)
-	if err != nil && !errors.Is(err, errTrailingJSON) {
+	if err != nil && !errors.Is(err, jsonwire.ErrTrailing) {
 		return "", failf(ExitUsage, "the request file must contain the JSON saved by remote-pairing prepare")
 	}
 	if err != nil || len(prepared.RequesterState) == 0 || len(prepared.RequesterState) > pairingStateLimit {

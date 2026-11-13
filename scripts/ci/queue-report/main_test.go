@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -91,7 +90,7 @@ func newFixture(t *testing.T) *fixture {
 						current = f.writeMutate(current)
 					}
 					f.checks[i] = current
-					if err := json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), current); err != nil {
+					if err := jsonwire.Encode(w, current); err != nil {
 						t.Error(err)
 					}
 					return
@@ -135,7 +134,7 @@ func newFixture(t *testing.T) *fixture {
 		if f.mutate != nil {
 			result = f.mutate(path, result)
 		}
-		if err := json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), result); err != nil {
+		if err := jsonwire.Encode(w, result); err != nil {
 			t.Error(err)
 		}
 	}))

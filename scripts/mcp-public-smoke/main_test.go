@@ -110,7 +110,7 @@ func runPublicProfile(t *testing.T, loseReplacement bool, evidence io.Writer) er
 			http.Error(w, "unknown method", http.StatusNotFound)
 			return
 		}
-		_ = json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), map[string]any{"jsonrpc": "2.0", "id": 1, "result": modernResult(result, method != "tools/call")})
+		_ = jsonwire.Encode(w, map[string]any{"jsonrpc": "2.0", "id": 1, "result": modernResult(result, method != "tools/call")})
 	}))
 	t.Cleanup(server.Close)
 	t.Setenv("TEST_MCP_LIVE", "live-runtime-token")
@@ -169,7 +169,7 @@ func TestRunRefusesToolErrorAsAuthenticationDenial(t *testing.T) {
 			http.Error(w, "unknown method", http.StatusNotFound)
 			return
 		}
-		_ = json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), map[string]any{"jsonrpc": "2.0", "id": 1, "result": modernResult(result, method != "tools/call")})
+		_ = jsonwire.Encode(w, map[string]any{"jsonrpc": "2.0", "id": 1, "result": modernResult(result, method != "tools/call")})
 	}))
 	t.Cleanup(server.Close)
 	t.Setenv("TEST_MCP_LIVE", "live-runtime-token")
@@ -205,7 +205,7 @@ func TestRunRefusesRedirectBeforeBearerCanReachDowngradedTarget(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if r.Header.Get("Mcp-Method") == "server/discover" {
-			_ = json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), map[string]any{"jsonrpc": "2.0", "id": 1, "result": modernResult(map[string]any{
+			_ = jsonwire.Encode(w, map[string]any{"jsonrpc": "2.0", "id": 1, "result": modernResult(map[string]any{
 				"supportedVersions": []string{mcpserver.ProtocolVersion}, "capabilities": map[string]any{"tools": map[string]any{}},
 			}, true)})
 			return
@@ -214,7 +214,7 @@ func TestRunRefusesRedirectBeforeBearerCanReachDowngradedTarget(t *testing.T) {
 		for _, name := range mcpserver.ProductionToolNames() {
 			tools = append(tools, map[string]string{"name": name})
 		}
-		_ = json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), map[string]any{"jsonrpc": "2.0", "id": 1, "result": modernResult(map[string]any{"tools": tools}, true)})
+		_ = jsonwire.Encode(w, map[string]any{"jsonrpc": "2.0", "id": 1, "result": modernResult(map[string]any{"tools": tools}, true)})
 	}))
 	t.Cleanup(source.Close)
 	t.Setenv("TEST_MCP_LIVE", "live-runtime-token")

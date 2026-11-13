@@ -9,6 +9,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestRuleRequestBindsItemsToProjects(t *testing.T) {
@@ -67,7 +68,7 @@ func TestAccessRuleVerbs(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == api.PathPrefix+"/meta" {
-			_ = writeJSONLine(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+			_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
 			return
 		}
 		requests = append(requests, r.Method+" "+r.URL.Path)
@@ -77,9 +78,9 @@ func TestAccessRuleVerbs(t *testing.T) {
 				t.Error(err)
 			}
 			w.WriteHeader(http.StatusCreated)
-			_ = writeJSONLine(w, apigen.Rule{Id: "rul_1", PrincipalId: posted.Principal, Capability: posted.Capability, Where: posted.Where})
+			_ = jsonwire.Encode(w, apigen.Rule{Id: "rul_1", PrincipalId: posted.Principal, Capability: posted.Capability, Where: posted.Where})
 		case http.MethodGet:
-			_ = writeJSONLine(w, apigen.RuleList{Items: []apigen.Rule{}})
+			_ = jsonwire.Encode(w, apigen.RuleList{Items: []apigen.Rule{}})
 		default:
 			w.WriteHeader(http.StatusNoContent)
 		}
@@ -141,14 +142,14 @@ func TestAccessRuleVerbsNeedHumanSession(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == api.PathPrefix+"/meta" {
-			_ = writeJSONLine(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+			_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
 			return
 		}
 		if r.Method != http.MethodGet {
 			writes++
 		}
 		w.WriteHeader(http.StatusCreated)
-		_ = writeJSONLine(w, apigen.Rule{})
+		_ = jsonwire.Encode(w, apigen.Rule{})
 	}))
 	defer srv.Close()
 	_, stateDir := machineState(t, srv.URL, SPKIFingerprint(srv.Certificate()))

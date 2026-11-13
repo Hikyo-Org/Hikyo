@@ -241,7 +241,7 @@ func writeJSON(name string, value any) error {
 		return err
 	}
 	defer f.Close()
-	return json.MarshalEncode(jsontext.NewEncoder(f, jsonwire.Stable), value)
+	return jsonwire.Encode(f, value)
 }
 func extractBinary(archive, destination string) (string, error) {
 	f, err := os.Open(archive)

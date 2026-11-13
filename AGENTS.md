@@ -72,7 +72,7 @@ but it is not a substitute for this signature.
   For WIP pushes only, set `HIKYO_PREPUSH_STORYBOOK=skip`; CI still runs the suite.
   Signatures are never skippable.
 - The hook also runs `scripts/ci/golangci-lint-new.sh <base>` when a push changes
-  Go code. It runs golangci-lint (errcheck, errorlint, errchkjson, noctx,
+  Go code. It runs golangci-lint (errcheck, errorlint, noctx,
   staticcheck `SA*`/`QF1001`/`QF1003` except SA4006/SA4009, and gosec G115/G204/G306 outside tests, from
   `.golangci.yml`) and flags only issues on lines changed since the merge base, so
   the existing baseline of those rules never blocks you. A second strict pass runs wastedassign, unused and

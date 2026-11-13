@@ -231,7 +231,7 @@ func run(opts options, client *http.Client) error {
 			evidence.ReplacementVerifiedAt = time.Now().UTC()
 			evidence.Passed = true
 			if opts.evidence != nil {
-				if err := json.MarshalEncode(jsontext.NewEncoder(opts.evidence, jsonwire.Stable), evidence); err != nil {
+				if err := jsonwire.Encode(opts.evidence, evidence); err != nil {
 					return errors.New("could not write redacted smoke receipt")
 				}
 			}
