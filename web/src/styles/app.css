@@ -5782,12 +5782,15 @@ label.chk:has(input:disabled) {
 }
 
 .capgrid {
-  /* Auto-fill at 170px, inside its own bordered well: nine capability atoms in
-     one column is a modal the reader has to scroll to see the choice they are
+  /* Auto-fill inside its own bordered well: two dozen capability atoms in one
+     column is a modal the reader has to scroll to see the choice they are
      being asked to make, and the well is what separates the checklist from the
-     scope controls above it. */
+     scope controls above it. The column floor fits the widest row (checkbox,
+     REPORT-DELIVERY-STATUS tag, explain toggle: 271px, 293px at touch size);
+     a narrower floor let long tags push their toggle out of line and into the
+     next column. */
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
   gap: 2px;
   margin: 0;
   padding: var(--space-2);
