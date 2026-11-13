@@ -99,7 +99,7 @@ violation. Each refused item is a named case in
 | Closed enum value removed from a response header, fixture and `Hikyo-Audit-Receipt` | Refused. Permanent fixture `remove-response-header-enum-value-fails` |
 | Closed enum growth in a response header, `Hikyo-Audit-Receipt` to `[v1, mldsa65]` or `[v1, mldsa44]` | Refused. Permanent fixture `grow-closed-response-header-enum-fails` |
 | Request media type renamed within the JSON family | Refused |
-| Property removed from an unreferenced component (`AuditExportReceipt`, `AuditExportReceiptLine`) | Refused, because the layer walks every component. Owner decision 2026-11-12: option A, keep components frozen, see "Owner decisions to confirm" |
+| Property removed from an unreferenced component (`AuditExportReceipt`, `AuditExportReceiptLine`) | Refused, because the layer walks every component. Owner decision 2026-11-13: option A, keep components frozen, see "Owner decisions" |
 | Deleted `allOf`, `anyOf`, `oneOf`, `prefixItems` branch in parameter or header schemas and in parameter or header `content` | Refused |
 | Deleted `prefixItems` entry in a request or response body | Refused |
 | Deleted `patternProperties`, `dependentSchemas`, `dependentRequired` or discriminator entries | Refused |
@@ -209,39 +209,39 @@ match exactly one and become valid, which old clients reject.
 additions under `oneOf` as permitted, so it stays accepted under owner
 decision 3.
 
-## Owner decisions to confirm
+## Owner decisions
 
-1. **Decided 2026-11-12, option A: unreferenced components are part of the
-   promise.** The owner took the recommendation as written; no gate, spec or
-   ADR change follows. The layer freezes them: removing a property from
-   `AuditExportReceipt` is refused, and so is removing, renaming or inlining any component schema,
-   even where the inlined shape is identical. Two root schemas have no
-   reference from any operation: `AuditExportReceiptLine` and
-   `AdapterVisibility`. `AuditExportReceipt` is reachable only through the
-   first. The export descriptions promise the receipt schemas. Options
-   considered:
-   - **A. Freeze components (chosen, no change).** Every component is
-     frozen whether or not an operation reads it. Cost: the receipt schemas
+1. **Decided 2026-11-13 by the owner (Marc Went), option A: unreferenced
+   components are part of the promise.** Recorded as an owner decision record in
+   the [API and CLI surface ADR](../adr/api-cli-surface.md); it clarifies how the
+   freeze applies and changes no ADR clause, gate or spec text. The layer
+   freezes them: removing a property from `AuditExportReceipt` is refused, and
+   so is removing, renaming or inlining any component schema, even where the
+   inlined shape is identical. Two root schemas have no reference from any
+   operation: `AuditExportReceiptLine` and `AdapterVisibility`.
+   `AuditExportReceipt` is reachable only through the first. The export
+   descriptions promise the receipt schemas. Options considered:
+   - **A. Freeze components (accepted, no change).** Every component is frozen
+     whether or not an operation reads it. Cost, accepted: the receipt schemas
      stay undiscoverable from the operations, so generated clients carry no
-     receipt type. Recommended: it keeps the receipt schemas as promised
-     and needs neither an ADR amendment nor any change to the gate or the
-     spec.
-   - **B. Reference the schemas from the spec.** Measured against v1.0.0 on
-     this tree: pointing the `application/x-ndjson` response schema at
-     `AuditExportReceiptLine` is refused (`hikyo-contract-added` on `$ref`,
-     `hikyo-contract-removed` on `type`), because it changes an existing
-     media type's schema. A second response media type that references it
-     passes the gate, but it documents a media type the server does not
-     serve, and the freeze makes that permanent. Doing B honestly therefore
-     needs an ADR amendment to `api-cli-surface.md`.
-   - **C. Exempt unreferenced components from the gate.** Code change in
-     `reach` and `components`. Cost: the receipt schemas the descriptions
-     promise become editable after the freeze, which contradicts those
-     descriptions.
-2. **The allowlist false refusals above** (`response-header-added`,
+     receipt type. It keeps the receipt schemas as promised and needs neither
+     an ADR amendment nor any change to the gate or the spec.
+   - **B. Reference the schemas from the spec (rejected).** Measured against
+     v1.0.0 on this tree: pointing the `application/x-ndjson` response schema
+     at `AuditExportReceiptLine` is refused (`hikyo-contract-added` on `$ref`,
+     `hikyo-contract-removed` on `type`, among other findings), because it changes an existing media
+     type's schema. A second response media type that references it passes the
+     gate, but it documents a media type the server does not serve, and the
+     freeze makes that permanent. Doing B honestly therefore needs an ADR
+     amendment to `api-cli-surface.md`.
+   - **C. Exempt unreferenced components from the gate (rejected).** Code
+     change in `reach` and `components`. Cost: the receipt schemas the
+     descriptions promise become editable after the freeze, which contradicts
+     those descriptions.
+2. **Open: the allowlist false refusals above** (`response-header-added`,
    `response-property-deprecated`, the `ID` description edit) stay refused
    until the allowlist is changed deliberately.
-3. **`oneOf` freezes requiredness in every component it reaches,** including
+3. **Open: `oneOf` freezes requiredness in every component it reaches,** including
    the shared `Error` envelope. Relax it to permit new required response
    properties there if the exactly-one exposure is judged theoretical. New
    optional properties under `oneOf` carry the same exposure and stay
