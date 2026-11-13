@@ -19,10 +19,13 @@ func mustJSON(v any) []byte {
 // A value v2 cannot encode must never digest equal to anything, itself included.
 func TestDigestOfUnencodableValuesNeverMatches(t *testing.T) {
 	bad := map[string]string{"HIKYO_X": "\xff"}
-	if digest(bad) == digest(bad) {
+	first, second := digest(bad), digest(bad)
+	if first == second {
 		t.Fatal("unencodable values digest equal; a digest check would pass")
 	}
-	if digest(map[string]string{"A": "b"}) != digest(map[string]string{"A": "b"}) {
+	good := map[string]string{"A": "b"}
+	first, second = digest(good), digest(good)
+	if first != second {
 		t.Fatal("encodable values must digest deterministically")
 	}
 	if err := putRecord(&corev1.Secret{}, "k", bad); err == nil {
