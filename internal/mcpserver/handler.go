@@ -583,11 +583,14 @@ func (h *handler) sourceIP(r *http.Request) string {
 	if !h.trusted(r.RemoteAddr) {
 		return host
 	}
-	values := r.Header.Values("X-Forwarded-For")
-	if len(values) != 1 {
+	// Separate field lines are one comma-joined list (RFC 9110 section 5.3),
+	// the same reading the REST API uses: a proxy that appends its own line
+	// leaves a client's forged line first, and the walk below starts at the end.
+	forwarded := strings.Join(r.Header.Values("X-Forwarded-For"), ",")
+	if forwarded == "" {
 		return host
 	}
-	entries := strings.Split(values[0], ",")
+	entries := strings.Split(forwarded, ",")
 	for i := len(entries) - 1; i >= 0; i-- {
 		candidate := strings.TrimSpace(entries[i])
 		if net.ParseIP(candidate) == nil {
