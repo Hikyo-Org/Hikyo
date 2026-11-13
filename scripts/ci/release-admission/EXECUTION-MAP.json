@@ -1,8 +1,8 @@
 {
   "actualConfiguration": null,
   "executionAuthorityGranted": false,
-  "implementationManifestRawSHA256": "ea7f2887f6a84324747b6ddeb57d1e7119ce9c530f88791d16c27682fe8a7ac8",
-  "implementationManifestSHA256": "9e00dbce531074f92151e55ad7a164fb1200517c4e4ce3916b196adbe75ebaee",
+  "implementationManifestRawSHA256": "68828fc60b5e8601f391e4c0f1b434520b09b96ccd514e5ba947c1f6cbb9426f",
+  "implementationManifestSHA256": "be5e9493f422247135032fd83bea2c3c897f1e2f4cd7cf22310da1fa7119c562",
   "modules": {
     "collector": {
       "bytes": 52707,
@@ -64,7 +64,7 @@
     },
     "adapters/DESCRIPTOR-CONTRACT.json": {
       "bytes": 13324,
-      "rawSHA256": "f39489f4bd53ad70c98e6f4467ae90c5cddd2d42e25fb23f834cf9a4710e8f09"
+      "rawSHA256": "02f109f671769b6f913a9d3b3edcc9ef69c44ed2bfc5defccd6723db31bda881"
     },
     "adapters/ORIGINS.json": {
       "bytes": 11281,
@@ -72,11 +72,11 @@
     },
     "adapters/SOURCE-PINS.json": {
       "bytes": 20384,
-      "rawSHA256": "1fa92e3449a7c61993d7ddc2a89bfc01f263a90079ff8811e79a3101efd5eda3"
+      "rawSHA256": "fe54e6b89ebc72e46d8cbed0cf313f6b662dcf54a035ff82ceaf8546ff2dd00c"
     },
     "adapters/STAGE-SOURCE-PINS.json": {
       "bytes": 610,
-      "rawSHA256": "bb78665b16cada929a87fd534a1b03e2373ff3f7f18cbd777631e57b1941cd42"
+      "rawSHA256": "764a28f182501996cee4ecaa7975be4ce03312f78fc13d3cec3adc9bde539b3e"
     },
     "adapters/TRANSPORT-CODE-PINS.json": {
       "bytes": 4232,
@@ -320,7 +320,7 @@
     },
     "adapters/reviewed-scripts/native-create-install-v1.js": {
       "bytes": 32560,
-      "rawSHA256": "3977912c6000d5091303b5be185e39e236b4ae147ef4ed0700d937ff60e2920b"
+      "rawSHA256": "2b4cf33da6bd12db193f98603389247d1f6d2beddbc43e8f9590b2d53db2e45e"
     },
     "adapters/reviewed-scripts/native-create-status-v1.js": {
       "bytes": 2133,
@@ -368,7 +368,7 @@
     },
     "adapters/stage-registry.json": {
       "bytes": 91890,
-      "rawSHA256": "9ab8a3521a8bc20894d60ef923630aac12a719a1d7d13cc48371c210f2d23486"
+      "rawSHA256": "6a7f35cca0ecefd71dfd9b2b05b30911692f12bd98e3599baaf2e70d3281a8ca"
     },
     "adapters/stage_build.cjs": {
       "bytes": 11206,
@@ -563,8 +563,8 @@
       "rawSHA256": "bd3477a1d0d7008f716b47e44451e7e7230c697c7bd6ca6edca58e0b52bdaf9b"
     },
     "pipeline_support.py": {
-      "bytes": 60740,
-      "rawSHA256": "0709d319b2b1c320169d091eb49e050905799645eecc0c74f7c4b0a1458d4231"
+      "bytes": 60760,
+      "rawSHA256": "6d522a32ec3c4b8480a5edb0cbea0cd1911bd3bebce6fce20feb1c9a7f568caa"
     },
     "release_collector.py": {
       "bytes": 52707,
