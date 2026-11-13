@@ -28,25 +28,36 @@ updates:
         versions: ['*']
 
   # npm version updates. Security updates are configured separately in the
-  # repository settings and still go to main. Minor and patch updates are
-  # grouped; majors arrive as their own group so they stay visible.
+  # repository settings and still go to main; these options do not apply to
+  # them. Dependabot's default 3-day cooldown already outlasts pnpm 11's 1-day
+  # minimum release age, so no cooldown is set.
   - package-ecosystem: npm
     directories:
       - /web
       - /docs/site
+      - /clients/ts
       - /scripts/mcp-conformance
       - /scripts/acceptance/mcp-fixture/clients
     target-branch: dev
     schedule:
       interval: weekly
     open-pull-requests-limit: 2
-    # pnpm 11 rejects versions younger than its minimum release age (1 day)
-    # under --frozen-lockfile, so wait past it before proposing.
-    cooldown:
-      default-days: 2
     commit-message:
       prefix: fix(deps)
+    # A dependency joins the first group it matches. Dependabot classes a 0.x
+    # minor such as 0.97 -> 0.99 as "minor", although it can break, so the
+    # direct 0.x dependencies get their own group ahead of minor-and-patch.
+    # Move a package out of this list once it reaches 1.0.
     groups:
+      npm-zero-major:
+        patterns:
+          - '@astrojs/check'
+          - '@hey-api/openapi-ts'
+          - '@modelcontextprotocol/conformance'
+          - '@open-pencil/*'
+          - '@openai/codex'
+          - '@ungap/raw-json'
+          - sharp
       npm-minor-and-patch:
         patterns:
           - '*'
@@ -63,30 +74,8 @@ updates:
       - dependency-name: playwright
       - dependency-name: playwright-core
       - dependency-name: '@playwright/test'
-
-  # clients/ts is separate because it aliases typescript to
-  # @typescript/typescript6 on purpose; everything else follows /web.
-  - package-ecosystem: npm
-    directory: /clients/ts
-    target-branch: dev
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 2
-    cooldown:
-      default-days: 2
-    commit-message:
-      prefix: fix(deps)
-    groups:
-      npm-minor-and-patch:
-        patterns:
-          - '*'
-        update-types:
-          - minor
-          - patch
-      npm-major:
-        patterns:
-          - '*'
-        update-types:
-          - major
-    ignore:
+      # docs/site stays on TypeScript 6 for Astro's compiler-API checker
+      # (docs/handoff/upgrade-typescript-7.md); a TS major is a deliberate,
+      # repo-wide migration. clients/ts's npm: aliases are skipped by Dependabot.
       - dependency-name: typescript
+        update-types: ['version-update:semver-major']
