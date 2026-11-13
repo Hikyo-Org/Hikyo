@@ -19,7 +19,7 @@ type DeveloperCredentialReauthTarget struct {
 	ConsentCurrentAndFuture bool          `json:"consent_current_and_future"`
 	// PersonalValues binds the personal-value consent into the ceremony, so
 	// an approval never covers a delivery the person was not shown.
-	PersonalValues bool `json:"personal_values,omitempty"`
+	PersonalValues bool `json:"personal_values,omitzero"`
 }
 type developerCredentialBinding struct {
 	Purpose       string                          `json:"purpose"`

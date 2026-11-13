@@ -122,7 +122,7 @@ type ResourceVersions struct {
 
 type envDelta struct {
 	Name   string         `json:"name"`
-	Before *corev1.EnvVar `json:"before,omitempty"`
+	Before *corev1.EnvVar `json:"before,omitzero"`
 	After  corev1.EnvVar  `json:"after"`
 }
 type argDelta struct {
@@ -141,25 +141,25 @@ type deploymentDelta struct {
 	Environment   []envDelta         `json:"environment"`
 	Arguments     []argDelta         `json:"arguments"`
 	Ports         []portDelta        `json:"ports"`
-	BeforeStamp   *string            `json:"before_stamp,omitempty"`
-	RootSource    *rootSourceDelta   `json:"root_source,omitempty"`
+	BeforeStamp   *string            `json:"before_stamp,omitzero"`
+	RootSource    *rootSourceDelta   `json:"root_source,omitzero"`
 	SourceAliases []sourceAliasDelta `json:"source_aliases,omitempty"`
 }
 type planData struct {
-	Topology             *domain.SingletonTopologyChange `json:"topology,omitempty"`
+	Topology             *domain.SingletonTopologyChange `json:"topology,omitzero"`
 	Intent               Intent                          `json:"intent"`
 	TargetDigest         string                          `json:"target_digest"`
 	Resources            ResourceVersions                `json:"resources"`
 	Changes              []Change                        `json:"changes"`
 	ConfigBefore         map[string][]byte               `json:"config_before"`
 	ConfigAfter          map[string][]byte               `json:"config_after"`
-	ConfigBeforeStamp    *string                         `json:"config_before_stamp,omitempty"`
+	ConfigBeforeStamp    *string                         `json:"config_before_stamp,omitzero"`
 	Delta                deploymentDelta                 `json:"delta"`
 	BeforeMetadataDigest string                          `json:"before_metadata_digest"`
 	BeforeSpecDigest     string                          `json:"before_spec_digest"`
 	AfterSpecDigest      string                          `json:"after_spec_digest"`
 	Replicas             int32                           `json:"replicas"`
-	Bootstrap            *BootstrapChanges               `json:"bootstrap,omitempty"`
+	Bootstrap            *BootstrapChanges               `json:"bootstrap,omitzero"`
 }
 
 // Plan is opaque to callers. Its digest binds the decision, target, prior

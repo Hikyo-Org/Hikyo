@@ -69,7 +69,7 @@ const (
 // Manifest describes an archive: what produced it, and what a restore needs
 // to know before it commits anything.
 type Manifest struct {
-	Upgrade *backupreceipt.Snapshot `json:"upgrade,omitempty"`
+	Upgrade *backupreceipt.Snapshot `json:"upgrade,omitzero"`
 	Format  string                  `json:"format"`
 	Engine  Engine                  `json:"engine"`
 	// SchemaVersion is the highest applied goose migration. Restore refuses

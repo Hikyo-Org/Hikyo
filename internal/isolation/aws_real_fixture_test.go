@@ -57,7 +57,7 @@ type realAWSManifest struct {
 	Cleanup         realAWSActor            `json:"cleanup"`
 	// Emulator redirects the same suite to an AWS-compatible emulator (#158).
 	// Absent means real AWS and keeps every real-path check unchanged.
-	Emulator *realAWSEmulator `json:"emulator,omitempty"`
+	Emulator *realAWSEmulator `json:"emulator,omitzero"`
 }
 
 type realAWSEmulator struct {

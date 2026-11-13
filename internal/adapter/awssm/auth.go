@@ -86,7 +86,7 @@ type Descriptor struct {
 	Region         string   `json:"region,omitempty"`
 	RoleARN        string   `json:"role_arn,omitempty"`
 	ExternalID     string   `json:"external_id,omitempty"`
-	SessionSeconds int      `json:"session_seconds,omitempty"`
+	SessionSeconds int      `json:"session_seconds,omitzero"`
 	AccessKeyID    string   `json:"access_key_id,omitempty"`
 	SecretKey      string   `json:"secret_access_key,omitempty"`
 	SessionToken   string   `json:"session_token,omitempty"`

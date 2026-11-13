@@ -15,8 +15,8 @@ import (
 // Keeping the accepted command permits exact recovery after its transport TTL.
 type controllerJournal struct {
 	Accepted SignedCommand `json:"accepted"`
-	Plan     *record       `json:"plan,omitempty"`
-	Response *Response     `json:"response,omitempty"`
+	Plan     *record       `json:"plan,omitzero"`
+	Response *Response     `json:"response,omitzero"`
 }
 
 type Controller struct {

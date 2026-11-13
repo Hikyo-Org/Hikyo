@@ -56,7 +56,7 @@ type Scope struct {
 	EnvSlug    string   `json:"env_slug,omitempty"`
 	Mount      string   `json:"mount,omitempty"`
 	PathPrefix string   `json:"path_prefix,omitempty"`
-	KVVersion  int      `json:"kv_version,omitempty"`
+	KVVersion  int      `json:"kv_version,omitzero"`
 }
 
 // EnvironmentMapping is one source-environment → target-environment row.

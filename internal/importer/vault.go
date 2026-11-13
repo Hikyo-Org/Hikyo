@@ -33,7 +33,7 @@ type vaultCapture struct {
 	Path          string          `json:"path"`
 	Mount         string          `json:"mount"`
 	EngineVersion int             `json:"engine_version"`
-	SecretVersion *int            `json:"secret_version,omitempty"`
+	SecretVersion *int            `json:"secret_version,omitzero"`
 	Deleted       *bool           `json:"deleted"`
 	Destroyed     *bool           `json:"destroyed"`
 	Data          *map[string]any `json:"data"`

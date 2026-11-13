@@ -170,7 +170,7 @@ type User struct {
 	// NormalizeActive could apply the tolerance the ADR mandates.
 	Active *bool          `json:"-"`
 	Groups []GroupRef     `json:"groups,omitempty"`
-	Meta   *Meta          `json:"meta,omitempty"`
+	Meta   *Meta          `json:"meta,omitzero"`
 	Extra  map[string]any `json:"-"`
 }
 
@@ -189,7 +189,7 @@ type Group struct {
 	ExternalID  string         `json:"externalId,omitempty"`
 	DisplayName string         `json:"displayName,omitempty"`
 	Members     []Member       `json:"members"`
-	Meta        *Meta          `json:"meta,omitempty"`
+	Meta        *Meta          `json:"meta,omitzero"`
 	Extra       map[string]any `json:"-"`
 }
 

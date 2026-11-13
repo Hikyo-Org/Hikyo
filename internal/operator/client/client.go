@@ -60,7 +60,7 @@ type DeliveredKey struct {
 	Name           string  `json:"name"`
 	Classification string  `json:"classification"`
 	Presence       string  `json:"presence"`
-	Value          *string `json:"value,omitempty"`
+	Value          *string `json:"value,omitzero"`
 }
 
 // DeliveryResponse is the operator's decode of the delivery response. Only the
@@ -72,10 +72,10 @@ type DeliveryResponse struct {
 	ChangeToken    string `json:"change_token"`
 	SchemaRevision int64  `json:"schema_revision"`
 	// Revision is absent on older servers that may ignore parameter inputs.
-	Revision            *int64         `json:"revision,omitempty"`
-	PinnedRevision      *int64         `json:"pinned_revision,omitempty"`
+	Revision            *int64         `json:"revision,omitzero"`
+	PinnedRevision      *int64         `json:"pinned_revision,omitzero"`
 	PinExpired          bool           `json:"pin_expired"`
-	CredentialExpiresAt *time.Time     `json:"credential_expires_at,omitempty"`
+	CredentialExpiresAt *time.Time     `json:"credential_expires_at,omitzero"`
 	Keys                []DeliveredKey `json:"keys"`
 }
 
