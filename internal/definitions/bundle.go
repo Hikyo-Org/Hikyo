@@ -14,7 +14,7 @@
 package definitions
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"

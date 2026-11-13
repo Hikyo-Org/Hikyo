@@ -1,11 +1,10 @@
 package compose
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"math"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/gofrs/flock"
 )
 
@@ -146,7 +146,7 @@ func SaveSnapshot(keys *crypto.LocalKeys, binding crypto.SnapshotBinding, payloa
 		}
 	}
 
-	plaintext, err := json.Marshal(payload)
+	plaintext, err := json.Marshal(payload, jsonwire.Stable)
 	if err != nil {
 		return fmt.Errorf("compose: marshal snapshot payload: %w", err)
 	}
@@ -159,7 +159,7 @@ func SaveSnapshot(keys *crypto.LocalKeys, binding crypto.SnapshotBinding, payloa
 		return fmt.Errorf("compose: write snapshot: %w", err)
 	}
 	// Advance the HWM only after the snapshot is durable.
-	nextHWM, err := json.Marshal(hwm{IssuedAt: aad.IssuedAt, Digest: digest})
+	nextHWM, err := json.Marshal(hwm{IssuedAt: aad.IssuedAt, Digest: digest}, jsonwire.Stable)
 	if err != nil {
 		return fmt.Errorf("compose: marshal high-water mark: %w", err)
 	}
@@ -276,9 +276,7 @@ func LoadSnapshot(keys *crypto.LocalKeys, expect crypto.SnapshotBinding, now tim
 		return zeroP, binding, err // crypto.ErrDecrypt on any tamper/AEAD failure
 	}
 	var payload SnapshotPayload
-	dec := json.NewDecoder(bytes.NewReader(plaintext))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&payload); err != nil {
+	if err := json.Unmarshal(plaintext, &payload, json.RejectUnknownMembers(true)); err != nil {
 		return zeroP, binding, fmt.Errorf("compose: parse snapshot payload: %w", err)
 	}
 	if err := payload.validateReceipts(); err != nil {
@@ -491,9 +489,7 @@ func readHWM(name string) (*hwm, error) {
 		return nil, fmt.Errorf("compose: read high-water mark: %w", err)
 	}
 	var m hwm
-	dec := json.NewDecoder(bytes.NewReader(b))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&m); err != nil {
+	if err := json.Unmarshal(b, &m, json.RejectUnknownMembers(true)); err != nil {
 		return nil, fmt.Errorf("compose: parse high-water mark: %w", err)
 	}
 	return &m, nil

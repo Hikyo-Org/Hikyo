@@ -1,7 +1,8 @@
 package definitions
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"testing"
 )
@@ -130,7 +131,7 @@ func TestDecodeStrictDirectMapShadowsAnonymousStruct(t *testing.T) {
 	}
 }
 
-type opaqueJSONMap map[string]json.RawMessage
+type opaqueJSONMap map[string]jsontext.Value
 
 func (value *opaqueJSONMap) UnmarshalJSON(raw []byte) error {
 	type plain opaqueJSONMap
@@ -143,7 +144,7 @@ func (value *opaqueJSONMap) UnmarshalJSON(raw []byte) error {
 }
 
 func TestDecodeStrictOpaqueJSONUsesConservativeMemberChecks(t *testing.T) {
-	for name, target := range map[string]any{"raw message": new(json.RawMessage), "custom map": new(opaqueJSONMap), "double-pointer raw": new(*json.RawMessage), "double-pointer custom": new(*opaqueJSONMap)} {
+	for name, target := range map[string]any{"raw message": new(jsontext.Value), "custom map": new(opaqueJSONMap), "double-pointer raw": new(*jsontext.Value), "double-pointer custom": new(*opaqueJSONMap)} {
 		t.Run(name, func(t *testing.T) {
 			for _, raw := range []string{`{"ID":1,"id":2}`, `{"nested":{"HASH":1,"hash":2}}`} {
 				var duplicate *DuplicateMemberError
@@ -157,7 +158,7 @@ func TestDecodeStrictOpaqueJSONUsesConservativeMemberChecks(t *testing.T) {
 		})
 	}
 	var wrapped struct {
-		Bundle json.RawMessage `json:"bundle"`
+		Bundle jsontext.Value `json:"bundle"`
 	}
 	if err := DecodeStrict([]byte(`{"bundle":{"ID":1,"id":2}}`), &wrapped); err == nil {
 		t.Fatal("nested opaque aliases accepted")
@@ -165,5 +166,13 @@ func TestDecodeStrictOpaqueJSONUsesConservativeMemberChecks(t *testing.T) {
 	var ordinary map[string]any
 	if err := DecodeStrict([]byte(`{"ID":1,"id":2,"nested":{"HASH":1,"hash":2}}`), &ordinary); err != nil {
 		t.Fatalf("ordinary map identities conflated: %v", err)
+	}
+}
+
+func TestDecodeStrictNamesAnEscapedUnknownField(t *testing.T) {
+	var got struct{ Inner struct{ Known string } }
+	var unknown *UnknownFieldError
+	if err := DecodeStrict([]byte(`{"Inner":{"a/b~c":1}}`), &got); !errors.As(err, &unknown) || unknown.Field != "a/b~c" {
+		t.Fatalf("unknown field = %v", err)
 	}
 }

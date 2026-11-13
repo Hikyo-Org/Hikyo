@@ -6,10 +6,11 @@ import (
 	"crypto"
 	"crypto/ed25519"
 	"crypto/rand"
-	"encoding/json"
+	"encoding/json/v2"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -160,7 +161,7 @@ func SignCommand(ctx context.Context, signer crypto.Signer, command Command) (Si
 	if key, ok := signer.Public().(ed25519.PublicKey); !ok || len(key) != ed25519.PublicKeySize {
 		return SignedCommand{}, ErrInvalid
 	}
-	raw, err := json.Marshal(command)
+	raw, err := json.Marshal(command, jsonwire.Stable)
 	if err != nil || len(raw) > maxRecordBytes {
 		return SignedCommand{}, ErrInvalid
 	}

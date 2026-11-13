@@ -13,7 +13,7 @@
 package lint
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,6 +22,8 @@ import (
 	"sync"
 
 	"golang.org/x/tools/go/packages"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Module is the module path the analyzers reason about.
@@ -116,7 +118,7 @@ func (c BuildContext) WriteOverlay(dir string) (string, error) {
 		}
 		replace[path] = placeholder
 	}
-	raw, err := json.Marshal(map[string]any{"Replace": replace})
+	raw, err := json.Marshal(map[string]any{"Replace": replace}, jsonwire.Stable)
 	if err != nil {
 		return "", err
 	}

@@ -2,12 +2,12 @@ package definitions
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"reflect"
 	"slices"
-	"strconv"
 	"strings"
 	"unicode"
 )
@@ -19,9 +19,10 @@ import (
 // errors; each caller maps them to its own refusal vocabulary (this package to
 // domain sentinels with caller-safe detail, the importer to its Code set).
 
-// DuplicateMemberError names an object member that appeared more than once.
-// encoding/json otherwise accepts duplicates with last-one-wins semantics,
-// which is unsafe for a reviewed artifact.
+// DuplicateMemberError names an object member that appeared more than once,
+// including spellings that differ only in case. The walk below refuses them
+// before the decode, so the refusal does not depend on how the decoder matches
+// member names.
 type DuplicateMemberError struct{ Member string }
 
 func (e *DuplicateMemberError) Error() string {
@@ -48,31 +49,28 @@ func DecodeStrict(raw []byte, into any) error {
 	if err := rejectDuplicateMembers(raw, reflect.TypeOf(into)); err != nil {
 		return err
 	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(into); err != nil {
+	dec := jsontext.NewDecoder(bytes.NewReader(raw))
+	if err := json.UnmarshalDecode(dec, into, json.RejectUnknownMembers(true)); err != nil {
 		if field, ok := unknownField(err); ok {
 			return &UnknownFieldError{Field: field}
 		}
 		return ErrMalformed
 	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+	if _, err := dec.ReadToken(); !errors.Is(err, io.EOF) {
 		return ErrTrailing
 	}
 	return nil
 }
 
-// unknownField extracts the field name from encoding/json's unknown-field
-// error, whose message is `json: unknown field "x"`.
+// unknownField extracts the member name from encoding/json/v2's unknown-member
+// error: a SemanticError wrapping json.ErrUnknownName whose JSON pointer ends
+// in the offending name.
 func unknownField(err error) (string, bool) {
-	msg := err.Error()
-	const marker = "unknown field "
-	i := strings.Index(msg, marker)
-	if i < 0 {
+	var semantic *json.SemanticError
+	if !errors.Is(err, json.ErrUnknownName) || !errors.As(err, &semantic) {
 		return "", false
 	}
-	field, err := strconv.Unquote(msg[i+len(marker):])
-	return field, err == nil
+	return semantic.JSONPointer.LastToken(), true
 }
 
 // RejectDuplicateMembers walks the raw token stream before any decode.
@@ -81,22 +79,24 @@ func RejectDuplicateMembers(raw []byte) error {
 }
 
 func rejectDuplicateMembers(raw []byte, schema reflect.Type) error {
-	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec := jsontext.NewDecoder(bytes.NewReader(raw), jsontext.AllowDuplicateNames(true))
 	if err := walkJSONValue(dec, schema); err != nil {
 		return err
 	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+	if _, err := dec.ReadToken(); !errors.Is(err, io.EOF) {
 		return ErrTrailing
 	}
 	return nil
 }
 
-func walkJSONValue(dec *json.Decoder, schema reflect.Type) error {
+func walkJSONValue(dec *jsontext.Decoder, schema reflect.Type) error {
 	// A custom decoder controls its own shape. Do not infer map permissions
 	// from the Go representation of RawMessage or another opaque JSON type.
-	unmarshaler := reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()
+	unmarshalers := []reflect.Type{reflect.TypeFor[json.Unmarshaler](), reflect.TypeFor[json.UnmarshalerFrom]()}
 	for schema != nil {
-		if schema.Implements(unmarshaler) || schema.Kind() != reflect.Pointer && reflect.PointerTo(schema).Implements(unmarshaler) {
+		if slices.ContainsFunc(unmarshalers, func(u reflect.Type) bool {
+			return schema.Implements(u) || schema.Kind() != reflect.Pointer && reflect.PointerTo(schema).Implements(u)
+		}) {
 			schema = nil
 			break
 		}
@@ -105,26 +105,19 @@ func walkJSONValue(dec *json.Decoder, schema reflect.Type) error {
 		}
 		schema = schema.Elem()
 	}
-	tok, err := dec.Token()
+	tok, err := dec.ReadToken()
 	if err != nil {
 		return ErrMalformed
 	}
-	delim, ok := tok.(json.Delim)
-	if !ok {
-		return nil
-	}
-	switch delim {
+	switch tok.Kind() {
 	case '{':
 		seen := map[string]struct{}{}
-		for dec.More() {
-			member, err := dec.Token()
-			if err != nil {
+		for dec.PeekKind() != '}' {
+			member, err := dec.ReadToken()
+			if err != nil || member.Kind() != '"' {
 				return ErrMalformed
 			}
-			key, ok := member.(string)
-			if !ok {
-				return ErrMalformed
-			}
+			key := member.String()
 			folded := key
 			if schema == nil || schema.Kind() != reflect.Map && schema.Kind() != reflect.Interface {
 				folded = foldJSONMember(key)
@@ -137,7 +130,7 @@ func walkJSONValue(dec *json.Decoder, schema reflect.Type) error {
 				return err
 			}
 		}
-		if end, err := dec.Token(); err != nil || end != json.Delim('}') {
+		if end, err := dec.ReadToken(); err != nil || end.Kind() != '}' {
 			return ErrMalformed
 		}
 	case '[':
@@ -146,16 +139,14 @@ func walkJSONValue(dec *json.Decoder, schema reflect.Type) error {
 		} else if schema == nil || schema.Kind() != reflect.Interface {
 			schema = nil
 		}
-		for dec.More() {
+		for dec.PeekKind() != ']' {
 			if err := walkJSONValue(dec, schema); err != nil {
 				return err
 			}
 		}
-		if end, err := dec.Token(); err != nil || end != json.Delim(']') {
+		if end, err := dec.ReadToken(); err != nil || end.Kind() != ']' {
 			return ErrMalformed
 		}
-	default:
-		return ErrMalformed
 	}
 	return nil
 }
@@ -258,4 +249,56 @@ func jsonMemberType(schema reflect.Type, key string) reflect.Type {
 		}
 	}
 	return folded.typ
+}
+
+// DecodeLiteralTree reads one value into maps, slices, strings, bools, nil and
+// jsontext.Value numbers. v2 has no UseNumber; a number kept as its jsontext
+// literal re-encodes with its exact digits, which a float64 would not preserve.
+func DecodeLiteralTree(dec *jsontext.Decoder) (any, error) {
+	switch dec.PeekKind() {
+	case '{':
+		if _, err := dec.ReadToken(); err != nil {
+			return nil, err
+		}
+		out := map[string]any{}
+		for dec.PeekKind() != '}' {
+			name, err := dec.ReadToken()
+			if err != nil {
+				return nil, err
+			}
+			if out[name.String()], err = DecodeLiteralTree(dec); err != nil {
+				return nil, err
+			}
+		}
+		_, err := dec.ReadToken()
+		return out, err
+	case '[':
+		if _, err := dec.ReadToken(); err != nil {
+			return nil, err
+		}
+		out := []any{}
+		for dec.PeekKind() != ']' {
+			item, err := DecodeLiteralTree(dec)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, item)
+		}
+		_, err := dec.ReadToken()
+		return out, err
+	case '0':
+		value, err := dec.ReadValue()
+		return jsontext.Value(bytes.Clone(value)), err
+	}
+	tok, err := dec.ReadToken()
+	if err != nil {
+		return nil, err
+	}
+	switch tok.Kind() {
+	case '"':
+		return tok.String(), nil
+	case 't', 'f':
+		return tok.Bool(), nil
+	}
+	return nil, nil
 }

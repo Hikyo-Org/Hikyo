@@ -1,13 +1,14 @@
 package importer
 
 import (
-	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"sort"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 )
 
@@ -262,17 +263,15 @@ func canonicalJSON(b *Budget, where string, v any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(normalized); err != nil {
+	out, err := json.Marshal(normalized, jsonwire.Stable, jsontext.EscapeForHTML(false))
+	if err != nil {
 		// The tree came from a parsed document and holds only JSON-expressible
 		// values by construction; a failure here is a bug, and the error is
 		// dropped rather than wrapped because encoding/json echoes content.
 		return "", failure(b.source, CodeMalformed, where,
 			"the leaf cannot be serialized as JSON")
 	}
-	return strings.TrimSuffix(buf.String(), "\n"), nil
+	return string(out), nil
 }
 
 // normalizeTree rewrites a decoded document into JSON-expressible shapes,

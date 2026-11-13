@@ -4,7 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/hashicorp/vault/api/cliconfig"
 	"github.com/hashicorp/vault/api/tokenhelper"
@@ -30,13 +32,13 @@ type vaultConnector struct{}
 func (vaultConnector) Name() string { return vaultSource }
 
 type vaultCapture struct {
-	Path          string          `json:"path"`
-	Mount         string          `json:"mount"`
-	EngineVersion int             `json:"engine_version"`
-	SecretVersion *int            `json:"secret_version,omitzero"`
-	Deleted       *bool           `json:"deleted"`
-	Destroyed     *bool           `json:"destroyed"`
-	Data          *map[string]any `json:"data"`
+	Path          string                     `json:"path"`
+	Mount         string                     `json:"mount"`
+	EngineVersion int                        `json:"engine_version"`
+	SecretVersion *int                       `json:"secret_version,omitzero"`
+	Deleted       *bool                      `json:"deleted"`
+	Destroyed     *bool                      `json:"destroyed"`
+	Data          *map[string]jsontext.Value `json:"data"`
 }
 
 func (vaultConnector) Read(ctx context.Context, in Input, b *Budget) (Result, error) {
@@ -57,16 +59,14 @@ func (vaultConnector) Read(ctx context.Context, in Input, b *Budget) (Result, er
 		if err := rejectDuplicateMembers(raw, vaultSource, where); err != nil {
 			return Result{}, err
 		}
-		dec := json.NewDecoder(bytes.NewReader(raw))
-		dec.DisallowUnknownFields()
-		dec.UseNumber()
+		dec := jsontext.NewDecoder(bytes.NewReader(raw))
 		var capture vaultCapture
-		if err := dec.Decode(&capture); err != nil {
+		if err := json.UnmarshalDecode(dec, &capture, json.RejectUnknownMembers(true)); err != nil {
 			return Result{}, failure(vaultSource, CodeMalformed, where,
 				"the line is not one pinned Vault/OpenBao capture record; see "+
 					"docs/handoff/69-import-live-connectors.md#vaultopenbao-capture-recipe")
 		}
-		if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		if _, err := dec.ReadToken(); !errors.Is(err, io.EOF) {
 			return Result{}, failure(vaultSource, CodeMalformed, where,
 				"the line carries trailing content after its capture record")
 		}
@@ -126,7 +126,7 @@ func (vaultConnector) Read(ctx context.Context, in Input, b *Budget) (Result, er
 		folder := pathSegments(strings.TrimPrefix(capture.Path, prefix))
 		for _, name := range sortedVaultFieldNames(*capture.Data) {
 			fieldWhere := where + " field " + quoteName(name)
-			value, typ, err := vaultValue(b, fieldWhere, (*capture.Data)[name])
+			value, typ, err := vaultCaptureValue(b, fieldWhere, (*capture.Data)[name])
 			if err != nil {
 				return Result{}, err
 			}
@@ -631,7 +631,7 @@ func (r *vaultTreeReader) readLeaf(sourcePath string) error {
 	return nil
 }
 
-func sortedVaultFieldNames(data map[string]any) []string {
+func sortedVaultFieldNames[V any](data map[string]V) []string {
 	names := make([]string, 0, len(data))
 	for name := range data {
 		names = append(names, name)
@@ -649,6 +649,17 @@ func (r *vaultTreeReader) providerPath(operation, sourcePath string) string {
 		segment = "metadata"
 	}
 	return joinSourcePath(r.mount, segment, sourcePath)
+}
+
+// vaultCaptureValue keeps number literals exactly as captured: the capture
+// decode has no UseNumber, so a leaf arrives as raw JSON and is read as a tree
+// whose numbers stay literal.
+func vaultCaptureValue(b *Budget, where string, raw jsontext.Value) (string, schema.Type, error) {
+	tree, err := definitions.DecodeLiteralTree(jsontext.NewDecoder(bytes.NewReader(raw)))
+	if err != nil {
+		return "", "", failure(vaultSource, CodeMalformed, where, "the field is not a well-formed JSON value")
+	}
+	return vaultValue(b, where, tree)
 }
 
 func vaultValue(b *Budget, where string, value any) (string, schema.Type, error) {
@@ -688,11 +699,19 @@ func object(value any) (map[string]any, bool) {
 	return object, ok
 }
 
+// jsonNumber is the shape of encoding/json's Number, which the Vault client
+// library decodes live API responses into; matching it structurally avoids
+// importing the v1 package here.
+type jsonNumber interface {
+	String() string
+	Int64() (int64, error)
+}
+
 func stringValue(value any) (string, bool) {
 	switch value := value.(type) {
 	case string:
 		return value, true
-	case json.Number:
+	case jsonNumber:
 		return value.String(), true
 	default:
 		return "", false
@@ -701,7 +720,7 @@ func stringValue(value any) (string, bool) {
 
 func integerString(value any) (string, bool) {
 	switch value := value.(type) {
-	case json.Number:
+	case jsonNumber:
 		if _, err := value.Int64(); err == nil {
 			return value.String(), true
 		}

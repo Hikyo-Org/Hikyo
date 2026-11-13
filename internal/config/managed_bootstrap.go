@@ -1,8 +1,11 @@
 package config
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 const ManagedBootstrapSourcesKey = "HIKYO_BOOTSTRAP_SOURCES"
@@ -29,7 +32,7 @@ func ParseManagedBootstrapSources(raw string) (ManagedBootstrapSources, error) {
 	if err := validateManagedJSON(raw); err != nil {
 		return ManagedBootstrapSources{}, refusal
 	}
-	var fields map[string]json.RawMessage
+	var fields map[string]jsontext.Value
 	if err := json.Unmarshal([]byte(raw), &fields); err != nil || len(fields) < 2 || len(fields) > 5 {
 		return ManagedBootstrapSources{}, refusal
 	}
@@ -40,7 +43,7 @@ func ParseManagedBootstrapSources(raw string) (ManagedBootstrapSources, error) {
 				return ManagedBootstrapSources{}, refusal
 			}
 		case "topology":
-			var topologyFields map[string]json.RawMessage
+			var topologyFields map[string]jsontext.Value
 			var topology ManagedSingletonTopology
 			if json.Unmarshal(value, &topologyFields) != nil || len(topologyFields) != 2 || topologyFields["ha"] == nil || topologyFields["node_id"] == nil || json.Unmarshal(value, &topology) != nil || !ValidManagedNodeID(topology.NodeID) || (string(topologyFields["ha"]) != "true" && string(topologyFields["ha"]) != "false") {
 				return ManagedBootstrapSources{}, refusal
@@ -74,5 +77,5 @@ func (s ManagedBootstrapSources) MarshalJSON() ([]byte, error) {
 		topology := s.Topology
 		out.Topology = &topology
 	}
-	return json.Marshal(out)
+	return json.Marshal(out, jsonwire.Stable)
 }

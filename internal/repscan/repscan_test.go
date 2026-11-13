@@ -3,7 +3,7 @@ package repscan
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
@@ -443,7 +443,7 @@ func TestOutputsCarryNoPlaintext(t *testing.T) {
 		t.Fatalf("findings = %v", locs(r))
 	}
 	var js, sarif bytes.Buffer
-	if err := json.NewEncoder(&js).Encode(r); err != nil {
+	if err := json.MarshalWrite(&js, r); err != nil {
 		t.Fatal(err)
 	}
 	if err := WriteSARIF(&sarif, r, "test"); err != nil {
@@ -483,15 +483,19 @@ func TestSARIFShape(t *testing.T) {
 				} `json:"driver"`
 			} `json:"tool"`
 			Results []struct {
-				RuleID              string                `json:"ruleId"`
-				RuleIndex           int                   `json:"ruleIndex"`
-				Level               string                `json:"level"`
-				Message             struct{ Text string } `json:"message"`
-				PartialFingerprints map[string]string     `json:"partialFingerprints"`
+				RuleID    string `json:"ruleId"`
+				RuleIndex int    `json:"ruleIndex"`
+				Level     string `json:"level"`
+				Message   struct {
+					Text string `json:"text"`
+				} `json:"message"`
+				PartialFingerprints map[string]string `json:"partialFingerprints"`
 				Locations           []struct {
 					PhysicalLocation struct {
-						ArtifactLocation struct{ URI string } `json:"artifactLocation"`
-						Region           struct {
+						ArtifactLocation struct {
+							URI string `json:"uri"`
+						} `json:"artifactLocation"`
+						Region struct {
 							StartLine int `json:"startLine"`
 						} `json:"region"`
 					} `json:"physicalLocation"`

@@ -1,9 +1,12 @@
 package config
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"strings"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // ValidManagedNodeID accepts stable node names without patterns, whitespace,
@@ -30,17 +33,15 @@ func ParseManagedNodeOverrides(raw string) (map[string]map[string]string, error)
 	if err := validateManagedJSON(raw); err != nil {
 		return nil, refusal
 	}
-	var outer map[string]json.RawMessage
+	var outer map[string]jsontext.Value
 	if err := json.Unmarshal([]byte(raw), &outer); err != nil || len(outer) != 2 || outer["version"] == nil || outer["nodes"] == nil {
 		return nil, refusal
 	}
 	var document struct {
-		Version int                                   `json:"version"`
-		Nodes   map[string]map[string]json.RawMessage `json:"nodes"`
+		Version int                                  `json:"version"`
+		Nodes   map[string]map[string]jsontext.Value `json:"nodes"`
 	}
-	decoder := json.NewDecoder(strings.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&document); err != nil || document.Version != 1 || len(document.Nodes) == 0 {
+	if err := json.Unmarshal([]byte(raw), &document, json.RejectUnknownMembers(true)); err != nil || document.Version != 1 || len(document.Nodes) == 0 {
 		return nil, refusal
 	}
 	nodes := make(map[string]map[string]string, len(document.Nodes))
@@ -83,7 +84,7 @@ func EncodeManagedNodeOverrides(nodes map[string]map[string]string) (string, err
 		Version int                          `json:"version"`
 		Nodes   map[string]map[string]string `json:"nodes"`
 	}{Version: 1, Nodes: nodes}
-	raw, err := json.Marshal(document)
+	raw, err := json.Marshal(document, jsonwire.Stable)
 	if err != nil {
 		return "", errors.New("HIKYO_NODE_OVERRIDES: cannot encode node configuration")
 	}

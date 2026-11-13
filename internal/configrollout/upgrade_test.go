@@ -1,7 +1,8 @@
 package configrollout
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"strings"
 	"testing"
 
@@ -24,13 +25,13 @@ func TestUpgradeSourceEnrollmentRejectsArbitraryInputs(t *testing.T) {
 	if err := json.Unmarshal(raw, &parsed); err != nil || parsed != valid {
 		t.Fatalf("roundtrip: %v", err)
 	}
-	var fields map[string]json.RawMessage
+	var fields map[string]jsontext.Value
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		t.Fatal(err)
 	}
 	for key := range fields {
 		saved := fields[key]
-		fields[key] = json.RawMessage("null")
+		fields[key] = jsontext.Value("null")
 		invalid, _ := json.Marshal(fields)
 		if err := json.Unmarshal(invalid, &parsed); err == nil {
 			t.Fatalf("null %s accepted", key)
