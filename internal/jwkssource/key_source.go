@@ -6,6 +6,9 @@ package jwkssource
 
 import (
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/rsa"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -139,6 +142,7 @@ func decodeJWKS(body []byte) (jose.JSONWebKeySet, []crypto.PublicKey, map[string
 	}
 	keys := make([]crypto.PublicKey, 0, len(set.Keys))
 	kids := map[string]bool{}
+	refused := 0
 	for _, k := range set.Keys {
 		if k.Use != "" && k.Use != "sig" {
 			continue
@@ -147,13 +151,35 @@ func decodeJWKS(body []byte) (jose.JSONWebKeySet, []crypto.PublicKey, map[string
 		if pub.Key == nil {
 			continue
 		}
+		if !federationKeyType(pub.Key) {
+			refused++
+			continue
+		}
 		keys = append(keys, pub.Key)
 		if k.KeyID != "" {
 			kids[k.KeyID] = true
 		}
 	}
 	if len(keys) == 0 {
+		if refused > 0 {
+			return jose.JSONWebKeySet{}, nil, nil, fmt.Errorf("jwks document carries no usable signing keys: %d key(s) refused, federation keys must be RSA, ECDSA or Ed25519", refused)
+		}
 		return jose.JSONWebKeySet{}, nil, nil, errors.New("jwks document carries no usable signing keys")
 	}
 	return set, keys, kids, nil
+}
+
+// federationKeyType is the key-type set federation accepts: RSA, ECDSA and
+// Ed25519 (owner decision on #1191). It is deliberately closed, not whatever
+// go-jose can parse, so a key type such as ML-DSA never reaches verification
+// and the oidcfed signature allowlist stays the only place an algorithm is
+// admitted. Widening it for ML-DSA (#1180) must widen that allowlist in the
+// same change.
+func federationKeyType(key crypto.PublicKey) bool {
+	switch key.(type) {
+	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey:
+		return true
+	default:
+		return false
+	}
 }
