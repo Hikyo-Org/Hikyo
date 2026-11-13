@@ -63,9 +63,9 @@ it('keeps 5xx responses uncertain even when their operation is known', async () 
   await expect(saveRule('org_a', null, before)).rejects.toBeInstanceOf(RuleSaveFailure);
 });
 
-it('does not blame manage-members for a rule 404 once the org grant listing loaded', () => {
+it('does not blame manage-members for a rule 404 in the system organisation', () => {
   const missing = new ApiError(404, 'not found');
   expect(rulesListingText(missing)).toBe('You hold no manage-members here, so access rules are not shown.');
-  expect(rulesListingText(missing, true)).toMatch(/^Access rules do not apply here/);
+  expect(rulesListingText(missing, true)).toMatch(/^Access rules do not apply to the Hikyo system configuration organisation/);
   expect(rulesListingText(new ApiError(403, 'step up'), true)).toMatch(/second factor/);
 });

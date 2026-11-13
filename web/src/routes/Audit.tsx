@@ -59,7 +59,7 @@ function refusalText(error: unknown, scope: AuditScope): string {
       // Grants inherit downward only: the scope dialog preselects an environment,
       // and that grant never satisfies the whole-project trail.
       const environmentHint = where === 'this project'
-        ? ' A grant on one environment covers only that environment: choose it under Environment.'
+        ? " A grant on one environment reaches only that environment's trail, not the whole project."
         : '';
       return `This trail is not available, or you may not read it. Reading it needs the audit-read grant on ${where} with a second factor in this session.${environmentHint} A member manager can grant it under Members.`;
     }

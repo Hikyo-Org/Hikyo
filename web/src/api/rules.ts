@@ -169,15 +169,14 @@ export function ruleFailureText(error: unknown): string {
 }
 
 /**
- * Why the rule listing is not shown, in the membership listing's words.
- * `managesOrg` is a loaded org grant listing: it needs the same manage-members
- * atom, so a rule 404 then means rules do not apply here (the instance's own
- * configuration organisation refuses every rule operation), not a missing grant.
+ * Why the rule listing is not shown, in the membership listing's words. The
+ * Hikyo system organisation refuses every rule operation (selfConfigOperations
+ * is closed), so its 404 is not a missing manage-members grant.
  */
-export function rulesListingText(error: unknown, managesOrg = false): string {
+export function rulesListingText(error: unknown, systemOrg = false): string {
   if (error instanceof ApiError && error.status === 404) {
-    return managesOrg
-      ? 'Access rules do not apply here, so only scope-wide access is shown. The instance configuration organisation is managed with scope-wide grants only.'
+    return systemOrg
+      ? 'Access rules do not apply to the Hikyo system configuration organisation: it is managed with scope-wide access only.'
       : 'You hold no manage-members here, so access rules are not shown.';
   }
   if (error instanceof ApiError && error.status === 403) return 'Access rules need a second factor. Present your authenticator code or passkey, then reload.';
