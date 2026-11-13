@@ -80,11 +80,11 @@ plan all web/file.ts
 expect '.web and (.client | not) and (.lanes.frontend.checks | map(.id)) == ["web-typecheck", "web-lint", "web-test"] and .lanes.frontend.prerequisites.clientDependencies and .lanes.frontend.prerequisites.webDependencies'
 plan all api/openapi.yaml
 expect '.client and .web and (.lanes.frontend.checks | map(.id)) == ["client-typecheck", "client-test", "web-typecheck", "web-lint", "web-test"]'
-plan all docs/operations/audit-collector.md scripts/ci/aws-acceptance/test_runner.py
+plan all docs/operations/audit-collector.md scripts/ci/release-admission/test_release_records.py
 expect '.auditCollector and .releaseAdmission and (.lanes.tooling.checks | map(.id)) == ["audit-collector", "release-admission"] and .lanes.tooling.prerequisites.python and .lanes.tooling.prerequisites.releaseDependencies'
 plan all app/owner.go scripts/tool/owner.go "scripts/tool/line
 break.go" go.sum '-space name.sh' "line
-break.sh" .github/workflows/aws-acceptance.yml docs/site/a.md clients/ts/a.ts docs/operations/audit-collector.md
+break.sh" .github/workflows/check.yml scripts/ci/release-admission/run_checks.py docs/site/a.md clients/ts/a.ts docs/operations/audit-collector.md
 expect 'all(del(.lanes)[]; . == true) and (.lanes.go.checks | map(.id)) == ["go-format", "go-mod-verify", "go-compile"] and (.lanes.tooling.checks | map(.id)) == ["audit-collector", "release-admission", "go-format", "go-compile", "shellcheck", "actionlint", "docs"]'
 feedback_plan_select go tooling
 [ "${#go_files[@]}" -eq 2 ] && [ "${#go_packages[@]}" -eq 1 ] && [ "${#shell_files[@]}" -eq 2 ]

@@ -78,7 +78,7 @@ provider-generated and historical entries; deleting YAML does not erase history.
 | Maintenance | `reliability.yml` | Original daily security and weekly integration/race/channel checks, plus one manual menu. |
 | Compiler cache seeds | `ci-feedback-backend-cache.yml`, `ci-feedback-cache.yml`, `ci-race-cache.yml` | Trusted-main-only producers of Go build entries. PR feedback, source-artifact validation, race shards and the reliability race suite only read them. One shared race entry replaces twelve per-shard entries that could not fit the 10 GB repository cache budget together. |
 | Pinned tool seed | `ci-tool-cache.yml` | Trusted-main-only producer of the pinned release-file entries. Every other workflow only restores them, and the helper verifies each file's SHA-256 before use, so a poisoned or stale entry cannot run. |
-| Release acceptance | `release-acceptance.yml`, `ops-floor.yml`, `aws-acceptance.yml` | Manual secret-bearing acceptance is separate from PR-capable operations validation. |
+| Release acceptance | `release-acceptance.yml`, `ops-floor.yml` | Manual secret-bearing acceptance is separate from PR-capable operations validation. |
 | Publication | `nightly-promote.yml`, `nightly.yml`, `nightly-manual.yml`, `release.yml`, `apple-release-recovery.yml`, `security-release.yml`, `security-feed.yml`, `docs.yml` | Promotion, nightly, stable tags, the security feed, and Pages retain separate credentials and gates. Promotion opens its PR as the nightly App, because a PR opened with the workflow token starts no CI. |
 
 Files live in [`.github/workflows/`](../../.github/workflows/). Display names may
@@ -90,15 +90,15 @@ GitHub sorts its sidebar by display name, so a prefix groups each responsibility
 | --- | --- |
 | `ci-`, `trusted-merge-ci` | Runs validation. `ci-advisory-` entries never block a merge. |
 | `gate-` | Publishes merge admission. Runs no PR code. |
-| `release-`, `nightly-`, `aws-acceptance`, `docs` | Publishes or accepts a release. |
+| `release-`, `nightly-`, `docs` | Publishes or accepts a release. |
 | `security-` | Publishes the security feed (`security-feed`), or checks that installations still see it fresh (`security-feed-freshness`). |
 | `perf-` | Measures performance. |
 | `report-` | Writes comments and issues about other runs. |
 | `tidy-`, `cache-seed-` | Housekeeping and compile cache writers. |
 
 Do not rename `ci`, `ci-main`, `ci-dev`, `ci-feedback`, `trusted-merge-ci`,
-`nightly-release` or `aws-acceptance` for tidiness. Source proof and release
-consumers match those exact names, including on runs that already happened. CodeQL, Dependabot Updates and
+`nightly-release` for tidiness. Source proof and release consumers match those
+exact names, including on runs that already happened. CodeQL, Dependabot Updates and
 Dependency Graph are provider entries that the repository cannot rename or remove.
 
 Historical workflow entries can remain in GitHub even after source consolidation.

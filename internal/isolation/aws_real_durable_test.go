@@ -27,11 +27,19 @@ func TestAWSSecretsManagerRealSmoke(t *testing.T) {
 
 // The emulator lane runs this same body. The subtests an emulator cannot honor
 // are logged, not created, and each is owned elsewhere per
-// docs/testing/aws-acceptance-matrix.md. The real path keeps every name and
-// order that scripts/ci/aws-acceptance/runner.py expects.
+// docs/testing/aws-acceptance-matrix.md. The live lane takes only the smoke
+// manifest (static writer only) and runs lifecycle, iam-denial and
+// promoted-replay; every other group skips with its owner. iam-denial follows
+// lifecycle so the writer's own delivered secret is live to probe.
 func runRealAWSSuite(t *testing.T, s *realAWSSandbox) {
 	t.Helper()
-	if !t.Run("auth-boundaries", func(t *testing.T) { runRealAWSAuthBoundaries(t, s) }) {
+	live := !s.emulated()
+	if !t.Run("auth-boundaries", func(t *testing.T) {
+		if live {
+			t.Skip("not in the live smoke (option A): the Floci lane owns configured-identity refusal, the lifecycle credential fence covers static-session expiry live, and the controlled tests own workload modes and their expiry, see docs/testing/aws-acceptance-matrix.md")
+		}
+		runRealAWSAuthBoundaries(t, s)
+	}) {
 		t.Fatal("auth boundary preflight failed before mutations")
 	}
 	if s.emulated() {
@@ -44,87 +52,16 @@ func runRealAWSSuite(t *testing.T, s *realAWSSandbox) {
 			})
 		})
 	}
-	if s.emulated() {
-		t.Log("role-auth skipped on the emulator: workload identity cannot reach it, see docs/testing/aws-acceptance-matrix.md")
-		t.Log("kms-denial skipped on the emulator: it never authorizes the caller's KMS use, see docs/testing/aws-acceptance-matrix.md")
-	} else {
-		t.Run("role-auth", func(t *testing.T) { runRealAWSRoleAuth(t, s) })
-		t.Run("kms-denial", func(t *testing.T) { runRealAWSKMSDenial(t, s) })
-	}
+	t.Log("role-auth not run: workload identity (ambient, assume-role, web-identity) is owned by the controlled tests, see docs/testing/aws-acceptance-matrix.md")
+	t.Log("kms-denial not run: the CMK identity deny is owned by the controlled tests, see docs/testing/aws-acceptance-matrix.md")
 	t.Run("iam-denial", func(t *testing.T) { runRealAWSIAMDenial(t, s) })
-	t.Run("adoption-witness", func(t *testing.T) { runRealAWSAdoptionWitness(t, s) })
-	t.Run("promoted-replay", func(t *testing.T) { runRealAWSPromotedReplay(t, s) })
-}
-
-func runRealAWSRoleAuth(t *testing.T, s *realAWSSandbox) {
-	t.Helper()
-	for _, mode := range []string{"ambient", "assume-role", "web-identity"} {
-		t.Run(mode, func(t *testing.T) {
-			forEngines(t, func(t *testing.T, db *store.DB) {
-				h := newRealAWSDurable(t, db, s, mode)
-				name := h.prefix + "role-document"
-				target := h.create(name, adapter.JSONObject)
-				h.publish("role-synthetic", "role-alpha")
-				h.drain()
-				h.converged(target.ID)
-				if s.value(t, name) != `{"ALPHA":"role-alpha","SHARED_KEY":"role-synthetic"}` {
-					t.Fatal("role-auth delivery differs from the synthetic source")
-				}
-				// Client construction must refuse these very same descriptors
-				// without the node operator's explicit workload opt-in.
-				c, err := awssm.NewClient(s.endpointConfig(awssm.ClientConfig{Origin: h.origin, Credential: h.descriptor, Deadline: 15 * time.Second}))
-				if c != nil {
-					c.Forget()
-				}
-				if !errors.Is(err, awssm.ErrWorkloadIdentityDisabled) {
-					t.Fatal("workload descriptor bypassed the node opt-in")
-				}
-				if mode == "assume-role" {
-					d, err := awssm.ParseDescriptor(h.descriptor)
-					if err != nil {
-						t.Fatal("cannot derive negative role fixture")
-					}
-					d.ExternalID += ":rejected"
-					bad, err := json.Marshal(d)
-					if err != nil {
-						t.Fatal("cannot encode negative role fixture")
-					}
-					negative, err := awssm.NewClient(s.endpointConfig(awssm.ClientConfig{Origin: h.origin, Credential: string(bad), WorkloadIdentity: true, Deadline: 15 * time.Second}))
-					crypto.Zero(bad)
-					if err != nil {
-						t.Fatal("negative role fixture did not reach STS")
-					}
-					_, identityErr := negative.ResolveIdentity(t.Context())
-					negative.Forget()
-					if !errors.Is(identityErr, adapter.ErrProviderAuth) {
-						t.Fatal("STS did not enforce the exact external ID trust condition")
-					}
-				}
-				s.checkWriterDenials(t, mode, name, s.manifest.Prefix+"static/sqlite/document")
-				h.remove(target.ID, false)
-				h.deleted(name, true)
-				h.audit()
-			})
-		})
-	}
-}
-
-func runRealAWSKMSDenial(t *testing.T, s *realAWSSandbox) {
-	t.Helper()
-	forEngines(t, func(t *testing.T, db *store.DB) {
-		h := newRealAWSDurable(t, db, s, "kms-denied")
-		target := h.create(h.prefix+"denied-document", adapter.JSONObject)
-		h.publish("kms-synthetic", "kms-alpha")
-		h.drain()
-		state := h.inspect(target.ID)
-		if state.LastErrorClass != adapter.ErrorClassAuth || state.Health() == adapter.HealthConverged || state.ConvergedRevision != nil {
-			t.Fatal("real KMS denial was not recorded as an unsuccessful auth refusal")
+	t.Run("adoption-witness", func(t *testing.T) {
+		if live {
+			t.Skip("not in the live smoke (option A): the Floci lane owns adoption-witness, whose metadata and version semantics match AWS, see docs/testing/aws-acceptance-matrix.md")
 		}
-		if got := queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_effects WHERE target_id='%s' AND outcome='success' AND disposition IN ('create','update')`, target.ID)); got != 0 {
-			t.Fatal("KMS refusal recorded a successful value write")
-		}
-		h.audit()
+		runRealAWSAdoptionWitness(t, s)
 	})
+	t.Run("promoted-replay", func(t *testing.T) { runRealAWSPromotedReplay(t, s) })
 }
 
 type realAWSDurable struct {
@@ -159,17 +96,17 @@ func newRealAWSDurableFixture(t *testing.T, db *store.DB, s *realAWSSandbox, mod
 	// Fixture declarations only; values and publication go through services.
 	execRaw(t, db, `INSERT INTO keys (id,org_id,project_id,name,folder_path,classification,description,deprecated,deprecation_note,declaration,required_mode,forbidden_mode,group_id,created_at) VALUES ('key_real_alpha','org_a','prj_a1','ALPHA','','secret','',FALSE,'','{"rule":{"type":"string"}}','none','none',NULL,`+ts+`)`)
 	h := &realAWSDurable{t: t, db: db, s: s, keyring: probeKeyring(t, db), clock: time.Now().UTC(), descriptor: raw, origin: s.origin, prefix: s.manifest.Prefix + mode + "/" + string(db.Engine()) + "/"}
-	h.configureRuntime(mode)
+	h.configureRuntime()
 	t.Cleanup(func() { h.descriptor = "" })
 	return h
 }
 
-func (h *realAWSDurable) configureRuntime(mode string) {
+func (h *realAWSDurable) configureRuntime() {
 	h.build = func(config adapter.Config, credential string) (*adapter.ModuleLease, error) {
 		if config.Origin != h.origin {
 			return nil, errors.New("real AWS fixture origin changed")
 		}
-		client, err := awssm.NewClient(h.s.endpointConfig(awssm.ClientConfig{Origin: config.Origin, Credential: credential, WorkloadIdentity: mode != "static" && mode != "kms-denied", Deadline: 15 * time.Second}))
+		client, err := awssm.NewClient(h.s.endpointConfig(awssm.ClientConfig{Origin: config.Origin, Credential: credential, Deadline: 15 * time.Second}))
 		if err != nil {
 			return nil, err
 		}
@@ -311,8 +248,9 @@ func (h *realAWSDurable) converged(id string) {
 	}
 }
 
-// The trusted runner maps only these complete literals to closed identifiers.
-// Never append target state, provider messages or an unrecognized class.
+// Every failure message is one of these complete literals keyed by a closed
+// error class. Never append target state, provider messages or an unrecognized
+// class.
 func realAWSConvergenceAssertion(class adapter.ErrorClass) string {
 	switch class {
 	case adapter.ErrorClassAuth:
