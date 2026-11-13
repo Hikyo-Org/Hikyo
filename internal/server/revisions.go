@@ -384,7 +384,7 @@ func (a *API) ListPendingDrafts(ctx context.Context, req apigen.ListPendingDraft
 			Advisory: &struct {
 				OwnerId            apigen.ID `json:"owner_id"`
 				Valid              bool      `json:"valid"`
-				ValidationDeferred *bool     `json:"validation_deferred,omitempty"`
+				ValidationDeferred *bool     `json:"validation_deferred,omitzero"`
 			}{OwnerId: apigen.ID(draft.OwnerID), Valid: draft.Valid, ValidationDeferred: &draft.ValidationDeferred},
 		}
 		if draft.Revealed {
