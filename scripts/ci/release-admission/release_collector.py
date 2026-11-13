@@ -241,7 +241,7 @@ class Collector:
         m.require(len(set(names)) == len(names), 'unique-tree-paths')
         return raw, index
 
-    def _files(self, commit, paths, destination):
+    def _files(self, commit, paths, destination, go=('1.27.4',)):
         m = self.m
         root, root_index = self._tree(commit['treeSHA'])
         m.require(not any(row['path'] == 'go.work' for row in root['tree']), 'root-go-work-absent')
@@ -276,8 +276,11 @@ class Collector:
                 self._map((*destination, 'files', path), blob_index, ('content',), 'whole-git-base64-utf8')
         if 'go.mod' in files:
             directives = re.findall(r'(?m)^go\s+(\S+)\s*$', files['go.mod'])
-            m.require(directives == ['1.27.4'] and re.search(r'(?m)^go 1\.27\.4$', files['go.mod'])
-                      is not None, 'literal-go-1.27.4')
+            # The reviewed baseline is the previous approved release, so it may still carry the
+            # previous literal; every other source needs exactly the current one.
+            m.require(len(directives) == 1 and directives[0] in go
+                      and re.search(r'(?m)^go ' + re.escape(directives[0]) + '$', files['go.mod'])
+                      is not None, 'literal-go-directive')
         return {'files': files, 'absence': {'commitSHA': commit['sha'], 'path': 'go.work',
                                            'gitTreeEntry': None}}
 
@@ -655,7 +658,8 @@ class Collector:
         m.require(m.instant(change_review['reviewedAt']) <= self.started
                   and change_review['previousCommitSHA'] != selection['mergeSHA'], 'prior-reviewed-source-baseline')
         baseline = self._commit(change_review['previousCommitSHA'], ('reviewBaselineCommit',))
-        baseline_files = self._files(baseline, self.p['trustedPaths'], ('reviewBaselineSource',))
+        baseline_files = self._files(baseline, self.p['trustedPaths'], ('reviewBaselineSource',),
+                                    go=('1.27.3', '1.27.4'))
         m.require(_pins(baseline_files['files']) == change_review['previousFileSHA256s'],
                   'whole-reviewed-baseline-vector')
         m.require(baseline['sha'] in [lineage['anchor']['sha'], *[c['sha'] for c in lineage['commits']]],

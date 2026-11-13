@@ -1,13 +1,13 @@
 {
   "actualConfiguration": null,
   "executionAuthorityGranted": false,
-  "implementationManifestRawSHA256": "d1f60768b41427b3a70b001848d8f53441ca4c9429accf8502e6c33d33052ca8",
-  "implementationManifestSHA256": "4347c517cdf755f083fb819a5a85aa45e56d532784ea7820b8d76679a0ef51b9",
+  "implementationManifestRawSHA256": "ea7f2887f6a84324747b6ddeb57d1e7119ce9c530f88791d16c27682fe8a7ac8",
+  "implementationManifestSHA256": "9e00dbce531074f92151e55ad7a164fb1200517c4e4ce3916b196adbe75ebaee",
   "modules": {
     "collector": {
-      "bytes": 52383,
+      "bytes": 52707,
       "path": "release_collector.py",
-      "rawSHA256": "69996eafee57977c822e6415ed1b72d13a66010d781590e870ca344de8c4556d"
+      "rawSHA256": "22fb1eea91be857b98e12afcf2e1e38b0981892d703a5d62d4dd33bf850b9602"
     },
     "configuration": {
       "bytes": 4004,
@@ -395,8 +395,8 @@
       "rawSHA256": "977fe7b9440bdb5fae9635d3092947b620761bb8fda6936443028c507f5ebb91"
     },
     "collector_test_support.py": {
-      "bytes": 16727,
-      "rawSHA256": "82b4d78b343646156702adac0cd5981a01f0c4a49fcb1ab95daff5536c80ff2f"
+      "bytes": 16803,
+      "rawSHA256": "53425858b938d8d26cc1d542825c6d551696bcd98fed138eacd45c66d5fe9115"
     },
     "core/admission_assembly.source-only.py": {
       "bytes": 18803,
@@ -567,8 +567,8 @@
       "rawSHA256": "0709d319b2b1c320169d091eb49e050905799645eecc0c74f7c4b0a1458d4231"
     },
     "release_collector.py": {
-      "bytes": 52383,
-      "rawSHA256": "69996eafee57977c822e6415ed1b72d13a66010d781590e870ca344de8c4556d"
+      "bytes": 52707,
+      "rawSHA256": "22fb1eea91be857b98e12afcf2e1e38b0981892d703a5d62d4dd33bf850b9602"
     },
     "release_policy.py": {
       "bytes": 51490,
@@ -627,8 +627,8 @@
       "rawSHA256": "c84e0a7842df69985267b5bab9e63e94d22a0fbbc43c1e2a778f3d092b111caf"
     },
     "test_release_collector.py": {
-      "bytes": 36988,
-      "rawSHA256": "3088000d071ac3c61c4352d69e4263d98ca29afce64e29ae48b81e84c9685b98"
+      "bytes": 37059,
+      "rawSHA256": "eeb696bf5c89e75b116ee4c3046b9d33e7613f1d62f061c979fef2a24726236c"
     },
     "test_release_records.py": {
       "bytes": 26691,
