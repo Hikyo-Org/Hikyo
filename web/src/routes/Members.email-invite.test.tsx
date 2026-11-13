@@ -22,7 +22,8 @@ vi.mock('../api/settings.ts', async (importActual) => ({
   useOrgTopology: () => ({ projects: [], isError: false, isPending: false, ready: false }),
   useInstanceOrgs: () => ({ data: { items: [], count: 0 }, isError: false, isPending: false, isSuccess: true }),
 }));
-vi.mock('../app/AuthProvider.tsx', () => ({ useAuth: () => ({ identity: { principal: { id: 'prn_22222222-2222-4222-8222-222222222222' } } }) }));
+vi.mock('../app/AuthProvider.tsx', () => ({ useInstanceOperator: () => false,
+  useAuth: () => ({ identity: { principal: { id: 'prn_22222222-2222-4222-8222-222222222222' } } }) }));
 vi.mock('../ui/useModalDialog.ts', async (importActual) => ({
   ...(await importActual<typeof import('../ui/useModalDialog.ts')>()),
   useModalDialog: () => ({ current: null }),

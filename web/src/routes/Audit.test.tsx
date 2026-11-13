@@ -152,6 +152,8 @@ it.each([
   expect(alert).toContain('This trail is not available, or you may not read it.');
   expect(alert).toContain(`audit-read grant on ${where}`);
   expect(alert).toContain('A member manager can grant it under Members.');
+  // Only the whole-project trail explains that an environment grant does not reach it.
+  expect(alert.includes("reaches only that environment's trail")).toBe(where === 'this project');
   await rendered.unmount();
 });
 
