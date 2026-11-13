@@ -1,7 +1,7 @@
 package isolation
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"reflect"
@@ -11,6 +11,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -483,7 +484,7 @@ func definitionsSecretDeclarationBoundary(t *testing.T, db *store.DB) {
 		bundle := parseDefinitions(t, exportDefinitions(t, svc, f))
 		bundle.Keys[0].Declaration = schema.Declaration{Rule: &schema.Rule{Type: schema.TypeJSON,
 			JSONSchema: []byte(`{"properties":{"nested":{"const":"live-value"}}}`)}}
-		raw, err := json.Marshal(bundle)
+		raw, err := json.Marshal(bundle, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

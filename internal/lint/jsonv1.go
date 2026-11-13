@@ -18,7 +18,6 @@ import (
 // mode, and v1 is v2 with v1-compatible options underneath.
 var jsonV1Allowlist = map[string]bool{
 	"api/apigen":                           true,
-	"internal/isolation":                   true,
 	"scripts/acceptance/github-contract":   true,
 	"scripts/acceptance/mcp-fixture":       true,
 	"scripts/ci":                           true,

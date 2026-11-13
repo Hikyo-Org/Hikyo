@@ -2,7 +2,7 @@ package isolation
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 	"strings"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
@@ -59,10 +60,12 @@ func runSCIMDemo(t *testing.T, db *store.DB, ios func() cli.IO, baseURL, orgID s
 
 	// 1. Create the binding.
 	var binding struct {
-		Id            string
+		Id            string `json:"id"`
 		ProviderSlug  string `json:"provider_slug"`
 		SubjectSource string `json:"subject_source"`
-		Attention     []struct{ State string }
+		Attention     []struct {
+			State string `json:"state"`
+		} `json:"attention"`
 	}
 	// `--kind` is required, not defaulted: a provider name is unique only
 	// within its family, so naming one without its kind identifies nothing.
@@ -109,7 +112,7 @@ func runSCIMDemo(t *testing.T, db *store.DB, ios func() cli.IO, baseURL, orgID s
 		t.Helper()
 		var reader io.Reader
 		if body != nil {
-			raw, err := json.Marshal(body)
+			raw, err := json.Marshal(body, jsonwire.Stable)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -319,8 +322,8 @@ func runSCIMDemo(t *testing.T, db *store.DB, ios func() cli.IO, baseURL, orgID s
 	//    server-authored and the grants exist by the time this returns.
 	var mapped struct {
 		Mapping struct {
-			Id                string
-			Capabilities      []string
+			Id                string   `json:"id"`
+			Capabilities      []string `json:"capabilities"`
 			CapabilityOrigins []struct {
 				Capability string `json:"capability"`
 				Kind       string `json:"kind"`
@@ -328,12 +331,12 @@ func runSCIMDemo(t *testing.T, db *store.DB, ios func() cli.IO, baseURL, orgID s
 				MappingID  string `json:"mapping_id"`
 				GroupID    string `json:"group_id"`
 			} `json:"capability_origins"`
-		}
+		} `json:"mapping"`
 		Warnings []struct {
-			Code     string
-			Severity string
-			Message  string
-		}
+			Code     string `json:"code"`
+			Severity string `json:"severity"`
+			Message  string `json:"message"`
+		} `json:"warnings"`
 		MembersAffected int `json:"members_affected"`
 		GrantsCreated   int `json:"grants_created"`
 	}
@@ -373,10 +376,10 @@ func runSCIMDemo(t *testing.T, db *store.DB, ios func() cli.IO, baseURL, orgID s
 	//    surface shows the grants the mapping caused with their origin chips.
 	var users struct {
 		Items []struct {
-			Id       string
-			UserName string `json:"user_name"`
-			Groups   []string
-		}
+			Id       string   `json:"id"`
+			UserName string   `json:"user_name"`
+			Groups   []string `json:"groups"`
+		} `json:"items"`
 	}
 	decode(mustRun("scim", "user", "list", binding.Id, "--org", org.Id, "-o", "json"), &users)
 	// Two provisioned users: the mapped one, and the second the member-union
@@ -398,9 +401,11 @@ func runSCIMDemo(t *testing.T, db *store.DB, ios func() cli.IO, baseURL, orgID s
 	}
 	var members struct {
 		Items []struct {
-			Capability string
-			Origins    []struct{ Kind string }
-		}
+			Capability string `json:"capability"`
+			Origins    []struct {
+				Kind string `json:"kind"`
+			} `json:"origins"`
+		} `json:"items"`
 	}
 	decode(mustRun("access", "grant", "list", "--org", org.Id, "-o", "json"), &members)
 	var sawSCIMOrigin bool
@@ -446,7 +451,9 @@ func runSCIMDemo(t *testing.T, db *store.DB, ios func() cli.IO, baseURL, orgID s
 	}
 }
 
-func attentionStates(in []struct{ State string }) []string {
+func attentionStates(in []struct {
+	State string `json:"state"`
+}) []string {
 	out := make([]string, 0, len(in))
 	for _, a := range in {
 		out = append(out, a.State)

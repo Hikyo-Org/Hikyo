@@ -3,7 +3,7 @@ package isolation
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"go/ast"
 	"go/parser"
@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
@@ -39,7 +40,7 @@ func personalSentinel(t *testing.T) string {
 // cannot be marshalled fails the test rather than passing unseen.
 func carries(t *testing.T, sentinel string, v any) bool {
 	t.Helper()
-	raw, err := json.Marshal(v)
+	raw, err := json.Marshal(v, jsonwire.Stable)
 	if err != nil {
 		t.Fatalf("marshal %T: %v", v, err)
 	}

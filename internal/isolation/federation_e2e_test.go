@@ -5,7 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"maps"
@@ -752,11 +752,11 @@ func runFederationKeySourceRoundTrip(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var formatted bytes.Buffer
-	if err := json.Indent(&formatted, []byte(document), "", "  "); err != nil {
+	formatted := jsontext.Value(document)
+	if err := formatted.Indent(jsontext.WithIndent("  ")); err != nil {
 		t.Fatal(err)
 	}
-	staticSource := staticKeySource(t, formatted.String())
+	staticSource := staticKeySource(t, string(formatted))
 
 	remote, err := r.fed.CreateIssuer(t.Context(), service.LocalPrincipal(root), service.IssuerRequest{
 		Issuer: "https://remote-roundtrip.example.test", Type: domain.IssuerForgejo,

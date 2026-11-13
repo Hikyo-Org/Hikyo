@@ -5,7 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -24,6 +24,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/cli"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -77,7 +78,7 @@ func (s kvServer) do(t *testing.T, method, path string, body any) (int, map[stri
 	t.Helper()
 	var input io.Reader
 	if body != nil {
-		raw, _ := json.Marshal(body)
+		raw, _ := json.Marshal(body, jsonwire.Stable)
 		input = bytes.NewReader(raw)
 	}
 	req, err := http.NewRequestWithContext(context.Background(), method, s.addr+path, input)
@@ -221,7 +222,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	t.Cleanup(func() {
 		server.must(t, http.MethodPost, "/v1/auth/token/revoke", map[string]any{"token": auth["client_token"]})
 	})
-	credential, _ := json.Marshal(map[string]string{"method": "token", "token": auth["client_token"].(string), "ca_pem": string(server.ca)})
+	credential, _ := json.Marshal(map[string]string{"method": "token", "token": auth["client_token"].(string), "ca_pem": string(server.ca)}, jsonwire.Stable)
 
 	execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_kv_manage','usr_alice','manage-adapters','`+cOrg+`','`+cPrj+`',NULL,`+ts+`)`)
 	execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_kv_reveal','usr_alice','reveal','`+cOrg+`','`+cPrj+`','`+cEnv+`',`+ts+`)`)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -71,7 +70,7 @@ func newFakeRemote(t *testing.T, identity string) *fakeRemote {
 		// counts disagree with its names, and a fixture that hard-coded them
 		// would eventually disagree with its own fixture.
 		listing.OrgCount, listing.ProjectCount = len(listing.Orgs), listing.CountProjects()
-		_ = json.NewEncoder(w).Encode(listing)
+		_ = encodeLine(w, listing)
 	}))
 	t.Cleanup(f.server.Close)
 	f.pin = remotefetch.SPKIFingerprint(f.server.Certificate())

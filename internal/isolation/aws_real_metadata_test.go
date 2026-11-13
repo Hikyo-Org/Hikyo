@@ -3,7 +3,7 @@ package isolation
 import (
 	"context"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/netip"
 	"testing"
@@ -13,6 +13,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm/awssmtest"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
@@ -215,7 +216,7 @@ func TestAWSRealMetadataVisibility(t *testing.T) {
 	t.Cleanup(remote.Close)
 	roots := x509.NewCertPool()
 	roots.AddCert(remote.Certificate())
-	raw, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: manifest.Region, AccessKeyID: "AKIAHIKYOTEST0000001", SecretKey: "synthetic-metadata-probe"})
+	raw, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: manifest.Region, AccessKeyID: "AKIAHIKYOTEST0000001", SecretKey: "synthetic-metadata-probe"}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

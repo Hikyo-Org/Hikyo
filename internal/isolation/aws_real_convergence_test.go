@@ -3,7 +3,7 @@ package isolation
 import (
 	"context"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/netip"
 	"testing"
 	"time"
@@ -11,6 +11,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm/awssmtest"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
@@ -67,7 +68,7 @@ func newRealAWSConvergenceFixture(t *testing.T, db *store.DB) (*realAWSDurable, 
 	t.Cleanup(remote.Close)
 	roots := x509.NewCertPool()
 	roots.AddCert(remote.Certificate())
-	raw, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: manifest.Region, AccessKeyID: "AKIAHIKYOTEST0000001", SecretKey: "synthetic-retry-probe"})
+	raw, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: manifest.Region, AccessKeyID: "AKIAHIKYOTEST0000001", SecretKey: "synthetic-retry-probe"}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,7 +7,8 @@ package isolation
 // map. All are build-failing.
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -21,6 +22,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/lint"
 	"github.com/Hikyo-Org/hikyo/internal/multicall"
 	"github.com/Hikyo-Org/hikyo/internal/server"
@@ -628,15 +630,15 @@ func TestInvariant13AllowlistPinning(t *testing.T) {
 	fixturePath := filepath.Join("testdata", "annotated_queries.json")
 	raw, err := os.ReadFile(fixturePath)
 	if err != nil {
-		got, _ := json.MarshalIndent(current, "", "  ")
+		got, _ := json.Marshal(current, jsonwire.Stable, jsontext.WithIndent("  "))
 		t.Fatalf("pin fixture missing (%v); review the annotated set and commit it as %s:\n%s", err, fixturePath, got)
 	}
 	var pinned []pin
 	if err := json.Unmarshal(raw, &pinned); err != nil {
 		t.Fatalf("pin fixture unreadable: %v", err)
 	}
-	got, _ := json.MarshalIndent(current, "", "  ")
-	want, _ := json.MarshalIndent(pinned, "", "  ")
+	got, _ := json.Marshal(current, jsonwire.Stable, jsontext.WithIndent("  "))
+	want, _ := json.Marshal(pinned, jsonwire.Stable, jsontext.WithIndent("  "))
 	if string(got) != string(want) {
 		t.Fatalf("annotated-query allowlist drifted from its pin; re-review and update %s.\ncurrent:\n%s\npinned:\n%s", fixturePath, got, want)
 	}
@@ -650,7 +652,7 @@ func TestInvariant13AllowlistPinning(t *testing.T) {
 func TestInvariant06aFormulaPinning(t *testing.T) {
 	current := facts.FormulaPins()
 	fixturePath := filepath.Join("testdata", "operation_formulas.json")
-	got, err := json.MarshalIndent(current, "", "  ")
+	got, err := json.Marshal(current, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -662,7 +664,7 @@ func TestInvariant06aFormulaPinning(t *testing.T) {
 	if err := json.Unmarshal(raw, &pinned); err != nil {
 		t.Fatalf("formula pin unreadable: %v", err)
 	}
-	want, err := json.MarshalIndent(pinned, "", "  ")
+	want, err := json.Marshal(pinned, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		t.Fatal(err)
 	}

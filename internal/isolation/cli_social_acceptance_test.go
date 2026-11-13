@@ -2,7 +2,7 @@ package isolation
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,6 +17,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/cli"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -86,7 +87,7 @@ func TestCLISocialProviderAcceptance(t *testing.T) {
 				}
 				browser.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 				post := func(path string, input, output any, csrf string) error {
-					raw, err := json.Marshal(input)
+					raw, err := json.Marshal(input, jsonwire.Stable)
 					if err != nil {
 						return err
 					}
@@ -107,7 +108,7 @@ func TestCLISocialProviderAcceptance(t *testing.T) {
 						raw, _ := io.ReadAll(response.Body)
 						return fmt.Errorf("%s status %d: %s", path, response.StatusCode, raw)
 					}
-					return json.NewDecoder(response.Body).Decode(output)
+					return json.UnmarshalRead(response.Body, output)
 				}
 				var started apigen.OidcStartResult
 				if err := post("/auth/oidc/acceptance/start", map[string]any{"purpose": "login", "intent": "sign-in", "browser": true}, &started, ""); err != nil {

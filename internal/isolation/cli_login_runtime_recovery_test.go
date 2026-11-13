@@ -1,7 +1,7 @@
 package isolation
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -13,6 +13,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -75,7 +76,7 @@ func TestCLILoginRuntimeRecovery(t *testing.T) {
 		}
 		postJSON := func(path string, body any, artifact string, csrf bool, want int) []byte {
 			t.Helper()
-			raw, err := json.Marshal(body)
+			raw, err := json.Marshal(body, jsonwire.Stable)
 			if err != nil {
 				t.Fatal(err)
 			}

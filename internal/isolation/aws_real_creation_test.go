@@ -3,7 +3,7 @@ package isolation
 import (
 	"context"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -14,6 +14,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestAWSRealCreationIdentityVisibility(t *testing.T) {
@@ -65,7 +66,7 @@ func TestAWSRealCreationIdentityVisibility(t *testing.T) {
 						Tags                     []struct{ Key, Value string }
 						SecretString             *string
 					}
-					if json.NewDecoder(r.Body).Decode(&request) != nil || request.Name != name || request.ClientRequestToken != strings.Repeat("a", 64) || request.SecretString != nil {
+					if json.UnmarshalRead(r.Body, &request) != nil || request.Name != name || request.ClientRequestToken != strings.Repeat("a", 64) || request.SecretString != nil {
 						t.Error("create request changed metadata-only identity")
 						w.WriteHeader(400)
 						return
@@ -83,12 +84,12 @@ func TestAWSRealCreationIdentityVisibility(t *testing.T) {
 					case "creation suffix":
 						out.ARN += "foreign"
 					}
-					json.NewEncoder(w).Encode(out)
+					_ = encodeLine(w, out)
 				case "secretsmanager.DescribeSecret":
 					var request struct {
 						SecretID string `json:"SecretId"`
 					}
-					if json.NewDecoder(r.Body).Decode(&request) != nil {
+					if json.UnmarshalRead(r.Body, &request) != nil {
 						t.Error("invalid metadata request")
 						w.WriteHeader(400)
 						return
@@ -99,7 +100,7 @@ func TestAWSRealCreationIdentityVisibility(t *testing.T) {
 							t.Error("pre-create check changed name")
 						}
 						w.WriteHeader(400)
-						json.NewEncoder(w).Encode(map[string]string{"__type": "ResourceNotFoundException"})
+						_ = encodeLine(w, map[string]string{"__type": "ResourceNotFoundException"})
 						return
 					}
 					n := reads.Add(1)
@@ -120,7 +121,7 @@ func TestAWSRealCreationIdentityVisibility(t *testing.T) {
 							code = "AccessDeniedException"
 						}
 						w.WriteHeader(400)
-						json.NewEncoder(w).Encode(map[string]string{"__type": code})
+						_ = encodeLine(w, map[string]string{"__type": code})
 						return
 					}
 					out := map[string]any{"ARN": arn, "Name": name}
@@ -139,7 +140,7 @@ func TestAWSRealCreationIdentityVisibility(t *testing.T) {
 					case "deleted":
 						out["DeletedDate"] = 1
 					}
-					json.NewEncoder(w).Encode(out)
+					_ = encodeLine(w, out)
 				default:
 					t.Error("creation observer invoked another operation")
 					w.WriteHeader(400)
@@ -148,7 +149,7 @@ func TestAWSRealCreationIdentityVisibility(t *testing.T) {
 			defer server.Close()
 			roots := x509.NewCertPool()
 			roots.AddCert(server.Certificate())
-			raw, _ := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: m.Region, AccessKeyID: "AKIAHIKYOTEST0000001", SecretKey: "synthetic-create-observer"})
+			raw, _ := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: m.Region, AccessKeyID: "AKIAHIKYOTEST0000001", SecretKey: "synthetic-create-observer"}, jsonwire.Stable)
 			client, err := awssm.NewClient(awssm.ClientConfig{Origin: server.URL, Credential: string(raw), Deadline: time.Second, RootCAs: roots, AllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}})
 			if err != nil {
 				t.Fatal(err)

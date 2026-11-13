@@ -6,7 +6,8 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -208,13 +209,11 @@ func readAWSProtectedFile(path string) ([]byte, error) {
 
 func decodeAWSManifest(raw []byte) (realAWSManifest, error) {
 	var m realAWSManifest
-	d := json.NewDecoder(bytes.NewReader(raw))
-	d.DisallowUnknownFields()
-	if err := d.Decode(&m); err != nil {
+	d := jsontext.NewDecoder(bytes.NewReader(raw))
+	if err := json.UnmarshalDecode(d, &m, json.RejectUnknownMembers(true)); err != nil {
 		return m, errors.New("invalid AWS sandbox manifest")
 	}
-	var trailing json.RawMessage
-	if err := d.Decode(&trailing); !errors.Is(err, io.EOF) {
+	if _, err := d.ReadToken(); !errors.Is(err, io.EOF) {
 		return m, errors.New("AWS sandbox manifest contains trailing data")
 	}
 	return m, nil

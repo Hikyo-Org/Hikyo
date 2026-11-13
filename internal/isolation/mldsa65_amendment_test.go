@@ -3,7 +3,8 @@ package isolation
 import (
 	"bytes"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/pki"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -93,7 +95,7 @@ func TestMLDSA65OverHTTP(t *testing.T) {
 		admin := bootstrapAdmin(t, db, adminOpts{username: "factor-admin", displayName: "A", password: "correct horse battery staple mldsa65"})
 		operator := service.LocalPrincipal(root)
 		keyring := probeKeyring(t, db)
-		org, err := (&service.Orgs{DB: db}).Create(t.Context(), operator, "amendment-org", true, json.RawMessage(`{}`))
+		org, err := (&service.Orgs{DB: db}).Create(t.Context(), operator, "amendment-org", true, jsontext.Value(`{}`))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -139,7 +141,7 @@ func TestMLDSA65OverHTTP(t *testing.T) {
 
 		send := func(method, path string, body map[string]any, want int) string {
 			t.Helper()
-			raw, err := json.Marshal(body)
+			raw, err := json.Marshal(body, jsonwire.Stable)
 			if err != nil {
 				t.Fatal(err)
 			}

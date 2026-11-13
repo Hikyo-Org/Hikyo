@@ -3,7 +3,7 @@ package isolation
 import (
 	"context"
 	"encoding/binary"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net"
@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/jackc/pgx/v5"
 )
@@ -24,7 +25,7 @@ func TestRequestRefusalSnapshotWaitsForPostgresSettlement(t *testing.T) {
 	if err := window.Add(refusalStorageSample(t)); err != nil {
 		t.Fatal(err)
 	}
-	state, err := json.Marshal(window)
+	state, err := json.Marshal(window, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

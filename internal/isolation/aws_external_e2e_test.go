@@ -7,7 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -26,6 +26,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // External AWS Secrets Manager coverage (#158). Both tests skip locally and
@@ -133,7 +134,7 @@ func envOr(key, fallback string) string {
 
 func runExternalAWSLifecycle(t *testing.T, env externalAWS) {
 	t.Helper()
-	descriptor, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: env.region, AccessKeyID: env.creds.AccessKeyID, SecretKey: env.creds.SecretAccessKey, SessionToken: env.creds.SessionToken})
+	descriptor, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: env.region, AccessKeyID: env.creds.AccessKeyID, SecretKey: env.creds.SecretAccessKey, SessionToken: env.creds.SessionToken}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +292,7 @@ func runExternalAWSConcurrentWrites(t *testing.T, env externalAWS) {
 	for _, existing := range []bool{false, true} {
 		for _, beforePut := range []bool{false, true} {
 			t.Run(fmt.Sprintf("concurrent/existing=%v/before-put=%v", existing, beforePut), func(t *testing.T) {
-				descriptor, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: env.region, AccessKeyID: env.creds.AccessKeyID, SecretKey: env.creds.SecretAccessKey, SessionToken: env.creds.SessionToken})
+				descriptor, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: env.region, AccessKeyID: env.creds.AccessKeyID, SecretKey: env.creds.SecretAccessKey, SessionToken: env.creds.SessionToken}, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -386,7 +387,7 @@ func (api *externalAWSReplacementRaceAPI) PutSecretValue(ctx context.Context, se
 func runExternalAWSReplacementRace(t *testing.T, env externalAWS) {
 	t.Helper()
 	t.Run("empty-replacement-before-put", func(t *testing.T) {
-		descriptor, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: env.region, AccessKeyID: env.creds.AccessKeyID, SecretKey: env.creds.SecretAccessKey, SessionToken: env.creds.SessionToken})
+		descriptor, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: env.region, AccessKeyID: env.creds.AccessKeyID, SecretKey: env.creds.SecretAccessKey, SessionToken: env.creds.SessionToken}, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -469,7 +470,7 @@ func runExternalAWSAdoptionReplay(t *testing.T, env externalAWS) {
 	for _, interruption := range []string{"lost-put-response", "pre-promotion-cancellation"} {
 		for _, foreign := range []bool{false, true} {
 			t.Run(fmt.Sprintf("adoption/%s/foreign=%v", interruption, foreign), func(t *testing.T) {
-				descriptor, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: env.region, AccessKeyID: env.creds.AccessKeyID, SecretKey: env.creds.SecretAccessKey, SessionToken: env.creds.SessionToken})
+				descriptor, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: env.region, AccessKeyID: env.creds.AccessKeyID, SecretKey: env.creds.SecretAccessKey, SessionToken: env.creds.SessionToken}, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -549,7 +550,7 @@ func runExternalAWSAdoptionReplay(t *testing.T, env externalAWS) {
 // Real sandbox callers must first bind the actor, operation and recorded ARN.
 // Errors retain typed codes but never provider bodies, values or credentials.
 func externalAWSCall(ctx context.Context, env externalAWS, operation string, in, out any) error {
-	body, err := json.Marshal(in)
+	body, err := json.Marshal(in, jsonwire.Stable)
 	if err != nil {
 		return errors.New("cannot encode AWS fixture request")
 	}
