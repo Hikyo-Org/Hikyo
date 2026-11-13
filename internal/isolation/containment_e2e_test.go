@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -517,6 +518,14 @@ func writerWaiters(t *testing.T, db *store.DB) int64 {
 // fails instead of passing vacuously.
 func runBehindHolder(t *testing.T, db *store.DB, hold func(context.Context, *authz.TxAuthorizer) error, fn func() error) error {
 	t.Helper()
+	return runBehindHolderThen(t, db, hold, nil, fn)
+}
+
+// runBehindHolderThen is runBehindHolder with a step that runs once fn is
+// observably blocked and before the holder commits, so a test can move a clock
+// between fn's pre-lock work and its locked write phase.
+func runBehindHolderThen(t *testing.T, db *store.DB, hold func(context.Context, *authz.TxAuthorizer) error, between func(), fn func() error) error {
+	t.Helper()
 	release := holdWriteWhile(t, db, hold)
 	base := writerWaiters(t, db)
 	result := make(chan error, 1)
@@ -532,6 +541,9 @@ func runBehindHolder(t *testing.T, db *store.DB, hold func(context.Context, *aut
 			t.Fatal("fn never blocked behind the holder within 30s")
 		case <-time.After(5 * time.Millisecond):
 		}
+	}
+	if between != nil {
+		between()
 	}
 	if err := release(); err != nil {
 		t.Fatalf("holder: %v", err)
@@ -811,6 +823,65 @@ func TestContainmentNetworkResetSucceedsForOrgScopedCaller(t *testing.T) {
 	})
 }
 
+// A reset samples its mint time under the target's row lock, inside the
+// transaction attempt. A containment that commits after the call began but
+// before it holds the lock has a contained_at later than a time sampled at
+// entry; the authority must still be establishable, because the operator was
+// told it succeeded. The clock is moved while the call is blocked behind the
+// containment, so only a sample taken after the lock can pass.
+func TestContainmentRacingResetMintsAnEstablishableAuthority(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		adm := bootstrapAdmin(t, db, adminOpts{username: "operator", displayName: "Operator", password: containedPassword, login: true})
+		ctx := t.Context()
+		const target, caller domain.PrincipalID = "usr_race_target", "usr_race_caller"
+		createHuman(t, db, target, "race-target")
+		createHuman(t, db, caller, "race-caller")
+		err := tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+			if err := az.CreateGrant(ctx, "grant_race_target", target, domain.Grant{Capability: domain.CapRead, Scope: domain.Scope{Org: orgA}}, time.Now()); err != nil {
+				return err
+			}
+			return az.CreateGrant(ctx, "grant_race_caller", caller, domain.Grant{Capability: domain.CapCredentialReset, Scope: domain.Scope{Org: orgA}}, time.Now())
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		operator := service.Bearer(sessionWithWindows(t, db, caller))
+		var clock atomic.Int64
+		start := time.Now().UTC()
+		clock.Store(start.UnixNano())
+		adm.auth.Now = func() time.Time { return time.Unix(0, clock.Load()).UTC() }
+		t.Cleanup(func() { adm.auth.Now = nil })
+		for name, reset := range map[string]func() (service.ResetResult, error){
+			"network": func() (service.ResetResult, error) {
+				return adm.auth.ResetCredential(ctx, operator, string(target), "response")
+			},
+			"break-glass": func() (service.ResetResult, error) {
+				return adm.auth.BreakGlassResetCredential(ctx, string(target), "file")
+			},
+		} {
+			t.Run(name, func(t *testing.T) {
+				clock.Store(start.UnixNano())
+				contain := func(ctx context.Context, az *authz.TxAuthorizer) error {
+					return az.ContainPrincipal(ctx, target, start.Add(time.Minute), "inc_race")
+				}
+				var result service.ResetResult
+				err := runBehindHolderThen(t, db, contain, func() { clock.Store(start.Add(2 * time.Minute).UnixNano()) }, func() error {
+					var err error
+					result, err = reset()
+					return err
+				})
+				if err != nil {
+					t.Fatalf("a reset racing containment: %v", err)
+				}
+				if err := adm.auth.EstablishCredential(ctx, result.Authority, "a password from a reset that raced containment"); err != nil {
+					t.Fatalf("the authority a racing reset minted was refused: %v", err)
+				}
+				releaseContainmentForTest(t, db, target)
+			})
+		}
+	})
+}
+
 // Each gated lookup refuses a contained account on its own, and still does so
 // when the session generation gate is defeated by restoring the old value: no
 // single gate is carrying the refusal. Only the recovery lookup reaches it.
@@ -866,6 +937,9 @@ func TestContainmentLookupsRefuseWithoutTheGenerationGate(t *testing.T) {
 			}
 			if byID.ID != s.account || byPrincipal.ID != s.account {
 				t.Fatalf("recovery lookup returned %q and %q", byID.ID, byPrincipal.ID)
+			}
+			if byID.PrincipalID != s.subject || byPrincipal.PrincipalID != s.subject {
+				t.Fatalf("recovery lookup returned principals %q and %q", byID.PrincipalID, byPrincipal.PrincipalID)
 			}
 			return nil
 		})

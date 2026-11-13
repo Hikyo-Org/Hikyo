@@ -118,3 +118,103 @@ func TestPersonalValueRetentionPausedWhileContained(t *testing.T) {
 		}
 	})
 }
+
+// O8: a suspension recorded before containment must not survive a contain and
+// release that no sweep observed. Release starts a fresh window, so a value
+// whose owner lost access before containment is not deleted from the old clock.
+func TestReleaseRestartsRetentionWindowWithoutAnIntermediateSweep(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		e := personalFixture(t, db, "personal-release-clock")
+		ctx := t.Context()
+		e.setOwn(t, ceremonySecretA, e.keyA, personalPlain)
+		owner := e.admin.boot.PrincipalID
+		window := service.PersonalRetentionWindow
+		clock := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+		sweep := &service.PersonalValues{DB: db, Keyring: e.values.Keyring, Auth: e.admin.auth, Now: func() time.Time { return clock }}
+		run := func() {
+			t.Helper()
+			if err := sweep.SweepRetention(ctx); err != nil {
+				t.Fatal(err)
+			}
+		}
+		write := func(f func(context.Context, *authz.TxAuthorizer) error) {
+			t.Helper()
+			if err := tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error { return f(ctx, az) }); err != nil {
+				t.Fatal(err)
+			}
+		}
+		present := func() int64 { return queryInt(t, db, `SELECT COUNT(*) FROM personal_values`) }
+		suspended := func() int64 {
+			return queryInt(t, db, `SELECT COUNT(*) FROM personal_values WHERE suspended_at IS NOT NULL`)
+		}
+
+		// The owner loses the reveal grant, and the sweep starts the clock at t0.
+		grant := "g_cer_personal-release-clock_reveal"
+		execRaw(t, db, `DELETE FROM grant_origins WHERE grant_id='`+grant+`'`)
+		execRaw(t, db, `DELETE FROM grants WHERE id='`+grant+`'`)
+		run()
+		if suspended() != 1 {
+			t.Fatalf("the sweep did not start the clock: suspended=%d", suspended())
+		}
+
+		// Contain and release with no sweep in between: release clears the old clock.
+		clock = clock.Add(time.Hour)
+		write(func(ctx context.Context, az *authz.TxAuthorizer) error {
+			return az.ContainPrincipal(ctx, owner, clock, "inc_release_clock")
+		})
+		clock = clock.Add(time.Hour)
+		write(func(ctx context.Context, az *authz.TxAuthorizer) error {
+			return az.ReleasePrincipalContainment(ctx, owner)
+		})
+		if suspended() != 0 {
+			t.Fatal("release left the pre-containment suspension in place")
+		}
+
+		// The old clock would have expired by now; the fresh one has not.
+		clock = clock.Add(window - time.Hour)
+		run()
+		if present() != 1 || suspended() != 1 {
+			t.Fatalf("the value was judged from the old clock: present=%d suspended=%d", present(), suspended())
+		}
+		clock = clock.Add(window)
+		run()
+		if present() != 0 {
+			t.Fatal("not deleted once the fresh window elapsed")
+		}
+	})
+}
+
+// A privacy-restricted owner keeps privacy's running clock across contain and
+// release: release restarts the window only for a principal privacy leaves active.
+func TestReleaseKeepsTheClockOfAPrivacyRestrictedOwner(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		e := personalFixture(t, db, "personal-release-restricted")
+		ctx := t.Context()
+		e.setOwn(t, ceremonySecretA, e.keyA, personalPlain)
+		owner := e.admin.boot.PrincipalID
+		clock := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+		sweep := &service.PersonalValues{DB: db, Keyring: e.values.Keyring, Auth: e.admin.auth, Now: func() time.Time { return clock }}
+		execRaw(t, db, `UPDATE principals SET privacy_state = 'restricted' WHERE id = '`+string(owner)+`'`)
+		if err := sweep.SweepRetention(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if queryInt(t, db, `SELECT COUNT(*) FROM personal_values WHERE suspended_at IS NOT NULL`) != 1 {
+			t.Fatal("the sweep did not start the restricted owner's clock")
+		}
+		for _, f := range []func(context.Context, *authz.TxAuthorizer) error{
+			func(ctx context.Context, az *authz.TxAuthorizer) error {
+				return az.ContainPrincipal(ctx, owner, clock, "inc_restricted")
+			},
+			func(ctx context.Context, az *authz.TxAuthorizer) error {
+				return az.ReleasePrincipalContainment(ctx, owner)
+			},
+		} {
+			if err := tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error { return f(ctx, az) }); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if queryInt(t, db, `SELECT COUNT(*) FROM personal_values WHERE suspended_at IS NOT NULL`) != 1 {
+			t.Fatal("release cleared the clock of a privacy-restricted owner")
+		}
+	})
+}

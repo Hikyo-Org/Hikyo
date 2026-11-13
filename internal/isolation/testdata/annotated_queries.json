@@ -240,6 +240,13 @@
   },
   {
     "engine": "postgres",
+    "name": "ClearPersonalSuspensionForOwner",
+    "annotation": "authn-resolution",
+    "hash": "c1d7f6cd5b19defe34822926e49f38d64a2329316f816e59e40344be56a806fe",
+    "reason": "Release clears the retention suspension of the released principal's own personal values in the same transaction, so a clock started before containment cannot expire a value after release; it touches no ciphertext, leaves a privacy-restricted owner's clock running and clears nothing while the principal is contained."
+  },
+  {
+    "engine": "postgres",
     "name": "ClearSelfConfigSeedInputs",
     "annotation": "instance-scoped",
     "hash": "d27bb664779449865a5be63f640ebd3c9b55b8aafac377f140c3e54e103fe2b0"
@@ -1194,6 +1201,13 @@
     "annotation": "authn-resolution",
     "hash": "38299592366324b0455d3a5877ba0f7090a23bc03a4cdc7d00613e16ec58bdc6",
     "reason": "Reset issuance and credential establishment resolve the account of a principal containment may hold, with the containment condition dropped and the privacy gate kept; callable only from those flows."
+  },
+  {
+    "engine": "postgres",
+    "name": "GetAccountIDForContainmentSweep",
+    "annotation": "authn-resolution",
+    "hash": "d678c812a4df2bfe9da2dcca7c45b12cb7189f3a0b72c5109958120a8b207880",
+    "reason": "Containment resolves the account id of the principal it holds, whatever the principal's privacy state, so its outstanding credential authorities are consumed in the same transaction; it returns one identifier and no secret."
   },
   {
     "engine": "postgres",
@@ -3911,6 +3925,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "ClearPersonalSuspensionForOwner",
+    "annotation": "authn-resolution",
+    "hash": "c1d7f6cd5b19defe34822926e49f38d64a2329316f816e59e40344be56a806fe",
+    "reason": "Release clears the retention suspension of the released principal's own personal values in the same transaction, so a clock started before containment cannot expire a value after release; it touches no ciphertext, leaves a privacy-restricted owner's clock running and clears nothing while the principal is contained."
+  },
+  {
+    "engine": "sqlite",
     "name": "ClearSelfConfigSeedInputs",
     "annotation": "instance-scoped",
     "hash": "d27bb664779449865a5be63f640ebd3c9b55b8aafac377f140c3e54e103fe2b0"
@@ -4837,6 +4858,13 @@
     "annotation": "authn-resolution",
     "hash": "38299592366324b0455d3a5877ba0f7090a23bc03a4cdc7d00613e16ec58bdc6",
     "reason": "Reset issuance and credential establishment resolve the account of a principal containment may hold, with the containment condition dropped and the privacy gate kept; callable only from those flows."
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetAccountIDForContainmentSweep",
+    "annotation": "authn-resolution",
+    "hash": "d678c812a4df2bfe9da2dcca7c45b12cb7189f3a0b72c5109958120a8b207880",
+    "reason": "Containment resolves the account id of the principal it holds, whatever the principal's privacy state, so its outstanding credential authorities are consumed in the same transaction; it returns one identifier and no secret."
   },
   {
     "engine": "sqlite",

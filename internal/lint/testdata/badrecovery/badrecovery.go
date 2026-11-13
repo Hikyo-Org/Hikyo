@@ -18,3 +18,13 @@ func ViaAssertion(l any) string { return l.(localLookup).RecoveryAccountByID("a"
 
 // ViaMethodValue takes the method as a value and calls it later.
 func ViaMethodValue(l lookup) func(string) string { return l.RecoveryAccountByID }
+
+type licensedType struct{}
+
+// Reset is licensed through its receiver type.
+func (licensedType) Reset(l lookup) string { return l.RecoveryAccountByID("a") }
+
+type otherType struct{}
+
+// Reset shares the licensed method's name but not its receiver type.
+func (*otherType) Reset(l lookup) string { return l.RecoveryAccountByID("a") }

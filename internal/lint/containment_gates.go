@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
-	"strings"
 )
 
 // ContainmentGateExemptions names the queries that may test the privacy gate
@@ -54,100 +53,71 @@ func compileAll(patterns ...string) []*regexp.Regexp {
 	return out
 }
 
-func gateCounts(res []*regexp.Regexp, sql string) map[string]int {
-	out := map[string]int{}
+// gateSites returns, per qualifier, where each match of the patterns sits.
+func gateSites(res []*regexp.Regexp, scopes *sqlScopes, text string) map[string][]gateSite {
+	out := map[string][]gateSite{}
 	for _, re := range res {
-		for _, m := range re.FindAllStringSubmatch(sql, -1) {
-			out[m[1]]++
+		for _, m := range re.FindAllStringSubmatchIndex(text, -1) {
+			qualifier := ""
+			if m[2] >= 0 {
+				qualifier = text[m[2]:m[3]]
+			}
+			out[qualifier] = append(out[qualifier], scopes.site(text, m[0]))
 		}
 	}
 	return out
 }
 
-// stripSQLComments removes `--` line comments and (nested) `/* */` block
-// comments, leaving string literals untouched, so a comment cannot satisfy or
-// hide a predicate.
-func stripSQLComments(sql string) string {
-	var b strings.Builder
-	for i := 0; i < len(sql); {
-		switch {
-		case sql[i] == '\'':
-			j := i + 1
-			for j < len(sql) {
-				if sql[j] == '\'' {
-					if j+1 < len(sql) && sql[j+1] == '\'' {
-						j += 2
-						continue
-					}
-					break
-				}
-				j++
-			}
-			if j < len(sql) {
-				j++
-			}
-			b.WriteString(sql[i:j])
-			i = j
-		case strings.HasPrefix(sql[i:], "--"):
-			for i < len(sql) && sql[i] != '\n' {
-				i++
-			}
-		case strings.HasPrefix(sql[i:], "/*"):
-			depth := 0
-			for i < len(sql) {
-				switch {
-				case strings.HasPrefix(sql[i:], "/*"):
-					depth++
-					i += 2
-				case strings.HasPrefix(sql[i:], "*/"):
-					depth--
-					i += 2
-				default:
-					i++
-				}
-				if depth == 0 {
-					break
-				}
-			}
-			b.WriteByte(' ')
-		default:
-			b.WriteByte(sql[i])
-			i++
-		}
-	}
-	return b.String()
-}
-
-// gateText is the form the gate patterns run on.
+// gateText is the form the gate patterns run on: comments removed, quoted
+// identifiers and non-gate string literals masked, lower-cased, whitespace
+// collapsed.
 func gateText(q Query) string {
 	src := q.Source
 	if src == "" {
 		src = q.SQL
 	}
-	return strings.ToLower(normalizeSpace(stripSQLComments(src)))
+	return normalizeSpace(maskSQL(src))
+}
+
+// covered reports whether a privacy predicate has a containment predicate of
+// its qualifier in the same query scope that every returned row had to satisfy.
+func covered(privacy gateSite, containment []gateSite) bool {
+	for _, c := range containment {
+		if c.required && c.scope == privacy.scope {
+			return true
+		}
+	}
+	return false
 }
 
 // CheckContainmentGates requires every privacy-active predicate in the query
 // files (`privacy_state = 'active'`, its reversed and IN forms, and the
 // `<> 'restricted'` and `!=` forms) to be paired with a containment-none
-// predicate on the same qualifier (principal alias), so a new authority or
+// predicate on the same qualifier (principal alias) in the same query scope
+// (the same subquery, and the same UNION operand), so a new authority or
 // sign-in site cannot ship with only half of the effective-authority rule.
-// Comments are stripped first: a commented-out condition does not count.
+// Only a required conjunct counts: not one in a commented-out, quoted or
+// string-literal position, one side of an OR, a NOT-negated group, a CASE
+// expression or a SELECT-list expression. See sqlscope.go for what is read and
+// for the residual limits; the behavioural isolation tests are the backstop.
 func CheckContainmentGates(queries []Query, exempt map[string]string) []string {
 	var findings []string
 	seen := map[string]bool{}
 	for _, q := range queries {
 		text := gateText(q)
-		privacy := gateCounts(privacyGateRes, text)
+		scopes := scanSQLScopes(text)
+		privacy := gateSites(privacyGateRes, scopes, text)
 		if len(privacy) == 0 {
 			continue
 		}
 		seen[q.Name] = true
-		contained := gateCounts(containmentGateRes, text)
+		contained := gateSites(containmentGateRes, scopes, text)
 		missing := false
-		for qualifier, n := range privacy {
-			if contained[qualifier] < n {
-				missing = true
+		for qualifier, sites := range privacy {
+			for _, p := range sites {
+				if !covered(p, contained[qualifier]) {
+					missing = true
+				}
 			}
 		}
 		_, exempted := exempt[q.Name]
