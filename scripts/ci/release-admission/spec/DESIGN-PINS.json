@@ -8,11 +8,11 @@
     },
     "CONTRACTS.json": {
       "bytes": 30360,
-      "rawSHA256": "6e927f791d6ecfe32575296731c5287f379b122edeb945e069449e9d7b77ef04"
+      "rawSHA256": "bb92cf14fe361b50c0db76925b2e4f1d055c918fab4c171fff955c15ebcade0c"
     },
     "POLICY.md": {
       "bytes": 32023,
-      "rawSHA256": "1ba3622c6ccf641398e943036603a5f00d8eda371c5fe2ff1ad06489bc852745"
+      "rawSHA256": "9e81a2b5c29f9edb8fe6d2772b9ddd1475f72f38ed41fe9c8032f964ab58ecf5"
     }
   }
 }

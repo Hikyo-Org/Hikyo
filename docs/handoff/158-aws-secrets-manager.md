@@ -1121,7 +1121,8 @@ drafts cover four-mode credential replacement and raw plan/connection redaction.
 The transport/fake seams do not prove actual AWS, full authenticated API/CLI,
 or desktop/mobile runtime behavior. No new production defect has been asserted
 from these unexecuted drafts. The full source matrix is
-[aws-acceptance-matrix.md](../testing/aws-acceptance-matrix.md).
+[aws-acceptance-history.md](../testing/aws-acceptance-history.md); the current
+coverage map is [aws-acceptance-matrix.md](../testing/aws-acceptance-matrix.md).
 
 Setup now lists exact proposed IAM/KMS/OIDC action scopes and escalation limits.
 The account's MFA/private setup, actual plan, non-root authority, secure delivery,
@@ -1134,7 +1135,7 @@ was independently resolved as recorded above. No source review or local provider
 R5 SOURCE_SOUND remains bound to its original 50-file inventory. The later
 57-test provider run includes controlled same-client cache refresh/refusal, with zero
 failures/skips; it does not execute later application/isolation/browser drafts.
-See `docs/testing/aws-acceptance-matrix.md` for the new authenticated API/CLI
+See `docs/testing/aws-acceptance-history.md` for the new authenticated API/CLI
 matrix, actual AWS-module development peer and browser adoption, durable real
 credential expiry/revocation cases, complete dev-only boot/switch boundary and
 secure file-input versus unavailable private-delivery distinction. These additions

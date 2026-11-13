@@ -551,7 +551,7 @@ class CollectorTests(unittest.TestCase):
                         fixture.put(tree_endpoint, tree)
                     elif kind == 'version':
                         files = copy.deepcopy(fixture.files)
-                        files['go.mod'] = 'module synthetic\ngo 1.27.4\n'
+                        files['go.mod'] = 'module synthetic.invalid/hikyo\n\ngo 1.27.3\n'
                         commit['commit']['tree']['sha'] = fixture.tree(files)
                         fixture.put(c.REPO + '/commits/' + fixture.release_sha, commit)
                     else:
@@ -559,7 +559,7 @@ class CollectorTests(unittest.TestCase):
                         blob = fixture.read_value(endpoint)
                         blob['content'] = 'Zm9yZ2Vk'
                         fixture.put(endpoint, blob)
-                self.assert_refused(fixture.release)
+                self.assert_refused(fixture.release, 'literal-go-directive' if kind == 'version' else None)
 
     def test_request_time_byte_and_decoder_bounds_remain_closed(self):
         collector = c.Collector(self.f.m, self.f.transport, self.f.tick_clock(seconds=10))

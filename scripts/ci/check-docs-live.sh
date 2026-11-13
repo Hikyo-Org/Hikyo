@@ -200,6 +200,9 @@ require_response_text "$landing_page" '<title>Hikyo'
 require_response_text "$landing_page" '<link rel="manifest" href="/manifest.webmanifest">'
 require_response_text "$landing_page" 'navigator.serviceWorker.register("/sw.js"'
 reject_response_text "$landing_page" '="/hikyo/'
+# The landing page must link the stable release this checkout records as published.
+stable_version=$("$JQ_BIN" -er '.highest_release' "$repo_root/release/trust/metadata.json")
+require_response_text "$landing_page" "href=\"https://github.com/Hikyo-Org/Hikyo/releases/tag/v$stable_version\""
 landing_stylesheet=$(extract_asset_path "$landing_page" stylesheet)
 landing_module=$(extract_asset_path "$landing_page" module)
 require_asset "$landing_stylesheet" stylesheet

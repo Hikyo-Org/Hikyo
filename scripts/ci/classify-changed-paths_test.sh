@@ -51,6 +51,8 @@ expect_plan 'client' '["client","release-snapshot","web-go"]' \
 	'clients/ts/src/generated/types.gen.ts'
 expect_plan 'release' '["lint","release-snapshot","supply-chain-checks"]' \
 	'scripts/release/check-tag.sh'
+expect_plan 'release trust' '["docs","lint","release-snapshot","supply-chain-checks"]' \
+	'release/trust/metadata.json'
 expect_plan 'chart' '["floor-bench","k8s-e2e","lint","release-snapshot","supply-chain-checks"]' \
 	'chart/hikyo/values.yaml'
 expect_plan 'release image' '["k8s-e2e","lint","release-snapshot","supply-chain-checks"]' \

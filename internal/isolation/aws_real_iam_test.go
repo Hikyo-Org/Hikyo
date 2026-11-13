@@ -54,13 +54,13 @@ func (s *realAWSSandbox) denialActor(t *testing.T, mode, raw string) externalAWS
 			t.Fatal("IAM negative temporary credentials unavailable")
 		}
 	}
-	encoded, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: s.manifest.Region, AccessKeyID: creds.AccessKeyID, SecretKey: creds.SecretAccessKey, SessionToken: creds.SessionToken})
+	encoded, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: s.manifest.Region, AccessKeyID: creds.AccessKeyID, SecretKey: creds.SecretAccessKey, SessionToken: creds.SessionToken, STSOrigin: s.stsOrigin})
 	if err != nil {
 		t.Fatal("cannot bind IAM negative identity")
 	}
 	s.client(t, string(encoded), false, s.manifest.Writers[mode].PrincipalARN)
 	crypto.Zero(encoded)
-	return externalAWS{origin: "https://secretsmanager." + s.manifest.Region + ".amazonaws.com", region: s.manifest.Region, account: s.manifest.Account, creds: creds}
+	return externalAWS{origin: s.origin, region: s.manifest.Region, account: s.manifest.Account, roots: s.roots, allowed: s.allowed, creds: creds}
 }
 
 func runRealAWSIAMDenial(t *testing.T, s *realAWSSandbox) {
@@ -80,7 +80,21 @@ func runRealAWSIAMDenial(t *testing.T, s *realAWSSandbox) {
 	if s.value(t, name) != "iam-synthetic-canary" {
 		t.Fatal("positive synthetic oracle control failed")
 	}
-	s.checkWriterDenials(t, "static", s.manifest.Prefix+"static/sqlite/document", name)
+	own := s.manifest.Prefix + "static/sqlite/document"
+	if s.emulated() {
+		// The lifecycle group that normally delivers this value is skipped on
+		// the emulator, so the cleanup actor seeds the writer's own namespace.
+		var ownSeed struct {
+			ARN string `json:"ARN"`
+		}
+		if err := s.call(t.Context(), false, "CreateSecret", own, map[string]any{"SecretString": "iam-synthetic-own", "KmsKeyId": s.manifest.KMSKeyARN, "ClientRequestToken": strings.Repeat("d", 64)}, &ownSeed); err != nil {
+			t.Fatal("IAM synthetic own-namespace seed failed")
+		}
+		if err := s.remember(own, ownSeed.ARN); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.checkWriterDenials(t, "static", own, name)
 }
 
 func (s *realAWSSandbox) checkWriterDenials(t *testing.T, mode, ownName, foreignName string) {

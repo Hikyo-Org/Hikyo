@@ -9,7 +9,7 @@ PostgreSQL server with manual custody. Both select the exact OCI chart digest
 and matching image. Flux starts suspended; Argo CD requires manual sync.
 
 The generator accepts signed stable and nightly charts, and nightlies remain
-unsupported prereleases. It refuses stable 1.0.0, the only published stable chart:
+unsupported prereleases. It refuses the stable 1.0.0 chart:
 that chart gives `hikyo admin create` no root key, and it fails to install under
 Flux. The first stable release cut after those fixes can pass the generator, though
 no published stable chart has completed a controller install. For 1.0.0 artifacts, use

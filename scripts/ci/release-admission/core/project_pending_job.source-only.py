@@ -8,7 +8,7 @@ import copy
 import hashlib
 
 API_VERSION = '2026-03-10'
-MODEL_SHA256 = 'f40c07b2204c3305b434836015c99f30af4dfc893a0ce0e4f0318c17ea844a19'
+MODEL_SHA256 = '410c94bea656d2a9b9f00d6499d7c600a08a934dc9f2316c66454603e196f78c'
 WORKFLOW_PATH = '.github/workflows/aws-acceptance.yml'
 REPOSITORY = 'Hikyo-Org/Hikyo'
 ROOT = '/repos/' + REPOSITORY

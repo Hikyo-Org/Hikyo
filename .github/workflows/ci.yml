@@ -1769,13 +1769,22 @@ jobs:
             echo "isolation: shard $ISOLATION_SHARD has no tests" >&2
             exit 1
           fi
-          # The shard that owns the AWS Secrets Manager emulator leg starts the
-          # pinned moto harness; the test then refuses to skip (#158).
+          # The shard that owns the AWS Secrets Manager lifecycle leg starts the
+          # pinned moto harness; the shard that owns the acceptance leg starts
+          # the pinned Floci harness. Each test refuses to skip (#158).
           case "|$tests|" in
             *'|TestAWSSecretsManagerEmulatorLifecycle|'*)
               export HIKYO_TEST_AWS_EMULATOR_REQUIRED=1
               aws_env=$(./scripts/ci/start-aws-emulator.sh "$RUNNER_TEMP/aws-emulator")
               for assignment in $aws_env; do
+                export "${assignment?}"
+              done
+              ;;
+          esac
+          case "|$tests|" in
+            *'|TestAWSSecretsManagerEmulatorAcceptance|'*)
+              floci_env=$(./scripts/ci/start-floci-emulator.sh "$RUNNER_TEMP/floci-emulator")
+              for assignment in $floci_env; do
                 export "${assignment?}"
               done
               ;;
