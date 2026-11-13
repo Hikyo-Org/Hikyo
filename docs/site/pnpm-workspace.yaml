@@ -6,3 +6,8 @@ allowBuilds:
 overrides:
   inline-style-parser@<=0.2.9: 0.2.9
   devalue@<5.9.3: 5.9.3
+  # GHSA-g3hv-75wg-m249 has no patched 10.x release. glob 11 matches nothing
+  # with minimatch 11, so workbox-build's glob moves to 13 (same globSync API).
+  # Drop both once workbox-build depends on glob 14. minimatch 5.x is unaffected.
+  minimatch@>=10 <11.0.1: 11.0.8
+  glob@11: 13.0.6

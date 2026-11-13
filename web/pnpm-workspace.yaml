@@ -31,7 +31,12 @@ overrides:
   # GHSA-rmxm-3fg6-px4f has no patched 1.x release. This development MCP
   # consumer uses getRequestListener on pinned Node 26, not the removed Vercel
   # adapter. Keep the compatibility override scoped to its current owner.
-  '@open-pencil/mcp@0.15.0>@hono/node-server': 2.1.3
+  # 2.1.7 also carries the GHSA-jpvv-r467-5p4w fix (patched in 2.1.6).
+  '@open-pencil/mcp@0.15.0>@hono/node-server': 2.1.7
+  # GHSA-g3hv-75wg-m249 has no patched 10.x release. glob 13 (Storybook docgen)
+  # still matches correctly with minimatch 11; drop this once the Storybook
+  # docgen plugin no longer pulls glob 13.
+  minimatch@>=10 <11.0.1: 11.0.8
 # pnpm 11 refuses versions younger than its default minimum release age, and the
 # lockfile is re-verified against that policy on every install, so a same-day
 # release has to be named here or `pnpm install --frozen-lockfile` fails in CI.
