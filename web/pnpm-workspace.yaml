@@ -12,41 +12,25 @@ allowBuilds:
   # Storybook/Vite pull esbuild transitively and it genuinely needs its install
   # script to fetch the platform binary.
   esbuild: true
-# Storybook's @vitest/browser-playwright pulled a second playwright-core (1.63.0)
-# into the graph, which flipped @axe-core/playwright's peer off the 1.62.1 that
-# @playwright/test and the CI Playwright image (v1.62.1-noble) are pinned to,
-# producing a two-Page-type clash in e2e/fixtures/assertions.ts. Pin the whole
-# tree to the one version everything else already uses.
+# Guard the CI Playwright image pin (v1.62.1-noble). A second playwright-core
+# in the graph once moved @axe-core/playwright's peer off the 1.62.1 that
+# @playwright/test uses, producing a two-Page-type clash in
+# e2e/fixtures/assertions.ts. Nothing pulls a second copy today; the pin keeps
+# a future dependency from doing it silently. Bump it with the CI image.
 overrides:
   playwright-core: 1.62.1
-  # @open-pencil/core's `calc` tool (dev-only design CLI/MCP) evaluates caller
-  # text with expr-eval, which is unmaintained with no patched release for its
-  # code execution and prototype pollution advisories. The fork keeps the same
-  # default export ({ Parser, Expression }) and carries the fixes.
-  expr-eval: npm:expr-eval-fork@3.0.3
   # pptxgenjs (via @open-pencil/core) declares image-size ^1 but never loads it:
   # its builds require('sizeof') instead. Every 1.x release carries the
   # ICNS/JXL/HEIF infinite-loop advisories, so the major bump is inert.
   image-size@<2.0.3: 2.0.4
   # GHSA-rmxm-3fg6-px4f has no patched 1.x release. This development MCP
   # consumer uses getRequestListener on pinned Node 26, not the removed Vercel
-  # adapter. Keep the compatibility override scoped to its current owner.
+  # adapter. Keep the compatibility override scoped to its current owner and version:
+  # the key names @open-pencil/mcp@0.16.0 (which still declares ^1.19.17), so a
+  # bump of that package stops matching it and must be re-scoped here.
   # 2.1.7 also carries the GHSA-jpvv-r467-5p4w fix (patched in 2.1.6).
-  '@open-pencil/mcp@0.15.0>@hono/node-server': 2.1.7
+  '@open-pencil/mcp@0.16.0>@hono/node-server': 2.1.7
   # GHSA-g3hv-75wg-m249 has no patched 10.x release. glob 13 (Storybook docgen)
   # still matches correctly with minimatch 11; drop this once the Storybook
   # docgen plugin no longer pulls glob 13.
   minimatch@>=10 <11.0.1: 11.0.8
-# pnpm 11 refuses versions younger than its default minimum release age, and the
-# lockfile is re-verified against that policy on every install, so a same-day
-# release has to be named here or `pnpm install --frozen-lockfile` fails in CI.
-# `pnpm add` writes these entries; they can be dropped once the versions age out.
-minimumReleaseAgeExclude:
-  - '@open-pencil/cli@0.15.0'
-  - '@open-pencil/core@0.15.0'
-  - '@open-pencil/dom-css@0.15.0'
-  - '@open-pencil/fig@0.15.0'
-  - '@open-pencil/kiwi@0.15.0'
-  - '@open-pencil/mcp@0.15.0'
-  - '@open-pencil/pen@0.15.0'
-  - '@open-pencil/scene-graph@0.15.0'
