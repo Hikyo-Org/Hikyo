@@ -12,7 +12,7 @@
     "verify": "pnpm run generate && tsc --noEmit && node --test --experimental-strip-types 'src/*.test.ts'"
   },
   "devDependencies": {
-    "@hey-api/openapi-ts": "0.97.3",
+    "@hey-api/openapi-ts": "0.99.0",
     "@types/node": "^26.2.0",
     "@typescript/native": "npm:typescript@7.0.2",
     "typescript": "npm:@typescript/typescript6@6.0.2",
@@ -20,6 +20,6 @@
   },
   "dependencies": {
     "@ungap/raw-json": "0.4.4",
-    "bignumber.js": "9.3.1"
+    "bignumber.js": "11.1.5"
   }
 }
