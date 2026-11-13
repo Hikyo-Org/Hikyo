@@ -5,6 +5,8 @@ CDPATH=
 repo_root=$(cd -- "$(dirname "$0")/../.." && pwd)
 fixture_dir=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-docs-live.XXXXXX")
 trap 'rm -rf "$fixture_dir"' EXIT HUP INT TERM
+FAKE_STABLE_VERSION=$(jq -er '.highest_release' "$repo_root/release/trust/metadata.json")
+export FAKE_STABLE_VERSION
 
 cat >"$fixture_dir/curl" <<'EOF'
 #!/bin/sh
@@ -28,8 +30,8 @@ case "$url" in
 		else
 			base=
 		fi
-		printf '<title>Hikyo</title><link rel="manifest" href="/manifest.webmanifest"><link rel="stylesheet" href="%s/_astro/landing.css"><script>navigator.serviceWorker.register("/sw.js")</script><script type="module" src="%s/_astro/landing.js"></script>\n' \
-			"$base" "$base"
+		printf '<title>Hikyo</title><link rel="manifest" href="/manifest.webmanifest"><link rel="stylesheet" href="%s/_astro/landing.css"><script>navigator.serviceWorker.register("/sw.js")</script><script type="module" src="%s/_astro/landing.js"></script><a href="https://github.com/Hikyo-Org/Hikyo/releases/tag/v%s">\n' \
+			"$base" "$base" "${FAKE_STABLE_VERSION:?}"
 		;;
 	*/docs/ | */docs/\?*)
 		if [ "${FAKE_STALE_BASE:-0}" -eq 1 ]; then
@@ -167,6 +169,13 @@ chmod +x "$fixture_dir/curl"
 CURL_BIN="$fixture_dir/curl" \
 	"$repo_root/scripts/ci/check-docs-live.sh" \
 	https://hikyo.app security@hikyo.app
+
+if FAKE_STABLE_VERSION=0.0.1 CURL_BIN="$fixture_dir/curl" "$repo_root/scripts/ci/check-docs-live.sh" \
+	https://hikyo.app security@hikyo.app >"$fixture_dir/stable-refusal.log" 2>&1; then
+	printf 'live docs fixture failed: a landing page linking an older stable release was accepted\n' >&2
+	exit 1
+fi
+grep -F "releases/tag/v$FAKE_STABLE_VERSION" "$fixture_dir/stable-refusal.log" >/dev/null
 
 for origin in http://hikyo.app https://hikyo.app.example.invalid https://hikyo.app/docs; do
 	if CURL_BIN="$fixture_dir/curl" "$repo_root/scripts/ci/check-docs-live.sh" \

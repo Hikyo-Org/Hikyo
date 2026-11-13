@@ -5,7 +5,7 @@ The existing current claim cannot use or adopt this future source successor.
 """
 import copy
 
-PINS = {'modelSHA256': 'f40c07b2204c3305b434836015c99f30af4dfc893a0ce0e4f0318c17ea844a19', 'modelTestSHA256': 'f06b2e173ff499070ae8718d65870534510a585339b8fc451462baaea6dc5985', 'keyNormalizerSHA256': '4df1d41122616c47f44864d74ffaeaf974d72f72216745e284d538679045a2cf', 'guardSHA256': '6182330cb0a73fcc6e9f31dd5e5080b952e89735e40d0e9e3f961b5c9a145f26', 'observerSHA256': '5a68216b0e07b7fe207b1f361f2ab7192d3e28e2c13ae1adee8b20211e398700'}
+PINS = {'modelSHA256': '410c94bea656d2a9b9f00d6499d7c600a08a934dc9f2316c66454603e196f78c', 'modelTestSHA256': 'f06b2e173ff499070ae8718d65870534510a585339b8fc451462baaea6dc5985', 'keyNormalizerSHA256': '3a7f3e76daa0bb4a70ea2ade849ce854f8bd35e731198319f88cf367d5e6d327', 'guardSHA256': '6182330cb0a73fcc6e9f31dd5e5080b952e89735e40d0e9e3f961b5c9a145f26', 'observerSHA256': '5a68216b0e07b7fe207b1f361f2ab7192d3e28e2c13ae1adee8b20211e398700'}
 FLAGS={'runtimeReady':False,'executionAuthorityGranted':False,'sourceAuthenticityEstablished':False,
     'claimCreated':False,'nativeActionPerformed':False}
 MIN_PRECLAIM_MS=120000

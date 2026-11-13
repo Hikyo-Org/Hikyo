@@ -2,6 +2,7 @@ import { type CollectionEntry, getCollection } from 'astro:content';
 import { structure, type StructuredData } from 'fumadocs-core/mdx-plugins';
 import { llms, loader, type StaticSource } from 'fumadocs-core/source';
 import path from 'node:path';
+import { remarkStableVersion } from './release.mjs';
 import { fumadocsBase } from './site';
 
 const contentRoot = 'src/content/docs';
@@ -63,7 +64,7 @@ async function createSource() {
       data: {
         ...page.data,
         _raw: page,
-        structuredData: structure(requireBody(page)),
+        structuredData: structure(requireBody(page), [remarkStableVersion]),
       },
     });
   }

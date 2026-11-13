@@ -681,7 +681,7 @@ def historical_ci_checked(proof,manifest,now):
         heads[kind]=commit['sha'];files=proof[kind+'Files'];pins=manifest[kind+'FileSHA256s'];exact(files,pins)
         for path,body in files.items():
             require(type(body) is str and len(body)<=262144 and hashlib.sha256(body.encode()).hexdigest()==pins[path],'whole-public-source-pin')
-        require(re.search(r'(?m)^go 1\.27\.3$',files['go.mod']) is not None,'go-1.27.3-required')
+        require(re.search(r'(?m)^go 1\.27\.4$',files['go.mod']) is not None,'go-1.27.4-required')
     exact(proof['absentFiles'],{'candidate','workflow'})
     for kind in heads:
         require(same(proof['absentFiles'][kind],{'commitSHA':heads[kind],'path':'go.work','gitTreeEntry':None}),'exact-go-work-absence')

@@ -6,6 +6,8 @@ on:
     paths:
       - ".github/workflows/docs.yml"
       - "docs/**"
+      # The release ceremony records each published stable version here.
+      - "release/trust/metadata.json"
       - "web/**"
       - "clients/ts/**"
       - "api/openapi.yaml"

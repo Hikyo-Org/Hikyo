@@ -318,7 +318,7 @@ func TestAWSSecretsManagerReplayProcess(t *testing.T) {
 		t.Fatal("replay could not reopen the existing datastore")
 	}
 	t.Cleanup(func() { db.Close() })
-	h := &realAWSDurable{t: t, db: db, s: s, keyring: loadAndRegisterKeyring(t, db, bytes.Clone(input.Root)), clock: input.Clock, origin: "https://secretsmanager." + input.Manifest.Region + ".amazonaws.com"}
+	h := &realAWSDurable{t: t, db: db, s: s, keyring: loadAndRegisterKeyring(t, db, bytes.Clone(input.Root)), clock: input.Clock, origin: s.origin}
 	h.configureRuntime("static")
 	h.worker.ID = fmt.Sprintf("real-aws-replay-%d", os.Getpid())
 	loader, ok := h.worker.Loader.(awsRealLoader)
@@ -348,6 +348,9 @@ func importAWSReplayCustody(input awsReplayInput) (*realAWSSandbox, error) {
 		return nil, errors.New("invalid replay creation provenance")
 	}
 	s := &realAWSSandbox{manifest: input.Manifest, owned: make(map[string]string), replayOnly: true}
+	if err := s.bindEndpoint(); err != nil {
+		return nil, err
+	}
 	remaining := make(map[string]int)
 	for _, name := range input.Creations {
 		if err := s.checkName(name); err != nil {

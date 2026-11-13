@@ -37,7 +37,7 @@
     "requiredAbsentPaths": [
       "go.work"
     ],
-    "goDirective": "1.27.3",
+    "goDirective": "1.27.4",
     "requiredCIJobs": {
       "candidate": {
         "candidate-proof": "success",

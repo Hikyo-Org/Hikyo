@@ -3,11 +3,16 @@ package isolation
 import (
 	"context"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"math"
+	"net/http"
+	"net/http/httptest"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -112,6 +117,85 @@ func TestAWSRealFixtureScope(t *testing.T) {
 		if _, err := decodeAWSManifest(bad); err == nil || strings.Contains(err.Error(), "do not echo") {
 			t.Fatal("manifest decoder accepted or disclosed invalid input")
 		}
+	}
+}
+
+// The emulator branch accepts only a static writer behind a non-AWS origin, and
+// neither lane loads the other's manifest.
+func TestAWSRealFixtureEmulatorScope(t *testing.T) {
+	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+	emulated := func() realAWSManifest {
+		m := realAWSManifestFixture(now)
+		m.Writers = map[string]realAWSActor{"static": {CredentialFile: "static.json", PrincipalARN: "arn:aws:iam::123456789012:role/static"}}
+		m.Emulator = &realAWSEmulator{Origin: "https://127.0.0.1:5444", STSOrigin: "https://127.0.0.1:5444", CAFile: "/certs/ca.pem", AllowedCIDR: "127.0.0.1/32"}
+		return m
+	}
+	if err := emulated().validateLane(now, true); err != nil {
+		t.Fatal(err)
+	}
+	if emulated().validateLane(now, false) == nil || realAWSManifestFixture(now).validateLane(now, true) == nil {
+		t.Fatal("AWS sandbox manifest loaded by the wrong lane")
+	}
+	if err := realAWSManifestFixture(now).validateLane(now, false); err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]func(*realAWSManifest){
+		"aws-origin":    func(m *realAWSManifest) { m.Emulator.Origin = "https://secretsmanager.eu-west-1.amazonaws.com" },
+		"aws-sts":       func(m *realAWSManifest) { m.Emulator.STSOrigin = "https://sts.eu-west-1.amazonaws.com" },
+		"plaintext":     func(m *realAWSManifest) { m.Emulator.Origin = "http://127.0.0.1:5444" },
+		"non-canonical": func(m *realAWSManifest) { m.Emulator.Origin = "https://127.0.0.1:5444/" },
+		"missing-cidr":  func(m *realAWSManifest) { m.Emulator.AllowedCIDR = "" },
+		"missing-ca":    func(m *realAWSManifest) { m.Emulator.CAFile = "" },
+		"relative-ca":   func(m *realAWSManifest) { m.Emulator.CAFile = "ca.pem" },
+		"extra-writer":  func(m *realAWSManifest) { m.Writers["ambient"] = m.Oracle },
+		"no-static": func(m *realAWSManifest) {
+			m.Writers = map[string]realAWSActor{"ambient": {CredentialFile: "a.json", PrincipalARN: "arn:aws:iam::123456789012:role/a"}}
+		},
+		"shared-identity":  func(m *realAWSManifest) { m.Cleanup = m.Oracle },
+		"emulator-account": func(m *realAWSManifest) { m.Account = "000000000000" },
+	}
+	for name, change := range cases {
+		t.Run(name, func(t *testing.T) {
+			m := emulated()
+			change(&m)
+			if m.validateLane(now, true) == nil {
+				t.Fatal("unsafe fixture scope accepted")
+			}
+		})
+	}
+}
+
+// bindEndpoint gives the emulator its own origins, CA and CIDR, and leaves real
+// AWS on the regional origin with system roots.
+func TestAWSRealFixtureEndpointBinding(t *testing.T) {
+	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+	server := httptest.NewTLSServer(http.NotFoundHandler())
+	server.Close()
+	dir := t.TempDir()
+	ca, empty := filepath.Join(dir, "ca.pem"), filepath.Join(dir, "empty.pem")
+	if os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw}), 0o600) != nil || os.WriteFile(empty, nil, 0o600) != nil {
+		t.Fatal("cannot write CA fixtures")
+	}
+	regional := &realAWSSandbox{manifest: realAWSManifestFixture(now)}
+	if err := regional.bindEndpoint(); err != nil || regional.origin != "https://secretsmanager.eu-west-1.amazonaws.com" || regional.stsOrigin != "" || regional.roots != nil || regional.allowed != nil {
+		t.Fatal("real AWS binding changed")
+	}
+	if cfg := regional.endpointConfig(awssm.ClientConfig{}); cfg.RootCAs != nil || cfg.AllowedCIDRs != nil || cfg.STSAllowedCIDRs != nil {
+		t.Fatal("regional AWS client gained emulator trust")
+	}
+	m := realAWSManifestFixture(now)
+	m.Emulator = &realAWSEmulator{Origin: "https://127.0.0.1:5444", STSOrigin: "https://127.0.0.1:5445", CAFile: ca, AllowedCIDR: "127.0.0.1/32"}
+	emulated := &realAWSSandbox{manifest: m}
+	want := []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}
+	if err := emulated.bindEndpoint(); err != nil || !emulated.emulated() || emulated.origin != m.Emulator.Origin || emulated.stsOrigin != m.Emulator.STSOrigin || emulated.roots == nil || !slices.Equal(emulated.allowed, want) {
+		t.Fatal("emulator binding lost its endpoint")
+	}
+	if cfg := emulated.endpointConfig(awssm.ClientConfig{}); cfg.RootCAs != emulated.roots || !slices.Equal(cfg.AllowedCIDRs, want) || !slices.Equal(cfg.STSAllowedCIDRs, want) {
+		t.Fatal("emulator client lost its CA or CIDR")
+	}
+	m.Emulator.CAFile = empty
+	if (&realAWSSandbox{manifest: m}).bindEndpoint() == nil {
+		t.Fatal("emulator CA without a certificate accepted")
 	}
 }
 
