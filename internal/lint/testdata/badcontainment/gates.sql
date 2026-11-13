@@ -76,6 +76,7 @@ SELECT id AS "p.containment_state = 'none'" FROM principals AS p WHERE p.privacy
 -- name: StringAliasPredicate :one
 SELECT id AS 'p.containment_state = ''none''' FROM principals AS p WHERE p.privacy_state = 'active';
 
+-- A quoted reference to the column is the column: this is gated.
 -- name: QuotedIdentifierPredicate :one
 SELECT id FROM principals AS p WHERE p.privacy_state = 'active' AND p."containment_state" = 'none';
 
@@ -134,3 +135,27 @@ SELECT p.id FROM principals AS p WHERE p.privacy_state = 'active' AND p.containm
 SELECT p.id FROM principals AS p WHERE p.privacy_state = 'active' AND p.containment_state = 'none'
 UNION ALL
 SELECT p.id FROM principals AS p WHERE p.privacy_state = 'active';
+
+-- name: QuotedQualifiedPrivacy :one
+SELECT id FROM principals AS p WHERE p."privacy_state" = 'active';
+
+-- name: QuotedBarePrivacy :one
+SELECT id FROM principals WHERE "privacy_state" = 'active';
+
+-- name: BacktickQualifiedPrivacy :one
+SELECT id FROM principals AS p WHERE p.`privacy_state` = 'active';
+
+-- name: BacktickBarePrivacy :one
+SELECT id FROM principals WHERE `privacy_state` = 'active';
+
+-- name: QuotedEverywherePrivacy :one
+SELECT id FROM principals AS "p" WHERE "p"."privacy_state" = 'active';
+
+-- name: QuotedEverywhereGated :one
+SELECT id FROM principals AS "p" WHERE "p"."privacy_state" = 'active' AND "p"."containment_state" = 'none';
+
+-- name: BacktickGated :one
+SELECT id FROM principals AS p WHERE p.`privacy_state` = 'active' AND p.`containment_state` = 'none';
+
+-- name: QuotedBareGated :one
+SELECT id FROM principals WHERE "privacy_state" = 'active' AND "containment_state" = 'none';

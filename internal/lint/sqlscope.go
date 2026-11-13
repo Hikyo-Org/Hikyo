@@ -13,6 +13,8 @@ import (
 //
 // Residual limits, covered by the behavioural isolation tests instead:
 //   - dollar-quoted and backslash-escaped (E'...') string literals are not read;
+//   - a bracket-quoted ([privacy_state]) or single-quoted column reference is
+//     not read as a column;
 //   - an ON condition of an outer join is treated like a WHERE filter;
 //   - a CASE expression, a SELECT-list expression and a NOT-negated group never
 //     count as a gate, but other boolean constructs (IS TRUE, IS DISTINCT FROM,
@@ -25,10 +27,12 @@ import (
 var maskedGateLiterals = map[string]bool{"active": true, "restricted": true, "none": true, "contained": true}
 
 // maskSQL strips `--` and (nested) `/* */` comments, blanks every string
-// literal except the gate values, replaces the content of every quoted
-// identifier ("x" or `x`) with an underscore, and lower-cases the rest. A
-// comment marker inside a quoted identifier or a string is not a comment, and
-// a predicate spelled inside a quoted name or a string is not a predicate.
+// literal except the gate values, unquotes quoted identifiers that are plain
+// names and replaces the content of every other one ("x y" or `x.y = 'z'`)
+// with an underscore, and lower-cases the rest. A comment marker inside a
+// quoted identifier or a string is not a comment, and a predicate spelled
+// inside a quoted alias or a string is not a predicate, while a quoted
+// reference to a column (p."privacy_state") is still the column.
 func maskSQL(sql string) string {
 	var b strings.Builder
 	for i := 0; i < len(sql); {
@@ -42,6 +46,10 @@ func maskSQL(sql string) string {
 				b.WriteString("'" + content + "'")
 			case c == '\'':
 				b.WriteString("''")
+			case plainIdentifier(content):
+				// A quoted name that is a plain identifier is the column or alias it
+				// names ("privacy_state", p."privacy_state"), so it is read as one.
+				b.WriteString(strings.ToLower(content))
 			default:
 				b.WriteString(string(c) + "_" + string(c))
 			}
@@ -75,6 +83,23 @@ func maskSQL(sql string) string {
 		}
 	}
 	return b.String()
+}
+
+// plainIdentifier reports a quoted name that is a bare identifier and not a
+// keyword the scope reader acts on.
+func plainIdentifier(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		letter := name[i]|0x20 >= 'a' && name[i]|0x20 <= 'z'
+		digit := i > 0 && name[i] >= '0' && name[i] <= '9'
+		if !letter && !digit && name[i] != '_' {
+			return false
+		}
+	}
+	lower := strings.ToLower(name)
+	return !sqlBreakWords[lower] && lower != "or" && lower != "not" && lower != "case" && lower != "end"
 }
 
 // scanQuoted reads the quoted token starting at sql[start], a doubled quote
