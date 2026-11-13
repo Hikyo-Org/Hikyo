@@ -3,7 +3,7 @@ package upgradegate
 import (
 	"bytes"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	trustfixture "github.com/Hikyo-Org/hikyo/internal/releasetrust/testfixture"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
@@ -59,7 +60,7 @@ func rotationRequest(t *testing.T, request Request, state upgrade.State, prior, 
 	}
 	incarnation, _ := state.RecoveryIncarnation.MarshalText()
 	rotation := backupreceipt.Rotation{Format: backupreceipt.RotationFormat, Mode: mode, InstanceID: state.InstanceID, RecoveryIncarnation: backupreceipt.Nonce(incarnation), RestoreEpoch: state.RestoreEpoch, MaxKnownCredentialEpoch: strongest, NextEpoch: strongest + 1, CurrentKeyID: oldPin.KeyID(), NewKeyID: newPin.KeyID(), IssuedAt: time.Now().UTC().Truncate(time.Second)}
-	raw, err := json.Marshal(rotation)
+	raw, err := json.Marshal(rotation, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +234,7 @@ func TestOperatorHistoricalRestoreRequiresCurrentPinAndEscrow(t *testing.T) {
 			}
 			defer db.Close()
 			incarnation, _ := historical.RecoveryIncarnation.MarshalText()
-			pending, _ := json.Marshal(historical.Pending)
+			pending, _ := json.Marshal(historical.Pending, jsonwire.Stable)
 			tx, err := db.BeginTx(t.Context(), nil)
 			if err != nil {
 				t.Fatal(err)

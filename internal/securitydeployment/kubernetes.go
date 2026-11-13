@@ -2,7 +2,7 @@ package securitydeployment
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/multicall"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securefile"
@@ -23,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	utiljson "k8s.io/apimachinery/pkg/util/json"
 )
 
 const stageOwner = "hikyo.dev/security-stage-owner"
@@ -106,7 +108,7 @@ func (e *Executor) PinIdentity(ctx context.Context) error {
 		}
 		return nil
 	}
-	raw, err := json.Marshal(kubernetesIdentity{DeploymentUID: string(d.UID)})
+	raw, err := json.Marshal(kubernetesIdentity{DeploymentUID: string(d.UID)}, jsonwire.Stable)
 	if err != nil {
 		return err
 	}
@@ -478,7 +480,8 @@ func (e *Executor) stagePod(d *appsv1.Deployment, node, image string, args []str
 	if err != nil || selector.Matches(labels.Set(pod.Labels)) {
 		return nil, ErrUnsupported
 	}
-	raw, err := json.Marshal(pod.Spec)
+	// Kubernetes types keep the encoding of the client libraries that own their tags.
+	raw, err := utiljson.Marshal(pod.Spec)
 	if err != nil {
 		return nil, err
 	}
@@ -573,7 +576,7 @@ func (e *Executor) prepareKubernetes(ctx context.Context, target Target) (result
 	}
 	// Save the exact source resourceVersion. Apply never refreshes a changed
 	// desired state and silently overwrites a concurrent operator/controller.
-	prepared, err := json.Marshal(d)
+	prepared, err := utiljson.Marshal(d)
 	if err != nil {
 		return Observation{}, err
 	}
@@ -684,7 +687,7 @@ func (e *Executor) applyKubernetes(ctx context.Context, j *deploymentJournal) er
 	if current.UID != prepared.UID || current.ResourceVersion != prepared.ResourceVersion {
 		return ErrConflict
 	}
-	currentRaw, err := json.Marshal(current)
+	currentRaw, err := utiljson.Marshal(current)
 	if err != nil {
 		return err
 	}
@@ -1153,7 +1156,7 @@ func (e *Executor) FollowCoordinator(ctx context.Context, image string) error {
 		return nil
 	}
 	// The resourceVersion makes the patch conditional on the read: a concurrent change refuses it.
-	patch, err := json.Marshal(map[string]any{"metadata": map[string]any{"resourceVersion": cron.ResourceVersion}, "spec": map[string]any{"jobTemplate": map[string]any{"spec": map[string]any{"template": map[string]any{"spec": spec}}}}})
+	patch, err := json.Marshal(map[string]any{"metadata": map[string]any{"resourceVersion": cron.ResourceVersion}, "spec": map[string]any{"jobTemplate": map[string]any{"spec": map[string]any{"template": map[string]any{"spec": spec}}}}}, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

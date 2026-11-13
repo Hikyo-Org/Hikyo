@@ -3,7 +3,8 @@ package updater
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 const protocolBodyLimit = 1 << 20
@@ -116,17 +119,20 @@ func writeProtocolError(w http.ResponseWriter, status int, code string) {
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
+	b, err := json.Marshal(value, jsonwire.Stable)
+	if err != nil {
+		return
+	}
+	// The newline keeps the body byte-identical to what json.Encoder wrote.
+	_, _ = w.Write(append(b, '\n'))
 }
 
 func decodeJSON(r io.Reader, value any) error {
-	decoder := json.NewDecoder(io.LimitReader(r, protocolBodyLimit))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(value); err != nil {
+	decoder := jsontext.NewDecoder(io.LimitReader(r, protocolBodyLimit))
+	if err := json.UnmarshalDecode(decoder, value, json.RejectUnknownMembers(true)); err != nil {
 		return err
 	}
-	var extra any
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+	if _, err := decoder.ReadToken(); !errors.Is(err, io.EOF) {
 		return errors.New("multiple JSON values")
 	}
 	return nil
@@ -183,7 +189,7 @@ func (c *Client) PendingOutcomes(ctx context.Context) ([]Job, error) {
 func (c *Client) do(ctx context.Context, method, path string, body any, want int, out any) error {
 	var reader io.Reader
 	if body != nil {
-		b, err := json.Marshal(body)
+		b, err := json.Marshal(body, jsonwire.Stable)
 		if err != nil {
 			return err
 		}

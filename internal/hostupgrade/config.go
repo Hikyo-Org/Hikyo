@@ -4,7 +4,8 @@ package hostupgrade
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 const ConfigPath = "/etc/hikyo/upgrade.json"
@@ -113,12 +115,11 @@ func LoadConfig(path string) (Config, error) {
 	if len(b) > 65536 {
 		return c, errors.New("host upgrade config exceeds 64 KiB")
 	}
-	d := json.NewDecoder(bytes.NewReader(b))
-	d.DisallowUnknownFields()
-	if err = d.Decode(&c); err != nil {
+	d := jsontext.NewDecoder(bytes.NewReader(b))
+	if err = json.UnmarshalDecode(d, &c, json.RejectUnknownMembers(true)); err != nil {
 		return c, fmt.Errorf("host upgrade config: %w", err)
 	}
-	if err = d.Decode(new(any)); err != io.EOF {
+	if _, err = d.ReadToken(); !errors.Is(err, io.EOF) {
 		return c, errors.New("host upgrade config contains trailing JSON")
 	}
 	return c, c.Validate()
@@ -139,7 +140,7 @@ func InitializeConfig(path string) (Config, error) {
 		return Config{}, err
 	}
 	c := DefaultConfig()
-	b, err := json.MarshalIndent(c, "", "  ")
+	b, err := json.Marshal(c, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		return c, err
 	}

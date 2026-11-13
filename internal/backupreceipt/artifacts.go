@@ -7,7 +7,8 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"math"
@@ -151,9 +152,9 @@ func (s *Snapshot) UnmarshalJSON(raw []byte) error {
 		return err
 	}
 	*s = Snapshot(decoded)
-	var members map[string]json.RawMessage
+	var members map[string]jsontext.Value
 	_ = json.Unmarshal(raw, &members)
-	var source map[string]json.RawMessage
+	var source map[string]jsontext.Value
 	if json.Unmarshal(members["source_identity"], &source) != nil || len(source) != 1 {
 		return errors.New("source identity must name exactly one source variant")
 	}
@@ -254,7 +255,7 @@ func decodeClosed(raw []byte, target any, fields []string) error {
 	if len(raw) == 0 || len(raw) > MaxArtifactBytes || definitions.DecodeStrict(raw, target) != nil {
 		return errors.New("invalid closed upgrade artifact")
 	}
-	var members map[string]json.RawMessage
+	var members map[string]jsontext.Value
 	if json.Unmarshal(raw, &members) != nil || len(members) != len(fields) {
 		return errors.New("missing upgrade artifact fields")
 	}

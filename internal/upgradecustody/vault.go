@@ -13,7 +13,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
 	"sync"
@@ -23,6 +23,7 @@ import (
 	hikyocrypto "github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/sigstore/sigstore/pkg/signature"
 )
@@ -120,7 +121,7 @@ func create(directory string, passphrase, rootKey []byte, instance string, owner
 // profile the backup package uses for exports; age's default work factor
 // applies.
 func seal(r record, passphrase []byte) ([]byte, error) {
-	plain, err := json.Marshal(r)
+	plain, err := json.Marshal(r, jsonwire.Stable)
 	if err != nil {
 		return nil, errors.New("encode operator custody")
 	}
@@ -319,7 +320,7 @@ func (v *Vault) SignAttestation(raw []byte, now time.Time) ([]byte, error) {
 	if err != nil {
 		return nil, errors.New("sign operator attestation")
 	}
-	bundle, err := json.Marshal(releasetrust.LegacyBundle{Base64Signature: base64.StdEncoding.EncodeToString(sig)})
+	bundle, err := json.Marshal(releasetrust.LegacyBundle{Base64Signature: base64.StdEncoding.EncodeToString(sig)}, jsonwire.Stable)
 	if err != nil || backupreceipt.CheckOperatorSignature(v.pin, bundle, raw) != nil {
 		return nil, errors.New("verify generated operator attestation signature")
 	}

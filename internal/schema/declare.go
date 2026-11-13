@@ -2,7 +2,8 @@ package schema
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // CompileClassified is the persisted-declaration authority. It normalizes the
@@ -82,7 +85,9 @@ func (c *Compiled) Declaration() Declaration { return cloneDeclaration(c.decl) }
 
 // Canonical renders the byte-stable storage form of the same normalized
 // declaration that the compiled validators use.
-func (c *Compiled) Canonical() ([]byte, error) { return json.Marshal(c.decl) }
+func (c *Compiled) Canonical() ([]byte, error) {
+	return json.Marshal(c.decl, jsonwire.Stable)
+}
 
 type compiledRule struct {
 	rule    Rule
@@ -257,17 +262,25 @@ var errDuplicateKey = errors.New("duplicate object key")
 // strictJSON parses exactly one JSON document, rejecting trailing content and
 // duplicate object keys anywhere in it. Numbers are kept as json.Number so a
 // re-encode is lossless: the ADR requires numeric values to be validated as
-// JSON numbers but delivered as the original bytes.
+// JSON numbers but delivered as the original bytes. The JSON Schema library
+// owns that decode, because it validates against exactly that representation.
 func strictJSON(raw []byte, out *any) error {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	if err := dec.Decode(out); err != nil {
+	dec := jsontext.NewDecoder(bytes.NewReader(raw), jsontext.AllowDuplicateNames(true))
+	if _, err := dec.ReadValue(); err != nil {
 		return err
 	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+	if _, err := dec.ReadToken(); !errors.Is(err, io.EOF) {
 		return errors.New("trailing content after the JSON document")
 	}
-	return checkNoDuplicateKeys(raw)
+	if err := checkNoDuplicateKeys(raw); err != nil {
+		return err
+	}
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	*out = doc
+	return nil
 }
 
 // checkNoDuplicateKeys walks the token stream keeping one seen-set per open
@@ -279,8 +292,7 @@ func checkNoDuplicateKeys(raw []byte) error {
 		seen      map[string]bool
 		expectKey bool
 	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
+	dec := jsontext.NewDecoder(bytes.NewReader(raw), jsontext.AllowDuplicateNames(true))
 	var stack []*frame
 	top := func() *frame {
 		if len(stack) == 0 {
@@ -296,15 +308,15 @@ func checkNoDuplicateKeys(raw []byte) error {
 		}
 	}
 	for {
-		tok, err := dec.Token()
+		tok, err := dec.ReadToken()
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		if delim, ok := tok.(json.Delim); ok {
-			switch delim {
+		if kind := tok.Kind(); kind == '{' || kind == '[' || kind == '}' || kind == ']' {
+			switch kind {
 			case '{':
 				fillSlot()
 				stack = append(stack, &frame{object: true, seen: map[string]bool{}, expectKey: true})
@@ -318,10 +330,10 @@ func checkNoDuplicateKeys(raw []byte) error {
 		}
 		f := top()
 		if f != nil && f.object && f.expectKey {
-			name, ok := tok.(string)
-			if !ok {
+			if tok.Kind() != '"' {
 				return fmt.Errorf("object key is not a string")
 			}
+			name := tok.String()
 			if f.seen[name] {
 				return fmt.Errorf("%w %q", errDuplicateKey, name)
 			}

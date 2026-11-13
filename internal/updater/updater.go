@@ -4,7 +4,7 @@ package updater
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type Backend string
@@ -267,7 +268,7 @@ func (j *Journal) write(state journalFile) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	b, err := json.Marshal(state)
+	b, err := json.Marshal(state, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

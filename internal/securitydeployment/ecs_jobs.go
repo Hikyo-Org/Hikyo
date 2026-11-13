@@ -2,13 +2,15 @@ package securitydeployment
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securefile"
 )
@@ -26,7 +28,7 @@ const ecsJobFormat = "hikyo.security-ecs-job/v1"
 func (e *Executor) ecsJobPath() string { return filepath.Join(e.c.StateDirectory, "ecs-job.json") }
 
 func (e *Executor) saveECSJob(intent ecsJobIntent) error {
-	raw, err := json.Marshal(intent)
+	raw, err := json.Marshal(intent, jsonwire.Stable)
 	if err != nil {
 		return err
 	}
@@ -183,13 +185,13 @@ func (e *Executor) ecsJob(ctx context.Context, service ecsService, definition, r
 	}
 	// Persist the idempotency/ownership tuple before the API call. A lost reply
 	// leaves this record for exact startedBy recovery, never blind task cleanup.
-	input := map[string]any{"cluster": e.c.ECS.ClusterARN, "taskDefinition": definition, "launchType": "FARGATE", "platformVersion": service.PlatformVersion, "networkConfiguration": json.RawMessage(service.Network), "count": 1,
+	input := map[string]any{"cluster": e.c.ECS.ClusterARN, "taskDefinition": definition, "launchType": "FARGATE", "platformVersion": service.PlatformVersion, "networkConfiguration": jsontext.Value(service.Network), "count": 1,
 		"clientToken": purpose + "-" + nonce, "startedBy": "hs-" + nonce, "group": "hikyo-security:" + e.c.ECS.OwnerTag, "enableExecuteCommand": false,
 		"overrides": map[string]any{"containerOverrides": []map[string]any{{"name": e.c.ECS.Container, "command": command}}},
 		"tags":      []ecsTag{{Key: "hikyo.dev/security-maintenance-owner", Value: e.c.ECS.OwnerTag}, {Key: "hikyo.dev/security-job", Value: nonce}}}
 	var launched struct {
-		Tasks    []ecsTask         `json:"tasks"`
-		Failures []json.RawMessage `json:"failures"`
+		Tasks    []ecsTask        `json:"tasks"`
+		Failures []jsontext.Value `json:"failures"`
 	}
 	if err := e.aws(ctx, "ecs", "run-task", input, &launched); err != nil {
 		if errors.Is(err, errECSNoEffect) {

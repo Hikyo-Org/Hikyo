@@ -6,7 +6,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
@@ -134,7 +135,7 @@ func TestAttestationSigningBindsInstallationKeyAndWindow(t *testing.T) {
 	_, v := testVault(t)
 	now := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
 	a := validAttestation(v, now)
-	raw, err := json.Marshal(a)
+	raw, err := json.Marshal(a, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +164,7 @@ func TestAttestationSigningBindsInstallationKeyAndWindow(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			changed := a
 			tc.alter(&changed)
-			raw, err := json.Marshal(changed)
+			raw, err := json.Marshal(changed, jsonwire.Stable)
 			if err != nil {
 				t.Fatal(err)
 			}

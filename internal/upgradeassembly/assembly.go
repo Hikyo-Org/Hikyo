@@ -4,7 +4,7 @@ package upgradeassembly
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -15,6 +15,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/upgradebundle"
@@ -186,7 +187,7 @@ func Assemble(ctx context.Context, o Options) error {
 	slices.SortFunc(index.Releases, func(a, b upgradebundle.ReleaseEntry) int {
 		return strings.Compare(string(a.ManifestSHA256), string(b.ManifestSHA256))
 	})
-	raw, err := json.Marshal(index)
+	raw, err := json.Marshal(index, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

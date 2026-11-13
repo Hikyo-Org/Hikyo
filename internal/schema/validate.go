@@ -2,7 +2,7 @@ package schema
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/url"
@@ -13,6 +13,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // The value-validation engine. One declaration, one string, one verdict.
@@ -233,7 +235,7 @@ func capFailures(in []Failure) []Failure {
 // structs) costs nothing worth optimising, and it is the only measurement that
 // cannot drift from the encoder.
 func encodedSize(failures []Failure) int {
-	encoded, err := json.Marshal(Verdict{Errors: failures})
+	encoded, err := json.Marshal(Verdict{Errors: failures}, jsonwire.Stable)
 	if err != nil {
 		// Unreachable: every field is a string or an int. Reported as
 		// over-budget so the caps fail CLOSED rather than open.

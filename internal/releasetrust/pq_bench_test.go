@@ -3,7 +3,7 @@ package releasetrust_test
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"

@@ -11,7 +11,8 @@ package securitydeployment
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -23,6 +24,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/localsocket"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securefile"
@@ -413,16 +415,14 @@ func decode(raw []byte, out any) error {
 	if len(raw) == 0 || len(raw) > maxRecordBytes {
 		return ErrInvalid
 	}
-	d := json.NewDecoder(bytes.NewReader(raw))
+	d := jsontext.NewDecoder(bytes.NewReader(raw))
 	// A target image may be newer than this coordinator and add observation
 	// fields. Everything this installation wrote itself stays strictly decoded.
-	if _, observation := out.(*Observation); !observation {
-		d.DisallowUnknownFields()
-	}
-	if err := d.Decode(out); err != nil {
+	_, observation := out.(*Observation)
+	if err := json.UnmarshalDecode(d, out, json.RejectUnknownMembers(!observation)); err != nil {
 		return ErrInvalid
 	}
-	if err := d.Decode(new(any)); err != io.EOF {
+	if _, err := d.ReadToken(); !errors.Is(err, io.EOF) {
 		return ErrInvalid
 	}
 	return nil
@@ -453,7 +453,7 @@ func (e *Executor) journal() (*deploymentJournal, error) {
 }
 
 func (e *Executor) save(j *deploymentJournal) error {
-	raw, err := json.Marshal(j)
+	raw, err := json.Marshal(j, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

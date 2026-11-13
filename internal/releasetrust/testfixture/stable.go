@@ -10,10 +10,11 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/sigstore/sigstore/pkg/signature"
@@ -44,7 +45,7 @@ type SignedRelease struct {
 
 func JSON(t testing.TB, value any) []byte {
 	t.Helper()
-	raw, err := json.Marshal(value)
+	raw, err := json.Marshal(value, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,10 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 
 	"github.com/jackc/pgx/v5"
@@ -87,7 +88,7 @@ func reconcileRestore(ctx context.Context, row func(string, ...any) scanner, exe
 	if n != 1 {
 		return State{}, ErrConflict
 	}
-	raw, err := json.Marshal(next.Pending)
+	raw, err := json.Marshal(next.Pending, jsonwire.Stable)
 	if err != nil {
 		return State{}, err
 	}

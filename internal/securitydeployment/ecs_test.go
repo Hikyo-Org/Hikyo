@@ -4,7 +4,8 @@ package securitydeployment
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
@@ -18,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 )
 
@@ -49,15 +51,15 @@ func ecsTestConfig(t *testing.T) Config {
 	}}
 }
 
-func ecsRaw(value any) json.RawMessage {
-	raw, err := json.Marshal(value)
+func ecsRaw(value any) jsontext.Value {
+	raw, err := json.Marshal(value, jsonwire.Stable)
 	if err != nil {
 		panic(err)
 	}
 	return raw
 }
 
-func ecsTestDefinition(c Config, arn, image string) map[string]json.RawMessage {
+func ecsTestDefinition(c Config, arn, image string) map[string]jsontext.Value {
 	p := c.ECS
 	cpu := "X86_64"
 	if runtime.GOARCH == "arm64" {
@@ -74,7 +76,7 @@ func ecsTestDefinition(c Config, arn, image string) map[string]json.RawMessage {
 	volume := func(name, fs, ap string) map[string]any {
 		return map[string]any{"name": name, "efsVolumeConfiguration": map[string]any{"fileSystemId": fs, "rootDirectory": "/", "transitEncryption": "ENABLED", "authorizationConfig": map[string]string{"accessPointId": ap, "iam": "ENABLED"}}}
 	}
-	return map[string]json.RawMessage{"taskDefinitionArn": ecsRaw(arn), "status": ecsRaw("ACTIVE"), "revision": ecsRaw(1), "family": ecsRaw(p.TaskFamily), "taskRoleArn": ecsRaw(p.TaskRoleARN), "executionRoleArn": ecsRaw(p.ExecutionRoleARN), "networkMode": ecsRaw("awsvpc"),
+	return map[string]jsontext.Value{"taskDefinitionArn": ecsRaw(arn), "status": ecsRaw("ACTIVE"), "revision": ecsRaw(1), "family": ecsRaw(p.TaskFamily), "taskRoleArn": ecsRaw(p.TaskRoleARN), "executionRoleArn": ecsRaw(p.ExecutionRoleARN), "networkMode": ecsRaw("awsvpc"),
 		"requiresCompatibilities": ecsRaw([]string{"FARGATE"}), "cpu": ecsRaw("256"), "memory": ecsRaw("512"), "runtimePlatform": ecsRaw(map[string]string{"cpuArchitecture": cpu, "operatingSystemFamily": "LINUX"}),
 		"containerDefinitions": ecsRaw([]any{container}), "volumes": ecsRaw([]any{volume(p.UpgradeVolume, p.UpgradeFileSystemID, p.UpgradeAccessPointID), volume(p.RootVolume, p.RootFileSystemID, p.RootAccessPointID), map[string]string{"name": p.TemporaryVolume}})}
 }
@@ -83,7 +85,7 @@ type ecsFakeRunner struct {
 	t                 *testing.T
 	config            Config
 	service           ecsService
-	definitions       map[string]map[string]json.RawMessage
+	definitions       map[string]map[string]jsontext.Value
 	tasks             map[string]ecsTask
 	logs              map[string]Observation
 	logTimes          map[string]int64
@@ -119,7 +121,7 @@ type ecsFakeRunner struct {
 	missingStopped                   int
 	staleDesired                     int
 	staleRestart                     int
-	defTags                          map[string]json.RawMessage
+	defTags                          map[string]jsontext.Value
 	definitionBefore                 string
 	listDefsFail                     bool
 	// emptyFirstLogPage puts an empty page before the event; secondLogPage a second event after it.
@@ -128,8 +130,8 @@ type ecsFakeRunner struct {
 
 // ecsAWSOrder returns container definitions in AWS response order, not the
 // sorted order json.Marshal gives a Go map.
-func ecsAWSOrder(raw json.RawMessage) json.RawMessage {
-	var containers []map[string]json.RawMessage
+func ecsAWSOrder(raw jsontext.Value) jsontext.Value {
+	var containers []map[string]jsontext.Value
 	if json.Unmarshal(raw, &containers) != nil {
 		panic("container definitions")
 	}
@@ -157,7 +159,7 @@ func ecsAWSOrder(raw json.RawMessage) json.RawMessage {
 		out.WriteString("}")
 	}
 	out.WriteString("]")
-	return json.RawMessage(out.String())
+	return jsontext.Value(out.String())
 }
 
 func ecsFixture(t *testing.T) (*Executor, *ecsFakeRunner) {
@@ -166,7 +168,7 @@ func ecsFixture(t *testing.T) (*Executor, *ecsFakeRunner) {
 	p := c.ECS
 	sourceImage := c.ImageRepository + "@sha256:" + strings.Repeat("1", 64)
 	target := Target{Identity: ecsTestIdentity("1.0.1", 2), Image: c.ImageRepository + "@sha256:" + strings.Repeat("2", 64), RuntimeImageSHA256: strings.Repeat("4", 64), EligibilityUntil: time.Now().Add(time.Hour)}
-	f := &ecsFakeRunner{t: t, config: c, definitions: map[string]map[string]json.RawMessage{}, tasks: map[string]ecsTask{}, logs: map[string]Observation{}, logTimes: map[string]int64{}, target: target, readiness: true,
+	f := &ecsFakeRunner{t: t, config: c, definitions: map[string]map[string]jsontext.Value{}, tasks: map[string]ecsTask{}, logs: map[string]Observation{}, logTimes: map[string]int64{}, target: target, readiness: true,
 		database: Observation{Platform: runtime.GOOS + "/" + runtime.GOARCH, Engine: releaseidentity.Postgres, Identity: ecsTestIdentity("1.0.0", 1), Instance: "customer-installation", Generation: 3, RestoreEpoch: 1, Incarnation: strings.Repeat("b", 64), Phase: "healthy", Maintenance: false, Ready: false}}
 	f.service.ARN, f.service.Name, f.service.ClusterARN, f.service.Status = p.ServiceARN, p.serviceName(), p.ClusterARN, "ACTIVE"
 	f.service.CreatedAt = ecsRaw(p.ServiceCreatedAt)
@@ -233,7 +235,7 @@ func (f *ecsFakeRunner) serviceTask(arn, definition, image, digest string) ecsTa
 	return task
 }
 
-func ecsInputString(input map[string]json.RawMessage, key string) string {
+func ecsInputString(input map[string]jsontext.Value, key string) string {
 	var value string
 	_ = json.Unmarshal(input[key], &value)
 	return value
@@ -248,11 +250,13 @@ func (f *ecsFakeRunner) Run(ctx context.Context, command Command) ([]byte, error
 	}
 	service, action := command.Args[len(command.Args)-4], command.Args[len(command.Args)-3]
 	f.commands = append(f.commands, service+"/"+action)
-	var input map[string]json.RawMessage
+	var input map[string]jsontext.Value
 	if json.Unmarshal(command.Input, &input) != nil {
 		return nil, errors.New("invalid CLI stdin JSON")
 	}
-	respond := func(value any) ([]byte, error) { return json.Marshal(value) }
+	respond := func(value any) ([]byte, error) {
+		return json.Marshal(value, jsonwire.Stable)
+	}
 	switch service + "/" + action {
 	case "ecs/describe-services":
 		s := f.service
@@ -280,7 +284,7 @@ func (f *ecsFakeRunner) Run(ctx context.Context, command Command) ([]byte, error
 		if f.unreadableInactive && string(definition["status"]) == `"INACTIVE"` {
 			return nil, errors.New("security deployment: installed command exited with status 254: An error occurred (ClientException) when calling the DescribeTaskDefinition operation: Unable to describe task definition.")
 		}
-		tags := json.RawMessage("[]")
+		tags := jsontext.Value("[]")
 		if raw, ok := f.defTags[arn]; ok {
 			tags = raw
 		}
@@ -389,7 +393,7 @@ func (f *ecsFakeRunner) Run(ctx context.Context, command Command) ([]byte, error
 		}
 		f.registered++
 		arn := ecsTestPrefix + fmt.Sprintf("task-definition/hikyo:%d", f.registered+1)
-		definition := map[string]json.RawMessage{}
+		definition := map[string]jsontext.Value{}
 		for key, value := range input {
 			if key != "tags" {
 				definition[key] = value
@@ -402,7 +406,7 @@ func (f *ecsFakeRunner) Run(ctx context.Context, command Command) ([]byte, error
 		}
 		f.definitions[arn] = definition
 		if f.defTags == nil {
-			f.defTags = map[string]json.RawMessage{}
+			f.defTags = map[string]jsontext.Value{}
 		}
 		f.defTags[arn] = input["tags"]
 		if f.registerLateErr != nil {
@@ -1225,7 +1229,7 @@ func TestECSInactiveRevisionClearsARecordWithoutTheRetiringMarker(t *testing.T) 
 		t.Fatal(err)
 	}
 	// Deregistered by another hand before this record sent its call.
-	f.definitions[intent.Definition]["status"] = json.RawMessage(`"INACTIVE"`)
+	f.definitions[intent.Definition]["status"] = jsontext.Value(`"INACTIVE"`)
 	f.badRuntime, f.deregisterErr = false, nil
 	if _, err := e.Prepare(t.Context(), f.target); err != nil {
 		t.Fatalf("an INACTIVE revision blocked Prepare: %v", err)
