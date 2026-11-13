@@ -114,6 +114,10 @@ func preauthRequest(handler http.Handler, token string, kind crypto.ArtifactType
 	} else if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+	if kind == crypto.ArtifactWorkspaceSession {
+		// A workspace bearer is bound to the origin that minted it.
+		req.Header.Set("Origin", workspaceTestOrigin)
+	}
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	return rec
@@ -139,8 +143,11 @@ func preauthSession(t *testing.T, db *store.DB, kind crypto.ArtifactType, state 
 			return err
 		}
 		artifact := "cli"
-		if kind == crypto.ArtifactBrowserSession {
+		switch kind {
+		case crypto.ArtifactBrowserSession:
 			artifact = "browser"
+		case crypto.ArtifactWorkspaceSession:
+			artifact = "workspace"
 		}
 		now := time.Now().UTC()
 		session := authz.NewSession{
@@ -152,6 +159,10 @@ func preauthSession(t *testing.T, db *store.DB, kind crypto.ArtifactType, state 
 		}
 		if len(csrf) == 1 {
 			session.CSRFVerifier = crypto.ArtifactVerifier(csrf[0])
+		}
+		if kind == crypto.ArtifactWorkspaceSession {
+			// The table CHECK makes the bound origin and handoff a pair.
+			session.RequestingOrigin, session.HandoffID = workspaceTestOrigin, "hof_preauth"
 		}
 		if state == "expired" {
 			session.CreatedAt = now.Add(-3 * time.Hour)
