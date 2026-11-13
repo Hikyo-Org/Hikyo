@@ -2,7 +2,7 @@ package oidcrp
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -20,7 +20,7 @@ import (
 func TestDiscoveryRefusesImplicitLoopbackHTTP(t *testing.T) {
 	var issuer string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]string{
+		_ = json.MarshalWrite(w, map[string]string{
 			"issuer": issuer, "authorization_endpoint": issuer + "/authorize",
 			"token_endpoint": issuer + "/token", "jwks_uri": issuer + "/keys",
 		})
@@ -39,7 +39,7 @@ func TestDiscoveryRejectsUnsafeDiscoveredEndpoints(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				document := map[string]string{"issuer": issuer, "authorization_endpoint": issuer + "/authorize", "token_endpoint": issuer + "/token", "jwks_uri": issuer + "/keys"}
 				document[field] = "http://169.254.169.254/private"
-				_ = json.NewEncoder(w).Encode(document)
+				_ = json.MarshalWrite(w, document)
 			}))
 			defer server.Close()
 			issuer = server.URL
@@ -91,7 +91,7 @@ func TestAllOIDCLegsUseBoundedClient(t *testing.T) {
 						_, _ = io.WriteString(w, strings.Repeat(" ", federationhttp.DocumentBytes+1))
 						return
 					}
-					_ = json.NewEncoder(w).Encode(map[string]any{"issuer": issuer, "authorization_endpoint": issuer + "/authorize", "token_endpoint": issuer + "/token", "jwks_uri": issuer + "/jwks", "id_token_signing_alg_values_supported": []string{"RS256"}})
+					_ = json.MarshalWrite(w, map[string]any{"issuer": issuer, "authorization_endpoint": issuer + "/authorize", "token_endpoint": issuer + "/token", "jwks_uri": issuer + "/jwks", "id_token_signing_alg_values_supported": []string{"RS256"}})
 				case "/token":
 					tokenHits.Add(1)
 					if mode == "token-error" {
@@ -99,7 +99,7 @@ func TestAllOIDCLegsUseBoundedClient(t *testing.T) {
 						_, _ = io.WriteString(w, `{"error":"synthetic-response-secret"}`)
 						return
 					}
-					_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "synthetic-access", "token_type": "Bearer", "id_token": rawToken})
+					_ = json.MarshalWrite(w, map[string]string{"access_token": "synthetic-access", "token_type": "Bearer", "id_token": rawToken})
 					if mode == "token-large" {
 						_, _ = io.WriteString(w, strings.Repeat(" ", federationhttp.TokenBytes))
 					}

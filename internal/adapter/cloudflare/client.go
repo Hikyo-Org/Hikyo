@@ -12,7 +12,8 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/binary"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -27,6 +28,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/netpolicy"
 )
 
@@ -233,8 +235,8 @@ func retryDeadline(header http.Header, now time.Time) time.Time {
 }
 
 type envelope struct {
-	Success    *bool           `json:"success"`
-	Result     json.RawMessage `json:"result"`
+	Success    *bool          `json:"success"`
+	Result     jsontext.Value `json:"result"`
 	ResultInfo *struct {
 		TotalCount int `json:"total_count"`
 		TotalPages int `json:"total_pages"`
@@ -246,7 +248,7 @@ type envelope struct {
 func (c *Client) do(ctx context.Context, op operation, path string, body any) (envelope, error) {
 	var input io.Reader
 	if body != nil {
-		raw, err := json.Marshal(body)
+		raw, err := json.Marshal(body, jsonwire.Stable)
 		if err != nil {
 			return envelope{}, err
 		}

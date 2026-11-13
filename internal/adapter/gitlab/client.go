@@ -14,7 +14,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -28,6 +29,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/netpolicy"
 )
 
@@ -284,7 +286,7 @@ func (c *Client) rateDeadline(status int, header http.Header, now time.Time) (ti
 // Only the key field's messages are inspected; nothing is retained.
 func takenBody(raw []byte) bool {
 	var body struct {
-		Message json.RawMessage `json:"message"`
+		Message jsontext.Value `json:"message"`
 	}
 	if json.Unmarshal(raw, &body) != nil || len(body.Message) == 0 {
 		return false
@@ -304,7 +306,7 @@ func takenBody(raw []byte) bool {
 func (c *Client) do(ctx context.Context, op operation, path string, body any, out any) (int, error) {
 	var input io.Reader
 	if body != nil {
-		raw, err := json.Marshal(body)
+		raw, err := json.Marshal(body, jsonwire.Stable)
 		if err != nil {
 			return 0, err
 		}

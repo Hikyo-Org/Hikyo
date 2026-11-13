@@ -1,7 +1,8 @@
 package oidcfed
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"sync"
@@ -35,8 +36,8 @@ var pointerClaims = mustClaims(`{
   "nested": {"": "empty-segment"}
 }`)
 
-func mustClaims(raw string) map[string]json.RawMessage {
-	out := map[string]json.RawMessage{}
+func mustClaims(raw string) map[string]jsontext.Value {
+	out := map[string]jsontext.Value{}
 	if err := json.Unmarshal([]byte(raw), &out); err != nil {
 		panic(err)
 	}
@@ -127,11 +128,11 @@ func TestResolveClaimTopLevelIsNotScalarChecked(t *testing.T) {
 	if !ok {
 		t.Fatal("a top-level object name did not resolve")
 	}
-	if !sameJSONScalar(json.RawMessage(`"prod"`), json.RawMessage(`"prod"`)) {
+	if !sameJSONScalar(jsontext.Value(`"prod"`), jsontext.Value(`"prod"`)) {
 		t.Fatal("sanity")
 	}
 	// It resolved, and it can never MATCH: no scalar pin equals an object's bytes.
-	if sameJSONScalar(json.RawMessage(`"prod"`), got) {
+	if sameJSONScalar(jsontext.Value(`"prod"`), got) {
 		t.Fatal("an object matched a scalar pin")
 	}
 }
@@ -248,16 +249,16 @@ func TestRequireHTTPS(t *testing.T) {
 // is the number 4242 and the string "4242" is a different claim value, so a
 // binding written one way must not be satisfiable by a token the other.
 func TestSameJSONScalarNeverFolds(t *testing.T) {
-	if sameJSONScalar(json.RawMessage(`4242`), json.RawMessage(`"4242"`)) {
+	if sameJSONScalar(jsontext.Value(`4242`), jsontext.Value(`"4242"`)) {
 		t.Error("a number matched a string: the type was folded")
 	}
-	if sameJSONScalar(json.RawMessage(`1`), json.RawMessage(`1.0`)) {
+	if sameJSONScalar(jsontext.Value(`1`), jsontext.Value(`1.0`)) {
 		t.Error("1 matched 1.0: numerics were normalised")
 	}
-	if !sameJSONScalar(json.RawMessage(` 4242 `), json.RawMessage(`4242`)) {
+	if !sameJSONScalar(jsontext.Value(` 4242 `), jsontext.Value(`4242`)) {
 		t.Error("whitespace defeated the comparison")
 	}
-	if !sameJSONScalar(json.RawMessage(`"push"`), json.RawMessage(`"push"`)) {
+	if !sameJSONScalar(jsontext.Value(`"push"`), jsontext.Value(`"push"`)) {
 		t.Error("identical strings did not match")
 	}
 }

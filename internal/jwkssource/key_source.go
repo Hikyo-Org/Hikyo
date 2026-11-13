@@ -9,13 +9,14 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rsa"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 
 	jose "github.com/go-jose/go-jose/v4"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // MaxJWKSBytes is the shared admission cap for static and remote JWKS
@@ -119,7 +120,7 @@ func canonicalizeJWKS(body []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	document, err := json.Marshal(set)
+	document, err := json.Marshal(set, jsonwire.Stable)
 	if err != nil {
 		return "", fmt.Errorf("jwks canonicalize: %w", err)
 	}
@@ -138,6 +139,11 @@ func ParseJWKS(body []byte) ([]crypto.PublicKey, map[string]bool, error) {
 func decodeJWKS(body []byte) (jose.JSONWebKeySet, []crypto.PublicKey, map[string]bool, error) {
 	var set jose.JSONWebKeySet
 	if err := json.Unmarshal(body, &set); err != nil {
+		// Surface go-jose's own refusal text, as it read before v2 wrapped it.
+		var semantic *json.SemanticError
+		if errors.As(err, &semantic) && semantic.Err != nil {
+			err = semantic.Err
+		}
 		return jose.JSONWebKeySet{}, nil, nil, fmt.Errorf("jwks parse: %w", err)
 	}
 	keys := make([]crypto.PublicKey, 0, len(set.Keys))

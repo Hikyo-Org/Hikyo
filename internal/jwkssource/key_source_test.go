@@ -7,7 +7,7 @@ import (
 	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/rsa"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"strings"
 	"testing"

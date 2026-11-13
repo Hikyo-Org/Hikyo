@@ -7,7 +7,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -22,6 +22,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/netpolicy"
 )
 
@@ -397,7 +398,7 @@ func (c *Client) do(ctx context.Context, op operation, path string, body any, ou
 	}
 	var input io.Reader
 	if body != nil {
-		raw, err := json.Marshal(body)
+		raw, err := json.Marshal(body, jsonwire.Stable)
 		if err != nil {
 			return 0, err
 		}

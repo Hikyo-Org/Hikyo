@@ -2,7 +2,8 @@ package webauthnrp_test
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"strings"
 	"testing"
@@ -86,11 +87,11 @@ func TestRegistrationThenDiscoverableLogin(t *testing.T) {
 	if _, err := rp.FinishDiscoverableLogin(session, response, lookup); err != nil {
 		t.Fatal(err)
 	}
-	var wire map[string]json.RawMessage
+	var wire map[string]jsontext.Value
 	if err := json.Unmarshal(response, &wire); err != nil {
 		t.Fatal(err)
 	}
-	wire["clientExtensionResults"] = json.RawMessage(`{"credProps":{"rk":true}}`)
+	wire["clientExtensionResults"] = jsontext.Value(`{"credProps":{"rk":true}}`)
 	response, err = json.Marshal(wire)
 	if err != nil {
 		t.Fatal(err)
@@ -129,7 +130,7 @@ func TestRegistrationCredentialProperties(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var wire map[string]json.RawMessage
+			var wire map[string]jsontext.Value
 			if err := json.Unmarshal(response, &wire); err != nil {
 				t.Fatal(err)
 			}
@@ -143,7 +144,7 @@ func TestRegistrationCredentialProperties(t *testing.T) {
 			if err := json.Unmarshal(wire["clientExtensionResults"], &requested); err != nil || !requested.CredProps.RK {
 				t.Fatalf("registration did not request credential properties: %s (%v)", response, err)
 			}
-			wire["clientExtensionResults"] = json.RawMessage(tc.extensions)
+			wire["clientExtensionResults"] = jsontext.Value(tc.extensions)
 			response, err = json.Marshal(wire)
 			if err != nil {
 				t.Fatal(err)

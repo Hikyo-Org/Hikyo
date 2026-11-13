@@ -5,7 +5,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -71,14 +72,12 @@ func ParseCredential(raw string) (Credential, error) {
 		}
 		return Credential{Method: TokenAuth, Token: trimmed}, nil
 	}
-	decoder := json.NewDecoder(strings.NewReader(trimmed))
-	decoder.DisallowUnknownFields()
+	decoder := jsontext.NewDecoder(strings.NewReader(trimmed))
 	var encoded credentialJSON
-	if err := decoder.Decode(&encoded); err != nil {
+	if err := json.UnmarshalDecode(decoder, &encoded, json.RejectUnknownMembers(true)); err != nil {
 		return Credential{}, errors.New("vault-kv: credential JSON is malformed or names an unknown field")
 	}
-	var trailing json.RawMessage
-	if err := decoder.Decode(&trailing); err != io.EOF {
+	if _, err := decoder.ReadToken(); !errors.Is(err, io.EOF) {
 		return Credential{}, errors.New("vault-kv: credential JSON has trailing content")
 	}
 	out := Credential{Method: AuthMethod(encoded.Method), CAPEM: encoded.CAPEM, SPKISHA256: encoded.SPKISHA256}

@@ -6,7 +6,7 @@
 package awssmtest
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type version struct {
@@ -442,7 +444,14 @@ func tagList(tags map[string]string) []map[string]string {
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/x-amz-json-1.1")
-	_ = json.NewEncoder(w).Encode(v)
+	encodeLine(w, v)
+}
+
+// encodeLine writes v the way encoding/json's Encoder did: v1 bytes plus a newline.
+func encodeLine(w http.ResponseWriter, v any) {
+	if raw, err := json.Marshal(v, jsonwire.Stable); err == nil {
+		_, _ = w.Write(append(raw, '\n'))
+	}
 }
 
 func writeError(w http.ResponseWriter, status int, code, retryAfter string) {
@@ -452,5 +461,5 @@ func writeError(w http.ResponseWriter, status int, code, retryAfter string) {
 		w.Header().Set("Retry-After", retryAfter)
 	}
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"__type": code, "message": "awssmtest " + code})
+	encodeLine(w, map[string]string{"__type": code, "message": "awssmtest " + code})
 }

@@ -13,7 +13,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"math/big"
 	"net"
@@ -22,6 +22,8 @@ import (
 	"net/url"
 	"sync"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Code is one minted authorization code and what it will yield.
@@ -480,11 +482,11 @@ func (p *IdP) signJWT(claims map[string]any) (string, error) {
 	key, keyID := p.key, p.keyID
 	p.mu.Unlock()
 	header := map[string]any{"alg": "RS256", "typ": "JWT", "kid": keyID}
-	hb, err := json.Marshal(header)
+	hb, err := json.Marshal(header, jsonwire.Stable)
 	if err != nil {
 		return "", err
 	}
-	cb, err := json.Marshal(claims)
+	cb, err := json.Marshal(claims, jsonwire.Stable)
 	if err != nil {
 		return "", err
 	}
@@ -499,15 +501,19 @@ func (p *IdP) signJWT(claims map[string]any) (string, error) {
 func oauthError(w http.ResponseWriter, code string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusBadRequest)
-	if err := json.NewEncoder(w).Encode(map[string]string{"error": code}); err != nil {
-		return
-	}
+	encodeLine(w, map[string]string{"error": code})
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(v); err != nil {
-		return
+	encodeLine(w, v)
+}
+
+// encodeLine writes v the way encoding/json's Encoder did: v1 bytes plus a
+// newline. A value that cannot be encoded writes nothing, as before.
+func encodeLine(w http.ResponseWriter, v any) {
+	if raw, err := json.Marshal(v, jsonwire.Stable); err == nil {
+		_, _ = w.Write(append(raw, '\n'))
 	}
 }
 
