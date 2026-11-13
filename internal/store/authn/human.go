@@ -188,6 +188,7 @@ type CredentialAuthority struct {
 	IssuedBy        string
 	CredentialEpoch int64
 	ExpiresAt       time.Time
+	CreatedAt       time.Time
 	Consumed        bool
 }
 
@@ -260,6 +261,39 @@ func (r *Resolver) AccountByPrincipal(ctx context.Context, p domain.PrincipalID)
 		return sqliteAccount(row.ID, row.PrincipalID, row.Username, row.DisplayName, row.CreatedAt)
 	}
 	row, err := r.pg.GetAccountByPrincipal(ctx, string(p))
+	if err != nil {
+		return Account{}, notFoundOr(err)
+	}
+	return pgAccount(row.ID, row.PrincipalID, row.Username, row.DisplayName, row.CreatedAt.Time), nil
+}
+
+// RecoveryAccountByID and RecoveryAccountByPrincipal are the ONE recovery
+// lookup (incident-containment ADR, O1): the account gates minus the
+// containment condition, so credential reset and establishment can still reach
+// a contained account. Privacy restriction still hides it. They serve no
+// sign-in, MFA or SSO path, and lint.CheckRecoveryLookup confines their
+// callers to the reset and establishment flows.
+func (r *Resolver) RecoveryAccountByID(ctx context.Context, id string) (Account, error) {
+	return r.recoveryAccount(ctx, id, "")
+}
+
+func (r *Resolver) RecoveryAccountByPrincipal(ctx context.Context, p domain.PrincipalID) (Account, error) {
+	return r.recoveryAccount(ctx, "", string(p))
+}
+
+// recoveryAccount takes exactly one non-empty key; the empty one matches no row.
+func (r *Resolver) recoveryAccount(ctx context.Context, accountID, principalID string) (Account, error) {
+	if accountID == "" && principalID == "" {
+		return Account{}, domain.ErrNotFound
+	}
+	if r.sq != nil {
+		row, err := r.sq.GetAccountForRecovery(ctx, sqlitegen.GetAccountForRecoveryParams{AccountID: accountID, PrincipalID: principalID})
+		if err != nil {
+			return Account{}, notFoundOr(err)
+		}
+		return sqliteAccount(row.ID, row.PrincipalID, row.Username, row.DisplayName, row.CreatedAt)
+	}
+	row, err := r.pg.GetAccountForRecovery(ctx, pggen.GetAccountForRecoveryParams{AccountID: accountID, PrincipalID: principalID})
 	if err != nil {
 		return Account{}, notFoundOr(err)
 	}
@@ -430,9 +464,13 @@ func (r *Resolver) CredentialAuthorityByVerifier(ctx context.Context, verifier [
 		if err != nil {
 			return CredentialAuthority{}, err
 		}
+		created, err := decodeTime(row.CreatedAt)
+		if err != nil {
+			return CredentialAuthority{}, err
+		}
 		return CredentialAuthority{
 			ID: row.ID, AccountID: row.AccountID, Purpose: row.Purpose, IssuedBy: row.IssuedBy,
-			CredentialEpoch: row.CredentialEpoch, ExpiresAt: expires, Consumed: row.ConsumedAt.Valid,
+			CredentialEpoch: row.CredentialEpoch, ExpiresAt: expires, CreatedAt: created, Consumed: row.ConsumedAt.Valid,
 		}, nil
 	}
 	row, err := r.pg.GetCredentialAuthorityByVerifier(ctx, verifier)
@@ -444,7 +482,7 @@ func (r *Resolver) CredentialAuthorityByVerifier(ctx context.Context, verifier [
 	}
 	return CredentialAuthority{
 		ID: row.ID, AccountID: row.AccountID, Purpose: row.Purpose, IssuedBy: row.IssuedBy,
-		CredentialEpoch: row.CredentialEpoch, ExpiresAt: row.ExpiresAt.Time, Consumed: row.ConsumedAt.Valid,
+		CredentialEpoch: row.CredentialEpoch, ExpiresAt: row.ExpiresAt.Time, CreatedAt: row.CreatedAt.Time, Consumed: row.ConsumedAt.Valid,
 	}, nil
 }
 
@@ -720,13 +758,21 @@ func (r *Resolver) AdvanceGeneration(ctx context.Context, p domain.PrincipalID) 
 		if err := r.sq.AdvancePrincipalGeneration(ctx, string(p)); err != nil {
 			return err
 		}
+	} else if err := r.pg.AdvancePrincipalGeneration(ctx, string(p)); err != nil {
+		return err
+	}
+	return r.retirePendingProofs(ctx, p)
+}
+
+// retirePendingProofs deletes the principal's unconsumed password proofs and
+// workspace handoffs: both mint a session without consulting the generation they
+// were issued under, so a generation advance alone would leave them usable.
+func (r *Resolver) retirePendingProofs(ctx context.Context, p domain.PrincipalID) error {
+	if r.sq != nil {
 		if err := r.sq.DeletePendingLoginChallengesForPrincipal(ctx, string(p)); err != nil {
 			return err
 		}
 		return r.sq.DeletePendingWorkspaceHandoffsForPrincipal(ctx, nullString(string(p)))
-	}
-	if err := r.pg.AdvancePrincipalGeneration(ctx, string(p)); err != nil {
-		return err
 	}
 	if err := r.pg.DeletePendingLoginChallengesForPrincipal(ctx, string(p)); err != nil {
 		return err

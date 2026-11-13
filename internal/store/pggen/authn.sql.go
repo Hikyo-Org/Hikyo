@@ -631,7 +631,7 @@ func (q *Queries) EnvironmentChainByID(ctx context.Context, id string) (Environm
 
 const getAccountByID = `-- name: GetAccountByID :one
 SELECT id, principal_id, username, display_name, created_at FROM accounts
-WHERE accounts.id = $1 AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active')
+WHERE accounts.id = $1 AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active' AND principals.containment_state = 'none')
 `
 
 type GetAccountByIDRow struct {
@@ -658,7 +658,7 @@ func (q *Queries) GetAccountByID(ctx context.Context, id string) (GetAccountByID
 
 const getAccountByPrincipal = `-- name: GetAccountByPrincipal :one
 SELECT id, principal_id, username, display_name, created_at FROM accounts
-WHERE principal_id = $1 AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active')
+WHERE principal_id = $1 AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active' AND principals.containment_state = 'none')
 `
 
 type GetAccountByPrincipalRow struct {
@@ -685,7 +685,7 @@ func (q *Queries) GetAccountByPrincipal(ctx context.Context, principalID string)
 
 const getAccountByUsername = `-- name: GetAccountByUsername :one
 SELECT id, principal_id, username, display_name, created_at FROM accounts
-WHERE username = $1 AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active')
+WHERE username = $1 AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active' AND principals.containment_state = 'none')
 `
 
 type GetAccountByUsernameRow struct {
@@ -1107,7 +1107,7 @@ func (q *Queries) GetPendingTOTPForAccount(ctx context.Context, accountID string
 }
 
 const getPrincipalGeneration = `-- name: GetPrincipalGeneration :one
-SELECT session_generation FROM principals WHERE id = $1 AND privacy_state = 'active'
+SELECT session_generation FROM principals WHERE id = $1 AND privacy_state = 'active' AND containment_state = 'none'
 `
 
 // hikyo:authn-resolution
@@ -2011,6 +2011,7 @@ FROM grants AS g
 JOIN principals AS p ON p.id = g.principal_id
 WHERE g.principal_id = $1
   AND p.privacy_state = 'active'
+  AND p.containment_state = 'none'
   AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
 UNION ALL
 SELECT j.capability, j.org_id, j.project_id, j.env_id,
@@ -2020,6 +2021,7 @@ JOIN principals AS jp ON jp.id = j.principal_id
 WHERE j.principal_id = $1
   AND j.expires_at > $2
   AND jp.privacy_state = 'active'
+  AND jp.containment_state = 'none'
   AND jp.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
 `
 

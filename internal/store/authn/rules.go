@@ -117,7 +117,19 @@ func (r *Resolver) Rules(ctx context.Context, p domain.PrincipalID) ([]domain.Ru
 	}
 	var rows []ruleRow
 	if r.sq != nil {
-		got, err := r.sq.ListRulesForPrincipal(ctx, string(p))
+		var got []sqlitegen.ListRulesForPrincipalRow
+		var err error
+		if r.historicalRecoveryBeforeContainment {
+			// Source schemas 66 through 88 have no containment column. The two
+			// row types carry the same fields, so a conversion maps them.
+			var old []sqlitegen.RecoveryListRulesBeforeContainmentRow
+			old, err = r.sq.RecoveryListRulesBeforeContainment(ctx, string(p))
+			for _, g := range old {
+				got = append(got, sqlitegen.ListRulesForPrincipalRow(g))
+			}
+		} else {
+			got, err = r.sq.ListRulesForPrincipal(ctx, string(p))
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -127,7 +139,17 @@ func (r *Resolver) Rules(ctx context.Context, p domain.PrincipalID) ([]domain.Ru
 				item: StoredRuleItem{Axis: g.Axis, Project: domain.ProjectID(g.ProjectID), Env: domain.EnvID(g.EnvID), KeyID: g.KeyID, Folder: g.FolderPath}})
 		}
 	} else {
-		got, err := r.pg.ListRulesForPrincipal(ctx, string(p))
+		var got []pggen.ListRulesForPrincipalRow
+		var err error
+		if r.historicalRecoveryBeforeContainment {
+			var old []pggen.RecoveryListRulesBeforeContainmentRow
+			old, err = r.pg.RecoveryListRulesBeforeContainment(ctx, string(p))
+			for _, g := range old {
+				got = append(got, pggen.ListRulesForPrincipalRow(g))
+			}
+		} else {
+			got, err = r.pg.ListRulesForPrincipal(ctx, string(p))
+		}
 		if err != nil {
 			return nil, err
 		}

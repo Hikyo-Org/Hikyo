@@ -316,7 +316,7 @@ func TestLegacyDrillFixtureRefusesProjectCapacityEvidence(t *testing.T) {
 	}
 }
 
-// The runtime-created fixture includes migrations 45 through 87 (88 on PostgreSQL), while the
+// The runtime-created fixture includes migrations 45 through 87 (88 on PostgreSQL), then 89, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -341,8 +341,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if engine == releaseidentity.Postgres {
 		versions = append(versions, 88)
 	}
+	// 00089 (principal containment) is on both engines.
+	versions = append(versions, 89)
 	if len(current.Entries) != len(legacy.Entries)+len(versions) || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 87 (88 on PostgreSQL) only")
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 87 (88 on PostgreSQL), then 89 only")
 	}
 	for i, version := range versions {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
@@ -402,6 +404,8 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// 00085: a customised hue, mark or uploaded image is operator evidence.
 		"SELECT COUNT(*) FROM orgs WHERE identity_hue <> 195 OR identity_mark IS NOT NULL OR identity_image IS NOT NULL OR identity_image_type IS NOT NULL OR identity_image_version IS NOT NULL",
 		"SELECT COUNT(*) FROM projects WHERE identity_hue <> 195 OR identity_mark IS NOT NULL OR identity_image IS NOT NULL OR identity_image_type IS NOT NULL OR identity_image_version IS NOT NULL",
+		// 00089 (principal containment): a held principal is incident evidence.
+		"SELECT COUNT(*) FROM principals WHERE containment_state <> 'none' OR contained_at IS NOT NULL OR contained_incident_id IS NOT NULL",
 		// 00087 (email invitations): a pending invitation is operator evidence.
 		"SELECT COUNT(*) FROM org_email_invitations",
 		// 00057 (social sign-in): nothing registration-shaped may be discarded,
@@ -458,6 +462,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		if err != nil || evidence != 0 {
 			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate, PKI, temporary-access, file-target, member-access-rule or manual-pairing evidence", query, err)
 		}
+	}
+	// Reverse 00089 only after proving no principal is contained.
+	for _, column := range []string{"contained_incident_id", "contained_at", "containment_state"} {
+		drillExec(t, db, "ALTER TABLE principals DROP COLUMN "+column)
 	}
 	// Reverse 00087 only after proving no pending email invitation is discarded.
 	drillExec(t, db, "DROP TABLE org_email_invitations")
@@ -712,7 +720,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		}
 		drillExec(t, db, "DELETE FROM goose_db_version WHERE version_id = 88")
 	}
-	drillExec(t, db, "DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87)")
+	drillExec(t, db, "DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,89)")
 }
 
 // reverseAWSAdapter undoes 00067 on a pristine fixture. On PostgreSQL only

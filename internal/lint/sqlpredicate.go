@@ -43,6 +43,9 @@ type Query struct {
 	Annotation string // hikyo annotation, "" if none
 	Reason     string // explicit authority justification for new annotations
 	SQL        string
+	// Source is the same statement with its line breaks kept, so a `--`
+	// comment can be told from live SQL; SQL joins the lines with spaces.
+	Source string
 }
 
 // Hash returns the content pin for annotated queries: sha256 over the
@@ -192,6 +195,7 @@ func ParseQueries(dir string) ([]Query, error) {
 				}
 			}
 			q.SQL = strings.TrimSuffix(strings.Join(body, " "), ";")
+			q.Source = strings.Join(body, "\n")
 			out = append(out, q)
 		}
 		return nil

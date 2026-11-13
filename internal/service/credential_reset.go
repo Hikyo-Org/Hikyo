@@ -92,7 +92,8 @@ func (s *Auth) ResetCredential(ctx context.Context, actor Actor, targetPrincipal
 		} else if err != nil {
 			return err
 		}
-		account, err := az.AccountByPrincipal(ctx, target)
+		// Recovery lookup: a contained account must stay resettable.
+		account, err := az.RecoveryAccountByPrincipal(ctx, target)
 		if errors.Is(err, domain.ErrNotFound) {
 			// The principal exists but is not a resettable human account (a machine
 			// principal): same uniform, audited refusal.
@@ -226,7 +227,8 @@ func (s *Auth) BreakGlassResetCredential(ctx context.Context, targetPrincipal, d
 		if err := az.LockTargetPrincipal(ctx, target); err != nil {
 			return err
 		}
-		account, err := az.AccountByPrincipal(ctx, target)
+		// Recovery lookup: a contained account must stay resettable.
+		account, err := az.RecoveryAccountByPrincipal(ctx, target)
 		if errors.Is(err, domain.ErrNotFound) {
 			return ErrNoResetTarget
 		}

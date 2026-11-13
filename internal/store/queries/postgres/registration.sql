@@ -129,7 +129,7 @@ SELECT id, policy_id, signup_scope_org_id FROM registration_signups WHERE expire
 -- hikyo:reason Local login resolves a canonical verified address only to an active principal, never as a federated linking key.
 -- hikyo:authn-resolution
 -- name: GetAccountByEmail :one
-SELECT id, principal_id, username, display_name, created_at FROM accounts WHERE email = $1 AND email_verified_at IS NOT NULL AND principal_id IN (SELECT id FROM principals WHERE privacy_state = 'active');
+SELECT id, principal_id, username, display_name, created_at FROM accounts WHERE email = $1 AND email_verified_at IS NOT NULL AND principal_id IN (SELECT id FROM principals WHERE privacy_state = 'active' AND containment_state = 'none');
 
 -- hikyo:reason The successful single-use signup ceremony sets the verified address only on its newly created local account.
 -- hikyo:authn-resolution

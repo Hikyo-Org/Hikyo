@@ -108,7 +108,7 @@ func (q *Queries) DeleteRegistrationSignup(ctx context.Context, id string) (int6
 }
 
 const getAccountByEmail = `-- name: GetAccountByEmail :one
-SELECT id, principal_id, username, display_name, created_at FROM accounts WHERE email = $1 AND email_verified_at IS NOT NULL AND principal_id IN (SELECT id FROM principals WHERE privacy_state = 'active')
+SELECT id, principal_id, username, display_name, created_at FROM accounts WHERE email = $1 AND email_verified_at IS NOT NULL AND principal_id IN (SELECT id FROM principals WHERE privacy_state = 'active' AND containment_state = 'none')
 `
 
 type GetAccountByEmailRow struct {
