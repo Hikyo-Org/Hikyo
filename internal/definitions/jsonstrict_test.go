@@ -113,7 +113,7 @@ func TestDecodeStrictRecursiveAnonymousSchemaRefusesUnknownField(t *testing.T) {
 	if err := DecodeStrict([]byte(`{"unknown":{"X":1}}`), &got); !errors.As(err, &unknown) {
 		t.Fatalf("recursive schema refused incorrectly: %v", err)
 	}
-	if err := DecodeStrict([]byte(`{"Known":"valid"}`), &got); err != nil || got.Known != "valid" {
+	if err := DecodeStrict([]byte(`{"Known":"valid"}`), &got); err != nil || got.Known != "valid" || got.recursive != nil {
 		t.Fatalf("direct member in recursive schema: %v", err)
 	}
 }

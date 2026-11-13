@@ -105,9 +105,8 @@ func TestDeliveryTargetReportRefusalsMapToTheirCodes(t *testing.T) {
 			if body.Error.Code != tc.code {
 				t.Fatalf("code %q, want %q", body.Error.Code, tc.code)
 			}
-			if got := ""; body.Error.Detail != nil {
-				got = *body.Error.Detail
-				if got != tc.detail {
+			if body.Error.Detail != nil {
+				if got := *body.Error.Detail; got != tc.detail {
 					t.Fatalf("detail %q, want %q", got, tc.detail)
 				}
 			} else if tc.detail != "" {

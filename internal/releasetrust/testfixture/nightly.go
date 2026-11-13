@@ -84,12 +84,11 @@ func NightlyWithPayloads(t testing.TB, compatibility []byte, wrongCommit bool, p
 		t.Fatal(err)
 	}
 	policy := releasetrust.NightlyPolicy{Schema: "hikyo.dev/nightly-policy/v1", TrustedRootSHA256: releaseidentity.Hash(rootRaw), Issuer: "https://token.actions.githubusercontent.com", RepositoryURI: "https://github.com/synthetic/hikyo", RepositoryID: "123", RepositoryOwnerURI: "https://github.com/synthetic", RepositoryOwnerID: "456", WorkflowPath: ".github/workflows/nightly.yml", ProtectedRef: "refs/heads/main", RunnerEnvironment: "github-hosted", RevokedManifests: []releaseidentity.Digest{}}
-	policyRaw := JSON(t, policy)
 	requireSCT := false
 	policy.RequireSCT = &requireSCT
 	policy.RekorLogID = rekorID
 	policy.CheckpointOrigin = "rekor.fixture.invalid - 1"
-	policyRaw = JSON(t, policy)
+	policyRaw := JSON(t, policy)
 	f := New(t)
 	f.Catalog.NightlyPolicies = append(f.Catalog.NightlyPolicies, releaseidentity.Hash(policyRaw))
 	f.NightlyPolicy = policyRaw

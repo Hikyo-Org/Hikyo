@@ -885,7 +885,7 @@ func republishAuthorized(ctx context.Context, r store.Repos, az *authz.TxAuthori
 	return published, nil
 }
 
-// fanOutSchemaPublish materializes EVERY environment in the project.
+// fanOutSchemaPublishProofs materializes EVERY environment in the project.
 //
 // A semantic schema change -- a key created, renamed, deleted, reclassified,
 // retyped, re-scoped by presence, or moved between groups -- does NOT narrow to
@@ -916,12 +916,7 @@ func republishAuthorized(ctx context.Context, r store.Repos, az *authz.TxAuthori
 // project data key on first use, and minting opens a write transaction that
 // would wait forever on sqlite's single write connection for the transaction
 // that asked for it.
-func fanOutSchemaPublish(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity,
-	p authz.Proof, sealer *crypto.ProjectSealer, kr *crypto.Keyring, scope domain.Scope,
-	now time.Time, trigger string) ([]PublishedEnvironment, error) {
-	return fanOutSchemaPublishProofs(ctx, r, az, caller, p, sealer, kr, scope, now, trigger, nil)
-}
-
+//
 // fanOutSchemaPublishProofs uses pre-mutation key-aware proofs only when a
 // single-key schema operation supplied them. Bulk schema operations retain
 // their whole-environment authorization. Missing supplied proofs fail closed.

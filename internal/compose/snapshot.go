@@ -204,7 +204,6 @@ func LoadSnapshot(keys *crypto.LocalKeys, expect crypto.SnapshotBinding, now tim
 		var newest time.Time
 		for _, candidate := range compatible {
 			if candidate.issued.After(newest) {
-				snapshotPath = candidate.path
 				record = candidate.record
 				err = nil
 				newest = candidate.issued

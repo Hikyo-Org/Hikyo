@@ -1278,16 +1278,6 @@ func (s *Auth) assertRemovalKeepsInvariant(ctx context.Context, az *authz.TxAuth
 	return nil
 }
 
-func discoverableCount(creds []authz.WebAuthnCredential) int {
-	n := 0
-	for _, c := range creds {
-		if c.Discoverable && !c.Disabled {
-			n++
-		}
-	}
-	return n
-}
-
 // hasCurrentRecoveryBatch reports whether the account holds a live-epoch recovery
 // batch with at least one unconsumed code. It opens the sealed batch to count
 // the remaining verifiers (an exhausted batch is an empty array, B4).

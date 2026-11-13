@@ -73,11 +73,13 @@ but it is not a substitute for this signature.
   Signatures are never skippable.
 - The hook also runs `scripts/ci/golangci-lint-new.sh <base>` when a push changes
   Go code. It runs golangci-lint (errcheck, errorlint, errchkjson, noctx,
-  wastedassign, unused, staticcheck `SA*`/`QF1001`/`QF1003`, and gosec G115/G204/G306 outside tests, from
+  staticcheck `SA*`/`QF1001`/`QF1003` except SA4006/SA4009, and gosec G115/G204/G306 outside tests, from
   `.golangci.yml`) and flags only issues on lines changed since the merge base, so
-  the existing baseline never blocks you. It lints a temporary worktree at the
+  the existing baseline of those rules never blocks you. A second strict pass runs wastedassign, unused and
+  staticcheck SA4006/SA4009 (`.golangci-strict.yml`) on every whole changed package
+  (a moved file counts for both packages), because those rules hold at zero across the repo. It lints a temporary worktree at the
   pushed commit, with that commit's config, pin and script, so any branch can be
-  pushed from any worktree, and uncommitted files and uncommitted edits to `.golangci.yml` are ignored.
+  pushed from any worktree, and uncommitted files and uncommitted edits to `.golangci.yml` and `.golangci-strict.yml` are ignored.
   Fetch `hikyo-upstream` first: a stale base widens "new code". Only the default
   build is linted (files for another OS, or tagged `ui`, `k8se2e` or `floor*`, are
   not), and type errors are always reported in full. Reproduce with

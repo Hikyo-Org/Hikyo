@@ -5,7 +5,6 @@ import "strings"
 // sqlLexeme skips one SQL quote, dollar literal or comment. All bounded SQL
 // analyzers share these boundaries; malformed lexemes never become predicates.
 func sqlLexeme(sql string, start int, postgres bool) (end int, kind byte, closed bool) {
-	end = start
 	switch sql[start] {
 	case '\'', '"':
 		kind = sql[start]

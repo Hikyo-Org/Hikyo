@@ -1,11 +1,13 @@
 #!/bin/sh
-# New-code-only golangci-lint ratchet: lint the packages that changed since the
-# merge base of BASE and HEAD and report only issues on changed lines. The
-# existing baseline is not enforced. Used by the pre-push hook and by
-# ci-golangci.yml (advisory); never part of a required job.
+# golangci-lint ratchet over the packages that changed since the merge base of
+# BASE and HEAD, in two passes: .golangci.yml reports only issues on changed
+# lines (its existing baseline is not enforced), and .golangci-strict.yml holds
+# the zero-baseline rules (wastedassign, unused, SA4006, SA4009) for every whole
+# changed package. Used by the pre-push hook and by ci-golangci.yml (advisory);
+# never part of a required job.
 # Usage: scripts/ci/golangci-lint-new.sh BASE
 # It lints the work tree it runs in (the hook runs this script from a detached
-# worktree at the pushed commit, so the tool pin, .golangci.yml and this script
+# worktree at the pushed commit, so the tool pin, both configs and this script
 # all come from that commit).
 set -eu
 
@@ -30,7 +32,7 @@ merge_base=$(git merge-base "$base" HEAD) || fail "no merge base between $base a
 
 # Inputs that change what every package is checked against: lint all of them.
 # ci-golangci.yml triggers on exactly these (plus **/*.go); a Go test keeps them equal.
-everything='go.mod go.sum .golangci.yml scripts/ci/golangci-lint-version scripts/ci/golangci-lint-new.sh scripts/ci/run-go-tool.sh'
+everything='go.mod go.sum .golangci.yml .golangci-strict.yml scripts/ci/golangci-lint-version scripts/ci/golangci-lint-new.sh scripts/ci/run-go-tool.sh'
 
 # shellcheck disable=SC2086 # the paths contain no whitespace or glob characters
 changed_inputs=$(git diff --name-only "$merge_base" HEAD -- $everything) || fail "git diff failed against $merge_base"
@@ -42,7 +44,9 @@ else
 	trap 'rm -f "$files" "$dirs" "$dirs.raw"' EXIT
 	trap 'exit 130' HUP INT TERM
 	# Directories of every changed Go file (names with newlines are unsupported).
-	git -c core.quotePath=false diff --name-only "$merge_base" HEAD -- '*.go' >"$files" || fail "git diff failed against $merge_base"
+	# --no-renames lists a moved file under its old directory too, which must be
+	# linted for what the move left behind.
+	git -c core.quotePath=false diff --name-only --no-renames "$merge_base" HEAD -- '*.go' >"$files" || fail "git diff failed against $merge_base"
 	while IFS= read -r file; do
 		dir=$(dirname "$file") || fail "dirname failed for $file"
 		printf '%s\n' "$dir"
@@ -68,11 +72,26 @@ else
 	fi
 fi
 
-printf 'golangci-lint-new: linting new code since %s (%s)\n' "$base" "$*" >&2
+# Two passes over the same packages; the second runs even when the first fails.
+# Either status, other than this script's own 64, is the tool's and is returned.
+printf 'golangci-lint-new: new code since %s (%s)\n' "$base" "$*" >&2
 # golangci-lint finds .golangci.yml at the work tree's root by itself, and then
 # reports paths relative to it. --config is only the fallback for a tree without
-# one: the config of the checkout this script lives in.
+# one: the config of the checkout this script lives in. A tree without
+# .golangci-strict.yml predates the zero-baseline fixes, so the strict pass is
+# skipped there instead of blocking on findings the push did not add.
+new_status=0
 if [ -f .golangci.yml ]; then
-	exec "$script_dir/run-go-tool.sh" golangci-lint run -j 2 --new-from-merge-base="$base" "$@"
+	"$script_dir/run-go-tool.sh" golangci-lint run -j 2 --new-from-merge-base="$base" "$@" || new_status=$?
+else
+	"$script_dir/run-go-tool.sh" golangci-lint run -j 2 --config "$config" --new-from-merge-base="$base" "$@" || new_status=$?
 fi
-exec "$script_dir/run-go-tool.sh" golangci-lint run -j 2 --config "$config" --new-from-merge-base="$base" "$@"
+strict_status=0
+if [ -f .golangci-strict.yml ]; then
+	printf 'golangci-lint-new: strict rules on whole packages (%s)\n' "$*" >&2
+	"$script_dir/run-go-tool.sh" golangci-lint run -j 2 --config .golangci-strict.yml "$@" || strict_status=$?
+else
+	printf 'golangci-lint-new: no .golangci-strict.yml in this tree; skipping the strict pass\n' >&2
+fi
+[ "$new_status" -eq 0 ] || exit "$new_status"
+exit "$strict_status"

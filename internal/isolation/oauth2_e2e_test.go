@@ -34,7 +34,7 @@ type githubFixture struct {
 }
 
 func (f *githubFixture) RoundTrip(req *http.Request) (*http.Response, error) {
-	body := ""
+	var body string
 	status := http.StatusOK
 	switch req.URL.Path {
 	case "/login/oauth/access_token":

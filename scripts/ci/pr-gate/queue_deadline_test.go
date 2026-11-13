@@ -174,6 +174,47 @@ func TestAdmissionReserveNeverExtendsItsContextOrPublishesAfterIt(t *testing.T) 
 	}
 }
 
+// The first ownership scan of an admission refusal is kept for its side effect: a
+// listing failure publishes a fresh owned pending barrier before a later read can fail.
+func TestAdmissionRefusalScanPublishesBarrierBeforeLaterReadFails(t *testing.T) {
+	f := newQueueFixture(t)
+	if err := f.q.initRepository(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	policy, err := f.q.policy(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	trace := &admissionTrace{PR: f.pr, Policy: &policy, Run: &f.feedbackRun}
+	pullPath := f.c.endpoint("pulls/7")
+	checkListFailed := false
+	prReads := 0
+	f.c.api = deadlineAPI{api: f.api, readHook: func(_ context.Context, path string) error {
+		switch {
+		case strings.Contains(path, "/check-runs?") && !checkListFailed:
+			checkListFailed = true
+			return errors.New("check listing unavailable")
+		case path == pullPath:
+			// The first read is the refusal's own; every later one fails.
+			if prReads++; prReads > 1 {
+				return errors.New("pull read unavailable")
+			}
+		}
+		return nil
+	}}
+	if err := f.q.refuseAdmission(context.Background(), trace); err == nil {
+		t.Fatal("a failed listing and a failed later read returned success")
+	}
+	if !checkListFailed {
+		t.Fatal("the early ownership scan never listed checks")
+	}
+	f.assertNoSuccess(t)
+	latest := newestQueueCheck(f.api.checks)
+	if latest == nil || latest.Status == "completed" {
+		t.Fatalf("no pending barrier was published: %+v", latest)
+	}
+}
+
 func TestAdmissionDeadlineCannotTurnIncompleteFeedbackIntoSuccess(t *testing.T) {
 	t.Setenv("GITHUB_RUN_ATTEMPT", "3") // The last attempt; a hosted runner sets 1.
 	for _, status := range []string{"queued", "in_progress"} {

@@ -276,6 +276,9 @@ func TestExternalUnavailableFailsClosed(t *testing.T) {
 	if out, err := ext.Decrypt(ctx, tg, v, rec, nil); !errors.Is(err, transit.ErrUnavailable) || out != nil {
 		t.Errorf("decrypt: %v", err)
 	}
+	if ext.Calls.Load() != before {
+		t.Error("unavailable provider performed work")
+	}
 	st := target(crypto.TransitMLDSA65, 1)
 	ext.SetAvailable(true)
 	sv, err := ext.Create(ctx, st)

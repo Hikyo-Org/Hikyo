@@ -89,7 +89,7 @@ func (a *TxAuthorizer) RevokeDeveloperCredentialsByProvenance(ctx context.Contex
 	}
 	out := []DeveloperCredential{}
 	for _, c := range rows {
-		match := false
+		var match bool
 		switch kind {
 		case "session":
 			match = c.ParentSessionID == id
