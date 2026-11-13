@@ -201,9 +201,9 @@ class Pipeline:
                        RUN_CREATED='2026-10-22T00:29:00Z',
                        RUN_COMPLETED='2026-10-22T00:50:00Z')
         original_files = providers.file_bytes
-        def files(v):
+        def files(v, go='1.27.4'):
             if not source_sized:
-                return original_files(v)
+                return original_files(v, go=go)
             root = HERE.parents[2]
             return {path: (root / path).read_text() + '\n' + (' ' * v) + '\n'
                     for path in REPOSITORY_FILES}
