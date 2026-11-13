@@ -762,7 +762,10 @@ func (a *API) sourceIP(r *http.Request) string {
 	if len(a.TrustedProxies) == 0 || !a.trusted(host) {
 		return host
 	}
-	forwarded := r.Header.Get("X-Forwarded-For")
+	// Separate field lines are one comma-joined list (RFC 9110 section 5.3). A
+	// proxy that appends its own line leaves the client's forged line first, so
+	// reading only the first line would let the client choose its own source.
+	forwarded := strings.Join(r.Header.Values("X-Forwarded-For"), ",")
 	if forwarded == "" {
 		return host
 	}
