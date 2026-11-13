@@ -38,6 +38,11 @@ var RecoveryLookupRules = []RecoveryRule{
 	{Name: "GetAccountForRecovery", Allowed: map[string][]string{
 		Module + "/internal/store/authn": {"Resolver.recoveryAccount"},
 	}},
+	// Ignores privacy and containment state like the recovery lookup, and returns
+	// only the account id for the containment authority sweep.
+	{Name: "GetAccountIDForContainmentSweep", Allowed: map[string][]string{
+		Module + "/internal/store/authn": {"Resolver.containmentSweepAccount"},
+	}},
 }
 
 // ContainmentSetterRules confines the two setters of the containment state.

@@ -17,6 +17,7 @@ import (
 //   - a CASE expression, a SELECT-list expression and a NOT-negated group never
 //     count as a gate, but other boolean constructs (IS TRUE, IS DISTINCT FROM,
 //     function calls) around a condition are not interpreted;
+//   - a gate inside a subquery negated by NOT EXISTS or NOT IN is not seen as negated;
 //   - an OR in an enclosing query that bypasses a whole gated subquery is not seen.
 
 // maskedGateLiterals are the string literals the gate predicates compare
