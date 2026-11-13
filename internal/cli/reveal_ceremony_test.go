@@ -2,7 +2,7 @@ package cli_test
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"strings"
@@ -28,13 +28,13 @@ func ceremonyServer(t *testing.T, window apigen.RevealWindow) (http.Handler, *[]
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
 			window.Live = live
-			_ = json.NewEncoder(w).Encode(window)
+			_ = writeJSONLine(w, window)
 		case strings.HasSuffix(r.URL.Path, "/auth/totp"):
 			// The inline path dispatches on enrolment: an authenticator stands.
-			_ = json.NewEncoder(w).Encode(apigen.TotpStatus{Confirmed: true})
+			_ = writeJSONLine(w, apigen.TotpStatus{Confirmed: true})
 		case strings.HasSuffix(r.URL.Path, "/auth/reauth/totp"):
 			var body apigen.TotpReauthRequest
-			_ = json.NewDecoder(r.Body).Decode(&body)
+			_ = json.UnmarshalRead(r.Body, &body)
 			environment, err := body.AsTotpEnvironmentReauthRequest()
 			if err != nil || environment.Code != "123456" || string(environment.EnvironmentId) != "env_70" {
 				w.WriteHeader(http.StatusUnauthorized)
@@ -42,7 +42,7 @@ func ceremonyServer(t *testing.T, window apigen.RevealWindow) (http.Handler, *[]
 				return
 			}
 			live = true
-			_ = json.NewEncoder(w).Encode(apigen.ReauthResult{
+			_ = writeJSONLine(w, apigen.ReauthResult{
 				EnvironmentId: "env_70", SessionId: "ses_rotated", SessionToken: &rotated,
 				WindowExpires: apigen.Timestamp(time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC)),
 			})
@@ -53,7 +53,7 @@ func ceremonyServer(t *testing.T, window apigen.RevealWindow) (http.Handler, *[]
 				return
 			}
 			v := "s3cret"
-			_ = json.NewEncoder(w).Encode(apigen.ExportedValues{Items: []apigen.ExportedValue{{Name: "DATABASE_PASSWORD", Classification: apigen.KeyClassificationSecret, Value: &v}}})
+			_ = writeJSONLine(w, apigen.ExportedValues{Items: []apigen.ExportedValue{{Name: "DATABASE_PASSWORD", Classification: apigen.KeyClassificationSecret, Value: &v}}})
 		case strings.HasSuffix(r.URL.Path, "/values/DATABASE_PASSWORD/reveal"):
 			if !live || !strings.Contains(r.Header.Get("Authorization"), rotated) {
 				w.WriteHeader(http.StatusForbidden)
@@ -61,7 +61,7 @@ func ceremonyServer(t *testing.T, window apigen.RevealWindow) (http.Handler, *[]
 				return
 			}
 			v := "s3cret"
-			_ = json.NewEncoder(w).Encode(apigen.ValueCell{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_1", Set: true, Revealed: true, Value: &v})
+			_ = writeJSONLine(w, apigen.ValueCell{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_1", Set: true, Revealed: true, Value: &v})
 		default:
 			http.NotFound(w, r)
 		}
@@ -186,14 +186,14 @@ func TestRevealCeremonyHandsOffToTheBrowserAtZeroWindow(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
-			_ = json.NewEncoder(w).Encode(apigen.RevealWindow{CanReveal: true, Protected: true, EffectiveWindowSeconds: 0, Live: live})
+			_ = writeJSONLine(w, apigen.RevealWindow{CanReveal: true, Protected: true, EffectiveWindowSeconds: 0, Live: live})
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/environments/env_70/values"):
-			_ = json.NewEncoder(w).Encode(apigen.ValueList{Items: []apigen.ValueCell{
+			_ = writeJSONLine(w, apigen.ValueList{Items: []apigen.ValueCell{
 				{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_pw", Set: true},
 				{Name: "LOG_LEVEL", Classification: "config", KeyId: "key_ll", Set: true},
 			}})
 		case strings.HasSuffix(r.URL.Path, "/auth/cli-reauth/start"):
-			_ = json.NewDecoder(r.Body).Decode(&startBody)
+			_ = json.UnmarshalRead(r.Body, &startBody)
 			callbackURI, _ = startBody["redirect_uri"].(string)
 			_, _ = w.Write([]byte(`{"state":"hik_1_hs_reveal","expires_at":"2030-01-01T00:00:00Z"}`))
 		case strings.HasSuffix(r.URL.Path, "/auth/cli-reauth/redeem"):
@@ -206,7 +206,7 @@ func TestRevealCeremonyHandsOffToTheBrowserAtZeroWindow(t *testing.T) {
 				return
 			}
 			v := "s3cret"
-			_ = json.NewEncoder(w).Encode(apigen.ValueCell{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_pw", Set: true, Revealed: true, Value: &v})
+			_ = writeJSONLine(w, apigen.ValueCell{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_pw", Set: true, Revealed: true, Value: &v})
 		default:
 			http.NotFound(w, r)
 		}
@@ -252,11 +252,11 @@ func TestRevealCeremonyHandsOffWhenNoAuthenticatorIsEnrolled(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
-			_ = json.NewEncoder(w).Encode(apigen.RevealWindow{CanReveal: true, EffectiveWindowSeconds: 300, TotpOffered: true, Live: started})
+			_ = writeJSONLine(w, apigen.RevealWindow{CanReveal: true, EffectiveWindowSeconds: 300, TotpOffered: true, Live: started})
 		case strings.HasSuffix(r.URL.Path, "/auth/totp"):
-			_ = json.NewEncoder(w).Encode(apigen.TotpStatus{Confirmed: false})
+			_ = writeJSONLine(w, apigen.TotpStatus{Confirmed: false})
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/environments/env_70/values"):
-			_ = json.NewEncoder(w).Encode(apigen.ValueList{Items: []apigen.ValueCell{{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_pw", Set: true}}})
+			_ = writeJSONLine(w, apigen.ValueList{Items: []apigen.ValueCell{{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_pw", Set: true}}})
 		case strings.HasSuffix(r.URL.Path, "/auth/cli-reauth/start"):
 			started = true
 			// The handoff began; the test needs no browser round trip to prove

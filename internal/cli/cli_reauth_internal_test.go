@@ -3,7 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -12,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestAdapterCreateCeremonyPrecedesSecretInputAndMutationDispatch(t *testing.T) {
@@ -34,7 +36,7 @@ func TestAdapterCreateCeremonyPrecedesSecretInputAndMutationDispatch(t *testing.
 		case "/api/v1/auth/cli-reauth/start":
 			record("start")
 			var body map[string]any
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			if err := json.UnmarshalRead(r.Body, &body); err != nil {
 				t.Error(err)
 				return
 			}
@@ -49,7 +51,7 @@ func TestAdapterCreateCeremonyPrecedesSecretInputAndMutationDispatch(t *testing.
 				t.Errorf("create used bearer %q", r.Header.Get("Authorization"))
 			}
 			var body map[string]any
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			if err := json.UnmarshalRead(r.Body, &body); err != nil {
 				t.Error(err)
 				return
 			}
@@ -131,7 +133,7 @@ func TestAdapterTargetNarrowingSkipsCeremonyAndUsesSynchronousTargetResponse(t *
 		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/orgs/org_one/projects/prj_one/adapter-targets/tgt_one":
 			patchCount++
 			var body map[string]any
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			if err := json.UnmarshalRead(r.Body, &body); err != nil {
 				t.Error(err)
 				return
 			}
@@ -208,7 +210,7 @@ func TestAdapterTargetMutationCLIAPIParity(t *testing.T) {
 				case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/orgs/org_one/projects/prj_one/adapter-targets/tgt_one":
 					patchCount++
 					var body map[string]any
-					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					if err := json.UnmarshalRead(r.Body, &body); err != nil {
 						t.Error(err)
 						return
 					}
@@ -267,7 +269,7 @@ func TestRunCLIAdapterReauthBindsExactLoopbackStateAndSilentlyRotatesBearer(t *t
 		switch r.URL.Path {
 		case "/api/v1/auth/cli-reauth/start":
 			var body map[string]any
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			if err := json.UnmarshalRead(r.Body, &body); err != nil {
 				t.Fatal(err)
 			}
 			redirect, _ = body["redirect_uri"].(string)
@@ -282,7 +284,7 @@ func TestRunCLIAdapterReauthBindsExactLoopbackStateAndSilentlyRotatesBearer(t *t
 			_, _ = io.WriteString(w, `{"state":"`+handoff+`","expires_at":"2030-01-01T00:00:00Z"}`)
 		case "/api/v1/auth/cli-reauth/redeem":
 			var body map[string]string
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			if err := json.UnmarshalRead(r.Body, &body); err != nil {
 				t.Fatal(err)
 			}
 			if body["code"] != code || body["pkce_verifier"] == "" || challenge == "" {
@@ -376,7 +378,7 @@ func TestRedeemCLIReauthSilentlyReplacesStoredBearer(t *testing.T) {
 			t.Fatalf("authorization=%q", got)
 		}
 		var body map[string]string
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.UnmarshalRead(r.Body, &body); err != nil {
 			t.Fatal(err)
 		}
 		if body["code"] != "single-use-code" || body["pkce_verifier"] != verifier {
@@ -414,7 +416,7 @@ func TestRedeemCLIReauthSilentlyReplacesStoredBearer(t *testing.T) {
 	raw, err := json.Marshal(struct {
 		Stored SessionArtifact
 		Client string
-	}{Stored: stored, Client: client.Bearer})
+	}{Stored: stored, Client: client.Bearer}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

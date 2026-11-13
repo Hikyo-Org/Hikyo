@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -24,7 +23,7 @@ func TestAutomationVerbsReachServerWithMachineCredential(t *testing.T) {
 			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				if r.URL.Path == api.PathPrefix+"/meta" {
-					_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+					_ = writeJSONLine(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
 					return
 				}
 				requests++

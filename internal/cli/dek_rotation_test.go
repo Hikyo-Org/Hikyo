@@ -2,7 +2,7 @@ package cli_test
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -85,11 +85,11 @@ func dekServer(t *testing.T) (http.Handler, *dekRequests) {
 				return
 			}
 			out := apigen.DEKRotation{Scope: apigen.DEKRotationScope(req.Scope), KeyVersion: 2, Org: req.Org, Project: req.Project}
-			_ = json.NewEncoder(w).Encode(out)
+			_ = writeJSONLine(w, out)
 		case r.URL.Path == "/api/v1/instance/reencrypt":
-			_ = json.NewEncoder(w).Encode(apigen.ReencryptResult{Scope: apigen.ReencryptResultScopeInstance, RowsMoved: 3})
+			_ = writeJSONLine(w, apigen.ReencryptResult{Scope: apigen.ReencryptResultScopeInstance, RowsMoved: 3})
 		case r.URL.Path == "/api/v1/orgs/org_70/projects/prj_70/reencrypt":
-			_ = json.NewEncoder(w).Encode(apigen.ReencryptResult{Scope: apigen.ReencryptResultScopeProject, RowsMoved: 5, Org: &org, Project: &project})
+			_ = writeJSONLine(w, apigen.ReencryptResult{Scope: apigen.ReencryptResultScopeProject, RowsMoved: 5, Org: &org, Project: &project})
 		default:
 			http.NotFound(w, r)
 		}
@@ -360,7 +360,7 @@ func TestDEKRotationAuthenticationAndConfirmation(t *testing.T) {
 				}
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tc.status)
-				_ = json.NewEncoder(w).Encode(map[string]map[string]string{"error": {"code": "refused", "message": "fixture refusal"}})
+				_ = writeJSONLine(w, map[string]map[string]string{"error": {"code": "refused", "message": "fixture refusal"}})
 			}))
 			if code := cli.Run(t.Context(), ios, append(tc.args, "--instance", "local")); code != tc.want {
 				t.Fatalf("exit %d, want %d: %s", code, tc.want, stderr)

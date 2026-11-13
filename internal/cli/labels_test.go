@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -39,7 +38,7 @@ func labelerServer(t *testing.T, status int, requests *int) *httptest.Server {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == api.PathPrefix+"/meta" {
-			_ = json.NewEncoder(w).Encode(apigen.Meta{ApiRevision: api.Revision})
+			_ = writeJSONLine(w, apigen.Meta{ApiRevision: api.Revision})
 			return
 		}
 		*requests++
@@ -47,7 +46,7 @@ func labelerServer(t *testing.T, status int, requests *int) *httptest.Server {
 			w.WriteHeader(status)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(apigen.EnvironmentList{Items: []apigen.Environment{{Id: "env_1", Name: "production"}}})
+		_ = writeJSONLine(w, apigen.EnvironmentList{Items: []apigen.Environment{{Id: "env_1", Name: "production"}}})
 	}))
 	t.Cleanup(srv.Close)
 	return srv

@@ -1,7 +1,7 @@
 package cli_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 	"os"
@@ -32,7 +32,7 @@ func registrationServer(t *testing.T) (http.Handler, *[]string) {
 		}
 		limit, count := 100, 12
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(apigen.RegistrationPolicy{
+		_ = writeJSONLine(w, apigen.RegistrationPolicy{
 			Id: "rpol_1", AuthorityPrincipalId: "usr_70", State: apigen.RegistrationPolicyStateActive,
 			External: []apigen.RegistrationExternalEntry{{Provider: apigen.ProviderRef{Kind: "oidc", Slug: "corp"}}},
 			Landing:  apigen.RegistrationLanding{Kind: apigen.RegistrationLandingKindFreshOrg, Cap: &limit}, FreshOrgCount: &count,

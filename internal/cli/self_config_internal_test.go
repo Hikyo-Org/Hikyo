@@ -2,7 +2,7 @@ package cli
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -24,7 +24,7 @@ func TestSelfConfigApplyExposesGeneratedRetryKeyBeforePreparation(t *testing.T) 
 					var request struct {
 						IdempotencyKey string `json:"idempotency_key"`
 					}
-					if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+					if err := json.UnmarshalRead(r.Body, &request); err != nil {
 						t.Error(err)
 					}
 					dispatchedKey = request.IdempotencyKey

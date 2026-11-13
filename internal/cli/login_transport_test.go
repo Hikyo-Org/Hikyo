@@ -5,7 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net"
@@ -20,6 +20,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 const loginTestToken = "hik_1_cli_secret-login-artifact"
@@ -48,17 +49,17 @@ func TestLoginLoopbackRejectsWrongCallbacksAndClosesBeforeRedeem(t *testing.T) {
 	client := loginTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case api.PathPrefix + "/auth/cli-login/start":
-			if err := json.NewDecoder(r.Body).Decode(&start); err != nil {
+			if err := json.UnmarshalRead(r.Body, &start); err != nil {
 				t.Error(err)
 			}
 			if start.Transport != "loopback" || len(start.State) != 43 || start.State == start.PkceChallenge {
 				t.Error("state and PKCE proof are not independent loopback inputs")
 			}
-			_ = json.NewEncoder(w).Encode(apigen.CLILoginStart{State: start.State, ExpiresAt: time.Now().Add(10 * time.Minute)})
+			_ = writeJSONLine(w, apigen.CLILoginStart{State: start.State, ExpiresAt: time.Now().Add(10 * time.Minute)})
 		case api.PathPrefix + "/auth/cli-login/redeem":
 			redeems++
 			var redeem apigen.CLILoginRedeemRequest
-			if err := json.NewDecoder(r.Body).Decode(&redeem); err != nil {
+			if err := json.UnmarshalRead(r.Body, &redeem); err != nil {
 				t.Error(err)
 			}
 			digest := sha256.Sum256([]byte(redeem.PkceVerifier))
@@ -72,7 +73,7 @@ func TestLoginLoopbackRejectsWrongCallbacksAndClosesBeforeRedeem(t *testing.T) {
 				conn.Close()
 				t.Error("callback listener was still reachable during redemption")
 			}
-			_ = json.NewEncoder(w).Encode(loginTestResult())
+			_ = writeJSONLine(w, loginTestResult())
 		default:
 			http.NotFound(w, r)
 		}
@@ -139,7 +140,7 @@ func TestLoginLoopbackRefusalsCloseListener(t *testing.T) {
 					w.WriteHeader(http.StatusInternalServerError)
 					return
 				}
-				_ = json.NewDecoder(r.Body).Decode(&start)
+				_ = json.UnmarshalRead(r.Body, &start)
 				response := apigen.CLILoginStart{State: start.State, ExpiresAt: time.Now().Add(time.Minute)}
 				if scenario == "state" {
 					response.State = "wrong"
@@ -147,7 +148,7 @@ func TestLoginLoopbackRefusalsCloseListener(t *testing.T) {
 				if scenario == "missing-expiry" {
 					response.ExpiresAt = time.Time{}
 				}
-				_ = json.NewEncoder(w).Encode(response)
+				_ = writeJSONLine(w, response)
 			}))
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
@@ -187,7 +188,7 @@ func TestLoginProviderResolutionPrecedesBrowser(t *testing.T) {
 					w.WriteHeader(http.StatusInternalServerError)
 					return
 				}
-				_ = json.NewEncoder(w).Encode(apigen.AuthMethods{Providers: []apigen.AuthMethodProvider{{Kind: "oidc", Slug: "work"}, {Kind: "saml", Slug: "work"}, {Kind: "oauth2", Slug: "personal"}}})
+				_ = writeJSONLine(w, apigen.AuthMethods{Providers: []apigen.AuthMethodProvider{{Kind: "oidc", Slug: "work"}, {Kind: "saml", Slug: "work"}, {Kind: "oauth2", Slug: "personal"}}})
 			}))
 			got, err := resolveLoginProvider(t.Context(), client, scenario.hint)
 			if got != scenario.want || (err != nil) != (scenario.want == "") || requests != 1 {
@@ -214,13 +215,13 @@ func TestLoginDispatchAndSessionCustody(t *testing.T) {
 				w.Header().Set("Content-Type", "application/json")
 				switch r.URL.Path {
 				case api.PathPrefix + "/meta":
-					_ = json.NewEncoder(w).Encode(apigen.Meta{ApiRevision: api.Revision, ProtocolCapabilities: []string{"local-password", "loopback-handoff"}})
+					_ = writeJSONLine(w, apigen.Meta{ApiRevision: api.Revision, ProtocolCapabilities: []string{"local-password", "loopback-handoff"}})
 				case api.PathPrefix + "/auth/cli-login/start":
-					_ = json.NewDecoder(r.Body).Decode(&start)
-					_ = json.NewEncoder(w).Encode(apigen.CLILoginStart{State: start.State, ExpiresAt: time.Now().Add(time.Minute)})
+					_ = json.UnmarshalRead(r.Body, &start)
+					_ = writeJSONLine(w, apigen.CLILoginStart{State: start.State, ExpiresAt: time.Now().Add(time.Minute)})
 				case api.PathPrefix + "/auth/local/login":
 					var login apigen.LocalLoginRequest
-					_ = json.NewDecoder(r.Body).Decode(&login)
+					_ = json.UnmarshalRead(r.Body, &login)
 					if !local || login.Username != "admin" || login.Password != "local-secret" {
 						t.Error("local login changed its credential transport")
 					}
@@ -229,9 +230,9 @@ func TestLoginDispatchAndSessionCustody(t *testing.T) {
 						_, _ = w.Write([]byte(`{"error":{"code":"bad_request","message":"the request does not satisfy the API contract","detail":"an enrolled factor is required; use hikyo login <instance-url> or hikyo login <instance-url> --device and complete browser sign-in"}}`))
 						return
 					}
-					_ = json.NewEncoder(w).Encode(loginTestResult())
+					_ = writeJSONLine(w, loginTestResult())
 				case api.PathPrefix + "/auth/cli-login/redeem":
-					_ = json.NewEncoder(w).Encode(loginTestResult())
+					_ = writeJSONLine(w, loginTestResult())
 				default:
 					http.NotFound(w, r)
 				}
@@ -360,7 +361,7 @@ func TestDevicePollingSlowDownTimeoutAndThrottleAreDistinct(t *testing.T) {
 				if step == "success" {
 					status = http.StatusOK
 					result := loginTestResult()
-					raw, _ := json.Marshal(apigen.CLIDeviceToken{AccessToken: loginTestToken, TokenType: "Bearer", ExpiresIn: 3600, Session: result.Session, Principal: result.Principal})
+					raw, _ := json.Marshal(apigen.CLIDeviceToken{AccessToken: loginTestToken, TokenType: "Bearer", ExpiresIn: 3600, Session: result.Session, Principal: result.Principal}, jsonwire.Stable)
 					body = string(raw)
 				}
 				return &http.Response{StatusCode: status, Header: header, Body: io.NopCloser(strings.NewReader(body))}, nil
@@ -407,7 +408,7 @@ func TestDevicePollingStopsOnTerminalErrors(t *testing.T) {
 					_, _ = io.WriteString(w, "malformed")
 					return
 				}
-				_ = json.NewEncoder(w).Encode(map[string]string{"error": protocol})
+				_ = writeJSONLine(w, map[string]string{"error": protocol})
 			}))
 			client.sleep = func(context.Context, time.Duration) error { return nil }
 			if protocol == "network" {

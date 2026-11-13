@@ -2,7 +2,7 @@ package cli_test
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -938,7 +938,7 @@ func TestDefinitionsGoldenOutputs(t *testing.T) {
 			_, _ = fmt.Fprint(w, `{"plan":{"id":"pln_70","digest":"abc123","base_revision":7,"current_revision":9,"additive":false,"expires_at":"2030-01-02T03:04:05Z","protected_environments":["production"],"diff":{"environments":{"creates":["preview"],"updates":[],"renames":[],"deletes":[]},"key_groups":{"creates":[],"updates":[],"renames":[],"deletes":[]},"keys":{"creates":[],"updates":[],"renames":[],"deletes":["OLD_KEY"]},"key_deletions":[{"name":"OLD_KEY","live_in":["production","staging"]}],"env_deletions":[],"reveal_required":["DATABASE_URL"]},"deletions_present":true,"reveal_required":["DATABASE_URL"]}}`)
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/definitions/plans/pln_70/apply"):
 			var body apigen.ApplyDefinitionsPlanRequest
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			if err := json.UnmarshalRead(r.Body, &body); err != nil {
 				t.Errorf("decode apply: %v", err)
 			}
 			if body.Digest == nil || *body.Digest == "" {
@@ -1101,7 +1101,7 @@ func definitionsTestIO(t *testing.T, handler http.Handler) (cli.IO, *bytes.Buffe
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet && r.URL.Path == api.PathPrefix+"/meta" {
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+			_ = writeJSONLine(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
 			return
 		}
 		handler.ServeHTTP(w, r)

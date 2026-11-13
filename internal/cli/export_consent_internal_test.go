@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -36,7 +35,7 @@ func TestExportConsentUsesSnapshotMetadata(t *testing.T) {
 				}
 				// Names can have been renamed or reused in the current catalogue.
 				// Consent must bind the snapshot's IDs, without a catalogue lookup.
-				_ = json.NewEncoder(w).Encode(apigen.RevisionDetail{Revision: 7, Keys: []apigen.SnapshotKey{
+				_ = writeJSONLine(w, apigen.RevisionDetail{Revision: 7, Keys: []apigen.SnapshotKey{
 					{KeyId: "key_historical", Name: "OLD_NAME", Classification: apigen.KeyClassificationSecret, Sensitive: true},
 					// A later declassification leaves this occurrence sticky-secret,
 					// and the server's reveal gate still counts it.

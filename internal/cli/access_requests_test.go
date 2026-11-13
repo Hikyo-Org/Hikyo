@@ -2,7 +2,8 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"math"
 	"reflect"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestAccessCapabilityFlag(t *testing.T) {
@@ -61,11 +63,11 @@ func TestAccessRequestBodies(t *testing.T) {
 		})
 	}
 	body := emergencyAccessBody(capabilityList{"read"}, "incident", 0)
-	encoded, err := json.Marshal(body)
+	encoded, err := json.Marshal(body, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var wire map[string]json.RawMessage
+	var wire map[string]jsontext.Value
 	if err := json.Unmarshal(encoded, &wire); err != nil {
 		t.Fatal(err)
 	}

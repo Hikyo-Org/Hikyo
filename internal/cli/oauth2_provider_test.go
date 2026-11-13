@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -28,7 +27,7 @@ func TestOAuth2CreateRefusesOverwriteAndOversizedSecret(t *testing.T) {
 			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				if r.URL.Path == api.PathPrefix+"/meta" {
-					_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+					_ = writeJSONLine(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
 					return
 				}
 				if r.Method == http.MethodGet && !tc.exists {
@@ -39,7 +38,7 @@ func TestOAuth2CreateRefusesOverwriteAndOversizedSecret(t *testing.T) {
 				if r.Method == http.MethodPut {
 					puts++
 				}
-				_ = json.NewEncoder(w).Encode(apigen.Oauth2Provider{Slug: "github"})
+				_ = writeJSONLine(w, apigen.Oauth2Provider{Slug: "github"})
 			}))
 			defer srv.Close()
 			st, dir := machineState(t, srv.URL, SPKIFingerprint(srv.Certificate()))

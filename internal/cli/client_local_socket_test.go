@@ -4,7 +4,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -37,7 +36,7 @@ func TestClientCarriesBearerOnlyOverSameUserSocket(t *testing.T) {
 		ReadHeaderTimeout: time.Second,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == api.PathPrefix+"/meta" {
-				_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "socket-fixture", ApiRevision: api.Revision})
+				_ = writeJSONLine(w, apigen.Meta{ServerVersion: "socket-fixture", ApiRevision: api.Revision})
 				return
 			}
 			seenBearer <- r.Header.Get("Authorization")

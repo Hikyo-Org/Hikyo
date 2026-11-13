@@ -18,10 +18,6 @@ import (
 // mode, and v1 is v2 with v1-compatible options underneath.
 var jsonV1Allowlist = map[string]bool{
 	"api/apigen":                           true,
-	"cmd/bench-scan":                       true,
-	"cmd/hikyo":                            true,
-	"cmd/hikyo-receiver-example":           true,
-	"internal/cli":                         true,
 	"internal/isolation":                   true,
 	"scripts/acceptance/github-contract":   true,
 	"scripts/acceptance/mcp-fixture":       true,

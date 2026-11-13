@@ -1,7 +1,6 @@
 package cli_test
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -36,7 +35,7 @@ func TestRecoveryCodesPreserveRotatedSessionBeforeOutput(t *testing.T) {
 				if r.Header.Get("Authorization") != "Bearer test-token" {
 					t.Errorf("regeneration authority=%q", r.Header.Get("Authorization"))
 				}
-				_ = json.NewEncoder(w).Encode(apigen.RecoveryCodesResult{
+				_ = writeJSONLine(w, apigen.RecoveryCodesResult{
 					RecoveryCodes: []string{"new-single-use-code"},
 					Login: apigen.LoginResult{SessionToken: &token, Session: apigen.Session{
 						Id: "ses_replacement", AbsoluteExpiresAt: time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC),

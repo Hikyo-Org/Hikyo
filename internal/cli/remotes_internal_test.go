@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -48,7 +47,7 @@ func fakePeer(t *testing.T, meta *apigen.Meta, hits *int) *httptest.Server {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(meta)
+		_ = writeJSONLine(w, meta)
 	}))
 	t.Cleanup(s.Close)
 	return s
