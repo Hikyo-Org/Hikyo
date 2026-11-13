@@ -3,7 +3,7 @@ package store_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"testing"
@@ -13,6 +13,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter/githubactions"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	storetx "github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
@@ -76,7 +77,7 @@ func movePolicyTargetState(t *testing.T, targets []store.AdapterTarget) []byte {
 	// All returned target fields are exported without omission tags. Preserve
 	// nil/empty slices and pointer values while avoiding reflection in a test
 	// package that handles authorization proofs.
-	state, err := json.Marshal(targets)
+	state, err := json.Marshal(targets, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

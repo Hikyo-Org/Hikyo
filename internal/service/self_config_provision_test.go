@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -52,7 +52,7 @@ func TestSelfConfigExistingInstanceAdoptionIsExplicitAndDurable(t *testing.T) {
 			}
 			s, local := unmanagedSelfConfigFixture(t, cfg)
 			orgs := &Orgs{DB: s.DB}
-			existingOrg, err := orgs.Create(t.Context(), local, "Hikyo", true, json.RawMessage(`{}`))
+			existingOrg, err := orgs.Create(t.Context(), local, "Hikyo", true, jsontext.Value(`{}`))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -243,7 +243,7 @@ func TestSelfConfigKeysAreShownInReleaseFolders(t *testing.T) {
 		t.Fatalf("get folder = %q, list folder = %q", one.FolderPath, listed[0].FolderPath)
 	}
 	// An ordinary project's key keeps its own folder, even with a system name.
-	org, err := (&Orgs{DB: s.DB}).Create(t.Context(), actor, "Ordinary", true, json.RawMessage(`{}`))
+	org, err := (&Orgs{DB: s.DB}).Create(t.Context(), actor, "Ordinary", true, jsontext.Value(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}

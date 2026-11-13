@@ -14,7 +14,7 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"net/url"
@@ -62,7 +62,7 @@ type Org struct {
 	ID        string
 	Name      string
 	Active    bool
-	Metadata  json.RawMessage
+	Metadata  jsontext.Value
 	CreatedAt time.Time
 	Retention RetentionPolicy
 	// Origin is how the org came to exist (#585 d8): `manual` (an operator's
@@ -421,7 +421,7 @@ type RemoteSnapshot struct {
 	// Listing is the org/project names as fetched, stored as JSON. It is
 	// foreign structure at rest and holds nothing value-bearing: the
 	// credential that produced it may read nothing else.
-	Listing json.RawMessage
+	Listing jsontext.Value
 }
 
 // RemoteReader is the read side of the remotes aggregate (viewing side).

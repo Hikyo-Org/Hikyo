@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"time"
@@ -12,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
@@ -822,7 +823,7 @@ func (s *Auth) GenerateRecoveryCodes(ctx context.Context, presented, proof strin
 		return nil, LoginResult{}, err
 	}
 	sealer := s.Keyring.ForInstance()
-	batchJSON, err := json.Marshal(verifiers)
+	batchJSON, err := json.Marshal(verifiers, jsonwire.Stable)
 	if err != nil {
 		return nil, LoginResult{}, err
 	}
@@ -1098,7 +1099,7 @@ func (s *Auth) attemptRecovery(ctx context.Context, username, code string) (Reco
 				return perr
 			}
 		}
-		batchJSON, err := json.Marshal(remaining)
+		batchJSON, err := json.Marshal(remaining, jsonwire.Stable)
 		if err != nil {
 			return err
 		}
@@ -1285,7 +1286,7 @@ func (s *Auth) burnRecoveryMatch(ctx context.Context, code string) {
 		if err != nil {
 			return
 		}
-		j, err := json.Marshal(verifiers)
+		j, err := json.Marshal(verifiers, jsonwire.Stable)
 		if err != nil {
 			return
 		}

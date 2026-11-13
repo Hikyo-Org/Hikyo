@@ -3,7 +3,7 @@ package service
 import (
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -14,6 +14,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/remotefetch"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -772,7 +773,7 @@ func snapshotOf(remoteID string, l remotefetch.Listing, now time.Time) (store.Re
 		slices.Sort(ps)
 		orgs[i].Projects = ps
 	}
-	raw, err := json.Marshal(orgs)
+	raw, err := json.Marshal(orgs, jsonwire.Stable)
 	if err != nil {
 		return store.RemoteSnapshot{}, err
 	}

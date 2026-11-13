@@ -4,12 +4,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 const PurposeDeveloperCredential ReauthPurpose = "developer-credential"
@@ -21,6 +22,28 @@ type DeveloperCredentialReauthTarget struct {
 	// an approval never covers a delivery the person was not shown.
 	PersonalValues bool `json:"personal_values,omitzero"`
 }
+
+// developerCredentialReauthTargetWire keeps the v1 encoding of Lifetime: a
+// nanosecond integer. encoding/json/v2 has no default for time.Duration.
+type developerCredentialReauthTargetWire struct {
+	Lifetime                int64 `json:"lifetime"`
+	ConsentCurrentAndFuture bool  `json:"consent_current_and_future"`
+	PersonalValues          bool  `json:"personal_values,omitzero"`
+}
+
+func (t DeveloperCredentialReauthTarget) MarshalJSON() ([]byte, error) {
+	return json.Marshal(developerCredentialReauthTargetWire{int64(t.Lifetime), t.ConsentCurrentAndFuture, t.PersonalValues}, jsonwire.Stable)
+}
+
+func (t *DeveloperCredentialReauthTarget) UnmarshalJSON(raw []byte) error {
+	var w developerCredentialReauthTargetWire
+	if err := json.Unmarshal(raw, &w); err != nil {
+		return err
+	}
+	*t = DeveloperCredentialReauthTarget{time.Duration(w.Lifetime), w.ConsentCurrentAndFuture, w.PersonalValues}
+	return nil
+}
+
 type developerCredentialBinding struct {
 	Purpose       string                          `json:"purpose"`
 	EnvironmentID string                          `json:"environment_id"`
@@ -38,7 +61,7 @@ func NewPersonalDeveloperCredentialReauthIntent(environmentID string, keyIDs []s
 	if err != nil {
 		return ReauthIntent{}, err
 	}
-	raw, err := json.Marshal(developerCredentialBinding{Purpose: string(PurposeDeveloperCredential), EnvironmentID: environmentID, KeyIDs: intent.keyIDs, Target: DeveloperCredentialReauthTarget{ttl, consent, personal}})
+	raw, err := json.Marshal(developerCredentialBinding{Purpose: string(PurposeDeveloperCredential), EnvironmentID: environmentID, KeyIDs: intent.keyIDs, Target: DeveloperCredentialReauthTarget{ttl, consent, personal}}, jsonwire.Stable)
 	if err != nil {
 		return ReauthIntent{}, err
 	}

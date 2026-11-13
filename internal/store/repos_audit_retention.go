@@ -3,13 +3,14 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 	"github.com/jackc/pgx/v5"
@@ -41,7 +42,7 @@ func auditAccessTypes() ([]byte, error) {
 			types = append(types, string(typ))
 		}
 	}
-	return json.Marshal(types)
+	return json.Marshal(types, jsonwire.Stable)
 }
 
 func (r sqliteRetention) AuditPolicy(ctx context.Context, p authz.Proof) (AuditRetentionPolicy, error) {

@@ -1,11 +1,14 @@
 package domain
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type capabilityFixture struct {
@@ -84,7 +87,7 @@ func TestCapabilityRegistryMatchesSharedFixture(t *testing.T) {
 	if reflect.DeepEqual(got, want) {
 		return
 	}
-	current, err := json.MarshalIndent(got, "", "  ")
+	current, err := json.Marshal(got, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		t.Fatalf("marshal current capability registry: %v", err)
 	}

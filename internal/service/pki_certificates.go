@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -14,6 +14,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	wencrypto "github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/pki"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -88,7 +89,7 @@ func encodeSANs(resolved pki.Resolved) (string, error) {
 	for _, uri := range resolved.URIs {
 		sans.URI = append(sans.URI, uri.String())
 	}
-	body, err := json.Marshal(sans)
+	body, err := json.Marshal(sans, jsonwire.Stable)
 	return string(body), err
 }
 

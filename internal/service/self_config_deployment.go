@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"math"
 	"time"
@@ -13,6 +13,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/configrollout"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -36,7 +37,7 @@ func decodeRolloutCommand(raw string) (configrollout.SignedCommand, error) {
 	if err := json.Unmarshal([]byte(raw), &command); err != nil {
 		return command, domain.ErrConflict
 	}
-	canonical, err := json.Marshal(command)
+	canonical, err := json.Marshal(command, jsonwire.Stable)
 	if err != nil || string(canonical) != raw {
 		return command, domain.ErrConflict
 	}
@@ -48,7 +49,7 @@ func encodeRolloutCommand(command configrollout.SignedCommand) (string, error) {
 	if len(command.Command.Changes) != 0 {
 		return "", domain.ErrInvalid
 	}
-	raw, err := json.Marshal(command)
+	raw, err := json.Marshal(command, jsonwire.Stable)
 	if err != nil {
 		return "", domain.ErrInvalid
 	}
@@ -157,7 +158,7 @@ func (s *SelfConfig) prepareDeployment(ctx context.Context, b store.SelfConfigBi
 	if response.Outcome != "complete" || response.PlanDigest == "" || response.TemplateStamp == "" {
 		return false, configrollout.ErrUnsupported
 	}
-	raw, err := json.Marshal(response)
+	raw, err := json.Marshal(response, jsonwire.Stable)
 	if err != nil {
 		return false, err
 	}

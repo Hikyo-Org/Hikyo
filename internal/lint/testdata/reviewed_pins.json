@@ -3007,7 +3007,7 @@
     "internal/store/backup.go:topoSort": "d705562d3a08af977ee82a0f055f653959956650ad4d26dfb6098ea0f5c96bd7",
     "internal/store/backup.go:validRestoredSequencePosition": "cd037cc970df599ed2245dd94f08a10558528d8be7bd8c8d84407569f3fe11fa",
     "internal/store/backup.go:writeFileMember": "0f51ece1bd64b42b453e8599e29c2f9f6e33da40b744bb400d71a6dcf65ef1e0",
-    "internal/store/backup.go:writeManifest": "68dc0c48e2ef8d96bcae5efb8bab7e62edef4e21a46afa0b029ee192857fb245",
+    "internal/store/backup.go:writeManifest": "d49030fa5164b997bf402f6320e270e10b9e21595651f8e2c9b85dee41068ac6",
     "internal/store/backup_upgrade.go:UpgradeExportRequest.bind": "7ccd3c6770a31f070a24cdf4b3d94805dd1ece9d23195104974bb8115ae6fa11",
     "internal/store/backup_upgrade.go:UpgradeExportRequest.bindPostgres": "7fb1400ca76c108232a43b012d5e607f05f32556837e9abe7a18a9622664c54d",
     "internal/store/backup_upgrade.go:UpgradeExportRequest.bindSQLite": "d34e6f251c6c47cb1e7a6ef0726410bfb6351750b192b4ff548734d8210e9e68",

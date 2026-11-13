@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"time"
 
@@ -11,6 +11,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
@@ -197,7 +198,7 @@ func (s *Auth) createCompletedSession(ctx context.Context, az *authz.TxAuthorize
 		return LoginResult{}, err
 	}
 	factors := append([]string(nil), completion.assurance.Factors...)
-	factorsJSON, err := json.Marshal(factors)
+	factorsJSON, err := json.Marshal(factors, jsonwire.Stable)
 	if err != nil {
 		return LoginResult{}, err
 	}
@@ -257,7 +258,7 @@ func (s *Auth) rotateCompletedSession(ctx context.Context, az *authz.TxAuthorize
 		return LoginResult{}, err
 	}
 	factors := append([]string(nil), completion.factors...)
-	factorsJSON, err := json.Marshal(factors)
+	factorsJSON, err := json.Marshal(factors, jsonwire.Stable)
 	if err != nil {
 		return LoginResult{}, err
 	}

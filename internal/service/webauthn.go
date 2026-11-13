@@ -3,7 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -13,6 +13,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 	"github.com/Hikyo-Org/hikyo/internal/webauthnrp"
@@ -115,7 +116,7 @@ func splitTransports(s string) []string {
 }
 
 func joinTransports(ts []string) string {
-	b, err := json.Marshal(ts)
+	b, err := json.Marshal(ts, jsonwire.Stable)
 	if err != nil {
 		return "[]"
 	}
@@ -1436,7 +1437,7 @@ func operationBinding(op ReauthPurpose, environmentID string, keyIDs []string) (
 		Operation     string   `json:"operation"`
 		EnvironmentID string   `json:"environment_id"`
 		KeyIDs        []string `json:"key_ids"`
-	}{Operation: string(op), EnvironmentID: environmentID, KeyIDs: sorted})
+	}{Operation: string(op), EnvironmentID: environmentID, KeyIDs: sorted}, jsonwire.Stable)
 	if err != nil {
 		return "", err
 	}
@@ -1461,7 +1462,7 @@ func adapterOperationBinding(operation authz.Operation, environmentID string, en
 	b, err := json.Marshal(adapterReauthBinding{
 		Purpose: string(PurposeAdapter), Operation: string(operation),
 		EnvironmentID: environmentID, EnvironmentIDs: environmentIDs,
-	})
+	}, jsonwire.Stable)
 	if err != nil {
 		return "", err
 	}

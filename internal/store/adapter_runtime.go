@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
@@ -15,6 +15,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/operation"
 	"github.com/Hikyo-Org/hikyo/internal/parameters"
 )
@@ -376,7 +377,7 @@ func (r *AdapterRuntime) tryEnqueue(ctx context.Context, job adapter.Job, now ti
 			return adapter.ErrProviderBusy
 		}
 		if previousJob != "" {
-			payload, _ := json.Marshal(map[string]string{"previous_job_id": previousJob, "job_id": job.ID})
+			payload, _ := json.Marshal(map[string]string{"previous_job_id": previousJob, "job_id": job.ID}, jsonwire.Stable)
 			if err := insertAdapterJobAudit(ctx, tx, job, "adapter.superseded", "success", now, payload); err != nil {
 				return err
 			}
@@ -429,7 +430,7 @@ func closeIndeterminateAdapterEffects(ctx context.Context, tx adapterDB, claimed
 	for _, effect := range open {
 		outcomeID := newAdapterID("aud")
 		opener := adapter.Job{ID: effect.JobID, OrgID: claimed.OrgID, ProjectID: claimed.ProjectID, EnvironmentID: claimed.EnvironmentID, TargetID: claimed.TargetID, AuthorityPrincipal: effect.AuthorityPrincipalID}
-		payload, err := json.Marshal(adapterPushOutcomePayload{Surface: effect.Surface, EffectiveName: effect.EffectiveName, Disposition: effect.Disposition, Finding: "crash_window"})
+		payload, err := json.Marshal(adapterPushOutcomePayload{Surface: effect.Surface, EffectiveName: effect.EffectiveName, Disposition: effect.Disposition, Finding: "crash_window"}, jsonwire.Stable)
 		if err != nil {
 			return err
 		}
@@ -650,7 +651,7 @@ func (j *adapterJournal) Prepare(ctx context.Context, effect adapter.Effect, pri
 				return adapter.ErrSuperseded
 			}
 		}
-		payload, _ := json.Marshal(adapterPushIntentPayload{Surface: string(effect.Surface), EffectiveName: effect.EffectiveName, Disposition: string(effect.Disposition), InputRevision: effect.InputRevision})
+		payload, _ := json.Marshal(adapterPushIntentPayload{Surface: string(effect.Surface), EffectiveName: effect.EffectiveName, Disposition: string(effect.Disposition), InputRevision: effect.InputRevision}, jsonwire.Stable)
 		if err := j.insertAudit(ctx, tx, intentID, "adapter.push_intent", "intent", now, payload); err != nil {
 			return err
 		}
@@ -682,7 +683,7 @@ func (j *adapterJournal) Finish(ctx context.Context, effect adapter.Effect, comp
 		payloadJSON, err := json.Marshal(adapterPushOutcomePayload{
 			Surface: string(effect.Surface), EffectiveName: effect.EffectiveName, Disposition: string(effect.Disposition),
 			Finding: completion.Finding, OwnedMissing: completion.Missing, ProviderStatus: completion.ProviderStatus,
-		})
+		}, jsonwire.Stable)
 		if err != nil {
 			return err
 		}
@@ -713,7 +714,7 @@ func (j *adapterJournal) Finish(ctx context.Context, effect adapter.Effect, comp
 			return adapter.ErrSuperseded
 		}
 		if completion.Outcome == adapter.OutcomeSuccess && effect.KeyID != "" && effect.Disposition != adapter.Delete {
-			payload, _ := json.Marshal(map[string]string{"key_id": effect.KeyID, "surface": string(effect.Surface), "effective_name": effect.EffectiveName})
+			payload, _ := json.Marshal(map[string]string{"key_id": effect.KeyID, "surface": string(effect.Surface), "effective_name": effect.EffectiveName}, jsonwire.Stable)
 			if err := j.insertAudit(ctx, tx, newAdapterID("aud"), "adapter.key_delivered", "success", now, payload); err != nil {
 				return err
 			}
@@ -954,7 +955,7 @@ func (r *AdapterRuntime) Activate(ctx context.Context, job adapter.Job, connecti
 		if rows != 1 {
 			return adapter.ErrSuperseded
 		}
-		payload, err := json.Marshal(adapterTestPayload{Version: connection.Version, DestinationID: connection.DestinationID})
+		payload, err := json.Marshal(adapterTestPayload{Version: connection.Version, DestinationID: connection.DestinationID}, jsonwire.Stable)
 		if err != nil {
 			return err
 		}
@@ -971,7 +972,7 @@ func (r *AdapterRuntime) activateOriginRouteMove(ctx context.Context, tx adapter
 	if rows != 1 {
 		return adapter.ErrSuperseded
 	}
-	payload, err := json.Marshal(adapterTestPayload{Version: connection.Version, DestinationID: connection.DestinationID})
+	payload, err := json.Marshal(adapterTestPayload{Version: connection.Version, DestinationID: connection.DestinationID}, jsonwire.Stable)
 	if err != nil {
 		return err
 	}
@@ -1102,7 +1103,7 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 			if _, err := tx.adapterRuntimeQueries().adapterWorkerDetachSupersededJob(ctx, job); err != nil {
 				return err
 			}
-			payload, _ := json.Marshal(map[string]string{"cause": "generation"})
+			payload, _ := json.Marshal(map[string]string{"cause": "generation"}, jsonwire.Stable)
 			if err := insertAdapterJobAudit(ctx, tx, job, "adapter.abort", "failure", finished, payload); err != nil {
 				return err
 			}
@@ -1111,7 +1112,7 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 				if err != nil {
 					return err
 				}
-				payload, _ := json.Marshal(map[string][]string{"orphaned": orphaned})
+				payload, _ := json.Marshal(map[string][]string{"orphaned": orphaned}, jsonwire.Stable)
 				return insertAdapterJobAudit(ctx, tx, job, "adapter.scrub", "failure", finished, payload)
 			}
 			return nil
@@ -1143,7 +1144,7 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 			if err != nil {
 				return err
 			}
-			payload, _ := json.Marshal(map[string][]string{"orphaned": {}})
+			payload, _ := json.Marshal(map[string][]string{"orphaned": {}}, jsonwire.Stable)
 			return insertAdapterJobAudit(ctx, tx, job, "adapter.scrub", "success", finished, payload)
 		}
 		if job.Kind == adapter.Activate && state == "failed" && (errors.Is(terminalErr, adapter.ErrProviderAuth) || errors.Is(terminalErr, adapter.ErrConflict) || errors.Is(terminalErr, adapter.ErrOperatorReview) || errors.Is(terminalErr, adapter.ErrUnauthorized)) {
@@ -1166,7 +1167,7 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 			// Recovery changes no push authority. Preserve the opening job's
 			// refusal audit before this activation-specific settlement returns.
 			if errors.Is(terminalErr, adapter.ErrUnauthorized) {
-				payload, _ := json.Marshal(map[string]string{"cause": "authority"})
+				payload, _ := json.Marshal(map[string]string{"cause": "authority"}, jsonwire.Stable)
 				if err := insertAdapterJobAudit(ctx, tx, job, "adapter.abort", "failure", finished, payload); err != nil {
 					return err
 				}
@@ -1178,11 +1179,11 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 		for _, change := range failed {
 			failureNames = append(failureNames, string(change.Surface)+":"+change.EffectiveName)
 		}
-		failureJSON, err := json.Marshal(failureNames)
+		failureJSON, err := json.Marshal(failureNames, jsonwire.Stable)
 		if err != nil {
 			return err
 		}
-		warningJSON, err := json.Marshal(append([]string{}, warnings...))
+		warningJSON, err := json.Marshal(append([]string{}, warnings...), jsonwire.Stable)
 		if err != nil {
 			return err
 		}
@@ -1236,7 +1237,7 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 			}
 		}
 		if state == "failed" && errors.Is(terminalErr, adapter.ErrUnauthorized) {
-			payload, _ := json.Marshal(map[string]string{"cause": "authority"})
+			payload, _ := json.Marshal(map[string]string{"cause": "authority"}, jsonwire.Stable)
 			if err := insertAdapterJobAudit(ctx, tx, job, "adapter.abort", "failure", finished, payload); err != nil {
 				return err
 			}
@@ -1246,7 +1247,7 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 			if err != nil {
 				return err
 			}
-			payload, _ := json.Marshal(map[string][]string{"orphaned": orphaned})
+			payload, _ := json.Marshal(map[string][]string{"orphaned": orphaned}, jsonwire.Stable)
 			if err := insertAdapterJobAudit(ctx, tx, job, "adapter.scrub", "failure", finished, payload); err != nil {
 				return err
 			}
@@ -1322,11 +1323,11 @@ func (r *AdapterRuntime) finishRouteMoveScrub(ctx context.Context, tx adapterDBT
 	if activeLedger != 0 {
 		return fmt.Errorf("%w: route move scrub retained active custody", adapter.ErrSuperseded)
 	}
-	payload, _ := json.Marshal(map[string][]string{"orphaned": orphaned})
+	payload, _ := json.Marshal(map[string][]string{"orphaned": orphaned}, jsonwire.Stable)
 	outcome := "success"
 	if len(orphaned) != 0 {
 		outcome = "failure"
-		orphanJSON, _ := json.Marshal(orphaned)
+		orphanJSON, _ := json.Marshal(orphaned, jsonwire.Stable)
 
 		rows, err := tx.adapterRuntimeQueries().adapterWorkerFinishRouteMoveScrubPersistOrphans(ctx, orphanJSON, job.RouteMoveID, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID)
 		if err != nil {
@@ -1364,7 +1365,7 @@ func (r *AdapterRuntime) finishRouteMoveScrub(ctx context.Context, tx adapterDBT
 	if rows != 1 {
 		return ErrConflict
 	}
-	failureJSON, _ := json.Marshal(orphaned)
+	failureJSON, _ := json.Marshal(orphaned, jsonwire.Stable)
 
 	rows, err = tx.adapterRuntimeQueries().adapterWorkerFinishRouteMoveScrubMark(ctx, failureJSON, activateID, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID, job.Generation)
 	if err != nil {
@@ -1377,7 +1378,7 @@ func (r *AdapterRuntime) finishRouteMoveScrub(ctx context.Context, tx adapterDBT
 }
 
 func (r *AdapterRuntime) finishOriginRouteMoveScrub(ctx context.Context, tx adapterDBTX, job adapter.Job, finished time.Time, orphaned []string, payload []byte, outcome string) error {
-	failureJSON, _ := json.Marshal(orphaned)
+	failureJSON, _ := json.Marshal(orphaned, jsonwire.Stable)
 
 	rows, err := tx.adapterRuntimeQueries().adapterWorkerFinishOriginRouteMoveScrubMarkDone(ctx, failureJSON, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID, job.Generation, job.ID)
 	if err != nil {
@@ -1456,7 +1457,7 @@ func (r *AdapterRuntime) finishDeadCredentialScrub(ctx context.Context, tx adapt
 	if job.RouteMoveID != "" {
 		return r.finishRouteMoveScrub(ctx, tx, job, finished, orphaned)
 	}
-	failureJSON, _ := json.Marshal(orphaned)
+	failureJSON, _ := json.Marshal(orphaned, jsonwire.Stable)
 
 	rows, err := tx.adapterRuntimeQueries().adapterWorkerFinishDeadCredentialScrubMarkTarget(ctx, failureJSON, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID, job.Generation)
 	if err != nil {
@@ -1469,6 +1470,6 @@ func (r *AdapterRuntime) finishDeadCredentialScrub(ctx context.Context, tx adapt
 	if _, err := tx.adapterRuntimeQueries().adapterWorkerFinishDeadCredentialScrubErase(ctx, adapterID, job.OrgID, job.ProjectID); err != nil {
 		return err
 	}
-	payload, _ := json.Marshal(map[string][]string{"orphaned": orphaned})
+	payload, _ := json.Marshal(map[string][]string{"orphaned": orphaned}, jsonwire.Stable)
 	return insertAdapterJobAudit(ctx, tx, job, "adapter.scrub", "failure", finished, payload)
 }

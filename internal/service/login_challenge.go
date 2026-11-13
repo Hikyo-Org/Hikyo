@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"slices"
 	"time"
@@ -11,6 +11,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 	"github.com/Hikyo-Org/hikyo/internal/webauthnrp"
@@ -98,7 +99,7 @@ func (s *Auth) issueLoginChallenge(ctx context.Context, az *authz.TxAuthorizer, 
 	if err != nil {
 		return nil, err
 	}
-	factorsJSON, err := json.Marshal(factors)
+	factorsJSON, err := json.Marshal(factors, jsonwire.Stable)
 	if err != nil {
 		return nil, err
 	}

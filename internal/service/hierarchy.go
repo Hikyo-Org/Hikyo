@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
 	"slices"
 	"strings"
@@ -147,7 +147,7 @@ type Org struct {
 	ID        string
 	Name      string
 	Active    bool
-	Metadata  json.RawMessage
+	Metadata  jsontext.Value
 	CreatedAt time.Time
 	// Origin is `manual` or `registration` (#585 d8); RegistrationPolicyID
 	// names the minting policy of a self-served org, else empty.
@@ -186,7 +186,7 @@ type Orgs struct {
 // even write a tenant scanning event). Folder/environment/group/key fields —
 // the bundle content the ADR actually enumerates — are scanned; org and project
 // names are not. Decision recorded in docs/handoff/74-secret-scanning.md.
-func (s *Orgs) Create(ctx context.Context, actor Actor, name string, active bool, metadata json.RawMessage) (Org, error) {
+func (s *Orgs) Create(ctx context.Context, actor Actor, name string, active bool, metadata jsontext.Value) (Org, error) {
 	if err := checkName("organisation name", name); err != nil {
 		return Org{}, err
 	}

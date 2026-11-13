@@ -4,7 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +19,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/federationhttp"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/oidcrp"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -193,13 +195,12 @@ func validateAssurancePolicy(policy *string) (*string, error) {
 	if policy == nil {
 		return nil, nil
 	}
-	decoder := json.NewDecoder(strings.NewReader(*policy))
-	decoder.DisallowUnknownFields()
+	decoder := jsontext.NewDecoder(strings.NewReader(*policy))
 	var p assurancePolicy
-	if err := decoder.Decode(&p); err != nil {
+	if err := json.UnmarshalDecode(decoder, &p, json.RejectUnknownMembers(true)); err != nil {
 		return nil, fmt.Errorf("%w: invalid assurance_policy", domain.ErrInvalid)
 	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+	if _, err := decoder.ReadToken(); !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("%w: assurance_policy carries trailing content", domain.ErrInvalid)
 	}
 	if len(p.ACRValues) > maxAssurancePolicyItems || len(p.AMRSets) > maxAssurancePolicyItems {
@@ -220,7 +221,7 @@ func validateAssurancePolicy(policy *string) (*string, error) {
 			}
 		}
 	}
-	canonical, err := json.Marshal(p)
+	canonical, err := json.Marshal(p, jsonwire.Stable)
 	if err != nil {
 		return nil, fmt.Errorf("%w: invalid assurance_policy", domain.ErrInvalid)
 	}
