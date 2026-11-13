@@ -1,9 +1,10 @@
 package server
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/mail"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -172,6 +174,17 @@ func safeDetailOf(err error) string {
 
 // writeError renders a refusal. It never writes anything derived from the
 // cause beyond the code itself; the cause is the process log's business.
+// encodeJSON writes v and a trailing newline in one write: the bytes
+// encoding/json's Encoder.Encode produced, which the public contract pins.
+func encodeJSON(w io.Writer, v any) error {
+	b, err := json.Marshal(v, jsonwire.Stable)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(append(b, '\n'))
+	return err
+}
+
 func writeError(w http.ResponseWriter, policy WireError, detail string) {
 	if policy.code == apigen.ErrorCodeServiceUnavailable {
 		w.Header().Set("Retry-After", "2")
@@ -181,7 +194,7 @@ func writeError(w http.ResponseWriter, policy WireError, detail string) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(policy.status)
-	_ = json.NewEncoder(w).Encode(policy.bodyWithDetail(detail))
+	_ = encodeJSON(w, policy.bodyWithDetail(detail))
 }
 
 // wireErrorRules is the single mapping from recognized Hikyo error classes to

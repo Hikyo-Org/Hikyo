@@ -1,9 +1,11 @@
 package scimproto
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"strings"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // FuzzFilterSemanticContract generates quoted values independently of the
@@ -14,7 +16,7 @@ func FuzzFilterSemanticContract(f *testing.F) {
 	f.Add("\" or userName pr", byte(1))
 	f.Add("Kelvin\n\\", byte(2))
 	f.Fuzz(func(t *testing.T, value string, selector byte) {
-		encoded, err := json.Marshal(value)
+		encoded, err := json.Marshal(value, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -66,7 +68,7 @@ func FuzzPatchAtomicRefusal(f *testing.F) {
 	f.Add("external identity", byte(0))
 	f.Add("\"}],\"op\":\"remove\"", byte(1))
 	f.Fuzz(func(t *testing.T, value string, selector byte) {
-		encoded, err := json.Marshal(value)
+		encoded, err := json.Marshal(value, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

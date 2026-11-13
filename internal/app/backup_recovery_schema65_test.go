@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"slices"
@@ -16,6 +16,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
@@ -170,7 +171,7 @@ func recoverySchema65Fixture(t *testing.T, engine store.Engine, seed ...func(*te
 		t.Fatal(err)
 	}
 	encode := func(value any) string {
-		raw, err := json.Marshal(value)
+		raw, err := json.Marshal(value, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

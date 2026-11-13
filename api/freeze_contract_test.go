@@ -1,7 +1,7 @@
 package api_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"slices"
 	"strconv"
@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/api"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // The document-coordinate layer (#1217). Every refused case below is a change
@@ -94,7 +95,7 @@ func contractTree(t *testing.T, doc string, fn func(root map[string]any)) string
 		t.Fatal(err)
 	}
 	fn(root)
-	out, err := json.Marshal(root)
+	out, err := json.Marshal(root, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

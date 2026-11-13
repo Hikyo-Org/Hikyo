@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -108,7 +107,7 @@ func (a *API) writeSCIMRequestError(w http.ResponseWriter, r *http.Request, refu
 	e := scimError(err)
 	w.Header().Set("Content-Type", scimproto.MediaType)
 	w.WriteHeader(e.Status)
-	if encodeErr := json.NewEncoder(w).Encode(e.Body()); encodeErr != nil {
+	if encodeErr := encodeJSON(w, e.Body()); encodeErr != nil {
 		a.fault(r.Context(), "render a SCIM request error", encodeErr)
 	}
 }
@@ -163,7 +162,7 @@ func (a *API) writeHandlerError(w http.ResponseWriter, r *http.Request, err erro
 		body.Error.Widening = wireWidening(wide.Widening())
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(policy.status)
-		_ = json.NewEncoder(w).Encode(body)
+		_ = encodeJSON(w, body)
 		return
 	}
 	var sf interface{ Findings() []service.Finding }
@@ -174,7 +173,7 @@ func (a *API) writeHandlerError(w http.ResponseWriter, r *http.Request, err erro
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(policy.status)
-		_ = json.NewEncoder(w).Encode(body)
+		_ = encodeJSON(w, body)
 		return
 	}
 	writeError(w, policy, safeDetailOf(err))

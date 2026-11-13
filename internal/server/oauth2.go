@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -22,7 +21,7 @@ func (r oauth2StartResponse) VisitOauth2StartResponse(w http.ResponseWriter) err
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	return json.NewEncoder(w).Encode(r.body)
+	return encodeJSON(w, r.body)
 }
 
 // Oauth2Start forwards the purpose, login intent and optional sign-up org to the

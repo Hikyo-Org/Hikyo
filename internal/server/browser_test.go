@@ -3,7 +3,8 @@ package server_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
@@ -55,7 +57,7 @@ func browserLoginAuth() stubAuth {
 // refuses, which would make a CSRF pass indistinguishable from a CSRF refusal.
 func createsOrgs() stubOrgs {
 	return stubOrgs{
-		create: func(_ context.Context, _ service.Actor, name string, active bool, meta json.RawMessage) (service.Org, error) {
+		create: func(_ context.Context, _ service.Actor, name string, active bool, meta jsontext.Value) (service.Org, error) {
 			return service.Org{ID: testOrgID, Name: name, Active: active, Metadata: meta, CreatedAt: liveIdentity.CreatedAt, Origin: "manual"}, nil
 		},
 	}
@@ -77,7 +79,7 @@ func raw(t *testing.T, srv *httptest.Server, method, path string, body any, muta
 	t.Helper()
 	var reader io.Reader
 	if body != nil {
-		encoded, err := json.Marshal(body)
+		encoded, err := json.Marshal(body, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securitymaintenance"
 	"github.com/Hikyo-Org/hikyo/internal/selfupdate"
@@ -70,7 +71,7 @@ func runNativeSecurityUpgrade(ctx context.Context, target releaseidentity.Identi
 	if err := target.Validate(); err != nil {
 		return fmt.Errorf("security upgrade target: %w", err)
 	}
-	raw, err := json.Marshal(target)
+	raw, err := json.Marshal(target, jsonwire.Stable)
 	if err != nil {
 		return err
 	}
@@ -248,7 +249,7 @@ func automaticReleaseHandoffWithAuthorization(target selfupdate.PreparedNightly,
 		if *expected != target.Identity {
 			return nil, errors.New("automatic handoff differs from the selected exact security target")
 		}
-		raw, err := json.Marshal(*expected)
+		raw, err := json.Marshal(*expected, jsonwire.Stable)
 		if err != nil {
 			return nil, err
 		}

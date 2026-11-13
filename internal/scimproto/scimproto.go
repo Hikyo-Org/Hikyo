@@ -15,10 +15,13 @@ package scimproto
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -157,6 +160,111 @@ const filterBound = stringBound
 // stringBound is the largest single IdP-supplied string this surface stores.
 const stringBound = 1024
 
+// unmarshalFolded decodes raw into out, matching member names to struct fields
+// the way RFC 7643 section 2.1 demands: case-insensitively, and nothing more.
+// (v2's MatchCaseInsensitiveNames also ignores '_' and '-', so `user_name`
+// would set userName.) Each member name that strings.EqualFolds a field's JSON
+// name is rewritten to that name, following the Go type through
+// structs, pointers and slices, and the decode is then case-sensitive. Two spellings of
+// one attribute become a duplicate name, which the decode refuses.
+func unmarshalFolded(raw []byte, out any) error {
+	var folded bytes.Buffer
+	dec := jsontext.NewDecoder(bytes.NewReader(raw))
+	if err := foldNames(dec, jsontext.NewEncoder(&folded, jsontext.AllowDuplicateNames(true)), reflect.TypeOf(out)); err != nil {
+		return err
+	}
+	if _, err := dec.ReadToken(); !errors.Is(err, io.EOF) {
+		return errors.New("trailing data after the JSON value")
+	}
+	return json.Unmarshal(folded.Bytes(), out)
+}
+
+func foldNames(dec *jsontext.Decoder, enc *jsontext.Encoder, t reflect.Type) error {
+	for t != nil && t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	kind := dec.PeekKind()
+	var end jsontext.Kind
+	switch {
+	case kind == '{' && t != nil && t.Kind() == reflect.Struct:
+		end = '}'
+	case kind == '[' && t != nil && t.Kind() == reflect.Slice:
+		end = ']'
+	default:
+		value, err := dec.ReadValue()
+		if err != nil {
+			return err
+		}
+		return enc.WriteValue(value)
+	}
+	open, err := dec.ReadToken()
+	if err != nil {
+		return err
+	}
+	if err := enc.WriteToken(open); err != nil {
+		return err
+	}
+	for {
+		switch dec.PeekKind() {
+		case end:
+			closing, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			return enc.WriteToken(closing)
+		case 0:
+			if _, err := dec.ReadToken(); err != nil {
+				return err
+			}
+			return io.ErrUnexpectedEOF
+		}
+		var elem reflect.Type
+		if end == ']' {
+			elem = t.Elem()
+		} else {
+			name, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			var canonical string
+			canonical, elem = fieldFor(t, name.String())
+			if err := enc.WriteToken(jsontext.String(canonical)); err != nil {
+				return err
+			}
+		}
+		if err := foldNames(dec, enc, elem); err != nil {
+			return err
+		}
+	}
+}
+
+// fieldFor returns the JSON name of t's field that name matches (exactly
+// first, then under strings.EqualFold) and the field's type; an unmatched name
+// comes back unchanged with a nil type. EqualFold, not ASCII folding, because v1
+// matched this way and the PATCH and attribute code reading the result
+// (isGroupPatchAttribute, scimAttribute) does too: a name this decode drops
+// must not be one they act on. `userName` next to `uſerName` still folds to a
+// duplicate, which the decode refuses.
+func fieldFor(t reflect.Type, name string) (string, reflect.Type) {
+	foldedName, foldedType := name, reflect.Type(nil)
+	for _, f := range reflect.VisibleFields(t) {
+		tag, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+		if !f.IsExported() || tag == "-" || f.Anonymous && tag == "" && f.Type.Kind() == reflect.Struct {
+			continue
+		}
+		if tag == "" {
+			tag = f.Name
+		}
+		if tag == name {
+			return tag, f.Type
+		}
+		if foldedType == nil && strings.EqualFold(tag, name) {
+			foldedName, foldedType = tag, f.Type
+		}
+	}
+	return foldedName, foldedType
+}
+
 // User is the subset of RFC 7643's User this server implements. Every other
 // member is accepted and round-tripped as opaque display metadata — never
 // matched, never a linking key, never verified authority (§5.2).
@@ -240,7 +348,7 @@ func DecodeUser(raw []byte) (User, *Error) {
 		}
 	}
 	var u User
-	if err := json.Unmarshal(raw, &u); err != nil {
+	if err := unmarshalFolded(raw, &u); err != nil {
 		return User{}, bad(TypeInvalidSyntax, "The request body is not a valid User resource.")
 	}
 	for name, value := range generic {
@@ -267,7 +375,7 @@ func DecodeGroup(raw []byte) (Group, *Error) {
 		return Group{}, e
 	}
 	var g Group
-	if err := json.Unmarshal(raw, &g); err != nil {
+	if err := unmarshalFolded(raw, &g); err != nil {
 		return Group{}, bad(TypeInvalidSyntax, "The request body is not a valid Group resource.")
 	}
 	if e := boundStrings("", generic, 0); e != nil {
@@ -709,8 +817,8 @@ type PatchOp struct {
 	// Path is the RFC's attribute path. It is named `Path` on the wire because
 	// RFC 7644 names it that; nothing derived from it ever reaches an audit
 	// payload field of that name, which the registry forbids.
-	Path  string          `json:"path"`
-	Value json.RawMessage `json:"value"`
+	Path  string         `json:"path"`
+	Value jsontext.Value `json:"value"`
 }
 
 // PatchRequest is a decoded PatchOp message.
@@ -846,7 +954,7 @@ func ParsePatch(raw []byte, res Resource) ([]ParsedPatch, *Error) {
 		return nil, ErrBodyTooLarge
 	}
 	var req PatchRequest
-	if err := json.Unmarshal(raw, &req); err != nil {
+	if err := unmarshalFolded(raw, &req); err != nil {
 		return nil, bad(TypeInvalidSyntax, "The request body is not a valid PatchOp message.")
 	}
 	if len(req.Operations) == 0 {
@@ -897,7 +1005,7 @@ func parseOne(op PatchOp, res Resource) (ParsedPatch, *Error) {
 
 // decodePatchPayload decodes each operation value exactly once, into the
 // semantic payload owned by its matrix column.
-func decodePatchPayload(verb string, res Resource, kind PathKind, attr, memberValue string, raw json.RawMessage) (PatchPayload, *Error) {
+func decodePatchPayload(verb string, res Resource, kind PathKind, attr, memberValue string, raw jsontext.Value) (PatchPayload, *Error) {
 	if verb == "remove" {
 		switch kind {
 		case PathPlain:
@@ -948,7 +1056,7 @@ func decodePatchPayload(verb string, res Resource, kind PathKind, attr, memberVa
 		return PatchActivePayload{Active: active}, nil
 	case PathMembers:
 		var members []Member
-		if err := json.Unmarshal(raw, &members); err != nil || members == nil {
+		if err := unmarshalFolded(raw, &members); err != nil || members == nil {
 			return nil, bad(TypeInvalidValue, "The members value must be an array of references.")
 		}
 		if e := CheckMembers(members); e != nil {

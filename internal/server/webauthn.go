@@ -2,13 +2,14 @@ package server
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
@@ -42,7 +43,7 @@ func finishBody(body *apigen.WebauthnResponse) ([]byte, bool) {
 	if body == nil {
 		return nil, false
 	}
-	raw, err := json.Marshal(body)
+	raw, err := json.Marshal(body, jsonwire.Stable)
 	if err != nil {
 		return nil, false
 	}

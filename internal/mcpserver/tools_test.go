@@ -3,7 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,6 +14,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
@@ -301,7 +302,7 @@ func TestInspectDropsSecretPlaintext(t *testing.T) {
 	}
 	h := toolHandler(t, services)
 	response := callTool(t, h, ToolInspectConfiguration, `{"org_id":"org_a","project_id":"prj_a","environment_id":"env_a"}`)
-	raw, _ := json.Marshal(response)
+	raw, _ := json.Marshal(response, jsonwire.Stable)
 	if strings.Contains(string(raw), "CANARY-SECRET-PLAINTEXT") {
 		t.Fatalf("secret plaintext leaked into inspect result: %s", raw)
 	}
@@ -424,7 +425,7 @@ func TestTraversalByteLimitCountsExactStructuredContent(t *testing.T) {
 			break
 		}
 		structured := structuredContent(t, decode(t, body))
-		encoded, err := json.Marshal(structured)
+		encoded, err := json.Marshal(structured, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

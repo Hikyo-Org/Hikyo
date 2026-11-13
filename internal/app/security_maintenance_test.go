@@ -3,7 +3,8 @@ package app
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securitydeployment"
 	"github.com/Hikyo-Org/hikyo/internal/securitymaintenance"
@@ -72,7 +74,7 @@ func TestSecurityOperationalHealthUsesLiveLoopbackReadiness(t *testing.T) {
 func TestSecurityImagePlatformDigestComesFromUnambiguousIndex(t *testing.T) {
 	digest := v1.Hash{Algorithm: "sha256", Hex: strings.Repeat("a", 64)}
 	index := v1.IndexManifest{SchemaVersion: 2, MediaType: types.OCIImageIndex, Manifests: []v1.Descriptor{{Digest: digest, MediaType: types.OCIManifestSchema1, Platform: &v1.Platform{OS: "linux", Architecture: "amd64"}}}}
-	raw, err := json.Marshal(index)
+	raw, err := json.Marshal(index, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +85,7 @@ func TestSecurityImagePlatformDigestComesFromUnambiguousIndex(t *testing.T) {
 		t.Fatal("missing platform accepted")
 	}
 	index.Manifests = append(index.Manifests, index.Manifests[0])
-	if raw, err = json.Marshal(index); err != nil {
+	if raw, err = json.Marshal(index, jsonwire.Stable); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := securityIndexPlatform(raw, "linux", "amd64"); err == nil {
@@ -91,7 +93,7 @@ func TestSecurityImagePlatformDigestComesFromUnambiguousIndex(t *testing.T) {
 	}
 	index.Manifests = index.Manifests[:1]
 	index.Manifests[0].Digest = v1.Hash{Algorithm: "sha512", Hex: strings.Repeat("a", 128)}
-	if raw, err = json.Marshal(index); err != nil {
+	if raw, err = json.Marshal(index, jsonwire.Stable); err != nil {
 		t.Fatal(err)
 	}
 	// The index must parse, so the refusal below comes from the algorithm check.
@@ -139,7 +141,7 @@ func TestSecurityMaintenanceLocalPolicyChangeCannotRaceStagedApply(t *testing.T)
 	}
 	path := filepath.Join(directory, "configuration.json")
 	c := testSecurityMaintenanceConfiguration()
-	raw, _ := json.Marshal(c)
+	raw, _ := json.Marshal(c, jsonwire.Stable)
 	if err := os.WriteFile(path, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +157,7 @@ func TestSecurityMaintenanceLocalPolicyChangeCannotRaceStagedApply(t *testing.T)
 	// wrapper's initial check. Re-read local authority at its mutation gate.
 	driver.beforeMutation = func() {
 		c.Policy.Mode = securitymaintenance.Manual
-		changed, err := json.Marshal(c)
+		changed, err := json.Marshal(c, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -168,7 +170,7 @@ func TestSecurityMaintenanceLocalPolicyChangeCannotRaceStagedApply(t *testing.T)
 	}
 	driver.beforeMutation = nil
 	c.Policy.Pin = "1.2.0"
-	raw, _ = json.Marshal(c)
+	raw, _ = json.Marshal(c, jsonwire.Stable)
 	if err := os.WriteFile(path, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -192,12 +194,12 @@ func TestSecurityPolicyDigestIsIndependentOfConfigurationStructShape(t *testing.
 	}
 	path := filepath.Join(directory, "configuration.json")
 	c := testSecurityMaintenanceConfiguration()
-	canonical, err := json.Marshal(c)
+	canonical, err := json.Marshal(c, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Operator formatting makes the file bytes differ from any re-marshalled struct.
-	raw, err := json.MarshalIndent(c, "", "    ")
+	raw, err := json.Marshal(c, jsonwire.Stable, jsontext.WithIndent("    "))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +235,7 @@ func TestSecurityPolicyDigestIsIndependentOfConfigurationStructShape(t *testing.
 	// The engine runs c, so newer bytes than c was parsed from must not be bound.
 	changed := c
 	changed.Policy.Mode = securitymaintenance.Manual
-	raw, _ = json.Marshal(changed)
+	raw, _ = json.Marshal(changed, jsonwire.Stable)
 	if err := os.WriteFile(path, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +322,7 @@ func TestSecurityMaintenanceStatusFileIsOptionalAndKeepsPolicyBinding(t *testing
 		t.Fatal(err)
 	}
 	path := filepath.Join(directory, "configuration.json")
-	raw, err := json.MarshalIndent(c, "", "  ")
+	raw, err := json.Marshal(c, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -449,7 +451,7 @@ func TestSecurityCoordinatorConfigurationRequiresTheRootOperatorOutsideTheCluste
 		t.Fatal(err)
 	}
 	path := filepath.Join(directory, "configuration.json")
-	raw, err := json.Marshal(testSecurityMaintenanceConfiguration())
+	raw, err := json.Marshal(testSecurityMaintenanceConfiguration(), jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

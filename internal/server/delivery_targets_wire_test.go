@@ -2,7 +2,8 @@ package server_test
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"slices"
@@ -14,6 +15,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
@@ -137,7 +139,7 @@ func (e vocabularyErr) SafeDetail() string { return e.detail }
 func TestDeliveryTargetOversizeReportIsRefusedUnparsed(t *testing.T) {
 	del := newDTDelivery(nil)
 	srv := federationServer(t, stubFederation{}, del)
-	pad := json.RawMessage(`{"pad":"` + strings.Repeat("x", deliverytarget.MaxReportBytes) + `"}`)
+	pad := jsontext.Value(`{"pad":"` + strings.Repeat("x", deliverytarget.MaxReportBytes) + `"}`)
 	resp, payload := call(t, srv, http.MethodPost, deliveryTargetsPath, "hik_1_wl_abc", pad)
 	if resp.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Fatalf("oversize report -> %d: %s", resp.StatusCode, payload)
@@ -158,11 +160,11 @@ func TestDeliveryTargetOversizeReportIsRefusedUnparsed(t *testing.T) {
 	// Exactly at the bound the body is parsed as a report.
 	within := newDTDelivery(nil)
 	srv = federationServer(t, stubFederation{}, within)
-	raw, err := json.Marshal(wireReport())
+	raw, err := json.Marshal(wireReport(), jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
-	padded := json.RawMessage(string(raw) + strings.Repeat(" ", deliverytarget.MaxReportBytes-len(raw)))
+	padded := jsontext.Value(string(raw) + strings.Repeat(" ", deliverytarget.MaxReportBytes-len(raw)))
 	if resp, payload := call(t, srv, http.MethodPost, deliveryTargetsPath, "hik_1_wl_abc", padded); resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("report at the bound -> %d: %s", resp.StatusCode, payload)
 	}

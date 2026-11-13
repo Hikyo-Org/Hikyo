@@ -1,13 +1,14 @@
 package app
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/configrollout"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func upgradeEnrollmentFixture(t *testing.T) (*config.Config, string) {
@@ -16,7 +17,7 @@ func upgradeEnrollmentFixture(t *testing.T) (*config.Config, string) {
 	next := initial
 	next.BundleDirectory = "/run/hikyo-upgrade/next/bundle"
 	enrollment := configrollout.Enrollment{ID: "enrollment", OwnerInstanceID: "owner", Incarnation: "incarnation", Target: configrollout.Target{Namespace: "hikyo", Deployment: "hikyo", DeploymentUID: "deployment", Container: "server", StableNodeID: "local", ConfigSecret: "config", RollbackSecret: "rollback", RequestSecret: "request", ReceiptSecret: "receipt", InitialUpgradeSource: "initial", UpgradeSources: map[string]configrollout.UpgradeCustodySource{"initial": initial, "next": next}}, CommandSecret: "command", CommandSecretUID: "command", ResponseSecret: "response", ResponseSecretUID: "response", JournalSecret: "journal", JournalSecretUID: "journal", LeaseName: "lease", LeaseUID: "lease", ExecutorPod: "executor-0"}
-	raw, err := json.Marshal(enrollment)
+	raw, err := json.Marshal(enrollment, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

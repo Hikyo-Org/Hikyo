@@ -2,7 +2,8 @@ package server_test
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -360,14 +361,14 @@ func TestDeliveryRouteCarriesTheProjectionAndValue(t *testing.T) {
 // distinct — presence-only and indefinite mean the member is ABSENT. The wire
 // test has to see the bytes to assert that. It returns the top-level members and
 // the `keys` array indexed by name, each as a raw member set.
-func rawDeliveryMembers(t *testing.T, payload []byte) (top map[string]json.RawMessage, keysByName map[string]map[string]json.RawMessage) {
+func rawDeliveryMembers(t *testing.T, payload []byte) (top map[string]jsontext.Value, keysByName map[string]map[string]jsontext.Value) {
 	t.Helper()
 	if err := json.Unmarshal(payload, &top); err != nil {
 		t.Fatal(err)
 	}
-	keysByName = map[string]map[string]json.RawMessage{}
+	keysByName = map[string]map[string]jsontext.Value{}
 	if rawKeys, ok := top["keys"]; ok {
-		var keys []map[string]json.RawMessage
+		var keys []map[string]jsontext.Value
 		if err := json.Unmarshal(rawKeys, &keys); err != nil {
 			t.Fatal(err)
 		}
@@ -517,10 +518,15 @@ func TestFederationIssuerRouteRejectsImpossibleKeySources(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var got service.IssuerRequest
 			srv := federationServer(t, stubFederation{createRequest: &got}, stubDelivery{})
-			body := apigen.CreateFederationIssuerRequest{
-				Issuer: "https://issuer.test", IssuerType: apigen.IssuerTypeKubernetes,
-				JwksMode: tc.mode, StaticJwks: tc.static,
-				RefusedAudiences: []string{"https://kubernetes.default.svc"},
+			// A map, not the generated type: its v1 omitempty would drop the
+			// empty static_jwks this case exists to send.
+			body := map[string]any{
+				"issuer": "https://issuer.test", "issuer_type": apigen.IssuerTypeKubernetes,
+				"jwks_mode":         tc.mode,
+				"refused_audiences": []string{"https://kubernetes.default.svc"},
+			}
+			if tc.static != nil {
+				body["static_jwks"] = *tc.static
 			}
 			resp, payload := call(t, srv, http.MethodPost, api.PathPrefix+"/instance/federation-issuers", "hik_1_cli_abc", body)
 			if resp.StatusCode != http.StatusBadRequest {
@@ -551,7 +557,7 @@ func TestFederationIssuerRouteCanonicalizesStaticJWKSOnce(t *testing.T) {
 	if !ok {
 		t.Fatal("static request reached the service as remote discovery")
 	}
-	if canonical == raw || !json.Valid([]byte(canonical)) {
+	if canonical == raw || !jsontext.Value(canonical).IsValid() {
 		t.Fatalf("service received non-canonical JWKS %q", canonical)
 	}
 }

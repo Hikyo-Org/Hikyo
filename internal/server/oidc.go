@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
@@ -87,7 +86,7 @@ func (r oidcStartResponse) VisitOidcStartResponse(w http.ResponseWriter) error {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	return json.NewEncoder(w).Encode(r.body)
+	return encodeJSON(w, r.body)
 }
 
 // OidcStart forwards the purpose, login intent and optional sign-up org to the
@@ -265,7 +264,7 @@ func (r oidcLinkStartResponse) VisitLinkIdentityResponse(w http.ResponseWriter) 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	return json.NewEncoder(w).Encode(r.body)
+	return encodeJSON(w, r.body)
 }
 
 func (a *API) ListIdentities(ctx context.Context, _ apigen.ListIdentitiesRequestObject) (apigen.ListIdentitiesResponseObject, error) {

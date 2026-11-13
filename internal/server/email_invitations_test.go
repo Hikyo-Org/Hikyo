@@ -2,7 +2,8 @@ package server
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -34,7 +35,7 @@ func (stubEmailInvitations) List(context.Context, service.Actor, domain.OrgID) (
 func TestEmailInvitationResponseBodiesHaveAClosedKeySet(t *testing.T) {
 	api := &API{EmailInvitations: stubEmailInvitations{}}
 	keys := func(raw []byte) []string {
-		var m map[string]json.RawMessage
+		var m map[string]jsontext.Value
 		if err := json.Unmarshal(raw, &m); err != nil {
 			t.Fatalf("body %s: %v", raw, err)
 		}
@@ -62,7 +63,7 @@ func TestEmailInvitationResponseBodiesHaveAClosedKeySet(t *testing.T) {
 		t.Fatal(err)
 	}
 	var page struct {
-		Items []json.RawMessage `json:"items"`
+		Items []jsontext.Value `json:"items"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil || len(page.Items) != 1 {
 		t.Fatalf("list body %s: %v", rec.Body.Bytes(), err)

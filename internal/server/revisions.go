@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"math/rand/v2"
 	"mime"
@@ -13,6 +13,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
@@ -571,7 +572,7 @@ func (s eventStream) VisitWatchProjectEventsResponse(w http.ResponseWriter) erro
 			if ev.Type == service.AdvisoryEnvironmentsChanged && !s.includeTopology {
 				continue
 			}
-			payload, err := json.Marshal(wireAdvisory(ev))
+			payload, err := json.Marshal(wireAdvisory(ev), jsonwire.Stable)
 			if err != nil {
 				return err
 			}
