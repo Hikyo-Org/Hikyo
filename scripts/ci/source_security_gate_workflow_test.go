@@ -2,7 +2,7 @@ package ci_test
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // The relative ci-merge-group call selects the candidate's ci.yml,
@@ -47,7 +49,7 @@ func TestSourceSecurityGateTrustedBaseMigration(t *testing.T) {
 	}
 	encode := func(value any) []byte {
 		t.Helper()
-		raw, err := json.Marshal(value)
+		raw, err := json.Marshal(value, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

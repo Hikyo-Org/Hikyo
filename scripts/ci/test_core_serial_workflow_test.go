@@ -1,7 +1,7 @@
 package ci_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // test_core_serial runs internal/app and internal/lint on a runner of its own
@@ -143,7 +145,7 @@ func TestTestCoreSerialTrustedBaseMigration(t *testing.T) {
 				}
 				encode := func(value any) []byte {
 					t.Helper()
-					data, err := json.Marshal(value)
+					data, err := json.Marshal(value, jsonwire.Stable)
 					if err != nil {
 						t.Fatal(err)
 					}

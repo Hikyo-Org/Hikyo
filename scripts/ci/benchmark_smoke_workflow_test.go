@@ -1,7 +1,7 @@
 package ci_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // A failed benchmark must fail the already-required core job, while reusing
@@ -118,11 +120,11 @@ func TestBenchmarkSmokeUsesRequiredCoreValidation(t *testing.T) {
 		}
 	}
 	results["test_core"]["result"] = "failure"
-	planJSON, err := json.Marshal(plan)
+	planJSON, err := json.Marshal(plan, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
-	resultsJSON, err := json.Marshal(results)
+	resultsJSON, err := json.Marshal(results, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

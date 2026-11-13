@@ -17,32 +17,7 @@ import (
 // output (api/apigen) is the one permanent exception: the generator has no v2
 // mode, and v1 is v2 with v1-compatible options underneath.
 var jsonV1Allowlist = map[string]bool{
-	"api/apigen":                           true,
-	"scripts/acceptance/github-contract":   true,
-	"scripts/acceptance/mcp-fixture":       true,
-	"scripts/ci":                           true,
-	"scripts/ci/analysis-shards-go":        true,
-	"scripts/ci/benchmark":                 true,
-	"scripts/ci/chartdoctor":               true,
-	"scripts/ci/codspeed-verify":           true,
-	"scripts/ci/networkpolicyfixture":      true,
-	"scripts/ci/pr-gate":                   true,
-	"scripts/ci/qualification":             true,
-	"scripts/ci/queue-report":              true,
-	"scripts/ci/retire-runs":               true,
-	"scripts/ci/securitycomposerehearsal":  true,
-	"scripts/ci/source-proof":              true,
-	"scripts/ci/unattendedfixture/inspect": true,
-	"scripts/mcp-production-client":        true,
-	"scripts/mcp-public-smoke":             true,
-	"scripts/operator-floor":               true,
-	"scripts/ops-floor":                    true,
-	"scripts/release/nightly":              true,
-	"scripts/release/stable":               true,
-	"scripts/security/alert-route":         true,
-	"scripts/security/artifact-harness":    true,
-	"scripts/security/release-evidence":    true,
-	"scripts/self-config-inventory":        true,
+	"api/apigen": true,
 }
 
 // CheckJSONv1Imports reports encoding/json imports outside the allowlist and

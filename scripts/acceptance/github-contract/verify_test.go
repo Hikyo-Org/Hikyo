@@ -2,7 +2,8 @@ package contract_test
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func syntheticLog(t *testing.T, mutate func([]map[string]any) []map[string]any) []byte {
@@ -33,13 +36,13 @@ func syntheticLog(t *testing.T, mutate func([]map[string]any) []map[string]any) 
 		events = mutate(events)
 	}
 	var output bytes.Buffer
-	encode := json.NewEncoder(&output)
+	encode := jsontext.NewEncoder(&output, jsonwire.Stable)
 	for _, event := range events {
-		data, err := json.Marshal(event)
+		data, err := json.Marshal(event, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := encode.Encode(map[string]string{"Action": "output", "Output": "    file.go:1: GITHUB_CONTRACT_EVIDENCE " + string(data) + "\n"}); err != nil {
+		if err := json.MarshalEncode(encode, map[string]string{"Action": "output", "Output": "    file.go:1: GITHUB_CONTRACT_EVIDENCE " + string(data) + "\n"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -48,7 +51,7 @@ func syntheticLog(t *testing.T, mutate func([]map[string]any) []map[string]any) 
 		if name != "" {
 			testName += "/" + name
 		}
-		if err := encode.Encode(map[string]string{"Action": "pass", "Test": testName}); err != nil {
+		if err := json.MarshalEncode(encode, map[string]string{"Action": "pass", "Test": testName}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -175,7 +178,7 @@ exit "$SYNTHETIC_GO_EXIT"
 				expires = expires.Add(-2 * time.Hour)
 			}
 			authorization := map[string]any{"candidate_sha": candidate, "approved_by": "synthetic", "approval_ref": "synthetic", "expires_at": expires.Format(time.RFC3339), "synthetic_only": true, "no_new_spend": true, "maximum_workflow_dispatches": 18, "owner": "fixture", "repository": "repo", "environment": "contract", "ref": "main", "workflow_sha": strings.Repeat("a", 40), "repository_id": 42, "organization_id": 43, "environment_id": 44, "credential_grants_attested": true}
-			data, err := json.Marshal(authorization)
+			data, err := json.Marshal(authorization, jsonwire.Stable)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -184,7 +187,7 @@ exit "$SYNTHETIC_GO_EXIT"
 			for _, key := range []string{"REPOSITORY_TOKEN", "ORGANIZATION_TOKEN", "ENVIRONMENT_TOKEN", "REPOSITORY_DENIED_TOKEN", "ORGANIZATION_DENIED_TOKEN", "ENVIRONMENT_DENIED_TOKEN", "HARNESS_TOKEN"} {
 				credentials[key] = "github_pat_synthetic_" + key
 			}
-			data, err = json.Marshal(credentials)
+			data, err = json.Marshal(credentials, jsonwire.Stable)
 			if err != nil {
 				t.Fatal(err)
 			}

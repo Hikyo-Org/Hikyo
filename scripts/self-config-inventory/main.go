@@ -4,17 +4,18 @@
 package main
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func main() {
-	encoder := json.NewEncoder(os.Stdout)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(config.VariableInventory()); err != nil {
+	encoder := jsontext.NewEncoder(os.Stdout, jsonwire.Stable, jsontext.WithIndent("  "))
+	if err := json.MarshalEncode(encoder, config.VariableInventory()); err != nil {
 		fmt.Fprintln(os.Stderr, "self-configuration inventory: cannot write metadata")
 		os.Exit(1)
 	}

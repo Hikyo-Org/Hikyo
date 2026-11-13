@@ -2,7 +2,8 @@ package main
 
 import (
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"math"
@@ -12,6 +13,8 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 const operatorMemoryLimit = uint64(128 << 20)
@@ -186,7 +189,7 @@ func verifyResources(directory, binarySHA string) error {
 		Process processMeasurement `json:"process"`
 		Peak    uint64             `json:"operator_memory_peak_bytes"`
 	}{process, peak}
-	raw, err := json.MarshalIndent(report, "", "  ")
+	raw, err := json.Marshal(report, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}

@@ -3,7 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -24,14 +25,12 @@ type headWork struct {
 }
 
 func parseHeadBatch(data string) ([]headWork, error) {
-	d := json.NewDecoder(bytes.NewBufferString(data))
-	d.DisallowUnknownFields()
+	d := jsontext.NewDecoder(strings.NewReader(data))
 	var batch []headWork
-	if err := d.Decode(&batch); err != nil {
+	if err := json.UnmarshalDecode(d, &batch, json.RejectUnknownMembers(true)); err != nil {
 		return nil, err
 	}
-	var extra any
-	if d.Decode(&extra) != io.EOF || batch == nil || len(batch) == 0 || len(batch) > queueHeadBatchSize {
+	if _, err := d.ReadValue(); !errors.Is(err, io.EOF) || batch == nil || len(batch) == 0 || len(batch) > queueHeadBatchSize {
 		return nil, errors.New("worker input must be one bounded nonempty head array")
 	}
 	seen := make(map[string]bool)
@@ -179,7 +178,7 @@ func (q *queueController) dispatchWorkers(ctx context.Context, name string, e ev
 	for _, index := range order {
 		offset := index * queueHeadBatchSize
 		batch := work[offset:min(offset+queueHeadBatchSize, len(work))]
-		data, err := json.Marshal(batch)
+		data, err := json.Marshal(batch, stableJSON)
 		if err != nil {
 			return err
 		}

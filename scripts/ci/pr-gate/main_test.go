@@ -5,7 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"math"
@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func legacySnapshotBinding(s snapshot, repoID int64) legacyBinding {
@@ -27,7 +29,7 @@ func legacySnapshotBinding(s snapshot, repoID int64) legacyBinding {
 func legacyExternalID(t *testing.T, b binding, ref string) string {
 	old := legacyBinding{RepoID: b.RepoID, PR: b.PR, Head: b.Head, Base: b.Base, BaseRef: ref, Run: b.Run, Attempt: b.Attempt}
 	t.Helper()
-	data, err := json.Marshal(old)
+	data, err := json.Marshal(old, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,14 +259,14 @@ func (f *fakeAPI) read(_ context.Context, path string, result any) error {
 	if err, ok := response.(error); ok {
 		return err
 	}
-	data, err := json.Marshal(response)
+	data, err := json.Marshal(response, jsonwire.Stable)
 	if err != nil {
 		return err
 	}
 	return decode(data, result)
 }
 func (f *fakeAPI) write(ctx context.Context, method, path string, payload, result any) error {
-	data, err := json.Marshal(payload)
+	data, err := json.Marshal(payload, jsonwire.Stable)
 	if err != nil {
 		return err
 	}
@@ -324,7 +326,7 @@ func (f *fakeAPI) write(ctx context.Context, method, path string, payload, resul
 	} else {
 		f.checks = append(f.checks, created)
 	}
-	response, err := json.Marshal(created)
+	response, err := json.Marshal(created, jsonwire.Stable)
 	if err != nil {
 		return err
 	}
@@ -473,7 +475,7 @@ func TestCurrentForkAdmissionPrecedenceAndRevocation(t *testing.T) {
 
 func legacyID(t *testing.T, b legacyBinding) string {
 	t.Helper()
-	data, err := json.Marshal(b)
+	data, err := json.Marshal(b, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"strings"
@@ -63,7 +63,7 @@ func (s *retirementDiscoveryScan) report(out io.Writer, scanErr error) error {
 		RESTRequests: s.restRequests.Load(), RESTPages: s.restPages.Load(),
 		ElapsedMS: time.Since(s.started).Milliseconds(), Status: status, WorkerLimit: retirementDiscoveryWorkers,
 	}
-	body, err := json.Marshal(record)
+	body, err := json.Marshal(record, stableJSON)
 	if err != nil {
 		return errors.New("retirement discovery diagnostics could not be encoded")
 	}
