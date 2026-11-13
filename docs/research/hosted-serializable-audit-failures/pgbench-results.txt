@@ -1,0 +1,32 @@
+# template=tmpl_big commit_delay=0 secs=30
+baseline                     c=16  R=200   ok=5989   failed=57 (0.943%)    retried=1853   retries=2551   tps=199.748069 lat=3.494 ms
+pk-plan                      c=16  R=200   ok=6101   failed=0 (0.000%)     retried=0      retries=0      tps=203.617741 lat=3.838 ms
+baseline                     c=16  R=400   ok=10587  failed=1395 (11.642%) retried=6068   retries=11503  tps=353.128745 lat=4.203 ms
+pk-plan                      c=16  R=400   ok=11737  failed=0 (0.000%)     retried=0      retries=0      tps=391.345545 lat=2.733 ms
+baseline                     c=16  R=800   ok=21061  failed=2758 (11.579%) retried=13418  retries=25757  tps=702.476245 lat=2.177 ms
+pk-plan                      c=16  R=800   ok=23847  failed=0 (0.000%)     retried=0      retries=0      tps=795.062643 lat=2.883 ms
+baseline                     c=64  R=200   ok=5829   failed=100 (1.687%)   retried=2157   retries=3201   tps=194.763303 lat=5.282 ms
+pk-plan                      c=64  R=200   ok=5980   failed=0 (0.000%)     retried=0      retries=0      tps=199.720758 lat=4.939 ms
+baseline                     c=64  R=400   ok=11193  failed=863 (7.158%)   retried=6326   retries=11197  tps=373.801114 lat=4.106 ms
+pk-plan                      c=64  R=400   ok=12158  failed=0 (0.000%)     retried=0      retries=0      tps=405.991673 lat=3.554 ms
+baseline                     c=64  R=800   ok=20307  failed=3797 (15.753%) retried=15302  retries=30979  tps=678.290631 lat=2.750 ms
+pk-plan                      c=64  R=800   ok=23885  failed=0 (0.000%)     retried=0      retries=0      tps=797.545969 lat=2.663 ms
+pk-plan+per-org-lock         c=64  R=400   ok=11922  failed=12 (0.101%)    retried=3012   retries=3725   tps=398.364454 lat=3.717 ms
+no-deferred-trigger          c=64  R=400   ok=12014  failed=0 (0.000%)     retried=0      retries=0      tps=401.659005 lat=3.483 ms
+REPEATABLE READ              c=64  R=400   ok=11801  failed=0 (0.000%)     retried=0      retries=0      tps=394.062634 lat=3.681 ms
+# template=tmpl_big commit_delay=1000 secs=30
+baseline                     c=16  R=200   ok=5709   failed=236 (3.970%)   retried=3064   retries=5084   tps=190.385801 lat=7.164 ms
+pk-plan                      c=16  R=200   ok=6137   failed=0 (0.000%)     retried=0      retries=0      tps=204.644780 lat=6.805 ms
+baseline                     c=16  R=400   ok=9444   failed=2575 (21.424%) retried=8992   retries=19558  tps=314.918031 lat=6.986 ms
+pk-plan                      c=16  R=400   ok=12031  failed=0 (0.000%)     retried=0      retries=0      tps=401.249500 lat=7.293 ms
+baseline                     c=16  R=800   ok=8225   failed=15820 (65.793%) retried=20357  retries=56458  tps=274.284545 lat=17.106 ms
+pk-plan                      c=16  R=800   ok=17133  failed=0 (0.000%)     retried=0      retries=0      tps=570.756576 lat=4351.874 ms
+baseline                     c=64  R=200   ok=5754   failed=196 (3.294%)   retried=2961   retries=4796   tps=192.176820 lat=6.211 ms
+pk-plan                      c=64  R=200   ok=5992   failed=0 (0.000%)     retried=0      retries=0      tps=202.285215 lat=6.415 ms
+baseline                     c=64  R=400   ok=8964   failed=2960 (24.824%) retried=9263   retries=20376  tps=299.328784 lat=7.039 ms
+pk-plan                      c=64  R=400   ok=11983  failed=0 (0.000%)     retried=0      retries=0      tps=402.064578 lat=9.177 ms
+baseline                     c=64  R=800   ok=9138   failed=14838 (61.887%) retried=21801  retries=58868  tps=305.352817 lat=8.249 ms
+pk-plan                      c=64  R=800   ok=16189  failed=0 (0.000%)     retried=0      retries=0      tps=539.075893 lat=4880.133 ms
+pk-plan+per-org-lock         c=64  R=400   ok=11415  failed=573 (4.780%)   retried=3708   retries=6870   tps=381.499707 lat=4.586 ms
+no-deferred-trigger          c=64  R=400   ok=11952  failed=0 (0.000%)     retried=0      retries=0      tps=399.467110 lat=4.265 ms
+REPEATABLE READ              c=64  R=400   ok=11926  failed=0 (0.000%)     retried=0      retries=0      tps=398.414560 lat=7.041 ms

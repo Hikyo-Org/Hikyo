@@ -1,0 +1,1 @@
+ALTER TABLE audit_tenant_events DISABLE TRIGGER audit_tenant_assign_commit_seq;

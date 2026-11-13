@@ -1,0 +1,21 @@
+// Builds the `tmpl` database used by template.sql. Copy into internal/store/ as zz_bench_migrate_test.go, then:
+//   createdb tmpl && HIKYO_BENCH_MIGRATE_DSN=postgres://postgres@127.0.0.1:55432/tmpl?sslmode=disable \
+//     go test -p 2 -count=1 -run TestZZBenchMigrateKeep ./internal/store/
+package store
+
+import (
+	"os"
+	"testing"
+)
+
+func TestZZBenchMigrateKeep(t *testing.T) {
+	dsn := os.Getenv("HIKYO_BENCH_MIGRATE_DSN")
+	if dsn == "" {
+		t.Skip("unset")
+	}
+	db, err := admittedStoreFixture(t, Config{Engine: EnginePostgres, DSN: dsn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+}

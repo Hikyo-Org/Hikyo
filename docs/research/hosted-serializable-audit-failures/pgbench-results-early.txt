@@ -1,0 +1,29 @@
+# First matrix. Same method as pgbench-results.txt, run on a database named x.
+# CAUTION: its 'pk-predicate' variant used 'commit_seq IS NOT DISTINCT FROM NULL', which PostgreSQL 18 plans as IS NULL
+# on the commit_seq index, so those rows are the ORIGINAL NULL plan, not a primary-key plan. The no-FOR-SHARE, no-lock85 and
+# per-org-lock rows also ran on the original NULL plan. The run was stopped during its second (commit_delay=1000) half.
+# template=tmpl_big commit_delay=0 secs=30
+baseline                     c=16  R=200   ok=5937   failed=72 (1.198%)    retried=2222   retries=3230   tps=197.998366 lat=5.229 ms
+pk-predicate                 c=16  R=200   ok=5902   failed=97 (1.617%)    retried=2180   retries=3219   tps=196.886432 lat=5.188 ms
+baseline                     c=16  R=400   ok=11320  failed=650 (5.430%)   retried=5843   retries=9894   tps=377.483509 lat=3.850 ms
+pk-predicate                 c=16  R=400   ok=11655  failed=337 (2.810%)   retried=4744   retries=7411   tps=388.729311 lat=2.766 ms
+baseline                     c=64  R=200   ok=6040   failed=38 (0.625%)    retried=1775   retries=2402   tps=201.703729 lat=3.391 ms
+pk-predicate                 c=64  R=200   ok=6029   failed=36 (0.594%)    retried=1841   retries=2464   tps=201.388582 lat=3.551 ms
+baseline                     c=64  R=400   ok=11713  failed=326 (2.708%)   retried=5087   retries=7972   tps=391.024393 lat=2.712 ms
+pk-predicate                 c=64  R=400   ok=11681  failed=289 (2.414%)   retried=5129   retries=7941   tps=389.880165 lat=2.769 ms
+no-FOR-SHARE                 c=64  R=400   ok=11594  failed=312 (2.621%)   retried=4914   retries=7662   tps=387.137589 lat=2.681 ms
+no-lock85                    c=64  R=400   ok=11656  failed=304 (2.542%)   retried=5039   retries=7787   tps=389.355236 lat=2.723 ms
+per-org-lock(orig UPDATE)    c=64  R=400   ok=11447  failed=445 (3.742%)   retried=5069   retries=8314   tps=382.138460 lat=2.700 ms
+no-deferred-trigger          c=64  R=400   ok=11916  failed=0 (0.000%)     retried=0      retries=0      tps=397.923066 lat=2.424 ms
+REPEATABLE READ              c=64  R=400   ok=11957  failed=0 (0.000%)     retried=0      retries=0      tps=399.132157 lat=2.621 ms
+READ COMMITTED               c=64  R=400   ok=12009  failed=0 (0.000%)     retried=0      retries=0      tps=401.123654 lat=2.604 ms
+# template=tmpl_big commit_delay=1000 secs=30
+baseline                     c=16  R=200   ok=5942   failed=108 (1.785%)   retried=2475   retries=3803   tps=198.128542 lat=5.116 ms
+
+# Trigger-body ablations: template tmpl_big, fresh copy per case, native commit, 16 clients, 400/s, 15 s.
+# v_select and v_noseq use IS NOT DISTINCT FROM NULL, so they run on the commit_seq NULL plan.
+# v_pk_noidx (old IS NOT DISTINCT FROM UPDATE, with the four commit_seq indexes dropped) can only use the primary key.
+v_select.sql                 c=16  R=400   ok=5370   failed=675 (11.166%)  retried=3010   retries=5696   tps=358.376128 lat=3.674 ms
+v_nextval_only.sql           c=16  R=400   ok=6179   failed=0 (0.000%)     retried=0      retries=0      tps=412.380133 lat=2.509 ms
+v_noseq.sql                  c=16  R=400   ok=5684   failed=330 (5.487%)   retried=2948   retries=4989   tps=379.463570 lat=3.327 ms
+v_pk_noidx.sql               c=16  R=400   ok=5922   failed=0 (0.000%)     retried=0      retries=0      tps=395.138977 lat=2.583 ms

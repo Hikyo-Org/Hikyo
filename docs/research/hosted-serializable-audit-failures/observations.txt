@@ -1,0 +1,52 @@
+# Observations transcribed from the session (server log and pg_locks were not kept; the cluster was torn down).
+# Template tmpl_big (500,000 rows, VACUUM ANALYZE), PostgreSQL 18.6.
+
+## 1. Plan of the trigger UPDATE (explain.sql, auto_explain), original trigger
+
+On tmpl (freshly migrated, never analyzed):
+  Update on audit_tenant_events  (cost=0.14..8.16 rows=0 width=0)
+    ->  Index Scan using audit_tenant_events_pkey on audit_tenant_events  (cost=0.14..8.16 rows=1 width=14)
+          Index Cond: (seq = '1'::bigint)
+
+On tmpl_big (analyzed):
+  Update on audit_tenant_events  (cost=0.42..4.45 rows=0 width=0)
+    ->  Index Scan using audit_tenant_events_commit_seq_unique on audit_tenant_events  (cost=0.42..4.45 rows=1 width=14)
+          Index Cond: (commit_seq IS NULL)
+
+On tmpl_big with v_pk.sql ((commit_seq + 0) IS NULL):
+  Update on audit_tenant_events  (cost=0.42..8.44 rows=0 width=0)
+    ->  Index Scan using audit_tenant_events_pkey on audit_tenant_events  (cost=0.42..8.44 rows=1 width=14)
+          Index Cond: (seq = '500002'::bigint)
+
+On tmpl_big with v_select.sql (PERFORM ... commit_seq IS NOT DISTINCT FROM NULL):
+  Index Scan using audit_tenant_events_commit_seq_unique on audit_tenant_events  (cost=0.42..4.44 rows=1 width=4)
+    Index Cond: (commit_seq IS NULL)
+    Filter: (seq = '500002'::bigint)
+
+Single session, an earlier autoanalyzed database of about 28,000 rows, original trigger: after SET CONSTRAINTS ALL IMMEDIATE
+the session held one SIRead lock: page 35 of audit_tenant_events_commit_seq_unique.
+
+## 2. SIRead lock targets under load (sample-locks.sh: 40 samples, 100 ms apart, 16 clients, 400/s)
+
+v_select.sql (commit_seq NULL plan, read only):
+   123 page audit_tenant_events
+   122 page audit_tenant_events_commit_seq_unique
+    73 relation upgrade_control
+    29 relation audit_tenant_events
+     1 tuple audit_tenant_events
+
+v_pk.sql (primary-key plan):
+    21 relation upgrade_control
+    14 page audit_tenant_events_pkey
+
+(Counts are sample-rows summed over 40 samples, not distinct locks. The relation-level lock on upgrade_control
+is harmless here: nothing writes that row during the run.)
+
+## 3. Server log (log_min_error_statement = error), 15 s runs, 16 clients, 400/s
+
+Original trigger: 5,759 x "could not serialize access due to read/write dependencies among transactions"
+  DETAIL:  Reason code: Canceled on conflict out to pivot N, during read.   (all 5,759)
+  CONTEXT: SQL statement "UPDATE audit_tenant_events ..." (the commit-order trigger)
+  STATEMENT: END;
+IS NOT DISTINCT FROM variant (same NULL plan): 5,470, identical DETAIL, CONTEXT and STATEMENT.
+Earlier logs over all runs to that point: 60,533 serialization failures, every one with the same reason code.
