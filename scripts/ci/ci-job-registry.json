@@ -37,6 +37,7 @@
       "supply-chain-checks"
     ],
     "chart-kind-script": ["k8s-e2e", "lint"],
+    "gitops": ["k8s-e2e", "lint", "supply-chain-checks"],
     "chart-runtime": ["k8s-e2e"],
     "client": ["client", "release-snapshot", "web-go"],
     "compose": ["compose-demo"],
