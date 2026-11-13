@@ -1,6 +1,7 @@
 package isolation
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/url"
@@ -27,7 +28,11 @@ func TestHistoricalRecoveryBeforeContainmentSQLite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("close sqlite: %v", err)
+		}
+	})
 	seedBeforeContainment(t, cfg, func(stmt string) error { _, err := db.ExecContext(t.Context(), stmt); return err })
 	assertBeforeContainmentReads(t, authn.NewHistoricalRecoverySQLite(db, 87))
 	if _, err := authn.NewSQLite(db).Grants(t.Context(), "usr_before"); err == nil {
@@ -47,8 +52,16 @@ func TestHistoricalRecoveryBeforeContainmentPostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_, _ = admin.Exec(t.Context(), `DROP DATABASE IF EXISTS `+pq(database)+` WITH (FORCE)`)
-		_ = admin.Close(t.Context())
+		// t.Context() is cancelled before cleanups run, so the drop needs its own
+		// bounded context; DROP DATABASE checkpoints and can be slow on a loaded host.
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if _, err := admin.Exec(ctx, `DROP DATABASE IF EXISTS `+pq(database)+` WITH (FORCE)`); err != nil {
+			t.Errorf("drop scratch database %s: %v", database, err)
+		}
+		if err := admin.Close(ctx); err != nil {
+			t.Errorf("close admin connection: %v", err)
+		}
 	})
 	if _, err := admin.Exec(t.Context(), `CREATE DATABASE `+pq(database)); err != nil {
 		t.Fatal(err)
@@ -59,7 +72,13 @@ func TestHistoricalRecoveryBeforeContainmentPostgres(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = conn.Close(t.Context()) })
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if err := conn.Close(ctx); err != nil {
+			t.Errorf("close scratch connection: %v", err)
+		}
+	})
 	seedBeforeContainment(t, cfg, func(stmt string) error { _, err := conn.Exec(t.Context(), stmt); return err })
 	assertBeforeContainmentReads(t, authn.NewHistoricalRecoveryPG(conn, 87))
 	if _, err := authn.NewPG(conn).Grants(t.Context(), "usr_before"); err == nil {

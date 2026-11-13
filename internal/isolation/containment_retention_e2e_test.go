@@ -185,22 +185,35 @@ func TestReleaseRestartsRetentionWindowWithoutAnIntermediateSweep(t *testing.T) 
 }
 
 // A privacy-restricted owner keeps privacy's running clock across contain and
-// release: release restarts the window only for a principal privacy leaves active.
+// release: release restarts the window only for a principal privacy leaves
+// active, so the stored suspension is unchanged and the value is deleted at the
+// ORIGINAL deadline.
 func TestReleaseKeepsTheClockOfAPrivacyRestrictedOwner(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		e := personalFixture(t, db, "personal-release-restricted")
 		ctx := t.Context()
 		e.setOwn(t, ceremonySecretA, e.keyA, personalPlain)
 		owner := e.admin.boot.PrincipalID
-		clock := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+		window := service.PersonalRetentionWindow
+		start := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+		clock := start
 		sweep := &service.PersonalValues{DB: db, Keyring: e.values.Keyring, Auth: e.admin.auth, Now: func() time.Time { return clock }}
+		run := func() {
+			t.Helper()
+			if err := sweep.SweepRetention(ctx); err != nil {
+				t.Fatal(err)
+			}
+		}
+		suspendedAt := func() string {
+			return queryString(t, db, `SELECT CAST(suspended_at AS TEXT) FROM personal_values`)
+		}
 		execRaw(t, db, `UPDATE principals SET privacy_state = 'restricted' WHERE id = '`+string(owner)+`'`)
-		if err := sweep.SweepRetention(ctx); err != nil {
-			t.Fatal(err)
-		}
-		if queryInt(t, db, `SELECT COUNT(*) FROM personal_values WHERE suspended_at IS NOT NULL`) != 1 {
-			t.Fatal("the sweep did not start the restricted owner's clock")
-		}
+		run()
+		started := suspendedAt()
+
+		// Contain and release well after the suspension began: a release that
+		// replaced the timestamp would move the deadline.
+		clock = start.Add(3 * 24 * time.Hour)
 		for _, f := range []func(context.Context, *authz.TxAuthorizer) error{
 			func(ctx context.Context, az *authz.TxAuthorizer) error {
 				return az.ContainPrincipal(ctx, owner, clock, "inc_restricted")
@@ -213,8 +226,24 @@ func TestReleaseKeepsTheClockOfAPrivacyRestrictedOwner(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if queryInt(t, db, `SELECT COUNT(*) FROM personal_values WHERE suspended_at IS NOT NULL`) != 1 {
-			t.Fatal("release cleared the clock of a privacy-restricted owner")
+		if got := suspendedAt(); got != started {
+			t.Fatalf("release changed a privacy-restricted owner's suspension: %q -> %q", started, got)
+		}
+		run()
+		if got := suspendedAt(); got != started {
+			t.Fatalf("the sweep after release changed the suspension: %q -> %q", started, got)
+		}
+
+		// The original deadline, not one counted from the release, deletes the value.
+		clock = start.Add(window - time.Second)
+		run()
+		if queryInt(t, db, `SELECT COUNT(*) FROM personal_values`) != 1 {
+			t.Fatal("deleted before the original deadline")
+		}
+		clock = start.Add(window)
+		run()
+		if queryInt(t, db, `SELECT COUNT(*) FROM personal_values`) != 0 {
+			t.Fatal("not deleted at the original deadline")
 		}
 	})
 }
