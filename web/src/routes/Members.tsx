@@ -1356,6 +1356,7 @@ export function GrantModal({
   return (
     <Dialog
       title="Add scope-wide access"
+      size="wide"
       lede={
         projectContext && prototypeMode ? (
           <>Each checked capability becomes its <strong>own revocable grant</strong>. Roles are templates doing exactly this with a preset checklist.</>

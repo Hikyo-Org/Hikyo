@@ -533,3 +533,44 @@ export const PendingEmailInvitations: Story = {
     await userEvent.click(within(within(document.body).getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
   },
 };
+
+// The grant dialog's capability checklist: every row keeps its tag and explain
+// toggle inside its own grid cell, so the toggles line up in one x per column.
+// A column floor narrower than the widest row let long tags push their toggle
+// out of line and over the next column's checkbox.
+const expectCapabilityRowsAligned = async (canvas: ReturnType<typeof within>) => {
+  await userEvent.click(await canvas.findByRole('button', { name: 'Add access' }));
+  const dialog = within(await canvas.findByRole('dialog', { name: 'Add scope-wide access' }));
+  // The organisation scope offers every tenant capability.
+  const scope = dialog.getByRole<HTMLSelectElement>('combobox', { name: 'Scope' });
+  const org = [...scope.options].find((option) => option.value !== '');
+  if (org === undefined) throw new Error('No grant scope offered.');
+  await userEvent.selectOptions(scope, org);
+  const rows = within(dialog.getByRole('list', { name: 'Capabilities to grant' })).getAllByRole('listitem');
+  await expect(rows.length).toBeGreaterThan(1);
+  const columns = new Set(rows.map((row) => Math.round(row.getBoundingClientRect().left)));
+  const toggles = new Set(rows.map((row) => Math.round(row.querySelector('summary')!.getBoundingClientRect().left)));
+  await expect(toggles.size).toBe(columns.size);
+  for (const row of rows) {
+    await expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth);
+  }
+};
+
+export const GrantCapabilitiesAligned: Story = {
+  play: async ({ canvas }) => expectCapabilityRowsAligned(canvas),
+};
+
+// The same floor at touch size on the narrowest common phone: a story's
+// browser has a fine pointer, so the coarse-pointer tokens are set by hand.
+export const GrantCapabilitiesAlignedTouch: Story = {
+  globals: { viewport: { value: 'phoneNarrow', isRotated: false } },
+  beforeEach: () => {
+    const root = document.documentElement;
+    const touch = { '--control': 'var(--touch)', '--chk-box': 'var(--touch)', '--chk-visual': '20px', '--chk-gap': '0px' };
+    for (const [name, value] of Object.entries(touch)) root.style.setProperty(name, value);
+    return () => {
+      for (const name of Object.keys(touch)) root.style.removeProperty(name);
+    };
+  },
+  play: async ({ canvas }) => expectCapabilityRowsAligned(canvas),
+};
