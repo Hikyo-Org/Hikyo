@@ -32,8 +32,8 @@ def sha(label):
     return hashlib.sha1(label.encode()).hexdigest()
 
 
-def file_bytes(version):
-    return {path: ('module synthetic.invalid/hikyo\n\ngo 1.27.3\n' if path == 'go.mod'
+def file_bytes(version, go='1.27.4'):
+    return {path: (f'module synthetic.invalid/hikyo\n\ngo {go}\n' if path == 'go.mod'
                    else f'synthetic {version} {path}\n') for path in policy.TRUSTED_FILES}
 
 
@@ -43,7 +43,7 @@ class Fixture:
         self.m = model()
         self.responses, self.graphql, self.calls = {}, {}, []
         self.files = file_bytes(version)
-        self.old_files = file_bytes(0)
+        self.old_files = file_bytes(0, go='1.27.3')  # the previous release, before the Go 1.27.4 move
         self.version = version
         self.anchor = self.commit('historical-anchor', [sha('earlier')], self.old_files,
                                   oid=self.m.BOOTSTRAP_1017['mergeSHA'])

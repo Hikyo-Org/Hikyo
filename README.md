@@ -114,7 +114,7 @@ For a published binary, start with the
 [installation guide](https://hikyo.app/docs/installation/). The source-build
 steps below run a local evaluation instance.
 
-Requires Go 1.27.3+, Node.js 26.12.1 (see [`.nvmrc`](./.nvmrc)), Corepack 0.35.0,
+Requires Go 1.27.4+, Node.js 26.12.1 (see [`.nvmrc`](./.nvmrc)), Corepack 0.35.0,
 and pnpm 11.24.0.
 
 ```bash
