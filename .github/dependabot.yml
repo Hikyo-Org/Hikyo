@@ -26,3 +26,67 @@ updates:
       # Moving this generator requires an architecture ADR amendment.
       - dependency-name: github.com/oapi-codegen/oapi-codegen/v2
         versions: ['*']
+
+  # npm version updates. Security updates are configured separately in the
+  # repository settings and still go to main. Minor and patch updates are
+  # grouped; majors arrive as their own group so they stay visible.
+  - package-ecosystem: npm
+    directories:
+      - /web
+      - /docs/site
+      - /scripts/mcp-conformance
+      - /scripts/acceptance/mcp-fixture/clients
+    target-branch: dev
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    # pnpm 11 rejects versions younger than its minimum release age (1 day)
+    # under --frozen-lockfile, so wait past it before proposing.
+    cooldown:
+      default-days: 2
+    commit-message:
+      prefix: fix(deps)
+    groups:
+      npm-minor-and-patch:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+      npm-major:
+        patterns:
+          - '*'
+        update-types:
+          - major
+    ignore:
+      # Pinned to the CI Playwright image; bump the image and these together.
+      - dependency-name: playwright
+      - dependency-name: playwright-core
+      - dependency-name: '@playwright/test'
+
+  # clients/ts is separate because it aliases typescript to
+  # @typescript/typescript6 on purpose; everything else follows /web.
+  - package-ecosystem: npm
+    directory: /clients/ts
+    target-branch: dev
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    cooldown:
+      default-days: 2
+    commit-message:
+      prefix: fix(deps)
+    groups:
+      npm-minor-and-patch:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+      npm-major:
+        patterns:
+          - '*'
+        update-types:
+          - major
+    ignore:
+      - dependency-name: typescript
