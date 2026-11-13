@@ -10,6 +10,8 @@ client's transitive development dependency on `js-yaml@4.1.1`.
 
 - Keep `@hey-api/openapi-ts@0.97.3`; upgrading it cannot close the finding
   because its latest transitive parser still pins a vulnerable `js-yaml`.
+  The version hold is superseded by `docs/handoff/openapi-ts-0.99.md`; the
+  `js-yaml` override below still applies.
 - Override vulnerable `js-yaml` 4.x versions to `4.3.1`. This is the smallest
   patched version that closes both the reported merge-key-chain finding and the
   newer `GHSA-5p4m-2wfm-xmqj` ordered-map CPU denial of service.

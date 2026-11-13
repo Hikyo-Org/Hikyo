@@ -74,6 +74,10 @@ test('wire integers retain exact digits without changing ordinary numeric fields
   assert.equal(parseJson('12345678901234567890.000'), 12345678901234567890n);
   assert.equal(parseJson('-1.2345678901234567890123e22'), -12345678901234567890123n);
   assert.equal(parseJson('1E+19'), 10000000000000000000n);
+  // Values that stay numbers must keep native JSON.parse results exactly.
+  for (const token of ['-0', '-0.0', '0', '1e-7', '5e-324', '-1.5e-10']) {
+    assert.ok(Object.is(parseJson(token), JSON.parse(token)), token);
+  }
   assert.throws(() => parseJson('{"revision":'), SyntaxError);
 });
 
