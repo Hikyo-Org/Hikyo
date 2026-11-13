@@ -15,7 +15,20 @@ import (
 // refusals do the same work.
 func (r *Resolver) PersonalOwnerHolds(ctx context.Context, scope domain.Scope, principal domain.PrincipalID) (bool, error) {
 	if r.sq != nil {
+		if r.historicalRecoveryBeforeContainment {
+			// Source schemas 86 through 88 hold personal values but no containment column.
+			n, err := r.sq.RecoveryPersonalOwnerHoldsBeforeContainment(ctx, sqlitegen.RecoveryPersonalOwnerHoldsBeforeContainmentParams{
+				PrincipalID: string(principal), OrgID: string(scope.Org), ProjectID: string(scope.Project), EnvID: string(scope.Env),
+			})
+			return n > 0, err
+		}
 		n, err := r.sq.PersonalOwnerHoldsInEnvironment(ctx, sqlitegen.PersonalOwnerHoldsInEnvironmentParams{
+			PrincipalID: string(principal), OrgID: string(scope.Org), ProjectID: string(scope.Project), EnvID: string(scope.Env),
+		})
+		return n > 0, err
+	}
+	if r.historicalRecoveryBeforeContainment {
+		n, err := r.pg.RecoveryPersonalOwnerHoldsBeforeContainment(ctx, pggen.RecoveryPersonalOwnerHoldsBeforeContainmentParams{
 			PrincipalID: string(principal), OrgID: string(scope.Org), ProjectID: string(scope.Project), EnvID: string(scope.Env),
 		})
 		return n > 0, err

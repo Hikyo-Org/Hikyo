@@ -267,6 +267,15 @@ func (a *TxAuthorizer) ConsumeWorkspaceHandoff(ctx context.Context, id string, a
 	return a.r.ConsumeWorkspaceHandoff(ctx, id, at)
 }
 
+// ContainPrincipal and ReleasePrincipalContainment set and clear the
+// reversible containment state. Both advance the session generation in the
+// same UPDATE, and containing also consumes the account's outstanding
+// authorities, so nothing minted before containment survives it. They revoke
+// no session row and remove no grant.
+func (a *TxAuthorizer) ContainPrincipal(ctx context.Context, p domain.PrincipalID, at time.Time, incidentID string) error {
+	return a.r.ContainPrincipal(ctx, p, at, incidentID)
+}
+
 func (a *TxAuthorizer) CorrectPrivacyAccount(ctx context.Context, account, username, displayName string) error {
 	return a.r.CorrectPrivacyAccount(ctx, account, username, displayName)
 }
@@ -913,6 +922,12 @@ func (a *TxAuthorizer) PrincipalClass(ctx context.Context, p domain.PrincipalID)
 	return a.r.PrincipalClass(ctx, p)
 }
 
+// PrincipalContainedAt answers when the principal was contained, false when
+// it is not. Establishment refuses an authority minted before that moment.
+func (a *TxAuthorizer) PrincipalContainedAt(ctx context.Context, p domain.PrincipalID) (time.Time, bool, error) {
+	return a.r.PrincipalContainedAt(ctx, p)
+}
+
 // PrincipalFootprintOrgs lists every org holding any row about a principal.
 func (a *TxAuthorizer) PrincipalFootprintOrgs(ctx context.Context, p domain.PrincipalID) ([]domain.OrgID, error) {
 	return a.r.PrincipalFootprintOrgs(ctx, p)
@@ -922,6 +937,12 @@ func (a *TxAuthorizer) PrincipalFootprintOrgs(ctx context.Context, p domain.Prin
 // freshly minted session records the generation it was born under.
 func (a *TxAuthorizer) PrincipalGeneration(ctx context.Context, p domain.PrincipalID) (int64, error) {
 	return a.r.PrincipalGeneration(ctx, p)
+}
+
+// PrincipalPausedByContainment reports a principal held out of authority by
+// containment alone, for the personal-value retention clock.
+func (a *TxAuthorizer) PrincipalPausedByContainment(ctx context.Context, p domain.PrincipalID) (bool, error) {
+	return a.r.PrincipalPausedByContainment(ctx, p)
 }
 
 func (a *TxAuthorizer) PrivacyAccount(ctx context.Context, p string) (PrivacyAccountView, error) {
@@ -994,6 +1015,17 @@ func (a *TxAuthorizer) ReconcilePrincipal(ctx context.Context, p domain.Principa
 	return a.r.ReconcilePrincipal(ctx, p)
 }
 
+// RecoveryAccountByID and RecoveryAccountByPrincipal are the ONE recovery
+// lookup: the account gates minus the containment condition. Only credential
+// reset and establishment may call them (lint.CheckRecoveryLookup).
+func (a *TxAuthorizer) RecoveryAccountByID(ctx context.Context, id string) (Account, error) {
+	return a.r.RecoveryAccountByID(ctx, id)
+}
+
+func (a *TxAuthorizer) RecoveryAccountByPrincipal(ctx context.Context, p domain.PrincipalID) (Account, error) {
+	return a.r.RecoveryAccountByPrincipal(ctx, p)
+}
+
 // RecoveryCodesFor resolves an account's batch.
 func (a *TxAuthorizer) RecoveryCodesFor(ctx context.Context, accountID string) (RecoveryBatch, error) {
 	return a.r.RecoveryCodes(ctx, accountID)
@@ -1024,6 +1056,10 @@ func (a *TxAuthorizer) ReissueRegistrationSignup(ctx context.Context, n NewRegis
 // ReleaseGrantOrigin releases one origin, reporting whether it held the row.
 func (a *TxAuthorizer) ReleaseGrantOrigin(ctx context.Context, grantID string, p domain.PrincipalID, o Origin) (bool, error) {
 	return a.r.ReleaseGrantOrigin(ctx, grantID, p, o)
+}
+
+func (a *TxAuthorizer) ReleasePrincipalContainment(ctx context.Context, p domain.PrincipalID) error {
+	return a.r.ReleasePrincipalContainment(ctx, p)
 }
 
 func (a *TxAuthorizer) RemotePairedConnectionByID(ctx context.Context, id string) (RemotePairedConnection, error) {

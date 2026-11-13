@@ -1168,13 +1168,16 @@ type PkiProfileBinding struct {
 }
 
 type Principal struct {
-	ID                string
-	Kind              string
-	CreatedAt         pgtype.Timestamptz
-	SessionGeneration int64
-	Class             pgtype.Text
-	ReconciledEpoch   int64
-	PrivacyState      string
+	ID                  string
+	Kind                string
+	CreatedAt           pgtype.Timestamptz
+	SessionGeneration   int64
+	Class               pgtype.Text
+	ReconciledEpoch     int64
+	PrivacyState        string
+	ContainmentState    string
+	ContainedAt         pgtype.Timestamptz
+	ContainedIncidentID pgtype.Text
 }
 
 type Project struct {
