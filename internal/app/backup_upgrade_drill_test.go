@@ -316,7 +316,7 @@ func TestLegacyDrillFixtureRefusesProjectCapacityEvidence(t *testing.T) {
 	}
 }
 
-// The runtime-created fixture includes migrations 45 through 87, while the
+// The runtime-created fixture includes migrations 45 through 87 (88 on PostgreSQL), while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -336,10 +336,15 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+43 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 87 only")
+	// 00088 (audit commit-order lookup) is PostgreSQL-only.
+	versions := []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87}
+	if engine == releaseidentity.Postgres {
+		versions = append(versions, 88)
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87} {
+	if len(current.Entries) != len(legacy.Entries)+len(versions) || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 87 (88 on PostgreSQL) only")
+	}
+	for i, version := range versions {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -684,10 +689,30 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// the enrolment gate column.
 		"DROP TABLE login_challenges",
 		"ALTER TABLE sessions DROP COLUMN enrolment_required",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87)",
 	} {
 		drillExec(t, db, query)
 	}
+	if engine == releaseidentity.Postgres {
+		// Reverse 00088: restore the two commit-order functions exactly as 00011
+		// defines them, read from the embedded migration, never retyped.
+		raw, err := store.MigrationsFS.ReadFile("migrations/postgres/00011_audit_export_order.sql")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range []string{"assign_audit_tenant_commit_seq", "assign_audit_instance_commit_seq"} {
+			_, rest, ok := strings.Cut(string(raw), "CREATE OR REPLACE FUNCTION "+name+"()")
+			if !ok {
+				t.Fatalf("missing legacy %s declaration", name)
+			}
+			body, _, ok := strings.Cut(rest, "$$;")
+			if !ok {
+				t.Fatalf("unterminated legacy %s declaration", name)
+			}
+			drillExec(t, db, "CREATE OR REPLACE FUNCTION "+name+"()"+body+"$$;")
+		}
+		drillExec(t, db, "DELETE FROM goose_db_version WHERE version_id = 88")
+	}
+	drillExec(t, db, "DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87)")
 }
 
 // reverseAWSAdapter undoes 00067 on a pristine fixture. On PostgreSQL only
