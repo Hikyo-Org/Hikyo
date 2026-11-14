@@ -9,12 +9,12 @@
     },
     {
       "id": "positive-main-advance",
-      "scenario": "Later signed first-parent main, same 15 trusted blobs, fresh complete candidate proof",
+      "scenario": "Later signed first-parent main, same 14 trusted blobs, fresh complete candidate proof",
       "expected": "eligible-source-only"
     },
     {
       "id": "changed-trusted-file",
-      "scenario": "One of 15 byte hashes changes",
+      "scenario": "One of 14 byte hashes changes",
       "expected": "hold-new-release-required"
     },
     {
@@ -63,8 +63,8 @@
       "expected": "hold"
     },
     {
-      "id": "candidate-only-queue",
-      "scenario": "Queue admission succeeds without all 49 candidate jobs",
+      "id": "incomplete-queue-jobs",
+      "scenario": "Queue admission succeeds without all 48 queue jobs",
       "expected": "hold"
     },
     {
@@ -249,7 +249,17 @@
     },
     {
       "id": "candidate-ci-source",
-      "scenario": "Any of eight candidate CI paths differs at head or tested merge while job names still all pass",
+      "scenario": "Any of seven candidate CI paths differs at head or tested merge while job names still all pass",
+      "expected": "hold"
+    },
+    {
+      "id": "candidate-not-merged-main-episode",
+      "scenario": "Candidate PR number, run, attempt or head differs from the current main merged-PR episode, or the candidate PR is open or unmerged",
+      "expected": "hold"
+    },
+    {
+      "id": "retired-open-pr-candidate-run",
+      "scenario": "Candidate proof offered as a pull_request run named candidate-ci from ci-candidate.yml instead of the merged PR's trusted-merge-ci queue run",
       "expected": "hold"
     },
     {

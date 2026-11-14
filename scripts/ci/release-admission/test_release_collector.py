@@ -260,7 +260,7 @@ class CollectorTests(unittest.TestCase):
                 pair = fixture.pair(release)
                 self.assertEqual(c.pair_checked(fixture.m, pair, fixture.manifest, release, support.NOW),
                                  {'candidate': fixture.candidate_sha, 'workflow': fixture.main_sha})
-                self.assertEqual(len(pair['code']['ciRuns']['candidate']['jobPages'][0]['jobs']), 49)
+                self.assertEqual(set(pair['code']['ciRuns']), {'workflow'})
                 self.assertEqual(len(pair['code']['ciRuns']['workflow']['jobPages'][0]['jobs']), 48)
                 self.assertNotEqual(pair['code']['ciRuns']['workflow']['id'], release['code']['episode']['queueRun']['id'])
                 self.assertEqual(set(pair['code']['candidateFiles']), {'go.mod'})
@@ -459,7 +459,13 @@ class CollectorTests(unittest.TestCase):
                 raw = fixture.read_value(endpoint)
                 raw['commit']['tree']['sha'] = fixture.tree(files)
                 fixture.put(endpoint, raw)
-                self.assert_refused(lambda: fixture.pair(release))
+                if role == 'head':
+                    # Keep the PR commit page consistent so the refusal is the candidate source check.
+                    page = f'{c.REPO}/pulls/{fixture.candidate_pr}/commits?per_page=100&page=1'
+                    fixture.put(page, [raw if row['sha'] == oid else row for row in fixture.read_value(page)])
+                self.assert_refused(lambda: fixture.pair(release),
+                                    'candidate-source-bound-separately-from-approved-ci' if role == 'head'
+                                    else 'main-covered-by-release-vector')
 
     def test_stale_main_proof_or_borrowed_anchor_run_refused(self):
         release = self.f.release()
@@ -607,15 +613,44 @@ class CollectorTests(unittest.TestCase):
         self.assert_refused(lambda: c.pair_code_checked(self.f.m, code, self.f.manifest,
                                                       release, pair, support.NOW), 'code-packet')
 
-    def test_candidate_test_merge_need_not_be_a_signed_public_commit(self):
+    def test_candidate_tested_merge_must_be_a_signed_public_commit(self):
+        # The old open-PR test merge was never public; the queue-tested merge always is.
         release = self.f.release()
         endpoint = c.REPO + '/commits/' + self.f.candidate_merge
         row = self.f.read_value(endpoint)
         row['commit']['verification'] = {'verified': False, 'reason': 'unsigned'}
         self.f.put(endpoint, row)
-        pair = self.f.pair(release)
-        self.assertEqual(c.pair_checked(self.f.m, pair, self.f.manifest, release,
-                                       support.NOW)['candidate'], self.f.candidate_sha)
+        self.assert_refused(lambda: self.f.pair(release), 'verified-public-commit')
+
+    def test_candidate_must_repeat_the_merged_current_main_episode(self):
+        release = self.f.release()
+        for key, value in (('candidatePRNumber', self.f.release_pr), ('candidateRunId', self.f.release_run),
+                           ('candidateAttempt', 2), ('candidateHeadSHA', self.f.release_head)):
+            with self.subTest(key=key):
+                selection = copy.deepcopy(self.f.pair_selection)
+                selection[key] = value
+                self.assert_refused(lambda: c.Collector(self.f.m, self.f.transport, lambda: support.NOW).collect_pair(
+                    selection, self.f.manifest, release), 'candidate-is-the-merged-current-main-pr')
+
+    def test_retired_open_pr_candidate_run_and_inventory_refused(self):
+        endpoint = f'{c.REPO}/actions/runs/{self.f.main_run}'
+        for field, value, label in (('event', 'pull_request', 'exact-complete-ci-role'),
+                                    ('path', '.github/workflows/ci-candidate.yml', 'exact-complete-ci-role'),
+                                    ('name', f'candidate-ci #{self.f.main_pr}', 'exact-complete-ci-role')):
+            with self.subTest(field=field):
+                fixture = support.Fixture()
+                run = fixture.read_value(endpoint)
+                run[field] = value
+                fixture.put(endpoint, run)
+                fixture.put(endpoint + '/attempts/1', run)
+                self.assert_refused(lambda: fixture.pair(fixture.release()), label)
+        with self.subTest(field='retired-49-job-inventory'):
+            fixture = support.Fixture()
+            jobs_endpoint = endpoint + '/attempts/1/jobs?per_page=100&page=1'
+            body = fixture.read_value(jobs_endpoint)
+            body['jobs'][0]['name'] = 'candidate-proof'
+            fixture.put(jobs_endpoint, body)
+            self.assert_refused(lambda: fixture.pair(fixture.release()), 'exact-job-identity-and-outcome')
 
     def test_complete_pr_range_cannot_omit_interior_source_commit(self):
         middle = self.f.commit('missing-interior', [self.f.anchor], self.f.files)
