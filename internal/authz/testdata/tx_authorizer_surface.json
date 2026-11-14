@@ -300,7 +300,6 @@
   "RuleLinesInProject": "func(ctx context.Context, s domain.Scope) ([]RuleLine, error)",
   "RulesForProject": "func(ctx context.Context, org domain.OrgID, project domain.ProjectID) ([]domain.Rule, error)",
   "RulesManageable": "func(ctx context.Context, caller Identity, targets []domain.Rule, project domain.ProjectID) ([]bool, error)",
-  "RulesOf": "func(ctx context.Context, p domain.PrincipalID) ([]domain.Rule, error)",
   "SAMLProviderBySlug": "func(ctx context.Context, slug string) (SAMLProvider, error)",
   "SAMLProviderForCallback": "func(ctx context.Context, id string) (SAMLProvider, error)",
   "SAMLSPKeys": "func(ctx context.Context) ([]SAMLSPKey, error)",
