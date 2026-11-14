@@ -714,9 +714,15 @@ func (s *Incidents) readAdapters(ctx context.Context, actor Actor, c *collector,
 			}
 			c.add(domain.OwnerAdapterTargetPause, domain.ObjectKindAdapterTarget, t.ID, r.scope, r.configure)
 		}
-		// Pending route moves and scrub jobs are not observable here: the adapter
-		// and target readers hide moving and tombstoned rows and no existing reader
-		// lists non-terminal moves or scrub work. S3 needs a bounded reader for them.
+		// The adapter list shows an adapter mid route-move (state moving), so that
+		// move is a ledger item. Target-level moves and scrub jobs are not
+		// observable: the target reader lists active targets only, tombstoned
+		// adapters are hidden, and no existing reader lists non-terminal moves or
+		// scrub work (the move counter is private to teardown). A later slice needs
+		// a bounded reader for them.
+		if v.Adapter.State == "moving" {
+			c.add(domain.OwnerAdapterMove, domain.ObjectKindAdapter, id, r.scope, r.configure)
+		}
 	}
 	if r.verify && !found {
 		return domain.ErrNotFound
