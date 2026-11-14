@@ -369,6 +369,22 @@ func TestVaultCaptureStopsWhileScanningAtRecordBound(t *testing.T) {
 	}
 }
 
+func TestVaultCaptureKeepsNumberLiterals(t *testing.T) {
+	in := Input{Path: "capture.jsonl", Data: []byte(
+		`{"path":"apps/one","mount":"secret","engine_version":1,"deleted":false,"destroyed":false,"data":{"n":12345678901234567890,"o":{"b":[1.50,"<&>"],"a":null}}}`)}
+	got, err := (vaultConnector{}).Read(t.Context(), in, &Budget{source: vaultSource, maxBytes: MaxDecodedBytes, maxCount: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{}
+	for _, record := range got.Records {
+		values[record.SourceName] = record.Value
+	}
+	if values["n"] != `12345678901234567890` || values["o"] != `{"a":null,"b":[1.50,"<&>"]}` {
+		t.Fatalf("capture values changed digits or order: %#v", values)
+	}
+}
+
 func TestVaultCaptureChargesFullCanonicalPathDepth(t *testing.T) {
 	raw := []byte(fmt.Sprintf(
 		`{"path":%q,"mount":"secret","engine_version":1,"deleted":false,"destroyed":false,"data":{"KEY":"value"}}`,

@@ -2,7 +2,8 @@ package filesync
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"slices"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/delivery"
 	"github.com/Hikyo-Org/hikyo/internal/dotenv"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Row is one delivered key as the renderer sees it. Value is nil when no
@@ -179,14 +181,11 @@ func renderJSON(keys []string, values map[string]string) ([]byte, []Refusal) {
 	for _, k := range keys {
 		obj[k] = values[k]
 	}
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(obj); err != nil {
+	out, err := json.Marshal(obj, jsonwire.Stable, jsontext.EscapeForHTML(false), jsontext.WithIndent("  "))
+	if err != nil {
 		return nil, []Refusal{{Reason: err.Error()}}
 	}
-	return buf.Bytes(), nil
+	return append(out, '\n'), nil
 }
 
 // renderYAML is a flat block mapping with every key and value double-quoted,

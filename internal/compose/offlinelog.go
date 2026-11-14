@@ -1,10 +1,9 @@
 package compose
 
 import (
-	"bytes"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Offline per-key audit records (compose-integration ADR § "Audit during
@@ -120,7 +120,7 @@ func Append(stateDir string, records []OfflineRecord) error {
 		return fmt.Errorf("compose: chmod offline-records dir: %w", err)
 	}
 
-	data, err := json.Marshal(records)
+	data, err := json.Marshal(records, jsonwire.Stable)
 	if err != nil {
 		return fmt.Errorf("compose: marshal offline records: %w", err)
 	}
@@ -168,9 +168,7 @@ func Pending(stateDir string) (records []OfflineRecord, handles []string, err er
 			return nil, nil, fmt.Errorf("compose: read offline record %s: %w", n, err)
 		}
 		var batch []OfflineRecord
-		dec := json.NewDecoder(bytes.NewReader(b))
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(&batch); err != nil {
+		if err := json.Unmarshal(b, &batch, json.RejectUnknownMembers(true)); err != nil {
 			return nil, nil, fmt.Errorf("compose: parse offline record %s: %w", n, err)
 		}
 		for _, record := range batch {

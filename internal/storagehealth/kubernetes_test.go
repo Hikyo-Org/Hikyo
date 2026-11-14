@@ -1,7 +1,7 @@
 package storagehealth
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"fmt"
 	"io"

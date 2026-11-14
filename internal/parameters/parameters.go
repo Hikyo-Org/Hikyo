@@ -3,7 +3,7 @@
 package parameters
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"regexp"
 	"sort"
@@ -11,6 +11,8 @@ import (
 	"sync"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 const (
@@ -203,7 +205,7 @@ func Encode(values map[string]string) string {
 	if len(values) == 0 {
 		return "{}"
 	}
-	raw, _ := json.Marshal(values)
+	raw, _ := json.Marshal(values, jsonwire.Stable)
 	return string(raw)
 }
 

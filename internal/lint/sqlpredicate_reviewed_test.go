@@ -1,11 +1,14 @@
 package lint
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestScopedQueryReviewInventoryRejectsAmbiguousJSON(t *testing.T) {
@@ -25,7 +28,7 @@ func TestScopedQueryReviewInventoryRejectsAmbiguousJSON(t *testing.T) {
 }
 
 func TestScopedQueryReviewInventoryRequiresBothEngineContracts(t *testing.T) {
-	var definitions map[string]map[string]json.RawMessage
+	var definitions map[string]map[string]jsontext.Value
 	if err := json.Unmarshal(scopedReviewJSON(t), &definitions); err != nil {
 		t.Fatal(err)
 	}
@@ -43,12 +46,12 @@ func TestScopedQueryReviewInventoryRequiresBothEngineContracts(t *testing.T) {
 			t.Run(kind+"/"+caseName, func(t *testing.T) {
 				original := definitions[name][kind]
 				defer func() { definitions[name][kind] = original }()
-				modified, err := json.Marshal(hashes)
+				modified, err := json.Marshal(hashes, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}
 				definitions[name][kind] = modified
-				source, err := json.Marshal(definitions)
+				source, err := json.Marshal(definitions, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -123,7 +126,7 @@ func TestReviewedScopedQueryRequiresExactSQLAPIAndEvidence(t *testing.T) {
 
 func scopedReviewJSON(t *testing.T) []byte {
 	t.Helper()
-	source, err := json.Marshal(reviewedPins.ScopedQueries)
+	source, err := json.Marshal(reviewedPins.ScopedQueries, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

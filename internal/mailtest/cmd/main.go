@@ -5,7 +5,8 @@ package main
 
 import (
 	"crypto/tls"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/mailtest"
 )
 
@@ -31,7 +33,7 @@ type message struct {
 }
 
 func run() error {
-	encoder := json.NewEncoder(os.Stdout)
+	encoder := jsontext.NewEncoder(os.Stdout, jsonwire.Stable)
 	var output sync.Mutex
 	// Keep readiness first even if a client connects as soon as the sink binds.
 	output.Lock()
@@ -47,13 +49,13 @@ func run() error {
 		}
 		output.Lock()
 		defer output.Unlock()
-		return encoder.Encode(message{Kind: "message", From: m.From, Recipients: m.Recipients, Data: m.Data, TLS: protocol})
+		return json.MarshalEncode(encoder, message{Kind: "message", From: m.From, Recipients: m.Recipients, Data: m.Data, TLS: protocol})
 	}})
 	if err != nil {
 		output.Unlock()
 		return err
 	}
-	err = encoder.Encode(ready{Kind: "ready", Addr: sink.Addr, CAPEM: sink.CAPEM})
+	err = json.MarshalEncode(encoder, ready{Kind: "ready", Addr: sink.Addr, CAPEM: sink.CAPEM})
 	output.Unlock()
 	defer sink.Close()
 	if err != nil {

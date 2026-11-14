@@ -4,7 +4,8 @@ package bench
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/scanning"
 )
 
@@ -35,7 +37,7 @@ func TestFloorBench(t *testing.T) {
 	decodeFile(t, filepath.Join(directory, "provenance.json"), &e.Provenance)
 	decodeFile(t, "/derate.json", &e.Derating)
 	defer func() {
-		raw, err := json.MarshalIndent(e, "", "  ")
+		raw, err := json.Marshal(e, jsonwire.Stable, jsontext.WithIndent("  "))
 		if err != nil {
 			t.Error(err)
 			return

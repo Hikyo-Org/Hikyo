@@ -13,7 +13,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -25,6 +25,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/delivery"
 	"github.com/Hikyo-Org/hikyo/internal/freetext"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
 	"github.com/Hikyo-Org/hikyo/internal/tlspolicy"
 )
@@ -305,7 +306,7 @@ func (c *Client) Fetch(ctx context.Context, r FetchRequest) (*DeliveryResponse, 
 	// keys", which the server records as the empty list all the same (§ 0.6).
 	// form/explode:false → comma-joined when present.
 	if len(r.Parameters) > 0 {
-		raw, err := json.Marshal(r.Parameters)
+		raw, err := json.Marshal(r.Parameters, jsonwire.Stable)
 		if err != nil {
 			return nil, OutcomeFetchFailed, err
 		}
@@ -465,7 +466,7 @@ func (c *Client) post(ctx context.Context, endpoint, bearer string, body any) (i
 	if bearer == "" {
 		return 0, errors.New("operator client: refusing to report without a credential")
 	}
-	raw, err := json.Marshal(body)
+	raw, err := json.Marshal(body, jsonwire.Stable)
 	if err != nil {
 		return 0, fmt.Errorf("operator client: encode report: %w", err)
 	}

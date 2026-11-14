@@ -1,7 +1,7 @@
 package client
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -68,7 +68,7 @@ func TestParameterizedFetchRefusesLegacyResponses(t *testing.T) {
 						body["revision"] = tc.revision
 					}
 					srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-						if err := json.NewEncoder(w).Encode(body); err != nil {
+						if err := json.MarshalWrite(w, body); err != nil {
 							t.Error(err)
 						}
 					}))

@@ -9,7 +9,8 @@ package conformance
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/url"
@@ -249,7 +250,7 @@ func resetPostgres(t *testing.T, cfg store.Config) {
 
 func scenarioRoundtrip(t *testing.T, db *store.DB) {
 	orgs := &service.Orgs{DB: db}
-	meta := json.RawMessage(`{"tier":"gold","limits":{"projects":3}}`)
+	meta := jsontext.Value(`{"tier":"gold","limits":{"projects":3}}`)
 	created, err := orgs.Create(t.Context(), service.LocalPrincipal(admin), "roundtrip", true, meta)
 	if err != nil {
 		t.Fatal(err)
@@ -267,7 +268,7 @@ func scenarioRoundtrip(t *testing.T, db *store.DB) {
 	if !got.Active {
 		t.Error("active=true did not round-trip")
 	}
-	inactive, err := orgs.Create(t.Context(), service.LocalPrincipal(admin), "roundtrip-inactive", false, json.RawMessage(`{}`))
+	inactive, err := orgs.Create(t.Context(), service.LocalPrincipal(admin), "roundtrip-inactive", false, jsontext.Value(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +294,7 @@ func scenarioRoundtrip(t *testing.T, db *store.DB) {
 func scenarioListOrder(t *testing.T, db *store.DB) {
 	orgs := &service.Orgs{DB: db}
 	for _, name := range []string{"zebra", "alpha", "mango"} {
-		if _, err := orgs.Create(t.Context(), service.LocalPrincipal(admin), name, false, json.RawMessage(`{}`)); err != nil {
+		if _, err := orgs.Create(t.Context(), service.LocalPrincipal(admin), name, false, jsontext.Value(`{}`)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -324,7 +325,7 @@ func scenarioRollback(t *testing.T, db *store.DB) {
 		}
 		if err := r.Orgs().Create(ctx, p, store.Org{
 			ID: "org_rollback", Name: "rollback-victim",
-			Metadata: json.RawMessage(`{}`), CreatedAt: time.Now(),
+			Metadata: jsontext.Value(`{}`), CreatedAt: time.Now(),
 		}); err != nil {
 			return err
 		}
@@ -344,17 +345,17 @@ func scenarioRollback(t *testing.T, db *store.DB) {
 
 func scenarioDuplicate(t *testing.T, db *store.DB) {
 	orgs := &service.Orgs{DB: db}
-	if _, err := orgs.Create(t.Context(), service.LocalPrincipal(admin), "dupe", false, json.RawMessage(`{}`)); err != nil {
+	if _, err := orgs.Create(t.Context(), service.LocalPrincipal(admin), "dupe", false, jsontext.Value(`{}`)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := orgs.Create(t.Context(), service.LocalPrincipal(admin), "dupe", false, json.RawMessage(`{}`)); err == nil {
+	if _, err := orgs.Create(t.Context(), service.LocalPrincipal(admin), "dupe", false, jsontext.Value(`{}`)); err == nil {
 		t.Fatal("duplicate org name must be refused by the unique constraint")
 	}
 }
 
 func scenarioInvalidMetadata(t *testing.T, db *store.DB) {
 	orgs := &service.Orgs{DB: db}
-	if _, err := orgs.Create(t.Context(), service.LocalPrincipal(admin), "badjson", false, json.RawMessage(`{not json`)); err == nil {
+	if _, err := orgs.Create(t.Context(), service.LocalPrincipal(admin), "badjson", false, jsontext.Value(`{not json`)); err == nil {
 		t.Fatal("invalid JSON metadata must be refused at the boundary")
 	}
 }
@@ -377,7 +378,7 @@ func scenarioTenantChain(t *testing.T, db *store.DB) {
 	projects := &service.Projects{DB: db}
 	envs := &service.Environments{DB: db, Keyring: sharedKeyring(t, db)}
 
-	org, err := orgs.Create(t.Context(), service.LocalPrincipal(admin), "tenant-chain", true, json.RawMessage(`{}`))
+	org, err := orgs.Create(t.Context(), service.LocalPrincipal(admin), "tenant-chain", true, jsontext.Value(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -450,7 +451,7 @@ func scenarioConcurrent(t *testing.T, db *store.DB) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := orgs.Create(context.Background(), service.LocalPrincipal(admin), fmt.Sprintf("concurrent-%d", i), true, json.RawMessage(`{}`))
+			_, err := orgs.Create(context.Background(), service.LocalPrincipal(admin), fmt.Sprintf("concurrent-%d", i), true, jsontext.Value(`{}`))
 			errs <- err
 		}()
 	}
@@ -478,7 +479,7 @@ func tenantFixture(t *testing.T, db *store.DB, label string) (domain.PrincipalID
 	t.Helper()
 	orgs := &service.Orgs{DB: db}
 	projects := &service.Projects{DB: db}
-	org, err := orgs.Create(t.Context(), service.LocalPrincipal(admin), label, true, json.RawMessage(`{}`))
+	org, err := orgs.Create(t.Context(), service.LocalPrincipal(admin), label, true, jsontext.Value(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}

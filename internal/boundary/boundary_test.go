@@ -5,8 +5,10 @@
 package boundary
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
+	"io"
 	"os/exec"
 	"slices"
 	"strings"
@@ -219,10 +221,12 @@ func loadPackagesIn(t *testing.T, ctx lint.BuildContext) []pkg {
 		t.Fatalf("go list under %s: %v", ctx.Name, err)
 	}
 	var pkgs []pkg
-	dec := json.NewDecoder(strings.NewReader(string(out)))
-	for dec.More() {
+	dec := jsontext.NewDecoder(strings.NewReader(string(out)))
+	for {
 		var p pkg
-		if err := dec.Decode(&p); err != nil {
+		if err := json.UnmarshalDecode(dec, &p); errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
 			t.Fatalf("decode go list output: %v", err)
 		}
 		pkgs = append(pkgs, p)

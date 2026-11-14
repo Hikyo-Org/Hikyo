@@ -2,7 +2,7 @@ package operator
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
 )
 
@@ -247,7 +248,7 @@ func (r *HikyoSecretReconciler) patchPodTemplateAnnotationOnce(ctx context.Conte
 		escaped := escapePointer.Replace(annKey)
 		operations = append(operations, operation{Op: "add", Path: "/spec/template/metadata/annotations/" + escaped, Value: stamp})
 	}
-	patch, err := json.Marshal(operations)
+	patch, err := json.Marshal(operations, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

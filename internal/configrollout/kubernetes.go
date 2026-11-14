@@ -10,7 +10,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"maps"
@@ -22,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -309,7 +311,7 @@ func allowed(v Variable) bool {
 	return sourceVariable(v)
 }
 func digest(value any) string {
-	raw, _ := json.Marshal(value)
+	raw, _ := json.Marshal(value, jsonwire.Stable)
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
 }
@@ -711,17 +713,16 @@ func cloneData(data map[string][]byte) map[string][]byte {
 	}
 	return out
 }
-func mustJSON(v any) []byte { raw, _ := json.Marshal(v); return raw }
+func mustJSON(v any) []byte { raw, _ := json.Marshal(v, jsonwire.Stable); return raw }
 func decode(raw []byte, out any) error {
 	if len(raw) == 0 || len(raw) > maxRecordBytes {
 		return ErrConflict
 	}
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(out); err != nil {
+	decoder := jsontext.NewDecoder(bytes.NewReader(raw))
+	if err := json.UnmarshalDecode(decoder, out, json.RejectUnknownMembers(true)); err != nil {
 		return ErrConflict
 	}
-	if decoder.Decode(new(json.RawMessage)) != io.EOF {
+	if _, err := decoder.ReadToken(); !errors.Is(err, io.EOF) {
 		return ErrConflict
 	}
 	return nil

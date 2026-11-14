@@ -1,8 +1,7 @@
 package compose
 
 import (
-	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +9,7 @@ import (
 	"reflect"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Conditional-fetch cursor state (compose-integration ADR § "Cursor rules").
@@ -90,9 +90,7 @@ func LoadCursor(stateDir string) (*CursorState, error) {
 		return nil, fmt.Errorf("compose: read cursor: %w", err)
 	}
 	var c CursorState
-	dec := json.NewDecoder(bytes.NewReader(b))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&c); err != nil {
+	if err := json.Unmarshal(b, &c, json.RejectUnknownMembers(true)); err != nil {
 		return nil, fmt.Errorf("compose: parse cursor: %w", err)
 	}
 	return &c, nil
@@ -101,7 +99,7 @@ func LoadCursor(stateDir string) (*CursorState, error) {
 // SaveCursor writes cursor.json atomically (0600). The CLI calls it ONLY after
 // a successful, committed render — NEVER after a refused or failed one.
 func SaveCursor(stateDir string, c CursorState) error {
-	data, err := json.Marshal(c)
+	data, err := json.Marshal(c, jsonwire.Stable)
 	if err != nil {
 		return fmt.Errorf("compose: marshal cursor: %w", err)
 	}

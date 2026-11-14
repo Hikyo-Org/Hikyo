@@ -1,10 +1,13 @@
 package repscan
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"io"
 	"net/url"
 	"strings"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // SARIF 2.1.0, hand-rolled: the subset a code-scanning consumer needs and
@@ -154,7 +157,5 @@ func WriteSARIF(w io.Writer, r *Report, toolVersion string) error {
 			},
 		}},
 	}
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(log)
+	return json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable, jsontext.WithIndent("  ")), log)
 }

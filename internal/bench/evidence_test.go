@@ -1,7 +1,7 @@
 package bench
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"math"
 	"os"
 	"strings"
