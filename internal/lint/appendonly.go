@@ -168,6 +168,15 @@ var ResolutionSurfaceWriters = map[string]bool{
 	"ContainPrincipal":            true,
 	"ReleasePrincipalContainment": true,
 
+	// Incident containment ledger (incident-containment ADR, O5 option B):
+	// mutable ledger state, separate from the append-only audit tables, written
+	// on the resolution surface after the incident service proved its own
+	// chokepoint operation. No row carries a secret or a free-text field.
+	"OpenIncident":           true,
+	"CloseIncident":          true,
+	"AddIncidentItem":        true,
+	"TransitionIncidentItem": true,
+
 	// Approval-mediated temporary access (#152): the time-bound grant rows are
 	// read by authorize(), so they are written on the resolution surface after
 	// the access service proved its own chokepoint operation, under the

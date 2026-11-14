@@ -778,6 +778,35 @@ type HaNode struct {
 	HeartbeatAt        string
 }
 
+type Incident struct {
+	ID         string
+	ScopeKind  string
+	ScopeID    string
+	OrgID      string
+	Status     string
+	OpenedBy   string
+	OpenedAt   string
+	ClosedBy   sql.NullString
+	ClosedAt   sql.NullString
+	RowVersion int64
+}
+
+type IncidentItem struct {
+	ID            string
+	IncidentID    string
+	OwnerFunction string
+	ObjectKind    string
+	ObjectID      string
+	Scope         string
+	Outcome       string
+	Reason        string
+	AttestedBy    sql.NullString
+	AttestedAt    sql.NullString
+	RowVersion    int64
+	CreatedAt     string
+	UpdatedAt     string
+}
+
 type InstanceConnection struct {
 	ID              string
 	PrincipalID     string

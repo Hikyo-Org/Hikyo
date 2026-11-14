@@ -780,6 +780,35 @@ type HaNode struct {
 	HeartbeatAt        pgtype.Timestamptz
 }
 
+type Incident struct {
+	ID         string
+	ScopeKind  string
+	ScopeID    string
+	OrgID      string
+	Status     string
+	OpenedBy   string
+	OpenedAt   pgtype.Timestamptz
+	ClosedBy   pgtype.Text
+	ClosedAt   pgtype.Timestamptz
+	RowVersion int64
+}
+
+type IncidentItem struct {
+	ID            string
+	IncidentID    string
+	OwnerFunction string
+	ObjectKind    string
+	ObjectID      string
+	Scope         string
+	Outcome       string
+	Reason        string
+	AttestedBy    pgtype.Text
+	AttestedAt    pgtype.Timestamptz
+	RowVersion    int64
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+}
+
 type InstanceConnection struct {
 	ID              string
 	PrincipalID     string
