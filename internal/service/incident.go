@@ -525,13 +525,13 @@ func (s *Incidents) runItem(ctx context.Context, actor Actor, incidentID, itemID
 	// reports, only OwnerConfirmed can become done.
 	result, ownerErr := owner(ctx, actor, item)
 	if ownerErr != nil {
-		// The ledger records only the closed reason; the cause goes to the log
-		// with ids alone, so an operator can find it without it reaching the trail.
+		// The ledger records only the closed reason; the log gets ids and a
+		// classification, never the owner's error text, which the owner controls.
 		log := s.Log
 		if log == nil {
 			log = slog.Default()
 		}
-		log.Error("incident owner reported an error", "incident", incidentID, "item", item.ID, "owner", item.OwnerFunction, "err", ownerErr)
+		log.Error("incident owner reported an error", "incident", incidentID, "item", item.ID, "owner", item.OwnerFunction, "class", ownerErrClass(ownerErr))
 		result = OwnerUnconfirmed
 	}
 
@@ -589,12 +589,35 @@ func (s *Incidents) runItem(ctx context.Context, actor Actor, incidentID, itemID
 	})
 }
 
+// ownerErrClass names an owner failure for the log without repeating its text.
+func ownerErrClass(err error) string {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "deadline"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	case errors.Is(err, domain.ErrNotFound):
+		return "not_found"
+	case errors.Is(err, domain.ErrConflict):
+		return "conflict"
+	case errors.Is(err, domain.ErrUnauthorized):
+		return "unauthorized"
+	}
+	return "owner_error"
+}
+
+// ownIncident reports whether the caller is the account an incident was opened
+// on. That person neither attests nor closes their own containment.
+func ownIncident(caller authz.Identity, inc authz.Incident) bool {
+	return inc.ScopeKind == domain.IncidentScopeAccount && inc.ScopeID == string(caller.Principal)
+}
+
 // attestable reports whether an operator may attest an item. Attested is for what
 // Hikyo cannot observe (Vocabulary, O6 A): an upstream revocation, a consumer
-// adopting a replacement, and the factors and linked identities Hikyo holds and
-// cannot remove administratively. An item an owner function can confirm is
-// resolved by that owner, and a blocked item needs the operator who holds its
-// capability, so neither is attestable.
+// adopting a replacement, and a linked identity at its provider. An item Hikyo
+// can observe, such as a factor row that still exists, is resolved only by an
+// owner re-check that confirms it, and a blocked item needs the operator who
+// holds its capability, so neither is attestable.
 func attestable(it authz.IncidentItem) bool {
 	if it.Outcome == domain.ItemBlocked {
 		return false
@@ -604,7 +627,7 @@ func attestable(it authz.IncidentItem) bool {
 	}
 	switch it.OwnerFunction {
 	case domain.OwnerAdapterUpstream, domain.OwnerDynamicUpstream, domain.OwnerConsumerAdoption,
-		domain.OwnerExternalIdentity, domain.OwnerFactorRemoval:
+		domain.OwnerExternalIdentity:
 		return true
 	}
 	return false
@@ -627,7 +650,7 @@ func (s *Incidents) Attest(ctx context.Context, actor Actor, incidentID, itemID 
 		if err != nil {
 			return err
 		}
-		if inc.ScopeKind == domain.IncidentScopeAccount && inc.ScopeID == string(caller.Principal) {
+		if ownIncident(caller, inc) {
 			return domain.ErrNotFound
 		}
 		if !item.Outcome.Open() || inc.Status != domain.IncidentOpen {
@@ -692,6 +715,9 @@ func (s *Incidents) Close(ctx context.Context, actor Actor, id string, withResid
 		caller, inc, err := s.incidentByID(ctx, az, actor, id, now)
 		if err != nil {
 			return err
+		}
+		if ownIncident(caller, inc) {
+			return domain.ErrNotFound
 		}
 		if inc.Status != domain.IncidentOpen {
 			return fmt.Errorf("%w: incident is already closed", domain.ErrConflict)

@@ -71,6 +71,10 @@ type tenantRead struct {
 	credentialRevoke bool
 }
 
+// adapterStateMoving is the adapter record state while a route move is in
+// flight; the adapter store has no exported constant for it.
+const adapterStateMoving = "moving"
+
 const (
 	srcAdapters = "adapters"
 	srcDynamic  = "dynamic"
@@ -246,11 +250,25 @@ func (s *Incidents) collectAccount(ctx context.Context, az *authz.TxAuthorizer, 
 	if err != nil {
 		return err
 	}
-	rules, err := az.RulesOf(ctx, target)
-	if err != nil {
-		return err
+	// Rules are counted from the stored rule lines of the footprint orgs, which
+	// are not gated on privacy or containment: a contained or restricted target is
+	// exactly when the count matters, and the gated rule reader answers none then.
+	ruleCount := 0
+	for _, org := range a.footprint {
+		if org == "" || (a.org != "" && org != a.org) {
+			continue
+		}
+		lines, err := az.RuleLinesInOrg(ctx, org)
+		if err != nil {
+			return err
+		}
+		for _, l := range lines {
+			if l.Principal == target {
+				ruleCount++
+			}
+		}
 	}
-	c.census = IncidentCensus{Grants: len(grants), Rules: len(rules)}
+	c.census = IncidentCensus{Grants: len(grants), Rules: ruleCount}
 
 	// Ending a person's sessions and delegations is the credential-reset
 	// operation the incident itself was authorized under (O2: a holder who can
@@ -434,6 +452,8 @@ func (s *Incidents) collectOrg(ctx context.Context, az *authz.TxAuthorizer, a in
 		} else if err != nil {
 			return err
 		}
+		// Pending or blocked by grant shape is the same information the
+		// account-open path already reveals to a credential-reset holder.
 		ok, err := s.memberCanContain(ctx, az, a.caller, c, p)
 		if err != nil {
 			return err
@@ -714,15 +734,17 @@ func (s *Incidents) readAdapters(ctx context.Context, actor Actor, c *collector,
 			}
 			c.add(domain.OwnerAdapterTargetPause, domain.ObjectKindAdapterTarget, t.ID, r.scope, r.configure)
 		}
-		// The adapter list shows an adapter mid route-move (state moving), so that
-		// move is a ledger item. Target-level moves and scrub jobs are not
-		// observable: the target reader lists active targets only, tombstoned
-		// adapters are hidden, and no existing reader lists non-terminal moves or
-		// scrub work (the move counter is private to teardown). A later slice needs
-		// a bounded reader for them.
-		if v.Adapter.State == "moving" {
+		// The adapter list shows an adapter mid route-move, so that move is a ledger
+		// item. Target-level moves and scrub jobs are not observable: the target
+		// reader lists active targets only, tombstoned adapters are hidden, and no
+		// existing reader lists non-terminal moves or scrub work (the move counter
+		// is private to teardown). Until the S4 reader exists, each adapter carries
+		// one open unknown row for that unread source, so an adapter or project
+		// incident never closes clean while it is unread.
+		if v.Adapter.State == adapterStateMoving {
 			c.add(domain.OwnerAdapterMove, domain.ObjectKindAdapter, id, r.scope, r.configure)
 		}
+		c.truncated(domain.OwnerAdapterMove, id, r.scope)
 	}
 	if r.verify && !found {
 		return domain.ErrNotFound

@@ -1,6 +1,9 @@
 package service
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -52,18 +55,34 @@ func TestAttestable(t *testing.T) {
 		item authz.IncidentItem
 		want bool
 	}{
-		"observable session":         {authz.IncidentItem{OwnerFunction: domain.OwnerSessionRevoke, Outcome: domain.ItemPending}, false},
-		"observable developer cred":  {authz.IncidentItem{OwnerFunction: domain.OwnerDeveloperRevoke, Outcome: domain.ItemUnknown}, false},
-		"blocked factor":             {authz.IncidentItem{OwnerFunction: domain.OwnerFactorRemoval, Outcome: domain.ItemBlocked}, false},
-		"blocked upstream":           {authz.IncidentItem{OwnerFunction: domain.OwnerDynamicUpstream, Outcome: domain.ItemBlocked, Reason: domain.ReasonUpstreamNotObservable}, false},
-		"upstream by reason":         {authz.IncidentItem{OwnerFunction: domain.OwnerAdapterTargetPause, Outcome: domain.ItemUnknown, Reason: domain.ReasonUpstreamNotObservable}, true},
-		"upstream by owner":          {authz.IncidentItem{OwnerFunction: domain.OwnerAdapterUpstream, Outcome: domain.ItemUnknown}, true},
-		"consumer adoption":          {authz.IncidentItem{OwnerFunction: domain.OwnerConsumerAdoption, Outcome: domain.ItemPending}, true},
-		"factor Hikyo cannot remove": {authz.IncidentItem{OwnerFunction: domain.OwnerFactorRemoval, Outcome: domain.ItemUnknown, Reason: domain.ReasonNoRevokeOwner}, true},
-		"linked identity":            {authz.IncidentItem{OwnerFunction: domain.OwnerExternalIdentity, Outcome: domain.ItemUnknown, Reason: domain.ReasonNoRevokeOwner}, true},
+		"observable session":        {authz.IncidentItem{OwnerFunction: domain.OwnerSessionRevoke, Outcome: domain.ItemPending}, false},
+		"observable developer cred": {authz.IncidentItem{OwnerFunction: domain.OwnerDeveloperRevoke, Outcome: domain.ItemUnknown}, false},
+		"blocked factor":            {authz.IncidentItem{OwnerFunction: domain.OwnerFactorRemoval, Outcome: domain.ItemBlocked}, false},
+		"blocked upstream":          {authz.IncidentItem{OwnerFunction: domain.OwnerDynamicUpstream, Outcome: domain.ItemBlocked, Reason: domain.ReasonUpstreamNotObservable}, false},
+		"upstream by reason":        {authz.IncidentItem{OwnerFunction: domain.OwnerAdapterTargetPause, Outcome: domain.ItemUnknown, Reason: domain.ReasonUpstreamNotObservable}, true},
+		"upstream by owner":         {authz.IncidentItem{OwnerFunction: domain.OwnerAdapterUpstream, Outcome: domain.ItemUnknown}, true},
+		"consumer adoption":         {authz.IncidentItem{OwnerFunction: domain.OwnerConsumerAdoption, Outcome: domain.ItemPending}, true},
+		"factor stays open":         {authz.IncidentItem{OwnerFunction: domain.OwnerFactorRemoval, Outcome: domain.ItemUnknown, Reason: domain.ReasonNoRevokeOwner}, false},
+		"linked identity":           {authz.IncidentItem{OwnerFunction: domain.OwnerExternalIdentity, Outcome: domain.ItemUnknown, Reason: domain.ReasonNoRevokeOwner}, true},
 	} {
 		if got := attestable(tc.item); got != tc.want {
 			t.Errorf("%s: attestable = %t, want %t", name, got, tc.want)
+		}
+	}
+}
+
+// The owner error log carries a classification only; the owner's own text,
+// which it controls, never reaches the log.
+func TestOwnerErrClassIgnoresOwnerText(t *testing.T) {
+	for want, err := range map[string]error{
+		"deadline":     fmt.Errorf("secret-token-1: %w", context.DeadlineExceeded),
+		"not_found":    fmt.Errorf("secret-token-2: %w", domain.ErrNotFound),
+		"unauthorized": domain.ErrUnauthorized,
+		"owner_error":  errors.New("secret-token-3"),
+	} {
+		got := ownerErrClass(err)
+		if got != want || strings.Contains(got, "secret") {
+			t.Errorf("ownerErrClass(%v) = %q, want %q", err, got, want)
 		}
 	}
 }

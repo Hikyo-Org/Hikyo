@@ -198,13 +198,6 @@ func (a *TxAuthorizer) RuleKeyExists(ctx context.Context, s domain.Scope, keyID 
 	return err
 }
 
-// RulesOf lists a principal's valid rules under the gates authorize() applies
-// (active, reconciled, human). The incident census counts them; it never acts
-// on one. A contained or restricted principal answers none.
-func (a *TxAuthorizer) RulesOf(ctx context.Context, p domain.PrincipalID) ([]domain.Rule, error) {
-	return a.r.Rules(ctx, p)
-}
-
 // RuleLine is re-exported for the service layer's rule listing.
 type RuleLine = authn.RuleLine
 
