@@ -17,7 +17,7 @@ type ManagedSingletonTopology struct {
 // ManagedBootstrapSources selects installation-owned aliases. It cannot carry
 // a locator, path, credential or root key. Enrollment determines their custody.
 type ManagedBootstrapSources struct {
-	Topology       ManagedSingletonTopology `json:"topology,omitempty"`
+	Topology       ManagedSingletonTopology `json:"topology"`
 	Version        int                      `json:"version"`
 	DatabaseSource string                   `json:"database_source,omitempty"`
 	RootSource     string                   `json:"root_source,omitempty"`
@@ -67,7 +67,7 @@ func (s ManagedBootstrapSources) MarshalJSON() ([]byte, error) {
 		Version        int                       `json:"version"`
 		DatabaseSource string                    `json:"database_source,omitempty"`
 		RootSource     string                    `json:"root_source,omitempty"`
-		Topology       *ManagedSingletonTopology `json:"topology,omitempty"`
+		Topology       *ManagedSingletonTopology `json:"topology,omitzero"`
 	}
 	out := sources{UpgradeSource: s.UpgradeSource, Version: s.Version, DatabaseSource: s.DatabaseSource, RootSource: s.RootSource}
 	if s.Topology.NodeID != "" {

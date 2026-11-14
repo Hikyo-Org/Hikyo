@@ -32,7 +32,7 @@ type Observation struct {
 	SchemaChanges       bool                     `json:"schema_changes"`
 	// AbortedBeforeMutation: the target image reports that it stopped before the
 	// live database was written, and the other fields describe the untouched source.
-	AbortedBeforeMutation bool `json:"aborted_before_mutation,omitempty"`
+	AbortedBeforeMutation bool `json:"aborted_before_mutation,omitzero"`
 }
 
 func (o Observation) Validate() error {
@@ -148,9 +148,9 @@ type Operation struct {
 }
 
 type Status struct {
-	Policy            *Policy                `json:"policy,omitempty"`
+	Policy            *Policy                `json:"policy,omitzero"`
 	Format            string                 `json:"format"`
-	Enrollment        *Enrollment            `json:"enrollment,omitempty"`
+	Enrollment        *Enrollment            `json:"enrollment,omitzero"`
 	Phase             string                 `json:"phase"`
 	Reason            string                 `json:"reason,omitempty"`
 	CatalogSequence   uint64                 `json:"catalog_sequence"`
@@ -162,23 +162,23 @@ type Status struct {
 	CoverageThrough   string                 `json:"coverage_through,omitempty"`
 	Coverage          []string               `json:"coverage"`
 	CoveredComponents []string               `json:"covered_components"`
-	Selected          *Target                `json:"selected,omitempty"`
-	Running           *Observation           `json:"running,omitempty"`
+	Selected          *Target                `json:"selected,omitzero"`
+	Running           *Observation           `json:"running,omitzero"`
 	// RunningWithdrawn: the authenticated catalog of the latest run withdraws the
 	// running release. The coordinator then refuses to adopt it as its own.
-	RunningWithdrawn bool       `json:"running_withdrawn,omitempty"`
-	Operation        *Operation `json:"operation,omitempty"`
+	RunningWithdrawn bool       `json:"running_withdrawn,omitzero"`
+	Operation        *Operation `json:"operation,omitzero"`
 	// Action names the exact local command that leaves a state needing an operator.
 	Action string `json:"action,omitempty"`
 	// Detail keeps the cause of the latest failure, so status explains it alone.
 	Detail string `json:"detail,omitempty"`
 	// Retry bounds repeated failure on one target; a different target resets it.
-	RetryTarget   *releaseidentity.Identity `json:"retry_target,omitempty"`
-	RetryAttempts int                       `json:"retry_attempts,omitempty"`
+	RetryTarget   *releaseidentity.Identity `json:"retry_target,omitzero"`
+	RetryAttempts int                       `json:"retry_attempts,omitzero"`
 	RetryAfter    time.Time                 `json:"retry_after,omitzero"`
 	// RetryDisruptive counts the failed attempts at RetryTarget that reached the
 	// workload. A failure before that point costs no availability and only backs off.
-	RetryDisruptive int    `json:"retry_disruptive,omitempty"`
+	RetryDisruptive int    `json:"retry_disruptive,omitzero"`
 	RetryCause      string `json:"retry_cause,omitempty"`
 }
 

@@ -71,7 +71,7 @@ type sarifLocation struct {
 
 type sarifPhysical struct {
 	ArtifactLocation sarifArtifactLoc `json:"artifactLocation"`
-	Region           *sarifRegion     `json:"region,omitempty"`
+	Region           *sarifRegion     `json:"region,omitzero"`
 }
 
 type sarifArtifactLoc struct {

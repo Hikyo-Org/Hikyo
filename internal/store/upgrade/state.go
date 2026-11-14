@@ -110,7 +110,7 @@ type Operation struct {
 	Invalidated bool `json:"invalidated"`
 	// Preparation freezes a completed source before backup. It is removed
 	// before the first migration candidate starts, including historical builds.
-	Preparation *BackupPreparation `json:"preparation,omitempty"`
+	Preparation *BackupPreparation `json:"preparation,omitzero"`
 }
 
 // BackupPreparation binds the maintenance interval before a backup exists.

@@ -64,7 +64,7 @@ type nativeSourceRecord struct {
 	Runtime      hostupgrade.RuntimeEvidence `json:"runtime"`
 	// RolledBack is written once the snapshot is back. It outlives the journal, because the coordinator can
 	// die before it records the rollback; a later Reconcile reads it and the next Prepare removes it.
-	RolledBack bool `json:"rolled_back,omitempty"`
+	RolledBack bool `json:"rolled_back,omitzero"`
 }
 
 func nativeSourceRecordPath(stateDirectory string) string {

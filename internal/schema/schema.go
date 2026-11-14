@@ -241,14 +241,14 @@ type Rule struct {
 	Type Type `json:"type"`
 
 	// string
-	MinLength  *int   `json:"min_length,omitempty"`
-	MaxLength  *int   `json:"max_length,omitempty"`
+	MinLength  *int   `json:"min_length,omitzero"`
+	MaxLength  *int   `json:"max_length,omitzero"`
 	Pattern    string `json:"pattern,omitempty"`
-	AllowEmpty bool   `json:"allow_empty,omitempty"`
+	AllowEmpty bool   `json:"allow_empty,omitzero"`
 
 	// integer
-	Min *int64 `json:"min,omitempty"`
-	Max *int64 `json:"max,omitempty"`
+	Min *int64 `json:"min,omitzero"`
+	Max *int64 `json:"max,omitzero"`
 
 	// enum
 	Members []string `json:"members,omitempty"`
@@ -267,7 +267,7 @@ type Rule struct {
 // for operators and implementers alike. Overlapping alternatives are fine and
 // never an error.
 type Declaration struct {
-	Rule  *Rule  `json:"rule,omitempty"`
+	Rule  *Rule  `json:"rule,omitzero"`
 	AnyOf []Rule `json:"any_of,omitempty"`
 }
 

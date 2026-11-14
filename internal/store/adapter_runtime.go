@@ -26,15 +26,15 @@ type adapterPushOutcomePayload struct {
 	EffectiveName  string `json:"effective_name"`
 	Disposition    string `json:"disposition"`
 	Finding        string `json:"finding,omitempty"`
-	OwnedMissing   bool   `json:"owned_missing,omitempty"`
-	ProviderStatus int    `json:"provider_status,omitempty"`
+	OwnedMissing   bool   `json:"owned_missing,omitzero"`
+	ProviderStatus int    `json:"provider_status,omitzero"`
 }
 
 type adapterPushIntentPayload struct {
 	Surface       string `json:"surface"`
 	EffectiveName string `json:"effective_name"`
 	Disposition   string `json:"disposition"`
-	InputRevision int64  `json:"input_revision,omitempty"`
+	InputRevision int64  `json:"input_revision,omitzero"`
 }
 
 // adapterTestPayload is the audit payload for adapter.test events.

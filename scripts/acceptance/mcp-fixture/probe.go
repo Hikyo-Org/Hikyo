@@ -42,7 +42,7 @@ type phaseEvent struct {
 	Phase   string    `json:"phase"`
 	Process string    `json:"process,omitempty"`
 	At      time.Time `json:"at_utc"`
-	Status  int       `json:"HTTP_status,omitempty"`
+	Status  int       `json:"HTTP_status,omitzero"`
 }
 
 func (r *receipt) event(phase, process string, status int) {

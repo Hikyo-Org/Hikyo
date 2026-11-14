@@ -27,9 +27,9 @@ const (
 )
 
 type updateState struct {
-	Schema          int                   `json:"schema,omitempty"`
+	Schema          int                   `json:"schema,omitzero"`
 	Channel         updatecheck.Channel   `json:"channel"`
-	ChannelExplicit bool                  `json:"channel_explicit,omitempty"`
+	ChannelExplicit bool                  `json:"channel_explicit,omitzero"`
 	CheckedAt       time.Time             `json:"checked_at,omitempty"`
 	Releases        []updatecheck.Release `json:"releases,omitempty"`
 }

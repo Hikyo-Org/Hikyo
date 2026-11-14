@@ -17,7 +17,7 @@ type doctorFinding struct {
 	Severity    string  `json:"severity"`
 	Message     string  `json:"message"`
 	EffectiveAt string  `json:"effective_at"`
-	Fingerprint *string `json:"fingerprint,omitempty"`
+	Fingerprint *string `json:"fingerprint,omitzero"`
 }
 
 type doctorResult struct {

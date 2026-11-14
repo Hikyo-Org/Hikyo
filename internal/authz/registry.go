@@ -5921,7 +5921,7 @@ type FormulaPin struct {
 	Class              string   `json:"class"`
 	Level              string   `json:"level"`
 	Formula            []string `json:"formula"`
-	PostGrantForbidden bool     `json:"post_grant_forbidden,omitempty"`
+	PostGrantForbidden bool     `json:"post_grant_forbidden,omitzero"`
 }
 
 var classNames = map[Class]string{

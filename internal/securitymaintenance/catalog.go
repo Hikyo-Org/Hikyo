@@ -97,7 +97,7 @@ type Target struct {
 	Impact             Impact                   `json:"impact"`
 	Withdrawn          bool                     `json:"withdrawn"`
 	AvailableAt        time.Time                `json:"available_at,omitzero"`
-	RolloutMinutes     int                      `json:"rollout_minutes,omitempty"`
+	RolloutMinutes     int                      `json:"rollout_minutes,omitzero"`
 }
 
 type Catalog struct {

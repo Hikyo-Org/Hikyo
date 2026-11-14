@@ -114,14 +114,14 @@ type (
 	projectInput struct {
 		OrgID     string        `json:"org_id" jsonschema:"required,the organization immutable id"`
 		ProjectID string        `json:"project_id" jsonschema:"required,the project immutable id"`
-		PageSize  pageSizeInput `json:"page_size,omitempty" jsonschema:"page size, 1 to 100, default 25"`
+		PageSize  pageSizeInput `json:"page_size,omitzero" jsonschema:"page size, 1 to 100, default 25"`
 		Cursor    cursorInput   `json:"cursor,omitempty" jsonschema:"opaque continuation from a previous page"`
 	}
 	envInput struct {
 		OrgID         string        `json:"org_id" jsonschema:"required,the organization immutable id"`
 		ProjectID     string        `json:"project_id" jsonschema:"required,the project immutable id"`
 		EnvironmentID string        `json:"environment_id" jsonschema:"required,the environment immutable id"`
-		PageSize      pageSizeInput `json:"page_size,omitempty" jsonschema:"page size, 1 to 100, default 25"`
+		PageSize      pageSizeInput `json:"page_size,omitzero" jsonschema:"page size, 1 to 100, default 25"`
 		Cursor        cursorInput   `json:"cursor,omitempty" jsonschema:"opaque continuation from a previous page"`
 	}
 )

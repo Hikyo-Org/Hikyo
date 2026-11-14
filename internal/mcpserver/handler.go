@@ -521,7 +521,7 @@ func writeRPCError(w http.ResponseWriter, status int, id json.RawMessage, code i
 		Error   struct {
 			Code    int    `json:"code"`
 			Message string `json:"message"`
-			Data    any    `json:"data,omitempty"`
+			Data    any    `json:"data,omitzero"`
 		} `json:"error"`
 	}{JSONRPC: "2.0", ID: id}
 	payload.Error.Code = code

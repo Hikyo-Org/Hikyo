@@ -26,7 +26,7 @@ var namePattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
 // Contract is immutable snapshot metadata. Schemas records the declarations of
 // templated config keys, so historical delivery never consults the live schema.
 type Contract struct {
-	Version      int               `json:"version,omitempty"`
+	Version      int               `json:"version,omitzero"`
 	Declarations map[string]string `json:"declarations,omitempty"`
 	Schemas      map[string]string `json:"schemas,omitempty"`
 }

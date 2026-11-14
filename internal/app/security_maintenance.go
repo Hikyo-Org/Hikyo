@@ -47,8 +47,8 @@ type SecurityMaintenanceConfiguration struct {
 	// TimeoutSeconds is how long a native replacement may stay unfinished before a later
 	// run stops and rolls it back (default 30 minutes, at most 24 hours). It must fit the
 	// installation's largest migration. The other kinds set theirs under deployment.
-	TimeoutSeconds int                        `json:"timeout_seconds,omitempty"`
-	Deployment     *securitydeployment.Config `json:"deployment,omitempty"`
+	TimeoutSeconds int                        `json:"timeout_seconds,omitzero"`
+	Deployment     *securitydeployment.Config `json:"deployment,omitzero"`
 	// StatusFile optionally publishes a public status subset for the serving
 	// application to read. It must not be inside the private state directory.
 	StatusFile string `json:"status_file,omitempty"`

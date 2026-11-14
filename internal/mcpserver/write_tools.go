@@ -104,7 +104,7 @@ type (
 		EnvironmentID string               `json:"environment_id" jsonschema:"required,the environment immutable id"`
 		KeyName       string               `json:"key_name" jsonschema:"required,the declared key name"`
 		Operation     changeOperationInput `json:"operation" jsonschema:"required,set proposes a value; unset proposes a clear"`
-		Value         valueInput           `json:"value,omitempty" jsonschema:"the proposed plaintext for set; omitted for unset"`
+		Value         valueInput           `json:"value,omitzero" jsonschema:"the proposed plaintext for set; omitted for unset"`
 	}
 	stageInput struct {
 		changeInput

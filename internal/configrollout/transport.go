@@ -50,7 +50,7 @@ type Enrollment struct {
 	ExecutorPod       string    `json:"executor_pod"`
 	// Authority is the strict-profile trust state. Absent means the compatibility
 	// profile: one Ed25519 key and the v1 command bytes, unchanged.
-	Authority *Authority `json:"authority,omitempty"`
+	Authority *Authority `json:"authority,omitzero"`
 }
 
 // Command is emitted only after the coordinator durably authorizes its action.
@@ -65,14 +65,14 @@ type Command struct {
 	PlanDigest            string                          `json:"plan_digest,omitempty"`
 	Changes               []Change                        `json:"changes,omitempty"`
 	PreviousTemplateStamp string                          `json:"previous_template_stamp,omitempty"`
-	Topology              *domain.SingletonTopologyChange `json:"topology,omitempty"`
-	Bootstrap             *BootstrapChanges               `json:"bootstrap,omitempty"`
-	Acknowledgement       *ApplicationAcknowledgement     `json:"acknowledgement,omitempty"`
+	Topology              *domain.SingletonTopologyChange `json:"topology,omitzero"`
+	Bootstrap             *BootstrapChanges               `json:"bootstrap,omitzero"`
+	Acknowledgement       *ApplicationAcknowledgement     `json:"acknowledgement,omitzero"`
 	IssuedAt              time.Time                       `json:"issued_at"`
 	ExpiresAt             time.Time                       `json:"expires_at"`
 	// Authority is set only under the strict profile and is signed with the
 	// command: generation, required set, key ids and target digest.
-	Authority *CommandAuthority `json:"authority,omitempty"`
+	Authority *CommandAuthority `json:"authority,omitzero"`
 }
 
 // SignedCommand carries the v1 Ed25519 signature (compatibility profile) or one
@@ -91,7 +91,7 @@ type Response struct {
 	PlanDigest    string           `json:"plan_digest,omitempty"`
 	TemplateStamp string           `json:"template_stamp,omitempty"`
 	Resources     ResourceVersions `json:"resources"`
-	Receipt       *Receipt         `json:"receipt,omitempty"`
+	Receipt       *Receipt         `json:"receipt,omitzero"`
 	Outcome       string           `json:"outcome"`
 }
 

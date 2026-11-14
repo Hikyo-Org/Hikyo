@@ -34,7 +34,7 @@ type ecsRegistrationIntent struct {
 	CreatedAt time.Time `json:"created_at"`
 	// Retiring is written before DeregisterTaskDefinition, so a lost reply is
 	// settled by reading the revision instead of refusing the INACTIVE one.
-	Retiring bool `json:"retiring,omitempty"`
+	Retiring bool `json:"retiring,omitzero"`
 }
 
 const ecsPreparedFormat = "hikyo.security-ecs-preparation/v1"

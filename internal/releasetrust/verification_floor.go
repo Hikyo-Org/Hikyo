@@ -34,7 +34,7 @@ func DecodeVerificationFloor(raw []byte, current SnapshotFloor) (SnapshotFloor, 
 		HighestSequence *int64                 `json:"highest_release_sequence"`
 		HighestVersion  *string                `json:"highest_release"`
 		MetadataSHA256  releaseidentity.Digest `json:"metadata_sha256"`
-		CatalogSequence int64                  `json:"catalog_sequence,omitempty"`
+		CatalogSequence int64                  `json:"catalog_sequence,omitzero"`
 		CatalogSHA256   releaseidentity.Digest `json:"catalog_sha256,omitempty"`
 	}
 	if err := definitions.DecodeStrict(raw, &old); err != nil {
