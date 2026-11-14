@@ -8,7 +8,8 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -33,6 +34,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -196,7 +198,7 @@ func newAWSAuthenticatedSurface(t *testing.T, db *store.DB) *awsAuthenticatedSur
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.request(h.browser, "", http.MethodPost, "/auth/webauthn/login/finish", json.RawMessage(assertion), http.StatusOK)
+	h.request(h.browser, "", http.MethodPost, "/auth/webauthn/login/finish", jsontext.Value(assertion), http.StatusOK)
 	if h.cookie("__Host-hikyo") == "" || h.cookie("__Host-hikyo-csrf") == "" {
 		t.Fatal("real passkey login did not deliver browser cookies")
 	}
@@ -259,7 +261,7 @@ func (h *awsAuthenticatedSurface) request(client *http.Client, bearer, method, p
 	h.t.Helper()
 	var body io.Reader
 	if input != nil {
-		raw, err := json.Marshal(input)
+		raw, err := json.Marshal(input, jsonwire.Stable)
 		if err != nil {
 			h.t.Fatal(err)
 		}
@@ -340,7 +342,7 @@ func (h *awsAuthenticatedSurface) reauth(operation string) {
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	raw := h.request(h.browser, "", http.MethodPost, "/auth/webauthn/reauth/finish", json.RawMessage(assertion), http.StatusOK)
+	raw := h.request(h.browser, "", http.MethodPost, "/auth/webauthn/reauth/finish", jsontext.Value(assertion), http.StatusOK)
 	var result apigen.ReauthResult
 	if err := json.Unmarshal(raw, &result); err != nil {
 		h.t.Fatal(err)
@@ -510,7 +512,7 @@ func (h *awsAuthenticatedSurface) delivered(name, kind, want string) {
 		h.t.Fatal("no AWS value was delivered")
 	}
 	if kind == "json-object" {
-		expected, err := json.Marshal(map[string]string{"SHARED_KEY": want})
+		expected, err := json.Marshal(map[string]string{"SHARED_KEY": want}, jsonwire.Stable)
 		if err != nil {
 			h.t.Fatal(err)
 		}
@@ -651,7 +653,7 @@ func TestAWSAuthenticatedAPIAndCLILifecycle(t *testing.T) {
 						if mode != "ambient" {
 							d.RoleARN, d.SessionSeconds = "arn:aws:iam::123456789012:role/hikyo", 900
 						}
-						descriptorBytes, err := json.Marshal(d)
+						descriptorBytes, err := json.Marshal(d, jsonwire.Stable)
 						if err != nil {
 							t.Fatal(err)
 						}

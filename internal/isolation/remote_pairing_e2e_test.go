@@ -5,7 +5,8 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"log/slog"
@@ -21,6 +22,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/pairing"
 	"github.com/Hikyo-Org/hikyo/internal/remotefetch"
 	"github.com/Hikyo-Org/hikyo/internal/server"
@@ -108,7 +110,7 @@ func (i *pairingInstance) request(t *testing.T, method, path string, headers htt
 	var payload []byte
 	if body != nil {
 		var err error
-		payload, err = json.Marshal(body)
+		payload, err = json.Marshal(body, jsonwire.Stable)
 		if err != nil {
 			t.Fatal("encode request")
 		}
@@ -208,15 +210,15 @@ func TestRemotePairingTwoInstancesAndProofBoundDirectory(t *testing.T) {
 		if bytes.Contains(raw, []byte(prepared.Phrase)) || bytes.Contains(raw, []byte("private_key")) {
 			t.Fatal("invitation discloses requester secret material")
 		}
-		var altered map[string]json.RawMessage
+		var altered map[string]jsontext.Value
 		if json.Unmarshal(raw, &altered) != nil {
 			t.Fatal("decode invitation fields")
 		}
-		altered["spki_pin"], err = json.Marshal(base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32)))
+		altered["spki_pin"], err = json.Marshal(base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32)), jsonwire.Stable)
 		if err != nil {
 			t.Fatal("encode altered pin")
 		}
-		badBundle, err := json.Marshal(altered)
+		badBundle, err := json.Marshal(altered, jsonwire.Stable)
 		if err != nil {
 			t.Fatal("encode altered invitation")
 		}
@@ -301,7 +303,7 @@ func pairingTestKey(t *testing.T) (ed25519.PrivateKey, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := json.Marshal(public)
+	raw, err := json.Marshal(public, jsonwire.Stable)
 	if err != nil {
 		t.Fatal("encode public key")
 	}
@@ -325,7 +327,7 @@ func pairingFinishFixture(t *testing.T, phrase string, started service.PairingSt
 	message, err := json.Marshal(struct {
 		ClientEphemeral []byte `json:"client_ephemeral"`
 		ClientProof     []byte `json:"client_proof"`
-	}{proofs.ClientEphemeral, proofs.ClientProof})
+	}{proofs.ClientEphemeral, proofs.ClientProof}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal("encode PAKE proof")
 	}

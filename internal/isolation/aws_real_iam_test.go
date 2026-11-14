@@ -2,7 +2,7 @@ package isolation
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"strings"
@@ -12,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
@@ -54,7 +55,7 @@ func (s *realAWSSandbox) denialActor(t *testing.T, mode, raw string) externalAWS
 			t.Fatal("IAM negative temporary credentials unavailable")
 		}
 	}
-	encoded, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: s.manifest.Region, AccessKeyID: creds.AccessKeyID, SecretKey: creds.SecretAccessKey, SessionToken: creds.SessionToken, STSOrigin: s.stsOrigin})
+	encoded, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: s.manifest.Region, AccessKeyID: creds.AccessKeyID, SecretKey: creds.SecretAccessKey, SessionToken: creds.SessionToken, STSOrigin: s.stsOrigin}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal("cannot bind IAM negative identity")
 	}

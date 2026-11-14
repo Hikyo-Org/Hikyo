@@ -3,7 +3,8 @@
 package isolation
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 )
@@ -76,7 +78,7 @@ func TestFloorBackupRestoreAcceptance(t *testing.T) {
 		"operator_fit": "not measured", "physical_pi_calibration": "not claimed",
 		"trust_domain": "local-development", "production_release_authentication": "not claimed",
 	}
-	raw, err := json.MarshalIndent(evidence, "", "  ")
+	raw, err := json.Marshal(evidence, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +156,7 @@ func runFloorCLIRunbook(t *testing.T, c custody, binary, evidencePath string) {
 	if parsed == nil || parsed["rto_met"] != true || parsed["ok"] != true {
 		t.Fatalf("CLI drill did not report RTO success: %s", report)
 	}
-	raw, err := json.MarshalIndent(parsed, "", "  ")
+	raw, err := json.Marshal(parsed, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		t.Fatal(err)
 	}

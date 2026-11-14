@@ -1,7 +1,7 @@
 package isolation
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -890,7 +891,7 @@ func runSCIMPutReplacementSemantics(t *testing.T, db *store.DB) {
 			map[string]any{"value": otherGroup, "display": "Not Mine"},
 		},
 	}
-	raw, err := json.Marshal(bogus)
+	raw, err := json.Marshal(bogus, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

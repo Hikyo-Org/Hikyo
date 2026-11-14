@@ -1,13 +1,14 @@
 package isolation
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"math"
 	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/cli"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/storagehealth"
 )
 
@@ -117,7 +118,7 @@ func TestRetentionDoctorFixtureKeepsOtherRefusalsBlocking(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			output := retentionDoctorOutput{Status: base.Status, Findings: append([]retentionDoctorFinding(nil), base.Findings...)}
 			test.change(&output)
-			raw, err := json.Marshal(output)
+			raw, err := json.Marshal(output, jsonwire.Stable)
 			if err != nil {
 				t.Fatal(err)
 			}

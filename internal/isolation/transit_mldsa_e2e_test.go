@@ -5,7 +5,7 @@ import (
 	"crypto/mldsa"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
@@ -15,6 +15,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/transit"
@@ -338,7 +339,7 @@ func runTransitMLDSALifecycle(t *testing.T, db *store.DB, svc *service.Transit, 
 	if view.Algorithm != "mldsa65" {
 		t.Fatalf("view = %+v", view.TransitKeyRecord)
 	}
-	rendered, err := json.Marshal(view)
+	rendered, err := json.Marshal(view, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

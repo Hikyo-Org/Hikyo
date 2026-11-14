@@ -2,7 +2,8 @@ package isolation
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -141,7 +142,7 @@ func getAuditExport(t *testing.T, srv *httptest.Server, token, path string) expo
 		if line == "" {
 			continue
 		}
-		var probe map[string]json.RawMessage
+		var probe map[string]jsontext.Value
 		if err := json.Unmarshal([]byte(line), &probe); err != nil {
 			t.Fatalf("export line is not JSON: %v: %q", err, line)
 		}
@@ -155,10 +156,8 @@ func getAuditExport(t *testing.T, srv *httptest.Server, token, path string) expo
 		if out.receipt != nil {
 			t.Fatalf("second receipt line: %q", line)
 		}
-		dec := json.NewDecoder(strings.NewReader(line))
-		dec.DisallowUnknownFields()
 		var parsed apigen.AuditExportReceiptLine
-		if err := dec.Decode(&parsed); err != nil {
+		if err := json.Unmarshal([]byte(line), &parsed, json.RejectUnknownMembers(true)); err != nil {
 			t.Fatalf("receipt line does not match the contract: %v: %q", err, line)
 		}
 		out.receipt = &parsed.ExportReceipt

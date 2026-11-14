@@ -1,7 +1,7 @@
 package isolation
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -88,7 +88,7 @@ func TestParameterizedExportConsentDoesNotDuplicateConfigDisclosure(t *testing.T
 			w.Header().Set("Content-Type", "application/json")
 			actor := service.Bearer(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
 			encode := func(value any) {
-				if err := json.NewEncoder(w).Encode(value); err != nil {
+				if err := encodeLine(w, value); err != nil {
 					t.Error(err)
 				}
 			}
@@ -97,7 +97,7 @@ func TestParameterizedExportConsentDoesNotDuplicateConfigDisclosure(t *testing.T
 				encode(apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
 			case strings.HasSuffix(r.URL.Path, "/values/export"):
 				var body apigen.ExportValuesRequest
-				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				if err := json.UnmarshalRead(r.Body, &body); err != nil {
 					t.Error(err)
 					w.WriteHeader(http.StatusBadRequest)
 					return
@@ -139,7 +139,7 @@ func TestParameterizedExportConsentDoesNotDuplicateConfigDisclosure(t *testing.T
 				}
 				encode(out)
 			case strings.HasSuffix(r.URL.Path, "/auth/cli-reauth/start"):
-				if err := json.NewDecoder(r.Body).Decode(&consent); err != nil {
+				if err := json.UnmarshalRead(r.Body, &consent); err != nil {
 					t.Error(err)
 					w.WriteHeader(http.StatusBadRequest)
 					return

@@ -4,7 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
 	"github.com/Hikyo-Org/hikyo/internal/scanning"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
@@ -144,10 +146,10 @@ bearer_token_env_var = "HIKYO_NATIVE_TEST_TOKEN"
 		scanner := bufio.NewScanner(output)
 		scanner.Buffer(make([]byte, 4096), 1<<20)
 		sequence := 0
-		rpc := func(method string, params any) json.RawMessage {
+		rpc := func(method string, params any) jsontext.Value {
 			t.Helper()
 			sequence++
-			if err := json.NewEncoder(input).Encode(map[string]any{"jsonrpc": "2.0", "id": sequence, "method": method, "params": params}); err != nil {
+			if err := encodeLine(input, map[string]any{"jsonrpc": "2.0", "id": sequence, "method": method, "params": params}); err != nil {
 				t.Fatal(err)
 			}
 			for scanner.Scan() {
@@ -158,9 +160,9 @@ bearer_token_env_var = "HIKYO_NATIVE_TEST_TOKEN"
 					t.Fatal("native client output disclosed protected fixture material")
 				}
 				var response struct {
-					ID     int             `json:"id"`
-					Result json.RawMessage `json:"result"`
-					Error  json.RawMessage `json:"error"`
+					ID     int            `json:"id"`
+					Result jsontext.Value `json:"result"`
+					Error  jsontext.Value `json:"error"`
 				}
 				if json.Unmarshal(scanner.Bytes(), &response) != nil || response.ID != sequence {
 					continue
@@ -174,7 +176,7 @@ bearer_token_env_var = "HIKYO_NATIVE_TEST_TOKEN"
 			return nil
 		}
 		rpc("initialize", map[string]any{"clientInfo": map[string]string{"name": "hikyo-native-proof", "version": "1"}, "capabilities": map[string]bool{"experimentalApi": true}})
-		if err := json.NewEncoder(input).Encode(map[string]any{"jsonrpc": "2.0", "method": "initialized"}); err != nil {
+		if err := encodeLine(input, map[string]any{"jsonrpc": "2.0", "method": "initialized"}); err != nil {
 			t.Fatal(err)
 		}
 		thread := rpc("thread/start", map[string]any{"cwd": home, "ephemeral": true, "approvalPolicy": "never", "sandbox": "read-only"})
@@ -320,7 +322,7 @@ func observeNativeCodexWire(t *testing.T, next http.Handler) http.Handler {
 		defer mu.Unlock()
 		initialized, called := false, false
 		for _, observed := range observations {
-			encoded, err := json.Marshal(observed)
+			encoded, err := json.Marshal(observed, jsonwire.Stable)
 			if err != nil {
 				t.Fatal("could not encode native protocol observation")
 			}

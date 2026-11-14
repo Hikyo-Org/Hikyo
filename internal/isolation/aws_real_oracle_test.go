@@ -2,7 +2,7 @@ package isolation
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,7 +25,7 @@ func newOracleVisibilitySandbox(t *testing.T, code string, stale int, value stri
 			return
 		}
 		var params map[string]string
-		if json.NewDecoder(req.Body).Decode(&params) != nil || len(params) != 2 || params["SecretId"] != arn || params["VersionStage"] != "AWSCURRENT" {
+		if json.UnmarshalRead(req.Body, &params) != nil || len(params) != 2 || params["SecretId"] != arn || params["VersionStage"] != "AWSCURRENT" {
 			t.Error("observer changed exact ARN or current selector")
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -34,10 +34,10 @@ func newOracleVisibilitySandbox(t *testing.T, code string, stale int, value stri
 		w.Header().Set("Content-Type", "application/x-amz-json-1.1")
 		if int(n) <= stale {
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"__type": code})
+			_ = encodeLine(w, map[string]string{"__type": code})
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]string{"SecretString": value})
+		_ = encodeLine(w, map[string]string{"SecretString": value})
 	}))
 	t.Cleanup(server.Close)
 	s := &realAWSSandbox{t: t, current: map[string]string{name: arn}, owned: map[string]string{arn: name}, oracle: externalAWS{origin: server.URL, region: "eu-central-1", account: "099256073061", creds: aws.Credentials{AccessKeyID: "AKIAHIKYOTEST0000001", SecretAccessKey: "synthetic-offline-observer"}}}

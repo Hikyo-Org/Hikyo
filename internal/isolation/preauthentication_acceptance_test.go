@@ -3,7 +3,7 @@ package isolation
 import (
 	"context"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"log/slog"

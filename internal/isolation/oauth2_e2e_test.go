@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
@@ -58,7 +59,7 @@ func (f *githubFixture) RoundTrip(req *http.Request) (*http.Response, error) {
 		if f.userError {
 			body = `{"login":"mutable","node_id":"opaque"}`
 		} else {
-			b, _ := json.Marshal(map[string]any{"id": f.subject, "login": "mutable", "node_id": "opaque", "two_factor_authentication": true, "name": "GitHub user"})
+			b, _ := json.Marshal(map[string]any{"id": f.subject, "login": "mutable", "node_id": "opaque", "two_factor_authentication": true, "name": "GitHub user"}, jsonwire.Stable)
 			body = string(b)
 		}
 	case "/user/emails":
@@ -70,7 +71,7 @@ func (f *githubFixture) RoundTrip(req *http.Request) (*http.Response, error) {
 			status = 500
 			body = `{}`
 		} else {
-			b, _ := json.Marshal([]map[string]any{{"email": "primary@example.com", "primary": true, "verified": f.verified}, {"email": "other@example.com", "primary": false, "verified": true}})
+			b, _ := json.Marshal([]map[string]any{{"email": "primary@example.com", "primary": true, "verified": f.verified}, {"email": "other@example.com", "primary": false, "verified": true}}, jsonwire.Stable)
 			body = string(b)
 		}
 	default:
@@ -355,7 +356,7 @@ func TestOAuth2ProviderAdministration(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		serialized, err := json.Marshal(view)
+		serialized, err := json.Marshal(view, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

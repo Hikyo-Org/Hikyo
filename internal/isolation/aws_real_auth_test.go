@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"strings"
@@ -14,6 +14,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
@@ -179,7 +180,7 @@ func runRealAWSAuthBoundaries(t *testing.T, s *realAWSSandbox) {
 		if d.Region == s.manifest.Region {
 			d.Region = "eu-west-1"
 		}
-		encoded, err := json.Marshal(d)
+		encoded, err := json.Marshal(d, jsonwire.Stable)
 		if err != nil {
 			t.Fatal("cannot encode region refusal fixture")
 		}

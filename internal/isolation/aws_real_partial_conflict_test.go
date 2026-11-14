@@ -3,7 +3,7 @@ package isolation
 import (
 	"context"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"maps"
 	"net/http"
@@ -77,7 +77,7 @@ func newRealAWSPartialConflictFixture(t *testing.T, db *store.DB) (*realAWSDurab
 			return
 		}
 		var request map[string]string
-		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&request) != nil || len(request) != 2 || request["VersionStage"] != "AWSCURRENT" {
+		if json.UnmarshalRead(http.MaxBytesReader(w, r.Body, 4096), &request) != nil || len(request) != 2 || request["VersionStage"] != "AWSCURRENT" {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -87,10 +87,10 @@ func newRealAWSPartialConflictFixture(t *testing.T, db *store.DB) (*realAWSDurab
 		value, visible := remote.Value(name)
 		if !owned || !visible {
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"__type": "ResourceNotFoundException"})
+			_ = encodeLine(w, map[string]string{"__type": "ResourceNotFoundException"})
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]string{"SecretString": value})
+		_ = encodeLine(w, map[string]string{"SecretString": value})
 	}))
 	t.Cleanup(oracle.Close)
 	h.s.oracle = externalAWS{

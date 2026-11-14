@@ -1,7 +1,7 @@
 package isolation
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -54,7 +54,7 @@ func TestEnrolmentGateCredentialInventory(t *testing.T) {
 					t.Fatalf("gated credential inventory = %d, want 200", response.StatusCode)
 				}
 				var status apigen.TotpStatus
-				if err := json.NewDecoder(response.Body).Decode(&status); err != nil {
+				if err := json.UnmarshalRead(response.Body, &status); err != nil {
 					t.Fatal(err)
 				}
 				if !status.HasPassword || status.Confirmed || status.Pending || status.HasPasskey || status.CanReauthOidc || status.Establish != nil {
