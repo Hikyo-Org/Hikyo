@@ -240,9 +240,23 @@
   },
   {
     "engine": "postgres",
+    "name": "ClearPersonalSuspensionForOwner",
+    "annotation": "authn-resolution",
+    "hash": "c1d7f6cd5b19defe34822926e49f38d64a2329316f816e59e40344be56a806fe",
+    "reason": "Release clears the retention suspension of the released principal's own personal values in the same transaction, so a clock started before containment cannot expire a value after release; it touches no ciphertext, leaves a privacy-restricted owner's clock running and clears nothing while the principal is contained."
+  },
+  {
+    "engine": "postgres",
     "name": "ClearSelfConfigSeedInputs",
     "annotation": "instance-scoped",
     "hash": "d27bb664779449865a5be63f640ebd3c9b55b8aafac377f140c3e54e103fe2b0"
+  },
+  {
+    "engine": "postgres",
+    "name": "CloseIncident",
+    "annotation": "authn-resolution",
+    "hash": "760e124dc33c2b272acd4b15175e762f153a2df8c7bb90006cbdf29ebf731884",
+    "reason": "Closing compare-and-sets the open incident row after the operation authorized credential-reset at the incident scope; a closed incident never reopens."
   },
   {
     "engine": "postgres",
@@ -351,6 +365,13 @@
     "name": "ConsumeWorkspaceHandoff",
     "annotation": "authn-resolution",
     "hash": "8d39738c4dc843ac59a99d86f6d465761458c8abac9149908a5368877d98b4e3"
+  },
+  {
+    "engine": "postgres",
+    "name": "ContainPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "522473542c53e5325c0c2cc009c303fe0c41e2c2b6ad4dee9cdaa50671093770",
+    "reason": "Containment is a local-authority write: the caller proves the operation and takes the principal-row lock first, and a contained principal is denied everywhere the privacy gate already denies."
   },
   {
     "engine": "postgres",
@@ -595,6 +616,13 @@
     "name": "CountGrantsForOrg",
     "annotation": "authn-resolution",
     "hash": "de2cd352c47c7e563cc87dd404230dbc53c4db4db47e6424fc5764c843c451af"
+  },
+  {
+    "engine": "postgres",
+    "name": "CountIncidentItemsByOutcome",
+    "annotation": "authn-resolution",
+    "hash": "466640e9eecbc73910a843a708264238a5bf4d5143f46de6b3056743b6984f22",
+    "reason": "Closing and the opened event count one incident's items by outcome after the operation authorized credential-reset at the incident scope."
   },
   {
     "engine": "postgres",
@@ -1110,6 +1138,13 @@
   },
   {
     "engine": "postgres",
+    "name": "DynamicListNonTerminalLeasesInInstance",
+    "annotation": "instance-scoped",
+    "hash": "c2068f55c9f96b3a783d8964bd2574783554b8e5739c0c9ce7e946b0d18f7bf8",
+    "reason": "Instance-level incident enumeration lists non-terminal lease identifiers across orgs only behind the instance credential-reset operation, whose proof carries an empty chain; the page is bounded and no lease secret is selected."
+  },
+  {
+    "engine": "postgres",
     "name": "EnvironmentChainByID",
     "annotation": "authn-resolution",
     "hash": "5c31ff638d985b5d9cbd5d55b38ac851ef1f7321b1efa72cb54943996340059f"
@@ -1154,32 +1189,46 @@
     "engine": "postgres",
     "name": "GetAccountByEmail",
     "annotation": "authn-resolution",
-    "hash": "f477155c73c0856c6078e5f8bd9bb1cbd877dc6c865417d042837253c12a5978",
+    "hash": "ee2d6684b3d1493dbcfd6a17f4a73edfc77ed32f6a7e4cacf9131dc0455fd1fe",
     "reason": "Local login resolves a canonical verified address only to an active principal, never as a federated linking key."
   },
   {
     "engine": "postgres",
     "name": "GetAccountByID",
     "annotation": "authn-resolution",
-    "hash": "f22fcf605ccefe1e4ee90340a474bb91be732a17eb1e45d64b7cd6f994c08cf3"
+    "hash": "60e9ad2698a327f4630cd7075f0bc067f3b342b3a5bd5aff3962b951a445bc2a"
   },
   {
     "engine": "postgres",
     "name": "GetAccountByPrincipal",
     "annotation": "authn-resolution",
-    "hash": "9be521499c33e8bad85787d2d402267c51b667e1b79cc3d507c5b701422fea15"
+    "hash": "640ddaf672c9763047061387d882ef80db8e8328b52e4a82c2ba1725c6276ddb"
   },
   {
     "engine": "postgres",
     "name": "GetAccountByUsername",
     "annotation": "authn-resolution",
-    "hash": "5da6193dd667966bfa4ce128a6644e8536b42ba2d36814c24be2c928dd2cdbc4"
+    "hash": "24dcb4615224ff65bf85bad5040d469160c499cf7e544dba02f43c1a9ab404ea"
   },
   {
     "engine": "postgres",
     "name": "GetAccountByWebAuthnUserHandle",
     "annotation": "authn-resolution",
-    "hash": "2e9a312f799643110195280282dafa31a0b85e2113f820315a75845437e6d5ce"
+    "hash": "b57391310bf4b7cc7ac9e625069f54f2a79325044d07aa895f0c403a3c885ac0"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetAccountForRecovery",
+    "annotation": "authn-resolution",
+    "hash": "38299592366324b0455d3a5877ba0f7090a23bc03a4cdc7d00613e16ec58bdc6",
+    "reason": "Reset issuance and credential establishment resolve the account of a principal containment may hold, with the containment condition dropped and the privacy gate kept; callable only from those flows."
+  },
+  {
+    "engine": "postgres",
+    "name": "GetAccountIDForContainmentSweep",
+    "annotation": "authn-resolution",
+    "hash": "d678c812a4df2bfe9da2dcca7c45b12cb7189f3a0b72c5109958120a8b207880",
+    "reason": "Containment resolves the account id of the principal it holds, whatever the principal's privacy state, so its outstanding credential authorities are consumed in the same transaction; it returns one identifier and no secret."
   },
   {
     "engine": "postgres",
@@ -1276,6 +1325,20 @@
   },
   {
     "engine": "postgres",
+    "name": "GetIncident",
+    "annotation": "authn-resolution",
+    "hash": "8cd0202dd5e400daa2b0e16698992e20e925cf164052a01b59200316b6c01f3d",
+    "reason": "Reading an incident by its generated id happens after the operation authorized credential-reset at the incident scope, which the caller compares to the row."
+  },
+  {
+    "engine": "postgres",
+    "name": "GetIncidentItem",
+    "annotation": "authn-resolution",
+    "hash": "017b1ed39d2c06b57796cd7b2c0a93bde7955afb13ece9696a10d6b784069314",
+    "reason": "Resume re-reads one item by its generated id inside its incident after the operation authorized credential-reset at the incident scope, so a stale list never decides the next step."
+  },
+  {
+    "engine": "postgres",
     "name": "GetInstanceConnection",
     "annotation": "authn-resolution",
     "hash": "64c720cefb539d91dcda821b7dd5d4f375cf77a369b266bec4bd93b009851c97"
@@ -1339,6 +1402,13 @@
   },
   {
     "engine": "postgres",
+    "name": "GetOpenIncidentForScope",
+    "annotation": "authn-resolution",
+    "hash": "6946249ef20bee96940188104a70c05fea79b0906dfdde84c5a2f0ae2a0cfcbd",
+    "reason": "Re-opening an incident reads the one open row of the addressed scope and owning org after the operation authorized credential-reset at that scope."
+  },
+  {
+    "engine": "postgres",
     "name": "GetOpsDiagnostics",
     "annotation": "instance-scoped",
     "hash": "a802e9ed5095b702172266766e4e06b874a5533c361ae6482cbd8fadcb9f44c3"
@@ -1389,9 +1459,16 @@
   },
   {
     "engine": "postgres",
+    "name": "GetPrincipalContainment",
+    "annotation": "authn-resolution",
+    "hash": "6c2de4a792255c551a407305b967520363bba81dcc89c39f266fcb4008b8229e",
+    "reason": "The retention sweep reads one principal's two state columns to decide whether containment pauses its personal-value deletion clock; returns no identifiers or secrets."
+  },
+  {
+    "engine": "postgres",
     "name": "GetPrincipalGeneration",
     "annotation": "authn-resolution",
-    "hash": "66824b199c5576e4b4fc7faba1459522fc4ae90ba8b62947c58fe544e7733afb"
+    "hash": "a211dc29e39be0905b5b1ca68bb942c8972358b03c375cbb75bd1c9ca709e765"
   },
   {
     "engine": "postgres",
@@ -1686,6 +1763,20 @@
     "name": "InsertGrantOrigin",
     "annotation": "authn-resolution",
     "hash": "2f08b8fae2c231983cd82a25028027e2e494cc7913f965c3a9ad63cfd438939f"
+  },
+  {
+    "engine": "postgres",
+    "name": "InsertIncident",
+    "annotation": "authn-resolution",
+    "hash": "575f0446283ed3bdaaa0fb09f40fd16265486109875b9a773f96c4892a611c70",
+    "reason": "Opening an incident writes its one ledger row after the operation authorized credential-reset at the incident scope; the partial unique index makes a repeated open insert nothing."
+  },
+  {
+    "engine": "postgres",
+    "name": "InsertIncidentItem",
+    "annotation": "authn-resolution",
+    "hash": "eb09e91d26ea7b9d63590ad7034243ca951cefa4a8a1f86f8ce00e80ed3f8f3a",
+    "reason": "Enumeration writes one pending or out-of-scope row per affected object after the operation authorized credential-reset at the incident scope; the unique key makes a repeat insert nothing and keeps the recorded outcome."
   },
   {
     "engine": "postgres",
@@ -1984,7 +2075,7 @@
     "engine": "postgres",
     "name": "ListGrantsForPrincipal",
     "annotation": "authn-resolution",
-    "hash": "601ee342bb955db8c9fc5b638acb9356f76b2525e9457caea0cbdddac74208c7"
+    "hash": "6c9b7db704a5df071ed7720dfa3469c5ab303e9b887a9e7f6cfb9c2cf4bcb50a"
   },
   {
     "engine": "postgres",
@@ -2012,6 +2103,13 @@
   },
   {
     "engine": "postgres",
+    "name": "ListIncidentItems",
+    "annotation": "authn-resolution",
+    "hash": "59cb1582e25c856191082f4fa1198a2745c5f7d6edcffc6ca0a3b62b6d9a9a18",
+    "reason": "The ledger read pages one incident's items by id after the operation authorized credential-reset at the incident scope, bounded by the limit."
+  },
+  {
+    "engine": "postgres",
     "name": "ListIndefiniteCredentials",
     "annotation": "authn-resolution",
     "hash": "0e965340fc4e261c20ca40cc54750b1d5216df7226054ce6325e26cff54ea297"
@@ -2027,6 +2125,13 @@
     "name": "ListLiveAccessGrantsForPrincipal",
     "annotation": "authn-resolution",
     "hash": "a1557956194216f4fc26414cce95d01057224afd2881a88aa6894b2368a3b72d"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListLiveDeveloperCredentialsInOrg",
+    "annotation": "authn-resolution",
+    "hash": "2c6dbc4dc4ff3d6e132ebc53d74956877e9b127045d201f9f24c162e4fbb96c1",
+    "reason": "Incident enumeration reads delegation metadata of one org after the operation authorized credential-reset at that org; no bearer can be recovered and the page is bounded."
   },
   {
     "engine": "postgres",
@@ -2057,13 +2162,13 @@
     "engine": "postgres",
     "name": "ListManageMembersHoldersAtInstance",
     "annotation": "authn-resolution",
-    "hash": "896568880a9d9bb5dfcde5610fd97d2bfa00d23064f9a581b386bf135efd0c60"
+    "hash": "31956eaf6f6ce4b85c748c4f897d1152e5491cf01664b263d3c6ea855e0857aa"
   },
   {
     "engine": "postgres",
     "name": "ListManageMembersHoldersForOrg",
     "annotation": "authn-resolution",
-    "hash": "df33e2a60f15c64d56d94e1bf4daf46db23055cde2a8936f6c3e607af3c1490d"
+    "hash": "b4c3db77c54b94b3ac6be020ae4d8a114d51f2864471be9302d30ea18676f073"
   },
   {
     "engine": "postgres",
@@ -2089,6 +2194,13 @@
     "name": "ListOidcProvidersForReencrypt",
     "annotation": "authn-resolution",
     "hash": "b5359d612f0ff91290b7188db97f939e0f2b29dfe516aee2dc4f920fce1d669e"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListOpenIncidentItems",
+    "annotation": "authn-resolution",
+    "hash": "c05c55e6b556860e7c868e1f65fb51842a2c0cae9c4398263ac1068fb5c85d9c",
+    "reason": "Resume pages the open items of one incident (pending, unknown, blocked) by id after the operation authorized credential-reset at the incident scope, bounded by the limit."
   },
   {
     "engine": "postgres",
@@ -2245,7 +2357,7 @@
     "engine": "postgres",
     "name": "ListRulesForPrincipal",
     "annotation": "authn-resolution",
-    "hash": "2127849caa50fff001f220725a98b442f6ec1e3778a365c618a51c213088d927"
+    "hash": "01117d46d133479be63210f6253e20fd3485807b2a65e515a323a11444e81ba4"
   },
   {
     "engine": "postgres",
@@ -2312,6 +2424,13 @@
     "name": "ListServiceAccounts",
     "annotation": "authn-resolution",
     "hash": "6e2c462b123e4db1dc3bf0f2f18c55cc23417f2e3ceff9439222e4d06462f2c0"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListServiceAccountsCreatedBy",
+    "annotation": "authn-resolution",
+    "hash": "0f4071bd2c3d87558769fea590b546eaea52319f79e4f3c753889840cfc67ec3",
+    "reason": "Incident enumeration reads the service accounts one principal created after the operation authorized credential-reset at the incident scope; it returns metadata only, no credential, and the page is bounded."
   },
   {
     "engine": "postgres",
@@ -2667,7 +2786,7 @@
     "engine": "postgres",
     "name": "PersonalOwnerHoldsInEnvironment",
     "annotation": "authn-resolution",
-    "hash": "bc673c18998547d8bbc23c9e4f490c8c2b27378103eab5c50efccec9ec2eac3d",
+    "hash": "eacc429132c1b9e2353922d178b145beb81a5671efa49eaeeaf92d5a377fe89b",
     "reason": "authorize() admits the owner's own personal-value list and delete in an environment where the principal holds a value or notice; returns a count, never ciphertext or another principal's row."
   },
   {
@@ -2976,6 +3095,13 @@
   },
   {
     "engine": "postgres",
+    "name": "RecoveryListGrantsBeforeContainment",
+    "annotation": "authn-resolution",
+    "hash": "601ee342bb955db8c9fc5b638acb9356f76b2525e9457caea0cbdddac74208c7",
+    "reason": "Historical recovery of a source schema older than 89 reads the principal's grants without the containment condition, which that schema cannot hold; the privacy gate and restore epoch stay."
+  },
+  {
+    "engine": "postgres",
     "name": "RecoveryListGrantsBeforePrivacy",
     "annotation": "authn-resolution",
     "hash": "19ec19fa1ddf22b1bc683d9e7f725041834b942cf8cd692be0e8579215e968de"
@@ -2985,6 +3111,20 @@
     "name": "RecoveryListGrantsBeforeSelfConfig",
     "annotation": "authn-resolution",
     "hash": "c91703459f54308af0ba16ccc53fff975691badb06445e4608ba3f3815129164"
+  },
+  {
+    "engine": "postgres",
+    "name": "RecoveryListRulesBeforeContainment",
+    "annotation": "authn-resolution",
+    "hash": "2127849caa50fff001f220725a98b442f6ec1e3778a365c618a51c213088d927",
+    "reason": "Historical recovery of a source schema older than 89 reads the principal's member access rules without the containment condition, which that schema cannot hold; the privacy gate and restore epoch stay."
+  },
+  {
+    "engine": "postgres",
+    "name": "RecoveryPersonalOwnerHoldsBeforeContainment",
+    "annotation": "authn-resolution",
+    "hash": "bc673c18998547d8bbc23c9e4f490c8c2b27378103eab5c50efccec9ec2eac3d",
+    "reason": "Historical recovery of source schema 86 through 88 reads the owner fallback without the containment condition, which that schema cannot hold; the privacy gate, human kind and restore epoch stay."
   },
   {
     "engine": "postgres",
@@ -3054,6 +3194,13 @@
     "annotation": "authn-resolution",
     "hash": "3ab16c2081fee4b12cff80933355342497ba495879dbd196d6d94709ad577a12",
     "reason": "The admitted local signup request rotates only the matched pending signup row under the live registration policy."
+  },
+  {
+    "engine": "postgres",
+    "name": "ReleasePrincipalContainment",
+    "annotation": "authn-resolution",
+    "hash": "f4035fd87a6396926323d2a328187292a5a2fcabf2c69bd3d8551b7984057f6c",
+    "reason": "Release returns the principal to none and clears the incident reference; it advances the generation so nothing minted before containment revives, and it restores no authority."
   },
   {
     "engine": "postgres",
@@ -3552,6 +3699,13 @@
   },
   {
     "engine": "postgres",
+    "name": "TransitionIncidentItem",
+    "annotation": "authn-resolution",
+    "hash": "9eceb928a758b268439aee00923b56d099e3a337c65c8f0d17378a5c65d0080d",
+    "reason": "A recorded outcome compare-and-sets one item of an open incident from an open outcome after the operation authorized credential-reset at the incident scope; a stale version or a terminal item changes nothing."
+  },
+  {
+    "engine": "postgres",
     "name": "UpdateAccountProfile",
     "annotation": "authn-resolution",
     "hash": "4356d285d4bfe10ed1781e4d7954311f00683d3eac43cd4ec31130c81ef558c4"
@@ -3862,9 +4016,23 @@
   },
   {
     "engine": "sqlite",
+    "name": "ClearPersonalSuspensionForOwner",
+    "annotation": "authn-resolution",
+    "hash": "c1d7f6cd5b19defe34822926e49f38d64a2329316f816e59e40344be56a806fe",
+    "reason": "Release clears the retention suspension of the released principal's own personal values in the same transaction, so a clock started before containment cannot expire a value after release; it touches no ciphertext, leaves a privacy-restricted owner's clock running and clears nothing while the principal is contained."
+  },
+  {
+    "engine": "sqlite",
     "name": "ClearSelfConfigSeedInputs",
     "annotation": "instance-scoped",
     "hash": "d27bb664779449865a5be63f640ebd3c9b55b8aafac377f140c3e54e103fe2b0"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CloseIncident",
+    "annotation": "authn-resolution",
+    "hash": "760e124dc33c2b272acd4b15175e762f153a2df8c7bb90006cbdf29ebf731884",
+    "reason": "Closing compare-and-sets the open incident row after the operation authorized credential-reset at the incident scope; a closed incident never reopens."
   },
   {
     "engine": "sqlite",
@@ -3973,6 +4141,13 @@
     "name": "ConsumeWorkspaceHandoff",
     "annotation": "authn-resolution",
     "hash": "f0f129d9436bb726bb5daa4ad83f638ce51d30a5d971c36953d8732e888a5b5f"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ContainPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "522473542c53e5325c0c2cc009c303fe0c41e2c2b6ad4dee9cdaa50671093770",
+    "reason": "Containment is a local-authority write: the caller proves the operation and takes the principal-row lock first, and a contained principal is denied everywhere the privacy gate already denies."
   },
   {
     "engine": "sqlite",
@@ -4189,6 +4364,13 @@
     "name": "CountGrantsForOrg",
     "annotation": "authn-resolution",
     "hash": "3db19a6830a7a9ab88f1ecf4ad477e64927148f69b54dddc495c26a569095a44"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CountIncidentItemsByOutcome",
+    "annotation": "authn-resolution",
+    "hash": "466640e9eecbc73910a843a708264238a5bf4d5143f46de6b3056743b6984f22",
+    "reason": "Closing and the opened event count one incident's items by outcome after the operation authorized credential-reset at the incident scope."
   },
   {
     "engine": "sqlite",
@@ -4704,6 +4886,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "DynamicListNonTerminalLeasesInInstance",
+    "annotation": "instance-scoped",
+    "hash": "c2068f55c9f96b3a783d8964bd2574783554b8e5739c0c9ce7e946b0d18f7bf8",
+    "reason": "Instance-level incident enumeration lists non-terminal lease identifiers across orgs only behind the instance credential-reset operation, whose proof carries an empty chain; the page is bounded and no lease secret is selected."
+  },
+  {
+    "engine": "sqlite",
     "name": "EnvironmentChainByID",
     "annotation": "authn-resolution",
     "hash": "170bedbeb14b3270711ccc705b4b2ad4ceadef181b4f97025d8a6bea844654e2"
@@ -4748,32 +4937,46 @@
     "engine": "sqlite",
     "name": "GetAccountByEmail",
     "annotation": "authn-resolution",
-    "hash": "b50535ef3da220c076f74b96480998a7ad2218620f5ab5934dd3a2f8e3f3fda3",
+    "hash": "7860b570f2a18a0a634221ea91359962b667b3d94f6e7b147547e8eef8a1fd16",
     "reason": "Local login resolves a canonical verified address only to an active principal, never as a federated linking key."
   },
   {
     "engine": "sqlite",
     "name": "GetAccountByID",
     "annotation": "authn-resolution",
-    "hash": "a2dc8f82948bab44902e2554f555f5d15a179f7f5acac627f9469b7e18ec6f63"
+    "hash": "73f999f7ae8b7037351ce9026c2b241ed6f3212d92ca991efbf63e03d083bd5e"
   },
   {
     "engine": "sqlite",
     "name": "GetAccountByPrincipal",
     "annotation": "authn-resolution",
-    "hash": "1c338143ee084cd74aeddbb8e4798a45474730f83a2d4386152e4afcffc43ba7"
+    "hash": "26b0a6bf92ab4ee1e2b61bdbbd18f1f0223e3513aa305c446684dc86ec516577"
   },
   {
     "engine": "sqlite",
     "name": "GetAccountByUsername",
     "annotation": "authn-resolution",
-    "hash": "f1435fe4f985ca554b07f76507236a35e1a40393fc6f82731e4ae0a0da3fe5e0"
+    "hash": "7bfbacd6ed444f264dfd3cfa0d8edcd943058cf6a6b019972b2a7c3270895fe0"
   },
   {
     "engine": "sqlite",
     "name": "GetAccountByWebAuthnUserHandle",
     "annotation": "authn-resolution",
-    "hash": "48800f9f4373e93e1ad98b47c81608839aa91c59f85e3b8fbb146da124309174"
+    "hash": "4264feaa8aacd75831569352ebb0c6c759c15fa225b9ea18cea874634403eb9b"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetAccountForRecovery",
+    "annotation": "authn-resolution",
+    "hash": "38299592366324b0455d3a5877ba0f7090a23bc03a4cdc7d00613e16ec58bdc6",
+    "reason": "Reset issuance and credential establishment resolve the account of a principal containment may hold, with the containment condition dropped and the privacy gate kept; callable only from those flows."
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetAccountIDForContainmentSweep",
+    "annotation": "authn-resolution",
+    "hash": "d678c812a4df2bfe9da2dcca7c45b12cb7189f3a0b72c5109958120a8b207880",
+    "reason": "Containment resolves the account id of the principal it holds, whatever the principal's privacy state, so its outstanding credential authorities are consumed in the same transaction; it returns one identifier and no secret."
   },
   {
     "engine": "sqlite",
@@ -4870,6 +5073,20 @@
   },
   {
     "engine": "sqlite",
+    "name": "GetIncident",
+    "annotation": "authn-resolution",
+    "hash": "8cd0202dd5e400daa2b0e16698992e20e925cf164052a01b59200316b6c01f3d",
+    "reason": "Reading an incident by its generated id happens after the operation authorized credential-reset at the incident scope, which the caller compares to the row."
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetIncidentItem",
+    "annotation": "authn-resolution",
+    "hash": "017b1ed39d2c06b57796cd7b2c0a93bde7955afb13ece9696a10d6b784069314",
+    "reason": "Resume re-reads one item by its generated id inside its incident after the operation authorized credential-reset at the incident scope, so a stale list never decides the next step."
+  },
+  {
+    "engine": "sqlite",
     "name": "GetInstanceConnection",
     "annotation": "authn-resolution",
     "hash": "1bc41570f1b36adf31a9a999c3a45ddefff8e556c6958aa43cc20772f83fec2f"
@@ -4933,6 +5150,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "GetOpenIncidentForScope",
+    "annotation": "authn-resolution",
+    "hash": "6946249ef20bee96940188104a70c05fea79b0906dfdde84c5a2f0ae2a0cfcbd",
+    "reason": "Re-opening an incident reads the one open row of the addressed scope and owning org after the operation authorized credential-reset at that scope."
+  },
+  {
+    "engine": "sqlite",
     "name": "GetOpsDiagnostics",
     "annotation": "instance-scoped",
     "hash": "02e196d1a8a8e6e0deaba49cd10fe2169a6fd1d83eb44a2c69bd258413afc2f6"
@@ -4983,9 +5207,16 @@
   },
   {
     "engine": "sqlite",
+    "name": "GetPrincipalContainment",
+    "annotation": "authn-resolution",
+    "hash": "6c2de4a792255c551a407305b967520363bba81dcc89c39f266fcb4008b8229e",
+    "reason": "The retention sweep reads one principal's two state columns to decide whether containment pauses its personal-value deletion clock; returns no identifiers or secrets."
+  },
+  {
+    "engine": "sqlite",
     "name": "GetPrincipalGeneration",
     "annotation": "authn-resolution",
-    "hash": "ee96f45f1b592ca0e2eb4a13772681000b58317f2e6e0a5da5e4fe525c89eb84"
+    "hash": "5fa72c5ace64184e0c7f889a03bded2da2a5dc58b5de977770c3db04c7f943ab"
   },
   {
     "engine": "sqlite",
@@ -5280,6 +5511,20 @@
     "name": "InsertGrantOrigin",
     "annotation": "authn-resolution",
     "hash": "2359ffc25b54cdf4af56069aa89b8bda0779dc7ee711eda707fcb09718d65e4c"
+  },
+  {
+    "engine": "sqlite",
+    "name": "InsertIncident",
+    "annotation": "authn-resolution",
+    "hash": "575f0446283ed3bdaaa0fb09f40fd16265486109875b9a773f96c4892a611c70",
+    "reason": "Opening an incident writes its one ledger row after the operation authorized credential-reset at the incident scope; the partial unique index makes a repeated open insert nothing."
+  },
+  {
+    "engine": "sqlite",
+    "name": "InsertIncidentItem",
+    "annotation": "authn-resolution",
+    "hash": "eb09e91d26ea7b9d63590ad7034243ca951cefa4a8a1f86f8ce00e80ed3f8f3a",
+    "reason": "Enumeration writes one pending or out-of-scope row per affected object after the operation authorized credential-reset at the incident scope; the unique key makes a repeat insert nothing and keeps the recorded outcome."
   },
   {
     "engine": "sqlite",
@@ -5578,7 +5823,7 @@
     "engine": "sqlite",
     "name": "ListGrantsForPrincipal",
     "annotation": "authn-resolution",
-    "hash": "601ee342bb955db8c9fc5b638acb9356f76b2525e9457caea0cbdddac74208c7"
+    "hash": "6c9b7db704a5df071ed7720dfa3469c5ab303e9b887a9e7f6cfb9c2cf4bcb50a"
   },
   {
     "engine": "sqlite",
@@ -5606,6 +5851,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "ListIncidentItems",
+    "annotation": "authn-resolution",
+    "hash": "59cb1582e25c856191082f4fa1198a2745c5f7d6edcffc6ca0a3b62b6d9a9a18",
+    "reason": "The ledger read pages one incident's items by id after the operation authorized credential-reset at the incident scope, bounded by the limit."
+  },
+  {
+    "engine": "sqlite",
     "name": "ListIndefiniteCredentials",
     "annotation": "authn-resolution",
     "hash": "0e965340fc4e261c20ca40cc54750b1d5216df7226054ce6325e26cff54ea297"
@@ -5621,6 +5873,13 @@
     "name": "ListLiveAccessGrantsForPrincipal",
     "annotation": "authn-resolution",
     "hash": "6b0d1b21a62296e3b665f599c14596743563c9dfc639b40011682eb4f21ce18d"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListLiveDeveloperCredentialsInOrg",
+    "annotation": "authn-resolution",
+    "hash": "f9e3f81adf6fed2402d8fd5f8af097012d1c98962cb3d64bc8e139d874f75ac4",
+    "reason": "Incident enumeration reads delegation metadata of one org after the operation authorized credential-reset at that org; no bearer can be recovered and the page is bounded."
   },
   {
     "engine": "sqlite",
@@ -5651,13 +5910,13 @@
     "engine": "sqlite",
     "name": "ListManageMembersHoldersAtInstance",
     "annotation": "authn-resolution",
-    "hash": "896568880a9d9bb5dfcde5610fd97d2bfa00d23064f9a581b386bf135efd0c60"
+    "hash": "31956eaf6f6ce4b85c748c4f897d1152e5491cf01664b263d3c6ea855e0857aa"
   },
   {
     "engine": "sqlite",
     "name": "ListManageMembersHoldersForOrg",
     "annotation": "authn-resolution",
-    "hash": "f0a572b183d0b4a79256c3eff500c9afeb6ac56790922683a9321d22a7355cfc"
+    "hash": "a569a1ae57a5a6eea5273dd453f313d2699d2af0018d70e3889297e66fd8a637"
   },
   {
     "engine": "sqlite",
@@ -5683,6 +5942,13 @@
     "name": "ListOidcProvidersForReencrypt",
     "annotation": "authn-resolution",
     "hash": "0df9d463d9a4c8cd88e4f194352647544bdd81502c21186a90b2698efaf9a331"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListOpenIncidentItems",
+    "annotation": "authn-resolution",
+    "hash": "c05c55e6b556860e7c868e1f65fb51842a2c0cae9c4398263ac1068fb5c85d9c",
+    "reason": "Resume pages the open items of one incident (pending, unknown, blocked) by id after the operation authorized credential-reset at the incident scope, bounded by the limit."
   },
   {
     "engine": "sqlite",
@@ -5839,7 +6105,7 @@
     "engine": "sqlite",
     "name": "ListRulesForPrincipal",
     "annotation": "authn-resolution",
-    "hash": "2127849caa50fff001f220725a98b442f6ec1e3778a365c618a51c213088d927"
+    "hash": "01117d46d133479be63210f6253e20fd3485807b2a65e515a323a11444e81ba4"
   },
   {
     "engine": "sqlite",
@@ -5906,6 +6172,13 @@
     "name": "ListServiceAccounts",
     "annotation": "authn-resolution",
     "hash": "38eadb7b55b69f037445fca03be3286eb89eaec8e0f1249992e44b6c2cab5159"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListServiceAccountsCreatedBy",
+    "annotation": "authn-resolution",
+    "hash": "4f78477b2857561b72782a7010bd2347cd0fd1a0f6fe8e63b5d21e9926e4f280",
+    "reason": "Incident enumeration reads the service accounts one principal created after the operation authorized credential-reset at the incident scope; it returns metadata only, no credential, and the page is bounded."
   },
   {
     "engine": "sqlite",
@@ -6261,7 +6534,7 @@
     "engine": "sqlite",
     "name": "PersonalOwnerHoldsInEnvironment",
     "annotation": "authn-resolution",
-    "hash": "bc673c18998547d8bbc23c9e4f490c8c2b27378103eab5c50efccec9ec2eac3d",
+    "hash": "eacc429132c1b9e2353922d178b145beb81a5671efa49eaeeaf92d5a377fe89b",
     "reason": "authorize() admits the owner's own personal-value list and delete in an environment where the principal holds a value or notice; returns a count, never ciphertext or another principal's row."
   },
   {
@@ -6570,6 +6843,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "RecoveryListGrantsBeforeContainment",
+    "annotation": "authn-resolution",
+    "hash": "601ee342bb955db8c9fc5b638acb9356f76b2525e9457caea0cbdddac74208c7",
+    "reason": "Historical recovery of a source schema older than 89 reads the principal's grants without the containment condition, which that schema cannot hold; the privacy gate and restore epoch stay."
+  },
+  {
+    "engine": "sqlite",
     "name": "RecoveryListGrantsBeforePrivacy",
     "annotation": "authn-resolution",
     "hash": "19ec19fa1ddf22b1bc683d9e7f725041834b942cf8cd692be0e8579215e968de"
@@ -6579,6 +6859,20 @@
     "name": "RecoveryListGrantsBeforeSelfConfig",
     "annotation": "authn-resolution",
     "hash": "cd384604164fdafe0ff2563899c0c6815c6d39a418f9dada2a847a185e6526ad"
+  },
+  {
+    "engine": "sqlite",
+    "name": "RecoveryListRulesBeforeContainment",
+    "annotation": "authn-resolution",
+    "hash": "2127849caa50fff001f220725a98b442f6ec1e3778a365c618a51c213088d927",
+    "reason": "Historical recovery of a source schema older than 89 reads the principal's member access rules without the containment condition, which that schema cannot hold; the privacy gate and restore epoch stay."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RecoveryPersonalOwnerHoldsBeforeContainment",
+    "annotation": "authn-resolution",
+    "hash": "bc673c18998547d8bbc23c9e4f490c8c2b27378103eab5c50efccec9ec2eac3d",
+    "reason": "Historical recovery of source schema 86 through 88 reads the owner fallback without the containment condition, which that schema cannot hold; the privacy gate, human kind and restore epoch stay."
   },
   {
     "engine": "sqlite",
@@ -6648,6 +6942,13 @@
     "annotation": "authn-resolution",
     "hash": "c3b26dae41ae35514e13e4837aa49298d42fcccd5b3b799b6f5c9f37c628b60f",
     "reason": "The admitted local signup request rotates only the matched pending signup row under the live registration policy."
+  },
+  {
+    "engine": "sqlite",
+    "name": "ReleasePrincipalContainment",
+    "annotation": "authn-resolution",
+    "hash": "f4035fd87a6396926323d2a328187292a5a2fcabf2c69bd3d8551b7984057f6c",
+    "reason": "Release returns the principal to none and clears the incident reference; it advances the generation so nothing minted before containment revives, and it restores no authority."
   },
   {
     "engine": "sqlite",
@@ -7129,6 +7430,13 @@
     "annotation": "instance-scoped",
     "hash": "444f660b44816309861487a729df7ee469755bd41f29f65138c05c2ee3c00cfb",
     "reason": "StoreTransitSelectRotationDue verifies the existing closed system scheduler authority; globally lists active rotation candidates with their latest-version timestamp before scoped worker authorization."
+  },
+  {
+    "engine": "sqlite",
+    "name": "TransitionIncidentItem",
+    "annotation": "authn-resolution",
+    "hash": "9eceb928a758b268439aee00923b56d099e3a337c65c8f0d17378a5c65d0080d",
+    "reason": "A recorded outcome compare-and-sets one item of an open incident from an open outcome after the operation authorized credential-reset at the incident scope; a stale version or a terminal item changes nothing."
   },
   {
     "engine": "sqlite",

@@ -60,6 +60,10 @@ func (a *TxAuthorizer) AddGrantOrigin(ctx context.Context, id, grantID string, p
 	return a.r.AddGrantOrigin(ctx, id, grantID, p, o, at)
 }
 
+func (a *TxAuthorizer) AddIncidentItem(ctx context.Context, n NewIncidentItem) (bool, error) {
+	return a.r.AddIncidentItem(ctx, n)
+}
+
 // AdvanceGeneration invalidates every session of a principal at once. It runs
 // in the same transaction as the change that triggered it.
 func (a *TxAuthorizer) AdvanceGeneration(ctx context.Context, p domain.PrincipalID) error {
@@ -183,6 +187,10 @@ func (a *TxAuthorizer) ClearPendingTOTP(ctx context.Context, accountID string) e
 	return a.r.DeletePendingTOTPForAccount(ctx, accountID)
 }
 
+func (a *TxAuthorizer) CloseIncident(ctx context.Context, id string, expectedVersion int64, status domain.IncidentStatus, by domain.PrincipalID, at time.Time) (bool, error) {
+	return a.r.CloseIncident(ctx, id, expectedVersion, status, by, at)
+}
+
 // ConfirmTOTP promotes and consumes a step in one CAS; false means the row
 // moved or the step was not beyond the last.
 func (a *TxAuthorizer) ConfirmTOTP(ctx context.Context, id string, rowVersion, step int64, at time.Time) (bool, error) {
@@ -265,6 +273,15 @@ func (a *TxAuthorizer) ConsumeWebAuthnCeremony(ctx context.Context, id, credenti
 
 func (a *TxAuthorizer) ConsumeWorkspaceHandoff(ctx context.Context, id string, at time.Time) (bool, error) {
 	return a.r.ConsumeWorkspaceHandoff(ctx, id, at)
+}
+
+// ContainPrincipal and ReleasePrincipalContainment set and clear the
+// reversible containment state. Both advance the session generation in the
+// same UPDATE, and containing also consumes the account's outstanding
+// authorities, so nothing minted before containment survives it. They revoke
+// no session row and remove no grant.
+func (a *TxAuthorizer) ContainPrincipal(ctx context.Context, p domain.PrincipalID, at time.Time, incidentID string) error {
+	return a.r.ContainPrincipal(ctx, p, at, incidentID)
 }
 
 func (a *TxAuthorizer) CorrectPrivacyAccount(ctx context.Context, account, username, displayName string) error {
@@ -685,6 +702,22 @@ func (a *TxAuthorizer) HoldRestoredPKIIssuers(ctx context.Context) error {
 	return a.r.HoldRestoredPKIIssuers(ctx)
 }
 
+func (a *TxAuthorizer) IncidentByID(ctx context.Context, id string) (Incident, error) {
+	return a.r.IncidentByID(ctx, id)
+}
+
+func (a *TxAuthorizer) IncidentItemByID(ctx context.Context, incidentID, id string) (IncidentItem, error) {
+	return a.r.IncidentItemByID(ctx, incidentID, id)
+}
+
+func (a *TxAuthorizer) IncidentItemCounts(ctx context.Context, incidentID string) (map[domain.ItemOutcome]int64, error) {
+	return a.r.IncidentItemCounts(ctx, incidentID)
+}
+
+func (a *TxAuthorizer) IncidentItems(ctx context.Context, incidentID, afterID string, limit int, openOnly bool) ([]IncidentItem, error) {
+	return a.r.IncidentItems(ctx, incidentID, afterID, limit, openOnly)
+}
+
 // IncompatiblePasswordKDFCount is for startup/configuration admission, not a
 // public authentication route. It exposes only aggregate parameter metadata.
 func (a *TxAuthorizer) IncompatiblePasswordKDFCount(ctx context.Context, kdf KDFParams) (int64, error) {
@@ -752,6 +785,13 @@ func (a *TxAuthorizer) ListSAMLProviders(ctx context.Context) ([]SAMLProvider, e
 // LiveAccessGrants lists a principal's unexpired temporary grants.
 func (a *TxAuthorizer) LiveAccessGrants(ctx context.Context, p domain.PrincipalID, now time.Time) ([]AccessGrant, error) {
 	return a.r.LiveAccessGrants(ctx, p, now)
+}
+
+// LiveDeveloperCredentialsInOrg pages the live delegations (not revoked, not
+// expired, current credential epoch) minted inside one org, in id order; a
+// non-empty authority narrows it to one human.
+func (a *TxAuthorizer) LiveDeveloperCredentialsInOrg(ctx context.Context, org domain.OrgID, authority domain.PrincipalID, afterID string, limit int, now time.Time) ([]DeveloperCredential, error) {
+	return a.r.LiveDeveloperCredentialsInOrg(ctx, org, authority, afterID, limit, now)
 }
 
 func (a *TxAuthorizer) LiveMachineCredentialCount(ctx context.Context, serviceAccountID string, epoch int64, now time.Time) (int64, error) {
@@ -871,6 +911,14 @@ func (a *TxAuthorizer) OIDCTransactionByState(ctx context.Context, stateVerifier
 	return a.r.OIDCTransactionByState(ctx, stateVerifier)
 }
 
+// The incident ledger (O5): mutable state apart from the append-only trail.
+// OpenIncident is idempotent per scope; AddIncidentItem never overwrites a
+// recorded outcome; TransitionIncidentItem is a compare-and-set that reports
+// false for a stale version, a terminal item or a closed incident.
+func (a *TxAuthorizer) OpenIncident(ctx context.Context, n NewIncident) (Incident, bool, error) {
+	return a.r.OpenIncident(ctx, n)
+}
+
 // OpenReauthWindow opens a reauthentication window over one environment.
 func (a *TxAuthorizer) OpenReauthWindow(ctx context.Context, w NewReauthWindow) error {
 	return a.r.CreateReauthWindow(ctx, w)
@@ -913,6 +961,12 @@ func (a *TxAuthorizer) PrincipalClass(ctx context.Context, p domain.PrincipalID)
 	return a.r.PrincipalClass(ctx, p)
 }
 
+// PrincipalContainedAt answers when the principal was contained, false when
+// it is not. Establishment refuses an authority minted before that moment.
+func (a *TxAuthorizer) PrincipalContainedAt(ctx context.Context, p domain.PrincipalID) (time.Time, bool, error) {
+	return a.r.PrincipalContainedAt(ctx, p)
+}
+
 // PrincipalFootprintOrgs lists every org holding any row about a principal.
 func (a *TxAuthorizer) PrincipalFootprintOrgs(ctx context.Context, p domain.PrincipalID) ([]domain.OrgID, error) {
 	return a.r.PrincipalFootprintOrgs(ctx, p)
@@ -922,6 +976,12 @@ func (a *TxAuthorizer) PrincipalFootprintOrgs(ctx context.Context, p domain.Prin
 // freshly minted session records the generation it was born under.
 func (a *TxAuthorizer) PrincipalGeneration(ctx context.Context, p domain.PrincipalID) (int64, error) {
 	return a.r.PrincipalGeneration(ctx, p)
+}
+
+// PrincipalPausedByContainment reports a principal held out of authority by
+// containment alone, for the personal-value retention clock.
+func (a *TxAuthorizer) PrincipalPausedByContainment(ctx context.Context, p domain.PrincipalID) (bool, error) {
+	return a.r.PrincipalPausedByContainment(ctx, p)
 }
 
 func (a *TxAuthorizer) PrivacyAccount(ctx context.Context, p string) (PrivacyAccountView, error) {
@@ -994,6 +1054,17 @@ func (a *TxAuthorizer) ReconcilePrincipal(ctx context.Context, p domain.Principa
 	return a.r.ReconcilePrincipal(ctx, p)
 }
 
+// RecoveryAccountByID and RecoveryAccountByPrincipal are the ONE recovery
+// lookup: the account gates minus the containment condition. Only credential
+// reset and establishment may call them (lint.CheckRecoveryLookup).
+func (a *TxAuthorizer) RecoveryAccountByID(ctx context.Context, id string) (Account, error) {
+	return a.r.RecoveryAccountByID(ctx, id)
+}
+
+func (a *TxAuthorizer) RecoveryAccountByPrincipal(ctx context.Context, p domain.PrincipalID) (Account, error) {
+	return a.r.RecoveryAccountByPrincipal(ctx, p)
+}
+
 // RecoveryCodesFor resolves an account's batch.
 func (a *TxAuthorizer) RecoveryCodesFor(ctx context.Context, accountID string) (RecoveryBatch, error) {
 	return a.r.RecoveryCodes(ctx, accountID)
@@ -1024,6 +1095,10 @@ func (a *TxAuthorizer) ReissueRegistrationSignup(ctx context.Context, n NewRegis
 // ReleaseGrantOrigin releases one origin, reporting whether it held the row.
 func (a *TxAuthorizer) ReleaseGrantOrigin(ctx context.Context, grantID string, p domain.PrincipalID, o Origin) (bool, error) {
 	return a.r.ReleaseGrantOrigin(ctx, grantID, p, o)
+}
+
+func (a *TxAuthorizer) ReleasePrincipalContainment(ctx context.Context, p domain.PrincipalID) error {
+	return a.r.ReleasePrincipalContainment(ctx, p)
 }
 
 func (a *TxAuthorizer) RemotePairedConnectionByID(ctx context.Context, id string) (RemotePairedConnection, error) {
@@ -1179,6 +1254,12 @@ func (a *TxAuthorizer) ServiceAccountByPrincipal(ctx context.Context, p domain.P
 	return a.r.ServiceAccountByPrincipal(ctx, p)
 }
 
+// ServiceAccountsCreatedBy pages the service accounts a principal created
+// (the offboarding report's created-by relation), in id order.
+func (a *TxAuthorizer) ServiceAccountsCreatedBy(ctx context.Context, creator domain.PrincipalID, org domain.OrgID, afterID string, limit int) ([]ServiceAccount, error) {
+	return a.r.ServiceAccountsCreatedBy(ctx, creator, org, afterID, limit)
+}
+
 func (a *TxAuthorizer) ServiceAccountsIn(ctx context.Context, scope domain.Scope) ([]ServiceAccount, error) {
 	return a.r.ServiceAccountsIn(ctx, scope)
 }
@@ -1270,6 +1351,10 @@ func (a *TxAuthorizer) TouchMachineCredential(ctx context.Context, id string, at
 
 func (a *TxAuthorizer) TouchSCIMCredential(ctx context.Context, id string, at time.Time) error {
 	return a.r.TouchSCIMCredential(ctx, id, at)
+}
+
+func (a *TxAuthorizer) TransitionIncidentItem(ctx context.Context, t ItemTransition) (bool, error) {
+	return a.r.TransitionIncidentItem(ctx, t)
 }
 
 // UnreconciledPrincipals lists who is still inert.

@@ -58,6 +58,48 @@ type txForwarded interface {
 	// AccountByWebAuthnUserHandle resolves the account a discoverable assertion names.
 	AccountByWebAuthnUserHandle(ctx context.Context, handle []byte) (Account, error)
 
+	// RecoveryAccountByID and RecoveryAccountByPrincipal are the ONE recovery
+	// lookup: the account gates minus the containment condition. Only credential
+	// reset and establishment may call them (lint.CheckRecoveryLookup).
+	RecoveryAccountByID(ctx context.Context, id string) (Account, error)
+	RecoveryAccountByPrincipal(ctx context.Context, p domain.PrincipalID) (Account, error)
+
+	// ContainPrincipal and ReleasePrincipalContainment set and clear the
+	// reversible containment state. Both advance the session generation in the
+	// same UPDATE, and containing also consumes the account's outstanding
+	// authorities, so nothing minted before containment survives it. They revoke
+	// no session row and remove no grant.
+	ContainPrincipal(ctx context.Context, p domain.PrincipalID, at time.Time, incidentID string) error
+	ReleasePrincipalContainment(ctx context.Context, p domain.PrincipalID) error
+
+	// The incident ledger (O5): mutable state apart from the append-only trail.
+	// OpenIncident is idempotent per scope; AddIncidentItem never overwrites a
+	// recorded outcome; TransitionIncidentItem is a compare-and-set that reports
+	// false for a stale version, a terminal item or a closed incident.
+	OpenIncident(ctx context.Context, n NewIncident) (Incident, bool, error)
+	IncidentByID(ctx context.Context, id string) (Incident, error)
+	CloseIncident(ctx context.Context, id string, expectedVersion int64, status domain.IncidentStatus, by domain.PrincipalID, at time.Time) (bool, error)
+	AddIncidentItem(ctx context.Context, n NewIncidentItem) (bool, error)
+	IncidentItems(ctx context.Context, incidentID, afterID string, limit int, openOnly bool) ([]IncidentItem, error)
+	IncidentItemByID(ctx context.Context, incidentID, id string) (IncidentItem, error)
+	IncidentItemCounts(ctx context.Context, incidentID string) (map[domain.ItemOutcome]int64, error)
+	TransitionIncidentItem(ctx context.Context, t ItemTransition) (bool, error)
+	// LiveDeveloperCredentialsInOrg pages the live delegations (not revoked, not
+	// expired, current credential epoch) minted inside one org, in id order; a
+	// non-empty authority narrows it to one human.
+	LiveDeveloperCredentialsInOrg(ctx context.Context, org domain.OrgID, authority domain.PrincipalID, afterID string, limit int, now time.Time) ([]DeveloperCredential, error)
+	// ServiceAccountsCreatedBy pages the service accounts a principal created
+	// (the offboarding report's created-by relation), in id order.
+	ServiceAccountsCreatedBy(ctx context.Context, creator domain.PrincipalID, org domain.OrgID, afterID string, limit int) ([]ServiceAccount, error)
+
+	// PrincipalPausedByContainment reports a principal held out of authority by
+	// containment alone, for the personal-value retention clock.
+	PrincipalPausedByContainment(ctx context.Context, p domain.PrincipalID) (bool, error)
+
+	// PrincipalContainedAt answers when the principal was contained, false when
+	// it is not. Establishment refuses an authority minted before that moment.
+	PrincipalContainedAt(ctx context.Context, p domain.PrincipalID) (time.Time, bool, error)
+
 	// AccountCount answers the bootstrap path's one question. It has no network
 	// route: `hikyo admin create` runs on the server's own host.
 	AccountCount(ctx context.Context) (int64, error)

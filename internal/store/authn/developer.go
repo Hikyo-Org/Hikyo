@@ -174,3 +174,50 @@ func pgDeveloper(row pggen.DeveloperCredential) (DeveloperCredential, error) {
 	}
 	return c, nil
 }
+
+// LiveDeveloperCredentialsInOrg pages the live delegations minted inside one
+// org in id order. Live means what DeveloperCredential.Live means: not revoked,
+// not expired and minted under the instance's current credential epoch. A
+// non-empty authority narrows the page to one human. The caller authorized
+// credential-reset at the org first; the page is bounded so a large org cannot
+// make the enumeration unbounded.
+func (r *Resolver) LiveDeveloperCredentialsInOrg(ctx context.Context, org domain.OrgID, authority domain.PrincipalID, afterID string, limit int, now time.Time) ([]DeveloperCredential, error) {
+	if org == "" || limit < 1 || limit > domain.MaxIncidentPage {
+		return nil, domain.ErrInvalid
+	}
+	epoch, err := r.CredentialEpoch(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := []DeveloperCredential{}
+	if r.sq != nil {
+		rows, err := r.sq.ListLiveDeveloperCredentialsInOrg(ctx, sqlitegen.ListLiveDeveloperCredentialsInOrgParams{
+			OrgID: string(org), Now: encodeTime(now), Epoch: epoch, AfterID: afterID, Authority: string(authority), RowLimit: int64(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			c, err := sqliteDeveloper(row)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, c)
+		}
+		return out, nil
+	}
+	rows, err := r.pg.ListLiveDeveloperCredentialsInOrg(ctx, pggen.ListLiveDeveloperCredentialsInOrgParams{
+		OrgID: string(org), Now: pgTimestamp(now), Epoch: epoch, AfterID: afterID, Authority: string(authority), RowLimit: int32(limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		c, err := pgDeveloper(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}

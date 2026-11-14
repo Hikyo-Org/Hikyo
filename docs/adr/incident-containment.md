@@ -376,6 +376,9 @@ banner on the amended ADR, operative when the implementation pull request merges
 - [audit-model](./audit-model.md): the new event types.
 - [developer-credentials](./developer-credentials.md): containment revokes delegations
   like reset does. Ordinary logout is unchanged.
+- [personal-values](./personal-values.md): a contained owner still holds the retention
+  predicate, so the personal-value deletion clock is paused while contained and a release
+  restarts it fresh (O8).
 - [machine-identities](./machine-identities.md), [scim-provisioning](./scim-provisioning.md)
   and [remote-instance-pairing](./remote-instance-pairing.md): no change to their owners;
   they gain a correlated invocation from the ledger.

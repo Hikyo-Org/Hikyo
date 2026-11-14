@@ -13,8 +13,10 @@ import (
 // Compatibility uses pre-47 privacy, pre-50 profile, and pre-66 access
 // projections, omits PKI retention queries only before schema64, and reads no
 // member access rules before schema70 (no rule table exists there) and erases no
-// email invitations before schema87. These
-// constructors add no login path and preserve restore reconciliation.
+// email invitations before schema87, and loads grants and rules without the
+// containment condition (and checks the personal-owner fallback without it)
+// before schema89, which cannot hold a contained principal. These constructors
+// add no login path and preserve restore reconciliation.
 func NewHistoricalRecoverySQLite(db sqlitegen.DBTX, version uint64) *Resolver {
 	r := NewSQLite(db)
 	r.historicalRecoveryBeforePrivacy = version < 47
@@ -23,12 +25,16 @@ func NewHistoricalRecoverySQLite(db sqlitegen.DBTX, version uint64) *Resolver {
 	r.historicalRecoveryBeforePKI = version < 64
 	r.historicalRecoveryBeforeRules = version < 70
 	r.historicalRecoveryBeforeEmailInvitations = version < 87
+	r.historicalRecoveryBeforeContainment = version < 89
 	return r
 }
 
 // NewHistoricalRecoveryPG binds a resolver to a verified source schema version
-// for guarded recovery. Versions before 47, 50, 64, and 66 use the corresponding
-// privacy, profile, PKI-retention, and temporary-access compatibility behavior.
+// for guarded recovery, with the same compatibility as NewHistoricalRecoverySQLite:
+// versions before 47 (privacy), 50 (profile), 64 (PKI retention), 66 (temporary
+// access), 70 (member access rules), 87 (email invitation erasure) and 89
+// (containment-free grant, rule and personal-owner projections) each use the
+// corresponding historical behavior.
 func NewHistoricalRecoveryPG(db pggen.DBTX, version uint64) *Resolver {
 	r := NewPG(db)
 	r.historicalRecoveryBeforePrivacy = version < 47
@@ -37,6 +43,7 @@ func NewHistoricalRecoveryPG(db pggen.DBTX, version uint64) *Resolver {
 	r.historicalRecoveryBeforePKI = version < 64
 	r.historicalRecoveryBeforeRules = version < 70
 	r.historicalRecoveryBeforeEmailInvitations = version < 87
+	r.historicalRecoveryBeforeContainment = version < 89
 	return r
 }
 func (r *Resolver) recoveryGrantsBeforePrivacy(ctx context.Context, p domain.PrincipalID) ([]domain.Grant, error) {
@@ -82,6 +89,31 @@ func (r *Resolver) recoveryGrantsBeforeAccess(ctx context.Context, p domain.Prin
 		r.selfConfigOrgID = domain.OrgID(row.SelfConfigOrgID)
 	}
 	return grantsFromRows(rows, err, func(row pggen.RecoveryListGrantsBeforeAccessRow) (string, string, string, string) {
+		return row.Capability, row.OrgID.String, row.ProjectID.String, row.EnvID.String
+	})
+}
+
+// recoveryGrantsBeforeContainment is the chokepoint projection for verified
+// source schemas 66 through 88, which have no containment column.
+func (r *Resolver) recoveryGrantsBeforeContainment(ctx context.Context, p domain.PrincipalID) ([]domain.Grant, error) {
+	if r.sq != nil {
+		rows, err := r.sq.RecoveryListGrantsBeforeContainment(ctx, sqlitegen.RecoveryListGrantsBeforeContainmentParams{
+			PrincipalID: string(p), Now: encodeTime(r.evaluationTime()),
+		})
+		for _, row := range rows {
+			r.selfConfigOrgID = domain.OrgID(row.SelfConfigOrgID)
+		}
+		return grantsFromRows(rows, err, func(row sqlitegen.RecoveryListGrantsBeforeContainmentRow) (string, string, string, string) {
+			return row.Capability, row.OrgID.String, row.ProjectID.String, row.EnvID.String
+		})
+	}
+	rows, err := r.pg.RecoveryListGrantsBeforeContainment(ctx, pggen.RecoveryListGrantsBeforeContainmentParams{
+		PrincipalID: string(p), Now: pgTimestamp(r.evaluationTime()),
+	})
+	for _, row := range rows {
+		r.selfConfigOrgID = domain.OrgID(row.SelfConfigOrgID)
+	}
+	return grantsFromRows(rows, err, func(row pggen.RecoveryListGrantsBeforeContainmentRow) (string, string, string, string) {
 		return row.Capability, row.OrgID.String, row.ProjectID.String, row.EnvID.String
 	})
 }

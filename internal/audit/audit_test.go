@@ -93,10 +93,10 @@ func TestRegistryWellFormed(t *testing.T) {
 		}
 		// Outcome licensing (invariant 12): intent / unknown / disconnected
 		// only where the envelope section licenses them.
-		if spec.Outcomes[OutcomeIntent] && typ != EventRegistrationMailIntent && typ != EventMemberEmailInvitationDispatch && typ != EventAuditExportStarted && typ != EventAdapterPushIntent && typ != EventUpdateRequested && typ != EventDynamicLeaseTransitionIntent && typ != EventPKICertificateTransitionIntent {
+		if spec.Outcomes[OutcomeIntent] && typ != EventRegistrationMailIntent && typ != EventMemberEmailInvitationDispatch && typ != EventAuditExportStarted && typ != EventAdapterPushIntent && typ != EventUpdateRequested && typ != EventDynamicLeaseTransitionIntent && typ != EventPKICertificateTransitionIntent && typ != EventIncidentItemIntent {
 			t.Errorf("%s: intent outcome licensed outside the INTENT-phase set", typ)
 		}
-		if spec.Outcomes[OutcomeUnknown] && typ != EventAdapterPushOutcome && typ != EventDynamicLeaseTransitionOutcome && typ != EventPKICertificateTransitionOutcome {
+		if spec.Outcomes[OutcomeUnknown] && typ != EventAdapterPushOutcome && typ != EventDynamicLeaseTransitionOutcome && typ != EventPKICertificateTransitionOutcome && typ != EventIncidentItemOutcome {
 			t.Errorf("%s: unknown outcome licensed outside adapter.push_outcome", typ)
 		}
 		if spec.Outcomes[OutcomeDisconnected] && typ != EventAuditExportCompleted {
@@ -616,5 +616,30 @@ func TestTransitSchemasCannotCarryMaterial(t *testing.T) {
 		"operation": "export", "input_bytes": int64(0), "output_bytes": int64(0),
 	}); err == nil {
 		t.Fatal("an operation outside the closed set was accepted")
+	}
+}
+
+// TestIncidentItemEventsAdmitOnlyTheClosedVocabulary: the catalogue, not the
+// emitter, refuses an owner function or object kind outside the ledger's
+// vocabulary.
+func TestIncidentItemEventsAdmitOnlyTheClosedVocabulary(t *testing.T) {
+	event := func(owner, kind string) Event {
+		e, _ := validEvent()
+		e.Type, e.Outcome, e.Origin = EventIncidentItemIntent, OutcomeIntent, OriginSystem
+		e.Object = Object{Type: "incident", ID: "inc_x"}
+		e.CorrelationID = "inc_x"
+		e.Payload = Payload{"item_id": "itm_x", "owner_function": owner, "object_kind": kind, "object_id": "ses_x"}
+		return e
+	}
+	if err := Validate(event(domain.OwnerSessionRevoke, domain.ObjectKindSession), TrailInstance, domain.Scope{}); err != nil {
+		t.Fatalf("a vocabulary pair was refused: %v", err)
+	}
+	for name, e := range map[string]Event{
+		"owner outside the vocabulary": event("grant.revoke", domain.ObjectKindSession),
+		"kind outside the vocabulary":  event(domain.OwnerSessionRevoke, "grant"),
+	} {
+		if Validate(e, TrailInstance, domain.Scope{}) == nil {
+			t.Errorf("%s was accepted", name)
+		}
 	}
 }

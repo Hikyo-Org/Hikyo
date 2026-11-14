@@ -42,6 +42,7 @@ type Resolver struct {
 	historicalRecoveryBeforePKI              bool
 	historicalRecoveryBeforeRules            bool
 	historicalRecoveryBeforeEmailInvitations bool
+	historicalRecoveryBeforeContainment      bool
 	selfConfigOrgID                          domain.OrgID
 	sq                                       *sqlitegen.Queries
 	pg                                       *pggen.Queries
@@ -302,6 +303,9 @@ func (r *Resolver) Grants(ctx context.Context, p domain.PrincipalID) ([]domain.G
 	}
 	if r.historicalRecoveryBeforeAccess {
 		return r.recoveryGrantsBeforeAccess(ctx, p)
+	}
+	if r.historicalRecoveryBeforeContainment {
+		return r.recoveryGrantsBeforeContainment(ctx, p)
 	}
 	if r.sq != nil {
 		rows, err := r.sq.ListGrantsForPrincipal(ctx, sqlitegen.ListGrantsForPrincipalParams{

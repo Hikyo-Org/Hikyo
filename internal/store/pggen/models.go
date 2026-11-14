@@ -780,6 +780,35 @@ type HaNode struct {
 	HeartbeatAt        pgtype.Timestamptz
 }
 
+type Incident struct {
+	ID         string
+	ScopeKind  string
+	ScopeID    string
+	OrgID      string
+	Status     string
+	OpenedBy   string
+	OpenedAt   pgtype.Timestamptz
+	ClosedBy   pgtype.Text
+	ClosedAt   pgtype.Timestamptz
+	RowVersion int64
+}
+
+type IncidentItem struct {
+	ID            string
+	IncidentID    string
+	OwnerFunction string
+	ObjectKind    string
+	ObjectID      string
+	Scope         string
+	Outcome       string
+	Reason        string
+	AttestedBy    pgtype.Text
+	AttestedAt    pgtype.Timestamptz
+	RowVersion    int64
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+}
+
 type InstanceConnection struct {
 	ID              string
 	PrincipalID     string
@@ -1168,13 +1197,16 @@ type PkiProfileBinding struct {
 }
 
 type Principal struct {
-	ID                string
-	Kind              string
-	CreatedAt         pgtype.Timestamptz
-	SessionGeneration int64
-	Class             pgtype.Text
-	ReconciledEpoch   int64
-	PrivacyState      string
+	ID                  string
+	Kind                string
+	CreatedAt           pgtype.Timestamptz
+	SessionGeneration   int64
+	Class               pgtype.Text
+	ReconciledEpoch     int64
+	PrivacyState        string
+	ContainmentState    string
+	ContainedAt         pgtype.Timestamptz
+	ContainedIncidentID pgtype.Text
 }
 
 type Project struct {

@@ -1070,3 +1070,40 @@ func nullTimeString(t time.Time) sql.NullString {
 	}
 	return nullString(encodeTime(t))
 }
+
+// ServiceAccountsCreatedBy pages the service accounts a principal created in id
+// order. A non-empty org narrows the page to that org. The incident enumeration
+// uses it for the created-by relation of the offboarding report.
+func (r *Resolver) ServiceAccountsCreatedBy(ctx context.Context, creator domain.PrincipalID, org domain.OrgID, afterID string, limit int) ([]ServiceAccount, error) {
+	if creator == "" || limit < 1 || limit > domain.MaxIncidentPage {
+		return nil, domain.ErrInvalid
+	}
+	if r.sq != nil {
+		rows, err := r.sq.ListServiceAccountsCreatedBy(ctx, sqlitegen.ListServiceAccountsCreatedByParams{
+			CreatedBy: string(creator), OrgID: string(org), AfterID: afterID, RowLimit: int64(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		out := make([]ServiceAccount, 0, len(rows))
+		for _, row := range rows {
+			sa, err := serviceAccountFromSQLite(row)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, sa)
+		}
+		return out, nil
+	}
+	rows, err := r.pg.ListServiceAccountsCreatedBy(ctx, pggen.ListServiceAccountsCreatedByParams{
+		CreatedBy: string(creator), OrgID: string(org), AfterID: afterID, RowLimit: int32(limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ServiceAccount, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, serviceAccountFromPG(row))
+	}
+	return out, nil
+}
