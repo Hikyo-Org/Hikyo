@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -17,6 +17,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/crypto/sealedhook"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/sealedreceiver"
 )
 
@@ -249,7 +250,7 @@ func editAck(t *testing.T, raw []byte, edit func(*sealedhook.AckV2)) []byte {
 		t.Fatalf("receiver answer %q: %v", raw, err)
 	}
 	edit(&a)
-	out, _ := json.Marshal(a)
+	out, _ := json.Marshal(a, jsonwire.Stable)
 	return out
 }
 
@@ -462,7 +463,7 @@ func TestV2ReceiverRefusesWithoutAcknowledgement(t *testing.T) {
 			m[k] = v
 		}
 		edit(m)
-		raw, _ := json.Marshal(m)
+		raw, _ := json.Marshal(m, jsonwire.Stable)
 		return raw
 	}
 	late := h.newReceiver(servesV2, func(c *sealedreceiver.Config) {

@@ -2,7 +2,7 @@ package vaultkv
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
 	"net/http"
@@ -51,16 +51,16 @@ func TestRevocationDuringMetadataPatchRefusesFollowingValueRequest(t *testing.T)
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.Contains(r.URL.Path, "/sys/internal/ui/mounts/"):
-			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"type": "kv", "uuid": kv.mount.UUID, "options": map[string]string{"version": "2"}}})
+			_ = json.MarshalWrite(w, map[string]any{"data": map[string]any{"type": "kv", "uuid": kv.mount.UUID, "options": map[string]string{"version": "2"}}})
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/metadata/"):
-			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"current_version": 1, "custom_metadata": map[string]string{MarkerKey: target.ID, VersionKey: "1"}, "versions": map[string]any{"1": map[string]any{"destroyed": false, "deletion_time": ""}}}})
+			_ = json.MarshalWrite(w, map[string]any{"data": map[string]any{"current_version": 1, "custom_metadata": map[string]string{MarkerKey: target.ID, VersionKey: "1"}, "versions": map[string]any{"1": map[string]any{"destroyed": false, "deletion_time": ""}}}})
 		case r.Method == http.MethodPatch:
 			patches.Add(1)
 			revoked.Store(true)
 			w.WriteHeader(http.StatusNoContent)
 		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/data/"):
 			writes.Add(1)
-			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]int{"version": 2}})
+			_ = json.MarshalWrite(w, map[string]any{"data": map[string]int{"version": 2}})
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -86,18 +86,18 @@ func TestConnectionRechecksAuthorityAfterAppRoleLoginAndRenewal(t *testing.T) {
 			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch {
 				case r.URL.Path == "/v1/sys/health":
-					_ = json.NewEncoder(w).Encode(map[string]any{"initialized": true, "sealed": false, "version": "synthetic"})
+					_ = json.MarshalWrite(w, map[string]any{"initialized": true, "sealed": false, "version": "synthetic"})
 				case strings.HasSuffix(r.URL.Path, "/login"), strings.HasSuffix(r.URL.Path, "/renew-self"):
 					if armed.Load() {
 						revoked.Store(true)
 					}
-					_ = json.NewEncoder(w).Encode(map[string]any{"auth": map[string]any{"client_token": "synthetic-login", "lease_duration": 600, "renewable": true}})
+					_ = json.MarshalWrite(w, map[string]any{"auth": map[string]any{"client_token": "synthetic-login", "lease_duration": 600, "renewable": true}})
 				case strings.HasSuffix(r.URL.Path, "/revoke-self"):
 					revokes.Add(1)
 					w.WriteHeader(http.StatusNoContent)
 				case strings.Contains(r.URL.Path, "/sys/internal/ui/mounts/"):
 					mounts.Add(1)
-					_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"type": "kv", "uuid": "test-mount", "options": map[string]string{"version": "2"}}})
+					_ = json.MarshalWrite(w, map[string]any{"data": map[string]any{"type": "kv", "uuid": "test-mount", "options": map[string]string{"version": "2"}}})
 				default:
 					w.WriteHeader(http.StatusNotFound)
 				}

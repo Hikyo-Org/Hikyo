@@ -1,9 +1,11 @@
 package oidctest
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // The three issuer SHAPES federation must be exercised against (#62,
@@ -216,7 +218,7 @@ func (p *IdP) JWKSDocument() (string, error) {
 		}
 	}
 	p.mu.Unlock()
-	raw, err := json.Marshal(map[string]any{"keys": keys})
+	raw, err := json.Marshal(map[string]any{"keys": keys}, jsonwire.Stable)
 	if err != nil {
 		return "", fmt.Errorf("oidctest: encode jwks: %w", err)
 	}

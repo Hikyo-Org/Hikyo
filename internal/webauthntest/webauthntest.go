@@ -6,7 +6,7 @@
 package webauthntest
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 
 	vw "github.com/descope/virtualwebauthn"

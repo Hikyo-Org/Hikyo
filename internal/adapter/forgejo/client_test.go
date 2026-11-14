@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net"
@@ -162,10 +162,10 @@ func TestPaginatedSecretListFindsSecondPageUnownedConflict(t *testing.T) {
 					} else if page == 2 {
 						rows = append(rows, map[string]string{"name": "TOKEN"})
 					}
-					_ = json.NewEncoder(w).Encode(rows)
+					_ = json.MarshalWrite(w, rows)
 					return
 				}
-				_ = json.NewEncoder(w).Encode(map[string]int64{"id": 42})
+				_ = json.MarshalWrite(w, map[string]int64{"id": 42})
 			}))
 			defer server.Close()
 			client, err := NewTestClient(server.URL, "token", server.Client())
@@ -200,7 +200,7 @@ func TestSecretPaginationRefusesAtLedgerSafetyBound(t *testing.T) {
 			rows = append(rows, map[string]string{"name": fmt.Sprintf("NAME_%05d", (requests-1)*providerPageLimit+i)})
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(rows)
+		_ = json.MarshalWrite(w, rows)
 	}))
 	defer server.Close()
 	client, err := NewTestClient(server.URL, "token", server.Client())
