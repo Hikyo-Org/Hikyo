@@ -38,7 +38,9 @@ def file_bytes(version, go='1.27.4'):
 
 
 class Fixture:
-    """Two independently selectable releases and candidate pairs, one code source."""
+    """Two independently selectable releases and candidate pairs, one code source.
+
+    The candidate is the PR merged as current main, proven by that PR's queue run."""
     def __init__(self, version=1, *, descendant=True):
         self.m = model()
         self.responses, self.graphql, self.calls = {}, {}, []
@@ -54,21 +56,16 @@ class Fixture:
         self.episode(self.release_pr, self.release_head, self.anchor, self.release_sha, self.release_run)
         self.main_pr = 4000 + version if descendant else self.release_pr
         self.main_run = 5000 + version if descendant else self.release_run
+        main_head = self.release_head
         if descendant:
-            head = self.commit(f'main-head-{version}', [self.release_sha], self.files)
-            self.main_sha = self.commit(f'main-merge-{version}', [self.release_sha, head], self.files)
-            self.episode(self.main_pr, head, self.release_sha, self.main_sha, self.main_run)
+            main_head = self.commit(f'main-head-{version}', [self.release_sha], self.files)
+            self.main_sha = self.commit(f'main-merge-{version}', [self.release_sha, main_head], self.files)
+            self.episode(self.main_pr, main_head, self.release_sha, self.main_sha, self.main_run)
         else:
             self.main_sha = self.release_sha
-        self.candidate_pr = 969
-        candidate_files = copy.deepcopy(self.files)
-        candidate_files['go.mod'] += '// separate candidate dependency vector\n'
-        self.candidate_sha = self.commit(f'candidate-head-{version}', [self.main_sha], candidate_files)
-        self.candidate_merge = self.commit(f'candidate-tested-{version}', [self.main_sha, self.candidate_sha], candidate_files)
-        self.candidate_run = 6000 + version
-        self.pr(self.candidate_pr, self.candidate_sha, self.main_sha, self.candidate_merge, merged=False)
-        self.run(self.candidate_pr, self.candidate_sha, self.main_sha, self.candidate_merge,
-                 self.candidate_run, 'candidate')
+        # The open-PR candidate run no longer exists: the candidate repeats the main episode.
+        self.candidate_pr, self.candidate_sha = self.main_pr, main_head
+        self.candidate_merge, self.candidate_run = self.main_sha, self.main_run
         self.put(collector.REPO, {'id': policy.REPOSITORY['repositoryId'], 'full_name': 'Hikyo-Org/Hikyo',
                                 'owner': {'id': policy.REPOSITORY['ownerId'], 'login': 'Hikyo-Org'},
                                 'default_branch': 'main'})
@@ -96,7 +93,7 @@ class Fixture:
         self.manifest = {'schema': 'hikyo-158/future-fixture-source-manifest/v4',
                          'modelSHA256': '1' * 64, 'testSHA256': '2' * 64,
                          'frozenNextHelpers': dict(policy.FROZEN),
-                         'candidateFileSHA256s': {'go.mod': collector._sha(candidate_files['go.mod'].encode())},
+                         'candidateFileSHA256s': {'go.mod': collector._sha(self.files['go.mod'].encode())},
                          'candidateCIFileSHA256s': {path: pins[path] for path in policy.CANDIDATE_CI_FILES},
                          'workflowFileSHA256s': pins,
                          'requiredCIJobs': {k: dict(v) for k, v in policy.REQUIRED_CI_JOBS.items()},
@@ -150,22 +147,21 @@ class Fixture:
                              'verification': {'verified': True, 'reason': 'valid'}}})
         return oid
 
-    def pr(self, number, head, base, merge, *, merged=True, commits=None):
+    def pr(self, number, head, base, merge, *, commits=None):
         repo = {'id': policy.REPOSITORY['repositoryId']}
         self.put(f'{collector.REPO}/pulls/{number}',
-                 {'number': number, 'node_id': f'PR_{number}', 'state': 'closed' if merged else 'open',
-                  'merged': merged, 'merged_at': MERGED_AT if merged else None, 'merge_commit_sha': merge,
+                 {'number': number, 'node_id': f'PR_{number}', 'state': 'closed',
+                  'merged': True, 'merged_at': MERGED_AT, 'merge_commit_sha': merge,
                   'commits': len(commits) if commits else 1,
                   'head': {'sha': head, 'repo': repo}, 'base': {'sha': base, 'ref': 'main', 'repo': repo}})
         self.put(f'{collector.REPO}/pulls/{number}/commits?per_page=100&page=1',
                  [self.read_value(collector.REPO + '/commits/' + oid) for oid in (commits or [head])])
 
-    def run(self, number, head, base, merge, run_id, kind):
-        run = {'id': run_id, 'run_attempt': 1, 'head_sha': head if kind == 'candidate' else merge,
-               'head_branch': 'synthetic-candidate' if kind == 'candidate' else f'gh-readonly-queue/main/pr-{number}-{base}',
-               'name': f'candidate-ci #{number}' if kind == 'candidate' else 'trusted-merge-ci',
-               'path': '.github/workflows/ci-candidate.yml' if kind == 'candidate' else '.github/workflows/ci-merge-group.yml',
-               'event': 'pull_request' if kind == 'candidate' else 'merge_group',
+    def run(self, number, head, base, merge, run_id):
+        run = {'id': run_id, 'run_attempt': 1, 'head_sha': merge,
+               'head_branch': f'gh-readonly-queue/main/pr-{number}-{base}',
+               'name': 'trusted-merge-ci', 'path': '.github/workflows/ci-merge-group.yml',
+               'event': 'merge_group',
                'status': 'completed', 'conclusion': 'success', 'created_at': RUN_CREATED, 'updated_at': RUN_COMPLETED,
                'repository': {'id': policy.REPOSITORY['repositoryId']},
                'pull_requests': [{'number': number, 'head': {'sha': head}, 'base': {'sha': base}}]}
@@ -173,13 +169,13 @@ class Fixture:
         self.put(f'{collector.REPO}/actions/runs/{run_id}/attempts/1', run)
         jobs = [{'id': run_id * 100 + i, 'run_id': run_id, 'run_attempt': 1, 'head_sha': run['head_sha'],
                  'name': name, 'status': 'completed', 'conclusion': result}
-                for i, (name, result) in enumerate(policy.REQUIRED_CI_JOBS[kind].items(), 1)]
+                for i, (name, result) in enumerate(policy.REQUIRED_CI_JOBS['workflow'].items(), 1)]
         self.put(f'{collector.REPO}/actions/runs/{run_id}/attempts/1/jobs?per_page=100&page=1',
                  {'total_count': len(jobs), 'jobs': jobs})
 
     def episode(self, number, head, base, merge, run_id):
         self.pr(number, head, base, merge)
-        self.run(number, head, base, merge, run_id, 'workflow')
+        self.run(number, head, base, merge, run_id)
         api = 'https://api.github.com/' + collector.REPO
         event = {'id': number * 100, 'node_id': f'ME_{number}', 'event': 'merged', 'commit_id': merge,
                  'url': f'{api}/issues/events/{number * 100}', 'commit_url': f'{api}/commits/{merge}',

@@ -203,7 +203,7 @@ class ReleaseFixture:
                              'resourceConfigurationSHA256', 'policySHA256', 'releaseSHA256', 'ownerApprovalSHA256', 'rootAdoptionSHA256', 'historicalHistorySHA256')}}
         self.binding = {'schema': SCHEMAS['attemptTrustBinding'], **{key: self.config[key] for key in (
             'policySHA256', 'implementationManifestSHA256', 'releaseSHA256', 'ownerApprovalSHA256', 'rootAdoptionSHA256', 'statusGenesisSHA256', 'resourceConfigurationSHA256', 'historicalHistorySHA256')},
-            'candidateHeadSHA': git('candidate-pair'), 'mainSHA': self.release['releasePR']['mergeSHA'], 'candidateRun': {'id': 200, 'attempt': 1},
+            'candidateHeadSHA': self.release['releasePR']['headSHA'], 'mainSHA': self.release['releasePR']['mergeSHA'], 'candidateRun': {'id': 100, 'attempt': 1},
             'sourceManifestSHA256': digest(self.manifest), 'currentMainRun': {'id': 100, 'attempt': 1, 'mergedPRNumber': self.release['releasePR']['number'],
                 **{key: self.release['releasePR'][key] for key in ('headSHA', 'baseSHA', 'mergeSHA')}}, 'releaseConfigurationSHA256': digest(self.config)}
         self.authority.register('attemptTrustBinding', self.binding)
