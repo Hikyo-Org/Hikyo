@@ -985,6 +985,38 @@
     ]
   },
   {
+    "operation": "incident.instance",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "credential-reset@instance"
+    ]
+  },
+  {
+    "operation": "incident.leases-instance",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "credential-reset@instance"
+    ]
+  },
+  {
+    "operation": "incident.leases-project",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "credential-reset@org"
+    ]
+  },
+  {
+    "operation": "incident.org",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "credential-reset@org"
+    ]
+  },
+  {
     "operation": "key-group.create",
     "class": "tenant",
     "level": "project",

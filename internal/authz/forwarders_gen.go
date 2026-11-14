@@ -60,6 +60,10 @@ func (a *TxAuthorizer) AddGrantOrigin(ctx context.Context, id, grantID string, p
 	return a.r.AddGrantOrigin(ctx, id, grantID, p, o, at)
 }
 
+func (a *TxAuthorizer) AddIncidentItem(ctx context.Context, n NewIncidentItem) (bool, error) {
+	return a.r.AddIncidentItem(ctx, n)
+}
+
 // AdvanceGeneration invalidates every session of a principal at once. It runs
 // in the same transaction as the change that triggered it.
 func (a *TxAuthorizer) AdvanceGeneration(ctx context.Context, p domain.PrincipalID) error {
@@ -181,6 +185,10 @@ func (a *TxAuthorizer) ClampIndefiniteCredentials(ctx context.Context, ceiling t
 // ClearPendingTOTP removes only in-progress enrolments.
 func (a *TxAuthorizer) ClearPendingTOTP(ctx context.Context, accountID string) error {
 	return a.r.DeletePendingTOTPForAccount(ctx, accountID)
+}
+
+func (a *TxAuthorizer) CloseIncident(ctx context.Context, id string, expectedVersion int64, status domain.IncidentStatus, by domain.PrincipalID, at time.Time) (bool, error) {
+	return a.r.CloseIncident(ctx, id, expectedVersion, status, by, at)
 }
 
 // ConfirmTOTP promotes and consumes a step in one CAS; false means the row
@@ -694,6 +702,22 @@ func (a *TxAuthorizer) HoldRestoredPKIIssuers(ctx context.Context) error {
 	return a.r.HoldRestoredPKIIssuers(ctx)
 }
 
+func (a *TxAuthorizer) IncidentByID(ctx context.Context, id string) (Incident, error) {
+	return a.r.IncidentByID(ctx, id)
+}
+
+func (a *TxAuthorizer) IncidentItemByID(ctx context.Context, incidentID, id string) (IncidentItem, error) {
+	return a.r.IncidentItemByID(ctx, incidentID, id)
+}
+
+func (a *TxAuthorizer) IncidentItemCounts(ctx context.Context, incidentID string) (map[domain.ItemOutcome]int64, error) {
+	return a.r.IncidentItemCounts(ctx, incidentID)
+}
+
+func (a *TxAuthorizer) IncidentItems(ctx context.Context, incidentID, afterID string, limit int, openOnly bool) ([]IncidentItem, error) {
+	return a.r.IncidentItems(ctx, incidentID, afterID, limit, openOnly)
+}
+
 // IncompatiblePasswordKDFCount is for startup/configuration admission, not a
 // public authentication route. It exposes only aggregate parameter metadata.
 func (a *TxAuthorizer) IncompatiblePasswordKDFCount(ctx context.Context, kdf KDFParams) (int64, error) {
@@ -761,6 +785,10 @@ func (a *TxAuthorizer) ListSAMLProviders(ctx context.Context) ([]SAMLProvider, e
 // LiveAccessGrants lists a principal's unexpired temporary grants.
 func (a *TxAuthorizer) LiveAccessGrants(ctx context.Context, p domain.PrincipalID, now time.Time) ([]AccessGrant, error) {
 	return a.r.LiveAccessGrants(ctx, p, now)
+}
+
+func (a *TxAuthorizer) LiveDeveloperCredentialsInOrg(ctx context.Context, org domain.OrgID, authority domain.PrincipalID, afterID string, limit int, now time.Time) ([]DeveloperCredential, error) {
+	return a.r.LiveDeveloperCredentialsInOrg(ctx, org, authority, afterID, limit, now)
 }
 
 func (a *TxAuthorizer) LiveMachineCredentialCount(ctx context.Context, serviceAccountID string, epoch int64, now time.Time) (int64, error) {
@@ -878,6 +906,14 @@ func (a *TxAuthorizer) OAuth2TransactionByState(ctx context.Context, stateVerifi
 // OIDCTransactionByState resolves a transaction by its state verifier.
 func (a *TxAuthorizer) OIDCTransactionByState(ctx context.Context, stateVerifier []byte) (OIDCTransaction, error) {
 	return a.r.OIDCTransactionByState(ctx, stateVerifier)
+}
+
+// The incident ledger (O5): mutable state apart from the append-only trail.
+// OpenIncident is idempotent per scope; AddIncidentItem never overwrites a
+// recorded outcome; TransitionIncidentItem is a compare-and-set that reports
+// false for a stale version, a terminal item or a closed incident.
+func (a *TxAuthorizer) OpenIncident(ctx context.Context, n NewIncident) (Incident, bool, error) {
+	return a.r.OpenIncident(ctx, n)
 }
 
 // OpenReauthWindow opens a reauthentication window over one environment.
@@ -1215,6 +1251,14 @@ func (a *TxAuthorizer) ServiceAccountByPrincipal(ctx context.Context, p domain.P
 	return a.r.ServiceAccountByPrincipal(ctx, p)
 }
 
+// LiveDeveloperCredentialsInOrg pages the live delegations minted inside one
+// org, in id order; a non-empty authority narrows it to one human.
+// ServiceAccountsCreatedBy pages the service accounts a principal created
+// (the offboarding report's created-by relation), in id order.
+func (a *TxAuthorizer) ServiceAccountsCreatedBy(ctx context.Context, creator domain.PrincipalID, org domain.OrgID, afterID string, limit int) ([]ServiceAccount, error) {
+	return a.r.ServiceAccountsCreatedBy(ctx, creator, org, afterID, limit)
+}
+
 func (a *TxAuthorizer) ServiceAccountsIn(ctx context.Context, scope domain.Scope) ([]ServiceAccount, error) {
 	return a.r.ServiceAccountsIn(ctx, scope)
 }
@@ -1306,6 +1350,10 @@ func (a *TxAuthorizer) TouchMachineCredential(ctx context.Context, id string, at
 
 func (a *TxAuthorizer) TouchSCIMCredential(ctx context.Context, id string, at time.Time) error {
 	return a.r.TouchSCIMCredential(ctx, id, at)
+}
+
+func (a *TxAuthorizer) TransitionIncidentItem(ctx context.Context, t ItemTransition) (bool, error) {
+	return a.r.TransitionIncidentItem(ctx, t)
 }
 
 // UnreconciledPrincipals lists who is still inert.

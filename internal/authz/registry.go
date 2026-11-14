@@ -367,6 +367,17 @@ const (
 	OpCredentialReset         Operation = "credential-reset.org"
 	OpCredentialResetInstance Operation = "credential-reset.instance"
 
+	// The incident ledger (#1039, O5): opening, reading and working an incident
+	// needs the credential-reset capability at the incident's scope, with no new
+	// capability atom. An account, project or adapter incident resolves to its
+	// org and uses the org operation; the instance operation covers a target
+	// that spans orgs. The two lease listings are the enumeration's bounded
+	// reads of non-terminal dynamic leases and run under the same formula.
+	OpIncidentOrg            Operation = "incident.org"
+	OpIncidentInstance       Operation = "incident.instance"
+	OpIncidentLeasesProject  Operation = "incident.leases-project"
+	OpIncidentLeasesInstance Operation = "incident.leases-instance"
+
 	// Audit trail reads (#45, audit-model ADR). One operation per addressed
 	// depth — the registry pins one depth per tenant operation, so the three
 	// depths are three rows sharing one service implementation; the formula
@@ -950,6 +961,10 @@ const (
 	StoreDynamicProvidersListForReencrypt     StoreOp = "dynamic.ListProvidersForReencrypt"
 	StoreDynamicProvidersReencrypt            StoreOp = "dynamic.ReencryptProvider"
 	StoreDynamicLeasesActiveIDsForProvider    StoreOp = "dynamic.ActiveLeaseIDsForProvider"
+	// The incident enumeration's two bounded lease listings: one project, and
+	// every org (instance-scoped proof only).
+	StoreDynamicLeasesListNonTerminalProject  StoreOp = "dynamic.ListNonTerminalLeasesInProject"
+	StoreDynamicLeasesListNonTerminalInstance StoreOp = "dynamic.ListNonTerminalLeasesInInstance"
 	StoreDynamicLeasesCreate                  StoreOp = "dynamic.CreateLease"
 	StoreDynamicLeasesGet                     StoreOp = "dynamic.GetLease"
 	StoreDynamicLeasesList                    StoreOp = "dynamic.ListLeasesForEnvironment"
@@ -2303,6 +2318,43 @@ var operationTable = map[Operation]opSpec{
 		class:   ClassInstance,
 		formula: Formula{{Cap: domain.CapCredentialReset, At: domain.LevelNone}},
 		events:  []audit.EventType{audit.EventAuthCredentialResetIssued},
+	},
+
+	// The incident ledger (#1039). The formula is the credential-reset formula
+	// itself, so whoever may reset a credential at a scope may open and work an
+	// incident there and nobody else. The ledger rides the resolution surface
+	// and the events ride the instance trail, so there is no store op for it.
+	OpIncidentOrg: {
+		class:   ClassTenant,
+		level:   domain.LevelOrg,
+		formula: Formula{{Cap: domain.CapCredentialReset, At: domain.LevelOrg}},
+		events: []audit.EventType{
+			audit.EventIncidentOpened, audit.EventIncidentItemIntent, audit.EventIncidentItemOutcome, audit.EventIncidentClosed,
+		},
+	},
+	OpIncidentInstance: {
+		class:   ClassInstance,
+		formula: Formula{{Cap: domain.CapCredentialReset, At: domain.LevelNone}},
+		events: []audit.EventType{
+			audit.EventIncidentOpened, audit.EventIncidentItemIntent, audit.EventIncidentItemOutcome, audit.EventIncidentClosed,
+		},
+	},
+	// The project listing addresses the project and takes the org-level
+	// credential-reset atom, the way project lifecycle takes manage-projects at
+	// the org. The lease read is the enumeration of an incident the operation
+	// above opened, so it declares that incident's opening event.
+	OpIncidentLeasesProject: {
+		class:    ClassTenant,
+		level:    domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapCredentialReset, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreDynamicLeasesListNonTerminalProject: true},
+		events:   []audit.EventType{audit.EventIncidentOpened},
+	},
+	OpIncidentLeasesInstance: {
+		class:    ClassInstance,
+		formula:  Formula{{Cap: domain.CapCredentialReset, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{StoreDynamicLeasesListNonTerminalInstance: true},
+		events:   []audit.EventType{audit.EventIncidentOpened},
 	},
 
 	// The Project aggregate (#48). `manage-projects` is the permission-model ADR's

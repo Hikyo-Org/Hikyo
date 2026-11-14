@@ -253,6 +253,13 @@
   },
   {
     "engine": "postgres",
+    "name": "CloseIncident",
+    "annotation": "authn-resolution",
+    "hash": "760e124dc33c2b272acd4b15175e762f153a2df8c7bb90006cbdf29ebf731884",
+    "reason": "Closing compare-and-sets the open incident row after the operation authorized credential-reset at the incident scope; a closed incident never reopens."
+  },
+  {
+    "engine": "postgres",
     "name": "CommitSelfConfigTarget",
     "annotation": "instance-scoped",
     "hash": "4d75dd188f0589578361bf331ba5d24be0c9b35601e9085fb617e25e93de8aae"
@@ -609,6 +616,13 @@
     "name": "CountGrantsForOrg",
     "annotation": "authn-resolution",
     "hash": "de2cd352c47c7e563cc87dd404230dbc53c4db4db47e6424fc5764c843c451af"
+  },
+  {
+    "engine": "postgres",
+    "name": "CountIncidentItemsByOutcome",
+    "annotation": "authn-resolution",
+    "hash": "466640e9eecbc73910a843a708264238a5bf4d5143f46de6b3056743b6984f22",
+    "reason": "Closing and the opened event count one incident's items by outcome after the operation authorized credential-reset at the incident scope."
   },
   {
     "engine": "postgres",
@@ -1124,6 +1138,13 @@
   },
   {
     "engine": "postgres",
+    "name": "DynamicListNonTerminalLeasesInInstance",
+    "annotation": "instance-scoped",
+    "hash": "c2068f55c9f96b3a783d8964bd2574783554b8e5739c0c9ce7e946b0d18f7bf8",
+    "reason": "Instance-level incident enumeration lists non-terminal lease identifiers across orgs only behind the instance credential-reset operation, whose proof carries an empty chain; the page is bounded and no lease secret is selected."
+  },
+  {
+    "engine": "postgres",
     "name": "EnvironmentChainByID",
     "annotation": "authn-resolution",
     "hash": "5c31ff638d985b5d9cbd5d55b38ac851ef1f7321b1efa72cb54943996340059f"
@@ -1304,6 +1325,20 @@
   },
   {
     "engine": "postgres",
+    "name": "GetIncident",
+    "annotation": "authn-resolution",
+    "hash": "8cd0202dd5e400daa2b0e16698992e20e925cf164052a01b59200316b6c01f3d",
+    "reason": "Reading an incident by its generated id happens after the operation authorized credential-reset at the incident scope, which the caller compares to the row."
+  },
+  {
+    "engine": "postgres",
+    "name": "GetIncidentItem",
+    "annotation": "authn-resolution",
+    "hash": "017b1ed39d2c06b57796cd7b2c0a93bde7955afb13ece9696a10d6b784069314",
+    "reason": "Resume re-reads one item by its generated id inside its incident after the operation authorized credential-reset at the incident scope, so a stale list never decides the next step."
+  },
+  {
+    "engine": "postgres",
     "name": "GetInstanceConnection",
     "annotation": "authn-resolution",
     "hash": "64c720cefb539d91dcda821b7dd5d4f375cf77a369b266bec4bd93b009851c97"
@@ -1364,6 +1399,13 @@
     "name": "GetOIDCTransactionByState",
     "annotation": "authn-resolution",
     "hash": "89eb4230e078f9074ecf5b69a9f7f60d49f9c819bb0b0b188a1f3078fe38fdf0"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetOpenIncidentForScope",
+    "annotation": "authn-resolution",
+    "hash": "51ea732da17003542734a7cd29905f79dc248658e5fbc3caef2948eb434edcee",
+    "reason": "Re-opening an incident reads the one open row of the addressed scope after the operation authorized credential-reset at that scope."
   },
   {
     "engine": "postgres",
@@ -1724,6 +1766,20 @@
   },
   {
     "engine": "postgres",
+    "name": "InsertIncident",
+    "annotation": "authn-resolution",
+    "hash": "575f0446283ed3bdaaa0fb09f40fd16265486109875b9a773f96c4892a611c70",
+    "reason": "Opening an incident writes its one ledger row after the operation authorized credential-reset at the incident scope; the partial unique index makes a repeated open insert nothing."
+  },
+  {
+    "engine": "postgres",
+    "name": "InsertIncidentItem",
+    "annotation": "authn-resolution",
+    "hash": "eb09e91d26ea7b9d63590ad7034243ca951cefa4a8a1f86f8ce00e80ed3f8f3a",
+    "reason": "Enumeration writes one pending or out-of-scope row per affected object after the operation authorized credential-reset at the incident scope; the unique key makes a repeat insert nothing and keeps the recorded outcome."
+  },
+  {
+    "engine": "postgres",
     "name": "InsertLoginChallenge",
     "annotation": "authn-resolution",
     "hash": "558e2cbdf29c461dbd021f4f117d01bdb6a9f66224f062b36283b69094217988"
@@ -2047,6 +2103,13 @@
   },
   {
     "engine": "postgres",
+    "name": "ListIncidentItems",
+    "annotation": "authn-resolution",
+    "hash": "59cb1582e25c856191082f4fa1198a2745c5f7d6edcffc6ca0a3b62b6d9a9a18",
+    "reason": "The ledger read pages one incident's items by id after the operation authorized credential-reset at the incident scope, bounded by the limit."
+  },
+  {
+    "engine": "postgres",
     "name": "ListIndefiniteCredentials",
     "annotation": "authn-resolution",
     "hash": "0e965340fc4e261c20ca40cc54750b1d5216df7226054ce6325e26cff54ea297"
@@ -2062,6 +2125,13 @@
     "name": "ListLiveAccessGrantsForPrincipal",
     "annotation": "authn-resolution",
     "hash": "a1557956194216f4fc26414cce95d01057224afd2881a88aa6894b2368a3b72d"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListLiveDeveloperCredentialsInOrg",
+    "annotation": "authn-resolution",
+    "hash": "0e1c3da7327512348bd2000b668d9422f62d95e45f9ca09d4f2c56b6de570321",
+    "reason": "Incident enumeration reads delegation metadata of one org after the operation authorized credential-reset at that org; no bearer can be recovered and the page is bounded."
   },
   {
     "engine": "postgres",
@@ -2124,6 +2194,13 @@
     "name": "ListOidcProvidersForReencrypt",
     "annotation": "authn-resolution",
     "hash": "b5359d612f0ff91290b7188db97f939e0f2b29dfe516aee2dc4f920fce1d669e"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListOpenIncidentItems",
+    "annotation": "authn-resolution",
+    "hash": "c05c55e6b556860e7c868e1f65fb51842a2c0cae9c4398263ac1068fb5c85d9c",
+    "reason": "Resume pages the open items of one incident (pending, unknown, blocked) by id after the operation authorized credential-reset at the incident scope, bounded by the limit."
   },
   {
     "engine": "postgres",
@@ -2347,6 +2424,13 @@
     "name": "ListServiceAccounts",
     "annotation": "authn-resolution",
     "hash": "6e2c462b123e4db1dc3bf0f2f18c55cc23417f2e3ceff9439222e4d06462f2c0"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListServiceAccountsCreatedBy",
+    "annotation": "authn-resolution",
+    "hash": "0f4071bd2c3d87558769fea590b546eaea52319f79e4f3c753889840cfc67ec3",
+    "reason": "Incident enumeration reads the service accounts one principal created after the operation authorized credential-reset at the incident scope; it returns metadata only, no credential, and the page is bounded."
   },
   {
     "engine": "postgres",
@@ -3615,6 +3699,13 @@
   },
   {
     "engine": "postgres",
+    "name": "TransitionIncidentItem",
+    "annotation": "authn-resolution",
+    "hash": "9eceb928a758b268439aee00923b56d099e3a337c65c8f0d17378a5c65d0080d",
+    "reason": "A recorded outcome compare-and-sets one item of an open incident from an open outcome after the operation authorized credential-reset at the incident scope; a stale version or a terminal item changes nothing."
+  },
+  {
+    "engine": "postgres",
     "name": "UpdateAccountProfile",
     "annotation": "authn-resolution",
     "hash": "4356d285d4bfe10ed1781e4d7954311f00683d3eac43cd4ec31130c81ef558c4"
@@ -3935,6 +4026,13 @@
     "name": "ClearSelfConfigSeedInputs",
     "annotation": "instance-scoped",
     "hash": "d27bb664779449865a5be63f640ebd3c9b55b8aafac377f140c3e54e103fe2b0"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CloseIncident",
+    "annotation": "authn-resolution",
+    "hash": "760e124dc33c2b272acd4b15175e762f153a2df8c7bb90006cbdf29ebf731884",
+    "reason": "Closing compare-and-sets the open incident row after the operation authorized credential-reset at the incident scope; a closed incident never reopens."
   },
   {
     "engine": "sqlite",
@@ -4266,6 +4364,13 @@
     "name": "CountGrantsForOrg",
     "annotation": "authn-resolution",
     "hash": "3db19a6830a7a9ab88f1ecf4ad477e64927148f69b54dddc495c26a569095a44"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CountIncidentItemsByOutcome",
+    "annotation": "authn-resolution",
+    "hash": "466640e9eecbc73910a843a708264238a5bf4d5143f46de6b3056743b6984f22",
+    "reason": "Closing and the opened event count one incident's items by outcome after the operation authorized credential-reset at the incident scope."
   },
   {
     "engine": "sqlite",
@@ -4781,6 +4886,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "DynamicListNonTerminalLeasesInInstance",
+    "annotation": "instance-scoped",
+    "hash": "c2068f55c9f96b3a783d8964bd2574783554b8e5739c0c9ce7e946b0d18f7bf8",
+    "reason": "Instance-level incident enumeration lists non-terminal lease identifiers across orgs only behind the instance credential-reset operation, whose proof carries an empty chain; the page is bounded and no lease secret is selected."
+  },
+  {
+    "engine": "sqlite",
     "name": "EnvironmentChainByID",
     "annotation": "authn-resolution",
     "hash": "170bedbeb14b3270711ccc705b4b2ad4ceadef181b4f97025d8a6bea844654e2"
@@ -4961,6 +5073,20 @@
   },
   {
     "engine": "sqlite",
+    "name": "GetIncident",
+    "annotation": "authn-resolution",
+    "hash": "8cd0202dd5e400daa2b0e16698992e20e925cf164052a01b59200316b6c01f3d",
+    "reason": "Reading an incident by its generated id happens after the operation authorized credential-reset at the incident scope, which the caller compares to the row."
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetIncidentItem",
+    "annotation": "authn-resolution",
+    "hash": "017b1ed39d2c06b57796cd7b2c0a93bde7955afb13ece9696a10d6b784069314",
+    "reason": "Resume re-reads one item by its generated id inside its incident after the operation authorized credential-reset at the incident scope, so a stale list never decides the next step."
+  },
+  {
+    "engine": "sqlite",
     "name": "GetInstanceConnection",
     "annotation": "authn-resolution",
     "hash": "1bc41570f1b36adf31a9a999c3a45ddefff8e556c6958aa43cc20772f83fec2f"
@@ -5021,6 +5147,13 @@
     "name": "GetOIDCTransactionByState",
     "annotation": "authn-resolution",
     "hash": "f967c2109d692140a94ca85bc0af74738d994c449d9a31731e71a78d772fae13"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetOpenIncidentForScope",
+    "annotation": "authn-resolution",
+    "hash": "51ea732da17003542734a7cd29905f79dc248658e5fbc3caef2948eb434edcee",
+    "reason": "Re-opening an incident reads the one open row of the addressed scope after the operation authorized credential-reset at that scope."
   },
   {
     "engine": "sqlite",
@@ -5381,6 +5514,20 @@
   },
   {
     "engine": "sqlite",
+    "name": "InsertIncident",
+    "annotation": "authn-resolution",
+    "hash": "575f0446283ed3bdaaa0fb09f40fd16265486109875b9a773f96c4892a611c70",
+    "reason": "Opening an incident writes its one ledger row after the operation authorized credential-reset at the incident scope; the partial unique index makes a repeated open insert nothing."
+  },
+  {
+    "engine": "sqlite",
+    "name": "InsertIncidentItem",
+    "annotation": "authn-resolution",
+    "hash": "eb09e91d26ea7b9d63590ad7034243ca951cefa4a8a1f86f8ce00e80ed3f8f3a",
+    "reason": "Enumeration writes one pending or out-of-scope row per affected object after the operation authorized credential-reset at the incident scope; the unique key makes a repeat insert nothing and keeps the recorded outcome."
+  },
+  {
+    "engine": "sqlite",
     "name": "InsertLoginChallenge",
     "annotation": "authn-resolution",
     "hash": "8f6f833e28cb7a8f5b28b11e45791408927aef3d1fad90520a70aa8d889664a5"
@@ -5704,6 +5851,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "ListIncidentItems",
+    "annotation": "authn-resolution",
+    "hash": "59cb1582e25c856191082f4fa1198a2745c5f7d6edcffc6ca0a3b62b6d9a9a18",
+    "reason": "The ledger read pages one incident's items by id after the operation authorized credential-reset at the incident scope, bounded by the limit."
+  },
+  {
+    "engine": "sqlite",
     "name": "ListIndefiniteCredentials",
     "annotation": "authn-resolution",
     "hash": "0e965340fc4e261c20ca40cc54750b1d5216df7226054ce6325e26cff54ea297"
@@ -5719,6 +5873,13 @@
     "name": "ListLiveAccessGrantsForPrincipal",
     "annotation": "authn-resolution",
     "hash": "6b0d1b21a62296e3b665f599c14596743563c9dfc639b40011682eb4f21ce18d"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListLiveDeveloperCredentialsInOrg",
+    "annotation": "authn-resolution",
+    "hash": "8ff392db49624f5d2c8b4e1f5576616edd38787aad8425ad3c55d321fdd05764",
+    "reason": "Incident enumeration reads delegation metadata of one org after the operation authorized credential-reset at that org; no bearer can be recovered and the page is bounded."
   },
   {
     "engine": "sqlite",
@@ -5781,6 +5942,13 @@
     "name": "ListOidcProvidersForReencrypt",
     "annotation": "authn-resolution",
     "hash": "0df9d463d9a4c8cd88e4f194352647544bdd81502c21186a90b2698efaf9a331"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListOpenIncidentItems",
+    "annotation": "authn-resolution",
+    "hash": "c05c55e6b556860e7c868e1f65fb51842a2c0cae9c4398263ac1068fb5c85d9c",
+    "reason": "Resume pages the open items of one incident (pending, unknown, blocked) by id after the operation authorized credential-reset at the incident scope, bounded by the limit."
   },
   {
     "engine": "sqlite",
@@ -6004,6 +6172,13 @@
     "name": "ListServiceAccounts",
     "annotation": "authn-resolution",
     "hash": "38eadb7b55b69f037445fca03be3286eb89eaec8e0f1249992e44b6c2cab5159"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListServiceAccountsCreatedBy",
+    "annotation": "authn-resolution",
+    "hash": "4f78477b2857561b72782a7010bd2347cd0fd1a0f6fe8e63b5d21e9926e4f280",
+    "reason": "Incident enumeration reads the service accounts one principal created after the operation authorized credential-reset at the incident scope; it returns metadata only, no credential, and the page is bounded."
   },
   {
     "engine": "sqlite",
@@ -7255,6 +7430,13 @@
     "annotation": "instance-scoped",
     "hash": "444f660b44816309861487a729df7ee469755bd41f29f65138c05c2ee3c00cfb",
     "reason": "StoreTransitSelectRotationDue verifies the existing closed system scheduler authority; globally lists active rotation candidates with their latest-version timestamp before scoped worker authorization."
+  },
+  {
+    "engine": "sqlite",
+    "name": "TransitionIncidentItem",
+    "annotation": "authn-resolution",
+    "hash": "9eceb928a758b268439aee00923b56d099e3a337c65c8f0d17378a5c65d0080d",
+    "reason": "A recorded outcome compare-and-sets one item of an open incident from an open outcome after the operation authorized credential-reset at the incident scope; a stale version or a terminal item changes nothing."
   },
   {
     "engine": "sqlite",
