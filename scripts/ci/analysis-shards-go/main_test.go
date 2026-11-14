@@ -2,7 +2,8 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -75,7 +76,7 @@ func TestAllCommandInventoryAndRefusals(t *testing.T) {
 	for _, dir := range []string{"extra", "internal/isolation"} {
 		pkg := packageInfo{ImportPath: "example.com/" + dir, Dir: filepath.Join(root, dir), TestGoFiles: []string{filepath.Base(dir) + "_test.go"}}
 		pkg.Module = &struct{ Dir string }{Dir: root}
-		if err := json.NewEncoder(&data).Encode(pkg); err != nil {
+		if err := json.MarshalEncode(jsontext.NewEncoder(&data, stableJSON), pkg); err != nil {
 			t.Fatal(err)
 		}
 	}
