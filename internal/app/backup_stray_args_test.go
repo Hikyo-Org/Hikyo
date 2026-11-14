@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 )
 
@@ -84,4 +85,19 @@ func TestUpgradeVerbsNameStrayArguments(t *testing.T) {
 			}
 		})
 	}
+}
+
+func bootstrapConfig(t *testing.T, recipients ...string) *config.Config {
+	t.Helper()
+	// LoadBootstrap blanks the destination and moves owner settings such as
+	// the recipients to ManagedInputs, so the CLI path sees neither.
+	values := map[string]string{"HIKYO_DB": "sqlite:" + filepath.Join(t.TempDir(), "hikyo.db"), "HIKYO_BACKUP_DIR": t.TempDir()}
+	if len(recipients) > 0 {
+		values["HIKYO_BACKUP_RECIPIENTS"] = strings.Join(recipients, ",")
+	}
+	cfg, _, err := config.LoadBootstrap("server", []string{"--dev"}, func(key string) string { return values[key] }, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg
 }
