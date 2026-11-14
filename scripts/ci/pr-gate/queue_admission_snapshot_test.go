@@ -63,7 +63,9 @@ func TestHeadAdmissionReusesInitialSnapshotAndRechecksEveryFinalBoundary(t *test
 		f.c.endpoint("pulls/7"):            2,
 		f.c.endpoint("git/ref/heads/main"): 2,
 		f.c.endpoint("actions/workflows/ci-feedback.yml"): 2,
-		f.c.endpoint(fmt.Sprintf("actions/workflows/ci-feedback.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=1", f.pr.Head.SHA)): 2,
+		f.c.endpoint(fmt.Sprintf("actions/workflows/ci-feedback.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=1", f.pr.Head.SHA)):          2,
+		f.c.endpoint("actions/workflows/ci-feedback-retarget.yml"):                                                                                     2,
+		f.c.endpoint(fmt.Sprintf("actions/workflows/ci-feedback-retarget.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=1", f.pr.Head.SHA)): 2,
 		jobs: 2,
 	} {
 		if got := f.api.reads[path]; got != want {
@@ -74,7 +76,7 @@ func TestHeadAdmissionReusesInitialSnapshotAndRechecksEveryFinalBoundary(t *test
 	for _, count := range f.api.reads {
 		total += count
 	}
-	if total != 23 || verifications != 2 || dcoChecks != 2 || !finalFeedback {
+	if total != 27 || verifications != 2 || dcoChecks != 2 || !finalFeedback {
 		t.Fatalf("reads=%d, authority=%d, canonical DCO=%d, final feedback=%t", total, verifications, dcoChecks, finalFeedback)
 	}
 	if !reflect.DeepEqual(f.api.checks[0], old) || len(f.api.checks) != 2 || f.api.checks[1].Conclusion != "success" {
@@ -392,7 +394,7 @@ func TestDirectAdmissionInitialInventoryRequiresCurrentIdentityAndUniqueness(t *
 				for _, count := range f.api.reads {
 					total += count
 				}
-				if total != 23 || f.api.reads[list] != 2 {
+				if total != 27 || f.api.reads[list] != 2 {
 					t.Fatalf("direct admission reads=%d, complete inventories=%d", total, f.api.reads[list])
 				}
 			} else {

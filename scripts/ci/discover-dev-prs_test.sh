@@ -37,6 +37,11 @@ reset
 GITHUB_EVENT_NAME=workflow_run
 jq -n --arg head "$head" '{repository:{full_name:"owner/repo"},workflow_run:{event:"pull_request",path:".github/workflows/ci-feedback.yml",head_sha:$head}}' >"$work/event.json"
 run | jq -e --arg head "$head" '. == [{pr:7,head:$head}]' >/dev/null
+# A base retarget reaches the publisher through ci-feedback-retarget's callback.
+jq -n --arg head "$head" '{repository:{full_name:"owner/repo"},workflow_run:{event:"pull_request",path:".github/workflows/ci-feedback-retarget.yml",head_sha:$head}}' >"$work/event.json"
+run | jq -e --arg head "$head" '. == [{pr:7,head:$head}]' >/dev/null
+jq -n --arg head "$head" '{repository:{full_name:"owner/repo"},workflow_run:{event:"pull_request",path:".github/workflows/other.yml",head_sha:$head}}' >"$work/event.json"
+if run >/dev/null 2>&1; then echo 'discovery accepted an unrelated workflow callback' >&2; exit 1; fi
 GITHUB_EVENT_NAME=schedule
 reset
 run | jq -e --arg head "$head" '. == [{pr:7,head:$head}]' >/dev/null

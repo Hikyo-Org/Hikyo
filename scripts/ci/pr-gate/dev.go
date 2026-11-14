@@ -62,7 +62,7 @@ func (q *queueController) executeDev(ctx context.Context, name string, e event, 
 			return errors.New("dev PR event differs from the held routing identity")
 		}
 	case "workflow_run":
-		if e.Run.Event != "pull_request" || e.Run.Path != feedbackWorkflowPath || e.Run.Repository.ID != q.repo.ID || e.Run.HeadSHA != q.expectedHead {
+		if e.Run.Event != "pull_request" || !isFeedbackPath(e.Run.Path) || e.Run.Repository.ID != q.repo.ID || e.Run.HeadSHA != q.expectedHead {
 			return errors.New("dev callback is not exact-head PR feedback")
 		}
 	case "push":

@@ -56,7 +56,8 @@ git -c credential.helper= fetch --quiet --no-tags --no-recurse-submodules \
 	"https://github.com/$repository.git" "$main_sha"
 set -- .github/workflows/ci-dev-gate.yml .github/workflows/ci-dev.yml \
 	.github/workflows/ci.yml .github/workflows/floor-bench.yml \
-	.github/workflows/ci-feedback.yml scripts/ci/pr-gate scripts/ci/source-proof \
+	.github/workflows/ci-feedback.yml .github/workflows/ci-feedback-retarget.yml \
+	scripts/ci/pr-gate scripts/ci/source-proof \
 	scripts/ci/discover-dev-prs.sh scripts/ci/build-queue-publisher.sh \
 	scripts/ci/check-fork-validation.sh scripts/ci/check-dco.sh \
 	scripts/release/configure-dev.sh scripts/release/check-dev-policy.sh \
