@@ -37,8 +37,8 @@ const (
 	// OwnerConfirmed means the owner confirmed the object is in its target
 	// state. Only this result writes done.
 	OwnerConfirmed
-	// OwnerFailed means the owner reported a definite failure. The item stays
-	// pending and the failure is recorded in the trail.
+	// OwnerFailed means the owner reported a definite failure. The ledger row
+	// keeps its open state and the failure is recorded in the trail.
 	OwnerFailed
 	// OwnerBlocked means the caller lacks the owner's capability. The item is
 	// blocked: another operator must act, and nothing is performed on the
@@ -490,8 +490,11 @@ func (s *Incidents) runItem(ctx context.Context, actor Actor, incidentID, itemID
 		case OwnerBlocked:
 			next, reason, outcome, resultName = domain.ItemBlocked, domain.ReasonNeedsAnotherOperator, audit.OutcomeDenied, "blocked"
 		case OwnerFailed:
-			// A definite failure leaves the item as it is: pending, to be run again.
-			next, reason, outcome, resultName = domain.ItemPending, domain.ReasonOwnerFailed, audit.OutcomeFailure, "pending"
+			// A definite failure leaves the ledger row as it is (pending, unknown or
+			// blocked, all open, so resume runs it again). The event reports the
+			// row's actual state and the failure as its reason, so the trail never
+			// claims a state the ledger does not hold.
+			next, reason, outcome, resultName = domain.ItemPending, domain.ReasonOwnerFailed, audit.OutcomeFailure, string(item.Outcome)
 		}
 		applied := true
 		if next != domain.ItemPending {
