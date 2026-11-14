@@ -17,17 +17,12 @@ import (
 // output (api/apigen) is the one permanent exception: the generator has no v2
 // mode, and v1 is v2 with v1-compatible options underneath.
 var jsonV1Allowlist = map[string]bool{
-	"api":                                  true,
 	"api/apigen":                           true,
 	"cmd/bench-scan":                       true,
 	"cmd/hikyo":                            true,
 	"cmd/hikyo-receiver-example":           true,
-	"internal/app":                         true,
 	"internal/cli":                         true,
 	"internal/isolation":                   true,
-	"internal/mcpserver":                   true,
-	"internal/scimproto":                   true,
-	"internal/server":                      true,
 	"scripts/acceptance/github-contract":   true,
 	"scripts/acceptance/mcp-fixture":       true,
 	"scripts/ci":                           true,

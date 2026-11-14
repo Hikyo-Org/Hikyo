@@ -1,12 +1,13 @@
 package api_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"testing"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
@@ -59,7 +60,7 @@ func checkOpenEnumRoundtrip[T comparable](t *testing.T, want T, wire string) {
 	if got != want {
 		t.Fatalf("unknown value lost: got %+v, want %+v", got, want)
 	}
-	encoded, err := json.Marshal(got)
+	encoded, err := json.Marshal(got, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +17,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/hostupgrade"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securitymaintenance"
 	"github.com/Hikyo-Org/hikyo/internal/selfupdate"
@@ -72,7 +73,7 @@ func nativeSourceRecordPath(stateDirectory string) string {
 }
 
 func writeNativeSourceRecord(stateDirectory string, record nativeSourceRecord) error {
-	raw, err := json.Marshal(record)
+	raw, err := json.Marshal(record, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

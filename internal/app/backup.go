@@ -23,7 +23,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -898,7 +897,7 @@ func rtoVerdict(r service.DrillReport) string {
 }
 
 func writeDrillJSON(w io.Writer, r service.DrillReport) error {
-	return json.NewEncoder(w).Encode(map[string]any{
+	return encodeJSON(w, map[string]any{
 		"archive":         r.Archive,
 		"archive_digest":  r.ArchiveDigest,
 		"engine":          string(r.Engine),

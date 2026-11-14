@@ -2,12 +2,13 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/configrollout"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -40,8 +41,8 @@ func TestBootstrapDeploymentRenewalPreservesCommittedAuthorityAfterRestart(t *te
 			}
 			normalized := renewed.Command
 			normalized.Sequence, normalized.IssuedAt, normalized.ExpiresAt = command.Sequence, command.IssuedAt, command.ExpiresAt
-			before, _ := json.Marshal(command)
-			after, _ := json.Marshal(normalized)
+			before, _ := json.Marshal(command, jsonwire.Stable)
+			after, _ := json.Marshal(normalized, jsonwire.Stable)
 			if string(before) != string(after) {
 				t.Fatal("renewal altered durable decision")
 			}

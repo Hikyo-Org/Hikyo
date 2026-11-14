@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/buildcompat"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/securityfeed"
@@ -295,7 +297,7 @@ func changedPublicationCatalog(raw []byte, next securitymaintenance.Catalog, pre
 	}
 	known := map[string]bool{}
 	for _, target := range previous.Targets {
-		record, err := json.Marshal(target)
+		record, err := json.Marshal(target, jsonwire.Stable)
 		if err != nil {
 			return next, err
 		}
@@ -303,7 +305,7 @@ func changedPublicationCatalog(raw []byte, next securitymaintenance.Catalog, pre
 	}
 	targets := []securitymaintenance.Target{}
 	for _, target := range next.Targets {
-		record, err := json.Marshal(target)
+		record, err := json.Marshal(target, jsonwire.Stable)
 		if err != nil {
 			return next, err
 		}
@@ -580,7 +582,7 @@ func runSecurityFeedAdvisory(ctx context.Context, args []string, out io.Writer, 
 			}
 		}
 	}
-	raw, err := json.MarshalIndent(next, "", "  ")
+	raw, err := json.Marshal(next, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}

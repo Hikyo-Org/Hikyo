@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
@@ -28,7 +27,7 @@ func (r samlStartResponse) VisitSamlStartResponse(w http.ResponseWriter) error {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	return json.NewEncoder(w).Encode(r.body)
+	return encodeJSON(w, r.body)
 }
 
 func (a *API) SamlStart(ctx context.Context, req apigen.SamlStartRequestObject) (apigen.SamlStartResponseObject, error) {

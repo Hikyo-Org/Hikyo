@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +18,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/buildcompat"
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/hostupgrade"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securitymaintenance"
 	"github.com/Hikyo-Org/hikyo/internal/selfupdate"
@@ -36,7 +37,7 @@ type nativeSecurityHost interface {
 // nativeSourceEvidenceCommand seeds the release archive of the installed version.
 // The route is empty, so it verifies and caches without touching the service.
 func nativeSourceEvidenceCommand(identity releaseidentity.Identity) string {
-	raw, err := json.Marshal(identity)
+	raw, err := json.Marshal(identity, jsonwire.Stable)
 	if err != nil {
 		return "sudo hikyo upgrade --release-identity JSON"
 	}

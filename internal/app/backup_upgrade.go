@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -123,7 +122,7 @@ func runUpgradeExport(ctx context.Context, cfg *config.Config, args []string, ou
 		diagnostics.Printf(ctx, 2, "upgrade backup: encrypted_bytes=%d engine=%s schema=%d", exported.Bytes, exported.Manifest.Engine, exported.Manifest.SchemaVersion)
 		diagnostics.Printf(ctx, 1, "upgrade backup: export complete")
 		if *jsonOutput {
-			return json.NewEncoder(out).Encode(struct {
+			return encodeJSON(out, struct {
 				Ciphertext string `json:"ciphertext"`
 				Receipt    string `json:"receipt"`
 			}{exported.Path, exported.ReceiptPath})

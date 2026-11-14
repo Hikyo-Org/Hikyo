@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"mime"
@@ -22,6 +23,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/operation"
 )
 
@@ -176,10 +178,10 @@ func New(options Options) (http.Handler, error) {
 }
 
 type rpcEnvelope struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id"`
-	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params"`
+	JSONRPC string         `json:"jsonrpc"`
+	ID      jsontext.Value `json:"id"`
+	Method  string         `json:"method"`
+	Params  jsontext.Value `json:"params"`
 }
 
 type requestMeta struct {
@@ -381,11 +383,11 @@ func (h *handler) serveValidatedStaticNotification(w http.ResponseWriter, r *htt
 	}
 	body := capture.body.Bytes()
 	if baseMediaType(capture.header.Get("Content-Type")) == "application/json" {
-		var response map[string]json.RawMessage
+		var response map[string]jsontext.Value
 		if json.Unmarshal(body, &response) == nil {
 			if _, hasID := response["id"]; hasID {
-				response["id"] = json.RawMessage("null")
-				body, _ = json.Marshal(response)
+				response["id"] = jsontext.Value("null")
+				body, _ = json.Marshal(response, jsonwire.Stable)
 			}
 		}
 	}
@@ -395,11 +397,11 @@ func (h *handler) serveValidatedStaticNotification(w http.ResponseWriter, r *htt
 	_, _ = w.Write(body)
 }
 
-func (h *handler) serveStatic(w http.ResponseWriter, r *http.Request, method string, requestID json.RawMessage) {
+func (h *handler) serveStatic(w http.ResponseWriter, r *http.Request, method string, requestID jsontext.Value) {
 	h.serveSDK(w, r, method, requestID, MaxStaticResponseBytes, nil)
 }
 
-func (h *handler) serveSDK(w http.ResponseWriter, r *http.Request, method string, requestID json.RawMessage, maxBytes int, state *callState) {
+func (h *handler) serveSDK(w http.ResponseWriter, r *http.Request, method string, requestID jsontext.Value, maxBytes int, state *callState) {
 	capture := newCapturedResponse()
 	h.sdk.ServeHTTP(capture, r)
 	if state != nil {
@@ -423,19 +425,19 @@ func (h *handler) serveSDK(w http.ResponseWriter, r *http.Request, method string
 	}
 	body := capture.body.Bytes()
 	if len(body) > 0 && baseMediaType(capture.header.Get("Content-Type")) == "application/json" {
-		var response map[string]json.RawMessage
+		var response map[string]jsontext.Value
 		if json.Unmarshal(body, &response) == nil {
 			if _, hasID := response["id"]; hasID && len(requestID) > 0 {
 				response["id"] = slices.Clone(requestID)
 			}
 			if method == "server/discover" {
-				var result map[string]json.RawMessage
+				var result map[string]jsontext.Value
 				if json.Unmarshal(response["result"], &result) == nil {
-					result["supportedVersions"], _ = json.Marshal([]string{ProtocolVersion})
-					response["result"], _ = json.Marshal(result)
+					result["supportedVersions"], _ = json.Marshal([]string{ProtocolVersion}, jsonwire.Stable)
+					response["result"], _ = json.Marshal(result, jsonwire.Stable)
 				}
 			}
-			body, _ = json.Marshal(response)
+			body, _ = json.Marshal(response, jsonwire.Stable)
 		}
 	}
 	if maxBytes > 0 && len(body) > maxBytes {
@@ -491,7 +493,7 @@ func parseBearer(values []string) (string, bool) {
 	return value, true
 }
 
-func metadataFrom(params json.RawMessage) (version, name string) {
+func metadataFrom(params jsontext.Value) (version, name string) {
 	var decoded requestMeta
 	if json.Unmarshal(params, &decoded) != nil || decoded.Meta == nil {
 		return "", ""
@@ -501,23 +503,23 @@ func metadataFrom(params json.RawMessage) (version, name string) {
 }
 
 func decodeOne(raw []byte, out any) error {
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	if err := decoder.Decode(out); err != nil {
+	decoder := jsontext.NewDecoder(bytes.NewReader(raw))
+	if err := json.UnmarshalDecode(decoder, out); err != nil {
 		return err
 	}
-	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
+	if _, err := decoder.ReadToken(); !errors.Is(err, io.EOF) {
 		return errors.New("trailing JSON value")
 	}
 	return nil
 }
 
-func writeRPCError(w http.ResponseWriter, status int, id json.RawMessage, code int, message string, data any) {
+func writeRPCError(w http.ResponseWriter, status int, id jsontext.Value, code int, message string, data any) {
 	if len(id) == 0 {
-		id = json.RawMessage("null")
+		id = jsontext.Value("null")
 	}
 	payload := struct {
-		JSONRPC string          `json:"jsonrpc"`
-		ID      json.RawMessage `json:"id"`
+		JSONRPC string         `json:"jsonrpc"`
+		ID      jsontext.Value `json:"id"`
 		Error   struct {
 			Code    int    `json:"code"`
 			Message string `json:"message"`
@@ -527,7 +529,7 @@ func writeRPCError(w http.ResponseWriter, status int, id json.RawMessage, code i
 	payload.Error.Code = code
 	payload.Error.Message = message
 	payload.Error.Data = data
-	body, err := json.Marshal(payload)
+	body, err := json.Marshal(payload, jsonwire.Stable)
 	if err != nil || len(body) > MaxStaticResponseBytes {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return

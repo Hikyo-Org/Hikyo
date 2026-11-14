@@ -1,11 +1,12 @@
 package app
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"path/filepath"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
@@ -97,7 +98,7 @@ func TestCandidateHealthValidatesSavedNodeBeforeRetiredBootstrap(t *testing.T) {
 		node["HIKYO_TLS_CERT_PEM"] = "invalid managed certificate"
 		node["HIKYO_TLS_KEY_PEM"] = "invalid managed key"
 	}
-	raw, err := json.Marshal(nodes)
+	raw, err := json.Marshal(nodes, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

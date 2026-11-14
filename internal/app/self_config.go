@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"maps"
 	"sync"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -49,7 +50,7 @@ func newSelfConfig(cfg *config.Config, db *store.DB, kr *crypto.Keyring, auth *s
 				return nil, err
 			}
 			if sources.Version != 0 {
-				raw, err := json.Marshal(sources)
+				raw, err := json.Marshal(sources, jsonwire.Stable)
 				if err != nil {
 					return nil, err
 				}

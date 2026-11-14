@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -23,7 +22,7 @@ func WriteRuntimeUnavailable(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", scimproto.MediaType)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		// The body consists exclusively of fixed, serializable metadata.
-		_ = json.NewEncoder(w).Encode((&scimproto.Error{Status: http.StatusServiceUnavailable, Detail: "Runtime configuration is not ready; retry shortly."}).Body())
+		_ = encodeJSON(w, (&scimproto.Error{Status: http.StatusServiceUnavailable, Detail: "Runtime configuration is not ready; retry shortly."}).Body())
 		return
 	}
 	writeError(w, wireErrorFor(service.ErrSelfConfigUnavailable), "")

@@ -2,7 +2,7 @@ package mcpserver
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"math"
 	"strconv"
@@ -12,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/operation"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -457,7 +458,7 @@ func registerListRevisions(registry *Registry, services ProductionServices) erro
 }
 
 func encodedSize(value any) (int, error) {
-	encoded, err := json.Marshal(value)
+	encoded, err := json.Marshal(value, jsonwire.Stable)
 	return len(encoded), err
 }
 

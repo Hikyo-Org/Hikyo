@@ -3,7 +3,8 @@ package app
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
@@ -84,7 +86,7 @@ func runAdminPrivacy(ctx context.Context, cfg *config.Config, log *slog.Logger, 
 	if err != nil {
 		return err
 	}
-	raw, err := json.MarshalIndent(result, "", "  ")
+	raw, err := json.Marshal(result, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}
@@ -99,33 +101,30 @@ func parsePrivacyReceipt(raw []byte) (service.PrivacyReceipt, error) {
 	var receipt service.PrivacyReceipt
 	// Reject duplicate keys before decoding the typed, closed schema. Last-key
 	// wins parsing is inappropriate for an operator-approved erasure instruction.
-	keys := json.NewDecoder(bytes.NewReader(raw))
-	start, err := keys.Token()
-	if err != nil || start != json.Delim('{') {
+	keys := jsontext.NewDecoder(bytes.NewReader(raw), jsontext.AllowDuplicateNames(true))
+	if start, err := keys.ReadToken(); err != nil || start.Kind() != '{' {
 		return receipt, errors.New("privacy: receipt must be a JSON object")
 	}
 	seen := map[string]bool{}
-	for keys.More() {
-		token, err := keys.Token()
+	for keys.PeekKind() != '}' {
+		token, err := keys.ReadToken()
 		if err != nil {
 			return receipt, err
 		}
-		key, ok := token.(string)
-		if !ok || seen[key] {
+		key := token.String()
+		if seen[key] {
 			return receipt, errors.New("privacy: duplicate or invalid receipt key")
 		}
 		seen[key] = true
-		var value json.RawMessage
-		if err := keys.Decode(&value); err != nil {
+		if err := keys.SkipValue(); err != nil {
 			return receipt, err
 		}
 	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&receipt); err != nil {
+	dec := jsontext.NewDecoder(bytes.NewReader(raw))
+	if err := json.UnmarshalDecode(dec, &receipt, json.RejectUnknownMembers(true)); err != nil {
 		return receipt, fmt.Errorf("privacy: invalid receipt: %w", err)
 	}
-	if err := dec.Decode(new(any)); err != io.EOF {
+	if _, err := dec.ReadToken(); !errors.Is(err, io.EOF) {
 		return receipt, errors.New("privacy: trailing receipt data")
 	}
 	if receipt.Version != 1 || receipt.PrincipalID == "" || receipt.AccountID == "" || receipt.InstanceID == "" || receipt.AppliedAt.IsZero() || (receipt.Action != "restrict" && receipt.Action != "erase") {

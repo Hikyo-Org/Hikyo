@@ -3,7 +3,8 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"log/slog"
@@ -139,7 +140,7 @@ type SAMLProviderService interface {
 // cross-request cache the permission model forbids, wearing an argument's
 // clothes.
 type OrgService interface {
-	Create(ctx context.Context, actor service.Actor, name string, active bool, metadata json.RawMessage) (org service.Org, err error)
+	Create(ctx context.Context, actor service.Actor, name string, active bool, metadata jsontext.Value) (org service.Org, err error)
 	Get(ctx context.Context, actor service.Actor, org domain.OrgID) (service.Org, error)
 	List(ctx context.Context, actor service.Actor) ([]service.Org, error)
 	ListMine(ctx context.Context, actor service.Actor) ([]service.MyOrg, error)
@@ -818,7 +819,7 @@ func (a *API) extractBearer(next http.Handler) http.Handler {
 				audit.NoteRefusal(r.Context(), audit.RefusalProof)
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
-				_ = json.NewEncoder(w).Encode(errorBody(apigen.ErrorCodeUnauthenticated, ""))
+				_ = encodeJSON(w, errorBody(apigen.ErrorCodeUnauthenticated, ""))
 				return
 			}
 			headerVal = strings.TrimSpace(value)
@@ -836,7 +837,7 @@ func (a *API) extractBearer(next http.Handler) http.Handler {
 			audit.NoteRefusal(r.Context(), audit.RefusalConflict)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(errorBody(apigen.ErrorCodeUnauthenticated, ""))
+			_ = encodeJSON(w, errorBody(apigen.ErrorCodeUnauthenticated, ""))
 			return
 		}
 		// The cookie leg maps to the same raw artifact path; it is resolved only
@@ -994,13 +995,13 @@ func (a *API) scimBodyIsOneValue(w http.ResponseWriter, r *http.Request) bool {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return true
 	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec := jsontext.NewDecoder(bytes.NewReader(raw))
 	var decoded any
-	if err := dec.Decode(&decoded); err != nil {
+	if err := json.UnmarshalDecode(dec, &decoded); err != nil {
 		a.writeSCIMRequestError(w, r, scimproto.ErrInvalidSyntax("The request body is not valid JSON."))
 		return false
 	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+	if _, err := dec.ReadToken(); !errors.Is(err, io.EOF) {
 		a.writeSCIMRequestError(w, r,
 			scimproto.ErrInvalidSyntax("The request body carries content after the resource."))
 		return false

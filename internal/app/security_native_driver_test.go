@@ -5,7 +5,7 @@ package app
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -20,6 +20,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/hostupgrade"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securitymaintenance"
 	"github.com/Hikyo-Org/hikyo/internal/selfupdate"
@@ -62,7 +63,7 @@ type nativeDriverInspection struct {
 
 func (s *nativeDriverInspection) snapshot() upgrade.State {
 	s.t.Helper()
-	raw, err := json.Marshal(s.state)
+	raw, err := json.Marshal(s.state, jsonwire.Stable)
 	if err != nil {
 		s.t.Fatal(err)
 	}
@@ -439,7 +440,7 @@ func TestNativeSecurityFirstUseRefusalRetainsRunningSourceProof(t *testing.T) {
 	raw, err := json.Marshal(struct {
 		Floor   releaseidentity.SnapshotFloor `json:"floor"`
 		Release releaseidentity.Identity      `json:"release"`
-	}{Release: f.target.Identity})
+	}{Release: f.target.Identity}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -489,7 +490,7 @@ func TestNativeSecurityCoordinatorClassifiesFailureBeforeFirstFence(t *testing.T
 func TestNativeSecuritySourceProofUnavailableDoesNotQueryReleaseDiscovery(t *testing.T) {
 	state := upgrade.State{Applied: releaseidentity.Source{Release: nativeSecurityIdentity(releaseidentity.StableV1)}}
 	_, err := verifyNativeSecuritySource(t.Context(), nativeSecurityInstallation{}, state)
-	identity, _ := json.Marshal(state.Applied.Release)
+	identity, _ := json.Marshal(state.Applied.Release, jsonwire.Stable)
 	if err == nil || !strings.Contains(err.Error(), "source proof unavailable") || !strings.Contains(err.Error(), "sudo hikyo upgrade --release-identity '"+string(identity)+"'") {
 		t.Fatal("did not name the exact local source-proof command", err)
 	}
@@ -504,7 +505,7 @@ func TestNativeSourceEvidenceCommandQuotesTheIdentity(t *testing.T) {
 	}
 	// The shell must see exactly one argument: the identity JSON, unchanged.
 	out, err := exec.Command("/bin/sh", "-c", "printf '%s|' "+argument).Output()
-	raw, _ := json.Marshal(identity)
+	raw, _ := json.Marshal(identity, jsonwire.Stable)
 	if err != nil || string(out) != string(raw)+"|" {
 		t.Fatal("identity escaped its shell quoting", string(out), err)
 	}
@@ -559,7 +560,7 @@ func TestNativeSecurityCustodyRefusesOperatorKeyOutsideItsVault(t *testing.T) {
 
 // Exit 1 here would pin an operation even though nothing was mutated.
 func TestNativeSecurityParseRefusalsUnderMaintenanceSourceAreNotStarted(t *testing.T) {
-	identity, err := json.Marshal(nativeSecurityIdentity(releaseidentity.StableV1))
+	identity, err := json.Marshal(nativeSecurityIdentity(releaseidentity.StableV1), jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -605,7 +606,7 @@ func TestNativeSecurityReconcileRefusesUnfinishedHostJournal(t *testing.T) {
 		t.Helper()
 		// A complete, valid record, so a parse failure cannot pass for the refusal.
 		raw, err := json.Marshal(automaticJournal{Format: "hikyo.host-upgrade/v1", Phase: phase, Target: f.target.Identity, Instance: route.Instance, Route: route.Plan.Digest(),
-			Source: upgradecompat.InstalledSource{Identity: route.Plan.Source(), Migrations: manifest, SchemaSHA256: route.Plan.SourceSchemaDigest()}})
+			Source: upgradecompat.InstalledSource{Identity: route.Plan.Source(), Migrations: manifest, SchemaSHA256: route.Plan.SourceSchemaDigest()}}, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

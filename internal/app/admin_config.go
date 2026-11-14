@@ -2,13 +2,14 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"io"
 	"log/slog"
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func runAdminConfig(ctx context.Context, cfg *config.Config, log *slog.Logger, args []string, out io.Writer) error {
@@ -39,7 +40,7 @@ func runAdminConfig(ctx context.Context, cfg *config.Config, log *slog.Logger, a
 		if err != nil {
 			return err
 		}
-		return json.NewEncoder(out).Encode(status)
+		return encodeJSON(out, status)
 	}
 	if revision < 1 {
 		return errors.New("--revision must name a published revision; stop every replica and wait 30 seconds before recovery")
@@ -48,5 +49,16 @@ func runAdminConfig(ctx context.Context, cfg *config.Config, log *slog.Logger, a
 	if err != nil {
 		return err
 	}
-	return json.NewEncoder(out).Encode(status)
+	return encodeJSON(out, status)
+}
+
+// encodeJSON writes v and a trailing newline in one write: the bytes
+// encoding/json's Encoder.Encode produced, which operator output and scripts pin.
+func encodeJSON(w io.Writer, v any) error {
+	b, err := json.Marshal(v, jsonwire.Stable)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(append(b, '\n'))
+	return err
 }

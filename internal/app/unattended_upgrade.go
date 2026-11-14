@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +18,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/hostupgrade"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/selfupdate"
@@ -154,7 +155,7 @@ func RunUnattendedUpgrade(ctx context.Context, cfg *config.Config, options Unatt
 		return cleanup, errors.New("running image payload differs from authenticated release executable")
 	}
 	if !cached {
-		raw, err := json.Marshal(target)
+		raw, err := json.Marshal(target, jsonwire.Stable)
 		if err != nil {
 			return cleanup, err
 		}
@@ -166,7 +167,7 @@ func RunUnattendedUpgrade(ctx context.Context, cfg *config.Config, options Unatt
 		return cleanup, err
 	}
 	target.BundleDirectory = cfg.Upgrade.BundleDirectory
-	raw, err := json.Marshal(target)
+	raw, err := json.Marshal(target, jsonwire.Stable)
 	if err != nil {
 		return cleanup, err
 	}
@@ -447,7 +448,7 @@ func preflightUnattendedRoute(ctx context.Context, route automaticRoute) error {
 }
 
 func writeUnattendedEnrollment(path string, enrollment unattendedEnrollment) error {
-	raw, err := json.Marshal(enrollment)
+	raw, err := json.Marshal(enrollment, jsonwire.Stable)
 	if err != nil {
 		return err
 	}
@@ -567,7 +568,7 @@ func recordAbandonedPreparation(directory, reason string, journal *automaticJour
 		Format  string            `json:"format"`
 		Reason  string            `json:"reason"`
 		Journal *automaticJournal `json:"journal"`
-	}{"hikyo.unattended-abandoned/v1", reason, journal})
+	}{"hikyo.unattended-abandoned/v1", reason, journal}, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

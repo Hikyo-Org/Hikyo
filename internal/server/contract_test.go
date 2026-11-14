@@ -3,7 +3,8 @@ package server_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -22,6 +23,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
@@ -332,7 +334,7 @@ func (s stubWorkspace) RedeemHandoff(ctx context.Context, code, verifier, origin
 }
 
 type stubOrgs struct {
-	create func(ctx context.Context, a service.Actor, name string, active bool, meta json.RawMessage) (service.Org, error)
+	create func(ctx context.Context, a service.Actor, name string, active bool, meta jsontext.Value) (service.Org, error)
 	get    func(ctx context.Context, a service.Actor, org domain.OrgID) (service.Org, error)
 	list   func(ctx context.Context, a service.Actor) ([]service.Org, error)
 	mine   func(ctx context.Context, a service.Actor) ([]service.MyOrg, error)
@@ -370,7 +372,7 @@ func (s stubOrgs) ListMine(ctx context.Context, a service.Actor) ([]service.MyOr
 	return s.mine(ctx, a)
 }
 
-func (s stubOrgs) Create(ctx context.Context, a service.Actor, n string, active bool, m json.RawMessage) (service.Org, error) {
+func (s stubOrgs) Create(ctx context.Context, a service.Actor, n string, active bool, m jsontext.Value) (service.Org, error) {
 	if s.create == nil {
 		return service.Org{}, domain.ErrUnauthorized
 	}
@@ -540,9 +542,14 @@ func call(t *testing.T, srv *httptest.Server, method, path, bearer string, body 
 	t.Helper()
 	var reader io.Reader
 	if body != nil {
-		raw, err := json.Marshal(body)
-		if err != nil {
-			t.Fatal(err)
+		// A raw value goes over the wire byte for byte: v2 would rewrite its
+		// escapes and refuse its duplicate members, which these tests send on purpose.
+		raw, ok := body.(jsontext.Value)
+		if !ok {
+			var err error
+			if raw, err = json.Marshal(body, jsonwire.Stable); err != nil {
+				t.Fatal(err)
+			}
 		}
 		reader = bytes.NewReader(raw)
 	}
@@ -825,7 +832,7 @@ func TestWhoamiCarriesDeliveryReportGrantReach(t *testing.T) {
 			_, payload := call(t, srv, http.MethodGet, api.PathPrefix+"/auth/whoami", "live", nil)
 			var body struct {
 				Capabilities struct {
-					DeliveryReportGrant json.RawMessage `json:"delivery_report_grant"`
+					DeliveryReportGrant jsontext.Value `json:"delivery_report_grant"`
 				} `json:"capabilities"`
 			}
 			if err := json.Unmarshal(payload, &body); err != nil {
@@ -1057,9 +1064,9 @@ func TestSuccessfulLoginMatchesTheContract(t *testing.T) {
 func TestNullableMetadataRoundTripsAbsentNullAndValue(t *testing.T) {
 	// The 3.1 nullability profile, proven through the real Go consumer:
 	// absent, null and a value are three distinct facts and stay distinct.
-	var seen []json.RawMessage
+	var seen []jsontext.Value
 	srv := newTestServer(t, stubAuth{identity: liveIdentityFn}, stubOrgs{
-		create: func(_ context.Context, _ service.Actor, name string, active bool, meta json.RawMessage) (service.Org, error) {
+		create: func(_ context.Context, _ service.Actor, name string, active bool, meta jsontext.Value) (service.Org, error) {
 			seen = append(seen, meta)
 			return service.Org{
 				ID: testOrgID, Name: name, Active: active, Metadata: meta,
@@ -1386,7 +1393,7 @@ func TestDefinitionsRoutesSatisfyContractAndPreserveRawBundle(t *testing.T) {
 	base := api.PathPrefix + "/orgs/" + testOrgID + "/projects/" + testProjectID + "/definitions"
 	// Escaped member names and non-canonical ordering expose re-encoding while
 	// remaining valid JSON under kin-openapi's duplicate-member rejection.
-	bundle := json.RawMessage(`{"keys":[],"key_groups":[],"environments":[],"\u0066ormat_version":1}`)
+	bundle := jsontext.Value(`{"keys":[],"key_groups":[],"environments":[],"\u0066ormat_version":1}`)
 
 	for _, tc := range []struct {
 		method string
@@ -1422,7 +1429,7 @@ func TestDefinitionsRoutesRejectDuplicateBundleMembers(t *testing.T) {
 			var seen []byte
 			srv := definitionsServer(t, stubDefinitions{seenBody: &seen})
 			path := api.PathPrefix + "/orgs/" + testOrgID + "/projects/" + testProjectID + "/definitions/" + operation
-			bundle := json.RawMessage(`{"format_version":1,"format_version":1,"environments":[],"key_groups":[],"keys":[]}`)
+			bundle := jsontext.Value(`{"format_version":1,"format_version":1,"environments":[],"key_groups":[],"keys":[]}`)
 			resp, payload := call(t, srv, http.MethodPost, path, "hik_1_cli_x", bundle)
 			if resp.StatusCode != http.StatusBadRequest || !bytes.Contains(payload, []byte(`"code":"bad_request"`)) {
 				t.Fatalf("duplicate bundle member: status %d, body %s", resp.StatusCode, payload)
@@ -1444,8 +1451,8 @@ func TestDefinitionsRefusalsAndPlanNonexistenceAreUniform(t *testing.T) {
 		body   any
 		status int
 	}{
-		{"invalid bundle", domain.ErrInvalid, http.MethodPost, base + "/check", json.RawMessage(`{}`), http.StatusBadRequest},
-		{"stale plan", domain.ErrConflict, http.MethodPost, base + "/plans", json.RawMessage(`{"format_version":1,"environments":[],"key_groups":[],"keys":[]}`), http.StatusConflict},
+		{"invalid bundle", domain.ErrInvalid, http.MethodPost, base + "/check", jsontext.Value(`{}`), http.StatusBadRequest},
+		{"stale plan", domain.ErrConflict, http.MethodPost, base + "/plans", jsontext.Value(`{"format_version":1,"environments":[],"key_groups":[],"keys":[]}`), http.StatusConflict},
 		{"apply refused", domain.ErrConflict, http.MethodPost, base + "/plans/" + testDefinitionsPlanID + "/apply", apigen.ApplyDefinitionsPlanRequest{AllowDelete: false}, http.StatusConflict},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

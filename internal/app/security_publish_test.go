@@ -6,7 +6,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/securityfeed"
@@ -64,7 +65,7 @@ func securityPublishFixture(t *testing.T) (string, publicationRootConfig, map[st
 
 func writeSecurityPublishJSON(t *testing.T, path string, value any) {
 	t.Helper()
-	raw, err := json.Marshal(value)
+	raw, err := json.Marshal(value, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

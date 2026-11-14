@@ -3,7 +3,7 @@ package app
 import (
 	"archive/tar"
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"log/slog"
 	"os"
@@ -14,6 +14,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
@@ -53,7 +54,7 @@ func TestFailedRestoreDrillCleanupPreservesExistingTarget(t *testing.T) {
 			}
 			payload := []byte("not a tar archive")
 			if failure == "existing-target" {
-				manifest, err := json.Marshal(store.Manifest{Format: store.ArchiveFormat, Engine: store.EngineSQLite, SchemaVersion: MinRestoreSchemaVersion, CreatedAt: time.Now().UTC()})
+				manifest, err := json.Marshal(store.Manifest{Format: store.ArchiveFormat, Engine: store.EngineSQLite, SchemaVersion: MinRestoreSchemaVersion, CreatedAt: time.Now().UTC()}, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}

@@ -16,7 +16,8 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -142,14 +143,14 @@ func scimJSONDecoder(body io.Reader, _ http.Header, _ *openapi3.SchemaRef, _ ope
 		return nil, errors.New("api: the SCIM request body exceeds the bound")
 	}
 	var decoded any
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	if err := dec.Decode(&decoded); err != nil {
+	dec := jsontext.NewDecoder(bytes.NewReader(raw))
+	if err := json.UnmarshalDecode(dec, &decoded); err != nil {
 		return nil, err
 	}
-	// A single Decode stops at the end of the first JSON value, so
+	// A single decode stops at the end of the first JSON value, so
 	// `{"a":1}{"b":2}` would validate as `{"a":1}` and the handler would parse
 	// something the contract never saw. Require the reader to be spent.
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+	if _, err := dec.ReadToken(); !errors.Is(err, io.EOF) {
 		return nil, errors.New("api: trailing content after the SCIM request body")
 	}
 	return decoded, nil

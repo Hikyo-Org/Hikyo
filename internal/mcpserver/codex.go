@@ -3,11 +3,13 @@ package mcpserver
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // CodexPath is an explicit stateless compatibility boundary. The modern /mcp
@@ -64,7 +66,7 @@ func (h *handler) serveCodex(w http.ResponseWriter, r *http.Request) {
 		codexVersionError(w, envelope.ID)
 		return
 	}
-	params := map[string]json.RawMessage{}
+	params := map[string]jsontext.Value{}
 	if len(envelope.Params) != 0 {
 		if err := json.Unmarshal(envelope.Params, &params); err != nil || params == nil {
 			writeRPCError(w, http.StatusBadRequest, envelope.ID, -32602, "params must be an object", nil)
@@ -83,9 +85,9 @@ func (h *handler) serveCodex(w http.ResponseWriter, r *http.Request) {
 			"io.modelcontextprotocol/protocolVersion":    ProtocolVersion,
 			"io.modelcontextprotocol/clientCapabilities": map[string]any{},
 			"io.modelcontextprotocol/clientInfo":         map[string]string{"name": "hikyo-codex-profile", "version": "1"},
-		})
-		envelope.Params, _ = json.Marshal(params)
-		translated, _ := json.Marshal(envelope)
+		}, jsonwire.Stable)
+		envelope.Params, _ = json.Marshal(params, jsonwire.Stable)
+		translated, _ := json.Marshal(envelope, jsonwire.Stable)
 		request := r.Clone(r.Context())
 		request.URL.Path = Path
 		request.Header.Set("Mcp-Protocol-Version", ProtocolVersion)
@@ -110,7 +112,7 @@ func (h *handler) serveCodex(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func codexRequestID(id json.RawMessage) bool {
+func codexRequestID(id jsontext.Value) bool {
 	if len(id) == 0 {
 		return true
 	}
@@ -125,13 +127,13 @@ func codexRequestID(id json.RawMessage) bool {
 	return false
 }
 
-func codexVersionError(w http.ResponseWriter, id json.RawMessage) {
+func codexVersionError(w http.ResponseWriter, id jsontext.Value) {
 	writeRPCError(w, http.StatusBadRequest, id, -32022,
 		"unsupported protocol; /mcp/codex supports 2025-06-18; use /mcp for 2026-07-28",
 		map[string]any{"supported": []string{CodexProtocolVersion}})
 }
 
-func (h *handler) serveCodexLifecycle(w http.ResponseWriter, r *http.Request, envelope rpcEnvelope, params map[string]json.RawMessage) {
+func (h *handler) serveCodexLifecycle(w http.ResponseWriter, r *http.Request, envelope rpcEnvelope, params map[string]jsontext.Value) {
 	if h.admission != nil && !h.admission.AllowDiscovery(h.sourceIP(r)) {
 		audit.NoteRefusal(r.Context(), audit.RefusalAdmission)
 		w.Header().Set("Retry-After", "60")
@@ -156,7 +158,7 @@ func (h *handler) serveCodexLifecycle(w http.ResponseWriter, r *http.Request, en
 			Name    string `json:"name"`
 			Version string `json:"version"`
 		}
-		var capabilities map[string]json.RawMessage
+		var capabilities map[string]jsontext.Value
 		if json.Unmarshal(params["protocolVersion"], &version) != nil || version == "" ||
 			json.Unmarshal(params["clientInfo"], &info) != nil || info.Name == "" || info.Version == "" ||
 			json.Unmarshal(params["capabilities"], &capabilities) != nil || capabilities == nil {
@@ -173,7 +175,7 @@ func (h *handler) serveCodexLifecycle(w http.ResponseWriter, r *http.Request, en
 			"serverInfo":      map[string]string{"name": "hikyo", "version": h.version},
 		}
 	}
-	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": envelope.ID, "result": result})
+	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": envelope.ID, "result": result}, jsonwire.Stable)
 	if len(body) > MaxStaticResponseBytes {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return

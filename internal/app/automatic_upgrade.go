@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -23,6 +23,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
 	"github.com/Hikyo-Org/hikyo/internal/hostupgrade"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securefile"
 	"github.com/Hikyo-Org/hikyo/internal/securitymaintenance"
@@ -749,7 +750,7 @@ func cleanupAutomaticUnpublishedBundle(journalPath, bundlePath string) error {
 }
 
 func writeAutomaticJournal(path string, journal *automaticJournal) error {
-	raw, err := json.Marshal(journal)
+	raw, err := json.Marshal(journal, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

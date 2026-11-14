@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +13,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/configrollout"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -58,7 +59,7 @@ func topologyOwnerFixtureCommit(t *testing.T, srv *Server, principal domain.Prin
 				return err
 			}
 			signed.Command = configrollout.Command{Action: configrollout.ActionPrepare, Topology: topology, PreviousTemplateStamp: previousStamp}
-			raw, err := json.Marshal(signed)
+			raw, err := json.Marshal(signed, jsonwire.Stable)
 			if err != nil {
 				return err
 			}
@@ -71,11 +72,11 @@ func topologyOwnerFixtureCommit(t *testing.T, srv *Server, principal domain.Prin
 				return err
 			}
 			signed.Command.Action = configrollout.ActionSubmit
-			raw, err = json.Marshal(signed)
+			raw, err = json.Marshal(signed, jsonwire.Stable)
 			if err != nil {
 				return err
 			}
-			response, err := json.Marshal(configrollout.Response{TemplateStamp: stamp})
+			response, err := json.Marshal(configrollout.Response{TemplateStamp: stamp}, jsonwire.Stable)
 			if err != nil {
 				return err
 			}
@@ -95,7 +96,7 @@ func topologyOwnerFixtureCommit(t *testing.T, srv *Server, principal domain.Prin
 				return err
 			}
 			signed.Command.Action = configrollout.ActionRestore
-			raw, err := json.Marshal(signed)
+			raw, err := json.Marshal(signed, jsonwire.Stable)
 			if err != nil {
 				return err
 			}

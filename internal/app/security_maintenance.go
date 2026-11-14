@@ -3,7 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -19,6 +19,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securitydeployment"
 	"github.com/Hikyo-Org/hikyo/internal/securityfeed"
@@ -274,11 +275,11 @@ func bindSecurityPolicy(engine *securitymaintenance.Engine, path string, c Secur
 	if err := definitions.DecodeStrict(raw, &bound); err != nil {
 		return err
 	}
-	loaded, err := json.Marshal(c)
+	loaded, err := json.Marshal(c, jsonwire.Stable)
 	if err != nil {
 		return err
 	}
-	current, err := json.Marshal(bound)
+	current, err := json.Marshal(bound, jsonwire.Stable)
 	if err != nil {
 		return err
 	}
@@ -337,7 +338,7 @@ func RunSecurityMaintenance(ctx context.Context, args []string, out io.Writer) e
 		if err != nil {
 			return err
 		}
-		return json.NewEncoder(out).Encode(struct {
+		return encodeJSON(out, struct {
 			securitymaintenance.Status
 			Stale bool `json:"stale"`
 		}{state, state.Phase == "stale" || state.LastVerified.IsZero() || !state.KnownUntil.After(time.Now())})
@@ -355,13 +356,13 @@ func RunSecurityMaintenance(ctx context.Context, args []string, out io.Writer) e
 	if action == "reconcile" {
 		state, err := engine.Reconcile(ctx, confirm)
 		deploymentDriverOf(engine.Driver).PublishStatus(ctx, c.StatusFile)
-		return errors.Join(err, json.NewEncoder(out).Encode(state))
+		return errors.Join(err, encodeJSON(out, state))
 	}
 	follower := newCoordinatorFollower(c, deploymentDriverOf(engine.Driver))
 	for {
 		state, runErr := engine.RunOnce(ctx, action == "run")
 		deploymentDriverOf(engine.Driver).PublishStatus(ctx, c.StatusFile)
-		if err := json.NewEncoder(out).Encode(state); err != nil {
+		if err := encodeJSON(out, state); err != nil {
 			return errors.Join(runErr, err)
 		}
 		if action == "run" && runErr == nil {
@@ -424,11 +425,11 @@ func loadCoordinatorConfiguration(path string) (SecurityMaintenanceConfiguration
 // rebindCoordinatorFollower keeps f, and the release it has followed, only while the
 // configuration it was built from is unchanged: its driver and executable belong to it.
 func rebindCoordinatorFollower(f *coordinatorFollower, previous, c SecurityMaintenanceConfiguration, driver *securityDeploymentDriver) (*coordinatorFollower, error) {
-	before, err := json.Marshal(previous)
+	before, err := json.Marshal(previous, jsonwire.Stable)
 	if err != nil {
 		return nil, err
 	}
-	after, err := json.Marshal(c)
+	after, err := json.Marshal(c, jsonwire.Stable)
 	if err != nil {
 		return nil, err
 	}
@@ -448,7 +449,7 @@ func enrollSecurityMaintenance(ctx context.Context, engine *securitymaintenance.
 			return fmt.Errorf("pin the Deployment identity: %w", err)
 		}
 		deploymentDriverOf(engine.Driver).PublishStatus(ctx, statusFile)
-		return json.NewEncoder(out).Encode(state)
+		return encodeJSON(out, state)
 	}
 	// Pinning first means a crash between the two steps cannot leave an enrolled
 	// installation whose Deployment identity was never recorded.
@@ -465,7 +466,7 @@ func enrollSecurityMaintenance(ctx context.Context, engine *securitymaintenance.
 	}
 	state, err := engine.Enroll(ctx)
 	deploymentDriverOf(engine.Driver).PublishStatus(ctx, statusFile)
-	return errors.Join(err, json.NewEncoder(out).Encode(state))
+	return errors.Join(err, encodeJSON(out, state))
 }
 
 func runSecurityImageCommand(ctx context.Context, args []string, out io.Writer) error {
@@ -510,7 +511,7 @@ func runSecurityImageCommand(ctx context.Context, args []string, out io.Writer) 
 		if err != nil {
 			return err
 		}
-		return json.NewEncoder(out).Encode(report)
+		return encodeJSON(out, report)
 	}
 	var observed securitymaintenance.Observation
 	if action == "stage" {
@@ -526,7 +527,7 @@ func runSecurityImageCommand(ctx context.Context, args []string, out io.Writer) 
 	if err != nil {
 		return err
 	}
-	return json.NewEncoder(out).Encode(observed)
+	return encodeJSON(out, observed)
 }
 
 func securityOperationalHealth(ctx context.Context, cfg *config.Config) error {
