@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,9 +21,16 @@ const queueWorkflowPath = ".github/workflows/ci-merge-group.yml"
 const queueRulesetID = 20539346
 const feedbackWorkflowPath = ".github/workflows/ci-feedback.yml"
 
+// ci-feedback-retarget runs ci-feedback for a base retarget. Its suites are
+// never the oldest on a head, so a metadata edit cannot hide a gate record.
+const retargetWorkflowPath = ".github/workflows/ci-feedback-retarget.yml"
+const retargetJobName = "retarget"
+
 // GitHub can skip a job before expanding its matrix/name expression, and may
 // normalize its parentheses. Match only observed canonical spellings of this
-// ignored job, never an arbitrary successful/skipped run.
+// ignored job, never an arbitrary successful/skipped run. ci-feedback no longer
+// runs on edited, but heads that ran an older copy (dev until its backmerge)
+// still carry these skipped runs.
 const feedbackNameExpression = "${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'metadata (ignored)' || 'feedback' }} (${{ matrix.lane }})"
 
 // The Actions API also returns this parenthesized serialization before matrix expansion.
@@ -247,7 +255,7 @@ func (q *queueController) executeProof(ctx context.Context, name string, e event
 		}
 		numbers = []int{n}
 	case "workflow_run":
-		if e.Run.Event != "pull_request" || e.Run.Path != feedbackWorkflowPath || e.Run.Repository.ID != q.repo.ID || !shaPattern.MatchString(e.Run.HeadSHA) {
+		if e.Run.Event != "pull_request" || !isFeedbackPath(e.Run.Path) || e.Run.Repository.ID != q.repo.ID || !shaPattern.MatchString(e.Run.HeadSHA) {
 			return errors.New("invalid feedback callback")
 		}
 		// Routing is only a hint. Admission independently finds current exact-head
@@ -644,7 +652,34 @@ func (q *queueController) sharedHead(ctx context.Context, p pull) (bool, error) 
 	return false, nil
 }
 
-func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
+// feedbackSource is one workflow whose runs carry fast feedback for a head.
+// ci-feedback-retarget calls ci-feedback for a base retarget, so its lanes are
+// named "retarget / feedback (go)" and a skipped metadata edit leaves one
+// skipped "retarget" job.
+type feedbackSource struct {
+	file, path, name, prefix string
+	skipped                  []string
+}
+
+var feedbackSources = [...]feedbackSource{
+	{file: "ci-feedback.yml", path: feedbackWorkflowPath, name: "ci-feedback", skipped: []string{skippedFeedbackName, feedbackNameExpression, normalizedFeedbackNameExpression}},
+	{file: "ci-feedback-retarget.yml", path: retargetWorkflowPath, name: "ci-feedback", prefix: retargetJobName + " / ", skipped: []string{retargetJobName}},
+}
+
+// isFeedbackPath reports whether a workflow_run callback came from a feedback source.
+func isFeedbackPath(path string) bool {
+	return slices.ContainsFunc(feedbackSources[:], func(s feedbackSource) bool { return s.path == path })
+}
+
+type sourcedRun struct {
+	run
+	source *feedbackSource
+}
+
+// feedbackRuns lists one source's exact-head runs and validates their identity.
+// shortcut: it reads every page before any run is judged, so a head with 1000
+// runs of one source fails closed; page the evaluation if a head ever nears that.
+func (q *queueController) feedbackRuns(ctx context.Context, p pull, s *feedbackSource) ([]sourcedRun, error) {
 	type runList struct {
 		Runs  []run `json:"workflow_runs"`
 		Total int   `json:"total_count"`
@@ -652,20 +687,21 @@ func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
 	var w workflow
 	var first runList
 	runsPath := func(page int) string {
-		return q.endpoint(fmt.Sprintf("actions/workflows/ci-feedback.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=%d", p.Head.SHA, page))
+		return q.endpoint(fmt.Sprintf("actions/workflows/%s/runs?event=pull_request&head_sha=%s&per_page=100&page=%d", s.file, p.Head.SHA, page))
 	}
 	// The definition and first run page are independent reads of the same
 	// feedback phase. Join and validate both before trusting any run or job.
 	if err := parallelReads(ctx, func(ctx context.Context) error {
-		return q.api.read(ctx, q.endpoint("actions/workflows/ci-feedback.yml"), &w)
+		return q.api.read(ctx, q.endpoint("actions/workflows/"+s.file), &w)
 	}, func(ctx context.Context) error {
 		return q.api.read(ctx, runsPath(1), &first)
 	}); err != nil {
 		return nil, err
 	}
-	if w.ID <= 0 || w.Path != feedbackWorkflowPath || w.Name != "ci-feedback" {
+	if w.ID <= 0 || w.Path != s.path || w.Name != s.name {
 		return nil, errors.New("invalid feedback workflow identity")
 	}
+	var runs []sourcedRun
 	for page := 1; page <= 10; page++ {
 		list := first
 		if page > 1 {
@@ -677,89 +713,117 @@ func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
 		if list.Runs == nil || list.Total < 0 || list.Total > 1000 {
 			return nil, errors.New("invalid feedback run list")
 		}
-		sort.Slice(list.Runs, func(i, j int) bool { return list.Runs[i].ID > list.Runs[j].ID })
 		for _, r := range list.Runs {
-			if r.ID <= 0 || r.Attempt <= 0 || r.WorkflowID != w.ID || r.Path != feedbackWorkflowPath || r.Event != "pull_request" || r.Repository.ID != q.repo.ID || !strings.EqualFold(r.Repository.FullName, q.repoName) || r.HeadSHA != p.Head.SHA || r.HeadRepository.ID != p.Head.Repo.ID || !strings.EqualFold(r.HeadRepository.FullName, p.Head.Repo.FullName) {
+			if r.ID <= 0 || r.Attempt <= 0 || r.WorkflowID != w.ID || r.Path != s.path || r.Event != "pull_request" || r.Repository.ID != q.repo.ID || !strings.EqualFold(r.Repository.FullName, q.repoName) || r.HeadSHA != p.Head.SHA || r.HeadRepository.ID != p.Head.Repo.ID || !strings.EqualFold(r.HeadRepository.FullName, p.Head.Repo.FullName) {
 				return nil, errors.New("invalid exact-head feedback identity")
 			}
-			if len(r.Pulls) == 0 {
-				if err := q.sourceBoundForkFeedback(ctx, r, p); err != nil {
-					return nil, err
-				}
-			} else if len(r.Pulls) != 1 || r.Pulls[0].Number != p.Number || r.Pulls[0].Head.SHA != p.Head.SHA || r.Pulls[0].Base.Ref != p.Base.Ref || r.Pulls[0].Head.Repo.ID != p.Head.Repo.ID || r.Pulls[0].Base.Repo.ID != p.Base.Repo.ID {
-				return nil, errors.New("feedback has contradictory or ambiguous PR association")
-			}
-			switch r.Status {
-			case "queued", "in_progress", "completed", "waiting", "pending", "requested":
-			default:
-				return nil, errors.New("invalid feedback run status")
-			}
-			if r.Status == "completed" && (r.Conclusion == "action_required" || r.Conclusion == "failure" || r.Conclusion == "cancelled" || r.Conclusion == "timed_out" || r.Conclusion == "startup_failure") {
-				return &r, nil
-			}
-			jobs, err := q.jobs(ctx, r)
-			if err != nil {
-				return nil, err
-			}
-			// GitHub can complete a skipped workflow before creating its matrix
-			// placeholder job. Until that job proves this was an ignored metadata
-			// event, keep admission pending and do not reuse an older success.
-			if r.Status == "completed" && r.Conclusion == "skipped" && len(jobs) == 0 {
-				_, err := fmt.Fprintf(q.output, "PR #%d head=%s feedback_run=%d attempt=%d: waiting for GitHub skipped jobs to materialize; admission remains pending.\n", p.Number, r.HeadSHA, r.ID, r.Attempt)
-				// A failed diagnostic write is an operational error. The caller
-				// still verifies an authenticated blocking barrier before return.
-				return nil, err
-			}
-			if len(jobs) == 1 && (jobs[0].Name == skippedFeedbackName || jobs[0].Name == feedbackNameExpression || jobs[0].Name == normalizedFeedbackNameExpression) && jobs[0].Status == "completed" && jobs[0].Conclusion == "skipped" {
-				continue
-			}
-			admitted, ignored := 0, 0
-			lanes := make(map[string]int)
-			usefulLanes := map[string]bool{"feedback (go)": true, "feedback (frontend)": true}
-			ignoredLanes := map[string]bool{"metadata (ignored) (go)": true, "metadata (ignored) (frontend)": true}
-			if q.checkName == devCheckName {
-				usefulLanes["feedback (tooling)"] = true
-				ignoredLanes["metadata (ignored) (tooling)"] = true
-			}
-			for _, j := range jobs {
-				lanes[j.Name]++
-				if ignoredLanes[j.Name] {
-					if j.Status != "completed" || j.Conclusion != "skipped" {
-						return nil, errors.New("invalid ignored metadata feedback")
-					}
-					ignored++
-				}
-				if usefulLanes[j.Name] {
-					admitted++
-					if j.HeadSHA != r.HeadSHA {
-						return nil, errors.New("feedback job source mismatch")
-					}
-					if r.Status == "completed" && (j.Status != "completed" || j.Conclusion != "success") {
-						r.Conclusion = "failure"
-					}
-				}
-			}
-			completeLanes := func(expected map[string]bool) bool {
-				for lane := range expected {
-					if lanes[lane] != 1 {
-						return false
-					}
-				}
-				return true
-			}
-			if ignored == len(ignoredLanes) && admitted == 0 && completeLanes(ignoredLanes) {
-				continue
-			}
-			if r.Status == "completed" && (admitted != len(usefulLanes) || !completeLanes(usefulLanes)) {
-				return nil, errors.New("missing or duplicated useful feedback lane")
-			}
-			return &r, nil
+			runs = append(runs, sourcedRun{r, s})
 		}
 		if len(list.Runs) < 100 {
-			return nil, nil
+			return runs, nil
 		}
 	}
 	return nil, errors.New("feedback pagination limit reached")
+}
+
+func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
+	// Both sources are read at once so the second workflow adds no round trip.
+	var lists [len(feedbackSources)][]sourcedRun
+	read := func(i int) func(context.Context) error {
+		return func(ctx context.Context) (err error) {
+			lists[i], err = q.feedbackRuns(ctx, p, &feedbackSources[i])
+			return err
+		}
+	}
+	if err := parallelReads(ctx, read(0), read(1)); err != nil {
+		return nil, err
+	}
+	runs := append(lists[0], lists[1]...)
+	// Run IDs grow with creation, so the newest useful run of either source wins.
+	sort.Slice(runs, func(i, j int) bool { return runs[i].ID > runs[j].ID })
+	for _, sr := range runs {
+		r, s := sr.run, sr.source
+		if len(r.Pulls) == 0 {
+			if err := q.sourceBoundForkFeedback(ctx, r, p); err != nil {
+				return nil, err
+			}
+		} else if len(r.Pulls) != 1 || r.Pulls[0].Number != p.Number || r.Pulls[0].Head.SHA != p.Head.SHA || r.Pulls[0].Base.Ref != p.Base.Ref || r.Pulls[0].Head.Repo.ID != p.Head.Repo.ID || r.Pulls[0].Base.Repo.ID != p.Base.Repo.ID {
+			return nil, errors.New("feedback has contradictory or ambiguous PR association")
+		}
+		switch r.Status {
+		case "queued", "in_progress", "completed", "waiting", "pending", "requested":
+		default:
+			return nil, errors.New("invalid feedback run status")
+		}
+		if r.Status == "completed" && (r.Conclusion == "action_required" || r.Conclusion == "failure" || r.Conclusion == "cancelled" || r.Conclusion == "timed_out" || r.Conclusion == "startup_failure") {
+			return &r, nil
+		}
+		jobs, err := q.jobs(ctx, r)
+		if err != nil {
+			return nil, err
+		}
+		// GitHub can complete a skipped workflow before creating its matrix
+		// placeholder job. Until that job proves this was an ignored metadata
+		// event, keep admission pending and do not reuse an older success.
+		if r.Status == "completed" && r.Conclusion == "skipped" && len(jobs) == 0 {
+			_, err := fmt.Fprintf(q.output, "PR #%d head=%s feedback_run=%d attempt=%d: waiting for GitHub skipped jobs to materialize; admission remains pending.\n", p.Number, r.HeadSHA, r.ID, r.Attempt)
+			// A failed diagnostic write is an operational error. The caller
+			// still verifies an authenticated blocking barrier before return.
+			return nil, err
+		}
+		if len(jobs) == 1 && slices.Contains(s.skipped, jobs[0].Name) && jobs[0].Status == "completed" && jobs[0].Conclusion == "skipped" {
+			continue
+		}
+		admitted, ignored := 0, 0
+		lanes := make(map[string]int)
+		usefulLanes := map[string]bool{s.prefix + "feedback (go)": true, s.prefix + "feedback (frontend)": true}
+		// Only ci-feedback's own edited runs had metadata lanes; the retarget
+		// caller skips metadata edits before calling it.
+		ignoredLanes := map[string]bool{}
+		if s.prefix == "" {
+			ignoredLanes = map[string]bool{"metadata (ignored) (go)": true, "metadata (ignored) (frontend)": true}
+		}
+		if q.checkName == devCheckName {
+			usefulLanes[s.prefix+"feedback (tooling)"] = true
+			if s.prefix == "" {
+				ignoredLanes["metadata (ignored) (tooling)"] = true
+			}
+		}
+		for _, j := range jobs {
+			lanes[j.Name]++
+			if ignoredLanes[j.Name] {
+				if j.Status != "completed" || j.Conclusion != "skipped" {
+					return nil, errors.New("invalid ignored metadata feedback")
+				}
+				ignored++
+			}
+			if usefulLanes[j.Name] {
+				admitted++
+				if j.HeadSHA != r.HeadSHA {
+					return nil, errors.New("feedback job source mismatch")
+				}
+				if r.Status == "completed" && (j.Status != "completed" || j.Conclusion != "success") {
+					r.Conclusion = "failure"
+				}
+			}
+		}
+		completeLanes := func(expected map[string]bool) bool {
+			for lane := range expected {
+				if lanes[lane] != 1 {
+					return false
+				}
+			}
+			return true
+		}
+		if len(ignoredLanes) > 0 && ignored == len(ignoredLanes) && admitted == 0 && completeLanes(ignoredLanes) {
+			continue
+		}
+		if r.Status == "completed" && (admitted != len(usefulLanes) || !completeLanes(usefulLanes)) {
+			return nil, errors.New("missing or duplicated useful feedback lane")
+		}
+		return &r, nil
+	}
+	return nil, nil
 }
 
 func (q *queueController) sourceBoundForkFeedback(ctx context.Context, r run, p pull) error {

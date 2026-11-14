@@ -69,7 +69,14 @@ func (f *queueFixture) feedbackRefresh() {
 	r := f.feedbackRun
 	f.api.responses[f.c.endpoint("actions/workflows/ci-feedback.yml")] = workflow{ID: 21, Path: feedbackWorkflowPath, Name: "ci-feedback"}
 	f.api.responses[f.c.endpoint(fmt.Sprintf("actions/workflows/ci-feedback.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=1", f.pr.Head.SHA))] = map[string]any{"total_count": 1, "workflow_runs": []run{r}}
+	f.retargetRefresh()
 	f.api.responses[f.c.endpoint(fmt.Sprintf("actions/runs/%d/attempts/%d/jobs?per_page=100&page=1", r.ID, r.Attempt))] = map[string]any{"total_count": 2, "jobs": []job{{ID: 201, RunID: r.ID, Attempt: r.Attempt, HeadSHA: r.HeadSHA, Name: "feedback (go)", Status: "completed", Conclusion: "success"}, {ID: 202, RunID: r.ID, Attempt: r.Attempt, HeadSHA: r.HeadSHA, Name: "feedback (frontend)", Status: "completed", Conclusion: "success"}}}
+}
+
+// retargetRefresh installs ci-feedback-retarget's definition and exact-head runs.
+func (f *queueFixture) retargetRefresh(runs ...run) {
+	f.api.responses[f.c.endpoint("actions/workflows/ci-feedback-retarget.yml")] = workflow{ID: 23, Path: retargetWorkflowPath, Name: "ci-feedback"}
+	f.api.responses[f.c.endpoint(fmt.Sprintf("actions/workflows/ci-feedback-retarget.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=1", f.pr.Head.SHA))] = map[string]any{"total_count": len(runs), "workflow_runs": append([]run{}, runs...)}
 }
 func (f *queueFixture) groupRefresh() {
 	r := f.groupRun
