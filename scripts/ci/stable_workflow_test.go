@@ -71,6 +71,10 @@ func TestStableSigningAndPublicationStaySeparate(t *testing.T) {
 		evidence.With["path"] != "${{ runner.temp }}/release-source-proof.json" {
 		t.Fatal("successful release source proof must be retained as exact small evidence")
 	}
+	outputs := regexp.MustCompile(`--output "([^"]+)"`).FindAllStringSubmatch(source.Run, -1)
+	if len(outputs) != 1 || strings.ReplaceAll(outputs[0][1], "$RUNNER_TEMP", "${{ runner.temp }}") != evidence.With["path"] {
+		t.Fatal("release source proof must have one --output, the exact file the evidence uploader retains")
+	}
 	signer := build.Jobs["build-signed-draft"]
 	if signer.Permissions["id-token"] != "write" {
 		t.Fatal("tag build requires OIDC")
