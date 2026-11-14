@@ -57,7 +57,8 @@ var auditContentTypes = map[string]bool{
 // stricter rule-3 set (fmt is allowed for audit content — wrapping an error
 // with an event id is not mirroring the trail; log emission is).
 var formattingPackages = map[string]bool{
-	"fmt": true, "encoding/json": true, "log": true, "log/slog": true,
+	"fmt": true, "encoding/json": true, "encoding/json/v2": true,
+	"log": true, "log/slog": true,
 	"encoding/xml": true, "encoding/gob": true, "encoding/csv": true,
 	"text/template": true, "html/template": true,
 }

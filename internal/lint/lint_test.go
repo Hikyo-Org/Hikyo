@@ -598,6 +598,7 @@ func TestSensitiveFormattingCatchesViolations(t *testing.T) {
 			"passes sensitive type " + Module + "/internal/crypto.Keyring to fmt",
 			"passes sensitive type " + Module + "/internal/crypto.ProjectSealer to fmt",
 			"passes sensitive type " + Module + "/internal/crypto.Keyring to encoding/json",
+			"passes sensitive type " + Module + "/internal/crypto.Keyring to encoding/json/v2",
 			"passes sensitive type " + Module + "/internal/crypto.LocalKeys to fmt",
 			"passes sensitive type " + Module + "/internal/crypto.LocalKeys to encoding/json",
 			"passes sensitive type " + Module + "/internal/crypto.LocalKeys to log/slog",
@@ -608,6 +609,7 @@ func TestSensitiveFormattingCatchesViolations(t *testing.T) {
 		// written, not merely somewhere in the file.
 		for marker, what := range map[string]string{
 			`any(ev)`:                        "any-conversion erasure",
+			`jsonv2.Marshal(kr)`:             "encoding/json/v2 marshal",
 			`ev.Payload["x"]`:                "payload map-index erasure",
 			`fmt.Printf("%v", any(kr))`:      "sensitive-type erasure",
 			`fmt.Printf("%#v", value)`:       "LocalKeys value",
