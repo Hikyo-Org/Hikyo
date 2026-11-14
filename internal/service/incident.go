@@ -230,7 +230,10 @@ func (s *Incidents) authorizeResolved(ctx context.Context, az *authz.TxAuthorize
 			if !validIncidentObjectID(t.AdapterID) {
 				return incidentAccess{}, domain.ErrInvalid
 			}
-			out.adapterID, out.scopeID = t.AdapterID, t.AdapterID
+			// The scope id carries the project, which the lease authorization
+			// above proved belongs to the authorized org. An unverified adapter id
+			// therefore cannot occupy another org's open-incident slot.
+			out.adapterID, out.scopeID = t.AdapterID, string(t.Scope.Project)+"/"+t.AdapterID
 		}
 	default:
 		return incidentAccess{}, domain.ErrInvalid

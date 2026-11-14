@@ -1354,3 +1354,46 @@ func TestIncidentLedgerRejectsOutsideTheClosedVocabulary(t *testing.T) {
 		}
 	})
 }
+
+// ---- adapter incidents -------------------------------------------------------
+
+func TestIncidentAdapterScope(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		ctx := t.Context()
+		adapterTarget := func(org domain.OrgID, project domain.ProjectID, id string) service.IncidentTarget {
+			return service.IncidentTarget{Kind: domain.IncidentScopeAdapter, Scope: domain.Scope{Org: org, Project: project}, AdapterID: id}
+		}
+
+		// An adapter in the middle of a route move is visible on the adapter
+		// record, so it is a ledger item the adapter owner resumes.
+		execRaw(t, db, `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_it_mv','org_a','prj_a1','forgejo','https://git.example','usr_alice','moving',`+ts+`)`)
+		v, err := w.svc.Open(ctx, w.as(incResponder), adapterTarget(orgA, prjA1, "adp_it_mv"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := w.itemMap(t, incResponder, v.Incident.ID)
+		wantItems(t, got, map[string]string{
+			"adapter_move.resume|adapter|adp_it_mv":                "pending/",
+			"adapter_credential.upstream_revoke|adapter|adp_it_mv": "unknown/upstream_not_observable",
+		})
+
+		// A credential-reset holder without the adapter capability records an
+		// unverified adapter id. The open-incident slot is qualified by the project
+		// the caller proved is its own, so it cannot occupy another org's adapter.
+		squat, err := w.svc.Open(ctx, w.as(incLimited), adapterTarget(orgA, prjA1, "adp_victim"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		own, err := w.svc.Open(ctx, w.as(incOrgB), adapterTarget(orgB, prjB1, "adp_victim"))
+		if err != nil {
+			t.Fatalf("org B opening its own adapter incident after org A recorded the same id: %v", err)
+		}
+		if own.Incident.ID == squat.Incident.ID || own.Incident.OrgID != orgB || squat.Incident.OrgID != orgA {
+			t.Fatalf("incidents = %+v and %+v, want two incidents, one per org", squat.Incident, own.Incident)
+		}
+		if _, err := w.svc.Get(ctx, w.as(incOrgB), squat.Incident.ID); !errors.Is(err, domain.ErrNotFound) {
+			t.Errorf("org B reading org A's adapter incident = %v, want not found", err)
+		}
+	})
+}
