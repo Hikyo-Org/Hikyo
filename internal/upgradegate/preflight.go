@@ -2,13 +2,14 @@ package upgradegate
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
 	"github.com/Hikyo-Org/hikyo/internal/buildcompat"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 	"github.com/Hikyo-Org/hikyo/internal/upgradebundle"
@@ -190,7 +191,7 @@ func preflightConfiguration(ctx context.Context, input ConfigurationPreflight, b
 	} else if request.LegacyWritersStopped {
 		return refusal(errors.New("legacy writer assertion requires separate signed evidence"))
 	}
-	encoded, err := json.Marshal(material)
+	encoded, err := json.Marshal(material, jsonwire.Stable)
 	if err != nil {
 		return refusal(err)
 	}
@@ -199,7 +200,7 @@ func preflightConfiguration(ctx context.Context, input ConfigurationPreflight, b
 		Build   releaseidentity.Digest
 		Target  releaseidentity.Identity
 		Custody releaseidentity.Digest
-	}{State: state, Build: releaseidentity.Hash(build), Target: target, Custody: releaseidentity.Hash(custodyRaw)})
+	}{State: state, Build: releaseidentity.Hash(build), Target: target, Custody: releaseidentity.Hash(custodyRaw)}, jsonwire.Stable)
 	if err != nil {
 		return refusal(err)
 	}

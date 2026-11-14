@@ -3,13 +3,14 @@ package upgradegate
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 )
 
@@ -146,9 +147,10 @@ func RotateOperator(ctx context.Context, request OperatorRotationRequest) (upgra
 	return result, nil
 }
 func sameOperatorState(a, b upgrade.State) bool {
-	left, _ := json.Marshal(a)
-	right, _ := json.Marshal(b)
-	return bytes.Equal(left, right)
+	left, leftErr := json.Marshal(a, jsonwire.Stable)
+	right, rightErr := json.Marshal(b, jsonwire.Stable)
+	// Two states that cannot be encoded must never compare equal.
+	return leftErr == nil && rightErr == nil && bytes.Equal(left, right)
 }
 
 // InstalledOperator reads public installation custody for local export/drill.

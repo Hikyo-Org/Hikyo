@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"math"
@@ -13,6 +13,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/google/uuid"
@@ -223,7 +224,7 @@ func (s *Session) MigrateConfiguration(ctx context.Context, expected State, root
 		if err := audit.Validate(event, audit.TrailInstance, domain.Scope{}); err != nil {
 			return err
 		}
-		payload, err := json.Marshal(event.Payload)
+		payload, err := json.Marshal(event.Payload, jsonwire.Stable)
 		if err != nil {
 			return err
 		}

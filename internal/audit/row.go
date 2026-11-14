@@ -2,11 +2,12 @@ package audit
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // TimeFormat is the fixed-width UTC microsecond text form audit timestamps
@@ -72,7 +73,7 @@ func BuildRow(e Event, trail Trail, scope domain.Scope, recordedAt time.Time) (R
 	if err != nil {
 		return Row{}, err
 	}
-	payload, err := json.Marshal(e.Payload)
+	payload, err := json.Marshal(e.Payload, jsonwire.Stable)
 	if err != nil {
 		return Row{}, fmt.Errorf("audit: %s: marshal payload: %w", e.Type, err)
 	}

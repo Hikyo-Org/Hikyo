@@ -127,6 +127,12 @@ var protocolImportConfinements = []ImportConfinement{
 // confinement above instead of the crypto chokepoint below.
 const sshLibrary = "golang.org/x/crypto/ssh"
 
+// leafSafe is the one internal package the config and crypto leaf rules allow:
+// internal/jsonwire holds only encoding/json/v2 options and imports nothing
+// from this module (its own rule below), so it adds no upward or persistence
+// edge.
+const leafSafe = module + "/internal/jsonwire"
+
 // Forbidden direct edges match a package and its slash-separated children.
 var forbidden = []struct{ importer, imports, why string }{
 	{module + "/internal/server", module + "/internal/store", "handlers cannot reach the datastore directly"},
@@ -140,6 +146,7 @@ var forbidden = []struct{ importer, imports, why string }{
 	{module + "/cmd/", module + "/internal/store", "main wires through internal/app, not store"},
 	{module + "/internal/config", module + "/internal/", "config is a leaf package"},
 	{module + "/internal/crypto", module + "/internal/", "crypto is a leaf package: persistence arrives through its KeyStore interface"},
+	{leafSafe, module, "jsonwire is imported by leaf packages, so it imports nothing from this module"},
 }
 
 // Crypto chokepoint (encryption-model ADR CI invariant 12, placed by the
@@ -479,6 +486,9 @@ func TestForbiddenEdges(t *testing.T) {
 					// same package seen from outside, and counting it would make
 					// every leaf package unable to have a black-box test.
 					if imp == p.ImportPath {
+						continue
+					}
+					if imp == leafSafe && (rule.importer == module+"/internal/config" || rule.importer == module+"/internal/crypto") {
 						continue
 					}
 					if packageWithin(imp, rule.imports) {

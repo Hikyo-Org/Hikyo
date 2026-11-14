@@ -2,7 +2,8 @@ package securitymaintenance
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securityfeed"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
@@ -683,13 +685,13 @@ func TestSecurityCatalogRejectsUnsafeCoverageAndAmbiguousInput(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			c := fixtureCatalog()
 			tc.edit(&c)
-			raw, _ := json.Marshal(c)
+			raw, _ := json.Marshal(c, jsonwire.Stable)
 			if _, err := DecodeCatalog(raw, fixtureTime); err == nil {
 				t.Fatal("unsafe catalog accepted")
 			}
 		})
 	}
-	valid, _ := json.Marshal(fixtureCatalog())
+	valid, _ := json.Marshal(fixtureCatalog(), jsonwire.Stable)
 	for _, raw := range [][]byte{append(valid, []byte(" {}")...), []byte(strings.Replace(string(valid), `"sequence":1`, `"sequence":1,"sequence":2`, 1)), []byte(strings.Replace(string(valid), `"sequence":1`, `"sequence":1,"unreviewed":true`, 1)), []byte("null")} {
 		if _, err := DecodeCatalog(raw, fixtureTime); err == nil {
 			t.Fatal("ambiguous closed artifact accepted")
@@ -722,7 +724,7 @@ func TestSecurityCatalogAcceptsMaximumLifetimeRolloutAndWithdrawnBadFix(t *testi
 	// The fixed version moved past a release that once claimed this fix.
 	c.Targets[0].Identity = fixtureIdentity("1.2.1", 8)
 	c.Targets[0].Withdrawn = true
-	raw, err := json.Marshal(c)
+	raw, err := json.Marshal(c, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -994,7 +996,7 @@ func (f *fixtureFeed) Refresh(context.Context) (securityfeed.Document, error) {
 	if f.change != nil {
 		f.change(f.calls, &f.catalog)
 	}
-	raw, err := json.Marshal(f.catalog)
+	raw, err := json.Marshal(f.catalog, jsonwire.Stable)
 	return securityfeed.Document{Data: raw, Version: f.catalog.Sequence, Expires: f.catalog.ExpiresAt}, err
 }
 
@@ -1313,7 +1315,7 @@ func TestSecurityMaintenanceStateSizeBoundIncludesTheNewline(t *testing.T) {
 	e, _, _ := fixtureEngine(t)
 	padded := func(size int) Status {
 		state := Status{Format: StatusFormat, Phase: "enrolled", Applicable: []string{}, Coverage: []string{""}}
-		base, err := json.MarshalIndent(state, "", "  ")
+		base, err := json.Marshal(state, jsonwire.Stable, jsontext.WithIndent("  "))
 		if err != nil {
 			t.Fatal(err)
 		}

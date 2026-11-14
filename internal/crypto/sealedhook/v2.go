@@ -14,7 +14,8 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -24,6 +25,8 @@ import (
 	"time"
 
 	"filippo.io/age"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 const (
@@ -364,7 +367,7 @@ func (s *SealerV2) Seal(d Draft) (Sealed, error) {
 	if err := validatePayload(&scope, &payload); err != nil {
 		return Sealed{}, err
 	}
-	plain, err := json.Marshal(payload)
+	plain, err := json.Marshal(payload, jsonwire.Stable)
 	if err != nil {
 		return Sealed{}, err
 	}
@@ -392,7 +395,7 @@ func (s *SealerV2) Seal(d Draft) (Sealed, error) {
 	if e.SigEd25519, e.SigMLDSA65, err = s.signer.sign(envelopeDomainV2, envelopeBytesV2(&e)); err != nil {
 		return Sealed{}, err
 	}
-	body, err := json.Marshal(e)
+	body, err := json.Marshal(e, jsonwire.Stable)
 	if err != nil {
 		return Sealed{}, err
 	}
@@ -509,34 +512,40 @@ var (
 // must be spelled exactly, appear once, and belong to the set; arrays stop at
 // their limit before anything is built from them.
 func checkShape(raw []byte, want *shape) error {
-	dec := json.NewDecoder(bytes.NewReader(raw))
+	// Duplicate names are left to walkShape, which refuses them with the
+	// member-set error rather than the decoder's own text.
+	dec := jsontext.NewDecoder(bytes.NewReader(raw), jsontext.AllowDuplicateNames(true))
 	if err := walkShape(dec, want); err != nil {
 		return err
 	}
-	if _, err := dec.Token(); err != io.EOF {
+	if _, err := dec.ReadToken(); !errors.Is(err, io.EOF) {
 		return fmt.Errorf("%w: trailing data", ErrMalformed)
 	}
 	return nil
 }
 
-func walkShape(dec *json.Decoder, s *shape) error {
+func walkShape(dec *jsontext.Decoder, s *shape) error {
 	bad := func() error { return fmt.Errorf("%w: member set", ErrMalformed) }
-	tok, err := dec.Token()
+	tok, err := dec.ReadToken()
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrMalformed, err)
 	}
-	delim, isDelim := tok.(json.Delim)
+	delim := tok.Kind()
+	isDelim := delim == '{' || delim == '['
 	switch {
 	case s.fields != nil:
 		if !isDelim || delim != '{' {
 			return bad()
 		}
 		seen := map[string]bool{}
-		for dec.More() {
-			key, err := dec.Token()
-			name, ok := key.(string)
+		for dec.PeekKind() != '}' {
+			key, err := dec.ReadToken()
+			if err != nil || key.Kind() != '"' {
+				return bad()
+			}
+			name := key.String()
 			child := s.fields[name]
-			if err != nil || !ok || child == nil || seen[name] {
+			if child == nil || seen[name] {
 				return bad()
 			}
 			seen[name] = true
@@ -544,12 +553,12 @@ func walkShape(dec *json.Decoder, s *shape) error {
 				return err
 			}
 		}
-		_, err = dec.Token() // the closing brace
+		_, err = dec.ReadToken() // the closing brace
 	case s.item != nil:
 		if !isDelim || delim != '[' {
 			return bad()
 		}
-		for n := 0; dec.More(); n++ {
+		for n := 0; dec.PeekKind() != ']'; n++ {
 			if n >= s.limit {
 				return fmt.Errorf("%w: too many array elements", ErrMalformed)
 			}
@@ -557,7 +566,7 @@ func walkShape(dec *json.Decoder, s *shape) error {
 				return err
 			}
 		}
-		_, err = dec.Token()
+		_, err = dec.ReadToken()
 	case isDelim:
 		return bad()
 	}
@@ -689,7 +698,7 @@ func (s *SignerV2) SignAck(digest, idempotencyKey string, status AckStatus, reas
 	if a.SigEd25519, a.SigMLDSA65, err = s.sign(ackDomainV2, ackBytesV2(&a)); err != nil {
 		return nil, err
 	}
-	return json.Marshal(a)
+	return json.Marshal(a, jsonwire.Stable)
 }
 
 // ParseAckV2 decodes and structurally validates an acknowledgement without

@@ -5,7 +5,8 @@ import (
 	"crypto/mldsa"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"math"
@@ -17,6 +18,8 @@ import (
 	"time"
 
 	"filippo.io/age"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type fixtureV2 struct {
@@ -96,13 +99,13 @@ func (f fixtureV2) resign(t testing.TB, ct []byte, edit func(*EnvelopeV2)) []byt
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, _ := json.Marshal(e)
+	body, _ := json.Marshal(e, jsonwire.Stable)
 	return body
 }
 
 func (f fixtureV2) payloadJSON() []byte {
 	p := Payload{IdempotencyKey: draftV2(f.now).IdempotencyKey, Binding: "binding-token", Values: []Value{{Surface: "secret", Name: "DB_PASSWORD", Value: plaintextMarker}}}
-	raw, _ := json.Marshal(p)
+	raw, _ := json.Marshal(p, jsonwire.Stable)
 	return raw
 }
 
@@ -195,7 +198,7 @@ func TestV2OpenRefusals(t *testing.T) {
 	mutate := func(edit func(*EnvelopeV2)) []byte {
 		e := good
 		edit(&e)
-		raw, _ := json.Marshal(e)
+		raw, _ := json.Marshal(e, jsonwire.Stable)
 		return raw
 	}
 	strangerEd, strangerPQ := seedSigner(9), mustPQ(t)
@@ -300,7 +303,7 @@ func TestV2AckBindsBothKeysDigestAndKey(t *testing.T) {
 	redo := func(edit func(*AckV2)) []byte {
 		a := parsed
 		edit(&a)
-		raw, _ := json.Marshal(a)
+		raw, _ := json.Marshal(a, jsonwire.Stable)
 		return raw
 	}
 	otherPQ := mustPQ(t)
@@ -550,7 +553,7 @@ func TestV2GenerateVectors(t *testing.T) {
 	mut := func(edit func(*EnvelopeV2)) string {
 		x := e
 		edit(&x)
-		raw, _ := json.Marshal(x)
+		raw, _ := json.Marshal(x, jsonwire.Stable)
 		return string(raw)
 	}
 	hybridID, _ := age.ParseHybridIdentity(f.identity)
@@ -571,7 +574,7 @@ func TestV2GenerateVectors(t *testing.T) {
 			d.TargetID, d.InstanceID = "payments", "hikyo-eu"
 			e, _ := ParseEnvelopeV2(f.sealUnaligned(t, d).Body)
 			e.Ciphertext = withStrayBits(e.Ciphertext)
-			raw, _ := json.Marshal(e)
+			raw, _ := json.Marshal(e, jsonwire.Stable)
 			return string(raw)
 		}(), "malformed"},
 		{"non-canonical ed25519 signature tail (stray trailing bits)", "envelope", func() string {
@@ -590,13 +593,13 @@ func TestV2GenerateVectors(t *testing.T) {
 		{"ack with the ml-dsa signature stripped", "ack", func() string {
 			a := parsedAck
 			a.SigMLDSA65 = ""
-			raw, _ := json.Marshal(a)
+			raw, _ := json.Marshal(a, jsonwire.Stable)
 			return string(raw)
 		}(), "malformed"},
 		{"ack with a forged ed25519 signature", "ack", func() string {
 			a := parsedAck
 			a.SigEd25519 = base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 64))
-			raw, _ := json.Marshal(a)
+			raw, _ := json.Marshal(a, jsonwire.Stable)
 			return string(raw)
 		}(), "signature"},
 		{"ack for another envelope", "ack", string(func() []byte {
@@ -605,7 +608,7 @@ func TestV2GenerateVectors(t *testing.T) {
 		}()), "ack_mismatch"},
 	}
 	vf.Negative = neg
-	raw, _ := json.MarshalIndent(vf, "", "  ")
+	raw, _ := json.Marshal(vf, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err := os.MkdirAll("testdata", 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -793,7 +796,7 @@ func TestV2MemberSetIsExactCaseAndBoundedBeforeDecoding(t *testing.T) {
 			unaligned := f.sealUnaligned(t, draftV2(f.now))
 			e, _ := ParseEnvelopeV2(unaligned.Body)
 			e.Ciphertext = withStrayBits(e.Ciphertext)
-			raw, _ := json.Marshal(e)
+			raw, _ := json.Marshal(e, jsonwire.Stable)
 			return raw
 		}(),
 		"ack upper-case member":             edit(ack, `"status"`, `"STATUS"`),

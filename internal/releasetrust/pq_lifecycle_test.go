@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust/testfixture"
 	"github.com/gofrs/flock"
@@ -128,7 +129,7 @@ func (h host) apply(t *testing.T, fx *testfixture.PQFixture, requirePQ bool) err
 	if h.crash == "between-floors" {
 		return errCrash
 	}
-	raw, err := json.Marshal(snapshot.Floor())
+	raw, err := json.Marshal(snapshot.Floor(), jsonwire.Stable)
 	if err != nil {
 		return err
 	}

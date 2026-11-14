@@ -3,7 +3,7 @@ package securitydeployment
 import (
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 )
 
@@ -47,7 +48,7 @@ func privateDirectory(t *testing.T) string {
 
 func encoded(t *testing.T, value any) []byte {
 	t.Helper()
-	raw, err := json.Marshal(value)
+	raw, err := json.Marshal(value, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

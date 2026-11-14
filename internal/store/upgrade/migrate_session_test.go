@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"embed"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/upgradebundle"
@@ -543,7 +544,7 @@ func TestMigrationProcessCrashAfterIndividualCommits(t *testing.T) {
 				directory := t.TempDir()
 				marker := filepath.Join(directory, "committed")
 				child := migrationCommitProcessConfig{Store: cfg, State: state, Directory: fixture.Directory, Pinned: fixture.Pinned, Version: version, Marker: marker}
-				raw, err := json.Marshal(child)
+				raw, err := json.Marshal(child, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}

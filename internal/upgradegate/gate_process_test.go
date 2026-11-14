@@ -3,7 +3,7 @@ package upgradegate
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"os"
@@ -15,6 +15,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -131,7 +132,7 @@ func killGateAtBoundary(t *testing.T, request Request, claim []byte, boundary du
 		cfg.OperatorPublicKey = request.InitialOperatorPublicKey
 	}
 
-	raw, err := json.Marshal(cfg)
+	raw, err := json.Marshal(cfg, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

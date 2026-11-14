@@ -2,7 +2,8 @@ package securitydeployment
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securefile"
 )
@@ -67,7 +69,7 @@ func (e *Executor) readECSPrepared() (ecsPrepared, error) {
 }
 
 func (e *Executor) writeECSRecord(path string, value any) error {
-	raw, err := json.Marshal(value)
+	raw, err := json.Marshal(value, jsonwire.Stable)
 	if err != nil || len(raw) > maxRecordBytes {
 		return ErrInvalid
 	}
@@ -130,7 +132,7 @@ func (e *Executor) retireECSRegistration(ctx context.Context, intent ecsRegistra
 		}
 	}
 	var response struct {
-		Definition map[string]json.RawMessage `json:"taskDefinition"`
+		Definition map[string]jsontext.Value `json:"taskDefinition"`
 	}
 	if err := e.aws(ctx, "ecs", "deregister-task-definition", map[string]any{"taskDefinition": arn}, &response); err != nil {
 		return err
@@ -271,13 +273,16 @@ func (e *Executor) registerECSTarget(ctx context.Context, source ecsSnapshot, ta
 	if err := e.writeECSRecord(e.ecsRegistrationPath(), intent); err != nil {
 		return result, err
 	}
-	request := make(map[string]json.RawMessage)
+	request := make(map[string]jsontext.Value)
 	for key, value := range registration {
 		request[key] = value
 	}
-	request["tags"], _ = json.Marshal([]ecsTag{{Key: "hikyo.dev/security-maintenance-owner", Value: e.c.ECS.OwnerTag}, {Key: "hikyo.dev/security-registration", Value: nonce}, {Key: "hikyo.dev/security-release-manifest", Value: string(target.Identity.ManifestSHA256)}})
+	request["tags"], err = json.Marshal([]ecsTag{{Key: "hikyo.dev/security-maintenance-owner", Value: e.c.ECS.OwnerTag}, {Key: "hikyo.dev/security-registration", Value: nonce}, {Key: "hikyo.dev/security-release-manifest", Value: string(target.Identity.ManifestSHA256)}}, jsonwire.Stable)
+	if err != nil {
+		return result, err
+	}
 	var response struct {
-		Definition map[string]json.RawMessage `json:"taskDefinition"`
+		Definition map[string]jsontext.Value `json:"taskDefinition"`
 	}
 	if err := e.aws(ctx, "ecs", "register-task-definition", request, &response); err != nil {
 		if errors.Is(err, errECSNoEffect) {
