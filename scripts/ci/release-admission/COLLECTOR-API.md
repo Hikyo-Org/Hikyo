@@ -56,7 +56,7 @@ Change-review originals are retained separately and checked as whole bytes.
 External custody authentication is mandatory outside this module.
 
 Pair `code` preserves `candidateCommit`, `workflowCommit`, `candidateFiles`,
-`workflowFiles`, `absentFiles`, `ciRuns` with candidate/workflow roles and
+`workflowFiles`, `absentFiles`, `ciRuns` with the single `workflow` role and
 `prCommitRanges`. Additional closed fields retain candidate CI files, release
 and main episodes, tested source bytes, first-parent lineage, selections and
 stable readbacks. Every `projectionPath` resolves in the final `code` packet.
@@ -65,10 +65,13 @@ All collection outputs carry false `runtimeReady`,
 
 Static release collection is separate from fresh pair collection. Current main
 has its own exact complete 48-job queue proof, even after unchanged-source
-first-parent descendants. Candidate proof has exactly 49 jobs. Only candidate
-vouch is skipped. Candidate go.mod is independent; all eight CI files at head
-and tested merge equal release, and all fifteen trusted main/tested files equal
-release. Queue/public SHA identity, tree and ordered `[base, head]` parents are
+first-parent descendants. The candidate is the merged current-main PR: its
+selection must repeat the main PR, run, attempt and head, and the retired
+open-PR candidate run (`ci-candidate.yml`, `pull_request`, 49 jobs) is refused.
+All seven CI files and `go.mod` at the candidate head must equal the
+queue-tested merge, and all fourteen trusted main/tested files equal release.
+A candidate that changes dependencies therefore needs a new release first.
+Queue/public SHA identity, tree and ordered `[base, head]` parents are
 mandatory. Earlier timeline episodes are preserved without causal interpretation.
 
 ## Final adapter details
@@ -93,14 +96,14 @@ as `GRAPHQL`. Public response headers are limited to `content-type`, `link`,
 `x-github-api-version-selected`. REST link pagination and GraphQL cursor
 pagination must terminate within three pages; PR ranges remain at most 250
 commits, jobs at most 200, trees at most 2,048 entries, and blobs at most 262,144
-bytes. The fixed job inventories remain exactly 49/48.
+bytes. The fixed job inventories remain exactly the one 48-job queue inventory.
 
 `m.BOOTSTRAP_1017['mergeSHA']` supplies the unchanged literal historical anchor.
 `historicalAnchorSHA` must equal it. The complete signed first-parent chain
 reaches that anchor. The historical causal episode is never revalidated by the
 new post-merge release mode; the caller separately invokes G's unchanged
 historical affirmative checker with its original custody. The previous review
-baseline must be an earlier commit on that chain, with its whole fifteen-file
+baseline must be an earlier commit on that chain, with its whole fourteen-file
 vector collected and compared. Whether it is the previous approved release or
 original #1017 remains a record/adoption check outside the collector.
 
@@ -118,13 +121,13 @@ v4 structure, fixed jobs/helpers, and actual source vectors. The configured
 record model separately validates all configuration/adoption/policy/approval
 and implementation digest relationships. Manifest syntax supplies no authority.
 
-Candidate CI runs must retain one exact PR association. Queue metadata may have
+A queue CI run may carry an empty PR association. Queue metadata may have
 an empty `pull_requests` array; that supported case still requires the exact
 single-PR queue branch, public/tested identical SHA/tree and ordered
 `[baseSHA, headSHA]` parents. Any nonempty association must name exactly that
-same PR and pair. Candidate ephemeral test merges need not carry a public Git
-signature; public candidate heads, complete source ranges, public release/main
-commits and first-parent lineage do. This preserves G's signature boundary.
+same PR and pair. The queue-tested merge is a public commit and must carry a
+verified public signature, like the candidate head, complete source ranges,
+release/main commits and first-parent lineage.
 
 GraphQL event correspondence uses the merged event's global node ID against
 REST `node_id`, plus exact actor, commit and time. `MergedEvent.databaseId`
