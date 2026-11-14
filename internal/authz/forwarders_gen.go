@@ -787,6 +787,9 @@ func (a *TxAuthorizer) LiveAccessGrants(ctx context.Context, p domain.PrincipalI
 	return a.r.LiveAccessGrants(ctx, p, now)
 }
 
+// LiveDeveloperCredentialsInOrg pages the live delegations (not revoked, not
+// expired, current credential epoch) minted inside one org, in id order; a
+// non-empty authority narrows it to one human.
 func (a *TxAuthorizer) LiveDeveloperCredentialsInOrg(ctx context.Context, org domain.OrgID, authority domain.PrincipalID, afterID string, limit int, now time.Time) ([]DeveloperCredential, error) {
 	return a.r.LiveDeveloperCredentialsInOrg(ctx, org, authority, afterID, limit, now)
 }
@@ -1251,8 +1254,6 @@ func (a *TxAuthorizer) ServiceAccountByPrincipal(ctx context.Context, p domain.P
 	return a.r.ServiceAccountByPrincipal(ctx, p)
 }
 
-// LiveDeveloperCredentialsInOrg pages the live delegations minted inside one
-// org, in id order; a non-empty authority narrows it to one human.
 // ServiceAccountsCreatedBy pages the service accounts a principal created
 // (the offboarding report's created-by relation), in id order.
 func (a *TxAuthorizer) ServiceAccountsCreatedBy(ctx context.Context, creator domain.PrincipalID, org domain.OrgID, afterID string, limit int) ([]ServiceAccount, error) {

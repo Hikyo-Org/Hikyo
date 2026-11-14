@@ -1071,14 +1071,11 @@ func nullTimeString(t time.Time) sql.NullString {
 	return nullString(encodeTime(t))
 }
 
-// MaxServiceAccountPage bounds one page of the created-by enumeration.
-const MaxServiceAccountPage = 500
-
 // ServiceAccountsCreatedBy pages the service accounts a principal created in id
 // order. A non-empty org narrows the page to that org. The incident enumeration
 // uses it for the created-by relation of the offboarding report.
 func (r *Resolver) ServiceAccountsCreatedBy(ctx context.Context, creator domain.PrincipalID, org domain.OrgID, afterID string, limit int) ([]ServiceAccount, error) {
-	if creator == "" || limit < 1 || limit > MaxServiceAccountPage {
+	if creator == "" || limit < 1 || limit > domain.MaxIncidentPage {
 		return nil, domain.ErrInvalid
 	}
 	if r.sq != nil {

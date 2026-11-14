@@ -50,6 +50,6 @@ SELECT EXISTS (SELECT 1 FROM developer_credential_policy WHERE id <> 1 OR max_li
 -- hikyo:authn-resolution
 -- name: ListLiveDeveloperCredentialsInOrg :many
 SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at,personal_consent FROM developer_credentials
-WHERE org_id = sqlc.arg(org_id) AND revoked_at IS NULL AND expires_at > sqlc.arg(now) AND id > sqlc.arg(after_id)
+WHERE org_id = sqlc.arg(org_id) AND revoked_at IS NULL AND expires_at > sqlc.arg(now) AND credential_epoch = sqlc.arg(epoch) AND id > sqlc.arg(after_id)
   AND (sqlc.arg(authority)::text = '' OR authority_principal_id = sqlc.arg(authority))
 ORDER BY id LIMIT sqlc.arg(row_limit);
