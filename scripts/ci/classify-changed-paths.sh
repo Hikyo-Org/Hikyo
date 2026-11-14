@@ -115,6 +115,9 @@ else
 		scripts/ci/k8s-e2e.sh)
 			select_class k8s-e2e-script
 			;;
+		scripts/ci/check_gitops_kind.py | scripts/deploy/* | install/gitops/*)
+			select_class gitops
+			;;
 		scripts/ci/chart-kind.sh | scripts/ci/chart-network-policy.sh | scripts/ci/chartfixture/* | scripts/ci/networkpolicyfixture/* | internal/isolation/network_policy_cleanup_test.go)
 			select_class chart-kind-script
 			;;
