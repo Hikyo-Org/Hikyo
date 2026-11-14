@@ -3,7 +3,8 @@ package service
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
@@ -18,6 +19,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/federationhttp"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/jwkssource"
 	"github.com/Hikyo-Org/hikyo/internal/oidcfed"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -1048,7 +1050,7 @@ func encodeClaimPins(pins []ClaimPin) (string, error) {
 	if len(pins) == 0 {
 		return "", ErrBindingClaims
 	}
-	out := map[string]json.RawMessage{}
+	out := map[string]jsontext.Value{}
 	for _, pin := range pins {
 		if pin.Claim == "" {
 			return "", ErrBindingClaims
@@ -1060,19 +1062,19 @@ func encodeClaimPins(pins []ClaimPin) (string, error) {
 			return "", fmt.Errorf("%w: %q is pinned twice", ErrBindingClaims, pin.Claim)
 		}
 		set := 0
-		var raw json.RawMessage
+		var raw jsontext.Value
 		var err error
 		if pin.String != nil {
 			set++
-			raw, err = json.Marshal(*pin.String)
+			raw, err = json.Marshal(*pin.String, jsonwire.Stable)
 		}
 		if pin.Number != nil {
 			set++
-			raw, err = json.Marshal(*pin.Number)
+			raw, err = json.Marshal(*pin.Number, jsonwire.Stable)
 		}
 		if pin.Boolean != nil {
 			set++
-			raw, err = json.Marshal(*pin.Boolean)
+			raw, err = json.Marshal(*pin.Boolean, jsonwire.Stable)
 		}
 		if err != nil {
 			return "", fmt.Errorf("%w: %v", ErrBindingClaims, err)
@@ -1084,7 +1086,7 @@ func encodeClaimPins(pins []ClaimPin) (string, error) {
 		}
 		out[pin.Claim] = raw
 	}
-	encoded, err := json.Marshal(out)
+	encoded, err := json.Marshal(out, jsonwire.Stable)
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", ErrBindingClaims, err)
 	}

@@ -2,7 +2,7 @@ package store
 
 import (
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"

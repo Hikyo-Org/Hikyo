@@ -2,7 +2,8 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
@@ -359,29 +361,29 @@ func (s *Audits) InstanceQueryActor(ctx context.Context, actor Actor, f store.Au
 // exactly what the table holds — payloads included, plaintext excluded by
 // construction because it was never written.
 type exportLine struct {
-	Seq              int64           `json:"seq"`
-	ID               string          `json:"id"`
-	Type             string          `json:"type"`
-	SchemaVersion    int             `json:"schema_version"`
-	OccurredAt       string          `json:"occurred_at"`
-	OccurredAsserted bool            `json:"occurred_asserted"`
-	RecordedAt       string          `json:"recorded_at"`
-	ActorID          string          `json:"actor_id,omitempty"`
-	ActorClass       string          `json:"actor_class"`
-	ActorCredential  string          `json:"actor_credential_id,omitempty"`
-	AuthorityID      string          `json:"authority_id,omitempty"`
-	ScopeClass       string          `json:"scope_class"`
-	OrgID            string          `json:"org_id,omitempty"`
-	ProjectID        string          `json:"project_id,omitempty"`
-	EnvID            string          `json:"env_id,omitempty"`
-	ObjectType       string          `json:"object_type,omitempty"`
-	ObjectID         string          `json:"object_id,omitempty"`
-	Outcome          string          `json:"outcome"`
-	CorrelationID    string          `json:"correlation_id,omitempty"`
-	SourceIP         string          `json:"source_ip,omitempty"`
-	UserAgent        string          `json:"user_agent,omitempty"`
-	Origin           string          `json:"origin"`
-	Payload          json.RawMessage `json:"payload"`
+	Seq              int64          `json:"seq"`
+	ID               string         `json:"id"`
+	Type             string         `json:"type"`
+	SchemaVersion    int            `json:"schema_version"`
+	OccurredAt       string         `json:"occurred_at"`
+	OccurredAsserted bool           `json:"occurred_asserted"`
+	RecordedAt       string         `json:"recorded_at"`
+	ActorID          string         `json:"actor_id,omitempty"`
+	ActorClass       string         `json:"actor_class"`
+	ActorCredential  string         `json:"actor_credential_id,omitempty"`
+	AuthorityID      string         `json:"authority_id,omitempty"`
+	ScopeClass       string         `json:"scope_class"`
+	OrgID            string         `json:"org_id,omitempty"`
+	ProjectID        string         `json:"project_id,omitempty"`
+	EnvID            string         `json:"env_id,omitempty"`
+	ObjectType       string         `json:"object_type,omitempty"`
+	ObjectID         string         `json:"object_id,omitempty"`
+	Outcome          string         `json:"outcome"`
+	CorrelationID    string         `json:"correlation_id,omitempty"`
+	SourceIP         string         `json:"source_ip,omitempty"`
+	UserAgent        string         `json:"user_agent,omitempty"`
+	Origin           string         `json:"origin"`
+	Payload          jsontext.Value `json:"payload"`
 }
 
 func writeLine(w io.Writer, e store.AuditEvent) error {
@@ -397,9 +399,9 @@ func writeLine(w io.Writer, e store.AuditEvent) error {
 		ObjectType: e.Object.Type, ObjectID: e.Object.ID,
 		Outcome: string(e.Outcome), CorrelationID: e.CorrelationID,
 		SourceIP: e.SourceIP, UserAgent: e.UserAgent, Origin: string(e.Origin),
-		Payload: json.RawMessage(e.RawPayload),
+		Payload: jsontext.Value(e.RawPayload),
 	}
-	b, err := json.Marshal(line)
+	b, err := json.Marshal(line, jsonwire.Stable, jsontext.PreserveRawStrings(true))
 	if err != nil {
 		return err
 	}

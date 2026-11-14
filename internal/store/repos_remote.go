@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"time"
 
@@ -375,7 +375,7 @@ func validSnapshot(s RemoteSnapshot) error {
 	if s.InstanceIdentity == "" {
 		return errors.New("store: remote snapshot success write has no instance identity — self-connection refusal depends on it")
 	}
-	if !json.Valid(s.Listing) {
+	if !s.Listing.IsValid() {
 		return errors.New("store: remote snapshot listing is not valid JSON")
 	}
 	return nil
@@ -440,7 +440,7 @@ func snapshotFromSQLite(row sqlitegen.RemoteSnapshot) (RemoteSnapshot, error) {
 	out.Version = row.Version.String
 	out.OrgCount = row.OrgCount.Int64
 	out.ProjectCount = row.ProjectCount.Int64
-	out.Listing = json.RawMessage(row.Listing.String)
+	out.Listing = jsontext.Value(row.Listing.String)
 	return out, nil
 }
 
@@ -457,6 +457,6 @@ func snapshotFromPG(row pggen.RemoteSnapshot) (RemoteSnapshot, error) {
 	out.Version = row.Version.String
 	out.OrgCount = row.OrgCount.Int64
 	out.ProjectCount = row.ProjectCount.Int64
-	out.Listing = json.RawMessage(row.Listing.String)
+	out.Listing = jsontext.Value(row.Listing.String)
 	return out, nil
 }

@@ -3,7 +3,8 @@ package service
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"slices"
 	"time"
@@ -67,7 +68,7 @@ type federatedSignup struct {
 	issuer         string
 	signupOrg      string
 	subject        string
-	claims         map[string]json.RawMessage
+	claims         map[string]jsontext.Value
 	refund         func()
 	kind           string
 	emailAssertion func(context.Context) (string, string, bool, error)
@@ -355,7 +356,7 @@ func (g *federatedSignup) land(ctx context.Context, r store.Repos, az *authz.TxA
 			orgName = "org-" + orgID
 		}
 		org := store.Org{
-			ID: orgID, Name: orgName, Active: true, Metadata: json.RawMessage(`{}`),
+			ID: orgID, Name: orgName, Active: true, Metadata: jsontext.Value(`{}`),
 			CreatedAt: store.CanonTime(now), Origin: string(domain.OriginRegistration),
 			RegistrationPolicyID: policy.ID,
 		}
@@ -399,7 +400,7 @@ var verifiedEmailClaims = []string{"email_verified", "xms_edov"}
 // JSON boolean true. Any recognised claim present and not exactly `true`
 // refuses, whatever the other says (fail-closed tie-break); the string
 // "true" is not true (parse, don't cast).
-func verifiedEmail(raw map[string]json.RawMessage) (address, verifiedBy string, ok bool) {
+func verifiedEmail(raw map[string]jsontext.Value) (address, verifiedBy string, ok bool) {
 	if err := json.Unmarshal(raw["email"], &address); err != nil || address == "" {
 		return "", "", false
 	}
@@ -420,7 +421,7 @@ func verifiedEmail(raw map[string]json.RawMessage) (address, verifiedBy string, 
 
 // claimAdmitted reports whether the token's claim is a JSON string among the
 // accepted values. A missing, non-string or unlisted value is not admitted.
-func claimAdmitted(raw map[string]json.RawMessage, claim string, values []string) bool {
+func claimAdmitted(raw map[string]jsontext.Value, claim string, values []string) bool {
 	value, present := raw[claim]
 	if !present {
 		return false
@@ -437,7 +438,7 @@ func claimAdmitted(raw map[string]json.RawMessage, claim string, values []string
 // which (`name-claim` or `handle`), for the signup_completed trail. It is
 // display text only; the handle stays `<identity kind>-<account id>` (no provider text in
 // a UNIQUE column, the #585 d4 naming rule).
-func signupDisplayName(raw map[string]json.RawMessage, handle string) (string, string) {
+func signupDisplayName(raw map[string]jsontext.Value, handle string) (string, string) {
 	var name string
 	if err := json.Unmarshal(raw["name"], &name); err != nil || name == "" {
 		return handle, "handle"

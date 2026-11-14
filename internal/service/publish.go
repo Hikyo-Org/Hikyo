@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"crypto/subtle"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
@@ -16,6 +16,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/delivery"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/parameters"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -653,7 +654,7 @@ func publishPreviewToken(ctx context.Context, r store.Repos, proofs map[string]a
 		slices.SortFunc(env.Changes, func(a, b previewTokenChange) int { return strings.Compare(a.VersionID, b.VersionID) })
 		input.Environments = append(input.Environments, env)
 	}
-	encoded, err := json.Marshal(input)
+	encoded, err := json.Marshal(input, jsonwire.Stable)
 	if err != nil {
 		return "", fmt.Errorf("service: encode publish preview: %w", err)
 	}
@@ -1224,7 +1225,7 @@ func materialize(ctx context.Context, r store.Repos, p authz.Proof, sealer *cryp
 			contract.Schemas[cell.key.Name] = cell.key.Declaration
 		}
 	}
-	contractJSON, err := json.Marshal(contract)
+	contractJSON, err := json.Marshal(contract, jsonwire.Stable)
 	if err != nil {
 		return PublishedEnvironment{}, err
 	}

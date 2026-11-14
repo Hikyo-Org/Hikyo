@@ -510,6 +510,8 @@ func TestAuthnImportAllowlist(t *testing.T) {
 		authn := module + "/internal/store/authn"
 		allowedImports := map[string]bool{
 			module + "/internal/domain": true,
+			// Shared encoding/json/v2 options; see leafSafe.
+			leafSafe: true,
 			// Closed federation-key-source vocabulary shared with oidcfed. This leaf
 			// performs no fetch, service, authorization, or persistence work.
 			module + "/internal/jwkssource":      true,

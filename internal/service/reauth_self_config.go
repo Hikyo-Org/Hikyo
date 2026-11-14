@@ -4,12 +4,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"strings"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // SelfConfigReauthTarget is an exact administrative decision, never a disclosure
@@ -70,7 +71,7 @@ func NewSelfConfigReauthIntent(target SelfConfigReauthTarget) (ReauthIntent, err
 		return ReauthIntent{}, domain.ErrInvalid
 	}
 	slot := "instance:" + target.OwnerInstanceID
-	raw, err := json.Marshal(selfConfigChallenge{Purpose: "self-config", EnvironmentID: slot, Target: target})
+	raw, err := json.Marshal(selfConfigChallenge{Purpose: "self-config", EnvironmentID: slot, Target: target}, jsonwire.Stable)
 	if err != nil {
 		return ReauthIntent{}, err
 	}

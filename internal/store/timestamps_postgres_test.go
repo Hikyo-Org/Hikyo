@@ -1,7 +1,7 @@
 package store_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"os/exec"
 	"strings"
@@ -10,6 +10,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestPostgresTimestampsAreUTC(t *testing.T) {
@@ -72,7 +74,7 @@ func TestPostgresTimestampsAreUTC(t *testing.T) {
 						if got.Location() != time.UTC {
 							t.Errorf("connection %d %s location = %s, want UTC", i, name, got.Location())
 						}
-						wire, err := json.Marshal(got)
+						wire, err := json.Marshal(got, jsonwire.Stable)
 						if err != nil || !strings.HasSuffix(string(wire), `Z"`) {
 							t.Errorf("connection %d %s JSON = %s, error %v; want canonical Z timestamp", i, name, wire, err)
 						}

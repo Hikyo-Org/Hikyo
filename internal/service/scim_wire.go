@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -13,6 +13,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -858,7 +859,7 @@ func changedAttributeNames(before, after map[string]any) []string {
 }
 
 func encodeAttr(v any) string {
-	raw, err := json.Marshal(v)
+	raw, err := json.Marshal(v, jsonwire.Stable)
 	if err != nil {
 		return "\x00unencodable"
 	}
@@ -869,7 +870,7 @@ func marshalAttributes(in map[string]any) (string, error) {
 	if in == nil {
 		return "{}", nil
 	}
-	raw, err := json.Marshal(in)
+	raw, err := json.Marshal(in, jsonwire.Stable)
 	if err != nil {
 		return "", fmt.Errorf("%w: service: unserialisable SCIM attributes", domain.ErrInvalid)
 	}

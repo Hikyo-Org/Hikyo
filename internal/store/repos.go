@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"time"
@@ -111,8 +111,8 @@ func fixedStamp(t time.Time) string { return CanonTime(t).Format(fixedStampLayou
 
 func parseStamp(s string) (time.Time, error) { return time.Parse(timeFormat, s) }
 
-func validMetadata(m json.RawMessage) error {
-	if !json.Valid(m) {
+func validMetadata(m jsontext.Value) error {
+	if !m.IsValid() {
 		return errors.New("store: org metadata is not valid JSON")
 	}
 	return nil
@@ -412,7 +412,7 @@ func orgFromSQLite(row sqlitegen.GetOrgRow) (Org, error) {
 	if row.Active != 0 && row.Active != 1 {
 		return Org{}, fmt.Errorf("store: org %s: active = %d, not a boolean", row.ID, row.Active)
 	}
-	metadata := json.RawMessage(row.Metadata)
+	metadata := jsontext.Value(row.Metadata)
 	if err := validMetadata(metadata); err != nil {
 		return Org{}, fmt.Errorf("store: org %s: %w", row.ID, err)
 	}
@@ -1179,7 +1179,7 @@ func orgFromPG(row pggen.GetOrgRow) (Org, error) {
 	if !row.CreatedAt.Valid {
 		return Org{}, fmt.Errorf("store: org %s: null created_at", row.ID)
 	}
-	metadata := json.RawMessage(row.Metadata)
+	metadata := jsontext.Value(row.Metadata)
 	if err := validMetadata(metadata); err != nil {
 		return Org{}, fmt.Errorf("store: org %s: %w", row.ID, err)
 	}

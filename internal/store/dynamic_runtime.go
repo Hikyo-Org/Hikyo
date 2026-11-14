@@ -2,12 +2,14 @@ package store
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // DynamicRuntime is the dynamic-secret lease worker's system boundary, the
@@ -181,7 +183,7 @@ func (r *DynamicRuntime) RecordIntent(ctx context.Context, lease ClaimedLease, k
 		if err := r.assertLeased(ctx, tx, lease, now); err != nil {
 			return err
 		}
-		payload, err := json.Marshal(leaseTransitionPayload{Kind: kind, ProviderHandle: lease.ProviderHandle})
+		payload, err := json.Marshal(leaseTransitionPayload{Kind: kind, ProviderHandle: lease.ProviderHandle}, jsonwire.Stable)
 		if err != nil {
 			return err
 		}
@@ -209,7 +211,7 @@ func (r *DynamicRuntime) settle(ctx context.Context, lease ClaimedLease, effectI
 		if err := r.assertLeased(ctx, tx, lease, now); err != nil {
 			return err
 		}
-		payload, err := json.Marshal(leaseTransitionPayload{Kind: kind, ProviderHandle: lease.ProviderHandle})
+		payload, err := json.Marshal(leaseTransitionPayload{Kind: kind, ProviderHandle: lease.ProviderHandle}, jsonwire.Stable)
 		if err != nil {
 			return err
 		}

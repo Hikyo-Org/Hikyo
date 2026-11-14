@@ -2,11 +2,12 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/configrollout"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
@@ -69,8 +70,8 @@ func (s *SelfConfig) renewDeploymentDelivery(ctx context.Context, b store.SelfCo
 		}
 		normalized := signed.Command
 		normalized.Sequence, normalized.IssuedAt, normalized.ExpiresAt = persisted.Command.Sequence, persisted.Command.IssuedAt, persisted.Command.ExpiresAt
-		before, _ := json.Marshal(persisted.Command)
-		after, _ := json.Marshal(normalized)
+		before, _ := json.Marshal(persisted.Command, jsonwire.Stable)
+		after, _ := json.Marshal(normalized, jsonwire.Stable)
 		if string(before) != string(after) || signed.Command.Sequence != uint64(sequence) || !s.now().Before(signed.Command.ExpiresAt) {
 			return domain.ErrConflict
 		}
