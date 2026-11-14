@@ -41,7 +41,8 @@ class BoundedTests(unittest.TestCase):
 
     def test_ascii_canonical_and_fixed_inventories(self):
         self.assertEqual(canonical({'z': 'é', 'a': 1}), b'{"a":1,"z":"\\u00e9"}')
-        self.assertEqual([len(REQUIRED_CI_JOBS[key]) for key in ('candidate', 'workflow')], [49, 48])
+        # bc500f240 retired the 49-job candidate run; only the 48-job queue inventory remains.
+        self.assertEqual({key: len(value) for key, value in REQUIRED_CI_JOBS.items()}, {'workflow': 48})
         self.assertEqual(len(FROZEN), 7)
         with self.assertRaises(TypeError):
             REQUIRED_CI_JOBS['workflow']['new-job'] = 'success'
@@ -49,7 +50,7 @@ class BoundedTests(unittest.TestCase):
         contracts = json.loads(Path(__file__).with_name('spec').joinpath('CONTRACTS.json').read_text())
         self.assertEqual(set(SCHEMAS), set(contracts['records']))
         cases = json.loads(Path(__file__).with_name('spec').joinpath('CONFORMANCE-CASES.json').read_text())
-        self.assertEqual(len(cases['cases']), 69)
+        self.assertEqual(len(cases['cases']), 71)  # 69 + candidate-not-merged-main-episode + retired-open-pr-candidate-run
 
     def test_policy_import_is_inert_and_explicit_design_check_matches_originals(self):
         source = Path(__file__).with_name('release_policy.py').read_bytes()
@@ -99,6 +100,8 @@ class RecordTests(unittest.TestCase):
             (self.f.approval, ('actor', 'databaseId'), True),
             (self.f.binding, ('currentMainRun', 'mergedPRNumber'), True),
             (self.f.binding, ('candidateRun', 'attempt'), True),
+            (self.f.binding, ('candidateRun', 'id'), 201),
+            (self.f.binding, ('candidateHeadSHA',), git('other-candidate')),
             (self.f.merge, ('mergedEvent', 'restId'), True),
             (self.f.genesis, ('sequence',), True),
             (self.f.genesis, ('reason',), []),
@@ -257,7 +260,9 @@ class LifecycleTests(unittest.TestCase):
             self.assertEqual(result['mode'], 'admission-now')
             self.assertFalse(result['executionAuthorityGranted'])
             moved = dict(fixture.binding, candidateHeadSHA=git('later-candidate'), mainSHA=git('later-main'),
-                         currentMainRun=dict(fixture.binding['currentMainRun'], id=300, mergeSHA=git('later-main')))
+                         candidateRun={'id': 300, 'attempt': 1},
+                         currentMainRun=dict(fixture.binding['currentMainRun'], id=300, headSHA=git('later-candidate'),
+                                             mergeSHA=git('later-main')))
             with self.assertRaises(ValueError):
                 m.admit_now(moved, fixture.manifest, instant(T4))
             fixture.authority.register('attemptTrustBinding', moved)
