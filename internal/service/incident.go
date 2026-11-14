@@ -506,7 +506,8 @@ func (s *Incidents) runItem(ctx context.Context, actor Actor, incidentID, itemID
 		case !applied:
 			// The ledger row moved or the incident closed while the owner ran. The
 			// item keeps its recorded state and the trail says the result is unknown.
-			next, reason, outcome, resultName = domain.ItemUnknown, domain.ReasonOwnerUnconfirmed, audit.OutcomeUnknown, "unknown"
+			outcome, resultName = audit.OutcomeUnknown, "unknown"
+			reason = domain.ReasonOwnerUnconfirmed
 			res.Stale++
 		case result == OwnerConfirmed:
 			res.Confirmed++

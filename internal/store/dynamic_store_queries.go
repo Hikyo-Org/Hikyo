@@ -216,6 +216,9 @@ func (q sqliteDynamicStoreQueries) dynamicListNonTerminalLeasesInProject(ctx con
 }
 
 func (q pgDynamicStoreQueries) dynamicListNonTerminalLeasesInProject(ctx context.Context, chain domain.Scope, afterID string, limit int) ([]DynamicLeaseRef, error) {
+	if limit < 1 || limit > MaxDynamicLeasePage {
+		return nil, domain.ErrInvalid
+	}
 	rows, err := q.queries.DynamicListNonTerminalLeasesInProject(ctx, pggen.DynamicListNonTerminalLeasesInProjectParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), AfterID: afterID, RowLimit: int32(limit)})
 	if err != nil {
 		return nil, err
@@ -236,6 +239,9 @@ func (q sqliteDynamicStoreQueries) dynamicListNonTerminalLeasesInInstance(ctx co
 }
 
 func (q pgDynamicStoreQueries) dynamicListNonTerminalLeasesInInstance(ctx context.Context, afterID string, limit int) ([]DynamicLeaseRef, error) {
+	if limit < 1 || limit > MaxDynamicLeasePage {
+		return nil, domain.ErrInvalid
+	}
 	rows, err := q.queries.DynamicListNonTerminalLeasesInInstance(ctx, pggen.DynamicListNonTerminalLeasesInInstanceParams{AfterID: afterID, RowLimit: int32(limit)})
 	if err != nil {
 		return nil, err
