@@ -6,10 +6,10 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"net"
 	"net/netip"
@@ -22,6 +22,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/localsocket"
 	"github.com/Hikyo-Org/hikyo/internal/securefile"
 	"github.com/Hikyo-Org/hikyo/internal/tlspolicy"
@@ -414,7 +415,7 @@ func (s *TrustStore) write(entries map[string]TrustEntry) error {
 	if err := ensureTrustStateDir(s.dir); err != nil {
 		return err
 	}
-	raw, err := json.MarshalIndent(entries, "", "  ")
+	raw, err := json.Marshal(entries, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}
@@ -519,13 +520,9 @@ func shortPin(pin string) string {
 // Trust schemas reject unsupported fields instead of silently discarding a
 // requested verification policy or accepting a misspelled security field.
 func decodeTrustJSON(raw []byte, out any) error {
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(out); err != nil {
-		return err
-	}
-	if err := decoder.Decode(new(any)); err != io.EOF {
+	err := decodeStrictDocument(bytes.NewReader(raw), out)
+	if errors.Is(err, errTrailingJSON) {
 		return errors.New("expected one JSON object")
 	}
-	return nil
+	return err
 }

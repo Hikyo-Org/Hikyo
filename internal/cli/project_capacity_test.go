@@ -2,7 +2,8 @@ package cli
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"net/http"
 	"strings"
 	"testing"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestProjectCapacityGrammar(t *testing.T) {
@@ -77,13 +79,13 @@ func TestProjectCapacityWire(t *testing.T) {
 						return
 					}
 				case http.MethodPut:
-					var raw map[string]json.RawMessage
-					if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+					var raw map[string]jsontext.Value
+					if err := json.UnmarshalRead(r.Body, &raw); err != nil {
 						t.Error(err)
 						w.WriteHeader(http.StatusBadRequest)
 						return
 					}
-					encoded, err := json.Marshal(raw)
+					encoded, err := json.Marshal(raw, jsonwire.Stable)
 					if err != nil {
 						t.Error(err)
 						w.WriteHeader(http.StatusBadRequest)
@@ -119,7 +121,7 @@ func TestProjectCapacityWire(t *testing.T) {
 				default:
 					t.Errorf("unexpected method %s", r.Method)
 				}
-				_ = json.NewEncoder(w).Encode(current)
+				_ = writeJSONLine(w, current)
 			}))
 			t.Cleanup(server.Close)
 			stateDir := t.TempDir()

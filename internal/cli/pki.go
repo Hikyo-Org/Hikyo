@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -376,9 +375,7 @@ func readPolicy(path string) (apigen.PkiPolicy, error) {
 		return apigen.PkiPolicy{}, failf(ExitUsage, "--policy-file is required")
 	}
 	var policy apigen.PkiPolicy
-	decoder := json.NewDecoder(strings.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&policy); err != nil {
+	if err := decodeStrictDocument(strings.NewReader(raw), &policy); err != nil {
 		return apigen.PkiPolicy{}, failf(ExitUsage, "the policy file is not a PkiPolicy: %v", err)
 	}
 	return policy, nil

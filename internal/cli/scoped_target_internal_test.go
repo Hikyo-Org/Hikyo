@@ -2,7 +2,8 @@ package cli
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -180,7 +181,7 @@ func TestScopedCommandsPreparedPaths(t *testing.T) {
 			if stderr.String() != wantEcho || strings.Contains(stdout.String(), "target:") {
 				t.Fatalf("echo changed: stdout=%q stderr=%q, want stderr=%q", stdout, stderr, wantEcho)
 			}
-			if tc.response != "" && !json.Valid(stdout.Bytes()) {
+			if tc.response != "" && !jsontext.Value(stdout.Bytes()).IsValid() {
 				t.Fatalf("output is not parseable JSON: %q", stdout)
 			}
 		})
@@ -270,7 +271,7 @@ func TestScopedAdapterAddKeepsProjectPathAndEnvironmentBody(t *testing.T) {
 		var body struct {
 			Environment string `json:"environment_id"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.UnmarshalRead(r.Body, &body); err != nil {
 			t.Errorf("invalid adapter target body: %v", err)
 		}
 		if body.Environment != "env ?#%" {

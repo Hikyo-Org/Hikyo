@@ -2,7 +2,7 @@ package cli
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"strings"
 	"testing"
@@ -45,9 +45,9 @@ func TestDoctorDiagnosticVerdictsAndExitCodes(t *testing.T) {
 				}
 				switch r.URL.Path {
 				case api.PathPrefix + "/instance/retention-health":
-					_ = json.NewEncoder(w).Encode(health)
+					_ = writeJSONLine(w, health)
 				case api.PathPrefix + "/instance/saml-providers":
-					_ = json.NewEncoder(w).Encode(apigen.SamlProviderList{Providers: []apigen.SamlProvider{}})
+					_ = writeJSONLine(w, apigen.SamlProviderList{Providers: []apigen.SamlProvider{}})
 				default:
 					t.Errorf("unexpected doctor request %s", r.URL.Path)
 					w.WriteHeader(http.StatusNotFound)

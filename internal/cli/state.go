@@ -1,7 +1,8 @@
 package cli
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/securefile"
 )
 
@@ -159,7 +161,7 @@ func (s *State) Sessions() (map[string]SessionArtifact, error) {
 	// to human session. Keep reading that shape byte-for-byte. A future
 	// versioned envelope must fail as a version mismatch instead of decoding
 	// its metadata keys into zero-value SessionArtifacts.
-	var root map[string]json.RawMessage
+	var root map[string]jsontext.Value
 	if err := json.Unmarshal(raw, &root); err != nil {
 		return nil, fmt.Errorf("session file at %s is unreadable: %w", s.sessionsPath(), err)
 	}
@@ -213,7 +215,7 @@ func (s *State) writeJSON(path string, v any) error {
 	if err := os.MkdirAll(s.dir, 0o700); err != nil {
 		return err
 	}
-	raw, err := json.MarshalIndent(v, "", "  ")
+	raw, err := json.Marshal(v, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}

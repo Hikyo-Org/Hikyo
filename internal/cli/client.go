@@ -5,7 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +19,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/diagnostics"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/localsocket"
 	"github.com/Hikyo-Org/hikyo/internal/tlspolicy"
 )
@@ -273,7 +274,7 @@ func (c *Client) DoStatus(ctx context.Context, method, path string, body any) (i
 func (c *Client) Do(ctx context.Context, method, path string, body, out any) error {
 	var reader io.Reader
 	if body != nil {
-		raw, err := json.Marshal(body)
+		raw, err := json.Marshal(body, jsonwire.Stable)
 		if err != nil {
 			return err
 		}

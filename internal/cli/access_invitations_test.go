@@ -1,7 +1,7 @@
 package cli_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"os"
@@ -37,7 +37,7 @@ func (f *invitationFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	fail := func(status int, code, detail string) {
 		w.WriteHeader(status)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": code, "message": "refused", "detail": detail}})
+		_ = writeJSONLine(w, map[string]any{"error": map[string]any{"code": code, "message": "refused", "detail": detail}})
 	}
 	base := "/api/v1/orgs/" + invitationOrg + "/email-invitations"
 	switch {
@@ -51,23 +51,23 @@ func (f *invitationFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var body apigen.EmailInvitationSendRequest
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.UnmarshalRead(r.Body, &body); err != nil {
 			f.t.Errorf("send body: %v", err)
 		}
 		if body.Email != "dana@example.test" || body.Template != "viewer" {
 			f.t.Errorf("send body = %+v, want dana@example.test as viewer", body)
 		}
 		w.WriteHeader(http.StatusAccepted)
-		_ = json.NewEncoder(w).Encode(apigen.EmailInvitation{Id: "inv_1", Email: body.Email, Template: body.Template, ExpiresAt: invitationExpiry})
+		_ = writeJSONLine(w, apigen.EmailInvitation{Id: "inv_1", Email: body.Email, Template: body.Template, ExpiresAt: invitationExpiry})
 	case r.Method == http.MethodGet && r.URL.Path == base:
-		_ = json.NewEncoder(w).Encode(apigen.EmailInvitationList{Count: 1, Items: []apigen.EmailInvitationListing{
+		_ = writeJSONLine(w, apigen.EmailInvitationList{Count: 1, Items: []apigen.EmailInvitationListing{
 			{Id: "inv_1", Email: "dana@example.test", Template: "viewer", InvitedBy: "usr_9", ExpiresAt: invitationExpiry}}})
 	case r.Method == http.MethodDelete && r.URL.Path == base+"/inv_1":
 		w.WriteHeader(http.StatusNoContent)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/me/invitations/preview":
 		f.previews++
 		var pbody apigen.EmailInvitationTokenRequest
-		if err := json.NewDecoder(r.Body).Decode(&pbody); err != nil {
+		if err := json.UnmarshalRead(r.Body, &pbody); err != nil {
 			f.t.Errorf("preview body: %v", err)
 		}
 		if f.wantToken != "" && pbody.Token != f.wantToken {
@@ -77,15 +77,15 @@ func (f *invitationFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail(404, "not_found", "")
 			return
 		}
-		_ = json.NewEncoder(w).Encode(apigen.EmailInvitationPreview{Org: invitationOrg, OrgName: "Acme", Template: "viewer", ExpiresAt: invitationExpiry})
+		_ = writeJSONLine(w, apigen.EmailInvitationPreview{Org: invitationOrg, OrgName: "Acme", Template: "viewer", ExpiresAt: invitationExpiry})
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/me/invitations/accept":
 		var body apigen.EmailInvitationTokenRequest
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.UnmarshalRead(r.Body, &body)
 		f.accepted = append(f.accepted, body.Token)
 		if f.onAccept != nil {
 			f.onAccept()
 		}
-		_ = json.NewEncoder(w).Encode(apigen.EmailInvitationAcceptance{Org: invitationOrg, OrgName: "Acme", Template: "viewer", GrantsCreated: 2, SignedOut: f.signedOut})
+		_ = writeJSONLine(w, apigen.EmailInvitationAcceptance{Org: invitationOrg, OrgName: "Acme", Template: "viewer", GrantsCreated: 2, SignedOut: f.signedOut})
 	default:
 		http.NotFound(w, r)
 	}

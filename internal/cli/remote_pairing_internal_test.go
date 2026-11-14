@@ -2,7 +2,7 @@ package cli
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func pairingTestIO(t *testing.T) IO {
@@ -56,7 +57,7 @@ func TestPairingContinuationRequiresPrivateBoundedUnexpiredJSON(t *testing.T) {
 	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
 	valid, err := json.Marshal(apigen.RemotePairingPrepared{
 		Phrase: "not-a-real-generated-phrase", RequesterState: secret, ExpiresAt: now.Add(time.Hour),
-	})
+	}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +138,7 @@ func TestPairingContinuationAcceptsLargeEscapedSecretEnvelope(t *testing.T) {
 	state := strings.Repeat("x", pairingStateLimit)
 	raw, err := json.Marshal(apigen.RemotePairingPrepared{
 		Phrase: strings.Repeat("\x00", 4096), RequesterState: state, ExpiresAt: now.Add(time.Hour),
-	})
+	}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

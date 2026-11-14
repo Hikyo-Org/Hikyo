@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -44,7 +43,7 @@ func TestWizardLiveVaultRefusesSyncLoopBeforeReturningSource(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				if r.URL.Path == api.PathPrefix+"/meta" {
-					_ = json.NewEncoder(w).Encode(apigen.Meta{ApiRevision: api.Revision})
+					_ = writeJSONLine(w, apigen.Meta{ApiRevision: api.Revision})
 					return
 				}
 				if r.URL.Path != "/project/adapters" {
@@ -58,7 +57,7 @@ func TestWizardLiveVaultRefusesSyncLoopBeforeReturningSource(t *testing.T) {
 					fmt.Fprint(w, `{"code":"forbidden","message":"denied"}`)
 					return
 				}
-				_ = json.NewEncoder(w).Encode(apigen.AdapterList{Items: []apigen.Adapter{{Id: "adp_one", Provider: "vault-kv", Origin: vault.URL, State: "active", Targets: []apigen.AdapterTarget{{Id: "tgt_one", DestinationOwner: "secret", DestinationName: tc.path, State: "active"}}}}})
+				_ = writeJSONLine(w, apigen.AdapterList{Items: []apigen.Adapter{{Id: "adp_one", Provider: "vault-kv", Origin: vault.URL, State: "active", Targets: []apigen.AdapterTarget{{Id: "tgt_one", DestinationOwner: "secret", DestinationName: tc.path, State: "active"}}}}})
 			}))
 			defer server.Close()
 			host := cliWizardHost{ctx: t.Context(), client: &Client{Entry: TrustEntry{Origin: server.URL}, HTTP: server.Client(), Bearer: "token"}, projectBase: "/project"}

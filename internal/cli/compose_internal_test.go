@@ -2,7 +2,7 @@ package cli
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +17,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/compose"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // The Compose delivery verbs (#63). These exercise the CLI wiring against a
@@ -33,7 +34,7 @@ func deliveryJSON(t *testing.T, resp apigen.DeliveryResponse) string {
 			resp.Keys[index].SnapshotReceipt = strPtr("server-receipt-" + resp.Keys[index].KeyId)
 		}
 	}
-	b, err := json.Marshal(resp)
+	b, err := json.Marshal(resp, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

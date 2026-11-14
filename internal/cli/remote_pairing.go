@@ -3,7 +3,9 @@ package cli
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -15,6 +17,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/pairing"
 )
 
@@ -89,7 +92,7 @@ func runRemotePairing(ctx context.Context, ios IO, args []string) (returnErr err
 		if err := client.Do(ctx, http.MethodPost, pairingRequestsPath, body, &out); err != nil {
 			return err
 		}
-		raw, err := json.MarshalIndent(out, "", "  ")
+		raw, err := json.Marshal(out, jsonwire.Stable, jsontext.WithIndent("  "))
 		if err != nil {
 			return failf(ExitInternal, "encoding the pairing continuation")
 		}
@@ -231,12 +234,11 @@ func readPairingContinuation(ios IO, path string) (string, error) {
 		return "", err
 	}
 	var prepared apigen.RemotePairingPrepared
-	decoder := json.NewDecoder(strings.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&prepared); err != nil {
+	err = decodeStrictDocument(strings.NewReader(raw), &prepared)
+	if err != nil && !errors.Is(err, errTrailingJSON) {
 		return "", failf(ExitUsage, "the request file must contain the JSON saved by remote-pairing prepare")
 	}
-	if decoder.Decode(new(json.RawMessage)) != io.EOF || len(prepared.RequesterState) == 0 || len(prepared.RequesterState) > pairingStateLimit {
+	if err != nil || len(prepared.RequesterState) == 0 || len(prepared.RequesterState) > pairingStateLimit {
 		return "", failf(ExitUsage, "the request file contains an invalid pairing continuation")
 	}
 	if !ios.now().Before(prepared.ExpiresAt) {

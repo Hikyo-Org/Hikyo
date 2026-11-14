@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,14 +15,14 @@ func TestAccessPolicyUpdateMissingUsesNotFoundExit(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == api.PathPrefix+"/meta" {
-			_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+			_ = writeJSONLine(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
 			return
 		}
 		requests++
 		if r.Method != http.MethodGet {
 			t.Errorf("unexpected write: %s", r.Method)
 		}
-		_ = json.NewEncoder(w).Encode(apigen.AccessPolicyList{Items: []apigen.AccessPolicy{}})
+		_ = writeJSONLine(w, apigen.AccessPolicyList{Items: []apigen.AccessPolicy{}})
 	}))
 	defer srv.Close()
 	st, stateDir := machineState(t, srv.URL, SPKIFingerprint(srv.Certificate()))

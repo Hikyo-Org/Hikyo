@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -61,10 +60,10 @@ func TestHumanSessionRunRefusesHeldPersonalKeys(t *testing.T) {
 		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			if r.URL.Path == api.PathPrefix+"/meta" {
-				_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture", ApiRevision: revision})
+				_ = writeJSONLine(w, apigen.Meta{ServerVersion: "fixture", ApiRevision: revision})
 				return
 			}
-			_ = json.NewEncoder(w).Encode(apigen.PersonalValueList{Items: []apigen.PersonalValueEntry{
+			_ = writeJSONLine(w, apigen.PersonalValueList{Items: []apigen.PersonalValueEntry{
 				{Name: "MINE", Set: true},
 				{Name: "NOTICED", Notice: &notice},
 				{Name: "REQUIRED_ONLY", Required: &required},
@@ -129,10 +128,10 @@ func TestHumanSessionRunFailsClosedOnLookupError(t *testing.T) {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			if r.URL.Path == api.PathPrefix+"/meta" {
-				_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture", ApiRevision: api.Revision})
+				_ = writeJSONLine(w, apigen.Meta{ServerVersion: "fixture", ApiRevision: api.Revision})
 				return
 			}
-			_ = json.NewEncoder(w).Encode(apigen.PersonalValueList{})
+			_ = writeJSONLine(w, apigen.PersonalValueList{})
 		}))
 		client, err := NewClient(pinnedTestEntry("test", srv), "human-test")
 		if err != nil {

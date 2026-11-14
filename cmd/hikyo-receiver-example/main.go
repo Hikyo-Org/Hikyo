@@ -11,7 +11,7 @@
 package main
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -241,9 +241,7 @@ func loadReceiver(path string) (sealedreceiver.Config, error) {
 		return sealedreceiver.Config{}, err
 	}
 	var file receiverFile
-	dec := json.NewDecoder(strings.NewReader(string(raw)))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&file); err != nil {
+	if err := json.Unmarshal(raw, &file, json.RejectUnknownMembers(true)); err != nil {
 		return sealedreceiver.Config{}, fmt.Errorf("config: %w", err)
 	}
 	base := filepath.Dir(path)

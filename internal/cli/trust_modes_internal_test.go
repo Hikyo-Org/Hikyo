@@ -8,7 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"log"
 	"math/big"
@@ -25,6 +25,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestTrustModesValidateAndRequireDeliberateReestablishment(t *testing.T) {
@@ -253,7 +254,7 @@ func TestSystemCATrustCertificateLifecycle(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/api/v1/meta" {
-			_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "test", ApiRevision: 999})
+			_ = writeJSONLine(w, apigen.Meta{ServerVersion: "test", ApiRevision: 999})
 			return
 		}
 		if strings.HasSuffix(r.URL.Path, "/environments") {
@@ -359,7 +360,7 @@ func TestSystemCATrustCertificateLifecycle(t *testing.T) {
 		current.Store(renewed)
 		stateDir, workdir := t.TempDir(), t.TempDir()
 		bundlePath := filepath.Join(t.TempDir(), "trust.json")
-		raw, err := json.Marshal(TrustBundle{Name: "ci", Origin: server.URL, TLSMode: TLSModeSystemCA})
+		raw, err := json.Marshal(TrustBundle{Name: "ci", Origin: server.URL, TLSMode: TLSModeSystemCA}, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}
