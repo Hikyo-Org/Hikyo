@@ -1404,8 +1404,8 @@
     "engine": "postgres",
     "name": "GetOpenIncidentForScope",
     "annotation": "authn-resolution",
-    "hash": "51ea732da17003542734a7cd29905f79dc248658e5fbc3caef2948eb434edcee",
-    "reason": "Re-opening an incident reads the one open row of the addressed scope after the operation authorized credential-reset at that scope."
+    "hash": "6946249ef20bee96940188104a70c05fea79b0906dfdde84c5a2f0ae2a0cfcbd",
+    "reason": "Re-opening an incident reads the one open row of the addressed scope and owning org after the operation authorized credential-reset at that scope."
   },
   {
     "engine": "postgres",
@@ -5152,8 +5152,8 @@
     "engine": "sqlite",
     "name": "GetOpenIncidentForScope",
     "annotation": "authn-resolution",
-    "hash": "51ea732da17003542734a7cd29905f79dc248658e5fbc3caef2948eb434edcee",
-    "reason": "Re-opening an incident reads the one open row of the addressed scope after the operation authorized credential-reset at that scope."
+    "hash": "6946249ef20bee96940188104a70c05fea79b0906dfdde84c5a2f0ae2a0cfcbd",
+    "reason": "Re-opening an incident reads the one open row of the addressed scope and owning org after the operation authorized credential-reset at that scope."
   },
   {
     "engine": "sqlite",

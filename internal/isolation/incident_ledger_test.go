@@ -631,7 +631,9 @@ func seedIncidentFactors(t *testing.T, db *store.DB) {
 		`VALUES ('totp_it', 'acc_itarget', `+blobLit(db, []byte("seed-it"))+`, 1, `+epoch+`, 1, 0, 0, `+ts+`, `+ts+`)`)
 	execRaw(t, db, `INSERT INTO webauthn_credentials (id,account_id,credential_id,public_key,aaguid,sign_count,transports,discoverable,backup_eligible,backup_state,label,credential_epoch,row_version,created_at) `+
 		`VALUES ('wac_it','acc_itarget',`+blobLit(db, []byte("cred-it"))+`,`+blobLit(db, []byte("pk-it"))+`,`+blobLit(db, []byte("aa-it"))+`,0,'[]',1,0,0,'key',`+epoch+`,1,`+ts+`)`)
-	execRaw(t, db, `INSERT INTO external_identities (id,account_id,kind,issuer,subject,provider_id,credential_epoch,created_at) VALUES ('xid_it','acc_itarget','oidc','https://idp.example.test','subject-it','',`+epoch+`,`+ts+`)`)
+	for _, x := range []string{"xid_it", "xid_it2"} {
+		execRaw(t, db, `INSERT INTO external_identities (id,account_id,kind,issuer,subject,provider_id,credential_epoch,created_at) VALUES ('`+x+`','acc_itarget','oidc','https://idp.example.test','subject-`+x+`','',`+epoch+`,`+ts+`)`)
+	}
 	execRaw(t, db, `INSERT INTO rules (id, principal_id, capability, org_id, env_mode, key_mode, created_by, created_at) VALUES ('rul_it', 'usr_itarget', 'read', 'org_a', 'all', 'all', 'usr_alice', `+ts+`)`)
 	execRaw(t, db, `INSERT INTO rule_items (id, rule_id, org_id, axis, project_id) VALUES ('rli_it', 'rul_it', 'org_a', 'project', 'prj_a1')`)
 }
@@ -640,6 +642,7 @@ const (
 	keyTOTP     = "factor.remove|totp_factor|totp_it"
 	keyPasskey  = "factor.remove|passkey|wac_it"
 	keyIdentity = "external_identity.remove|external_identity|xid_it"
+	keyIdent2   = "external_identity.remove|external_identity|xid_it2"
 )
 
 func (w *incidentWorld) itemIDByKey(t *testing.T, actor domain.PrincipalID, incident, key string) string {
@@ -703,9 +706,10 @@ func TestIncidentAttestOnlyWhatHikyoCannotObserve(t *testing.T) {
 		}
 
 		// An item Hikyo can observe (a session, a developer credential, a service
-		// account) is never attestable: the owner's confirmation is the only road
-		// to done, and an attestation must not stand in for it.
-		for _, key := range []string{keySession, keyDevCred, keyService} {
+		// account, a factor row that still exists) is never attestable: the owner's
+		// confirmation is the only road to done, and an attestation must not stand
+		// in for it. Factor items stay open residuals in S2.
+		for _, key := range []string{keySession, keyDevCred, keyService, keyTOTP, keyPasskey} {
 			if err := w.svc.Attest(ctx, w.as(incResponder), id, w.itemIDByKey(t, incResponder, id, key)); !errors.Is(err, domain.ErrConflict) {
 				t.Errorf("attesting observable item %s = %v, want a conflict", key, err)
 			}
@@ -719,19 +723,19 @@ func TestIncidentAttestOnlyWhatHikyoCannotObserve(t *testing.T) {
 			t.Fatalf("%d items attested by refused calls", n)
 		}
 
-		// A factor Hikyo cannot remove is attestable; attest records who and when,
-		// never done.
-		totp := w.itemIDByKey(t, incResponder, id, keyTOTP)
-		if err := w.svc.Attest(ctx, w.as(incResponder), id, totp); err != nil {
+		// A linked identity at its provider is attestable; attest records who and
+		// when, never done.
+		ident := w.itemIDByKey(t, incResponder, id, keyIdentity)
+		if err := w.svc.Attest(ctx, w.as(incResponder), id, ident); err != nil {
 			t.Fatal(err)
 		}
-		if got := w.itemMap(t, incResponder, id)[keyTOTP]; got != "attested/" {
-			t.Fatalf("attested factor = %q", got)
+		if got := w.itemMap(t, incResponder, id)[keyIdentity]; got != "attested/" {
+			t.Fatalf("attested identity = %q", got)
 		}
-		if n := queryInt(t, db, `SELECT COUNT(*) FROM incident_items WHERE id = '`+totp+`' AND attested_by = 'usr_irsp' AND attested_at IS NOT NULL`); n != 1 {
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM incident_items WHERE id = '`+ident+`' AND attested_by = 'usr_irsp' AND attested_at IS NOT NULL`); n != 1 {
 			t.Fatal("the attestation did not record who and when")
 		}
-		if err := w.svc.Attest(ctx, w.as(incResponder), id, totp); !errors.Is(err, domain.ErrConflict) {
+		if err := w.svc.Attest(ctx, w.as(incResponder), id, ident); !errors.Is(err, domain.ErrConflict) {
 			t.Fatalf("attesting a resolved item = %v, want a conflict", err)
 		}
 
@@ -754,8 +758,9 @@ func TestIncidentAttestOnlyWhatHikyoCannotObserve(t *testing.T) {
 		if lim.Incident.ID != id {
 			t.Fatalf("limited open landed on %s, want the open incident %s", lim.Incident.ID, id)
 		}
-		execRaw(t, db, `UPDATE incident_items SET outcome = 'blocked', reason = 'needs_another_operator' WHERE id = '`+w.itemIDByKey(t, incResponder, id, keyIdentity)+`'`)
-		if err := w.svc.Attest(ctx, w.as(incResponder), id, w.itemIDByKey(t, incResponder, id, keyIdentity)); !errors.Is(err, domain.ErrConflict) {
+		blocked := w.itemIDByKey(t, incResponder, id, keyIdent2)
+		execRaw(t, db, `UPDATE incident_items SET outcome = 'blocked', reason = 'needs_another_operator' WHERE id = '`+blocked+`'`)
+		if err := w.svc.Attest(ctx, w.as(incResponder), id, blocked); !errors.Is(err, domain.ErrConflict) {
 			t.Errorf("attesting a blocked item = %v, want a conflict", err)
 		}
 	})
@@ -769,13 +774,12 @@ func TestIncidentTargetCannotAttestItsOwnIncident(t *testing.T) {
 		execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_inc_self', 'usr_iself', 'credential-reset', 'org_a', `+ts+`)`)
 		execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_inc_self2', 'usr_iself', 'read', 'org_a', `+ts+`)`)
 		execRaw(t, db, `INSERT INTO accounts (id, principal_id, username, display_name, email, email_verified_at, created_at) VALUES ('acc_iself', 'usr_iself', 'it-self', 'Self', 'it-self@example.test', `+ts+`, `+ts+`)`)
-		execRaw(t, db, `INSERT INTO totp_credentials (id, account_id, seed, dek_version, credential_epoch, row_version, last_step, created_step, confirmed_at, created_at) `+
-			`VALUES ('totp_self', 'acc_iself', `+blobLit(db, []byte("seed-self"))+`, 1, `+acctEpoch(t, db)+`, 1, 0, 0, `+ts+`, `+ts+`)`)
+		execRaw(t, db, `INSERT INTO external_identities (id,account_id,kind,issuer,subject,provider_id,credential_epoch,created_at) VALUES ('xid_self','acc_iself','oidc','https://idp.example.test','subject-self','',`+acctEpoch(t, db)+`,`+ts+`)`)
 		v, err := w.svc.Open(t.Context(), w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeAccount, Principal: self})
 		if err != nil {
 			t.Fatal(err)
 		}
-		item := w.itemIDByKey(t, incResponder, v.Incident.ID, "factor.remove|totp_factor|totp_self")
+		item := w.itemIDByKey(t, incResponder, v.Incident.ID, "external_identity.remove|external_identity|xid_self")
 		// The person an incident is about does not mark their own containment
 		// resolved, even holding credential-reset: the answer is the uniform one.
 		errSelf := w.svc.Attest(t.Context(), w.as(self), v.Incident.ID, item)
@@ -783,6 +787,14 @@ func TestIncidentTargetCannotAttestItsOwnIncident(t *testing.T) {
 		assertUniformNotFound(t, errSelf, errGhost)
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM incident_items WHERE outcome = 'attested'`); n != 0 {
 			t.Fatalf("a refused self-attest wrote %d attestations", n)
+		}
+		// The same holds for closing it with residuals: the target does not end
+		// their own containment record either.
+		_, errSelfClose := w.svc.Close(t.Context(), w.as(self), v.Incident.ID, true)
+		_, errGhostClose := w.svc.Close(t.Context(), w.as(self), "inc_does_not_exist", true)
+		assertUniformNotFound(t, errSelfClose, errGhostClose)
+		if st := queryStrings(t, db, `SELECT status FROM incidents WHERE id = '`+string(v.Incident.ID)+`'`); st != "open" {
+			t.Fatalf("a refused self-close left status %q", st)
 		}
 		if err := w.svc.Attest(t.Context(), w.as(incResponder), v.Incident.ID, item); err != nil {
 			t.Fatalf("another responder attesting: %v", err)
@@ -855,9 +867,9 @@ func TestIncidentCleanCloseNeedsEveryObservableItemConfirmed(t *testing.T) {
 	})
 }
 
-// ---- the opening org is fixed ------------------------------------------------
+// ---- the open slot is per org ------------------------------------------------
 
-func TestIncidentReopenAfterFootprintGrowthIsRefused(t *testing.T) {
+func TestIncidentReopenAfterFootprintGrowth(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		w := newIncidentWorld(t, db)
 		ctx := t.Context()
@@ -867,67 +879,94 @@ func TestIncidentReopenAfterFootprintGrowthIsRefused(t *testing.T) {
 		}
 		before := w.itemMap(t, incResponder, first.Incident.ID)
 
-		// The person gains a footprint in org B. Org A's responder can no longer
-		// reach the whole person, and the instance responder's open must not drop
-		// org B's objects into an incident org A's holders read.
+		// The person gains a footprint in org B. Org A's responder no longer reaches
+		// the whole person; the instance responder's open must not drop org B's
+		// objects into the incident org A's holders read.
 		execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_inc_b', 'usr_itarget', 'read', 'org_b', `+ts+`)`)
 		execRaw(t, db, `INSERT INTO sessions (id, principal_id, verifier, artifact, session_generation, credential_epoch, auth_method, factors, authenticated_at, created_at, last_seen_at, idle_expires_at, absolute_expires_at, source_ip, user_agent) `+
 			`VALUES ('ses_it_b', 'usr_itarget', `+blobLit(db, []byte("verifier-it-b"))+`, 'cli', 1, 0, 'local', '[]', `+ts+`, `+ts+`, `+ts+`, '2099-01-01T00:00:00.000000Z', '2099-01-01T00:00:00.000000Z', '', '')`)
 		target := service.IncidentTarget{Kind: domain.IncidentScopeAccount, Principal: incTarget}
 		_, errGhost := w.svc.Open(ctx, w.as("usr_nobody"), target)
-		for _, p := range []domain.PrincipalID{incResponder, incInstance} {
-			_, err := w.svc.Open(ctx, w.as(p), target)
-			assertUniformNotFound(t, err, errGhost)
-		}
-		if after := w.itemMap(t, incResponder, first.Incident.ID); !slices.Equal(mapKeys(after), mapKeys(before)) {
-			t.Fatalf("a refused reopen changed the ledger: %v -> %v", before, after)
-		}
-		if n := queryInt(t, db, `SELECT COUNT(*) FROM incidents`); n != 1 {
-			t.Fatalf("incident rows = %d, want 1", n)
-		}
+		_, errA := w.svc.Open(ctx, w.as(incResponder), target)
+		assertUniformNotFound(t, errA, errGhost)
 
-		// The instance holder closes the old incident and opens a fresh one that
-		// is its own, with org B's objects, unreadable to org A's responder.
-		if _, err := w.svc.Close(ctx, w.as(incInstance), first.Incident.ID, true); err != nil {
-			t.Fatalf("instance responder closing the org A incident: %v", err)
-		}
 		fresh, err := w.svc.Open(ctx, w.as(incInstance), target)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if fresh.Incident.ID == first.Incident.ID || fresh.Incident.OrgID != "" {
-			t.Fatalf("fresh incident = %+v, want a new instance-owned incident", fresh.Incident)
+		if fresh.Incident.ID == first.Incident.ID || fresh.Incident.OrgID != "" || fresh.Reopened {
+			t.Fatalf("instance open = %+v reopened=%v, want a new instance-owned incident", fresh.Incident, fresh.Reopened)
 		}
 		if _, ok := w.itemMap(t, incInstance, fresh.Incident.ID)["session.revoke|session|ses_it_b"]; !ok {
 			t.Error("the instance incident lacks the org B session")
 		}
+		if again, err := w.svc.Open(ctx, w.as(incInstance), target); err != nil || again.Incident.ID != fresh.Incident.ID || !again.Reopened {
+			t.Fatalf("second instance open = %+v, %v, want the same incident", again.Incident, err)
+		}
+
+		// Org A's incident is untouched and still its own; it never sees the
+		// instance incident.
+		if after := w.itemMap(t, incResponder, first.Incident.ID); !slices.Equal(mapKeys(after), mapKeys(before)) {
+			t.Fatalf("the instance open changed org A's ledger: %v -> %v", before, after)
+		}
 		_, errRead := w.svc.Get(ctx, w.as(incResponder), fresh.Incident.ID)
 		_, errMissing := w.svc.Get(ctx, w.as(incResponder), "inc_does_not_exist")
 		assertUniformNotFound(t, errRead, errMissing)
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM incidents WHERE status = 'open'`); n != 2 {
+			t.Fatalf("open incidents = %d, want org A's and the instance's", n)
+		}
 	})
 }
 
-func TestIncidentReopenAfterFootprintShrinkIsRefused(t *testing.T) {
+func TestIncidentReopenAfterFootprintShrink(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		w := newIncidentWorld(t, db)
 		ctx := t.Context()
 		execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_inc_b', 'usr_itarget', 'read', 'org_b', `+ts+`)`)
 		target := service.IncidentTarget{Kind: domain.IncidentScopeAccount, Principal: incTarget}
-		first, err := w.svc.Open(ctx, w.as(incInstance), target)
+		inst, err := w.svc.Open(ctx, w.as(incInstance), target)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if first.Incident.OrgID != "" {
-			t.Fatalf("incident org = %q, want an instance-owned incident", first.Incident.OrgID)
+		if inst.Incident.OrgID != "" {
+			t.Fatalf("incident org = %q, want an instance-owned incident", inst.Incident.OrgID)
 		}
 		// The org B footprint goes away: org A's responder now reaches the whole
-		// person, and must not take over (or extend) the instance's incident.
+		// person and gets its own incident, without taking over the instance's.
 		execRaw(t, db, `DELETE FROM grants WHERE id = 'g_inc_b'`)
-		_, errReopen := w.svc.Open(ctx, w.as(incResponder), target)
-		_, errGhost := w.svc.Open(ctx, w.as("usr_nobody"), target)
-		assertUniformNotFound(t, errReopen, errGhost)
-		if n := queryInt(t, db, `SELECT COUNT(*) FROM incidents`); n != 1 {
-			t.Fatalf("incident rows = %d, want 1", n)
+		own := w.openAccount(t, incResponder)
+		if own.Incident.ID == inst.Incident.ID || own.Incident.OrgID != orgA || own.Reopened {
+			t.Fatalf("org A open = %+v reopened=%v, want its own new incident", own.Incident, own.Reopened)
+		}
+		_, errRead := w.svc.Get(ctx, w.as(incResponder), inst.Incident.ID)
+		_, errMissing := w.svc.Get(ctx, w.as(incResponder), "inc_does_not_exist")
+		assertUniformNotFound(t, errRead, errMissing)
+	})
+}
+
+// TestIncidentOrgsHaveTheirOwnSlot: an open incident in org A on a
+// person who has since moved to org B does not block org B, and org B learns
+// nothing about it.
+func TestIncidentOrgsHaveTheirOwnSlot(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		ctx := t.Context()
+		a := w.openAccount(t, incResponder)
+		execRaw(t, db, `DELETE FROM grant_origins WHERE grant_id IN (SELECT id FROM grants WHERE principal_id = 'usr_itarget')`)
+		execRaw(t, db, `DELETE FROM grants WHERE principal_id = 'usr_itarget'`)
+		execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_inc_b', 'usr_itarget', 'read', 'org_b', `+ts+`)`)
+		b, err := w.svc.Open(ctx, w.as(incOrgB), service.IncidentTarget{Kind: domain.IncidentScopeAccount, Principal: incTarget})
+		if err != nil {
+			t.Fatalf("org B opening on the moved person: %v", err)
+		}
+		if b.Incident.ID == a.Incident.ID || b.Incident.OrgID != orgB || b.Reopened {
+			t.Fatalf("org B incident = %+v reopened=%v", b.Incident, b.Reopened)
+		}
+		if _, err := w.svc.Get(ctx, w.as(incOrgB), a.Incident.ID); !errors.Is(err, domain.ErrNotFound) {
+			t.Errorf("org B reading org A's incident = %v, want not found", err)
+		}
+		if _, err := w.svc.Get(ctx, w.as(incResponder), a.Incident.ID); err != nil {
+			t.Errorf("org A lost its own incident: %v", err)
 		}
 	})
 }
@@ -1376,7 +1415,13 @@ func TestIncidentAdapterScope(t *testing.T) {
 		wantItems(t, got, map[string]string{
 			"adapter_move.resume|adapter|adp_it_mv":                "pending/",
 			"adapter_credential.upstream_revoke|adapter|adp_it_mv": "unknown/upstream_not_observable",
+			// Target-level moves and scrub jobs are not read yet (the S4 reader), so
+			// every adapter carries an open row that says so.
+			"adapter_move.resume|enumeration|adp_it_mv": "unknown/enumeration_truncated",
 		})
+		if _, err := w.svc.Close(ctx, w.as(incResponder), v.Incident.ID, false); !errors.Is(err, service.ErrIncidentOpenItems) {
+			t.Errorf("clean close with the move and scrub source unread = %v, want ErrIncidentOpenItems", err)
+		}
 
 		// A credential-reset holder without the adapter capability records an
 		// unverified adapter id. The open-incident slot is qualified by the project

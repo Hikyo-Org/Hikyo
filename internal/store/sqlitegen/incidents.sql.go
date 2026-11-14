@@ -134,18 +134,19 @@ func (q *Queries) GetIncidentItem(ctx context.Context, arg GetIncidentItemParams
 
 const getOpenIncidentForScope = `-- name: GetOpenIncidentForScope :one
 SELECT id, scope_kind, scope_id, org_id, status, opened_by, opened_at, closed_by, closed_at, row_version
-FROM incidents WHERE scope_kind = ?1 AND scope_id = ?2 AND status = 'open'
+FROM incidents WHERE scope_kind = ?1 AND scope_id = ?2 AND org_id = ?3 AND status = 'open'
 `
 
 type GetOpenIncidentForScopeParams struct {
 	ScopeKind string
 	ScopeID   string
+	OrgID     string
 }
 
-// hikyo:reason Re-opening an incident reads the one open row of the addressed scope after the operation authorized credential-reset at that scope.
+// hikyo:reason Re-opening an incident reads the one open row of the addressed scope and owning org after the operation authorized credential-reset at that scope.
 // hikyo:authn-resolution
 func (q *Queries) GetOpenIncidentForScope(ctx context.Context, arg GetOpenIncidentForScopeParams) (Incident, error) {
-	row := q.db.QueryRowContext(ctx, getOpenIncidentForScope, arg.ScopeKind, arg.ScopeID)
+	row := q.db.QueryRowContext(ctx, getOpenIncidentForScope, arg.ScopeKind, arg.ScopeID, arg.OrgID)
 	var i Incident
 	err := row.Scan(
 		&i.ID,

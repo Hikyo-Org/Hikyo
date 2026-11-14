@@ -121,12 +121,11 @@ func ValidItemState(o domain.ItemOutcome, r domain.ItemReason) bool {
 
 // OpenIncident inserts the open incident for a scope. When the scope already
 // has one open, it inserts nothing and returns the existing row with created
-// false: opening is idempotent. An existing incident owned by a different org
-// than the caller was just authorized for is refused as not found: the footprint
-// of an account moved since it was opened, and reading or extending the old
-// ledger under the new authorization would mix two orgs' objects in one ledger
-// that only one of them may read. The operator closes the old incident, which
-// the org that owns it can do, and opens a fresh one.
+// false: opening is idempotent. The open slot is per scope and owning org, so a
+// caller only ever meets its own org's incident: another org's open incident on
+// the same principal neither blocks the open nor is revealed by it, and a
+// footprint that moved since an incident was opened gets a fresh incident for
+// the newly authorized org instead of mixing two orgs' objects in one ledger.
 func (r *Resolver) OpenIncident(ctx context.Context, n NewIncident) (Incident, bool, error) {
 	if !n.ScopeKind.Valid() || n.ID == "" || n.ScopeID == "" || n.OpenedBy == "" {
 		return Incident{}, false, fmt.Errorf("authn: incident needs a scope kind, scope id and opener: %w", domain.ErrInvalid)
@@ -153,13 +152,13 @@ func (r *Resolver) OpenIncident(ctx context.Context, n NewIncident) (Incident, b
 	}
 	var existing Incident
 	if r.sq != nil {
-		row, gerr := r.sq.GetOpenIncidentForScope(ctx, sqlitegen.GetOpenIncidentForScopeParams{ScopeKind: string(n.ScopeKind), ScopeID: n.ScopeID})
+		row, gerr := r.sq.GetOpenIncidentForScope(ctx, sqlitegen.GetOpenIncidentForScopeParams{ScopeKind: string(n.ScopeKind), ScopeID: n.ScopeID, OrgID: string(n.OrgID)})
 		if gerr != nil {
 			return Incident{}, false, notFoundOr(gerr)
 		}
 		existing, err = sqliteIncident(row)
 	} else {
-		row, gerr := r.pg.GetOpenIncidentForScope(ctx, pggen.GetOpenIncidentForScopeParams{ScopeKind: string(n.ScopeKind), ScopeID: n.ScopeID})
+		row, gerr := r.pg.GetOpenIncidentForScope(ctx, pggen.GetOpenIncidentForScopeParams{ScopeKind: string(n.ScopeKind), ScopeID: n.ScopeID, OrgID: string(n.OrgID)})
 		if gerr != nil {
 			return Incident{}, false, notFoundOr(gerr)
 		}
@@ -167,9 +166,6 @@ func (r *Resolver) OpenIncident(ctx context.Context, n NewIncident) (Incident, b
 	}
 	if err != nil {
 		return Incident{}, false, err
-	}
-	if existing.OrgID != n.OrgID {
-		return Incident{}, false, domain.ErrNotFound
 	}
 	return existing, false, nil
 }
