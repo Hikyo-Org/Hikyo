@@ -740,6 +740,22 @@ func TestIncidentAuthorizationRefusals(t *testing.T) {
 
 // ---- audit ------------------------------------------------------------------
 
+// runIncidentAuditLifecycle gives every incident event type a real emitter for
+// the registry-wide emitter check: open, resume through a confirming owner,
+// close.
+func runIncidentAuditLifecycle(t *testing.T, db *store.DB) {
+	t.Helper()
+	w := newIncidentWorld(t, db)
+	id := w.openAccount(t, incResponder).Incident.ID
+	w.withOwner(newFakeOwner())
+	if _, err := w.svc.Resume(t.Context(), w.as(incResponder), id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.svc.Close(t.Context(), w.as(incResponder), id, true); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestIncidentAuditTrail(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		w := newIncidentWorld(t, db)
