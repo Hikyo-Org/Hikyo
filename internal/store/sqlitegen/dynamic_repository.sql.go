@@ -536,6 +536,116 @@ func (q *Queries) DynamicListLeasesForEnvironment(ctx context.Context, arg Dynam
 	return items, nil
 }
 
+const dynamicListNonTerminalLeasesInInstance = `-- name: DynamicListNonTerminalLeasesInInstance :many
+SELECT id, org_id, project_id, environment_id, provider_id, state FROM dynamic_leases WHERE state NOT IN ('revoked','expired','failed') AND id > ?1 ORDER BY id LIMIT ?2
+`
+
+type DynamicListNonTerminalLeasesInInstanceParams struct {
+	AfterID  string
+	RowLimit int64
+}
+
+type DynamicListNonTerminalLeasesInInstanceRow struct {
+	ID            string
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	ProviderID    string
+	State         string
+}
+
+// Incident enumeration at instance level: the non-terminal leases of every org,
+// in id order and bounded by the limit. The read is cross-tenant by definition,
+// like ListAllProjects, and selects identifiers and the state only.
+// hikyo:reason Instance-level incident enumeration lists non-terminal lease identifiers across orgs only behind the instance credential-reset operation, whose proof carries an empty chain; the page is bounded and no lease secret is selected.
+// hikyo:instance-scoped
+func (q *Queries) DynamicListNonTerminalLeasesInInstance(ctx context.Context, arg DynamicListNonTerminalLeasesInInstanceParams) ([]DynamicListNonTerminalLeasesInInstanceRow, error) {
+	rows, err := q.db.QueryContext(ctx, dynamicListNonTerminalLeasesInInstance, arg.AfterID, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DynamicListNonTerminalLeasesInInstanceRow
+	for rows.Next() {
+		var i DynamicListNonTerminalLeasesInInstanceRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.EnvironmentID,
+			&i.ProviderID,
+			&i.State,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const dynamicListNonTerminalLeasesInProject = `-- name: DynamicListNonTerminalLeasesInProject :many
+SELECT id, org_id, project_id, environment_id, provider_id, state FROM dynamic_leases WHERE org_id=?1 AND project_id=?2 AND state NOT IN ('revoked','expired','failed') AND id > ?3 ORDER BY id LIMIT ?4
+`
+
+type DynamicListNonTerminalLeasesInProjectParams struct {
+	ChainOrg     string
+	ChainProject string
+	AfterID      string
+	RowLimit     int64
+}
+
+type DynamicListNonTerminalLeasesInProjectRow struct {
+	ID            string
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	ProviderID    string
+	State         string
+}
+
+// Incident enumeration: the non-terminal leases of one project, in id order and
+// bounded by the limit. Only identifiers and the state are selected.
+func (q *Queries) DynamicListNonTerminalLeasesInProject(ctx context.Context, arg DynamicListNonTerminalLeasesInProjectParams) ([]DynamicListNonTerminalLeasesInProjectRow, error) {
+	rows, err := q.db.QueryContext(ctx, dynamicListNonTerminalLeasesInProject,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.AfterID,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DynamicListNonTerminalLeasesInProjectRow
+	for rows.Next() {
+		var i DynamicListNonTerminalLeasesInProjectRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.EnvironmentID,
+			&i.ProviderID,
+			&i.State,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const dynamicListProviders = `-- name: DynamicListProviders :many
 SELECT id,kind,origin,tls_mode,grant_role,CAST(CASE WHEN admin_credential_ciphertext IS NULL THEN 0 ELSE 1 END AS INTEGER) AS credential_present,credential_set_at,authority_principal_id,state,created_at FROM dynamic_providers WHERE org_id=?1 AND project_id=?2 AND state='active' ORDER BY id
 `

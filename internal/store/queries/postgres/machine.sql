@@ -189,3 +189,14 @@ WHERE c.principal_id = sqlc.arg(principal_id)
   AND EXISTS (SELECT 1 FROM service_accounts AS sa
     WHERE sa.org_id = sqlc.arg(org_id) AND sa.project_id = sqlc.arg(project_id)
       AND sa.principal_id = sqlc.arg(principal_id));
+
+-- Incident enumeration of the created-by relation: the service accounts one
+-- principal created, in id order and bounded by the limit, narrowed to one org
+-- when the incident is org-bounded.
+-- hikyo:reason Incident enumeration reads the service accounts one principal created after the operation authorized credential-reset at the incident scope; it returns metadata only, no credential, and the page is bounded.
+-- hikyo:authn-resolution
+-- name: ListServiceAccountsCreatedBy :many
+SELECT id, principal_id, org_id, project_id, name, kind, created_at, created_by
+FROM service_accounts
+WHERE created_by = sqlc.arg(created_by) AND (sqlc.arg(org_id)::text = '' OR org_id = sqlc.arg(org_id)) AND id > sqlc.arg(after_id)
+ORDER BY id LIMIT sqlc.arg(row_limit);

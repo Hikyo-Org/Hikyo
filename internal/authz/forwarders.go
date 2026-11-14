@@ -72,6 +72,25 @@ type txForwarded interface {
 	ContainPrincipal(ctx context.Context, p domain.PrincipalID, at time.Time, incidentID string) error
 	ReleasePrincipalContainment(ctx context.Context, p domain.PrincipalID) error
 
+	// The incident ledger (O5): mutable state apart from the append-only trail.
+	// OpenIncident is idempotent per scope; AddIncidentItem never overwrites a
+	// recorded outcome; TransitionIncidentItem is a compare-and-set that reports
+	// false for a stale version, a terminal item or a closed incident.
+	OpenIncident(ctx context.Context, n NewIncident) (Incident, bool, error)
+	IncidentByID(ctx context.Context, id string) (Incident, error)
+	CloseIncident(ctx context.Context, id string, expectedVersion int64, status domain.IncidentStatus, by domain.PrincipalID, at time.Time) (bool, error)
+	AddIncidentItem(ctx context.Context, n NewIncidentItem) (bool, error)
+	IncidentItems(ctx context.Context, incidentID, afterID string, limit int, openOnly bool) ([]IncidentItem, error)
+	IncidentItemByID(ctx context.Context, incidentID, id string) (IncidentItem, error)
+	IncidentItemCounts(ctx context.Context, incidentID string) (map[domain.ItemOutcome]int64, error)
+	TransitionIncidentItem(ctx context.Context, t ItemTransition) (bool, error)
+	// LiveDeveloperCredentialsInOrg pages the live delegations minted inside one
+	// org, in id order; a non-empty authority narrows it to one human.
+	// ServiceAccountsCreatedBy pages the service accounts a principal created
+	// (the offboarding report's created-by relation), in id order.
+	ServiceAccountsCreatedBy(ctx context.Context, creator domain.PrincipalID, org domain.OrgID, afterID string, limit int) ([]ServiceAccount, error)
+	LiveDeveloperCredentialsInOrg(ctx context.Context, org domain.OrgID, authority domain.PrincipalID, afterID string, limit int, now time.Time) ([]DeveloperCredential, error)
+
 	// PrincipalPausedByContainment reports a principal held out of authority by
 	// containment alone, for the personal-value retention clock.
 	PrincipalPausedByContainment(ctx context.Context, p domain.PrincipalID) (bool, error)

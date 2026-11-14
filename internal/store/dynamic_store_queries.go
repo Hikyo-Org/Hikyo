@@ -23,6 +23,8 @@ type dynamicStoreQueries interface {
 	dynamicGetLease(ctx context.Context, chain domain.Scope, leaseID string) (DynamicLease, error)
 	dynamicListLeasesForEnvironment(ctx context.Context, chain domain.Scope) ([]DynamicLease, error)
 	dynamicActiveLeaseIDsForProvider(ctx context.Context, chain domain.Scope, providerID string) ([]DynamicLease, error)
+	dynamicListNonTerminalLeasesInProject(ctx context.Context, chain domain.Scope, afterID string, limit int) ([]DynamicLeaseRef, error)
+	dynamicListNonTerminalLeasesInInstance(ctx context.Context, afterID string, limit int) ([]DynamicLeaseRef, error)
 	dynamicFinishMint(ctx context.Context, chain domain.Scope, m DynamicLeaseFinishMint) (int64, error)
 	dynamicReencryptProvider(ctx context.Context, chain domain.Scope, id string, newCiphertext, oldCiphertext []byte) (int64, error)
 	dynamicListProvidersForReencrypt(ctx context.Context, chain domain.Scope, cursor string, limit int) ([]ReencryptFieldRow, error)
@@ -200,6 +202,46 @@ func (q pgDynamicStoreQueries) dynamicActiveLeaseIDsForProvider(ctx context.Cont
 	}
 	return mapRows(rows, func(c pggen.DynamicActiveLeaseIDsForProviderRow) (DynamicLease, error) {
 		return pgDynamicLease(pggen.DynamicGetLeaseRow(c))
+	})
+}
+
+func (q sqliteDynamicStoreQueries) dynamicListNonTerminalLeasesInProject(ctx context.Context, chain domain.Scope, afterID string, limit int) ([]DynamicLeaseRef, error) {
+	rows, err := q.queries.DynamicListNonTerminalLeasesInProject(ctx, sqlitegen.DynamicListNonTerminalLeasesInProjectParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), AfterID: afterID, RowLimit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(c sqlitegen.DynamicListNonTerminalLeasesInProjectRow) (DynamicLeaseRef, error) {
+		return DynamicLeaseRef(c), nil
+	})
+}
+
+func (q pgDynamicStoreQueries) dynamicListNonTerminalLeasesInProject(ctx context.Context, chain domain.Scope, afterID string, limit int) ([]DynamicLeaseRef, error) {
+	rows, err := q.queries.DynamicListNonTerminalLeasesInProject(ctx, pggen.DynamicListNonTerminalLeasesInProjectParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), AfterID: afterID, RowLimit: int32(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(c pggen.DynamicListNonTerminalLeasesInProjectRow) (DynamicLeaseRef, error) {
+		return DynamicLeaseRef(c), nil
+	})
+}
+
+func (q sqliteDynamicStoreQueries) dynamicListNonTerminalLeasesInInstance(ctx context.Context, afterID string, limit int) ([]DynamicLeaseRef, error) {
+	rows, err := q.queries.DynamicListNonTerminalLeasesInInstance(ctx, sqlitegen.DynamicListNonTerminalLeasesInInstanceParams{AfterID: afterID, RowLimit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(c sqlitegen.DynamicListNonTerminalLeasesInInstanceRow) (DynamicLeaseRef, error) {
+		return DynamicLeaseRef(c), nil
+	})
+}
+
+func (q pgDynamicStoreQueries) dynamicListNonTerminalLeasesInInstance(ctx context.Context, afterID string, limit int) ([]DynamicLeaseRef, error) {
+	rows, err := q.queries.DynamicListNonTerminalLeasesInInstance(ctx, pggen.DynamicListNonTerminalLeasesInInstanceParams{AfterID: afterID, RowLimit: int32(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(c pggen.DynamicListNonTerminalLeasesInInstanceRow) (DynamicLeaseRef, error) {
+		return DynamicLeaseRef(c), nil
 	})
 }
 

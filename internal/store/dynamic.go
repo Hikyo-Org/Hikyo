@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 )
@@ -70,6 +71,20 @@ type DynamicLease struct {
 	CreatedAt        string
 }
 
+// MaxDynamicLeasePage bounds one page of the incident lease listings.
+const MaxDynamicLeasePage = 500
+
+// DynamicLeaseRef is the identifiers-and-state view of one non-terminal lease
+// that the incident enumeration lists. It carries no provider handle.
+type DynamicLeaseRef struct {
+	ID            string
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	ProviderID    string
+	State         string
+}
+
 // DynamicLeaseCreate is a mint's durable intent row (state=minting). The lease
 // row is itself the job: next_attempt_at is stamped now so a crashed synchronous
 // mint is picked up by the worker and settled.
@@ -117,6 +132,13 @@ type DynamicReader interface {
 	GetLease(ctx context.Context, p authz.Proof, leaseID string) (DynamicLease, error)
 	ListLeasesForEnvironment(ctx context.Context, p authz.Proof) ([]DynamicLease, error)
 	ActiveLeaseIDsForProvider(ctx context.Context, p authz.Proof, providerID string) ([]DynamicLease, error)
+	// ListNonTerminalLeasesInProject pages the project's leases that are not
+	// revoked, expired or failed, in id order; the limit is at most
+	// MaxDynamicLeasePage.
+	ListNonTerminalLeasesInProject(ctx context.Context, p authz.Proof, afterID string, limit int) ([]DynamicLeaseRef, error)
+	// ListNonTerminalLeasesInInstance is the same page across every org and
+	// takes an instance-scoped proof only.
+	ListNonTerminalLeasesInInstance(ctx context.Context, p authz.Proof, afterID string, limit int) ([]DynamicLeaseRef, error)
 	ListProvidersForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptFieldRow, error)
 }
 
@@ -289,6 +311,28 @@ func (r dynamicQueries) ListLeasesForEnvironment(ctx context.Context, p authz.Pr
 		return nil, ErrNotFound
 	}
 	return r.queries.dynamicListLeasesForEnvironment(ctx, chain)
+}
+
+func (r dynamicQueries) ListNonTerminalLeasesInProject(ctx context.Context, p authz.Proof, afterID string, limit int) ([]DynamicLeaseRef, error) {
+	chain, err := authz.Verify(p, authz.StoreDynamicLeasesListNonTerminalProject, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	if chain.Org == "" || chain.Project == "" || limit < 1 || limit > MaxDynamicLeasePage {
+		return nil, ErrNotFound
+	}
+	return r.queries.dynamicListNonTerminalLeasesInProject(ctx, chain, afterID, limit)
+}
+
+func (r dynamicQueries) ListNonTerminalLeasesInInstance(ctx context.Context, p authz.Proof, afterID string, limit int) ([]DynamicLeaseRef, error) {
+	chain, err := authz.Verify(p, authz.StoreDynamicLeasesListNonTerminalInstance, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	if chain != (domain.Scope{}) || limit < 1 || limit > MaxDynamicLeasePage {
+		return nil, ErrNotFound
+	}
+	return r.queries.dynamicListNonTerminalLeasesInInstance(ctx, afterID, limit)
 }
 
 func (r dynamicQueries) ActiveLeaseIDsForProvider(ctx context.Context, p authz.Proof, providerID string) ([]DynamicLease, error) {
