@@ -10,6 +10,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestDoctorDiagnosticVerdictsAndExitCodes(t *testing.T) {
@@ -45,9 +46,9 @@ func TestDoctorDiagnosticVerdictsAndExitCodes(t *testing.T) {
 				}
 				switch r.URL.Path {
 				case api.PathPrefix + "/instance/retention-health":
-					_ = writeJSONLine(w, health)
+					_ = jsonwire.Encode(w, health)
 				case api.PathPrefix + "/instance/saml-providers":
-					_ = writeJSONLine(w, apigen.SamlProviderList{Providers: []apigen.SamlProvider{}})
+					_ = jsonwire.Encode(w, apigen.SamlProviderList{Providers: []apigen.SamlProvider{}})
 				default:
 					t.Errorf("unexpected doctor request %s", r.URL.Path)
 					w.WriteHeader(http.StatusNotFound)

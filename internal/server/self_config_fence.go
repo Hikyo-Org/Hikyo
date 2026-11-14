@@ -7,6 +7,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
@@ -22,7 +23,7 @@ func WriteRuntimeUnavailable(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", scimproto.MediaType)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		// The body consists exclusively of fixed, serializable metadata.
-		_ = encodeJSON(w, (&scimproto.Error{Status: http.StatusServiceUnavailable, Detail: "Runtime configuration is not ready; retry shortly."}).Body())
+		_ = jsonwire.Encode(w, (&scimproto.Error{Status: http.StatusServiceUnavailable, Detail: "Runtime configuration is not ready; retry shortly."}).Body())
 		return
 	}
 	writeError(w, wireErrorFor(service.ErrSelfConfigUnavailable), "")

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestExportConsentUsesSnapshotMetadata(t *testing.T) {
@@ -35,7 +36,7 @@ func TestExportConsentUsesSnapshotMetadata(t *testing.T) {
 				}
 				// Names can have been renamed or reused in the current catalogue.
 				// Consent must bind the snapshot's IDs, without a catalogue lookup.
-				_ = writeJSONLine(w, apigen.RevisionDetail{Revision: 7, Keys: []apigen.SnapshotKey{
+				_ = jsonwire.Encode(w, apigen.RevisionDetail{Revision: 7, Keys: []apigen.SnapshotKey{
 					{KeyId: "key_historical", Name: "OLD_NAME", Classification: apigen.KeyClassificationSecret, Sensitive: true},
 					// A later declassification leaves this occurrence sticky-secret,
 					// and the server's reveal gate still counts it.

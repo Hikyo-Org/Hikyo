@@ -2,7 +2,8 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -123,12 +124,12 @@ type scanEvidence struct {
 }
 
 type scanFrame struct {
-	Module   string          `json:"module"`
-	Version  string          `json:"version,omitempty"`
-	Package  string          `json:"package,omitempty"`
-	Function string          `json:"function,omitempty"`
-	Receiver string          `json:"receiver,omitempty"`
-	Position json.RawMessage `json:"position,omitempty"`
+	Module   string         `json:"module"`
+	Version  string         `json:"version,omitempty"`
+	Package  string         `json:"package,omitempty"`
+	Function string         `json:"function,omitempty"`
+	Receiver string         `json:"receiver,omitempty"`
+	Position jsontext.Value `json:"position,omitzero"`
 }
 type scanFinding struct {
 	OSV          string      `json:"osv"`
@@ -142,7 +143,7 @@ func validateScan(raw []byte) (scanEvidence, error) {
 	if err != nil {
 		return result, fmt.Errorf("binary scanner pin: %w", err)
 	}
-	d := json.NewDecoder(bytes.NewReader(raw))
+	d := jsontext.NewDecoder(bytes.NewReader(raw))
 	configs := 0
 	messages := 0
 	sboms := 0
@@ -158,13 +159,13 @@ func validateScan(raw []byte) (scanEvidence, error) {
 				ScanMode        string    `json:"scan_mode"`
 				ScanLevel       string    `json:"scan_level"`
 			} `json:"config"`
-			Finding json.RawMessage `json:"finding"`
+			Finding jsontext.Value `json:"finding"`
 			SBOM    *struct {
 				GoVersion string   `json:"go_version"`
 				Roots     []string `json:"roots"`
 			} `json:"SBOM"`
 		}
-		if err := d.Decode(&msg); err == io.EOF {
+		if err := json.UnmarshalDecode(d, &msg); errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
 			return result, err
@@ -172,9 +173,7 @@ func validateScan(raw []byte) (scanEvidence, error) {
 		messages++
 		if len(msg.Finding) != 0 {
 			var finding scanFinding
-			findingDecoder := json.NewDecoder(bytes.NewReader(msg.Finding))
-			findingDecoder.DisallowUnknownFields()
-			if err := findingDecoder.Decode(&finding); err != nil || !regexp.MustCompile(`^GO-[0-9]{4}-[0-9]+$`).MatchString(finding.OSV) || len(finding.Trace) != 1 || finding.Trace[0].Module == "" {
+			if err := json.Unmarshal(msg.Finding, &finding, json.RejectUnknownMembers(true)); err != nil || !regexp.MustCompile(`^GO-[0-9]{4}-[0-9]+$`).MatchString(finding.OSV) || len(finding.Trace) != 1 || finding.Trace[0].Module == "" {
 				return result, errors.New("malformed or unclassifiable binary vulnerability finding")
 			}
 			if finding.Trace[0].Function == "" && finding.Trace[0].Receiver != "" || len(finding.Trace[0].Position) > 0 {

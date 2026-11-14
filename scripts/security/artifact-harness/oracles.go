@@ -1,7 +1,8 @@
 package main
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 )
 
@@ -40,9 +41,9 @@ func requireCurrentDelivery(t *target, path, token string, canaries []string) er
 		return err
 	}
 	var d struct {
-		Current bool              `json:"current"`
-		Cursor  string            `json:"cursor"`
-		Keys    []json.RawMessage `json:"keys"`
+		Current bool             `json:"current"`
+		Cursor  string           `json:"cursor"`
+		Keys    []jsontext.Value `json:"keys"`
 	}
 	if r.status != 200 || json.Unmarshal(r.body, &d) != nil || !d.Current || d.Cursor == "" || len(d.Keys) != 0 {
 		return errors.New("authorized conditional cursor did not produce an empty current response")

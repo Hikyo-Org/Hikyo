@@ -10,6 +10,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 const awsCLIStaticDescriptor = `{"mode":"static","region":"eu-west-1","access_key_id":"AKIAHIKYOTEST0000001","secret_access_key":"aws-cli-secret-canary","session_token":"aws-cli-temporary-token-canary"}`
@@ -179,7 +180,7 @@ func TestAWSAdapterTargetAddAndKMSMoveDispatch(t *testing.T) {
 					case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/adapters/adp_one"):
 						_, _ = io.WriteString(w, `{"id":"adp_one","provider":"aws-secrets-manager","origin":"https://secretsmanager.eu-west-1.amazonaws.com","state":"active","credential_present":true,"targets":[]}`)
 					case update && r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/adapter-targets/tgt_one"):
-						_ = writeJSONLine(w, apigen.AdapterTargetDetail{Target: apigen.AdapterTarget{Id: "tgt_one", AdapterId: "adp_one", EnvironmentId: "env_one", DestinationKind: apigen.AdapterDestinationKind(kind), DestinationOwner: "123456789012", DestinationName: "prod/config/", DestinationEnvironment: "alias/old", NamePrefix: "PROD_", Generation: 7}, Mapping: []apigen.AdapterMappingEntry{{KeyId: "key_one"}}})
+						_ = jsonwire.Encode(w, apigen.AdapterTargetDetail{Target: apigen.AdapterTarget{Id: "tgt_one", AdapterId: "adp_one", EnvironmentId: "env_one", DestinationKind: apigen.AdapterDestinationKind(kind), DestinationOwner: "123456789012", DestinationName: "prod/config/", DestinationEnvironment: "alias/old", NamePrefix: "PROD_", Generation: 7}, Mapping: []apigen.AdapterMappingEntry{{KeyId: "key_one"}}})
 					case !update && r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/adapters/adp_one/targets"):
 						mutations++
 						var body apigen.AdapterTargetInput
@@ -191,7 +192,7 @@ func TestAWSAdapterTargetAddAndKMSMoveDispatch(t *testing.T) {
 							t.Error("AWS target add lost kind, name, KMS or account")
 						}
 						w.WriteHeader(http.StatusCreated)
-						_ = writeJSONLine(w, apigen.AdapterTarget{Id: "tgt_one", DestinationKind: body.DestinationKind})
+						_ = jsonwire.Encode(w, apigen.AdapterTarget{Id: "tgt_one", DestinationKind: body.DestinationKind})
 					case update && r.Method == http.MethodPatch && strings.HasSuffix(r.URL.Path, "/adapter-targets/tgt_one"):
 						mutations++
 						var body apigen.UpdateAdapterTargetRequest
@@ -203,7 +204,7 @@ func TestAWSAdapterTargetAddAndKMSMoveDispatch(t *testing.T) {
 							t.Error("AWS KMS move lost route, generation or retain choice")
 						}
 						w.WriteHeader(http.StatusAccepted)
-						_ = writeJSONLine(w, apigen.AdapterMove{
+						_ = jsonwire.Encode(w, apigen.AdapterMove{
 							Id: "mov_one", AdapterId: "adp_one", Kind: "target", State: "activating", KeepRemote: true,
 							Targets: []apigen.AdapterMoveTarget{{
 								TargetId: "tgt_one", EnvironmentId: body.EnvironmentId,
@@ -214,7 +215,7 @@ func TestAWSAdapterTargetAddAndKMSMoveDispatch(t *testing.T) {
 						})
 					case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/environments"):
 						// The table's best-effort environment naming.
-						_ = writeJSONLine(w, apigen.EnvironmentList{Items: []apigen.Environment{{Id: "env_one", Name: "production"}}})
+						_ = jsonwire.Encode(w, apigen.EnvironmentList{Items: []apigen.Environment{{Id: "env_one", Name: "production"}}})
 					default:
 						t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 						http.NotFound(w, r)
@@ -259,7 +260,7 @@ func TestAWSAdapterCredentialServerRefusalDoesNotClaimReplacement(t *testing.T) 
 				}
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(refusal.status)
-				_ = writeJSONLine(w, map[string]map[string]string{"error": {"code": refusal.code, "message": "request refused", "detail": refusal.detail}})
+				_ = jsonwire.Encode(w, map[string]map[string]string{"error": {"code": refusal.code, "message": "request refused", "detail": refusal.detail}})
 			}, "adapter", "credential", "set", "--adapter", "adp_one", "--aws-auth", "ambient")
 			if code != ExitRefused || calls != 1 || stdout != "" || !strings.Contains(stderr, "request refused") {
 				t.Fatalf("exit=%d requests=%d stdout=%q stderr=%s", code, calls, stdout, stderr)
@@ -292,7 +293,7 @@ func TestAWSAdapterPlanNamesAndRevokeDispatch(t *testing.T) {
 					t.Errorf("unexpected plan request %s %s", r.Method, r.URL.Path)
 				}
 				w.Header().Set("Content-Type", "application/json")
-				_ = writeJSONLine(w, apigen.AdapterPlan{ArtifactId: "acf_one", Changes: []apigen.AdapterChange{
+				_ = jsonwire.Encode(w, apigen.AdapterPlan{ArtifactId: "acf_one", Changes: []apigen.AdapterChange{
 					{Surface: "secret", EffectiveName: "prod/config", Disposition: "conflict"},
 					{Surface: "secret", EffectiveName: "prod/PROD_TOKEN", Disposition: "create"},
 				}})
@@ -344,7 +345,7 @@ func TestAWSAdapterAdoptSelectsExactArtifactAndRejectsAmbiguity(t *testing.T) {
 				switch {
 				case r.Method == http.MethodGet && r.URL.Path == "/api/v1/orgs/org_one/projects/prj_one/adapter-targets/tgt_one":
 					reads++
-					_ = writeJSONLine(w, apigen.AdapterTargetDetail{Target: apigen.AdapterTarget{Id: "tgt_one", AdapterId: "adp_one"}, Conflicts: artifacts})
+					_ = jsonwire.Encode(w, apigen.AdapterTargetDetail{Target: apigen.AdapterTarget{Id: "tgt_one", AdapterId: "adp_one"}, Conflicts: artifacts})
 				case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orgs/org_one/projects/prj_one/adapter-targets/tgt_one/adoptions":
 					mutations++
 					var body apigen.AdapterAdoptionRequest
@@ -356,7 +357,7 @@ func TestAWSAdapterAdoptSelectsExactArtifactAndRejectsAmbiguity(t *testing.T) {
 						t.Error("adoption lost the exact artifact, generation, AWS account or selected name")
 					}
 					w.WriteHeader(http.StatusAccepted)
-					_ = writeJSONLine(w, apigen.AdapterJob{JobId: "job_adopt", Generation: 9})
+					_ = jsonwire.Encode(w, apigen.AdapterJob{JobId: "job_adopt", Generation: 9})
 				default:
 					t.Errorf("unexpected adoption request %s %s", r.Method, r.URL.Path)
 					http.NotFound(w, r)

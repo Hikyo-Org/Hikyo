@@ -1,7 +1,7 @@
 package ci_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type mainValidationStep struct {
@@ -170,7 +172,7 @@ func TestMainValidationWorkflowPolicy(t *testing.T) {
 	}
 	encode := func(value any) string {
 		t.Helper()
-		raw, err := json.Marshal(value)
+		raw, err := json.Marshal(value, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

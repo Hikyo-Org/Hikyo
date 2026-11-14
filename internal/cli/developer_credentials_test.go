@@ -16,6 +16,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 
 	"github.com/Hikyo-Org/hikyo/internal/cli"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestDeveloperSessionMintRefusesWithoutTerminal(t *testing.T) {
@@ -76,7 +77,7 @@ func TestDeveloperRunIsNonTTYOnlineOnlyAndStripsCredentialEnvironment(t *testing
 			t.Errorf("developer fetch uses cached cursor")
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = writeJSONLine(w, apigen.DeliveryResponse{CredentialId: developerID, Revision: 1, SchemaRevision: 1, Keys: []apigen.DeliveredKey{{KeyId: "key_one", Name: "DEV_807_SECRET", Classification: apigen.KeyClassificationSecret, Presence: apigen.DeliveredKeyPresenceSet, Value: &value}}})
+		_ = jsonwire.Encode(w, apigen.DeliveryResponse{CredentialId: developerID, Revision: 1, SchemaRevision: 1, Keys: []apigen.DeliveredKey{{KeyId: "key_one", Name: "DEV_807_SECRET", Classification: apigen.KeyClassificationSecret, Presence: apigen.DeliveredKeyPresenceSet, Value: &value}}})
 	}))
 	credential, st := putDeveloperCredential(t, ios, developerID, time.Now().Add(time.Hour))
 	selected = credential.Token
@@ -249,15 +250,15 @@ func TestDeveloperMintWithoutLocalFactorPointsToSecuritySettings(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/revisions/latest"):
-			_ = writeJSONLine(w, apigen.RevisionDetail{Keys: []apigen.SnapshotKey{{KeyId: "key_01989abc-def0-7123-8123-000000000006", Name: "DEV_807_SECRET"}}})
+			_ = jsonwire.Encode(w, apigen.RevisionDetail{Keys: []apigen.SnapshotKey{{KeyId: "key_01989abc-def0-7123-8123-000000000006", Name: "DEV_807_SECRET"}}})
 		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
-			_ = writeJSONLine(w, apigen.RevealWindow{CanReveal: true, EffectiveWindowSeconds: 300, TotpOffered: true, DeveloperCredentialMaxLifetimeSeconds: &ceilingSeconds})
+			_ = jsonwire.Encode(w, apigen.RevealWindow{CanReveal: true, EffectiveWindowSeconds: 300, TotpOffered: true, DeveloperCredentialMaxLifetimeSeconds: &ceilingSeconds})
 		case r.URL.Path == "/api/v1/auth/totp":
-			_ = writeJSONLine(w, apigen.TotpStatus{})
+			_ = jsonwire.Encode(w, apigen.TotpStatus{})
 		case r.URL.Path == "/api/v1/auth/cli-reauth/start":
 			starts++
 			w.WriteHeader(http.StatusBadRequest)
-			_ = writeJSONLine(w, map[string]map[string]string{"error": {"code": "bad_request", "message": "the request does not satisfy the API contract", "detail": detail}})
+			_ = jsonwire.Encode(w, map[string]map[string]string{"error": {"code": "bad_request", "message": "the request does not satisfy the API contract", "detail": detail}})
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)
@@ -316,12 +317,12 @@ func testDeveloperMintLifetime(t *testing.T, failPersistence, failCleanup, refus
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/revisions/latest"):
-			_ = writeJSONLine(w, apigen.RevisionDetail{Keys: []apigen.SnapshotKey{{KeyId: "key_01989abc-def0-7123-8123-000000000006", Name: "DEV_807_SECRET"}}})
+			_ = jsonwire.Encode(w, apigen.RevisionDetail{Keys: []apigen.SnapshotKey{{KeyId: "key_01989abc-def0-7123-8123-000000000006", Name: "DEV_807_SECRET"}}})
 		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
 			// A live generic window must not authorize mint without another ceremony.
-			_ = writeJSONLine(w, apigen.RevealWindow{Live: true, CanReveal: true, EffectiveWindowSeconds: 300, TotpOffered: true, DeveloperCredentialMaxLifetimeSeconds: &ceilingSeconds})
+			_ = jsonwire.Encode(w, apigen.RevealWindow{Live: true, CanReveal: true, EffectiveWindowSeconds: 300, TotpOffered: true, DeveloperCredentialMaxLifetimeSeconds: &ceilingSeconds})
 		case r.URL.Path == "/api/v1/auth/totp":
-			_ = writeJSONLine(w, apigen.TotpStatus{Confirmed: true})
+			_ = jsonwire.Encode(w, apigen.TotpStatus{Confirmed: true})
 		case r.URL.Path == "/api/v1/auth/reauth/totp":
 			order = append(order, "fresh-proof")
 			var body apigen.TotpDeveloperCredentialReauthRequest
@@ -332,7 +333,7 @@ func testDeveloperMintLifetime(t *testing.T, failPersistence, failCleanup, refus
 				t.Errorf("proof not bound to exact confirmed delegation")
 			}
 			fresh = true
-			_ = writeJSONLine(w, apigen.ReauthResult{SessionId: "ses_rotated", SessionToken: &rotated})
+			_ = jsonwire.Encode(w, apigen.ReauthResult{SessionId: "ses_rotated", SessionToken: &rotated})
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/developer-credentials"):
 			order = append(order, "mint")
 			if !fresh || r.Header.Get("Authorization") != "Bearer "+rotated {
@@ -359,7 +360,7 @@ func testDeveloperMintLifetime(t *testing.T, failPersistence, failCleanup, refus
 					t.Fatal(err)
 				}
 			}
-			_ = writeJSONLine(w, apigen.MintDeveloperCredentialResult{Value: token, Credential: apigen.DeveloperCredential{Id: developerID, OrgId: developerOrg, ProjectId: developerProject, EnvironmentId: developerEnv, CreatedAt: serverNow, ExpiresAt: serverNow.Add(issuedTTL), AuthorityPrincipalId: "usr_01989abc-def0-7123-8123-000000000008"}})
+			_ = jsonwire.Encode(w, apigen.MintDeveloperCredentialResult{Value: token, Credential: apigen.DeveloperCredential{Id: developerID, OrgId: developerOrg, ProjectId: developerProject, EnvironmentId: developerEnv, CreatedAt: serverNow, ExpiresAt: serverNow.Add(issuedTTL), AuthorityPrincipalId: "usr_01989abc-def0-7123-8123-000000000008"}})
 		case r.Method == http.MethodDelete && r.URL.Path == "/api/v1/auth/developer-credentials/"+developerID:
 			order = append(order, "revoke")
 			if failCleanup {
@@ -435,7 +436,7 @@ func TestDeveloperRunPreservesExplicitMachinePrecedence(t *testing.T) {
 			t.Error("explicit machine did not retain precedence")
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = writeJSONLine(w, apigen.DeliveryResponse{Keys: []apigen.DeliveredKey{}})
+		_ = jsonwire.Encode(w, apigen.DeliveryResponse{Keys: []apigen.DeliveredKey{}})
 	}))
 	_, st := putDeveloperCredential(t, ios, developerID, time.Now().Add(time.Hour))
 	if err := os.Chmod(filepath.Join(st.Dir(), "developer-credentials.json"), 0o644); err != nil {

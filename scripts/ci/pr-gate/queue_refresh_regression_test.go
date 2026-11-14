@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestQueueTruncatedLegacyReserveCreatesCanonicalGeneration(t *testing.T) {
@@ -162,7 +164,7 @@ func TestQueueDryRunPreservesScanAndWorkFailures(t *testing.T) {
 }
 
 func queueHistoryJSON(value, result any) error {
-	data, err := json.Marshal(value)
+	data, err := json.Marshal(value, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

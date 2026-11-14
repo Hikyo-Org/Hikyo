@@ -55,10 +55,10 @@ type TLSMode string
 func (m *TLSMode) UnmarshalJSON(raw []byte) error {
 	var value string
 	if err := json.Unmarshal(raw, &value); err != nil {
-		return fmt.Errorf("TLS verification mode must be spki or system-ca: %w", err)
+		return trustFieldError{fmt.Errorf("TLS verification mode must be spki or system-ca: %w", err)}
 	}
 	if value != TLSModeSPKI && value != TLSModeSystemCA {
-		return fmt.Errorf("unknown TLS verification mode %q", value)
+		return trustFieldError{fmt.Errorf("unknown TLS verification mode %q", value)}
 	}
 	*m = TLSMode(value)
 	return nil
@@ -73,11 +73,11 @@ type TLSProfile string
 func (p *TLSProfile) UnmarshalJSON(raw []byte) error {
 	var value string
 	if err := json.Unmarshal(raw, &value); err != nil {
-		return fmt.Errorf("TLS profile must be compat or strict: %w", err)
+		return trustFieldError{fmt.Errorf("TLS profile must be compat or strict: %w", err)}
 	}
 	parsed, err := tlspolicy.ParseProfile(value)
 	if err != nil {
-		return err
+		return trustFieldError{err}
 	}
 	*p = TLSProfile(parsed)
 	return nil
@@ -521,8 +521,19 @@ func shortPin(pin string) string {
 // requested verification policy or accepting a misspelled security field.
 func decodeTrustJSON(raw []byte, out any) error {
 	err := decodeStrictDocument(bytes.NewReader(raw), out)
-	if errors.Is(err, errTrailingJSON) {
+	if errors.Is(err, jsonwire.ErrTrailing) {
 		return errors.New("expected one JSON object")
+	}
+	// A field's own refusal reads as it did under encoding/json (v1), without
+	// v2's wrapper naming the Go type and JSON pointer.
+	var refusal trustFieldError
+	if errors.As(err, &refusal) {
+		return refusal
 	}
 	return err
 }
+
+// trustFieldError is a refusal from a trust field's own UnmarshalJSON.
+type trustFieldError struct{ error }
+
+func (e trustFieldError) Unwrap() error { return e.error }

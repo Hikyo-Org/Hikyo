@@ -18,6 +18,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/diagnostics"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -122,7 +123,7 @@ func runUpgradeExport(ctx context.Context, cfg *config.Config, args []string, ou
 		diagnostics.Printf(ctx, 2, "upgrade backup: encrypted_bytes=%d engine=%s schema=%d", exported.Bytes, exported.Manifest.Engine, exported.Manifest.SchemaVersion)
 		diagnostics.Printf(ctx, 1, "upgrade backup: export complete")
 		if *jsonOutput {
-			return encodeJSON(out, struct {
+			return jsonwire.Encode(out, struct {
 				Ciphertext string `json:"ciphertext"`
 				Receipt    string `json:"receipt"`
 			}{exported.Path, exported.ReceiptPath})

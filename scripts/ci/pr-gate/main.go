@@ -9,7 +9,8 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -23,6 +24,19 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+)
+
+// stableJSON reproduces encoding/json (v1) output bytes. The publisher is built
+// from a sparse checkout of scripts/ci, so it cannot import internal/jsonwire and
+// keeps its own copy of those options; internal/lint fails when the two option
+// lists differ.
+var stableJSON = json.JoinOptions(
+	json.Deterministic(true),
+	json.FormatNilSliceAsNull(true),
+	json.FormatNilMapAsNull(true),
+	jsontext.EscapeForHTML(true),
+	jsontext.EscapeForJS(true),
+	jsontext.PreserveRawStrings(true),
 )
 
 const externalPrefix = "hikyo-pr-gate:v2:"
@@ -76,7 +90,7 @@ func (p *pull) UnmarshalJSON(data []byte) error {
 	type plain pull
 	var raw struct {
 		plain
-		Stack json.RawMessage `json:"stack"`
+		Stack jsontext.Value `json:"stack"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
@@ -216,7 +230,7 @@ func decodeBinding(value string) (binding, error) {
 		if err := decode(data, &old); err != nil {
 			return b, err
 		}
-		canonical, _ := json.Marshal(old)
+		canonical, _ := json.Marshal(old, stableJSON)
 		if legacyExternalPrefix+base64.RawURLEncoding.EncodeToString(canonical) != value || old.BaseRef == "" || !shaPattern.MatchString(old.Head) || !shaPattern.MatchString(old.Base) {
 			return b, errors.New("noncanonical legacy controller check binding")
 		}
@@ -262,23 +276,23 @@ func truncatedLegacyBinding(value string, repoID int64, head string) bool {
 		return false
 	}
 	data, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(value, legacyExternalPrefix))
-	if err != nil || json.Valid(data) {
+	if err != nil || jsontext.Value(data).IsValid() {
 		return false
 	}
-	dec := json.NewDecoder(bytes.NewReader(data))
+	dec := jsontext.NewDecoder(bytes.NewReader(data))
 	var identity struct {
 		Repo int64
 		PR   int
 		Head string
 	}
-	if token, err := dec.Token(); err != nil || token != json.Delim('{') {
+	if token, err := dec.ReadToken(); err != nil || token.Kind() != '{' {
 		return false
 	}
 	for _, member := range []struct {
 		name  string
 		value any
 	}{{"repo", &identity.Repo}, {"pr", &identity.PR}, {"head", &identity.Head}} {
-		if token, err := dec.Token(); err != nil || token != member.name || dec.Decode(member.value) != nil {
+		if token, err := dec.ReadToken(); err != nil || token.Kind() != '"' || token.String() != member.name || json.UnmarshalDecode(dec, member.value) != nil {
 			return false
 		}
 	}
@@ -302,14 +316,14 @@ func truncatedLegacyBinding(value string, repoID int64, head string) bool {
 		tail = tail[len(literal):]
 		if field == "base_ref" || field == "base" {
 			var text string
-			d := json.NewDecoder(bytes.NewReader(tail))
-			if err := d.Decode(&text); err != nil {
+			d := jsontext.NewDecoder(bytes.NewReader(tail))
+			if err := json.UnmarshalDecode(d, &text); err != nil {
 				if !(errors.Is(err, io.ErrUnexpectedEOF) || (errors.Is(err, io.EOF) && len(tail) == 0)) || !canonicalStringPrefix(tail) {
 					return false
 				}
 				return field == "base_ref" || len(tail) == 0 || (len(tail) <= 41 && strings.Trim(string(tail[1:]), "0123456789abcdef") == "")
 			}
-			canonical, _ := json.Marshal(text)
+			canonical, _ := json.Marshal(text, stableJSON)
 			if text == "" || (field == "base" && !shaPattern.MatchString(text)) || !bytes.HasPrefix(tail, canonical) {
 				return false
 			}
@@ -461,12 +475,11 @@ func (e *githubReadError) Error() string {
 func (e *githubReadError) Unwrap() error { return e.cause }
 
 func decode(data []byte, result any) error {
-	d := json.NewDecoder(bytes.NewReader(data))
-	if err := d.Decode(result); err != nil {
+	d := jsontext.NewDecoder(bytes.NewReader(data))
+	if err := json.UnmarshalDecode(d, result); err != nil {
 		return fmt.Errorf("invalid GitHub JSON: %w", err)
 	}
-	var trailing any
-	if err := d.Decode(&trailing); err != io.EOF {
+	if _, err := d.ReadValue(); !errors.Is(err, io.EOF) {
 		return errors.New("GitHub response contains extra JSON or malformed trailing data")
 	}
 	return nil
@@ -576,7 +589,7 @@ func (ghAPI) read(ctx context.Context, path string, result any) error {
 		// Preserve bounded server diagnostics without exposing partial data.
 		if strings.HasPrefix(path, "graphql:") {
 			var response struct {
-				Errors []json.RawMessage `json:"errors"`
+				Errors []jsontext.Value `json:"errors"`
 			}
 			if decode(data, &response) == nil && len(response.Errors) > 0 {
 				return fmt.Errorf("%s: %w", graphQLDiagnostic(response.Errors), &githubReadError{path: path, cause: err, rejected: true})
@@ -602,7 +615,7 @@ func (ghAPI) read(ctx context.Context, path string, result any) error {
 	return decode(data, result)
 }
 func (ghAPI) write(ctx context.Context, method, path string, payload, result any) error {
-	data, err := json.Marshal(payload)
+	data, err := json.Marshal(payload, stableJSON)
 	if err != nil {
 		return err
 	}
@@ -1143,7 +1156,10 @@ func main() {
 			var targets retirementTargets
 			targets, err = c.discoverRetirements(ctx, os.Getenv("GITHUB_EVENT_NAME"), e)
 			if err == nil {
-				err = json.NewEncoder(c.output).Encode(targets)
+				var b []byte
+				if b, err = json.Marshal(targets, stableJSON); err == nil {
+					_, err = c.output.Write(append(b, '\n'))
+				}
 			}
 		} else if *retire {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)

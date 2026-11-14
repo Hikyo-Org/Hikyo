@@ -12,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
@@ -88,7 +89,7 @@ func TestParameterizedExportConsentDoesNotDuplicateConfigDisclosure(t *testing.T
 			w.Header().Set("Content-Type", "application/json")
 			actor := service.Bearer(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
 			encode := func(value any) {
-				if err := encodeLine(w, value); err != nil {
+				if err := jsonwire.Encode(w, value); err != nil {
 					t.Error(err)
 				}
 			}

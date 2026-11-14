@@ -19,6 +19,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/operation"
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
 	"github.com/Hikyo-Org/hikyo/internal/securitystatus"
@@ -819,7 +820,7 @@ func (a *API) extractBearer(next http.Handler) http.Handler {
 				audit.NoteRefusal(r.Context(), audit.RefusalProof)
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
-				_ = encodeJSON(w, errorBody(apigen.ErrorCodeUnauthenticated, ""))
+				_ = jsonwire.Encode(w, errorBody(apigen.ErrorCodeUnauthenticated, ""))
 				return
 			}
 			headerVal = strings.TrimSpace(value)
@@ -837,7 +838,7 @@ func (a *API) extractBearer(next http.Handler) http.Handler {
 			audit.NoteRefusal(r.Context(), audit.RefusalConflict)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
-			_ = encodeJSON(w, errorBody(apigen.ErrorCodeUnauthenticated, ""))
+			_ = jsonwire.Encode(w, errorBody(apigen.ErrorCodeUnauthenticated, ""))
 			return
 		}
 		// The cookie leg maps to the same raw artifact path; it is resolved only

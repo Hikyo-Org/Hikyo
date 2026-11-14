@@ -48,13 +48,13 @@ func runHumanServer(t *testing.T, windowLive bool) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/meta"):
-			_ = writeJSONLine(w, apigen.Meta{ServerVersion: "fixture", ApiRevision: api.Revision})
+			_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture", ApiRevision: api.Revision})
 		case strings.HasSuffix(r.URL.Path, "/personal-values"):
-			_ = writeJSONLine(w, apigen.PersonalValueList{Items: []apigen.PersonalValueEntry{}})
+			_ = jsonwire.Encode(w, apigen.PersonalValueList{Items: []apigen.PersonalValueEntry{}})
 		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
-			_ = writeJSONLine(w, apigen.RevealWindow{Live: windowLive})
+			_ = jsonwire.Encode(w, apigen.RevealWindow{Live: windowLive})
 		case strings.HasSuffix(r.URL.Path, "/revisions/latest"):
-			_ = writeJSONLine(w, apigen.RevisionDetail{
+			_ = jsonwire.Encode(w, apigen.RevisionDetail{
 				Revision: 7,
 				Keys: []apigen.SnapshotKey{
 					{Name: "LOG_LEVEL", Classification: "config", KeyId: "key_1"},
@@ -74,7 +74,7 @@ func runHumanServer(t *testing.T, windowLive bool) http.Handler {
 					apigen.ExportedValue{Name: "API_TOKEN", Classification: "secret", Revealed: true, Value: &secret},
 					apigen.ExportedValue{Name: "DECLASSIFIED", Classification: "secret", Revealed: true, Value: &secret})
 			}
-			_ = writeJSONLine(w, apigen.ExportedValues{Revision: 7, Items: items, Count: len(items)})
+			_ = jsonwire.Encode(w, apigen.ExportedValues{Revision: 7, Items: items, Count: len(items)})
 		default:
 			http.NotFound(w, r)
 		}
@@ -186,13 +186,13 @@ func TestRunHumanSessionConfirmsThenReauthenticatesThenExports(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
-			_ = writeJSONLine(w, apigen.RevealWindow{CanReveal: true, EffectiveWindowSeconds: 300, TotpOffered: true})
+			_ = jsonwire.Encode(w, apigen.RevealWindow{CanReveal: true, EffectiveWindowSeconds: 300, TotpOffered: true})
 		case strings.HasSuffix(r.URL.Path, "/auth/totp"):
-			_ = writeJSONLine(w, apigen.TotpStatus{Confirmed: true})
+			_ = jsonwire.Encode(w, apigen.TotpStatus{Confirmed: true})
 		case strings.HasSuffix(r.URL.Path, "/auth/reauth/totp"):
 			order = append(order, "reauth")
 			rotated := "hses_rotated"
-			_ = writeJSONLine(w, apigen.ReauthResult{SessionToken: &rotated, SessionId: "ses_rotated"})
+			_ = jsonwire.Encode(w, apigen.ReauthResult{SessionToken: &rotated, SessionId: "ses_rotated"})
 		case strings.HasSuffix(r.URL.Path, "/values/export"):
 			order = append(order, "export")
 			exports++
@@ -253,7 +253,7 @@ func TestRunHumanSessionRefusesLoaderControlBeforeConfirming(t *testing.T) {
 		if strings.HasSuffix(r.URL.Path, "/values/export") {
 			exports++
 		}
-		_ = writeJSONLine(w, apigen.RevisionDetail{
+		_ = jsonwire.Encode(w, apigen.RevisionDetail{
 			Revision: 7, Keys: []apigen.SnapshotKey{{Name: "LD_PRELOAD", Classification: "config", KeyId: "key_1"}},
 		})
 	}))
@@ -282,7 +282,7 @@ func TestRunHumanSessionRefusesAnUndeliveredConfirmedKey(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = writeJSONLine(w, apigen.ExportedValues{
+		_ = jsonwire.Encode(w, apigen.ExportedValues{
 			Revision: 7, Count: 1, Items: []apigen.ExportedValue{{Name: "API_TOKEN", Classification: "secret"}},
 		})
 	}))
@@ -309,7 +309,7 @@ func TestRunHumanSessionRefusesAHeldPersonalKey(t *testing.T) {
 			case strings.HasSuffix(r.URL.Path, "/environments/env_70/personal-values"):
 				listed++
 				w.Header().Set("Content-Type", "application/json")
-				_ = writeJSONLine(w, apigen.PersonalValueList{Items: []apigen.PersonalValueEntry{{Name: "LOG_LEVEL", Set: true}}})
+				_ = jsonwire.Encode(w, apigen.PersonalValueList{Items: []apigen.PersonalValueEntry{{Name: "LOG_LEVEL", Set: true}}})
 			case strings.HasSuffix(r.URL.Path, "/values/export"):
 				exports++
 				fixture.ServeHTTP(w, r)
@@ -352,10 +352,10 @@ func TestRunHumanSessionBrowserCeremonyUnit(t *testing.T) {
 				switch {
 				case strings.HasSuffix(r.URL.Path, "/reveal-window"):
 					w.Header().Set("Content-Type", "application/json")
-					_ = writeJSONLine(w, tc.window)
+					_ = jsonwire.Encode(w, tc.window)
 				case strings.HasSuffix(r.URL.Path, "/auth/totp"):
 					w.Header().Set("Content-Type", "application/json")
-					_ = writeJSONLine(w, apigen.TotpStatus{})
+					_ = jsonwire.Encode(w, apigen.TotpStatus{})
 				case strings.Contains(r.URL.Path, "/cli-reauth"):
 					if err := json.UnmarshalRead(r.Body, &handoff); err != nil {
 						t.Error(err)
@@ -424,7 +424,7 @@ func TestRunHumanSessionExportFailureReporting(t *testing.T) {
 					_, _ = w.Write([]byte(`{"error":{"code":"refused","message":"refused"}}`))
 				case exported && strings.HasSuffix(r.URL.Path, "/revisions/latest"):
 					w.Header().Set("Content-Type", "application/json")
-					_ = writeJSONLine(w, apigen.RevisionDetail{Revision: tc.latest})
+					_ = jsonwire.Encode(w, apigen.RevisionDetail{Revision: tc.latest})
 				default:
 					fixture.ServeHTTP(w, r)
 				}

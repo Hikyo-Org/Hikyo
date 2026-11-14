@@ -3,7 +3,6 @@ package updater
 import (
 	"bytes"
 	"context"
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -128,14 +127,11 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 }
 
 func decodeJSON(r io.Reader, value any) error {
-	decoder := jsontext.NewDecoder(io.LimitReader(r, protocolBodyLimit))
-	if err := json.UnmarshalDecode(decoder, value, json.RejectUnknownMembers(true)); err != nil {
-		return err
-	}
-	if _, err := decoder.ReadToken(); !errors.Is(err, io.EOF) {
+	err := jsonwire.Decode(io.LimitReader(r, protocolBodyLimit), value, json.RejectUnknownMembers(true))
+	if errors.Is(err, jsonwire.ErrTrailing) {
 		return errors.New("multiple JSON values")
 	}
-	return nil
+	return err
 }
 
 type Client struct {

@@ -2,7 +2,7 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,7 +23,7 @@ func TestPlanningEnvironmentReplacesAmbientPlatform(t *testing.T) {
 }
 
 func TestRegistryRefusesMissingAndUnregisteredJobs(t *testing.T) {
-	registry := map[string]json.RawMessage{"test": nil, "race": nil}
+	registry := map[string]jsontext.Value{"test": nil, "race": nil}
 	for _, graph := range []map[string]job{
 		{"test": {}},
 		{"test": {}, "race": {}, "new-unmapped-job": {}},
@@ -36,15 +36,15 @@ func TestRegistryRefusesMissingAndUnregisteredJobs(t *testing.T) {
 }
 
 func TestPlanBindingRequiresSeparateIsolationRace(t *testing.T) {
-	i := &inventory{Criteria: []criterion{{ID: "C-ACC", Tests: []testReference{{Name: "TestAccessLifecycle", Package: "./internal/isolation"}}}}, Plans: map[string]json.RawMessage{
-		"ci-main":          json.RawMessage(`{"isolation_plan":[["TestAccessLifecycle"]],"race_plan":[["./api"]]}`),
-		"reliability-race": json.RawMessage(`[]`),
+	i := &inventory{Criteria: []criterion{{ID: "C-ACC", Tests: []testReference{{Name: "TestAccessLifecycle", Package: "./internal/isolation"}}}}, Plans: map[string]jsontext.Value{
+		"ci-main":          jsontext.Value(`{"isolation_plan":[["TestAccessLifecycle"]],"race_plan":[["./api"]]}`),
+		"reliability-race": jsontext.Value(`[]`),
 	}}
 	if err := bindPlans(i); err == nil {
 		t.Fatal("ordinary isolation accepted as full race proof")
 	}
 	i.Criteria[0].Tests[0].ExecutionJobs = nil
-	i.Plans["reliability-race"] = json.RawMessage(`[{"job":"race-isolation (0)","targets":["TestAccessLifecycle"]}]`)
+	i.Plans["reliability-race"] = jsontext.Value(`[{"job":"race-isolation (0)","targets":["TestAccessLifecycle"]}]`)
 	if err := bindPlans(i); err != nil {
 		t.Fatal(err)
 	}
@@ -54,9 +54,9 @@ func TestPlanBindingRequiresSeparateIsolationRace(t *testing.T) {
 }
 
 func TestPlanBindingHonorsSplitPackageFilters(t *testing.T) {
-	i := &inventory{Criteria: []criterion{{ID: "O1", Tests: []testReference{{Name: "TestSelected", Package: "./internal/app"}}}}, Plans: map[string]json.RawMessage{
-		"ci-main":          json.RawMessage(`{"isolation_plan":[],"race_plan":[["github.com/Hikyo-Org/hikyo/internal/app\t^(TestOther)$"],["github.com/Hikyo-Org/hikyo/internal/app\t^(TestSelected)$"]]}`),
-		"reliability-race": json.RawMessage(`[]`),
+	i := &inventory{Criteria: []criterion{{ID: "O1", Tests: []testReference{{Name: "TestSelected", Package: "./internal/app"}}}}, Plans: map[string]jsontext.Value{
+		"ci-main":          jsontext.Value(`{"isolation_plan":[],"race_plan":[["github.com/Hikyo-Org/hikyo/internal/app\t^(TestOther)$"],["github.com/Hikyo-Org/hikyo/internal/app\t^(TestSelected)$"]]}`),
+		"reliability-race": jsontext.Value(`[]`),
 	}}
 	if err := bindPlans(i); err != nil {
 		t.Fatal(err)
@@ -69,7 +69,7 @@ func TestPlanBindingHonorsSplitPackageFilters(t *testing.T) {
 
 func TestPlanBindingKeepsTaggedOperatorEvidenceSeparate(t *testing.T) {
 	r := reference("TestK8sOperator", "internal/isolation/k8s_operator_e2e_test.go", []byte("//go:build k8se2e\n"))
-	i := &inventory{Criteria: []criterion{{Tests: []testReference{r}}}, Plans: map[string]json.RawMessage{"ci-main": json.RawMessage(`{}`), "reliability-race": json.RawMessage(`[]`)}}
+	i := &inventory{Criteria: []criterion{{Tests: []testReference{r}}}, Plans: map[string]jsontext.Value{"ci-main": jsontext.Value(`{}`), "reliability-race": jsontext.Value(`[]`)}}
 	if err := bindPlans(i); err != nil {
 		t.Fatal(err)
 	}

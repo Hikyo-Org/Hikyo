@@ -55,7 +55,7 @@ func TestLoginLoopbackRejectsWrongCallbacksAndClosesBeforeRedeem(t *testing.T) {
 			if start.Transport != "loopback" || len(start.State) != 43 || start.State == start.PkceChallenge {
 				t.Error("state and PKCE proof are not independent loopback inputs")
 			}
-			_ = writeJSONLine(w, apigen.CLILoginStart{State: start.State, ExpiresAt: time.Now().Add(10 * time.Minute)})
+			_ = jsonwire.Encode(w, apigen.CLILoginStart{State: start.State, ExpiresAt: time.Now().Add(10 * time.Minute)})
 		case api.PathPrefix + "/auth/cli-login/redeem":
 			redeems++
 			var redeem apigen.CLILoginRedeemRequest
@@ -73,7 +73,7 @@ func TestLoginLoopbackRejectsWrongCallbacksAndClosesBeforeRedeem(t *testing.T) {
 				conn.Close()
 				t.Error("callback listener was still reachable during redemption")
 			}
-			_ = writeJSONLine(w, loginTestResult())
+			_ = jsonwire.Encode(w, loginTestResult())
 		default:
 			http.NotFound(w, r)
 		}
@@ -148,7 +148,7 @@ func TestLoginLoopbackRefusalsCloseListener(t *testing.T) {
 				if scenario == "missing-expiry" {
 					response.ExpiresAt = time.Time{}
 				}
-				_ = writeJSONLine(w, response)
+				_ = jsonwire.Encode(w, response)
 			}))
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
@@ -188,7 +188,7 @@ func TestLoginProviderResolutionPrecedesBrowser(t *testing.T) {
 					w.WriteHeader(http.StatusInternalServerError)
 					return
 				}
-				_ = writeJSONLine(w, apigen.AuthMethods{Providers: []apigen.AuthMethodProvider{{Kind: "oidc", Slug: "work"}, {Kind: "saml", Slug: "work"}, {Kind: "oauth2", Slug: "personal"}}})
+				_ = jsonwire.Encode(w, apigen.AuthMethods{Providers: []apigen.AuthMethodProvider{{Kind: "oidc", Slug: "work"}, {Kind: "saml", Slug: "work"}, {Kind: "oauth2", Slug: "personal"}}})
 			}))
 			got, err := resolveLoginProvider(t.Context(), client, scenario.hint)
 			if got != scenario.want || (err != nil) != (scenario.want == "") || requests != 1 {
@@ -215,10 +215,10 @@ func TestLoginDispatchAndSessionCustody(t *testing.T) {
 				w.Header().Set("Content-Type", "application/json")
 				switch r.URL.Path {
 				case api.PathPrefix + "/meta":
-					_ = writeJSONLine(w, apigen.Meta{ApiRevision: api.Revision, ProtocolCapabilities: []string{"local-password", "loopback-handoff"}})
+					_ = jsonwire.Encode(w, apigen.Meta{ApiRevision: api.Revision, ProtocolCapabilities: []string{"local-password", "loopback-handoff"}})
 				case api.PathPrefix + "/auth/cli-login/start":
 					_ = json.UnmarshalRead(r.Body, &start)
-					_ = writeJSONLine(w, apigen.CLILoginStart{State: start.State, ExpiresAt: time.Now().Add(time.Minute)})
+					_ = jsonwire.Encode(w, apigen.CLILoginStart{State: start.State, ExpiresAt: time.Now().Add(time.Minute)})
 				case api.PathPrefix + "/auth/local/login":
 					var login apigen.LocalLoginRequest
 					_ = json.UnmarshalRead(r.Body, &login)
@@ -230,9 +230,9 @@ func TestLoginDispatchAndSessionCustody(t *testing.T) {
 						_, _ = w.Write([]byte(`{"error":{"code":"bad_request","message":"the request does not satisfy the API contract","detail":"an enrolled factor is required; use hikyo login <instance-url> or hikyo login <instance-url> --device and complete browser sign-in"}}`))
 						return
 					}
-					_ = writeJSONLine(w, loginTestResult())
+					_ = jsonwire.Encode(w, loginTestResult())
 				case api.PathPrefix + "/auth/cli-login/redeem":
-					_ = writeJSONLine(w, loginTestResult())
+					_ = jsonwire.Encode(w, loginTestResult())
 				default:
 					http.NotFound(w, r)
 				}
@@ -408,7 +408,7 @@ func TestDevicePollingStopsOnTerminalErrors(t *testing.T) {
 					_, _ = io.WriteString(w, "malformed")
 					return
 				}
-				_ = writeJSONLine(w, map[string]string{"error": protocol})
+				_ = jsonwire.Encode(w, map[string]string{"error": protocol})
 			}))
 			client.sleep = func(context.Context, time.Duration) error { return nil }
 			if protocol == "network" {

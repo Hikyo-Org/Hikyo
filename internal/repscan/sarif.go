@@ -2,7 +2,6 @@ package repscan
 
 import (
 	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"io"
 	"net/url"
 	"strings"
@@ -157,5 +156,5 @@ func WriteSARIF(w io.Writer, r *Report, toolVersion string) error {
 			},
 		}},
 	}
-	return json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable, jsontext.WithIndent("  ")), log)
+	return jsonwire.Encode(w, log, jsontext.WithIndent("  "))
 }

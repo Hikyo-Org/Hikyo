@@ -121,7 +121,7 @@ func TestProjectCapacityWire(t *testing.T) {
 				default:
 					t.Errorf("unexpected method %s", r.Method)
 				}
-				_ = writeJSONLine(w, current)
+				_ = jsonwire.Encode(w, current)
 			}))
 			t.Cleanup(server.Close)
 			stateDir := t.TempDir()

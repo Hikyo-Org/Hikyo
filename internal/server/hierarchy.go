@@ -12,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/delivery"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
@@ -107,7 +108,7 @@ func (a *API) writeSCIMRequestError(w http.ResponseWriter, r *http.Request, refu
 	e := scimError(err)
 	w.Header().Set("Content-Type", scimproto.MediaType)
 	w.WriteHeader(e.Status)
-	if encodeErr := encodeJSON(w, e.Body()); encodeErr != nil {
+	if encodeErr := jsonwire.Encode(w, e.Body()); encodeErr != nil {
 		a.fault(r.Context(), "render a SCIM request error", encodeErr)
 	}
 }
@@ -162,7 +163,7 @@ func (a *API) writeHandlerError(w http.ResponseWriter, r *http.Request, err erro
 		body.Error.Widening = wireWidening(wide.Widening())
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(policy.status)
-		_ = encodeJSON(w, body)
+		_ = jsonwire.Encode(w, body)
 		return
 	}
 	var sf interface{ Findings() []service.Finding }
@@ -173,7 +174,7 @@ func (a *API) writeHandlerError(w http.ResponseWriter, r *http.Request, err erro
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(policy.status)
-		_ = encodeJSON(w, body)
+		_ = jsonwire.Encode(w, body)
 		return
 	}
 	writeError(w, policy, safeDetailOf(err))

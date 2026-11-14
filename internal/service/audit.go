@@ -401,7 +401,7 @@ func writeLine(w io.Writer, e store.AuditEvent) error {
 		SourceIP: e.SourceIP, UserAgent: e.UserAgent, Origin: string(e.Origin),
 		Payload: jsontext.Value(e.RawPayload),
 	}
-	b, err := json.Marshal(line, jsonwire.Stable, jsontext.PreserveRawStrings(true))
+	b, err := json.Marshal(line, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

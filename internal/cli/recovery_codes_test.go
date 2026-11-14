@@ -9,6 +9,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type recoveryCodeOutput struct {
@@ -35,7 +36,7 @@ func TestRecoveryCodesPreserveRotatedSessionBeforeOutput(t *testing.T) {
 				if r.Header.Get("Authorization") != "Bearer test-token" {
 					t.Errorf("regeneration authority=%q", r.Header.Get("Authorization"))
 				}
-				_ = writeJSONLine(w, apigen.RecoveryCodesResult{
+				_ = jsonwire.Encode(w, apigen.RecoveryCodesResult{
 					RecoveryCodes: []string{"new-single-use-code"},
 					Login: apigen.LoginResult{SessionToken: &token, Session: apigen.Session{
 						Id: "ses_replacement", AbsoluteExpiresAt: time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC),

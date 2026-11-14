@@ -15,6 +15,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Unlike definitionsTestIO, this fixture counts metadata reads too. Malformed
@@ -85,11 +86,11 @@ func dekServer(t *testing.T) (http.Handler, *dekRequests) {
 				return
 			}
 			out := apigen.DEKRotation{Scope: apigen.DEKRotationScope(req.Scope), KeyVersion: 2, Org: req.Org, Project: req.Project}
-			_ = writeJSONLine(w, out)
+			_ = jsonwire.Encode(w, out)
 		case r.URL.Path == "/api/v1/instance/reencrypt":
-			_ = writeJSONLine(w, apigen.ReencryptResult{Scope: apigen.ReencryptResultScopeInstance, RowsMoved: 3})
+			_ = jsonwire.Encode(w, apigen.ReencryptResult{Scope: apigen.ReencryptResultScopeInstance, RowsMoved: 3})
 		case r.URL.Path == "/api/v1/orgs/org_70/projects/prj_70/reencrypt":
-			_ = writeJSONLine(w, apigen.ReencryptResult{Scope: apigen.ReencryptResultScopeProject, RowsMoved: 5, Org: &org, Project: &project})
+			_ = jsonwire.Encode(w, apigen.ReencryptResult{Scope: apigen.ReencryptResultScopeProject, RowsMoved: 5, Org: &org, Project: &project})
 		default:
 			http.NotFound(w, r)
 		}
@@ -360,7 +361,7 @@ func TestDEKRotationAuthenticationAndConfirmation(t *testing.T) {
 				}
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tc.status)
-				_ = writeJSONLine(w, map[string]map[string]string{"error": {"code": "refused", "message": "fixture refusal"}})
+				_ = jsonwire.Encode(w, map[string]map[string]string{"error": {"code": "refused", "message": "fixture refusal"}})
 			}))
 			if code := cli.Run(t.Context(), ios, append(tc.args, "--instance", "local")); code != tc.want {
 				t.Fatalf("exit %d, want %d: %s", code, tc.want, stderr)

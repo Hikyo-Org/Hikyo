@@ -4,7 +4,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -88,7 +89,7 @@ func run() error {
 	if called != len(mcpserver.ProductionToolNames()) {
 		return fmt.Errorf("called %d read tools, want %d", called, len(mcpserver.ProductionToolNames()))
 	}
-	return json.NewEncoder(os.Stdout).Encode(map[string]any{"client": "official-go-sdk", "version": "v1.8.0", "protocol": session.InitializeResult().ProtocolVersion, "production_tools_called": called, "secret_canary_absent": true, "passed": true})
+	return jsonwire.Encode(os.Stdout, map[string]any{"client": "official-go-sdk", "version": "v1.8.0", "protocol": session.InitializeResult().ProtocolVersion, "production_tools_called": called, "secret_canary_absent": true, "passed": true})
 }
 
 // checkCatalog requires the advertised catalog to be EXACTLY the closed read

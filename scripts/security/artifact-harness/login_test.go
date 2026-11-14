@@ -3,13 +3,16 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"testing"
 
 	vw "github.com/descope/virtualwebauthn"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestEnrolledFixtureLoginUsesBrowserMFAAndPKCE(t *testing.T) {
@@ -24,10 +27,10 @@ func TestEnrolledFixtureLoginUsesBrowserMFAAndPKCE(t *testing.T) {
 				}
 				var body map[string]string
 				if r.URL.Path != "/api/v1/auth/login/challenge/fixture/webauthn/finish" && r.Body != nil {
-					_ = json.NewDecoder(r.Body).Decode(&body)
+					_ = json.UnmarshalRead(r.Body, &body)
 				}
 				reply := func(value any) {
-					if err := json.NewEncoder(w).Encode(value); err != nil {
+					if err := jsonwire.Encode(w, value); err != nil {
 						t.Error(err)
 					}
 				}
@@ -40,7 +43,7 @@ func TestEnrolledFixtureLoginUsesBrowserMFAAndPKCE(t *testing.T) {
 					w.WriteHeader(202)
 					reply(map[string]any{"challenge_id": "fixture", "factors": []string{"webauthn"}})
 				case "/api/v1/auth/login/challenge/fixture/webauthn/start":
-					reply(json.RawMessage(`{"publicKey":{"challenge":"Y2FtcGFpZ24tYXNzZXJ0aW9u","rpId":"localhost"}}`))
+					reply(jsontext.Value(`{"publicKey":{"challenge":"Y2FtcGFpZ24tYXNzZXJ0aW9u","rpId":"localhost"}}`))
 				case "/api/v1/auth/login/challenge/fixture/webauthn/finish":
 					if failure == "factor" {
 						w.WriteHeader(401)

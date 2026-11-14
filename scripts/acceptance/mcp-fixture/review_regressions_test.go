@@ -5,7 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestCodexConfigurationRoundTripsTOMLMetacharacters(t *testing.T) {
@@ -105,7 +107,7 @@ func TestLiveSnapshotReportsFailureDespiteStalePersistedSuccess(t *testing.T) {
 	if err != nil || !document.Failed {
 		t.Fatal("live snapshot hid persistence failure", err)
 	}
-	raw, _ := json.Marshal(document)
+	raw, _ := json.Marshal(document, jsonwire.Stable)
 	if bytes.Contains(raw, []byte("Authorization")) {
 		t.Fatal("snapshot contains secret-bearing field")
 	}

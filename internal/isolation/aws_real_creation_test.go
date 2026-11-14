@@ -84,7 +84,7 @@ func TestAWSRealCreationIdentityVisibility(t *testing.T) {
 					case "creation suffix":
 						out.ARN += "foreign"
 					}
-					_ = encodeLine(w, out)
+					_ = jsonwire.Encode(w, out)
 				case "secretsmanager.DescribeSecret":
 					var request struct {
 						SecretID string `json:"SecretId"`
@@ -100,7 +100,7 @@ func TestAWSRealCreationIdentityVisibility(t *testing.T) {
 							t.Error("pre-create check changed name")
 						}
 						w.WriteHeader(400)
-						_ = encodeLine(w, map[string]string{"__type": "ResourceNotFoundException"})
+						_ = jsonwire.Encode(w, map[string]string{"__type": "ResourceNotFoundException"})
 						return
 					}
 					n := reads.Add(1)
@@ -121,7 +121,7 @@ func TestAWSRealCreationIdentityVisibility(t *testing.T) {
 							code = "AccessDeniedException"
 						}
 						w.WriteHeader(400)
-						_ = encodeLine(w, map[string]string{"__type": code})
+						_ = jsonwire.Encode(w, map[string]string{"__type": code})
 						return
 					}
 					out := map[string]any{"ARN": arn, "Name": name}
@@ -140,7 +140,7 @@ func TestAWSRealCreationIdentityVisibility(t *testing.T) {
 					case "deleted":
 						out["DeletedDate"] = 1
 					}
-					_ = encodeLine(w, out)
+					_ = jsonwire.Encode(w, out)
 				default:
 					t.Error("creation observer invoked another operation")
 					w.WriteHeader(400)

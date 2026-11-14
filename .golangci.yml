@@ -10,7 +10,6 @@ linters:
   enable:
     - errcheck
     - errorlint
-    - errchkjson
     - noctx
     - staticcheck
     - gosec

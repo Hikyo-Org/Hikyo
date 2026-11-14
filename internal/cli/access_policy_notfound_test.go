@@ -8,6 +8,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestAccessPolicyUpdateMissingUsesNotFoundExit(t *testing.T) {
@@ -15,14 +16,14 @@ func TestAccessPolicyUpdateMissingUsesNotFoundExit(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == api.PathPrefix+"/meta" {
-			_ = writeJSONLine(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+			_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
 			return
 		}
 		requests++
 		if r.Method != http.MethodGet {
 			t.Errorf("unexpected write: %s", r.Method)
 		}
-		_ = writeJSONLine(w, apigen.AccessPolicyList{Items: []apigen.AccessPolicy{}})
+		_ = jsonwire.Encode(w, apigen.AccessPolicyList{Items: []apigen.AccessPolicy{}})
 	}))
 	defer srv.Close()
 	st, stateDir := machineState(t, srv.URL, SPKIFingerprint(srv.Certificate()))

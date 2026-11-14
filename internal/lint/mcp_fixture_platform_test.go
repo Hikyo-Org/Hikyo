@@ -33,7 +33,7 @@ func TestMCPFixtureHelperPinsMatchTargetPlatform(t *testing.T) {
 			pkgs := loaded[key]
 			if pkgs == nil {
 				var err error
-				pkgs, err = LoadIn(context, Module+"/scripts/acceptance/mcp-fixture")
+				pkgs, err = LoadIn(context, Module+"/scripts/acceptance/mcp-fixture", Module+"/internal/jsonwire")
 				if err != nil {
 					t.Fatal(err)
 				}

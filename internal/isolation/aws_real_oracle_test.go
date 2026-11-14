@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func newOracleVisibilitySandbox(t *testing.T, code string, stale int, value string) (*realAWSSandbox, string, *atomic.Int32) {
@@ -34,10 +36,10 @@ func newOracleVisibilitySandbox(t *testing.T, code string, stale int, value stri
 		w.Header().Set("Content-Type", "application/x-amz-json-1.1")
 		if int(n) <= stale {
 			w.WriteHeader(http.StatusBadRequest)
-			_ = encodeLine(w, map[string]string{"__type": code})
+			_ = jsonwire.Encode(w, map[string]string{"__type": code})
 			return
 		}
-		_ = encodeLine(w, map[string]string{"SecretString": value})
+		_ = jsonwire.Encode(w, map[string]string{"SecretString": value})
 	}))
 	t.Cleanup(server.Close)
 	s := &realAWSSandbox{t: t, current: map[string]string{name: arn}, owned: map[string]string{arn: name}, oracle: externalAWS{origin: server.URL, region: "eu-central-1", account: "099256073061", creds: aws.Credentials{AccessKeyID: "AKIAHIKYOTEST0000001", SecretAccessKey: "synthetic-offline-observer"}}}

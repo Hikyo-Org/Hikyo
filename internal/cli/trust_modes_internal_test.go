@@ -254,7 +254,7 @@ func TestSystemCATrustCertificateLifecycle(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/api/v1/meta" {
-			_ = writeJSONLine(w, apigen.Meta{ServerVersion: "test", ApiRevision: 999})
+			_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "test", ApiRevision: 999})
 			return
 		}
 		if strings.HasSuffix(r.URL.Path, "/environments") {

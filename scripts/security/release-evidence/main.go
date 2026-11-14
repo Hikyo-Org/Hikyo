@@ -8,7 +8,8 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 )
@@ -158,22 +160,22 @@ func run(args []string) error {
 		}
 		scanner.ScanTime = scanTime
 		receipt := struct {
-			Schema           string          `json:"schema"`
-			Status           string          `json:"status"`
-			Profile          string          `json:"profile"`
-			Subject          prepared        `json:"subject"`
-			HarnessCommit    string          `json:"harness_commit"`
-			RunURL           string          `json:"run_url"`
-			PublishedAt      time.Time       `json:"published_at"`
-			Runner           string          `json:"runner"`
-			DatastoreCleaned bool            `json:"disposable_postgres_removed"`
-			Attacks          attackResult    `json:"artifact_attacks"`
-			Browser          json.RawMessage `json:"artifact_browser"`
-			BinaryScanner    scanEvidence    `json:"binary_vulnerability_scan"`
-			SourceChecks     string          `json:"source_checks"`
-			Fuzz             string          `json:"active_fuzz"`
-			CurrentFindings  string          `json:"current_repository_findings"`
-			Limitations      []string        `json:"limitations"`
+			Schema           string         `json:"schema"`
+			Status           string         `json:"status"`
+			Profile          string         `json:"profile"`
+			Subject          prepared       `json:"subject"`
+			HarnessCommit    string         `json:"harness_commit"`
+			RunURL           string         `json:"run_url"`
+			PublishedAt      time.Time      `json:"published_at"`
+			Runner           string         `json:"runner"`
+			DatastoreCleaned bool           `json:"disposable_postgres_removed"`
+			Attacks          attackResult   `json:"artifact_attacks"`
+			Browser          jsontext.Value `json:"artifact_browser"`
+			BinaryScanner    scanEvidence   `json:"binary_vulnerability_scan"`
+			SourceChecks     string         `json:"source_checks"`
+			Fuzz             string         `json:"active_fuzz"`
+			CurrentFindings  string         `json:"current_repository_findings"`
+			Limitations      []string       `json:"limitations"`
 		}{"hikyo.dev/security-runtime-evidence/v1", "passed", "hikyo-release-runtime-v1", p, *harness, *runURL, time.Now().UTC(), runtime.GOOS + "/" + runtime.GOARCH, true, attacks, browserRaw, scanner,
 			"Full source CI is a separate prepublication gate; this receipt does not infer its execution counts or findings from workflow success.",
 			"No coverage-guided fuzzing is performed by this runtime profile. Source CI declares 100000x iterations per discovered target; that budget is not a measured count or a distinct attack count.",
@@ -189,7 +191,7 @@ func run(args []string) error {
 		if err := os.WriteFile(filepath.Join(*out, "binary-scan.jsonl"), scanRaw, 0600); err != nil {
 			return err
 		}
-		raw, err := json.MarshalIndent(receipt, "", "  ")
+		raw, err := json.Marshal(receipt, jsonwire.Stable, jsontext.WithIndent("  "))
 		if err != nil {
 			return err
 		}
@@ -224,12 +226,11 @@ func readJSON(name string, out any) error {
 		return err
 	}
 	defer f.Close()
-	d := json.NewDecoder(io.LimitReader(f, 16<<20))
-	if err := d.Decode(out); err != nil {
+	d := jsontext.NewDecoder(io.LimitReader(f, 16<<20))
+	if err := json.UnmarshalDecode(d, out); err != nil {
 		return err
 	}
-	var trailing any
-	if d.Decode(&trailing) != io.EOF {
+	if _, err := d.ReadValue(); !errors.Is(err, io.EOF) {
 		return errors.New("trailing JSON input")
 	}
 	return nil
@@ -240,7 +241,7 @@ func writeJSON(name string, value any) error {
 		return err
 	}
 	defer f.Close()
-	return json.NewEncoder(f).Encode(value)
+	return jsonwire.Encode(f, value)
 }
 func extractBinary(archive, destination string) (string, error) {
 	f, err := os.Open(archive)

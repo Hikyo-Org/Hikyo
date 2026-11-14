@@ -1,7 +1,8 @@
 package main
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -11,6 +12,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type raceLeg struct {
@@ -105,7 +108,7 @@ func bindPlans(i *inventory) error {
 
 // Use the owning planner, including its fuzz/example inventory. The reliability
 // workflow moves analyzer targets into one additional job; they are not drops.
-func planShards(root string, workflows map[string]map[string]job) (plans map[string]json.RawMessage, returnedErr error) {
+func planShards(root string, workflows map[string]map[string]job) (plans map[string]jsontext.Value, returnedErr error) {
 	ci := workflows[".github/workflows/ci.yml"]
 	reliability := workflows[".github/workflows/reliability.yml"]
 	steps := func(j job) string {
@@ -180,7 +183,7 @@ func planShards(root string, workflows map[string]map[string]job) (plans map[str
 	if err != nil {
 		return nil, err
 	}
-	if !json.Valid(full) {
+	if !jsontext.Value(full).IsValid() {
 		return nil, fmt.Errorf("invalid complete shard plan")
 	}
 	legs := []raceLeg{{Job: "race-analyzers", Targets: analyzers}}
@@ -230,11 +233,11 @@ func planShards(root string, workflows map[string]map[string]job) (plans map[str
 			return nil, fmt.Errorf("missing isolation race target %s", name)
 		}
 	}
-	encoded, err := json.Marshal(legs)
+	encoded, err := json.Marshal(legs, jsonwire.Stable)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]json.RawMessage{"ci-main": full, "reliability-race": encoded, "planning-environment": json.RawMessage(`{"goos":"linux","goarch":"amd64","cgo_enabled":"1","execution":"source planning only; compare with actual hosted planner output"}`)}, nil
+	return map[string]jsontext.Value{"ci-main": full, "reliability-race": encoded, "planning-environment": jsontext.Value(`{"goos":"linux","goarch":"amd64","cgo_enabled":"1","execution":"source planning only; compare with actual hosted planner output"}`)}, nil
 }
 
 func withEnvironment(base []string, values map[string]string) []string {
