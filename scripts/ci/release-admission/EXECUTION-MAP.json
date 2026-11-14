@@ -1,13 +1,13 @@
 {
   "actualConfiguration": null,
   "executionAuthorityGranted": false,
-  "implementationManifestRawSHA256": "68828fc60b5e8601f391e4c0f1b434520b09b96ccd514e5ba947c1f6cbb9426f",
-  "implementationManifestSHA256": "be5e9493f422247135032fd83bea2c3c897f1e2f4cd7cf22310da1fa7119c562",
+  "implementationManifestRawSHA256": "f7481bdbb372cdf53ff224f9fc264cdc68fb9b2f06303e8af978760ef3a30478",
+  "implementationManifestSHA256": "32b26e6847003815d4fdba512bdc324a11e647e321c74e4583a7a802646e1d70",
   "modules": {
     "collector": {
-      "bytes": 52707,
+      "bytes": 51713,
       "path": "release_collector.py",
-      "rawSHA256": "22fb1eea91be857b98e12afcf2e1e38b0981892d703a5d62d4dd33bf850b9602"
+      "rawSHA256": "6618b295402389f156443a91aa10ed976ee2c9ac9fa09f4b4a637f11cb10ebad"
     },
     "configuration": {
       "bytes": 4004,
@@ -395,8 +395,8 @@
       "rawSHA256": "977fe7b9440bdb5fae9635d3092947b620761bb8fda6936443028c507f5ebb91"
     },
     "collector_test_support.py": {
-      "bytes": 16803,
-      "rawSHA256": "53425858b938d8d26cc1d542825c6d551696bcd98fed138eacd45c66d5fe9115"
+      "bytes": 16162,
+      "rawSHA256": "98b9b9950704c43995daaf9256ca83311f0ab9ab7ddee2949b59b8a529e44fa0"
     },
     "core/admission_assembly.source-only.py": {
       "bytes": 18803,
@@ -567,20 +567,20 @@
       "rawSHA256": "6d522a32ec3c4b8480a5edb0cbea0cd1911bd3bebce6fce20feb1c9a7f568caa"
     },
     "release_collector.py": {
-      "bytes": 52707,
-      "rawSHA256": "22fb1eea91be857b98e12afcf2e1e38b0981892d703a5d62d4dd33bf850b9602"
+      "bytes": 51713,
+      "rawSHA256": "6618b295402389f156443a91aa10ed976ee2c9ac9fa09f4b4a637f11cb10ebad"
     },
     "release_policy.py": {
-      "bytes": 51490,
-      "rawSHA256": "01e65335944894c0c6548b72e89351a6be8c43b5628c4babbc05baa0ec608d35"
+      "bytes": 47961,
+      "rawSHA256": "26301a90f1d4d091b9bd82df615afbfb4a49ebae51cac82879e47ae2bccc4bcb"
     },
     "release_records.py": {
-      "bytes": 43228,
-      "rawSHA256": "0ad1edf97dc3fe2cee80513a920ce3ef5c6a42af673e51e11800e1810ad818b2"
+      "bytes": 43512,
+      "rawSHA256": "23d62e5ba66b6c2506608a1cfd2cf84f318ede66abf429dabb1edad4aebddae6"
     },
     "release_test_support.py": {
-      "bytes": 16779,
-      "rawSHA256": "6ef4e6308cb9b722bc4c1b742021abf9e93b45034e61d0cde69c50728bfc9a8e"
+      "bytes": 16794,
+      "rawSHA256": "337e604e8f5aae28dd3f2021f1843e28325b3102a9a14faa38fe82ab7b15d7ee"
     },
     "repin_core.py": {
       "bytes": 6614,
@@ -595,16 +595,16 @@
       "rawSHA256": "3e9c33192c006bfc797c30d6a9930f51fcef080378c82af36a1c7ab960a0ece1"
     },
     "spec/CONFORMANCE-CASES.json": {
-      "bytes": 12499,
-      "rawSHA256": "859f4685e7eb21db5c08d1d7cae59ff3c1082b7c0978acff52741090ee8b0a82"
+      "bytes": 12980,
+      "rawSHA256": "612e1ea45838bd7440cf3355bf8be3f3397d39af4cd9c8f1ad98c2b82e8f1d7d"
     },
     "spec/CONTRACTS.json": {
-      "bytes": 30360,
-      "rawSHA256": "bb92cf14fe361b50c0db76925b2e4f1d055c918fab4c171fff955c15ebcade0c"
+      "bytes": 27915,
+      "rawSHA256": "6b73182ba0cdc1ca65aee4c0bdc4a278278c01baf116a26f98c8c3c6c64df30e"
     },
     "spec/DESIGN-PINS.json": {
       "bytes": 580,
-      "rawSHA256": "69a07b8a0e38c9c4130b4b4aa748be28be0cc6989eed95d2f2ad3b4debfcf644"
+      "rawSHA256": "691387320b72a18e573672522894e69c0c68d61123be5985bd1af6a5db27ffc9"
     },
     "test_adapter_context.py": {
       "bytes": 48795,
@@ -627,12 +627,12 @@
       "rawSHA256": "c84e0a7842df69985267b5bab9e63e94d22a0fbbc43c1e2a778f3d092b111caf"
     },
     "test_release_collector.py": {
-      "bytes": 37059,
-      "rawSHA256": "eeb696bf5c89e75b116ee4c3046b9d33e7613f1d62f061c979fef2a24726236c"
+      "bytes": 39446,
+      "rawSHA256": "1147b4d154a02287a396e41a6b650d8c54294c806d02abe7e4b096fca151ceff"
     },
     "test_release_records.py": {
-      "bytes": 26691,
-      "rawSHA256": "900ede702c0994c813b53bfc308b33248d12605a3e59c8119d7d66ca2b424afa"
+      "bytes": 27141,
+      "rawSHA256": "5396ba6dd950fb823688c521d247519f4e9614872825450ef277dea360d53b98"
     },
     "test_repository_source_closure.py": {
       "bytes": 1101,

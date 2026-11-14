@@ -197,7 +197,7 @@ class Collector:
         self._map(('repository',), index, rule='fixed-repository-identity')
         return copy.deepcopy(repository)
 
-    def _commit(self, sha, destination, *, public=True, compact=False):
+    def _commit(self, sha, destination, *, compact=False):
         m = self.m
         m.require(m.sha(sha, 40), 'exact-commit-selector')
         raw, index, _ = self._read(REPO + '/commits/' + sha)
@@ -220,11 +220,7 @@ class Collector:
             self._map((*destination, 'parents'), index, ('parents',), 'ordered-parent-shas')
             if not compact:
                 self._map((*destination, 'verification'), index, ('commit', 'verification'), 'verified-and-reason')
-        if public:
-            m.public_commit_checked(result, requires_dco=False)
-        else:
-            m.require(m.sha(result['treeSHA'], 40) and all(m.sha(p, 40) for p in result['parents']),
-                      'tested-commit-tree-and-parents')
+        m.public_commit_checked(result, requires_dco=False)
         return result
 
     def _tree(self, sha):
@@ -374,7 +370,7 @@ class Collector:
                        'selected-run-attempt-unchanged')
         return raw, index
 
-    def _run(self, pr, run_id, attempt, kind, destination):
+    def _run(self, pr, run_id, attempt, destination):
         m = self.m
         raw, index = self._run_raw(run_id, attempt)
         latest, _ = self._run_raw(run_id, attempt, latest=True)
@@ -382,24 +378,18 @@ class Collector:
                   'status', 'conclusion', 'created_at', 'updated_at')
         result = {key: raw[key] for key in fields}
         m.require(_same(result, {key: latest[key] for key in fields}), 'current-run-and-selected-attempt')
-        caller = ('.github/workflows/ci-candidate.yml', 'pull_request') if kind == 'candidate' else (
-            '.github/workflows/ci-merge-group.yml', 'merge_group')
-        m.require((result['path'], result['event']) == caller and result['status'] == 'completed'
-                  and result['conclusion'] == 'success'
-                  and result['name'] == ('candidate-ci #' + str(pr['number']) if kind == 'candidate'
-                                         else 'trusted-merge-ci')
-                  and result['head_sha'] == pr['headSHA' if kind == 'candidate' else 'mergeSHA'],
+        m.require((result['path'], result['event']) == ('.github/workflows/ci-merge-group.yml', 'merge_group')
+                  and result['status'] == 'completed' and result['conclusion'] == 'success'
+                  and result['name'] == 'trusted-merge-ci' and result['head_sha'] == pr['mergeSHA'],
                   'exact-complete-ci-role')
         m.require(m.instant(result['created_at']) <= m.instant(result['updated_at']) <= self.started,
                   'real-completed-run-times')
-        m.require(type(result['head_branch']) is str and 1 <= len(result['head_branch']) <= 200
-                  and (kind == 'candidate' or result['head_branch'] ==
-                       f"gh-readonly-queue/main/pr-{pr['number']}-{pr['baseSHA']}"), 'single-pr-queue-branch')
+        m.require(result['head_branch'] == f"gh-readonly-queue/main/pr-{pr['number']}-{pr['baseSHA']}",
+                  'single-pr-queue-branch')
         m.require(type(raw['repository']['id']) is int
                   and raw['repository']['id'] == self.p['repository']['repositoryId'], 'run-repository')
         rows = raw['pull_requests']
-        m.require(type(rows) is list and len(rows) <= 1 and (kind != 'candidate' or len(rows) == 1),
-                  'single-pr-run-association')
+        m.require(type(rows) is list and len(rows) <= 1, 'single-pr-run-association')
         # GitHub merge_group run metadata may expose an empty pull_requests array;
         # exact public commit identity/ordered parents and the single-PR queue
         # branch bind that supported case. Never accept conflicting associations.
@@ -408,10 +398,9 @@ class Collector:
                       and rows[0]['head']['sha'] == pr['headSHA'] and rows[0]['base']['sha'] == pr['baseSHA'],
                       'run-exact-pr-pair')
         self._map(destination, index, rule='exact-selected-run')
-        tested = self._commit(pr['mergeSHA'], (*destination, 'testedCommit'), public=(kind == 'workflow'), compact=True)
+        tested = self._commit(pr['mergeSHA'], (*destination, 'testedCommit'), compact=True)
         m.require(tested['parents'] == [pr['baseSHA'], pr['headSHA']], 'ordered-two-parent-single-pr-merge')
-        paths = self.p['trustedPaths'] if kind == 'workflow' else ['go.mod', *self.p['candidateCIPaths']]
-        source = self._files(tested, paths, (*destination, 'testedSource'))
+        source = self._files(tested, self.p['trustedPaths'], (*destination, 'testedSource'))
         result['apiPR'] = self._associated(pr)
         result['testedCommit'] = {key: tested[key] for key in ('sha', 'treeSHA', 'parents')}
         result['testedFileSHA256s'] = _pins(source['files'])
@@ -437,8 +426,8 @@ class Collector:
                     _positive(m, job[key])
                 m.require(job['run_id'] == run_id and job['run_attempt'] == attempt
                           and job['head_sha'] == result['head_sha'] and job['status'] == 'completed'
-                          and type(job['name']) is str and job['name'] in self.p['requiredCIJobs'][kind]
-                          and job['conclusion'] == self.p['requiredCIJobs'][kind][job['name']],
+                          and type(job['name']) is str and job['name'] in self.p['requiredCIJobs']['workflow']
+                          and job['conclusion'] == self.p['requiredCIJobs']['workflow'][job['name']],
                           'exact-job-identity-and-outcome')
                 names.append(job['name'])
                 ids.append(job['id'])
@@ -449,7 +438,7 @@ class Collector:
             if not more:
                 break
         m.require(count == total and len(set(names)) == len(names) and len(set(ids)) == len(ids)
-                  and set(names) == set(self.p['requiredCIJobs'][kind]), 'complete-fixed-job-inventory')
+                  and set(names) == set(self.p['requiredCIJobs']['workflow']), 'complete-fixed-job-inventory')
         result['jobPages'] = pages
         return result
 
@@ -580,7 +569,7 @@ class Collector:
                   and gql['commit']['oid'] == merge_sha and gql['actor']['login'] == actor['login']
                   and type(gql['actor']['databaseId']) is int and gql['actor']['databaseId'] == actor['databaseId'],
                   'rest-graphql-exact-owner-event')
-        run = self._run(pr, run_id, attempt, 'workflow', (*destination, 'queueRun'))
+        run = self._run(pr, run_id, attempt, (*destination, 'queueRun'))
         m.require(run['testedCommit'] == {key: public[key] for key in ('sha', 'treeSHA', 'parents')},
                   'identical-public-and-tested-sha-tree-ordered-parents')
         source_range = self._range(pr, (*destination, 'sourceRange'))
@@ -688,10 +677,15 @@ class Collector:
         m.require(_same(lineage['anchor'], checked['episode']['publicCommit']), 'release-anchor-whole-commit-identity')
         workflow = self._files(current, self.p['trustedPaths'], ('workflowSource',))
         m.require(_pins(workflow['files']) == _pins(checked['releaseSource']['files']), 'main-covered-by-release-vector')
-        candidate_pr = self._pr(selection['candidatePRNumber'], ('candidatePR',))
-        m.require(candidate_pr['state'] == 'open' and candidate_pr['merged'] is False
-                  and candidate_pr['mergedAt'] is None and candidate_pr['headSHA'] == selection['candidateHeadSHA']
-                  and candidate_pr['baseSHA'] == current['sha'], 'fresh-exact-open-candidate-main-pair')
+        # The open-PR candidate run (ci-candidate.yml) was retired by bc500f240, and the queue
+        # merges a PR as soon as it is green, so no completed full run exists for an open PR.
+        # The candidate is therefore the PR already merged as current main, proven by that
+        # episode's own queue run; the redundant selection fields must repeat it exactly.
+        m.require(selection['candidatePRNumber'] == selection['mainPRNumber']
+                  and selection['candidateRunId'] == selection['mainRunId']
+                  and selection['candidateAttempt'] == selection['mainAttempt']
+                  and main['pullRequest']['headSHA'] == selection['candidateHeadSHA'],
+                  'candidate-is-the-merged-current-main-pr')
         candidate = self._commit(selection['candidateHeadSHA'], ('candidateCommit',))
         m.public_commit_checked(candidate, requires_dco=True)
         source = self._files(candidate, ['go.mod', *self.p['candidateCIPaths']], ('candidateSource',))
@@ -699,29 +693,22 @@ class Collector:
         m.require(_pins(candidate_ci) == manifest['candidateCIFileSHA256s']
                   and _sha(source['files']['go.mod'].encode()) == manifest['candidateFileSHA256s']['go.mod'],
                   'candidate-source-bound-separately-from-approved-ci')
-        run = self._run(candidate_pr, selection['candidateRunId'], selection['candidateAttempt'],
-                        'candidate', ('ciRuns', 'candidate'))
-        m.require(run['testedFiles'] == source['files'], 'candidate-head-and-tested-merge-source-equality')
-        source_range = self._range(candidate_pr, ('prCommitRanges', 'candidate'))
-        m.require(_same(source_range['pages'][-1]['commits'][-1], candidate), 'candidate-range-tip')
-        m.require(main['queueRun']['testedFiles'] == workflow['files'], 'main-public-tested-approved-source-equality')
+        tested = main['queueRun']['testedFiles']
+        m.require(all(tested[path] == body for path, body in source['files'].items()),
+                  'candidate-head-and-tested-merge-source-equality')
+        m.require(_same(main['sourceRange']['pages'][-1]['commits'][-1], candidate), 'candidate-range-tip')
+        m.require(tested == workflow['files'], 'main-public-tested-approved-source-equality')
         self._reread(REPO + '/git/ref/heads/main')
-        self._reread(f"{REPO}/pulls/{selection['candidatePRNumber']}")
-        for latest in (False, True):
-            endpoint = f"{REPO}/actions/runs/{selection['candidateRunId']}"
-            if not latest:
-                endpoint += f"/attempts/{selection['candidateAttempt']}"
-            self._reread(endpoint)
         self._stable_episode(selection['mainPRNumber'], selection['mainRunId'], selection['mainAttempt'])
-        code = {'schema': 'hikyo-158/next-code-evidence/v5', 'repository': repository,
+        code = {'schema': 'hikyo-158/next-code-evidence/v6', 'repository': repository,
                 'repositoryId': repository['repositoryId'], 'ownerId': repository['ownerId'],
                 'candidateCommit': candidate, 'workflowCommit': current,
                 'candidateFiles': {'go.mod': source['files']['go.mod']}, 'candidateCIFiles': candidate_ci,
                 'workflowFiles': workflow['files'],
                 'absentFiles': {'candidate': source['absence'], 'workflow': workflow['absence']},
-                'ciRuns': {'candidate': run, 'workflow': main['queueRun']},
-                'prCommitRanges': {'candidate': source_range, 'workflow': main['sourceRange']},
-                'candidatePR': candidate_pr, 'mainEpisode': main, 'releaseLineage': lineage,
+                'ciRuns': {'workflow': main['queueRun']},
+                'prCommitRanges': {'workflow': main['sourceRange']},
+                'mainEpisode': main, 'releaseLineage': lineage,
                 'workflowMainRef': {'endpoint': REPO + '/git/ref/heads/main',
                                     'observedAt': self.originals[ref_index]['receivedAt'],
                                     'ref': ref['ref'], 'object': {'type': 'commit', 'sha': current['sha']}},
