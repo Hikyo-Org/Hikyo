@@ -474,6 +474,13 @@ func TestIncidentUnconfirmedOwnerNeverWritesDone(t *testing.T) {
 			return service.OwnerUnconfirmed, nil
 		}, map[string]string{key("g_inc_08"): "unknown/owner_unconfirmed", key("g_inc_09"): "unknown/owner_unconfirmed"})
 
+		// The failure event reports the ledger's actual state for the item (here
+		// unknown), never a state the row does not hold.
+		failures := queryStrings(t, db, `SELECT CAST(payload AS TEXT) || ';' FROM audit_instance_events WHERE type = 'incident.item_outcome' AND outcome = 'failure' AND correlation_id = '`+id+`'`)
+		if !strings.Contains(failures, "owner_failed") || !strings.Contains(failures, "unknown") || strings.Contains(failures, "pending") {
+			t.Errorf("failure outcome events = %s, want the row's actual state unknown with reason owner_failed", failures)
+		}
+
 		step("confirmed", func(authz.IncidentItem) (service.IncidentOwnerResult, error) {
 			return service.OwnerConfirmed, nil
 		}, map[string]string{key("g_inc_08"): "done/", key("g_inc_09"): "done/"})
