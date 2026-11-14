@@ -71,9 +71,6 @@ type DynamicLease struct {
 	CreatedAt        string
 }
 
-// MaxDynamicLeasePage bounds one page of the incident lease listings.
-const MaxDynamicLeasePage = 500
-
 // DynamicLeaseRef is the identifiers-and-state view of one non-terminal lease
 // that the incident enumeration lists. It carries no provider handle.
 type DynamicLeaseRef struct {
@@ -134,7 +131,7 @@ type DynamicReader interface {
 	ActiveLeaseIDsForProvider(ctx context.Context, p authz.Proof, providerID string) ([]DynamicLease, error)
 	// ListNonTerminalLeasesInProject pages the project's leases that are not
 	// revoked, expired or failed, in id order; the limit is at most
-	// MaxDynamicLeasePage.
+	// domain.MaxIncidentPage.
 	ListNonTerminalLeasesInProject(ctx context.Context, p authz.Proof, afterID string, limit int) ([]DynamicLeaseRef, error)
 	// ListNonTerminalLeasesInInstance is the same page across every org and
 	// takes an instance-scoped proof only.
@@ -318,7 +315,7 @@ func (r dynamicQueries) ListNonTerminalLeasesInProject(ctx context.Context, p au
 	if err != nil {
 		return nil, err
 	}
-	if chain.Org == "" || chain.Project == "" || limit < 1 || limit > MaxDynamicLeasePage {
+	if chain.Org == "" || chain.Project == "" || limit < 1 || limit > domain.MaxIncidentPage {
 		return nil, ErrNotFound
 	}
 	return r.queries.dynamicListNonTerminalLeasesInProject(ctx, chain, afterID, limit)
@@ -329,7 +326,7 @@ func (r dynamicQueries) ListNonTerminalLeasesInInstance(ctx context.Context, p a
 	if err != nil {
 		return nil, err
 	}
-	if chain != (domain.Scope{}) || limit < 1 || limit > MaxDynamicLeasePage {
+	if chain != (domain.Scope{}) || limit < 1 || limit > domain.MaxIncidentPage {
 		return nil, ErrNotFound
 	}
 	return r.queries.dynamicListNonTerminalLeasesInInstance(ctx, afterID, limit)

@@ -90,6 +90,95 @@ func (r ItemReason) OutOfScopeReason() bool {
 	return false
 }
 
+// MaxIncidentPage is the one page size every incident read takes: the ledger,
+// the enumeration sources, the lease listing and the delegation listing. It is
+// re-exported through authz so the service and the store share one bound.
+const MaxIncidentPage = 500
+
+// Owner functions: the closed vocabulary of who revokes or resolves an item. An
+// item whose owner function is not listed here never reaches the ledger or the
+// audit trail.
+const (
+	OwnerSessionRevoke        = "session.revoke"
+	OwnerDeveloperRevoke      = "developer_credential.revoke"
+	OwnerExternalIdentity     = "external_identity.remove"
+	OwnerFactorRemoval        = "factor.remove"
+	OwnerServiceAccountReview = "service_account.review"
+	OwnerMachineCredential    = "machine_credential.revoke"
+	OwnerAccountContain       = "account.contain"
+	OwnerEmailInvitation      = "email_invitation.revoke"
+	OwnerSCIMCredential       = "scim_credential.revoke"
+	OwnerLeaseRevoke          = "lease.revoke"
+	OwnerAdapterTargetPause   = "adapter_target.pause"
+	OwnerAdapterMove          = "adapter_move.resume"
+	OwnerAdapterScrub         = "adapter_scrub.complete"
+	OwnerAdapterCredential    = "adapter_credential.clear"
+	OwnerAdapterUpstream      = "adapter_credential.upstream_revoke"
+	OwnerDynamicCredential    = "dynamic_provider.credential_clear"
+	OwnerDynamicUpstream      = "dynamic_provider.upstream_revoke"
+	// OwnerConsumerAdoption is a consumer adopting a replacement credential: the
+	// ADR records it as attested, since Hikyo cannot observe the consumer.
+	OwnerConsumerAdoption = "consumer.adopt"
+	// OwnerNone marks an object no workflow revokes (out of scope).
+	OwnerNone = "none"
+)
+
+// IncidentOwnerFunctions lists every owner function.
+var IncidentOwnerFunctions = []string{
+	OwnerSessionRevoke, OwnerDeveloperRevoke, OwnerExternalIdentity, OwnerFactorRemoval, OwnerServiceAccountReview,
+	OwnerMachineCredential, OwnerAccountContain, OwnerEmailInvitation, OwnerSCIMCredential, OwnerLeaseRevoke,
+	OwnerAdapterTargetPause, OwnerAdapterMove, OwnerAdapterScrub, OwnerAdapterCredential, OwnerAdapterUpstream,
+	OwnerDynamicCredential, OwnerDynamicUpstream, OwnerConsumerAdoption, OwnerNone,
+}
+
+// Object kinds: the closed vocabulary of what an item names.
+const (
+	ObjectKindSession            = "session"
+	ObjectKindDeveloperCred      = "developer_credential"
+	ObjectKindExternalIdentity   = "external_identity"
+	ObjectKindTOTPFactor         = "totp_factor"
+	ObjectKindPasskey            = "passkey"
+	ObjectKindServiceAccount     = "service_account"
+	ObjectKindMachineCredential  = "machine_credential"
+	ObjectKindAccount            = "account"
+	ObjectKindEmailInvitation    = "email_invitation"
+	ObjectKindSCIMCredential     = "scim_credential"
+	ObjectKindSCIMBinding        = "scim_binding"
+	ObjectKindLease              = "lease"
+	ObjectKindAdapter            = "adapter"
+	ObjectKindAdapterTarget      = "adapter_target"
+	ObjectKindDynamicProvider    = "dynamic_provider"
+	ObjectKindEnumeration        = "enumeration"
+	ObjectKindOrg                = "org"
+	ObjectKindProject            = "project"
+	ObjectKindDeliveredPlaintext = "delivered_plaintext"
+	ObjectKindLocalCopy          = "cache"
+	ObjectKindRunningProcess     = "running_process"
+	ObjectKindExternalSession    = "external_session"
+	ObjectKindIssuedCertificate  = "issued_certificate"
+)
+
+// IncidentObjectKinds lists every object kind.
+var IncidentObjectKinds = []string{
+	ObjectKindSession, ObjectKindDeveloperCred, ObjectKindExternalIdentity, ObjectKindTOTPFactor, ObjectKindPasskey, ObjectKindServiceAccount,
+	ObjectKindMachineCredential, ObjectKindAccount, ObjectKindEmailInvitation, ObjectKindSCIMCredential, ObjectKindSCIMBinding, ObjectKindLease,
+	ObjectKindAdapter, ObjectKindAdapterTarget, ObjectKindDynamicProvider, ObjectKindEnumeration, ObjectKindOrg, ObjectKindProject,
+	ObjectKindDeliveredPlaintext, ObjectKindLocalCopy, ObjectKindRunningProcess, ObjectKindExternalSession, ObjectKindIssuedCertificate,
+}
+
+// ValidOwnerFunction and ValidObjectKind report membership in the closed sets.
+func ValidOwnerFunction(f string) bool { return inList(IncidentOwnerFunctions, f) }
+func ValidObjectKind(k string) bool    { return inList(IncidentObjectKinds, k) }
+
+func inList(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
+
 // Valid reports whether r is a known reason.
 func (r ItemReason) Valid() bool {
 	return r == ReasonNone || r.OutOfScopeReason() || r == ReasonNeedsAnotherOperator || r == ReasonOwnerUnconfirmed ||

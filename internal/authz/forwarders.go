@@ -84,12 +84,13 @@ type txForwarded interface {
 	IncidentItemByID(ctx context.Context, incidentID, id string) (IncidentItem, error)
 	IncidentItemCounts(ctx context.Context, incidentID string) (map[domain.ItemOutcome]int64, error)
 	TransitionIncidentItem(ctx context.Context, t ItemTransition) (bool, error)
-	// LiveDeveloperCredentialsInOrg pages the live delegations minted inside one
-	// org, in id order; a non-empty authority narrows it to one human.
+	// LiveDeveloperCredentialsInOrg pages the live delegations (not revoked, not
+	// expired, current credential epoch) minted inside one org, in id order; a
+	// non-empty authority narrows it to one human.
+	LiveDeveloperCredentialsInOrg(ctx context.Context, org domain.OrgID, authority domain.PrincipalID, afterID string, limit int, now time.Time) ([]DeveloperCredential, error)
 	// ServiceAccountsCreatedBy pages the service accounts a principal created
 	// (the offboarding report's created-by relation), in id order.
 	ServiceAccountsCreatedBy(ctx context.Context, creator domain.PrincipalID, org domain.OrgID, afterID string, limit int) ([]ServiceAccount, error)
-	LiveDeveloperCredentialsInOrg(ctx context.Context, org domain.OrgID, authority domain.PrincipalID, afterID string, limit int, now time.Time) ([]DeveloperCredential, error)
 
 	// PrincipalPausedByContainment reports a principal held out of authority by
 	// containment alone, for the personal-value retention clock.
