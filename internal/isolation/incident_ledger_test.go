@@ -962,9 +962,9 @@ func TestIncidentOrgsHaveTheirOwnSlot(t *testing.T) {
 		if b.Incident.ID == a.Incident.ID || b.Incident.OrgID != orgB || b.Reopened {
 			t.Fatalf("org B incident = %+v reopened=%v", b.Incident, b.Reopened)
 		}
-		if _, err := w.svc.Get(ctx, w.as(incOrgB), a.Incident.ID); !errors.Is(err, domain.ErrNotFound) {
-			t.Errorf("org B reading org A's incident = %v, want not found", err)
-		}
+		_, errRead := w.svc.Get(ctx, w.as(incOrgB), a.Incident.ID)
+		_, errMissing := w.svc.Get(ctx, w.as(incOrgB), "inc_does_not_exist")
+		assertUniformNotFound(t, errRead, errMissing)
 		if _, err := w.svc.Get(ctx, w.as(incResponder), a.Incident.ID); err != nil {
 			t.Errorf("org A lost its own incident: %v", err)
 		}
@@ -1421,6 +1421,28 @@ func TestIncidentAdapterScope(t *testing.T) {
 		})
 		if _, err := w.svc.Close(ctx, w.as(incResponder), v.Incident.ID, false); !errors.Is(err, service.ErrIncidentOpenItems) {
 			t.Errorf("clean close with the move and scrub source unread = %v, want ErrIncidentOpenItems", err)
+		}
+		// A resume pass, with an owner registered for the move, does not ask it
+		// about the unread-source row: the marker stays open.
+		w.svc.Owners = map[string]service.IncidentOwner{domain.OwnerAdapterMove: func(context.Context, service.Actor, authz.IncidentItem) (service.IncidentOwnerResult, error) {
+			return service.OwnerConfirmed, nil
+		}}
+		if _, err := w.svc.Resume(ctx, w.as(incResponder), v.Incident.ID); err != nil {
+			t.Fatal(err)
+		}
+		if got := w.itemMap(t, incResponder, v.Incident.ID)["adapter_move.resume|enumeration|adp_it_mv"]; got != "unknown/enumeration_truncated" {
+			t.Errorf("unread-source marker after resume = %q, want it still open", got)
+		}
+		if _, err := w.svc.Close(ctx, w.as(incResponder), v.Incident.ID, false); !errors.Is(err, service.ErrIncidentOpenItems) {
+			t.Errorf("clean close after resume = %v, want ErrIncidentOpenItems", err)
+		}
+		// A project incident over the same adapter carries the marker too.
+		prj, err := w.svc.Open(ctx, w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeProject, Scope: domain.Scope{Org: orgA, Project: prjA1}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := w.itemMap(t, incResponder, prj.Incident.ID)["adapter_move.resume|enumeration|adp_it_mv"]; got != "unknown/enumeration_truncated" {
+			t.Errorf("project incident unread-source marker = %q, want it open", got)
 		}
 
 		// A credential-reset holder without the adapter capability records an

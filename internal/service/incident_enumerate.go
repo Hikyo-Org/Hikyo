@@ -253,7 +253,8 @@ func (s *Incidents) collectAccount(ctx context.Context, az *authz.TxAuthorizer, 
 	// Rules are counted from the stored rule lines of the footprint orgs, which
 	// are not gated on privacy or containment: a contained or restricted target is
 	// exactly when the count matters, and the gated rule reader answers none then.
-	ruleCount := 0
+	// A line is one rule item, so rules are counted by distinct rule id.
+	ruleIDs := map[string]bool{}
 	for _, org := range a.footprint {
 		if org == "" || (a.org != "" && org != a.org) {
 			continue
@@ -264,11 +265,11 @@ func (s *Incidents) collectAccount(ctx context.Context, az *authz.TxAuthorizer, 
 		}
 		for _, l := range lines {
 			if l.Principal == target {
-				ruleCount++
+				ruleIDs[l.ID] = true
 			}
 		}
 	}
-	c.census = IncidentCensus{Grants: len(grants), Rules: ruleCount}
+	c.census = IncidentCensus{Grants: len(grants), Rules: len(ruleIDs)}
 
 	// Ending a person's sessions and delegations is the credential-reset
 	// operation the incident itself was authorized under (O2: a holder who can
