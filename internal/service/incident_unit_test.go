@@ -63,6 +63,7 @@ func TestAttestable(t *testing.T) {
 		"upstream by owner":         {authz.IncidentItem{OwnerFunction: domain.OwnerAdapterUpstream, Outcome: domain.ItemUnknown}, true},
 		"consumer adoption":         {authz.IncidentItem{OwnerFunction: domain.OwnerConsumerAdoption, Outcome: domain.ItemPending}, true},
 		"factor stays open":         {authz.IncidentItem{OwnerFunction: domain.OwnerFactorRemoval, Outcome: domain.ItemUnknown, Reason: domain.ReasonNoRevokeOwner}, false},
+		"truncated identity marker": {authz.IncidentItem{OwnerFunction: domain.OwnerExternalIdentity, ObjectKind: domain.ObjectKindEnumeration, Outcome: domain.ItemUnknown, Reason: domain.ReasonEnumerationTruncated}, false},
 		"linked identity":           {authz.IncidentItem{OwnerFunction: domain.OwnerExternalIdentity, Outcome: domain.ItemUnknown, Reason: domain.ReasonNoRevokeOwner}, true},
 	} {
 		if got := attestable(tc.item); got != tc.want {

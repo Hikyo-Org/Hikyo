@@ -621,7 +621,9 @@ func ownIncident(caller authz.Identity, inc authz.Incident) bool {
 // owner re-check that confirms it, and a blocked item needs the operator who
 // holds its capability, so neither is attestable.
 func attestable(it authz.IncidentItem) bool {
-	if it.Outcome == domain.ItemBlocked {
+	// An enumeration marker stands for objects that were never listed, so no
+	// operator statement can resolve it.
+	if it.Outcome == domain.ItemBlocked || it.ObjectKind == domain.ObjectKindEnumeration {
 		return false
 	}
 	if it.Reason == domain.ReasonUpstreamNotObservable {
