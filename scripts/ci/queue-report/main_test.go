@@ -2,7 +2,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,6 +15,8 @@ import (
 	"time"
 
 	"github.com/russross/blackfriday/v2"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type fixture struct {
@@ -66,7 +69,7 @@ func newFixture(t *testing.T) *fixture {
 		}
 		if req.Method != http.MethodGet {
 			var body map[string]any
-			if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			if err := json.UnmarshalRead(req.Body, &body); err != nil {
 				t.Error(err)
 			}
 			f.writes = append(f.writes, body)
@@ -88,7 +91,7 @@ func newFixture(t *testing.T) *fixture {
 						current = f.writeMutate(current)
 					}
 					f.checks[i] = current
-					if err := json.NewEncoder(w).Encode(current); err != nil {
+					if err := json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), current); err != nil {
 						t.Error(err)
 					}
 					return
@@ -132,7 +135,7 @@ func newFixture(t *testing.T) *fixture {
 		if f.mutate != nil {
 			result = f.mutate(path, result)
 		}
-		if err := json.NewEncoder(w).Encode(result); err != nil {
+		if err := json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), result); err != nil {
 			t.Error(err)
 		}
 	}))
@@ -517,7 +520,7 @@ func (transport *rejectNetworkTransport) RoundTrip(*http.Request) (*http.Respons
 
 func TestExecuteRejectsInvalidRepositoryBeforeAnyHTTPRequest(t *testing.T) {
 	f := newFixture(t)
-	data, err := json.Marshal(f.e)
+	data, err := json.Marshal(f.e, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

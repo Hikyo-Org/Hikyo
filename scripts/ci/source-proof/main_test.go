@@ -5,7 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/url"
@@ -17,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 const testMain = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -225,7 +227,7 @@ func (f *fixture) read(_ context.Context, endpoint string, target any) error {
 }
 
 func copyResponse(value any, target any) error {
-	data, err := json.Marshal(value)
+	data, err := json.Marshal(value, jsonwire.Stable)
 	if err != nil {
 		return err
 	}
@@ -569,7 +571,7 @@ func TestClosedRegistryAndExecutionInventory(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry["version"] = 3
-	changed, _ := json.Marshal(registry)
+	changed, _ := json.Marshal(registry, jsonwire.Stable)
 	if err := validateRegistry(changed); err == nil {
 		t.Fatal("unknown registry schema accepted")
 	}

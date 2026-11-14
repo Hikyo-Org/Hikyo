@@ -6,13 +6,16 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/url"
 	"os"
 	"regexp"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 const (
@@ -74,14 +77,11 @@ func (c config) validate() error {
 }
 
 func decode(data []byte, v interface{}, strict bool) error {
-	d := json.NewDecoder(bytes.NewReader(data))
-	if strict {
-		d.DisallowUnknownFields()
-	}
-	if err := d.Decode(v); err != nil {
+	d := jsontext.NewDecoder(bytes.NewReader(data))
+	if err := json.UnmarshalDecode(d, v, json.RejectUnknownMembers(strict)); err != nil {
 		return errors.New("invalid JSON contract")
 	}
-	if err := d.Decode(new(interface{})); err != io.EOF {
+	if _, err := d.ReadValue(); !errors.Is(err, io.EOF) {
 		return errors.New("expected one JSON document")
 	}
 	return nil
@@ -106,6 +106,6 @@ func digest(data []byte) string {
 }
 
 func identity(parts ...string) string {
-	b, _ := json.Marshal(parts)
+	b, _ := json.Marshal(parts, jsonwire.Stable)
 	return digest(b)
 }

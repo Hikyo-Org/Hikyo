@@ -2,7 +2,7 @@ package ci_test
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Reject unauthenticated identities immediately while retaining public metadata
@@ -51,7 +53,7 @@ func TestQueueBootstrapIdentityValidationAndDiagnostics(t *testing.T) {
 				if test.field != "" {
 					job[test.field] = test.value
 				}
-				body, err := json.Marshal(map[string]any{"total_count": 1, "jobs": []any{job}})
+				body, err := json.Marshal(map[string]any{"total_count": 1, "jobs": []any{job}}, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -117,11 +119,11 @@ func TestQueueBootstrapIdentityValidationAndDiagnostics(t *testing.T) {
 				if test.field != "status" && captured.Actual["status"] != "pending" {
 					t.Fatalf("malformed pending identity was not exercised: %s", diagnostic)
 				}
-				want, err := json.Marshal(test.value)
+				want, err := json.Marshal(test.value, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}
-				got, err := json.Marshal(captured.Actual[test.field])
+				got, err := json.Marshal(captured.Actual[test.field], jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -174,7 +176,7 @@ func TestQueueBootstrapStatusConsistency(t *testing.T) {
 				t.Run(filename+"/"+route.event+"/"+tc.name, func(t *testing.T) {
 					dir := t.TempDir()
 					job := map[string]any{"id": 117143001761, "run_id": 38951286305, "run_attempt": 1, "name": "publish-" + head, "head_sha": route.jobHead, "status": tc.status, "started_at": "2026-10-16T18:57:22Z"}
-					body, err := json.Marshal(map[string]any{"total_count": 1, "jobs": []any{job}})
+					body, err := json.Marshal(map[string]any{"total_count": 1, "jobs": []any{job}}, jsonwire.Stable)
 					if err != nil {
 						t.Fatal(err)
 					}

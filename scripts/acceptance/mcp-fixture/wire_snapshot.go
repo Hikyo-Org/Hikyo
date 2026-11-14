@@ -4,7 +4,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net"
@@ -12,6 +13,8 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Query current recorder state through an owner-only local socket. A cached
@@ -54,7 +57,7 @@ func serveWireSnapshot(ctx context.Context, dir string, recorder *wireRecorder) 
 				return
 			}
 			connection.SetWriteDeadline(time.Now().Add(time.Second))
-			_ = json.NewEncoder(connection).Encode(recorder.snapshot())
+			_ = json.MarshalEncode(jsontext.NewEncoder(connection, jsonwire.Stable), recorder.snapshot())
 			connection.Close()
 		}
 	}()
@@ -78,14 +81,12 @@ func fetchWireSnapshot(ctx context.Context, dir string) (wireReceipt, error) {
 	defer connection.Close()
 	deadline, _ := ctx.Deadline()
 	connection.SetReadDeadline(deadline)
-	decoder := json.NewDecoder(io.LimitReader(connection, 1<<20))
-	decoder.DisallowUnknownFields()
+	decoder := jsontext.NewDecoder(io.LimitReader(connection, 1<<20))
 	var document wireReceipt
-	if decoder.Decode(&document) != nil || document.Schema != "hikyo.dev/mcp-wire/v1" {
+	if json.UnmarshalDecode(decoder, &document, json.RejectUnknownMembers(true)) != nil || document.Schema != "hikyo.dev/mcp-wire/v1" {
 		return wireReceipt{}, errors.New("invalid live wire snapshot")
 	}
-	var extra json.RawMessage
-	if decoder.Decode(&extra) != io.EOF {
+	if _, err := decoder.ReadValue(); !errors.Is(err, io.EOF) {
 		return wireReceipt{}, errors.New("incomplete live wire snapshot")
 	}
 	return document, nil
@@ -95,5 +96,5 @@ func readWireSnapshot(ctx context.Context, dir string) error {
 	if err != nil {
 		return err
 	}
-	return json.NewEncoder(os.Stdout).Encode(document)
+	return json.MarshalEncode(jsontext.NewEncoder(os.Stdout, jsonwire.Stable), document)
 }

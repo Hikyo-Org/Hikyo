@@ -1,7 +1,7 @@
 package ci_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Platform proof gates the final result without serializing Linux validation.
@@ -151,7 +153,7 @@ func testCoreValidationTrustedBaseMigration(t *testing.T) {
 				}
 				encode := func(value any) []byte {
 					t.Helper()
-					data, err := json.Marshal(value)
+					data, err := json.Marshal(value, jsonwire.Stable)
 					if err != nil {
 						t.Fatal(err)
 					}
