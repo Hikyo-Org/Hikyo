@@ -161,6 +161,13 @@ var ResolutionSurfaceWriters = map[string]bool{
 	"ErasePrivacyAccount":      true,
 	"CreateAccount":            true,
 	"CreateGrant":              true,
+
+	// Reversible incident containment (incident-containment ADR, O1): read by
+	// authorize() like privacy_state, so written on the resolution surface under
+	// the principal-row lock.
+	"ContainPrincipal":            true,
+	"ReleasePrincipalContainment": true,
+
 	// Approval-mediated temporary access (#152): the time-bound grant rows are
 	// read by authorize(), so they are written on the resolution surface after
 	// the access service proved its own chokepoint operation, under the
@@ -186,6 +193,10 @@ var ResolutionSurfaceWriters = map[string]bool{
 	"DeleteSession":              true,
 	"DeleteSessionsForPrincipal": true,
 	"AdvanceGeneration":          true,
+	// The shared body of AdvanceGeneration and the containment setters: it
+	// retires the pending password-login and workspace-handoff proofs, which
+	// mint sessions without consulting the generation.
+	"retirePendingProofs": true,
 	// Factors (#54): TOTP enrolment/confirmation/removal, recovery-code batch
 	// writes, step-up session rotation, and the outstanding-authority sweep.
 	// None can hold a proof — they mutate the artifacts that decide how a

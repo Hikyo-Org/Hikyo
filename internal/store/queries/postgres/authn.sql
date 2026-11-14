@@ -43,6 +43,7 @@ FROM grants AS g
 JOIN principals AS p ON p.id = g.principal_id
 WHERE g.principal_id = sqlc.arg(principal_id)
   AND p.privacy_state = 'active'
+  AND p.containment_state = 'none'
   AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
 UNION ALL
 SELECT j.capability, j.org_id, j.project_id, j.env_id,
@@ -52,6 +53,7 @@ JOIN principals AS jp ON jp.id = j.principal_id
 WHERE j.principal_id = sqlc.arg(principal_id)
   AND j.expires_at > sqlc.arg(now)
   AND jp.privacy_state = 'active'
+  AND jp.containment_state = 'none'
   AND jp.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1);
 
 -- The denial writer's actor-class lookup (#45, audit-model ADR amendment
@@ -75,17 +77,17 @@ SELECT credential_epoch FROM auth_instance_state WHERE id = 1;
 -- hikyo:authn-resolution
 -- name: GetAccountByUsername :one
 SELECT id, principal_id, username, display_name, created_at FROM accounts
-WHERE username = $1 AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active');
+WHERE username = $1 AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active' AND principals.containment_state = 'none');
 
 -- hikyo:authn-resolution
 -- name: GetAccountByID :one
 SELECT id, principal_id, username, display_name, created_at FROM accounts
-WHERE accounts.id = $1 AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active');
+WHERE accounts.id = $1 AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active' AND principals.containment_state = 'none');
 
 -- hikyo:authn-resolution
 -- name: GetAccountByPrincipal :one
 SELECT id, principal_id, username, display_name, created_at FROM accounts
-WHERE principal_id = $1 AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active');
+WHERE principal_id = $1 AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active' AND principals.containment_state = 'none');
 
 -- hikyo:authn-resolution
 -- name: CountAccounts :one
@@ -108,7 +110,7 @@ FROM password_credentials WHERE account_id = $1;
 
 -- hikyo:authn-resolution
 -- name: GetPrincipalGeneration :one
-SELECT session_generation FROM principals WHERE id = $1 AND privacy_state = 'active';
+SELECT session_generation FROM principals WHERE id = $1 AND privacy_state = 'active' AND containment_state = 'none';
 
 -- hikyo:authn-resolution
 -- name: GetSessionByVerifier :one

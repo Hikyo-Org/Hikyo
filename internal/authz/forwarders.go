@@ -58,6 +58,28 @@ type txForwarded interface {
 	// AccountByWebAuthnUserHandle resolves the account a discoverable assertion names.
 	AccountByWebAuthnUserHandle(ctx context.Context, handle []byte) (Account, error)
 
+	// RecoveryAccountByID and RecoveryAccountByPrincipal are the ONE recovery
+	// lookup: the account gates minus the containment condition. Only credential
+	// reset and establishment may call them (lint.CheckRecoveryLookup).
+	RecoveryAccountByID(ctx context.Context, id string) (Account, error)
+	RecoveryAccountByPrincipal(ctx context.Context, p domain.PrincipalID) (Account, error)
+
+	// ContainPrincipal and ReleasePrincipalContainment set and clear the
+	// reversible containment state. Both advance the session generation in the
+	// same UPDATE, and containing also consumes the account's outstanding
+	// authorities, so nothing minted before containment survives it. They revoke
+	// no session row and remove no grant.
+	ContainPrincipal(ctx context.Context, p domain.PrincipalID, at time.Time, incidentID string) error
+	ReleasePrincipalContainment(ctx context.Context, p domain.PrincipalID) error
+
+	// PrincipalPausedByContainment reports a principal held out of authority by
+	// containment alone, for the personal-value retention clock.
+	PrincipalPausedByContainment(ctx context.Context, p domain.PrincipalID) (bool, error)
+
+	// PrincipalContainedAt answers when the principal was contained, false when
+	// it is not. Establishment refuses an authority minted before that moment.
+	PrincipalContainedAt(ctx context.Context, p domain.PrincipalID) (time.Time, bool, error)
+
 	// AccountCount answers the bootstrap path's one question. It has no network
 	// route: `hikyo admin create` runs on the server's own host.
 	AccountCount(ctx context.Context) (int64, error)

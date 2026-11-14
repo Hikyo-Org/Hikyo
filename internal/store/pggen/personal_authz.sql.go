@@ -62,6 +62,7 @@ SELECT COUNT(*) FROM principals AS p
 WHERE p.id = $1
   AND p.kind = 'human'
   AND p.privacy_state = 'active'
+  AND p.containment_state = 'none'
   AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
   AND (EXISTS (
       SELECT 1 FROM personal_values AS v

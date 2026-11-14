@@ -1032,6 +1032,24 @@ func (s *Auth) attemptRecovery(ctx context.Context, username, code string) (Reco
 			refused = domain.ErrUnauthenticated
 			return nil
 		}
+		// Containment or a privacy restriction may have landed since phase 1
+		// resolved the account. Take the principal row lock every such writer
+		// takes, then re-resolve through the gated lookup: a held account gets the
+		// uniform unknown-subject refusal before any code is spent, factor retired,
+		// value purged or authority minted. The re-read sits inside this closure, so
+		// a serialization retry runs it again.
+		if err := az.LockTargetPrincipal(ctx, account.PrincipalID); err != nil {
+			return err
+		}
+		if _, err := az.AccountByID(ctx, account.ID); errors.Is(err, domain.ErrNotFound) {
+			if ferr := s.failRecovery(ctx, az, now, "", false, "unknown-subject"); ferr != nil {
+				return ferr
+			}
+			refused = domain.ErrUnauthenticated
+			return nil
+		} else if err != nil {
+			return err
+		}
 		// Re-read the batch and re-match under the write tx: a concurrent
 		// regenerate may have replaced it since phase 2.
 		live, err := az.RecoveryCodesFor(ctx, account.ID)

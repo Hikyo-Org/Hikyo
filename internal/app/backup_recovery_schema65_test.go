@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -36,6 +37,13 @@ import (
 // seed replaces the default organisation, principal and grants.
 func recoverySchema65Fixture(t *testing.T, engine store.Engine, seed ...func(*testing.T, func(string, ...any), *crypto.Keyring)) upgradeDrillFixture {
 	t.Helper()
+	return recoverySchemaFixture(t, engine, 65, seed...)
+}
+
+// recoverySchemaFixture is the same archived-release fixture at any source
+// schema version, so a test can pick the historical projection it exercises.
+func recoverySchemaFixture(t *testing.T, engine store.Engine, version uint64, seed ...func(*testing.T, func(string, ...any), *crypto.Keyring)) upgradeDrillFixture {
+	t.Helper()
 	ctx := t.Context()
 	seedCfg := upgradeDrillDatabase(t, engine)
 	seedUC := upgrade.Config{Engine: releaseidentity.Engine(engine), Path: seedCfg.Path, DSN: seedCfg.DSN}
@@ -62,7 +70,7 @@ func recoverySchema65Fixture(t *testing.T, engine store.Engine, seed ...func(*te
 	// so later adapter migrations cannot leak into this source fixture.
 	cfg := upgradeDrillDatabase(t, engine)
 	uc := upgrade.Config{Engine: releaseidentity.Engine(engine), Path: cfg.Path, DSN: cfg.DSN}
-	if err := migrate.RunUpTo(ctx, cfg, 65); err != nil {
+	if err := migrate.RunUpTo(ctx, cfg, int64(version)); err != nil {
 		t.Fatal(err)
 	}
 	native := openRecoveryFixtureSQL(t, cfg)
@@ -75,7 +83,7 @@ func recoverySchema65Fixture(t *testing.T, engine store.Engine, seed ...func(*te
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest.Entries = slices.DeleteFunc(manifest.Entries, func(e releaseidentity.Migration) bool { return e.Version > 65 })
+	manifest.Entries = slices.DeleteFunc(manifest.Entries, func(e releaseidentity.Migration) bool { return e.Version > version })
 	migrationDigest, err := manifest.Digest()
 	if err != nil {
 		t.Fatal(err)
@@ -313,5 +321,108 @@ func TestRecoveryTransactionsUseSchema65GrantProjection(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+// Verified source schemas 66 through 88 predate the containment column, so a
+// guarded recovery of one reads grants, temporary access grants and member
+// access rules through the pre-containment projections, and the personal-owner
+// fallback through its own. Each authority source below is held by its own
+// principal, and a principal with none stays denied.
+func TestRecoveryTransactionsUseSchema87ContainmentFreeProjections(t *testing.T) {
+	const at = "2026-09-05T00:00:00Z"
+	seed := func(t *testing.T, exec func(string, ...any), _ *crypto.Keyring) {
+		t.Helper()
+		exec(`INSERT INTO orgs (id,name,active,metadata,created_at) VALUES ('org_drill','Drill',TRUE,'{}',$1)`, at)
+		exec(`INSERT INTO projects (id,org_id,name,created_at) VALUES ('prj_drill','org_drill','Drill',$1)`, at)
+		exec(`INSERT INTO environments (id,org_id,project_id,name,note,created_at,display_order) VALUES ('env_drill','org_drill','prj_drill','dev','',$1,0)`, at)
+		for _, p := range []string{"usr_drill", "usr_grant", "usr_rule", "usr_access", "usr_owner", "usr_none"} {
+			exec(`INSERT INTO principals (id,kind,created_at) VALUES ($1,'human',$2)`, p, at)
+		}
+		// The drill's own principal carries what its scratch credential proof needs.
+		for _, capability := range []string{"manage-identities", "read"} {
+			exec(`INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ($1,'usr_drill',$2,'org_drill','prj_drill',NULL,$3)`, "gr_drill_"+capability, capability, at)
+			exec(`INSERT INTO grant_origins (id,grant_id,kind,subject,created_at) VALUES ($1,$2,'manual','usr_drill',$3)`, "gor_drill_"+capability, "gr_drill_"+capability, at)
+		}
+		exec(`INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('gr_grant','usr_grant','read','org_drill','prj_drill',NULL,$1)`, at)
+		exec(`INSERT INTO grant_origins (id,grant_id,kind,subject,created_at) VALUES ('gor_grant','gr_grant','manual','usr_grant',$1)`, at)
+		exec(`INSERT INTO rules (id,principal_id,capability,org_id,env_mode,key_mode,created_by,created_at) VALUES ('rul_drill','usr_rule','read','org_drill','all','all','usr_drill',$1)`, at)
+		exec(`INSERT INTO rule_items (id,rule_id,org_id,axis,project_id) VALUES ('rli_drill','rul_drill','org_drill','project','prj_drill')`)
+		// usr_owner holds no grant, rule or access grant: only its own personal
+		// value, which the owner fallback (schema 86 through 88 shape) must admit.
+		exec(`INSERT INTO keys (id,org_id,project_id,name,folder_path,classification,description,deprecated,deprecation_note,declaration,required_mode,forbidden_mode,created_at) VALUES ('key_drill','org_drill','prj_drill','DRILL_SECRET','','secret','',FALSE,'','{}','none','none',$1)`, at)
+		exec(`INSERT INTO personal_values (id,org_id,project_id,environment_id,key_id,owner_principal_id,ciphertext,created_at,updated_at) VALUES ('pv_drill','org_drill','prj_drill','env_drill','key_drill','usr_owner',$1,$2,$2)`, []byte("sealed"), at)
+		exec(`INSERT INTO access_requests(id,org_id,project_id,environment_id,policy_id,policy_version,requester_principal_id,capabilities,duration_seconds,reason,state,created_at,review_expires_at,granted_at,expires_at) VALUES ('ar_drill','org_drill','prj_drill','env_drill','policy_fixture',1,'usr_access','["read"]',1,'drill','granted',$1,$1,$1,'2099-01-01T00:00:00Z')`, at)
+		exec(`INSERT INTO access_grants(id,principal_id,capability,org_id,project_id,env_id,request_id,created_at,expires_at) VALUES ('ag_drill','usr_access','read','org_drill','prj_drill','env_drill','ar_drill',$1,'2099-01-01T00:00:00Z')`, at)
+	}
+	// Dev's PostgreSQL-only migration 88 also predates containment (89), so a
+	// PostgreSQL source at 88 takes the same historical path as 87.
+	sources := map[store.Engine][]uint64{store.EngineSQLite: {87}, store.EnginePostgres: {87, 88}}
+	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
+		for _, source := range sources[engine] {
+			t.Run(fmt.Sprintf("%s/%d", engine, source), func(t *testing.T) {
+				f := recoverySchemaFixture(t, engine, source, seed)
+				if _, err := DrillUpgrade(t.Context(), f.request); err != nil {
+					t.Fatal(err)
+				}
+				archive := authenticateDrillFixture(t, f)
+				cfg := f.request.Scratch
+				// A restore leaves every principal unreconciled and the drill reconciles
+				// only its own, so the other holders are reconciled here to let each
+				// projection's restore condition pass and only the authority source differ.
+				scratch := openRecoveryFixtureSQL(t, cfg)
+				if _, err := scratch.ExecContext(t.Context(), `UPDATE principals SET reconciled_epoch = (SELECT restore_epoch FROM auth_instance_state WHERE id = 1) WHERE id IN ('usr_grant','usr_rule','usr_access','usr_owner','usr_none')`); err != nil {
+					t.Fatal(err)
+				}
+				err := upgrade.WithLock(t.Context(), upgrade.Config{Engine: releaseidentity.Engine(engine), Path: cfg.Path, DSN: cfg.DSN}, func(session *upgrade.Session) error {
+					admission, err := session.ScratchAdmission(t.Context(), archive, f.request.Plan)
+					if err != nil {
+						return err
+					}
+					db, err := store.OpenRecovery(t.Context(), cfg, admission)
+					if err != nil {
+						return err
+					}
+					defer func() {
+						if err := db.Close(); err != nil {
+							t.Error(err)
+						}
+					}()
+					version, err := db.SourceMigrationVersion()
+					if err != nil {
+						return err
+					}
+					if version != source {
+						t.Fatalf("source version=%d, want %d", version, source)
+					}
+					env := domain.Scope{Org: "org_drill", Project: "prj_drill", Env: "env_drill"}
+					admits := func(az *authz.TxAuthorizer, ctx context.Context, p domain.PrincipalID) bool {
+						_, err := az.Authorize(ctx, authz.Identity{Principal: p, Class: domain.ClassHuman}, authz.OpPersonalValueList, env)
+						if err != nil && !errors.Is(err, domain.ErrNotFound) && !errors.Is(err, domain.ErrUnauthorized) {
+							t.Fatalf("authorize %s: %v", p, err)
+						}
+						return err == nil
+					}
+					check := func(ctx context.Context, az *authz.TxAuthorizer) error {
+						for p, want := range map[domain.PrincipalID]bool{"usr_grant": true, "usr_rule": true, "usr_access": true, "usr_owner": true, "usr_none": false} {
+							if got := admits(az, ctx, p); got != want {
+								t.Errorf("%s admitted=%v, want %v", p, got, want)
+							}
+						}
+						return nil
+					}
+					if err := tx.RecoveryRead(t.Context(), db, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error { return check(ctx, az) }); err != nil {
+						t.Fatalf("schema%d RecoveryRead: %v", source, err)
+					}
+					if err := tx.RecoveryWrite(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error { return check(ctx, az) }); err != nil {
+						t.Fatalf("schema%d RecoveryWrite: %v", source, err)
+					}
+					return nil
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
 	}
 }
