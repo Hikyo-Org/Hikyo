@@ -84,7 +84,7 @@ const (
 // OutOfScopeReason reports whether r may accompany an out-of-scope item.
 func (r ItemReason) OutOfScopeReason() bool {
 	switch r {
-	case ReasonNoRevokeOwner, ReasonDeliveredPlaintext, ReasonLocalCopy, ReasonRunningProcess, ReasonExternalSession, ReasonIssuedCertificateUsed:
+	case ReasonDeliveredPlaintext, ReasonLocalCopy, ReasonRunningProcess, ReasonExternalSession, ReasonIssuedCertificateUsed:
 		return true
 	}
 	return false
@@ -181,5 +181,5 @@ func inList(list []string, v string) bool {
 // Valid reports whether r is a known reason.
 func (r ItemReason) Valid() bool {
 	return r == ReasonNone || r.OutOfScopeReason() || r == ReasonNeedsAnotherOperator || r == ReasonOwnerUnconfirmed ||
-		r == ReasonOwnerFailed || r == ReasonEnumerationTruncated || r == ReasonUpstreamNotObservable
+		r == ReasonOwnerFailed || r == ReasonEnumerationTruncated || r == ReasonUpstreamNotObservable || r == ReasonNoRevokeOwner
 }

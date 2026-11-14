@@ -19,11 +19,11 @@ ON CONFLICT DO NOTHING;
 SELECT id, scope_kind, scope_id, org_id, status, opened_by, opened_at, closed_by, closed_at, row_version
 FROM incidents WHERE id = sqlc.arg(id);
 
--- hikyo:reason Re-opening an incident reads the one open row of the addressed scope after the operation authorized credential-reset at that scope.
+-- hikyo:reason Re-opening an incident reads the one open row of the addressed scope and owning org after the operation authorized credential-reset at that scope.
 -- hikyo:authn-resolution
 -- name: GetOpenIncidentForScope :one
 SELECT id, scope_kind, scope_id, org_id, status, opened_by, opened_at, closed_by, closed_at, row_version
-FROM incidents WHERE scope_kind = sqlc.arg(scope_kind) AND scope_id = sqlc.arg(scope_id) AND status = 'open';
+FROM incidents WHERE scope_kind = sqlc.arg(scope_kind) AND scope_id = sqlc.arg(scope_id) AND org_id = sqlc.arg(org_id) AND status = 'open';
 
 -- hikyo:reason Closing compare-and-sets the open incident row after the operation authorized credential-reset at the incident scope; a closed incident never reopens.
 -- hikyo:authn-resolution

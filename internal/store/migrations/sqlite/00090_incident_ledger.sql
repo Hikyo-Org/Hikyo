@@ -25,8 +25,10 @@ CREATE TABLE incidents (
     row_version BIGINT NOT NULL DEFAULT 1,
     CHECK ((status = 'open') = (closed_at IS NULL))
 );
--- At most one open incident per scope: this is what makes opening idempotent.
-CREATE UNIQUE INDEX incidents_one_open_per_scope ON incidents (scope_kind, scope_id) WHERE status = 'open';
+-- At most one open incident per scope and owning org (org_id '' is instance
+-- scope): this makes opening idempotent, and keeps one org's open incident from
+-- occupying another org's slot on the same principal or adapter.
+CREATE UNIQUE INDEX incidents_one_open_per_scope ON incidents (scope_kind, scope_id, org_id) WHERE status = 'open';
 
 -- hikyo:table incident_items class=authn chain=-
 CREATE TABLE incident_items (
@@ -45,7 +47,7 @@ CREATE TABLE incident_items (
     updated_at TEXT NOT NULL,
     UNIQUE (incident_id, owner_function, object_kind, object_id),
     CHECK ((outcome = 'attested') = (attested_by IS NOT NULL AND attested_at IS NOT NULL)),
-    CHECK (outcome <> 'out_of_scope' OR reason IN ('no_revoke_owner', 'delivered_plaintext', 'cache', 'running_process', 'external_session', 'issued_certificate_in_use'))
+    CHECK (outcome <> 'out_of_scope' OR reason IN ('delivered_plaintext', 'cache', 'running_process', 'external_session', 'issued_certificate_in_use'))
 );
 CREATE INDEX incident_items_outcome ON incident_items (incident_id, outcome, id);
 
