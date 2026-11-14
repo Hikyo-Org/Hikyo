@@ -87,7 +87,7 @@ func insertDeveloperCredential(t *testing.T, db *store.DB, id, devPrincipal, aut
 	t.Helper()
 	execRaw(t, db, `INSERT INTO principals (id, kind, class, created_at) VALUES ('`+devPrincipal+`', 'machine', 'developer', `+ts+`)`)
 	execRaw(t, db, `INSERT INTO developer_credentials (id, principal_id, authority_principal_id, org_id, project_id, env_id, verifier, prefix_hint, parent_session_id, provider_id, oauth2_provider_id, saml_provider_id, auth_method, authority_generation, credential_epoch, created_at, expires_at) `+
-		`VALUES ('`+id+`', '`+devPrincipal+`', '`+authority+`', '`+org+`', '`+project+`', '`+env+`', `+blobLit(db, []byte("verifier-"+id))+`, 'dev', 'ses_x_`+id+`', '', '', '', 'password', 1, 0, `+ts+`, '`+expires+`')`)
+		`VALUES ('`+id+`', '`+devPrincipal+`', '`+authority+`', '`+org+`', '`+project+`', '`+env+`', `+blobLit(db, []byte("verifier-"+id))+`, 'dev', 'ses_x_`+id+`', '', '', '', 'password', 1, (SELECT credential_epoch FROM auth_instance_state WHERE id = 1), `+ts+`, '`+expires+`')`)
 }
 
 // itemMap reads every item of an incident through the service, keyed by
@@ -165,8 +165,6 @@ func runIncidentEnumeratesAccount(t *testing.T, db *store.DB) {
 	}
 	got := w.itemMap(t, incResponder, v.Incident.ID)
 	want := map[string]string{
-		"grant.revoke|grant|g_inc_08":                              "pending/",
-		"grant.revoke|grant|g_inc_09":                              "pending/",
 		"session.revoke|session|ses_it_1":                          "pending/",
 		"developer_credential.revoke|developer_credential|devc_it": "pending/",
 		"service_account.review|service_account|sa_it":             "pending/",
@@ -175,13 +173,24 @@ func runIncidentEnumeratesAccount(t *testing.T, db *store.DB) {
 		"none|cache|usr_itarget":               "out_of_scope/cache",
 		"none|running_process|usr_itarget":     "out_of_scope/running_process",
 		"none|external_session|usr_itarget":    "out_of_scope/external_session",
+		"none|issued_certificate|usr_itarget":  "out_of_scope/issued_certificate_in_use",
 	}
 	wantItems(t, got, want)
 	if len(got) != len(want) {
 		t.Errorf("ledger holds %d items, want exactly %d: %v", len(got), len(want), got)
 	}
-	if v.Counts[domain.ItemPending] != 5 || v.Counts[domain.ItemOutOfScope] != 4 {
+	if v.Counts[domain.ItemPending] != 3 || v.Counts[domain.ItemOutOfScope] != 5 {
 		t.Errorf("counts = %v", v.Counts)
+	}
+	// Grants are census context, never revoke work: containment keeps them and
+	// release never regrants (ADR O1, O4).
+	for k := range got {
+		if strings.Contains(k, "grant") {
+			t.Errorf("a grant became ledger work: %s", k)
+		}
+	}
+	if v.Census.Grants != 2 || v.Census.Rules != 0 {
+		t.Errorf("census = %+v, want 2 grants and no rules", v.Census)
 	}
 }
 
@@ -191,13 +200,11 @@ func TestIncidentBlockedForLimitedResponder(t *testing.T) {
 		v := w.openAccount(t, incLimited)
 		got := w.itemMap(t, incLimited, v.Incident.ID)
 		wantItems(t, got, map[string]string{
-			"grant.revoke|grant|g_inc_08":                              "blocked/needs_another_operator",
-			"grant.revoke|grant|g_inc_09":                              "blocked/needs_another_operator",
 			"session.revoke|session|ses_it_1":                          "pending/",
 			"developer_credential.revoke|developer_credential|devc_it": "blocked/needs_another_operator",
 			"service_account.review|service_account|sa_it":             "blocked/needs_another_operator",
 		})
-		if v.Counts[domain.ItemBlocked] != 4 {
+		if v.Counts[domain.ItemBlocked] != 2 {
 			t.Errorf("counts = %v", v.Counts)
 		}
 		// An org source the caller may not read is recorded as one blocked row.
@@ -223,11 +230,12 @@ func TestIncidentEnumeratesOrgAndProjectScope(t *testing.T) {
 		}
 		got := w.itemMap(t, incResponder, org.Incident.ID)
 		wantItems(t, got, map[string]string{
-			"account.contain|account|acc_itarget":                      "pending/",
+			"account.contain|account|usr_itarget":                      "pending/",
 			"developer_credential.revoke|developer_credential|devc_it": "pending/",
 			"none|delivered_plaintext|org_a":                           "out_of_scope/delivered_plaintext",
 			"none|cache|org_a":                                         "out_of_scope/cache",
 			"none|running_process|org_a":                               "out_of_scope/running_process",
+			"none|external_session|org_a":                              "out_of_scope/external_session",
 			"none|issued_certificate|org_a":                            "out_of_scope/issued_certificate_in_use",
 		})
 		for k := range got {
@@ -274,14 +282,32 @@ func TestIncidentEnumeratesOrgAndProjectScope(t *testing.T) {
 			"dynamic_provider.credential_clear|project|prj_a2": "blocked/needs_another_operator",
 		})
 
-		// Adapter scope is verified through the adapter owner's read: an adapter
-		// that does not exist, and a caller who cannot read adapters, answer alike.
-		_, errMissing := w.svc.Open(ctx, w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeAdapter, Scope: domain.Scope{Org: orgA, Project: prjA1}, AdapterID: "adp_missing"})
-		_, errLimited := w.svc.Open(ctx, w.as(incLimited), service.IncidentTarget{Kind: domain.IncidentScopeAdapter, Scope: domain.Scope{Org: orgA, Project: prjA1}, AdapterID: "adp_missing"})
-		assertUniformNotFound(t, errLimited, errMissing)
+		// Adapter scope is verified through the adapter owner's read for a caller
+		// who holds it: an adapter that does not exist is not found, and nothing is
+		// written.
+		adapterTarget := func(id string) service.IncidentTarget {
+			return service.IncidentTarget{Kind: domain.IncidentScopeAdapter, Scope: domain.Scope{Org: orgA, Project: prjA1}, AdapterID: id}
+		}
+		_, errMissing := w.svc.Open(ctx, w.as(incResponder), adapterTarget("adp_missing"))
+		if !errors.Is(errMissing, domain.ErrNotFound) {
+			t.Errorf("a responder opening a missing adapter = %v, want not found", errMissing)
+		}
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM incidents WHERE scope_kind = 'adapter'`); n != 0 {
 			t.Errorf("a refused adapter open left %d incident rows", n)
 		}
+		// An id that is not a plain Hikyo id never reaches the ledger.
+		if _, err := w.svc.Open(ctx, w.as(incResponder), adapterTarget("adp bad;id")); !errors.Is(err, domain.ErrInvalid) {
+			t.Errorf("an invalid adapter id = %v, want invalid", err)
+		}
+		// Credential-reset opens an adapter incident (ADR O2): a caller without the
+		// adapter owner's capability gets the adapter recorded blocked, unverified.
+		limited, err := w.svc.Open(ctx, w.as(incLimited), adapterTarget("adp_missing"))
+		if err != nil {
+			t.Fatalf("a credential-reset holder opening an adapter incident: %v", err)
+		}
+		wantItems(t, w.itemMap(t, incLimited, limited.Incident.ID), map[string]string{
+			"adapter_target.pause|adapter|adp_missing": "blocked/needs_another_operator",
+		})
 	})
 }
 
@@ -311,14 +337,14 @@ func TestIncidentOpenIsIdempotent(t *testing.T) {
 
 		// An object that appeared after the first enumeration is added; nothing
 		// already recorded is touched, and a done item stays done.
-		execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_inc_late', 'usr_itarget', 'publish', 'org_a', `+ts+`)`)
-		seedOrigins(t, db)
+		execRaw(t, db, `INSERT INTO sessions (id, principal_id, verifier, artifact, session_generation, credential_epoch, auth_method, factors, authenticated_at, created_at, last_seen_at, idle_expires_at, absolute_expires_at, source_ip, user_agent) `+
+			`VALUES ('ses_it_late', 'usr_itarget', `+blobLit(db, []byte("verifier-it-late"))+`, 'cli', 1, 0, 'local', '[]', `+ts+`, `+ts+`, `+ts+`, '2099-01-01T00:00:00.000000Z', '2099-01-01T00:00:00.000000Z', '', '')`)
 		grown := w.openAccount(t, incResponder)
 		if grown.Incident.ID != first.Incident.ID || grown.Added != 1 {
 			t.Fatalf("late open = %s added=%d, want the same incident with one new item", grown.Incident.ID, grown.Added)
 		}
-		if _, ok := w.itemMap(t, incResponder, first.Incident.ID)["grant.revoke|grant|g_inc_late"]; !ok {
-			t.Fatal("the late grant was not enumerated")
+		if _, ok := w.itemMap(t, incResponder, first.Incident.ID)["session.revoke|session|ses_it_late"]; !ok {
+			t.Fatal("the late session was not enumerated")
 		}
 
 		if opened := w.events(t, "incident.opened", first.Incident.ID); opened != 4 {
@@ -375,8 +401,16 @@ func (o *fakeOwner) run(_ context.Context, _ service.Actor, item authz.IncidentI
 	return service.OwnerConfirmed, nil
 }
 
+// The fake owner stands in for the session and developer credential owners; the
+// service account item has no registered owner.
+const (
+	keySession = "session.revoke|session|ses_it_1"
+	keyDevCred = "developer_credential.revoke|developer_credential|devc_it"
+	keyService = "service_account.review|service_account|sa_it"
+)
+
 func (w *incidentWorld) withOwner(o *fakeOwner) {
-	w.svc.Owners = map[string]service.IncidentOwner{service.OwnerGrantRevoke: o.run}
+	w.svc.Owners = map[string]service.IncidentOwner{domain.OwnerSessionRevoke: o.run, domain.OwnerDeveloperRevoke: o.run}
 }
 
 func TestIncidentResumeRunsOnlyOpenItemsAndOnlyConfirmedIsDone(t *testing.T) {
@@ -392,20 +426,18 @@ func TestIncidentResumeRunsOnlyOpenItemsAndOnlyConfirmedIsDone(t *testing.T) {
 			t.Fatal(err)
 		}
 		if res.Examined != 2 || res.Confirmed != 2 || owner.actions != 2 {
-			t.Fatalf("resume = %+v, owner actions = %d, want the two grant items examined and confirmed", res, owner.actions)
+			t.Fatalf("resume = %+v, owner actions = %d, want the session and developer credential items examined and confirmed", res, owner.actions)
 		}
 		// Items whose owner is not registered are skipped and never become done.
-		if res.Skipped != 3 {
-			t.Errorf("skipped = %d, want 3 (session, developer credential, service account)", res.Skipped)
+		if res.Skipped != 1 {
+			t.Errorf("skipped = %d, want 1 (service account)", res.Skipped)
 		}
 		got := w.itemMap(t, incResponder, id)
 		wantItems(t, got, map[string]string{
-			"grant.revoke|grant|g_inc_08":                              "done/",
-			"grant.revoke|grant|g_inc_09":                              "done/",
-			"session.revoke|session|ses_it_1":                          "pending/",
-			"developer_credential.revoke|developer_credential|devc_it": "pending/",
-			"service_account.review|service_account|sa_it":             "pending/",
-			"none|cache|usr_itarget":                                   "out_of_scope/cache",
+			keySession:               "done/",
+			keyDevCred:               "done/",
+			keyService:               "pending/",
+			"none|cache|usr_itarget": "out_of_scope/cache",
 		})
 
 		// A second resume re-reads the ledger and runs nothing: done is final.
@@ -449,30 +481,30 @@ func TestIncidentUnconfirmedOwnerNeverWritesDone(t *testing.T) {
 				}
 			}
 		}
-		key := func(object string) string { return "grant.revoke|grant|" + object }
+		ses, dev := keySession, keyDevCred
 
 		// The owner cannot say: unknown, with the closed reason.
 		step("zero value", func(authz.IncidentItem) (service.IncidentOwnerResult, error) {
 			return service.OwnerUnconfirmed, nil
-		}, map[string]string{key("g_inc_08"): "unknown/owner_unconfirmed", key("g_inc_09"): "unknown/owner_unconfirmed"})
+		}, map[string]string{ses: "unknown/owner_unconfirmed", dev: "unknown/owner_unconfirmed"})
 
 		// A transport error (a lost response, an unreachable provider) is also
 		// unknown, never an inferred success.
 		step("error", func(item authz.IncidentItem) (service.IncidentOwnerResult, error) {
-			if item.ObjectID == "g_inc_08" {
+			if item.ObjectID == "ses_it_1" {
 				return service.OwnerConfirmed, errors.New("connection reset after commit")
 			}
 			return service.OwnerBlocked, nil
-		}, map[string]string{key("g_inc_08"): "unknown/owner_unconfirmed", key("g_inc_09"): "blocked/needs_another_operator"})
+		}, map[string]string{ses: "unknown/owner_unconfirmed", dev: "blocked/needs_another_operator"})
 
 		// A definite failure leaves the item as it was (here unknown), and blocked
 		// and unknown items are all open, so resume runs them again.
 		step("failed", func(item authz.IncidentItem) (service.IncidentOwnerResult, error) {
-			if item.ObjectID == "g_inc_08" {
+			if item.ObjectID == "ses_it_1" {
 				return service.OwnerFailed, nil
 			}
 			return service.OwnerUnconfirmed, nil
-		}, map[string]string{key("g_inc_08"): "unknown/owner_unconfirmed", key("g_inc_09"): "unknown/owner_unconfirmed"})
+		}, map[string]string{ses: "unknown/owner_unconfirmed", dev: "unknown/owner_unconfirmed"})
 
 		// The failure event reports the ledger's actual state for the item (here
 		// unknown), never a state the row does not hold.
@@ -483,27 +515,27 @@ func TestIncidentUnconfirmedOwnerNeverWritesDone(t *testing.T) {
 
 		step("confirmed", func(authz.IncidentItem) (service.IncidentOwnerResult, error) {
 			return service.OwnerConfirmed, nil
-		}, map[string]string{key("g_inc_08"): "done/", key("g_inc_09"): "done/"})
+		}, map[string]string{ses: "done/", dev: "done/"})
 	})
 }
 
-// TestIncidentResumeAfterCrashBetweenOwnerCommitAndLedgerUpdate simulates the
-// two ways the ledger can lose an owner's outcome: the ledger row moves under
-// the owner (a lost update), and the process dies after the owner committed.
-// In both the item stays open, resume asks the owner again, the owner does not
-// repeat its action, and only its own confirmation writes done.
+// TestIncidentResumeAfterCrashBetweenOwnerCommitAndLedgerUpdate covers the lost
+// update: the ledger row moves under the owner after its action committed. The
+// item stays open, resume asks the owner again, the owner does not repeat its
+// action, and only its own confirmation writes done. The process crash is the
+// next test.
 func TestIncidentResumeAfterCrashBetweenOwnerCommitAndLedgerUpdate(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		w := newIncidentWorld(t, db)
 		id := w.openAccount(t, incResponder).Incident.ID
 		owner := newFakeOwner()
 		w.withOwner(owner)
-		key := "grant.revoke|grant|g_inc_08"
+		key := keySession
 
 		// Lost update: the owner commits its action, and before the outcome is
 		// recorded the ledger row moves.
 		owner.afterApply = func(item authz.IncidentItem) {
-			if item.ObjectID == "g_inc_08" {
+			if item.ObjectID == "ses_it_1" {
 				execRaw(t, db, `UPDATE incident_items SET row_version = row_version + 1 WHERE id = '`+item.ID+`'`)
 			}
 		}
@@ -520,7 +552,7 @@ func TestIncidentResumeAfterCrashBetweenOwnerCommitAndLedgerUpdate(t *testing.T)
 		if owner.actions != 2 {
 			t.Fatalf("owner actions = %d, want 2", owner.actions)
 		}
-		var unknownOutcomes int64 = queryInt(t, db, `SELECT COUNT(*) FROM audit_instance_events WHERE type = 'incident.item_outcome' AND outcome = 'unknown' AND correlation_id = '`+id+`'`)
+		unknownOutcomes := queryInt(t, db, `SELECT COUNT(*) FROM audit_instance_events WHERE type = 'incident.item_outcome' AND outcome = 'unknown' AND correlation_id = '`+id+`'`)
 		if unknownOutcomes != 1 {
 			t.Errorf("unknown outcome events = %d, want 1 for the lost update", unknownOutcomes)
 		}
@@ -550,7 +582,7 @@ func TestIncidentResumeAfterProcessCrash(t *testing.T) {
 		// The process dies after the owner committed: the owner call panics, so
 		// no outcome is ever written.
 		owner.afterApply = func(item authz.IncidentItem) {
-			if item.ObjectID == "g_inc_08" {
+			if item.ObjectID == "ses_it_1" {
 				panic("simulated process death")
 			}
 		}
@@ -562,12 +594,12 @@ func TestIncidentResumeAfterProcessCrash(t *testing.T) {
 			}()
 			_, _ = w.svc.Resume(t.Context(), w.as(incResponder), id)
 		}()
-		key := "grant.revoke|grant|g_inc_08"
+		key := keySession
 		if got := w.itemMap(t, incResponder, id)[key]; got != "pending/" {
 			t.Fatalf("after the crash %s = %q, want pending", key, got)
 		}
-		if i, o := w.events(t, "incident.item_intent", id), w.events(t, "incident.item_outcome", id); i != 1 || o != 0 {
-			t.Fatalf("after the crash intent=%d outcome=%d, want the intent recorded and no outcome", i, o)
+		if i, o := w.events(t, "incident.item_intent", id), w.events(t, "incident.item_outcome", id); i-o != 1 {
+			t.Fatalf("after the crash intent=%d outcome=%d, want exactly one intent without an outcome", i, o)
 		}
 
 		owner.afterApply = nil
@@ -578,51 +610,196 @@ func TestIncidentResumeAfterProcessCrash(t *testing.T) {
 		if res.Confirmed != 2 || owner.actions != 2 {
 			t.Fatalf("resume = %+v, owner actions = %d, want both confirmed with the committed action not repeated", res, owner.actions)
 		}
-		wantItems(t, w.itemMap(t, incResponder, id), map[string]string{key: "done/", "grant.revoke|grant|g_inc_09": "done/"})
+		wantItems(t, w.itemMap(t, incResponder, id), map[string]string{key: "done/", keyDevCred: "done/"})
 		// The interrupted item has two intents and one outcome; the trail shows
 		// the gap rather than hiding it.
-		if i, o := w.events(t, "incident.item_intent", id), w.events(t, "incident.item_outcome", id); i != 3 || o != 2 {
-			t.Errorf("trail intent=%d outcome=%d, want 3 and 2", i, o)
+		if i, o := w.events(t, "incident.item_intent", id), w.events(t, "incident.item_outcome", id); i-o != 1 || o != 2 {
+			t.Errorf("trail intent=%d outcome=%d, want two outcomes and one intent without one", i, o)
 		}
 	})
 }
 
 // ---- attest and close -------------------------------------------------------
 
-func TestIncidentAttestAndClose(t *testing.T) {
+// seedIncidentFactors gives the account target the credentials Hikyo holds and
+// cannot remove administratively: a confirmed TOTP factor, a passkey, a linked
+// identity, and a rule that grants no grant-visible access.
+func seedIncidentFactors(t *testing.T, db *store.DB) {
+	t.Helper()
+	epoch := acctEpoch(t, db)
+	execRaw(t, db, `INSERT INTO totp_credentials (id, account_id, seed, dek_version, credential_epoch, row_version, last_step, created_step, confirmed_at, created_at) `+
+		`VALUES ('totp_it', 'acc_itarget', `+blobLit(db, []byte("seed-it"))+`, 1, `+epoch+`, 1, 0, 0, `+ts+`, `+ts+`)`)
+	execRaw(t, db, `INSERT INTO webauthn_credentials (id,account_id,credential_id,public_key,aaguid,sign_count,transports,discoverable,backup_eligible,backup_state,label,credential_epoch,row_version,created_at) `+
+		`VALUES ('wac_it','acc_itarget',`+blobLit(db, []byte("cred-it"))+`,`+blobLit(db, []byte("pk-it"))+`,`+blobLit(db, []byte("aa-it"))+`,0,'[]',1,0,0,'key',`+epoch+`,1,`+ts+`)`)
+	execRaw(t, db, `INSERT INTO external_identities (id,account_id,kind,issuer,subject,provider_id,credential_epoch,created_at) VALUES ('xid_it','acc_itarget','oidc','https://idp.example.test','subject-it','',`+epoch+`,`+ts+`)`)
+	execRaw(t, db, `INSERT INTO rules (id, principal_id, capability, org_id, env_mode, key_mode, created_by, created_at) VALUES ('rul_it', 'usr_itarget', 'read', 'org_a', 'all', 'all', 'usr_alice', `+ts+`)`)
+	execRaw(t, db, `INSERT INTO rule_items (id, rule_id, org_id, axis, project_id) VALUES ('rli_it', 'rul_it', 'org_a', 'project', 'prj_a1')`)
+}
+
+const (
+	keyTOTP     = "factor.remove|totp_factor|totp_it"
+	keyPasskey  = "factor.remove|passkey|wac_it"
+	keyIdentity = "external_identity.remove|external_identity|xid_it"
+)
+
+func (w *incidentWorld) itemIDByKey(t *testing.T, actor domain.PrincipalID, incident, key string) string {
+	t.Helper()
+	page, err := w.svc.Items(t.Context(), w.as(actor), incident, "", 500, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range page {
+		if it.OwnerFunction+"|"+it.ObjectKind+"|"+it.ObjectID == key {
+			return it.ID
+		}
+	}
+	t.Fatalf("no ledger item %s", key)
+	return ""
+}
+
+func TestIncidentEnumeratesFactorsAndRulesAsCensus(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		w := newIncidentWorld(t, db)
-		id := w.openAccount(t, incResponder).Incident.ID
+		seedIncidentFactors(t, db)
+		v := w.openAccount(t, incResponder)
+		got := w.itemMap(t, incResponder, v.Incident.ID)
+		// Hikyo holds these and has no administrative removal: each is an open
+		// ledger item with the closed reason that says so, never a revoke.
+		wantItems(t, got, map[string]string{
+			keyTOTP:     "unknown/no_revoke_owner",
+			keyPasskey:  "unknown/no_revoke_owner",
+			keyIdentity: "unknown/no_revoke_owner",
+		})
+		if v.Census.Rules != 1 || v.Census.Grants != 2 {
+			t.Errorf("census = %+v, want 2 grants and 1 rule", v.Census)
+		}
+		for k := range got {
+			if strings.Contains(k, "rul_it") || strings.Contains(k, "grant") {
+				t.Errorf("a grant or rule became ledger work: %s", k)
+			}
+		}
+		// The opened event carries the census counts.
+		payload := queryStrings(t, db, `SELECT CAST(payload AS TEXT) FROM audit_instance_events WHERE type = 'incident.opened' AND correlation_id = '`+v.Incident.ID+`'`)
+		if !strings.Contains(payload, `"rules":1`) || !strings.Contains(payload, `"grants":2`) {
+			t.Errorf("opened payload lacks the census: %s", payload)
+		}
+	})
+}
+
+func TestIncidentAttestOnlyWhatHikyoCannotObserve(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		seedIncidentFactors(t, db)
+		seedIncidentLeases(t, db)
 		ctx := t.Context()
+		id := w.openAccount(t, incResponder).Incident.ID
 
 		// A clean close with open items is refused, and says why.
 		if _, err := w.svc.Close(ctx, w.as(incResponder), id, false); !errors.Is(err, service.ErrIncidentOpenItems) {
 			t.Fatalf("clean close with open items = %v, want ErrIncidentOpenItems", err)
 		}
-		if got := w.itemMap(t, incResponder, id); got == nil || queryInt(t, db, `SELECT COUNT(*) FROM incidents WHERE status = 'open'`) != 1 {
+		if queryInt(t, db, `SELECT COUNT(*) FROM incidents WHERE status = 'open'`) != 1 {
 			t.Fatal("a refused close changed the incident")
 		}
 
-		// Attest records who and when, never done.
-		session := w.itemID(t, id, "ses_it_1")
-		if err := w.svc.Attest(ctx, w.as(incResponder), id, session); err != nil {
-			t.Fatal(err)
+		// An item Hikyo can observe (a session, a developer credential, a service
+		// account) is never attestable: the owner's confirmation is the only road
+		// to done, and an attestation must not stand in for it.
+		for _, key := range []string{keySession, keyDevCred, keyService} {
+			if err := w.svc.Attest(ctx, w.as(incResponder), id, w.itemIDByKey(t, incResponder, id, key)); !errors.Is(err, domain.ErrConflict) {
+				t.Errorf("attesting observable item %s = %v, want a conflict", key, err)
+			}
 		}
-		if got := w.itemMap(t, incResponder, id)["session.revoke|session|ses_it_1"]; got != "attested/" {
-			t.Fatalf("attested session = %q", got)
+		// Out-of-scope rows are not open.
+		oos := w.itemIDByKey(t, incResponder, id, "none|cache|usr_itarget")
+		if err := w.svc.Attest(ctx, w.as(incResponder), id, oos); !errors.Is(err, domain.ErrConflict) {
+			t.Errorf("attesting an out-of-scope item = %v, want a conflict", err)
 		}
-		if n := queryInt(t, db, `SELECT COUNT(*) FROM incident_items WHERE id = '`+session+`' AND attested_by = 'usr_irsp' AND attested_at IS NOT NULL`); n != 1 {
-			t.Fatal("the attestation did not record who and when")
-		}
-		if err := w.svc.Attest(ctx, w.as(incResponder), id, session); !errors.Is(err, domain.ErrConflict) {
-			t.Fatalf("attesting a resolved item = %v, want a conflict", err)
-		}
-		oos := w.itemID(t, id, "usr_itarget") // the first out-of-scope row by id order is not open
-		if err := w.svc.Attest(ctx, w.as(incResponder), id, oos); err == nil {
-			t.Fatal("an out-of-scope item was attested")
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM incident_items WHERE outcome = 'attested'`); n != 0 {
+			t.Fatalf("%d items attested by refused calls", n)
 		}
 
-		// Closing with residuals lists exactly the open items in the trail.
+		// A factor Hikyo cannot remove is attestable; attest records who and when,
+		// never done.
+		totp := w.itemIDByKey(t, incResponder, id, keyTOTP)
+		if err := w.svc.Attest(ctx, w.as(incResponder), id, totp); err != nil {
+			t.Fatal(err)
+		}
+		if got := w.itemMap(t, incResponder, id)[keyTOTP]; got != "attested/" {
+			t.Fatalf("attested factor = %q", got)
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM incident_items WHERE id = '`+totp+`' AND attested_by = 'usr_irsp' AND attested_at IS NOT NULL`); n != 1 {
+			t.Fatal("the attestation did not record who and when")
+		}
+		if err := w.svc.Attest(ctx, w.as(incResponder), id, totp); !errors.Is(err, domain.ErrConflict) {
+			t.Fatalf("attesting a resolved item = %v, want a conflict", err)
+		}
+
+		// An upstream revocation Hikyo cannot see keeps its closed reason.
+		prj, err := w.svc.Open(ctx, w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeProject, Scope: domain.Scope{Org: orgA, Project: prjA1}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		up := "dynamic_provider.upstream_revoke|dynamic_provider|dpr_it_a1"
+		if err := w.svc.Attest(ctx, w.as(incResponder), prj.Incident.ID, w.itemIDByKey(t, incResponder, prj.Incident.ID, up)); err != nil {
+			t.Fatal(err)
+		}
+		if got := w.itemMap(t, incResponder, prj.Incident.ID)[up]; got != "attested/upstream_not_observable" {
+			t.Errorf("attested upstream item = %q", got)
+		}
+
+		// A blocked item needs another operator's capability: the caller who
+		// cannot act on it cannot attest it either.
+		lim := w.openAccount(t, incLimited)
+		if lim.Incident.ID != id {
+			t.Fatalf("limited open landed on %s, want the open incident %s", lim.Incident.ID, id)
+		}
+		execRaw(t, db, `UPDATE incident_items SET outcome = 'blocked', reason = 'needs_another_operator' WHERE id = '`+w.itemIDByKey(t, incResponder, id, keyIdentity)+`'`)
+		if err := w.svc.Attest(ctx, w.as(incResponder), id, w.itemIDByKey(t, incResponder, id, keyIdentity)); !errors.Is(err, domain.ErrConflict) {
+			t.Errorf("attesting a blocked item = %v, want a conflict", err)
+		}
+	})
+}
+
+func TestIncidentTargetCannotAttestItsOwnIncident(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		const self = domain.PrincipalID("usr_iself")
+		execRaw(t, db, `INSERT INTO principals (id, kind, created_at) VALUES ('usr_iself', 'human', `+ts+`)`)
+		execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_inc_self', 'usr_iself', 'credential-reset', 'org_a', `+ts+`)`)
+		execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_inc_self2', 'usr_iself', 'read', 'org_a', `+ts+`)`)
+		execRaw(t, db, `INSERT INTO accounts (id, principal_id, username, display_name, email, email_verified_at, created_at) VALUES ('acc_iself', 'usr_iself', 'it-self', 'Self', 'it-self@example.test', `+ts+`, `+ts+`)`)
+		execRaw(t, db, `INSERT INTO totp_credentials (id, account_id, seed, dek_version, credential_epoch, row_version, last_step, created_step, confirmed_at, created_at) `+
+			`VALUES ('totp_self', 'acc_iself', `+blobLit(db, []byte("seed-self"))+`, 1, `+acctEpoch(t, db)+`, 1, 0, 0, `+ts+`, `+ts+`)`)
+		v, err := w.svc.Open(t.Context(), w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeAccount, Principal: self})
+		if err != nil {
+			t.Fatal(err)
+		}
+		item := w.itemIDByKey(t, incResponder, v.Incident.ID, "factor.remove|totp_factor|totp_self")
+		// The person an incident is about does not mark their own containment
+		// resolved, even holding credential-reset: the answer is the uniform one.
+		errSelf := w.svc.Attest(t.Context(), w.as(self), v.Incident.ID, item)
+		errGhost := w.svc.Attest(t.Context(), w.as(self), "inc_does_not_exist", item)
+		assertUniformNotFound(t, errSelf, errGhost)
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM incident_items WHERE outcome = 'attested'`); n != 0 {
+			t.Fatalf("a refused self-attest wrote %d attestations", n)
+		}
+		if err := w.svc.Attest(t.Context(), w.as(incResponder), v.Incident.ID, item); err != nil {
+			t.Fatalf("another responder attesting: %v", err)
+		}
+	})
+}
+
+func TestIncidentCloseResiduals(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		ctx := t.Context()
+		id := w.openAccount(t, incResponder).Incident.ID
+		// A thousand and more open items: the closing event lists a bounded set and
+		// says how many it left out.
+		execRaw(t, db, `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 1100) `+
+			`INSERT INTO incident_items (id, incident_id, owner_function, object_kind, object_id, scope, outcome, reason, created_at, updated_at) `+
+			`SELECT 'itm_bulk_' || i, '`+id+`', 'session.revoke', 'session', 'ses_bulk_' || i, 'instance', 'pending', '', `+ts+`, `+ts+` FROM n`)
 		view, err := w.svc.Close(ctx, w.as(incResponder), id, true)
 		if err != nil {
 			t.Fatal(err)
@@ -631,8 +808,12 @@ func TestIncidentAttestAndClose(t *testing.T) {
 			t.Fatalf("closed incident = %+v", view.Incident)
 		}
 		payload := queryStrings(t, db, `SELECT CAST(payload AS TEXT) FROM audit_instance_events WHERE type = 'incident.closed' AND correlation_id = '`+id+`'`)
-		if !strings.Contains(payload, "closed_with_residuals") || !strings.Contains(payload, w.itemID(t, id, "g_inc_08")) {
-			t.Errorf("closed event does not list the residuals: %s", payload)
+		if !strings.Contains(payload, "closed_with_residuals") {
+			t.Errorf("closed event lacks the status: %s", payload)
+		}
+		open := queryInt(t, db, `SELECT COUNT(*) FROM incident_items WHERE incident_id = '`+id+`' AND outcome IN ('pending','unknown','blocked')`)
+		if want := fmt.Sprintf(`"residuals_omitted":%d`, open-1000); !strings.Contains(payload, want) {
+			t.Errorf("closed event does not report %d omitted residuals (%d open): %s", open-1000, open, payload)
 		}
 		if _, err := w.svc.Resume(ctx, w.as(incResponder), id); !errors.Is(err, domain.ErrConflict) {
 			t.Fatalf("resume of a closed incident = %v, want a conflict", err)
@@ -643,35 +824,144 @@ func TestIncidentAttestAndClose(t *testing.T) {
 	})
 }
 
-func TestIncidentCleanCloseWhenNothingIsOpen(t *testing.T) {
+func TestIncidentCleanCloseNeedsEveryObservableItemConfirmed(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		w := newIncidentWorld(t, db)
-		v, err := w.svc.Open(t.Context(), w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeOrg, Scope: domain.Scope{Org: orgB}})
-		if !errors.Is(err, domain.ErrNotFound) {
+		ctx := t.Context()
+		// An incident of another org is not this responder's to open or close.
+		if _, err := w.svc.Open(ctx, w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeOrg, Scope: domain.Scope{Org: orgB}}); !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("org B open by an org A responder = %v, want not found", err)
 		}
-		_ = v
-		// Attest every open item of an org B incident opened by the org B
-		// responder; out-of-scope rows do not block a clean close.
-		b, err := w.svc.Open(t.Context(), w.as(incOrgB), service.IncidentTarget{Kind: domain.IncidentScopeOrg, Scope: domain.Scope{Org: orgB}})
-		if err != nil {
-			t.Fatal(err)
+		id := w.openAccount(t, incResponder).Incident.ID
+		if _, err := w.svc.Close(ctx, w.as(incResponder), id, false); !errors.Is(err, service.ErrIncidentOpenItems) {
+			t.Fatalf("clean close with observable items open = %v, want ErrIncidentOpenItems", err)
 		}
-		items, err := w.svc.Items(t.Context(), w.as(incOrgB), b.Incident.ID, "", 500, true)
-		if err != nil {
-			t.Fatal(err)
+		// Every observable item is confirmed by its owner; out-of-scope rows do not
+		// block a clean close.
+		owner := newFakeOwner()
+		w.withOwner(owner)
+		w.svc.Owners[domain.OwnerServiceAccountReview] = owner.run
+		res, err := w.svc.Resume(ctx, w.as(incResponder), id)
+		if err != nil || res.Confirmed != 3 {
+			t.Fatalf("resume = %+v, %v, want the three observable items confirmed", res, err)
 		}
-		for _, it := range items {
-			if err := w.svc.Attest(t.Context(), w.as(incOrgB), b.Incident.ID, it.ID); err != nil {
-				t.Fatal(err)
-			}
-		}
-		closed, err := w.svc.Close(t.Context(), w.as(incOrgB), b.Incident.ID, false)
+		closed, err := w.svc.Close(ctx, w.as(incResponder), id, false)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if closed.Incident.Status != domain.IncidentClosed {
 			t.Fatalf("status = %s, want closed", closed.Incident.Status)
+		}
+	})
+}
+
+// ---- the opening org is fixed ------------------------------------------------
+
+func TestIncidentReopenAfterFootprintGrowthIsRefused(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		ctx := t.Context()
+		first := w.openAccount(t, incResponder)
+		if first.Incident.OrgID != orgA {
+			t.Fatalf("incident org = %q, want org A", first.Incident.OrgID)
+		}
+		before := w.itemMap(t, incResponder, first.Incident.ID)
+
+		// The person gains a footprint in org B. Org A's responder can no longer
+		// reach the whole person, and the instance responder's open must not drop
+		// org B's objects into an incident org A's holders read.
+		execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_inc_b', 'usr_itarget', 'read', 'org_b', `+ts+`)`)
+		execRaw(t, db, `INSERT INTO sessions (id, principal_id, verifier, artifact, session_generation, credential_epoch, auth_method, factors, authenticated_at, created_at, last_seen_at, idle_expires_at, absolute_expires_at, source_ip, user_agent) `+
+			`VALUES ('ses_it_b', 'usr_itarget', `+blobLit(db, []byte("verifier-it-b"))+`, 'cli', 1, 0, 'local', '[]', `+ts+`, `+ts+`, `+ts+`, '2099-01-01T00:00:00.000000Z', '2099-01-01T00:00:00.000000Z', '', '')`)
+		target := service.IncidentTarget{Kind: domain.IncidentScopeAccount, Principal: incTarget}
+		_, errGhost := w.svc.Open(ctx, w.as("usr_nobody"), target)
+		for _, p := range []domain.PrincipalID{incResponder, incInstance} {
+			_, err := w.svc.Open(ctx, w.as(p), target)
+			assertUniformNotFound(t, err, errGhost)
+		}
+		if after := w.itemMap(t, incResponder, first.Incident.ID); !slices.Equal(mapKeys(after), mapKeys(before)) {
+			t.Fatalf("a refused reopen changed the ledger: %v -> %v", before, after)
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM incidents`); n != 1 {
+			t.Fatalf("incident rows = %d, want 1", n)
+		}
+
+		// The instance holder closes the old incident and opens a fresh one that
+		// is its own, with org B's objects, unreadable to org A's responder.
+		if _, err := w.svc.Close(ctx, w.as(incInstance), first.Incident.ID, true); err != nil {
+			t.Fatalf("instance responder closing the org A incident: %v", err)
+		}
+		fresh, err := w.svc.Open(ctx, w.as(incInstance), target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fresh.Incident.ID == first.Incident.ID || fresh.Incident.OrgID != "" {
+			t.Fatalf("fresh incident = %+v, want a new instance-owned incident", fresh.Incident)
+		}
+		if _, ok := w.itemMap(t, incInstance, fresh.Incident.ID)["session.revoke|session|ses_it_b"]; !ok {
+			t.Error("the instance incident lacks the org B session")
+		}
+		_, errRead := w.svc.Get(ctx, w.as(incResponder), fresh.Incident.ID)
+		_, errMissing := w.svc.Get(ctx, w.as(incResponder), "inc_does_not_exist")
+		assertUniformNotFound(t, errRead, errMissing)
+	})
+}
+
+func TestIncidentReopenAfterFootprintShrinkIsRefused(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		ctx := t.Context()
+		execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_inc_b', 'usr_itarget', 'read', 'org_b', `+ts+`)`)
+		target := service.IncidentTarget{Kind: domain.IncidentScopeAccount, Principal: incTarget}
+		first, err := w.svc.Open(ctx, w.as(incInstance), target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if first.Incident.OrgID != "" {
+			t.Fatalf("incident org = %q, want an instance-owned incident", first.Incident.OrgID)
+		}
+		// The org B footprint goes away: org A's responder now reaches the whole
+		// person, and must not take over (or extend) the instance's incident.
+		execRaw(t, db, `DELETE FROM grants WHERE id = 'g_inc_b'`)
+		_, errReopen := w.svc.Open(ctx, w.as(incResponder), target)
+		_, errGhost := w.svc.Open(ctx, w.as("usr_nobody"), target)
+		assertUniformNotFound(t, errReopen, errGhost)
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM incidents`); n != 1 {
+			t.Fatalf("incident rows = %d, want 1", n)
+		}
+	})
+}
+
+// ---- the lookup budget ------------------------------------------------------
+
+func TestIncidentEnumerationIsBoundedByTheLookupBudget(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		seedIncidentLeases(t, db)
+		w.svc.MaxLookups = 1
+		ctx := t.Context()
+		// Two service accounts in the project: the second one's credential lookup
+		// is past the budget.
+		execRaw(t, db, `INSERT INTO principals (id, kind, class, created_at) VALUES ('mch_it2', 'machine', 'workload', `+ts+`)`)
+		execRaw(t, db, `INSERT INTO service_accounts (id, principal_id, org_id, project_id, name, kind, created_at, created_by) VALUES ('sa_it2', 'mch_it2', 'org_a', 'prj_a1', 'it-sa2', 'workload', `+ts+`, 'usr_itarget')`)
+
+		org, err := w.svc.Open(ctx, w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeOrg, Scope: domain.Scope{Org: orgA}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := w.itemMap(t, incResponder, org.Incident.ID)["account.contain|enumeration|org_a"]; got != "unknown/enumeration_truncated" {
+			t.Errorf("org enumeration over budget = %q, want an enumeration_truncated row", got)
+		}
+		prj, err := w.svc.Open(ctx, w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeProject, Scope: domain.Scope{Org: orgA, Project: prjA1}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := w.itemMap(t, incResponder, prj.Incident.ID)["machine_credential.revoke|enumeration|prj_a1"]; got != "unknown/enumeration_truncated" {
+			t.Errorf("project enumeration over budget = %q, want an enumeration_truncated row", got)
+		}
+		// A truncated row is open: a clean close is refused until it is dealt with.
+		if _, err := w.svc.Close(ctx, w.as(incResponder), org.Incident.ID, false); !errors.Is(err, service.ErrIncidentOpenItems) {
+			t.Errorf("clean close of a truncated incident = %v, want ErrIncidentOpenItems", err)
 		}
 	})
 }
@@ -708,8 +998,8 @@ func TestIncidentAuthorizationRefusals(t *testing.T) {
 		}
 		// Project scope is bounded by the org the project lives in.
 		_, err := w.svc.Open(ctx, w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeProject, Scope: domain.Scope{Org: orgA, Project: prjB1}})
-		if err == nil {
-			t.Error("a project of another org was opened under org A")
+		if !errors.Is(err, domain.ErrNotFound) {
+			t.Errorf("a project of another org opened under org A = %v, want not found", err)
 		}
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM incidents`) + queryInt(t, db, `SELECT COUNT(*) FROM incident_items`); n != 0 {
 			t.Fatalf("refused opens left %d ledger rows", n)
@@ -720,7 +1010,7 @@ func TestIncidentAuthorizationRefusals(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		item := w.itemID(t, v.Incident.ID, "acc_itarget")
+		item := w.itemID(t, v.Incident.ID, "usr_itarget")
 		_, errGhostID := w.svc.Get(ctx, w.as(incResponder), "inc_does_not_exist")
 		for _, p := range []domain.PrincipalID{alice, "usr_nobody", incOrgB} {
 			a := w.as(p)
@@ -739,7 +1029,7 @@ func TestIncidentAuthorizationRefusals(t *testing.T) {
 		if _, err := w.svc.Get(ctx, w.as(incInstance), v.Incident.ID); err != nil {
 			t.Errorf("instance responder reading an org incident: %v", err)
 		}
-		if got := w.itemMap(t, incResponder, v.Incident.ID)["account.contain|account|acc_itarget"]; got != "pending/" {
+		if got := w.itemMap(t, incResponder, v.Incident.ID)["account.contain|account|usr_itarget"]; got != "pending/" {
 			t.Errorf("refused callers changed the ledger: %q", got)
 		}
 	})
@@ -902,6 +1192,9 @@ func TestIncidentNonTerminalLeaseListing(t *testing.T) {
 
 		// Refusals: the project listing needs credential-reset at its org, the
 		// instance listing needs it at instance scope.
+		// Tenant operations answer the uniform not found; the instance listing,
+		// whose scope has no tenant to hide, answers unauthorized.
+		instanceRefusal := map[string]error{"org responder, instance": domain.ErrUnauthorized, "nobody, instance": domain.ErrUnauthorized}
 		for name, probe := range map[string]func() error{
 			"nobody, project": func() error { _, e := w.svc.NonTerminalLeases(ctx, w.as("usr_nobody"), a1, "", 10); return e },
 			"alice, project":  func() error { _, e := w.svc.NonTerminalLeases(ctx, w.as(alice), a1, "", 10); return e },
@@ -919,11 +1212,15 @@ func TestIncidentNonTerminalLeaseListing(t *testing.T) {
 				return e
 			},
 		} {
-			if err := probe(); err == nil {
-				t.Errorf("%s: the listing was served", name)
+			wantErr := instanceRefusal[name]
+			if wantErr == nil {
+				wantErr = domain.ErrNotFound
+			}
+			if err := probe(); !errors.Is(err, wantErr) {
+				t.Errorf("%s: listing = %v, want %v", name, err, wantErr)
 			}
 		}
-		for name, limit := range map[string]int{"zero": 0, "negative": -1, "over the bound": store.MaxDynamicLeasePage + 1} {
+		for name, limit := range map[string]int{"zero": 0, "negative": -1, "over the bound": authz.MaxIncidentPage + 1} {
 			if _, err := w.svc.NonTerminalLeases(ctx, w.as(incResponder), a1, "", limit); !errors.Is(err, domain.ErrInvalid) {
 				t.Errorf("limit %s = %v, want invalid", name, err)
 			}
@@ -981,14 +1278,24 @@ func TestIncidentDelegationListing(t *testing.T) {
 		if b, err := w.svc.DelegationsInOrg(ctx, w.as(incOrgB), orgB, "", 500); err != nil || !slices.Equal(ids(b), []string{"devc_b1"}) {
 			t.Fatalf("org B delegations = %v, %v", ids(b), err)
 		}
+		// A delegation from before the current credential epoch is dead: it is not
+		// listed as live.
+		execRaw(t, db, `UPDATE developer_credentials SET credential_epoch = 999 WHERE id = 'devc_a2'`)
+		stale, err := w.svc.DelegationsInOrg(ctx, w.as(incResponder), orgA, "", 500)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(ids(stale), []string{"devc_a1", "devc_it"}) {
+			t.Fatalf("org A delegations after an epoch move = %v, want devc_a2 gone", ids(stale))
+		}
 
 		for name, probe := range map[string]func() error{
 			"nobody":        func() error { _, e := w.svc.DelegationsInOrg(ctx, w.as("usr_nobody"), orgA, "", 10); return e },
 			"alice":         func() error { _, e := w.svc.DelegationsInOrg(ctx, w.as(alice), orgA, "", 10); return e },
 			"limited holds": func() error { _, e := w.svc.DelegationsInOrg(ctx, w.as(incOrgB), orgA, "", 10); return e },
 		} {
-			if err := probe(); err == nil {
-				t.Errorf("%s: the listing was served", name)
+			if err := probe(); !errors.Is(err, domain.ErrNotFound) {
+				t.Errorf("%s: listing = %v, want not found", name, err)
 			}
 		}
 		if _, err := w.svc.DelegationsInOrg(ctx, w.as(incResponder), orgA, "", 0); !errors.Is(err, domain.ErrInvalid) {
@@ -1025,7 +1332,7 @@ func TestIncidentLedgerRejectsOutsideTheClosedVocabulary(t *testing.T) {
 
 		item := func(id, object, outcome, reason string) error {
 			return execRawErr(t, db, `INSERT INTO incident_items (id, incident_id, owner_function, object_kind, object_id, scope, outcome, reason, created_at, updated_at) `+
-				`VALUES ('`+id+`', 'inc_ok', 'grant.revoke', 'grant', '`+object+`', 'org:org_a', '`+outcome+`', '`+reason+`', `+ts+`, `+ts+`)`)
+				`VALUES ('`+id+`', 'inc_ok','session.revoke', 'session', '`+object+`', 'org:org_a', '`+outcome+`', '`+reason+`', `+ts+`, `+ts+`)`)
 		}
 		if err := item("itm_ok", "g1", "pending", ""); err != nil {
 			t.Fatal(err)

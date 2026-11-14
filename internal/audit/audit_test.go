@@ -618,3 +618,28 @@ func TestTransitSchemasCannotCarryMaterial(t *testing.T) {
 		t.Fatal("an operation outside the closed set was accepted")
 	}
 }
+
+// TestIncidentItemEventsAdmitOnlyTheClosedVocabulary: the catalogue, not the
+// emitter, refuses an owner function or object kind outside the ledger's
+// vocabulary.
+func TestIncidentItemEventsAdmitOnlyTheClosedVocabulary(t *testing.T) {
+	event := func(owner, kind string) Event {
+		e, _ := validEvent()
+		e.Type, e.Outcome, e.Origin = EventIncidentItemIntent, OutcomeIntent, OriginSystem
+		e.Object = Object{Type: "incident", ID: "inc_x"}
+		e.CorrelationID = "inc_x"
+		e.Payload = Payload{"item_id": "itm_x", "owner_function": owner, "object_kind": kind, "object_id": "ses_x"}
+		return e
+	}
+	if err := Validate(event(domain.OwnerSessionRevoke, domain.ObjectKindSession), TrailInstance, domain.Scope{}); err != nil {
+		t.Fatalf("a vocabulary pair was refused: %v", err)
+	}
+	for name, e := range map[string]Event{
+		"owner outside the vocabulary": event("grant.revoke", domain.ObjectKindSession),
+		"kind outside the vocabulary":  event(domain.OwnerSessionRevoke, "grant"),
+	} {
+		if Validate(e, TrailInstance, domain.Scope{}) == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+}

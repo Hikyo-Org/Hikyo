@@ -1,5 +1,7 @@
 package audit
 
+import "github.com/Hikyo-Org/hikyo/internal/domain"
+
 // Incident ledger events (incident-containment ADR, "Audit trail"; #1039 S2).
 // They ride the instance trail. The incident id is the correlation id, so an
 // owner's own revocation event joins to the incident by correlation and an item's
@@ -19,6 +21,10 @@ const (
 	EventIncidentItemOutcome EventType = "incident.item_outcome"
 	EventIncidentClosed      EventType = "incident.closed"
 )
+
+// MaxIncidentResiduals bounds the residual item ids one incident.closed event
+// lists. The close counts the ones it left out, so the cut is never silent.
+const MaxIncidentResiduals = 1000
 
 var incidentCounts = Schema{
 	"pending":      {Kind: KindInt, Required: true, NonNegative: true},
@@ -60,6 +66,10 @@ var incidentSpecs = map[EventType]TypeSpec{
 			// enumeration ran again and added only objects the ledger lacked.
 			"reopened": {Kind: KindBool, Required: true},
 			"added":    {Kind: KindInt, Required: true, NonNegative: true},
+			// grants and rules count the access rows the census read. They decide
+			// the footprint and are never work items: containment keeps them.
+			"grants": {Kind: KindInt, Required: true, NonNegative: true},
+			"rules":  {Kind: KindInt, Required: true, NonNegative: true},
 		}),
 	},
 	EventIncidentItemIntent: {
@@ -67,8 +77,8 @@ var incidentSpecs = map[EventType]TypeSpec{
 		Outcomes: map[Outcome]bool{OutcomeIntent: true}, Trails: map[Trail]bool{TrailInstance: true},
 		Schema: Schema{
 			"item_id":        {Kind: KindString, Required: true},
-			"owner_function": {Kind: KindString, Required: true},
-			"object_kind":    {Kind: KindString, Required: true},
+			"owner_function": {Kind: KindString, Required: true, Enum: domain.IncidentOwnerFunctions},
+			"object_kind":    {Kind: KindString, Required: true, Enum: domain.IncidentObjectKinds},
 			"object_id":      {Kind: KindString, Required: true},
 		},
 	},
@@ -78,8 +88,8 @@ var incidentSpecs = map[EventType]TypeSpec{
 		Trails:   map[Trail]bool{TrailInstance: true},
 		Schema: Schema{
 			"item_id":        {Kind: KindString, Required: true},
-			"owner_function": {Kind: KindString, Required: true},
-			"object_kind":    {Kind: KindString, Required: true},
+			"owner_function": {Kind: KindString, Required: true, Enum: domain.IncidentOwnerFunctions},
+			"object_kind":    {Kind: KindString, Required: true, Enum: domain.IncidentObjectKinds},
 			"object_id":      {Kind: KindString, Required: true},
 			"result":         {Kind: KindString, Required: true, Enum: []string{"pending", "done", "unknown", "attested", "blocked"}},
 			"reason":         {Kind: KindString, Required: true, Enum: incidentItemReasons},
@@ -92,7 +102,10 @@ var incidentSpecs = map[EventType]TypeSpec{
 			"status": {Kind: KindString, Required: true, Enum: []string{"closed", "closed_with_residuals"}},
 			// residuals lists the items still open when the incident closed with
 			// residuals, by item id and bounded; an incident closed clean lists none.
-			"residuals": {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 256},
+			"residuals": {Kind: KindStringList, Required: true, MaxLen: MaxIncidentResiduals, MaxBytes: 256},
+			// residuals_omitted counts the open items past the bound that the list
+			// does not name; zero means the list is complete.
+			"residuals_omitted": {Kind: KindInt, Required: true, NonNegative: true},
 		}),
 	},
 }

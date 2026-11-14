@@ -11,36 +11,20 @@ import (
 )
 
 // Incident enumeration (incident-containment ADR, "Enumerating unresolved
-// cleanup"). Every source reuses an existing reader: the grant, session,
-// developer-credential, service-account, machine-credential, invitation and
-// linked-identity readers on the resolution surface, the existing adapter,
-// dynamic-provider and SCIM service readers, and the two new bounded lease and
-// delegation listings. An object whose owner capability the caller lacks is
-// listed as blocked, not read on the caller's behalf and not omitted.
+// cleanup"). Every source reuses an existing reader: the grant and rule census,
+// the session, developer-credential, service-account, machine-credential,
+// invitation, linked-identity, factor and passkey readers on the resolution
+// surface, the existing adapter, dynamic-provider and SCIM service readers, and
+// the two new bounded lease and delegation listings. An object whose owner
+// capability the caller lacks is listed as blocked, not read on the caller's
+// behalf and not omitted.
+//
+// Grants and rules are census, not work: they decide the footprint and appear as
+// counts. Containment keeps them and release never regrants (O1 B, O4 A), so no
+// item revokes one.
 //
 // Every row carries Hikyo ids and closed vocabulary only. Names, issuers,
 // subjects, usernames, addresses and adapter names never reach the ledger.
-
-// Owner functions: the closed vocabulary of who revokes or resolves an item.
-const (
-	OwnerGrantRevoke          = "grant.revoke"
-	OwnerSessionRevoke        = "session.revoke"
-	OwnerDeveloperRevoke      = "developer_credential.revoke"
-	OwnerExternalIdentity     = "external_identity.remove"
-	OwnerServiceAccountReview = "service_account.review"
-	OwnerMachineCredential    = "machine_credential.revoke"
-	OwnerAccountContain       = "account.contain"
-	OwnerEmailInvitation      = "email_invitation.revoke"
-	OwnerSCIMCredential       = "scim_credential.revoke"
-	OwnerLeaseRevoke          = "lease.revoke"
-	OwnerAdapterTargetPause   = "adapter_target.pause"
-	OwnerAdapterCredential    = "adapter_credential.clear"
-	OwnerAdapterUpstream      = "adapter_credential.upstream_revoke"
-	OwnerDynamicCredential    = "dynamic_provider.credential_clear"
-	OwnerDynamicUpstream      = "dynamic_provider.upstream_revoke"
-	// OwnerNone marks an object no workflow revokes (out of scope).
-	OwnerNone = "none"
-)
 
 const (
 	// maxSourceItems bounds one source's rows. A source with more is recorded
@@ -49,8 +33,19 @@ const (
 	maxSourceItems = 2000
 	// maxScanPages bounds how many pages a filtered scan reads.
 	maxScanPages = 20
-	sourcePage   = 500
+	// maxLookups bounds the per-row follow-up reads one enumeration makes inside
+	// its authorizing transaction (an account lookup per member, a credential
+	// read per service account, a grant and footprint read per member). When it
+	// is spent the source stops and records an enumeration_truncated item.
+	maxLookups = 4000
 )
+
+// IncidentCensus counts the access rows the enumeration read. They decide the
+// footprint; no item revokes them.
+type IncidentCensus struct {
+	Grants int
+	Rules  int
+}
 
 // incidentCandidate is one row the enumeration found.
 type incidentCandidate struct {
@@ -59,7 +54,10 @@ type incidentCandidate struct {
 	reason                 domain.ItemReason
 }
 
-// tenantRead is one existing tenant reader to run after the proofless step.
+// tenantRead is one existing tenant reader to run after the proofless step. The
+// owner capabilities are probed in the authorizing transaction, so each item the
+// tenant reader finds is pending only when the caller holds its owner's
+// capability and blocked otherwise.
 type tenantRead struct {
 	source string
 	scope  domain.Scope
@@ -67,6 +65,10 @@ type tenantRead struct {
 	adapterID string
 	// verify makes a missing object an answer of not found.
 	verify bool
+	// configure and credentialRevoke are the owner capabilities of the items the
+	// reader lists: pausing and moving targets, clearing or revoking credentials.
+	configure        bool
+	credentialRevoke bool
 }
 
 const (
@@ -76,9 +78,53 @@ const (
 )
 
 type collector struct {
-	cands []incidentCandidate
-	seen  map[string]bool
-	reads []tenantRead
+	cands  []incidentCandidate
+	seen   map[string]bool
+	reads  []tenantRead
+	census IncidentCensus
+	// probed remembers each capability probe by operation and scope, so a source
+	// with many objects under one scope asks once.
+	probed  map[string]bool
+	lookups int
+	budget  int
+}
+
+func newCollector(budget int) *collector {
+	if budget <= 0 {
+		budget = maxLookups
+	}
+	return &collector{seen: map[string]bool{}, probed: map[string]bool{}, budget: budget}
+}
+
+// spend takes n lookups from the enumeration's budget. It reports false, and
+// takes nothing, when the budget cannot cover them.
+func (c *collector) spend(n int) bool {
+	if c.lookups+n > c.budget {
+		return false
+	}
+	c.lookups += n
+	return true
+}
+
+// holds reports whether the caller holds an owner's capability at a scope,
+// without recording an operation or a denial, asking once per operation and scope.
+func (c *collector) holds(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, op authz.Operation, scope domain.Scope) (bool, error) {
+	key := string(op) + "\x00" + renderScope(scope)
+	if v, ok := c.probed[key]; ok {
+		return v, nil
+	}
+	var v bool
+	var err error
+	if scope == (domain.Scope{}) {
+		v, err = az.HoldsInstanceCapability(ctx, caller, op)
+	} else {
+		v, err = az.CallerHolds(ctx, caller, op, scope)
+	}
+	if err != nil {
+		return false, err
+	}
+	c.probed[key] = v
+	return v, nil
 }
 
 func (c *collector) add(owner, kind, id string, scope domain.Scope, holds bool) {
@@ -105,12 +151,26 @@ func (c *collector) unknown(owner, kind, id string, scope domain.Scope, reason d
 
 // truncated records that a source held more rows than the ledger takes.
 func (c *collector) truncated(owner, id string, scope domain.Scope) {
-	c.unknown(owner, "enumeration", id, scope, domain.ReasonEnumerationTruncated)
+	c.unknown(owner, domain.ObjectKindEnumeration, id, scope, domain.ReasonEnumerationTruncated)
 }
 
-// outOfScope lists an object no workflow revokes, with the reason.
-func (c *collector) outOfScope(kind string, id string, scope domain.Scope, reason domain.ItemReason) {
-	c.put(incidentCandidate{owner: OwnerNone, kind: kind, id: id, scope: renderScope(scope), outcome: domain.ItemOutOfScope, reason: reason})
+// outOfScope lists, for one scope, what no workflow revokes. The five classes
+// are the ADR's list and are the same for every scope kind: delivered plaintext,
+// local copies, running processes, external sessions and issued certificates in
+// use all outlive any one scope's cleanup.
+func (c *collector) outOfScope(id string, scope domain.Scope) {
+	for _, o := range []struct {
+		kind   string
+		reason domain.ItemReason
+	}{
+		{domain.ObjectKindDeliveredPlaintext, domain.ReasonDeliveredPlaintext},
+		{domain.ObjectKindLocalCopy, domain.ReasonLocalCopy},
+		{domain.ObjectKindRunningProcess, domain.ReasonRunningProcess},
+		{domain.ObjectKindExternalSession, domain.ReasonExternalSession},
+		{domain.ObjectKindIssuedCertificate, domain.ReasonIssuedCertificateUsed},
+	} {
+		c.put(incidentCandidate{owner: domain.OwnerNone, kind: o.kind, id: id, scope: renderScope(scope), outcome: domain.ItemOutOfScope, reason: o.reason})
+	}
 }
 
 // blockedSource records a whole source the caller may not read.
@@ -118,26 +178,11 @@ func (c *collector) blockedSource(owner, kind, id string, scope domain.Scope) {
 	c.put(incidentCandidate{owner: owner, kind: kind, id: id, scope: renderScope(scope), outcome: domain.ItemBlocked, reason: domain.ReasonNeedsAnotherOperator})
 }
 
-// ownerHolds reports whether the caller holds an owner's capability, without
-// recording an operation or a denial.
-func ownerHolds(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, op authz.Operation, scope domain.Scope) (bool, error) {
-	if scope == (domain.Scope{}) {
-		return az.HoldsInstanceCapability(ctx, caller, op)
-	}
-	return az.CallerHolds(ctx, caller, op, scope)
-}
-
-// grantRevokeHolds picks the revoke operation for the depth a grant sits at.
-func grantRevokeHolds(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, scope domain.Scope) (bool, error) {
-	switch {
-	case scope.Org == "":
-		return ownerHolds(ctx, az, caller, authz.OpGrantRevokeInstance, domain.Scope{})
-	case scope.Project == "":
-		return ownerHolds(ctx, az, caller, authz.OpGrantRevokeOrg, scope)
-	case scope.Env == "":
-		return ownerHolds(ctx, az, caller, authz.OpGrantRevokeProject, scope)
-	}
-	return ownerHolds(ctx, az, caller, authz.OpGrantRevokeEnv, scope)
+// noRevokeOwner records an object Hikyo holds and cannot remove administratively
+// today (a linked identity, a factor, a passkey). It stays open until the person
+// removes it themselves after release or the operator attests it resolved.
+func (c *collector) noRevokeOwner(owner, kind, id string, scope domain.Scope) {
+	c.unknown(owner, kind, id, scope, domain.ReasonNoRevokeOwner)
 }
 
 // pageDeveloperCredentials scans one org's live delegations in id order. keep
@@ -146,7 +191,7 @@ func pageDeveloperCredentials(ctx context.Context, az *authz.TxAuthorizer, org d
 	keep func(authz.DeveloperCredential) bool, add func(authz.DeveloperCredential) error) (bool, error) {
 	after, kept := "", 0
 	for page := 0; page < maxScanPages; page++ {
-		rows, err := az.LiveDeveloperCredentialsInOrg(ctx, org, authority, after, sourcePage, now)
+		rows, err := az.LiveDeveloperCredentialsInOrg(ctx, org, authority, after, authz.MaxIncidentPage, now)
 		if err != nil {
 			return false, err
 		}
@@ -162,7 +207,7 @@ func pageDeveloperCredentials(ctx context.Context, az *authz.TxAuthorizer, org d
 				return false, err
 			}
 		}
-		if len(rows) < sourcePage {
+		if len(rows) < authz.MaxIncidentPage {
 			return false, nil
 		}
 		after = rows[len(rows)-1].ID
@@ -173,7 +218,7 @@ func pageDeveloperCredentials(ctx context.Context, az *authz.TxAuthorizer, org d
 // collect runs every proofless reader the target's scope names, inside the
 // authorizing transaction, and records which tenant readers still have to run.
 func (s *Incidents) collect(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, a incidentAccess, now time.Time) (*collector, error) {
-	c := &collector{seen: map[string]bool{}}
+	c := newCollector(s.MaxLookups)
 	var err error
 	switch a.kind {
 	case domain.IncidentScopeAccount:
@@ -195,32 +240,32 @@ func (s *Incidents) collectAccount(ctx context.Context, az *authz.TxAuthorizer, 
 	target := domain.PrincipalID(a.scopeID)
 	instance := domain.Scope{}
 
+	// Grants and rules are census: they decided the footprint and are counted.
+	// Containment keeps them, so neither becomes a work item.
 	grants, err := az.GrantRowsForPrincipal(ctx, target)
 	if err != nil {
 		return err
 	}
-	for i, g := range grants {
-		if i >= maxSourceItems {
-			c.truncated(OwnerGrantRevoke, a.scopeID, instance)
-			break
-		}
-		ok, err := grantRevokeHolds(ctx, az, a.caller, g.Grant.Scope)
-		if err != nil {
-			return err
-		}
-		c.add(OwnerGrantRevoke, "grant", g.ID, g.Grant.Scope, ok)
+	rules, err := az.RulesOf(ctx, target)
+	if err != nil {
+		return err
 	}
+	c.census = IncidentCensus{Grants: len(grants), Rules: len(rules)}
 
+	// Ending a person's sessions and delegations is the credential-reset
+	// operation the incident itself was authorized under (O2: a holder who can
+	// reset a password could already end that person's sessions), so the opener
+	// holds those owners' capability by construction and no per-row probe applies.
 	sessions, err := az.SessionsForPrincipal(ctx, target)
 	if err != nil {
 		return err
 	}
 	for i, ss := range sessions {
 		if i >= maxSourceItems {
-			c.truncated(OwnerSessionRevoke, a.scopeID, instance)
+			c.truncated(domain.OwnerSessionRevoke, a.scopeID, instance)
 			break
 		}
-		c.add(OwnerSessionRevoke, "session", ss.ID, instance, true)
+		c.add(domain.OwnerSessionRevoke, domain.ObjectKindSession, ss.ID, instance, true)
 	}
 
 	orgs := a.footprint
@@ -235,105 +280,166 @@ func (s *Incidents) collectAccount(ctx context.Context, az *authz.TxAuthorizer, 
 			return err
 		}
 		if stopped {
-			c.truncated(OwnerDeveloperRevoke, string(org), domain.Scope{Org: org})
+			c.truncated(domain.OwnerDeveloperRevoke, string(org), domain.Scope{Org: org})
 		}
 	}
 
+	// Linked identities, the TOTP factor and passkeys: Hikyo holds them and has
+	// no administrative removal, so each is a ledger item the person removes
+	// themselves after release or the operator attests resolved (ADR, Credential
+	// replacement). They are listed with that truth, not as pending revocations.
 	identities, err := az.ExternalIdentitiesForAccount(ctx, a.account.ID)
 	if err != nil {
 		return err
 	}
 	for i, x := range identities {
 		if i >= maxSourceItems {
-			c.truncated(OwnerExternalIdentity, a.scopeID, instance)
+			c.truncated(domain.OwnerExternalIdentity, a.scopeID, instance)
 			break
 		}
-		c.add(OwnerExternalIdentity, "external_identity", x.ID, instance, true)
+		c.noRevokeOwner(domain.OwnerExternalIdentity, domain.ObjectKindExternalIdentity, x.ID, instance)
+	}
+	totp, err := az.ConfirmedTOTP(ctx, a.account.ID)
+	switch {
+	case err == nil:
+		c.noRevokeOwner(domain.OwnerFactorRemoval, domain.ObjectKindTOTPFactor, totp.ID, instance)
+	case !errors.Is(err, domain.ErrNotFound):
+		return err
+	}
+	passkeys, err := az.WebAuthnCredentialsForAccount(ctx, a.account.ID)
+	if err != nil {
+		return err
+	}
+	for i, k := range passkeys {
+		if i >= maxSourceItems {
+			c.truncated(domain.OwnerFactorRemoval, a.scopeID, instance)
+			break
+		}
+		if k.Disabled {
+			continue
+		}
+		c.noRevokeOwner(domain.OwnerFactorRemoval, domain.ObjectKindPasskey, k.ID, instance)
 	}
 
 	// The created-by relation of the offboarding report: machine principals the
 	// account created are listed, not revoked unless selected.
 	after, seen := "", 0
 	for {
-		rows, err := az.ServiceAccountsCreatedBy(ctx, target, a.org, after, sourcePage)
+		rows, err := az.ServiceAccountsCreatedBy(ctx, target, a.org, after, authz.MaxIncidentPage)
 		if err != nil {
 			return err
 		}
 		for _, sa := range rows {
 			if seen >= maxSourceItems {
-				c.truncated(OwnerServiceAccountReview, a.scopeID, instance)
+				c.truncated(domain.OwnerServiceAccountReview, a.scopeID, instance)
 				rows = nil
 				break
 			}
 			seen++
 			scope := domain.Scope{Org: sa.Org, Project: sa.Project}
-			ok, err := ownerHolds(ctx, az, a.caller, authz.OpServiceAccountDelete, scope)
+			ok, err := c.holds(ctx, az, a.caller, authz.OpServiceAccountDelete, scope)
 			if err != nil {
 				return err
 			}
-			c.add(OwnerServiceAccountReview, "service_account", sa.ID, scope, ok)
+			c.add(domain.OwnerServiceAccountReview, domain.ObjectKindServiceAccount, sa.ID, scope, ok)
 		}
-		if len(rows) < sourcePage {
+		if len(rows) < authz.MaxIncidentPage {
 			break
 		}
 		after = rows[len(rows)-1].ID
 	}
 
-	for _, o := range []struct {
-		kind   string
-		reason domain.ItemReason
-	}{
-		{"delivered_plaintext", domain.ReasonDeliveredPlaintext},
-		{"cache", domain.ReasonLocalCopy},
-		{"running_process", domain.ReasonRunningProcess},
-		{"external_session", domain.ReasonExternalSession},
-	} {
-		c.outOfScope(o.kind, a.scopeID, instance, o.reason)
-	}
+	c.outOfScope(a.scopeID, instance)
 	return nil
 }
 
 func (s *Incidents) addDeveloperCredential(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, c *collector, d authz.DeveloperCredential) error {
+	// An org-level delegation is revoked under the credential-reset the incident
+	// was authorized with; a project-level one needs the project owner's revoke.
 	ok := true
 	if d.Scope.Project != "" {
 		var err error
-		ok, err = ownerHolds(ctx, az, caller, authz.OpDeveloperCredentialRevokeProject, domain.Scope{Org: d.Scope.Org, Project: d.Scope.Project})
+		ok, err = c.holds(ctx, az, caller, authz.OpDeveloperCredentialRevokeProject, domain.Scope{Org: d.Scope.Org, Project: d.Scope.Project})
 		if err != nil {
 			return err
 		}
 	}
-	c.add(OwnerDeveloperRevoke, "developer_credential", d.ID, d.Scope, ok)
+	c.add(domain.OwnerDeveloperRevoke, domain.ObjectKindDeveloperCred, d.ID, d.Scope, ok)
 	return nil
+}
+
+// memberCanContain reports whether the caller may contain one org member: the
+// same classification credential-reset applies. A target with an instance grant
+// is host-local, one inside exactly one org needs credential-reset there, and one
+// in several orgs or none needs instance scope.
+func (s *Incidents) memberCanContain(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, c *collector, p domain.PrincipalID) (bool, error) {
+	grants, err := az.GrantsForResetTarget(ctx, p)
+	if err != nil {
+		return false, err
+	}
+	footprint, err := az.PrincipalFootprintOrgs(ctx, p)
+	if err != nil {
+		return false, err
+	}
+	org, instanceCap, orgCount := classifyResetTarget(grants, footprint)
+	switch {
+	case instanceCap:
+		return false, nil
+	case orgCount == 1:
+		return c.holds(ctx, az, caller, authz.OpIncidentOrg, domain.Scope{Org: domain.OrgID(org)})
+	}
+	return c.holds(ctx, az, caller, authz.OpIncidentInstance, domain.Scope{})
 }
 
 func (s *Incidents) collectOrg(ctx context.Context, az *authz.TxAuthorizer, a incidentAccess, now time.Time, c *collector) error {
 	scope := a.scope
 
-	// The accounts selected from the org's footprint. Machine principals hold
-	// grants too; only human accounts are listed.
+	// The members come from the org's footprint: every principal with a grant or
+	// a rule in it, so a member who holds rules and no grants is listed too. The
+	// grants and rules are counted, not revoked. Machine principals hold grants
+	// too; only human accounts are listed.
 	lines, err := az.GrantLinesInOrg(ctx, string(a.org))
 	if err != nil {
 		return err
 	}
-	members, listed := map[domain.PrincipalID]bool{}, 0
+	ruleLines, err := az.RuleLinesInOrg(ctx, a.org)
+	if err != nil {
+		return err
+	}
+	ruleIDs := map[string]bool{}
+	for _, l := range ruleLines {
+		ruleIDs[l.ID] = true
+	}
+	c.census = IncidentCensus{Grants: len(lines), Rules: len(ruleIDs)}
+
+	candidates := make([]domain.PrincipalID, 0, len(lines)+len(ruleLines))
 	for _, l := range lines {
-		if members[l.Principal] {
+		candidates = append(candidates, l.Principal)
+	}
+	for _, l := range ruleLines {
+		candidates = append(candidates, l.Principal)
+	}
+	members, listed := map[domain.PrincipalID]bool{}, 0
+	for _, p := range candidates {
+		if members[p] {
 			continue
 		}
-		members[l.Principal] = true
-		account, err := az.AccountByPrincipal(ctx, l.Principal)
-		if errors.Is(err, domain.ErrNotFound) {
-			continue
+		members[p] = true
+		if listed >= maxSourceItems || !c.spend(3) {
+			c.truncated(domain.OwnerAccountContain, a.scopeID, scope)
+			break
 		}
+		if _, err := az.AccountByPrincipal(ctx, p); errors.Is(err, domain.ErrNotFound) {
+			continue
+		} else if err != nil {
+			return err
+		}
+		ok, err := s.memberCanContain(ctx, az, a.caller, c, p)
 		if err != nil {
 			return err
 		}
-		if listed >= maxSourceItems {
-			c.truncated(OwnerAccountContain, a.scopeID, scope)
-			break
-		}
 		listed++
-		c.add(OwnerAccountContain, "account", account.ID, scope, true)
+		c.add(domain.OwnerAccountContain, domain.ObjectKindAccount, string(p), scope, ok)
 	}
 
 	stopped, err := pageDeveloperCredentials(ctx, az, a.org, "", now,
@@ -343,7 +449,7 @@ func (s *Incidents) collectOrg(ctx context.Context, az *authz.TxAuthorizer, a in
 		return err
 	}
 	if stopped {
-		c.truncated(OwnerDeveloperRevoke, a.scopeID, scope)
+		c.truncated(domain.OwnerDeveloperRevoke, a.scopeID, scope)
 	}
 
 	invitations, err := az.ListLiveOrgEmailInvitations(ctx, a.org, now)
@@ -351,45 +457,55 @@ func (s *Incidents) collectOrg(ctx context.Context, az *authz.TxAuthorizer, a in
 		return err
 	}
 	if len(invitations) > 0 {
-		ok, err := ownerHolds(ctx, az, a.caller, authz.OpEmailInvitationRevoke, scope)
+		ok, err := c.holds(ctx, az, a.caller, authz.OpEmailInvitationRevoke, scope)
 		if err != nil {
 			return err
 		}
 		for i, inv := range invitations {
 			if i >= maxSourceItems {
-				c.truncated(OwnerEmailInvitation, a.scopeID, scope)
+				c.truncated(domain.OwnerEmailInvitation, a.scopeID, scope)
 				break
 			}
-			c.add(OwnerEmailInvitation, "email_invitation", inv.ID, scope, ok)
+			c.add(domain.OwnerEmailInvitation, domain.ObjectKindEmailInvitation, inv.ID, scope, ok)
 		}
 	}
 
-	ok, err := ownerHolds(ctx, az, a.caller, authz.OpSCIMBindingList, scope)
+	canList, err := c.holds(ctx, az, a.caller, authz.OpSCIMBindingList, scope)
 	if err != nil {
 		return err
 	}
-	if ok {
-		c.reads = append(c.reads, tenantRead{source: srcSCIM, scope: scope})
+	canRevoke, err := c.holds(ctx, az, a.caller, authz.OpSCIMCredentialRevoke, scope)
+	if err != nil {
+		return err
+	}
+	if canList {
+		c.reads = append(c.reads, tenantRead{source: srcSCIM, scope: scope, credentialRevoke: canRevoke})
 	} else {
-		c.blockedSource(OwnerSCIMCredential, "org", a.scopeID, scope)
+		c.blockedSource(domain.OwnerSCIMCredential, domain.ObjectKindOrg, a.scopeID, scope)
 	}
 
-	for _, o := range []struct {
-		kind   string
-		reason domain.ItemReason
-	}{
-		{"delivered_plaintext", domain.ReasonDeliveredPlaintext},
-		{"cache", domain.ReasonLocalCopy},
-		{"running_process", domain.ReasonRunningProcess},
-		{"issued_certificate", domain.ReasonIssuedCertificateUsed},
-	} {
-		c.outOfScope(o.kind, a.scopeID, scope, o.reason)
-	}
+	c.outOfScope(a.scopeID, scope)
 	return nil
 }
 
 func (s *Incidents) collectProject(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, a incidentAccess, now time.Time, c *collector) error {
 	scope := a.scope
+
+	// The project's grants and rules are census: counted, never revoked.
+	lines, err := az.GrantLinesInOrg(ctx, string(a.org))
+	if err != nil {
+		return err
+	}
+	for _, l := range lines {
+		if l.Grant.Scope.Project == scope.Project {
+			c.census.Grants++
+		}
+	}
+	rules, err := az.RulesForProject(ctx, a.org, scope.Project)
+	if err != nil {
+		return err
+	}
+	c.census.Rules = len(rules)
 
 	// Service accounts and their live credentials.
 	accounts, err := az.ServiceAccountsIn(ctx, scope)
@@ -400,13 +516,17 @@ func (s *Incidents) collectProject(ctx context.Context, r store.Repos, az *authz
 	if err != nil {
 		return err
 	}
-	ok, err := ownerHolds(ctx, az, a.caller, authz.OpCredentialRevoke, scope)
+	ok, err := c.holds(ctx, az, a.caller, authz.OpCredentialRevoke, scope)
 	if err != nil {
 		return err
 	}
 	listed := 0
 scan:
 	for _, sa := range accounts {
+		if !c.spend(1) {
+			c.truncated(domain.OwnerMachineCredential, a.scopeID, scope)
+			break
+		}
 		creds, err := az.MachineCredentialsFor(ctx, sa.ID)
 		if err != nil {
 			return err
@@ -416,11 +536,11 @@ scan:
 				continue
 			}
 			if listed >= maxSourceItems {
-				c.truncated(OwnerMachineCredential, a.scopeID, scope)
+				c.truncated(domain.OwnerMachineCredential, a.scopeID, scope)
 				break scan
 			}
 			listed++
-			c.add(OwnerMachineCredential, "machine_credential", cred.ID, scope, ok)
+			c.add(domain.OwnerMachineCredential, domain.ObjectKindMachineCredential, cred.ID, scope, ok)
 		}
 	}
 
@@ -431,7 +551,7 @@ scan:
 		return err
 	}
 	if stopped {
-		c.truncated(OwnerDeveloperRevoke, a.scopeID, scope)
+		c.truncated(domain.OwnerDeveloperRevoke, a.scopeID, scope)
 	}
 
 	// Non-terminal leases, through the new bounded project listing.
@@ -443,36 +563,56 @@ scan:
 		return err
 	}
 
-	adapters, err := ownerHolds(ctx, az, a.caller, authz.OpAdapterInspect, scope)
-	if err != nil {
+	if err := s.probeAdapters(ctx, az, a, c, ""); err != nil {
 		return err
 	}
-	if adapters {
-		c.reads = append(c.reads, tenantRead{source: srcAdapters, scope: scope})
-	} else {
-		c.blockedSource(OwnerAdapterTargetPause, "project", a.scopeID, scope)
-	}
-	providers, err := ownerHolds(ctx, az, a.caller, authz.OpDynamicProviderInspect, scope)
+	providers, err := c.holds(ctx, az, a.caller, authz.OpDynamicProviderInspect, scope)
 	if err != nil {
 		return err
 	}
 	if providers {
-		c.reads = append(c.reads, tenantRead{source: srcDynamic, scope: scope})
+		revoke, err := c.holds(ctx, az, a.caller, authz.OpDynamicProviderCredentialRevoke, scope)
+		if err != nil {
+			return err
+		}
+		c.reads = append(c.reads, tenantRead{source: srcDynamic, scope: scope, credentialRevoke: revoke})
 	} else {
-		c.blockedSource(OwnerDynamicCredential, "project", a.scopeID, scope)
+		c.blockedSource(domain.OwnerDynamicCredential, domain.ObjectKindProject, a.scopeID, scope)
 	}
 
-	for _, o := range []struct {
-		kind   string
-		reason domain.ItemReason
-	}{
-		{"delivered_plaintext", domain.ReasonDeliveredPlaintext},
-		{"cache", domain.ReasonLocalCopy},
-		{"running_process", domain.ReasonRunningProcess},
-		{"issued_certificate", domain.ReasonIssuedCertificateUsed},
-	} {
-		c.outOfScope(o.kind, a.scopeID, scope, o.reason)
+	c.outOfScope(a.scopeID, scope)
+	return nil
+}
+
+// probeAdapters decides whether the adapter reader runs and under which owner
+// capabilities. A caller who may not inspect adapters still opens the incident
+// (credential-reset at the org does, O2); the adapters are then recorded as
+// blocked for another operator rather than read on the caller's behalf.
+func (s *Incidents) probeAdapters(ctx context.Context, az *authz.TxAuthorizer, a incidentAccess, c *collector, adapterID string) error {
+	inspect, err := c.holds(ctx, az, a.caller, authz.OpAdapterInspect, a.scope)
+	if err != nil {
+		return err
 	}
+	if !inspect {
+		if adapterID != "" {
+			c.blockedSource(domain.OwnerAdapterTargetPause, domain.ObjectKindAdapter, adapterID, a.scope)
+		} else {
+			c.blockedSource(domain.OwnerAdapterTargetPause, domain.ObjectKindProject, a.scopeID, a.scope)
+		}
+		return nil
+	}
+	configure, err := c.holds(ctx, az, a.caller, authz.OpAdapterConfigure, a.scope)
+	if err != nil {
+		return err
+	}
+	revoke, err := c.holds(ctx, az, a.caller, authz.OpAdapterCredentialRevoke, a.scope)
+	if err != nil {
+		return err
+	}
+	c.reads = append(c.reads, tenantRead{
+		source: srcAdapters, scope: a.scope, adapterID: adapterID, verify: adapterID != "",
+		configure: configure, credentialRevoke: revoke,
+	})
 	return nil
 }
 
@@ -480,30 +620,25 @@ scan:
 // through the new bounded listing.
 func pageProjectLeases(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, proof authz.Proof, a incidentAccess, c *collector) error {
 	after, seen := "", 0
-	envHolds := map[domain.EnvID]bool{}
 	for {
-		rows, err := r.Dynamic().ListNonTerminalLeasesInProject(ctx, proof, after, store.MaxDynamicLeasePage)
+		rows, err := r.Dynamic().ListNonTerminalLeasesInProject(ctx, proof, after, authz.MaxIncidentPage)
 		if err != nil {
 			return err
 		}
 		for _, l := range rows {
 			if seen >= maxSourceItems {
-				c.truncated(OwnerLeaseRevoke, a.scopeID, a.scope)
+				c.truncated(domain.OwnerLeaseRevoke, a.scopeID, a.scope)
 				return nil
 			}
 			seen++
 			scope := domain.Scope{Org: domain.OrgID(l.OrgID), Project: domain.ProjectID(l.ProjectID), Env: domain.EnvID(l.EnvironmentID)}
-			ok, known := envHolds[scope.Env]
-			if !known {
-				var err error
-				if ok, err = ownerHolds(ctx, az, a.caller, authz.OpLeaseRevoke, scope); err != nil {
-					return err
-				}
-				envHolds[scope.Env] = ok
+			ok, err := c.holds(ctx, az, a.caller, authz.OpLeaseRevoke, scope)
+			if err != nil {
+				return err
 			}
-			c.add(OwnerLeaseRevoke, "lease", l.ID, scope, ok)
+			c.add(domain.OwnerLeaseRevoke, domain.ObjectKindLease, l.ID, scope, ok)
 		}
-		if len(rows) < store.MaxDynamicLeasePage {
+		if len(rows) < authz.MaxIncidentPage {
 			return nil
 		}
 		after = rows[len(rows)-1].ID
@@ -511,17 +646,10 @@ func pageProjectLeases(ctx context.Context, r store.Repos, az *authz.TxAuthorize
 }
 
 func (s *Incidents) collectAdapter(ctx context.Context, az *authz.TxAuthorizer, a incidentAccess, c *collector) error {
-	c.reads = append(c.reads, tenantRead{source: srcAdapters, scope: a.scope, adapterID: a.adapterID, verify: true})
-	for _, o := range []struct {
-		kind   string
-		reason domain.ItemReason
-	}{
-		{"delivered_plaintext", domain.ReasonDeliveredPlaintext},
-		{"cache", domain.ReasonLocalCopy},
-		{"running_process", domain.ReasonRunningProcess},
-	} {
-		c.outOfScope(o.kind, a.scopeID, a.scope, o.reason)
+	if err := s.probeAdapters(ctx, az, a, c, a.adapterID); err != nil {
+		return err
 	}
+	c.outOfScope(a.scopeID, a.scope)
 	return nil
 }
 
@@ -557,9 +685,10 @@ func (s *Incidents) readAdapters(ctx context.Context, actor Actor, c *collector,
 	views, err := s.Adapters.List(ctx, actor, r.scope)
 	if refusedRead(err) {
 		if r.verify {
-			return domain.ErrNotFound
+			c.blockedSource(domain.OwnerAdapterTargetPause, domain.ObjectKindAdapter, r.adapterID, r.scope)
+		} else {
+			c.blockedSource(domain.OwnerAdapterTargetPause, domain.ObjectKindProject, string(r.scope.Project), r.scope)
 		}
-		c.blockedSource(OwnerAdapterTargetPause, "project", string(r.scope.Project), r.scope)
 		return nil
 	}
 	if err != nil {
@@ -573,18 +702,21 @@ func (s *Incidents) readAdapters(ctx context.Context, actor Actor, c *collector,
 		found = true
 		id := v.Adapter.ID
 		if v.Adapter.CredentialPresent {
-			c.add(OwnerAdapterCredential, "adapter", id, r.scope, true)
+			c.add(domain.OwnerAdapterCredential, domain.ObjectKindAdapter, id, r.scope, r.credentialRevoke)
 		}
 		// The upstream PAT lives at the provider: Hikyo can only be told it was
 		// revoked there.
-		c.unknown(OwnerAdapterUpstream, "adapter", id, r.scope, domain.ReasonUpstreamNotObservable)
+		c.unknown(domain.OwnerAdapterUpstream, domain.ObjectKindAdapter, id, r.scope, domain.ReasonUpstreamNotObservable)
 		for i, t := range v.Targets {
 			if i >= maxSourceItems {
-				c.truncated(OwnerAdapterTargetPause, id, r.scope)
+				c.truncated(domain.OwnerAdapterTargetPause, id, r.scope)
 				break
 			}
-			c.add(OwnerAdapterTargetPause, "adapter_target", t.ID, r.scope, true)
+			c.add(domain.OwnerAdapterTargetPause, domain.ObjectKindAdapterTarget, t.ID, r.scope, r.configure)
 		}
+		// Pending route moves and scrub jobs are not observable here: the adapter
+		// and target readers hide moving and tombstoned rows and no existing reader
+		// lists non-terminal moves or scrub work. S3 needs a bounded reader for them.
 	}
 	if r.verify && !found {
 		return domain.ErrNotFound
@@ -598,7 +730,7 @@ func (s *Incidents) readDynamic(ctx context.Context, actor Actor, c *collector, 
 	}
 	views, err := s.Dynamic.List(ctx, actor, r.scope)
 	if refusedRead(err) {
-		c.blockedSource(OwnerDynamicCredential, "project", string(r.scope.Project), r.scope)
+		c.blockedSource(domain.OwnerDynamicCredential, domain.ObjectKindProject, string(r.scope.Project), r.scope)
 		return nil
 	}
 	if err != nil {
@@ -606,11 +738,11 @@ func (s *Incidents) readDynamic(ctx context.Context, actor Actor, c *collector, 
 	}
 	for i, v := range views {
 		if i >= maxSourceItems {
-			c.truncated(OwnerDynamicCredential, string(r.scope.Project), r.scope)
+			c.truncated(domain.OwnerDynamicCredential, string(r.scope.Project), r.scope)
 			break
 		}
-		c.add(OwnerDynamicCredential, "dynamic_provider", v.ID, r.scope, true)
-		c.unknown(OwnerDynamicUpstream, "dynamic_provider", v.ID, r.scope, domain.ReasonUpstreamNotObservable)
+		c.add(domain.OwnerDynamicCredential, domain.ObjectKindDynamicProvider, v.ID, r.scope, r.credentialRevoke)
+		c.unknown(domain.OwnerDynamicUpstream, domain.ObjectKindDynamicProvider, v.ID, r.scope, domain.ReasonUpstreamNotObservable)
 	}
 	return nil
 }
@@ -622,7 +754,7 @@ func (s *Incidents) readSCIM(ctx context.Context, actor Actor, c *collector, r t
 	org := r.scope.Org
 	bindings, err := s.SCIM.ListBindings(ctx, actor, org)
 	if refusedRead(err) {
-		c.blockedSource(OwnerSCIMCredential, "org", string(org), r.scope)
+		c.blockedSource(domain.OwnerSCIMCredential, domain.ObjectKindOrg, string(org), r.scope)
 		return nil
 	}
 	if err != nil {
@@ -632,7 +764,7 @@ func (s *Incidents) readSCIM(ctx context.Context, actor Actor, c *collector, r t
 	for _, b := range bindings {
 		creds, err := s.SCIM.ListCredentials(ctx, actor, org, b.ID)
 		if refusedRead(err) {
-			c.blockedSource(OwnerSCIMCredential, "scim_binding", b.ID, r.scope)
+			c.blockedSource(domain.OwnerSCIMCredential, domain.ObjectKindSCIMBinding, b.ID, r.scope)
 			continue
 		}
 		if err != nil {
@@ -643,11 +775,11 @@ func (s *Incidents) readSCIM(ctx context.Context, actor Actor, c *collector, r t
 				continue
 			}
 			if listed >= maxSourceItems {
-				c.truncated(OwnerSCIMCredential, string(org), r.scope)
+				c.truncated(domain.OwnerSCIMCredential, string(org), r.scope)
 				return nil
 			}
 			listed++
-			c.add(OwnerSCIMCredential, "scim_credential", cred.ID, r.scope, true)
+			c.add(domain.OwnerSCIMCredential, domain.ObjectKindSCIMCredential, cred.ID, r.scope, r.credentialRevoke)
 		}
 	}
 	return nil

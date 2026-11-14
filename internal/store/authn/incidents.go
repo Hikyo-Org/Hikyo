@@ -19,9 +19,6 @@ import (
 // the owning operation authorized credential-reset at the incident's scope; the
 // ledger itself checks nothing about who is asking.
 
-// MaxIncidentItemPage bounds every ledger read.
-const MaxIncidentItemPage = 500
-
 // ErrIncidentItemState reports an outcome and reason pair outside the closed
 // vocabulary's pairing rules.
 var ErrIncidentItemState = errors.New("authn: incident item outcome and reason do not pair")
@@ -110,7 +107,8 @@ func ValidItemState(o domain.ItemOutcome, r domain.ItemReason) bool {
 	case domain.ItemDone:
 		return r == domain.ReasonNone
 	case domain.ItemUnknown:
-		return r == domain.ReasonOwnerUnconfirmed || r == domain.ReasonEnumerationTruncated || r == domain.ReasonUpstreamNotObservable
+		return r == domain.ReasonOwnerUnconfirmed || r == domain.ReasonEnumerationTruncated || r == domain.ReasonUpstreamNotObservable ||
+			r == domain.ReasonNoRevokeOwner
 	case domain.ItemAttested:
 		return r == domain.ReasonNone || r == domain.ReasonUpstreamNotObservable
 	case domain.ItemBlocked:
@@ -123,7 +121,12 @@ func ValidItemState(o domain.ItemOutcome, r domain.ItemReason) bool {
 
 // OpenIncident inserts the open incident for a scope. When the scope already
 // has one open, it inserts nothing and returns the existing row with created
-// false: opening is idempotent.
+// false: opening is idempotent. An existing incident owned by a different org
+// than the caller was just authorized for is refused as not found: the footprint
+// of an account moved since it was opened, and reading or extending the old
+// ledger under the new authorization would mix two orgs' objects in one ledger
+// that only one of them may read. The operator closes the old incident, which
+// the org that owns it can do, and opens a fresh one.
 func (r *Resolver) OpenIncident(ctx context.Context, n NewIncident) (Incident, bool, error) {
 	if !n.ScopeKind.Valid() || n.ID == "" || n.ScopeID == "" || n.OpenedBy == "" {
 		return Incident{}, false, fmt.Errorf("authn: incident needs a scope kind, scope id and opener: %w", domain.ErrInvalid)
@@ -162,7 +165,13 @@ func (r *Resolver) OpenIncident(ctx context.Context, n NewIncident) (Incident, b
 		}
 		existing = pgIncident(row)
 	}
-	return existing, false, err
+	if err != nil {
+		return Incident{}, false, err
+	}
+	if existing.OrgID != n.OrgID {
+		return Incident{}, false, domain.ErrNotFound
+	}
+	return existing, false, nil
 }
 
 // IncidentByID reads one incident. domain.ErrNotFound when there is none.
@@ -210,6 +219,9 @@ func (r *Resolver) AddIncidentItem(ctx context.Context, n NewIncidentItem) (bool
 	if n.ID == "" || n.IncidentID == "" || n.OwnerFunction == "" || n.ObjectKind == "" || n.ObjectID == "" {
 		return false, fmt.Errorf("authn: incident item needs an id, incident, owner function, kind and object: %w", domain.ErrInvalid)
 	}
+	if !domain.ValidOwnerFunction(n.OwnerFunction) || !domain.ValidObjectKind(n.ObjectKind) {
+		return false, fmt.Errorf("authn: incident item owner function or object kind is outside the closed vocabulary: %w", domain.ErrInvalid)
+	}
 	if !ValidItemState(n.Outcome, n.Reason) || n.Outcome == domain.ItemDone || n.Outcome == domain.ItemAttested {
 		return false, ErrIncidentItemState
 	}
@@ -230,11 +242,12 @@ func (r *Resolver) AddIncidentItem(ctx context.Context, n NewIncidentItem) (bool
 }
 
 // IncidentItems pages one incident's items in id order after the cursor, at most
-// limit rows (capped at MaxIncidentItemPage). openOnly keeps pending, unknown
-// and blocked items, which is what resume re-reads.
+// limit rows. A limit outside 1 through domain.MaxIncidentPage is invalid, as
+// for every other bounded incident reader. openOnly keeps pending, unknown and
+// blocked items, which is what resume re-reads.
 func (r *Resolver) IncidentItems(ctx context.Context, incidentID, afterID string, limit int, openOnly bool) ([]IncidentItem, error) {
-	if limit <= 0 || limit > MaxIncidentItemPage {
-		limit = MaxIncidentItemPage
+	if limit < 1 || limit > domain.MaxIncidentPage {
+		return nil, domain.ErrInvalid
 	}
 	var out []IncidentItem
 	if r.sq != nil {
