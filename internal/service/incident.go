@@ -500,7 +500,9 @@ func (s *Incidents) runItem(ctx context.Context, actor Actor, incidentID, itemID
 			return err
 		}
 		owner = s.Owners[item.OwnerFunction]
-		if !item.Outcome.Open() || owner == nil || inc.Status != domain.IncidentOpen {
+		// An unread-source marker names no object an owner could act on: asking the
+		// owner about it would let a "nothing to resume" answer clear the marker.
+		if !item.Outcome.Open() || owner == nil || inc.Status != domain.IncidentOpen || item.ObjectKind == domain.ObjectKindEnumeration {
 			skip = true
 			return nil
 		}
@@ -514,7 +516,7 @@ func (s *Incidents) runItem(ctx context.Context, actor Actor, incidentID, itemID
 		return err
 	}
 	if skip {
-		if owner == nil && item.Outcome.Open() {
+		if (owner == nil || item.ObjectKind == domain.ObjectKindEnumeration) && item.Outcome.Open() {
 			res.Skipped++
 		}
 		return nil

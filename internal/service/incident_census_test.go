@@ -20,6 +20,8 @@ func TestIncidentCensusCountsRulesOfAGatedTarget(t *testing.T) {
 		`INSERT INTO grants (id,principal_id,capability,org_id,created_at) VALUES ('gr_census','usr_census','read','org_adapter','2026-08-17T00:00:00Z')`,
 		`INSERT INTO rules (id,principal_id,capability,org_id,env_mode,key_mode,created_by,created_at) VALUES ('rul_census','usr_census','read','org_adapter','all','all','usr_census','2026-08-17T00:00:00Z')`,
 		`INSERT INTO rule_items (id,rule_id,org_id,axis,project_id) VALUES ('rli_census','rul_census','org_adapter','project','prj_adapter')`,
+		// A second item on the same rule: the rule is counted once.
+		`INSERT INTO rule_items (id,rule_id,org_id,axis,project_id) VALUES ('rli_census2','rul_census','org_adapter','project','prj_adapter')`,
 	} {
 		if _, err := db.SQLiteWrite().ExecContext(t.Context(), stmt); err != nil {
 			t.Fatal(err)
