@@ -635,6 +635,8 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// Member access rules: created, move-widening confirmed, revoked.
 		runRuleAuditLifecycle(t, db)
 		runEmailInvitationAuditLifecycle(t, db)
+		// Incident ledger: opened, item intent and outcome, and closed.
+		runIncidentAuditLifecycle(t, db)
 
 		recovered := runBackupLifecycle(t, db.Engine())
 		managed := runSelfConfigAuditLifecycle(t, db.Engine())
