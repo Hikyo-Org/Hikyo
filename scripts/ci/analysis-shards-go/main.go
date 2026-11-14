@@ -2,7 +2,8 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -19,6 +20,17 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+)
+
+// stableJSON reproduces encoding/json (v1) output bytes. The planner is built
+// as a lone file copied outside the module (see ci.yml), so it cannot import
+// internal/jsonwire and keeps its own copy of those options.
+var stableJSON = json.JoinOptions(
+	json.Deterministic(true),
+	json.FormatNilSliceAsNull(true),
+	json.FormatNilMapAsNull(true),
+	jsontext.EscapeForHTML(true),
+	jsontext.EscapeForJS(true),
 )
 
 type packageInfo struct {
@@ -150,7 +162,12 @@ func runAll(args []string, output io.Writer) error {
 	}
 	// Construct and validate every family before writing any result. Discovery
 	// errors cannot leave a partial JSON plan for downstream jobs to consume.
-	return json.NewEncoder(output).Encode(plan)
+	b, err := json.Marshal(plan, stableJSON)
+	if err != nil {
+		return err
+	}
+	_, err = output.Write(append(b, '\n'))
+	return err
 }
 
 func planAll(packages []packageInfo, raceCount, shardCount int) (completePlan, error) {
@@ -217,11 +234,11 @@ func listPackages(root string) ([]packageInfo, error) {
 		return nil, fmt.Errorf("go list failed: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 
-	decoder := json.NewDecoder(&stdout)
+	decoder := jsontext.NewDecoder(&stdout)
 	packages := make([]packageInfo, 0)
 	for {
 		var pkg packageInfo
-		if err := decoder.Decode(&pkg); errors.Is(err, io.EOF) {
+		if err := json.UnmarshalDecode(decoder, &pkg); errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
 			return nil, fmt.Errorf("decode go list output: %w", err)
