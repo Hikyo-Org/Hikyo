@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
@@ -70,6 +71,10 @@ type IncidentView struct {
 	// enumeration ran again and added only the objects the ledger lacked.
 	Reopened bool
 	Added    int
+	// Census counts the grants and rules the enumeration read. They decide the
+	// footprint and are never work items. It is empty on a read of an existing
+	// incident, since the ledger stores no census.
+	Census IncidentCensus
 }
 
 // ResumeResult counts what one resume pass did.
@@ -99,7 +104,13 @@ type Incidents struct {
 	// Owners maps an owner function to the code that performs and confirms it.
 	// S2 registers none: the revocations arrive with the slices that own them.
 	Owners map[string]IncidentOwner
-	Now    func() time.Time
+	// Log reports an owner failure the ledger records only as a closed reason;
+	// nil uses slog.Default.
+	Log *slog.Logger
+	// MaxLookups bounds the per-row lookups one enumeration performs; zero uses
+	// the default. Tests lower it to reach the truncation path.
+	MaxLookups int
+	Now        func() time.Time
 }
 
 func (s *Incidents) now() time.Time { return nowOr(s.Now) }
@@ -211,17 +222,13 @@ func (s *Incidents) authorizeResolved(ctx context.Context, az *authz.TxAuthorize
 			return incidentAccess{}, err
 		}
 		if t.Kind == domain.IncidentScopeAdapter {
-			if t.AdapterID == "" {
+			// Credential-reset at the org opens an adapter incident (O2). The
+			// adapter id becomes the scope id, so it must be a plain Hikyo id
+			// before it reaches the ledger. A caller without the adapter owner's
+			// capability gets the adapter recorded blocked; one with it has the
+			// adapter verified by the owner's own read.
+			if !validIncidentObjectID(t.AdapterID) {
 				return incidentAccess{}, domain.ErrInvalid
-			}
-			// The adapter is verified through its owner's read, so only a holder
-			// of that capability can open an adapter incident (reported in S2).
-			holds, err := az.CallerHolds(ctx, caller, authz.OpAdapterInspect, out.scope)
-			if err != nil {
-				return incidentAccess{}, err
-			}
-			if !holds {
-				return incidentAccess{}, domain.ErrNotFound
 			}
 			out.adapterID, out.scopeID = t.AdapterID, t.AdapterID
 		}
@@ -229,6 +236,20 @@ func (s *Incidents) authorizeResolved(ctx context.Context, az *authz.TxAuthorize
 		return incidentAccess{}, domain.ErrInvalid
 	}
 	return out, nil
+}
+
+// validIncidentObjectID admits only the id alphabet Hikyo generates, bounded, so
+// a caller-supplied adapter id cannot carry free text into the ledger.
+func validIncidentObjectID(id string) bool {
+	if id == "" || len(id) > 80 {
+		return false
+	}
+	for _, r := range id {
+		if r != '_' && r != '-' && (r < '0' || r > '9') && (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') {
+			return false
+		}
+	}
+	return true
 }
 
 // incidentByID loads an incident and authorizes the caller for it. Every
@@ -289,11 +310,13 @@ func reasonPayload(r domain.ItemReason) string {
 func (s *Incidents) Open(ctx context.Context, actor Actor, target IncidentTarget) (IncidentView, error) {
 	now := s.now()
 	var found *collector
+	var first incidentAccess
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		access, err := s.authorizeTarget(ctx, az, actor, target, now)
 		if err != nil {
 			return err
 		}
+		first = access
 		found, err = s.collect(ctx, r, az, access, now)
 		return err
 	})
@@ -313,6 +336,12 @@ func (s *Incidents) Open(ctx context.Context, actor Actor, target IncidentTarget
 		access, err := s.authorizeTarget(ctx, az, actor, target, now)
 		if err != nil {
 			return err
+		}
+		// The enumeration ran under the first authorization. If the target's owning
+		// org or footprint moved since, what was enumerated no longer matches what
+		// this transaction would own, so nothing is written and the caller retries.
+		if !first.sameOwnership(access) {
+			return fmt.Errorf("%w: the incident's scope changed while it was opened; open it again", domain.ErrConflict)
 		}
 		inc, created, err := az.OpenIncident(ctx, authz.NewIncident{
 			ID: incidentID, ScopeKind: access.kind, ScopeID: access.scopeID, OrgID: access.org,
@@ -348,6 +377,7 @@ func (s *Incidents) Open(ctx context.Context, actor Actor, target IncidentTarget
 			payload["org"] = string(inc.OrgID)
 		}
 		payload["reopened"], payload["added"] = !created, added
+		payload["grants"], payload["rules"] = found.census.Grants, found.census.Rules
 		e, err := incidentEvent(ctx, audit.EventIncidentOpened, access.caller.Principal, inc.ID, audit.OutcomeSuccess, payload)
 		if err != nil {
 			return err
@@ -355,10 +385,28 @@ func (s *Incidents) Open(ctx context.Context, actor Actor, target IncidentTarget
 		if err := az.RecordAuthEvent(ctx, e); err != nil {
 			return err
 		}
-		out = IncidentView{Incident: inc, Counts: counts, Reopened: !created, Added: added}
+		out = IncidentView{Incident: inc, Counts: counts, Reopened: !created, Added: added, Census: found.census}
 		return nil
 	})
 	return out, err
+}
+
+// sameOwnership reports whether two authorizations of one target agree on who
+// owns the incident and on the footprint the enumeration followed.
+func (a incidentAccess) sameOwnership(b incidentAccess) bool {
+	if a.kind != b.kind || a.scopeID != b.scopeID || a.org != b.org || len(a.footprint) != len(b.footprint) {
+		return false
+	}
+	orgs := map[domain.OrgID]bool{}
+	for _, o := range a.footprint {
+		orgs[o] = true
+	}
+	for _, o := range b.footprint {
+		if !orgs[o] {
+			return false
+		}
+	}
+	return true
 }
 
 // Get reads one incident with its outcome counts.
@@ -474,6 +522,13 @@ func (s *Incidents) runItem(ctx context.Context, actor Actor, incidentID, itemID
 	// reports, only OwnerConfirmed can become done.
 	result, ownerErr := owner(ctx, actor, item)
 	if ownerErr != nil {
+		// The ledger records only the closed reason; the cause goes to the log
+		// with ids alone, so an operator can find it without it reaching the trail.
+		log := s.Log
+		if log == nil {
+			log = slog.Default()
+		}
+		log.Error("incident owner reported an error", "incident", incidentID, "item", item.ID, "owner", item.OwnerFunction, "err", ownerErr)
 		result = OwnerUnconfirmed
 	}
 
@@ -531,9 +586,32 @@ func (s *Incidents) runItem(ctx context.Context, actor Actor, incidentID, itemID
 	})
 }
 
+// attestable reports whether an operator may attest an item. Attested is for what
+// Hikyo cannot observe (Vocabulary, O6 A): an upstream revocation, a consumer
+// adopting a replacement, and the factors and linked identities Hikyo holds and
+// cannot remove administratively. An item an owner function can confirm is
+// resolved by that owner, and a blocked item needs the operator who holds its
+// capability, so neither is attestable.
+func attestable(it authz.IncidentItem) bool {
+	if it.Outcome == domain.ItemBlocked {
+		return false
+	}
+	if it.Reason == domain.ReasonUpstreamNotObservable {
+		return true
+	}
+	switch it.OwnerFunction {
+	case domain.OwnerAdapterUpstream, domain.OwnerDynamicUpstream, domain.OwnerConsumerAdoption,
+		domain.OwnerExternalIdentity, domain.OwnerFactorRemoval:
+		return true
+	}
+	return false
+}
+
 // Attest records that an operator states an open item resolved outside Hikyo
 // (an upstream revocation, a consumer adopting a new credential). It records who
-// and when and carries no evidence text.
+// and when and carries no evidence text. Only an attestable item can be attested
+// (see attestable), and the account an incident was opened on cannot attest its
+// own items.
 func (s *Incidents) Attest(ctx context.Context, actor Actor, incidentID, itemID string) error {
 	var stale error
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
@@ -546,8 +624,18 @@ func (s *Incidents) Attest(ctx context.Context, actor Actor, incidentID, itemID 
 		if err != nil {
 			return err
 		}
+		if inc.ScopeKind == domain.IncidentScopeAccount && inc.ScopeID == string(caller.Principal) {
+			return domain.ErrNotFound
+		}
 		if !item.Outcome.Open() || inc.Status != domain.IncidentOpen {
 			return fmt.Errorf("%w: item is not open", domain.ErrConflict)
+		}
+		if !attestable(item) {
+			return fmt.Errorf("%w: item is not attestable; only an outcome Hikyo cannot observe is", domain.ErrConflict)
+		}
+		reason := domain.ReasonNone
+		if item.Reason == domain.ReasonUpstreamNotObservable {
+			reason = item.Reason
 		}
 		e, err := incidentEvent(ctx, audit.EventIncidentItemIntent, caller.Principal, inc.ID, audit.OutcomeIntent, itemPayload(item))
 		if err != nil {
@@ -558,7 +646,7 @@ func (s *Incidents) Attest(ctx context.Context, actor Actor, incidentID, itemID 
 		}
 		ok, err := az.TransitionIncidentItem(ctx, authz.ItemTransition{
 			ID: item.ID, IncidentID: inc.ID, ExpectedVersion: item.RowVersion, Outcome: domain.ItemAttested,
-			Reason: domain.ReasonNone, AttestedBy: caller.Principal, At: now,
+			Reason: reason, AttestedBy: caller.Principal, At: now,
 		})
 		if err != nil {
 			return err
@@ -568,7 +656,7 @@ func (s *Incidents) Attest(ctx context.Context, actor Actor, incidentID, itemID 
 			outcome, result = audit.OutcomeUnknown, "unknown"
 		}
 		payload := itemPayload(item)
-		payload["result"], payload["reason"] = result, "none"
+		payload["result"], payload["reason"] = result, reasonPayload(reason)
 		if !ok {
 			payload["reason"] = reasonPayload(domain.ReasonOwnerUnconfirmed)
 		}
@@ -619,17 +707,17 @@ func (s *Incidents) Close(ctx context.Context, actor Actor, id string, withResid
 		if open > 0 {
 			status = domain.IncidentClosedWithResiduals
 			after := ""
-			for len(residuals) < 1000 {
-				page, err := az.IncidentItems(ctx, inc.ID, after, authzIncidentPage, true)
+			for len(residuals) < audit.MaxIncidentResiduals {
+				page, err := az.IncidentItems(ctx, inc.ID, after, authz.MaxIncidentPage, true)
 				if err != nil {
 					return err
 				}
 				for _, it := range page {
-					if len(residuals) < 1000 {
+					if len(residuals) < audit.MaxIncidentResiduals {
 						residuals = append(residuals, it.ID)
 					}
 				}
-				if len(page) < authzIncidentPage {
+				if len(page) < authz.MaxIncidentPage {
 					break
 				}
 				after = page[len(page)-1].ID
@@ -645,6 +733,9 @@ func (s *Incidents) Close(ctx context.Context, actor Actor, id string, withResid
 		}
 		payload := countsPayload(counts)
 		payload["status"], payload["residuals"] = string(status), residuals
+		// The list is bounded; the open items past the bound are counted, so the
+		// event never reads as the complete residual set when it is not.
+		payload["residuals_omitted"] = max(0, int(open)-len(residuals))
 		e, err := incidentEvent(ctx, audit.EventIncidentClosed, caller.Principal, inc.ID, audit.OutcomeSuccess, payload)
 		if err != nil {
 			return err
@@ -665,15 +756,12 @@ func (s *Incidents) Close(ctx context.Context, actor Actor, id string, withResid
 	return out, nil
 }
 
-// authzIncidentPage is the page size the close reads residuals with.
-const authzIncidentPage = 500
-
 // NonTerminalLeases lists one page of dynamic leases that are not revoked,
 // expired or failed, in id order. A project scope lists that project's leases
 // and needs credential-reset at its org; the empty scope lists every org's and
 // needs credential-reset at instance scope.
 func (s *Incidents) NonTerminalLeases(ctx context.Context, actor Actor, scope domain.Scope, afterID string, limit int) ([]store.DynamicLeaseRef, error) {
-	if limit < 1 || limit > store.MaxDynamicLeasePage || scope.Env != "" || scope.Org == "" && scope.Project != "" {
+	if limit < 1 || limit > authz.MaxIncidentPage || scope.Env != "" || scope.Org == "" && scope.Project != "" {
 		return nil, domain.ErrInvalid
 	}
 	now := s.now()
@@ -709,7 +797,7 @@ func (s *Incidents) NonTerminalLeases(ctx context.Context, actor Actor, scope do
 // inside an org, of every principal, in id order. It needs credential-reset at
 // the org.
 func (s *Incidents) DelegationsInOrg(ctx context.Context, actor Actor, org domain.OrgID, afterID string, limit int) ([]authz.DeveloperCredential, error) {
-	if org == "" || limit < 1 || limit > 500 {
+	if org == "" || limit < 1 || limit > authz.MaxIncidentPage {
 		return nil, domain.ErrInvalid
 	}
 	now := s.now()
