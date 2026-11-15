@@ -37,6 +37,18 @@ reset
 GITHUB_EVENT_NAME=workflow_run
 jq -n --arg head "$head" '{repository:{full_name:"owner/repo"},workflow_run:{event:"pull_request",path:".github/workflows/ci-feedback.yml",head_sha:$head}}' >"$work/event.json"
 run | jq -e --arg head "$head" '. == [{pr:7,head:$head}]' >/dev/null
+# A base retarget reaches the publisher through ci-feedback-retarget's callback; a
+# skipped title or body edit of it only reassesses the matching dev PR. Any other
+# workflow, event or head still targets nothing, and fails rather than guessing.
+jq -n --arg head "$head" '{repository:{full_name:"owner/repo"},workflow_run:{event:"pull_request",path:".github/workflows/ci-feedback-retarget.yml",head_sha:$head}}' >"$work/event.json"
+run | jq -e --arg head "$head" '. == [{pr:7,head:$head}]' >/dev/null || { printf 'dev discovery must route a ci-feedback-retarget callback\n' >&2; exit 1; }
+jq '.workflow_run.head_sha="dddddddddddddddddddddddddddddddddddddddd"' "$work/event.json" >"$work/other.json"
+mv "$work/event.json" "$work/retarget.json"; mv "$work/other.json" "$work/event.json"
+run | jq -e '. == []' >/dev/null || { printf 'a retarget callback must reach only the PR with its exact head\n' >&2; exit 1; }
+for mutation in '.workflow_run.path=".github/workflows/other.yml"' '.workflow_run.path=".github/workflows/ci-feedback-retarget.yml@refs/heads/dev"' '.workflow_run.event="push"' '.workflow_run.head_sha="bad"'; do
+  jq "$mutation" "$work/retarget.json" >"$work/event.json"
+  if run >/dev/null 2>&1; then printf 'dev discovery accepted a foreign feedback callback: %s\n' "$mutation" >&2; exit 1; fi
+done
 GITHUB_EVENT_NAME=schedule
 reset
 run | jq -e --arg head "$head" '. == [{pr:7,head:$head}]' >/dev/null

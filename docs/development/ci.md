@@ -412,6 +412,20 @@ left on a stacked head stays until the next push, because retirement skips
 completed records. A stack's later retarget to main reruns `ci-feedback`, whose callback
 admits the PR afresh.
 
+The `gate-queue` publisher answers only callbacks whose run path is
+`.github/workflows/ci-feedback.yml`. `ci-feedback-retarget.yml` shares the name
+`ci-feedback` so that `gate-dev` selects it, but a run of it is not feedback: the
+publisher's job condition skips it, where its controller would refuse it as a foreign
+callback and leave a red run on the default branch's tip. A test keeps that list
+equal to the paths the Go check accepts, so a backmerge that teaches the check a new
+path fails until the condition follows. A retarget to main still
+reaches `gate-queue` through its `edited` pull request event. `gate-dev` has no
+`edited` trigger, so its discovery and publisher accept a callback from either
+`ci-feedback.yml` or `ci-feedback-retarget.yml` (event `pull_request`, an exact open
+dev PR head); any other path is refused. Such a callback run belongs to the default
+branch commit, not the PR head, so it cannot supersede the suite hosting
+`ci-dev-required`.
+
 Discovery on a push to `dev` selects no PR. A green `ci-dev-required` stays valid
 when `dev` moves: the check is not strict about the base, and GitHub itself refuses
 a merge that now conflicts. It reassesses every open PR only when the push changed
@@ -462,7 +476,11 @@ Queue publishers retry GitHub reads that fail with HTTP 429, 500, 502, 503 or
 504, or with a `gh` failure that reports no status (except authentication and
 cancellation): three attempts with 1 and 3 second backoff, never past the
 invocation deadline. Writes are never retried. Discovery dispatch, retirement
-discovery keep single-attempt reads.
+discovery keep single-attempt reads. After its own check-run write, any publisher
+invocation may re-list or re-read while GitHub still trails that write (0.5, 1
+and 1.5 s). The barrier and failure confirmations of one pass share one 3 s
+budget, and each retirement readback has its own. A different record or a spent
+budget refuses as before.
 
 The full-group callback and the group worker are the only invocations that
 wait.

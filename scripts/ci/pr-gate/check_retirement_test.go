@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 func noRetirementRoles(f *queueFixture) {
@@ -698,5 +699,104 @@ func TestStaleLandedGroupCallbackRetiresPendingRecord(t *testing.T) {
 	}
 	if len(f.api.checks) != 1 || f.api.checks[0].Status != "completed" || f.api.checks[0].Conclusion != "cancelled" {
 		t.Fatalf("landed stale queue stranded pending group: %+v", f.api.checks)
+	}
+}
+
+// laggingRecordAPI models the single-record GET trailing the retiring PATCH:
+// the first `lag` readbacks after the write show the record as it was before it.
+type laggingRecordAPI struct {
+	api
+	f      *fakeAPI
+	lag    int
+	before check
+	other  func(*check)
+	wrote  bool
+	posts  int
+}
+
+func (a *laggingRecordAPI) write(ctx context.Context, method, path string, payload, result any) error {
+	if !a.wrote {
+		a.wrote, a.before = true, a.f.checks[0]
+	}
+	a.posts++
+	return a.api.write(ctx, method, path, payload, result)
+}
+
+func (a *laggingRecordAPI) read(ctx context.Context, path string, result any) error {
+	if a.wrote && strings.Contains(path, "/check-runs/") && !strings.Contains(path, "?") {
+		switch {
+		case a.lag > 0:
+			a.lag--
+			return queueHistoryJSON(a.before, result)
+		case a.other != nil:
+			v := a.f.checks[0]
+			a.other(&v)
+			return queueHistoryJSON(v, result)
+		}
+	}
+	return a.api.read(ctx, path, result)
+}
+
+func TestRetirementReadbackWaitsOutALaggingRecord(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		lag   int
+		other func(*check)
+		waits int
+		fail  bool
+		// Fields the disagreement error must name, so a recurrence can be
+		// diagnosed from the log alone.
+		named []string
+	}{
+		{name: "readback trails twice", lag: 2, waits: 2},
+		{name: "readback never settles", lag: 1 << 20, waits: len(writeConfirmBackoff), fail: true,
+			named: []string{`readback id=1 status="queued" conclusion=""`, `expected id=1 status="completed" conclusion="cancelled"`, `title="Retired commit"`, "completed_at="}},
+		// A settled record that differs is a real disagreement: no waiting.
+		{name: "settled but different output", other: func(v *check) { v.Output.Title = "Merge group validated" }, fail: true,
+			named: []string{`readback id=1 status="completed" conclusion="cancelled"`, `title="Merge group validated"`, `title="Retired commit"`}},
+		{name: "settled but different conclusion", other: func(v *check) { v.Conclusion = "success" }, fail: true,
+			named: []string{`readback id=1 status="completed" conclusion="success"`, `expected id=1 status="completed" conclusion="cancelled"`}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _ := retirementFixture(t, queueCheckName)
+			waits := recordReadWaits(t)
+			api := &laggingRecordAPI{api: f.c.api, f: f.api, lag: tc.lag, other: tc.other}
+			f.c.api = api
+			err := f.c.retireChecks(context.Background(), f.c.expectedHead)
+			if (err != nil) != tc.fail {
+				t.Fatalf("retirement error=%v want failure=%t", err, tc.fail)
+			}
+			for _, want := range tc.named {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("error does not name %q: %v", want, err)
+				}
+			}
+			if len(f.api.writes) != 1 || api.posts != 1 {
+				t.Fatalf("the PATCH was repeated: writes=%d", len(f.api.writes))
+			}
+			if len(*waits) != tc.waits {
+				t.Fatalf("waits = %v, want %d", *waits, tc.waits)
+			}
+			if f.api.checks[0].Status != "completed" || f.api.checks[0].Conclusion != "cancelled" {
+				t.Fatalf("record not cancelled: %+v", f.api.checks[0])
+			}
+		})
+	}
+}
+
+// A readback that trails the PATCH is waited out only while the caller's context
+// lives: a spent deadline ends the re-read with that error, not a later verdict.
+func TestRetirementReadbackStopsWhenTheWaitIsCancelled(t *testing.T) {
+	f, _ := retirementFixture(t, queueCheckName)
+	f.c.api = &laggingRecordAPI{api: f.c.api, f: f.api, lag: 1 << 20}
+	old := readRetryWait
+	readRetryWait = func(context.Context, time.Duration) error { return context.DeadlineExceeded }
+	t.Cleanup(func() { readRetryWait = old })
+	err := f.c.retireChecks(context.Background(), f.c.expectedHead)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("a spent deadline did not end the readback re-read: %v", err)
+	}
+	if len(f.api.writes) != 1 {
+		t.Fatalf("the PATCH was repeated: writes=%d", len(f.api.writes))
 	}
 }
