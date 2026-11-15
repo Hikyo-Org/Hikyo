@@ -1,0 +1,52 @@
+# Queues Dependabot security updates for main and nothing else. A pull request
+# counts as a security update only when an open Dependabot alert links to it, so
+# routine version bumps (which Dependabot sends to dev) are never queued. Only
+# main's own tooling runs, with the workflow token: no extra credential exists.
+# Run it by hand with:
+#   gh workflow run dependabot-security-automerge.yml --ref main
+# A pull request that this workflow queued still goes through the full merge queue.
+name: dependabot-security-automerge
+
+on:
+  schedule:
+    # Best effort: GitHub delays schedules by hours. It also catches an alert
+    # that is linked to its pull request only after the pull request opened.
+    - cron: "37 * * * *"
+  workflow_dispatch:
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions: {}
+
+jobs:
+  sweep:
+    if: >-
+      ((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request_target' &&
+       github.event.pull_request.user.id == 49699333 &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: dependabot-security-automerge
+      cancel-in-progress: false
+    permissions:
+      # Arming auto-merge needs both writes. The alert read has its own scope, and
+      # the admission check of each pull request head needs checks: read.
+      contents: write
+      pull-requests: write
+      checks: read
+      vulnerability-alerts: read
+    steps:
+      # Main's own commit (for pull_request_target this is the base branch tip),
+      # never the pull request head. Credentials stay out of the checkout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Queue the Dependabot security updates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: ./scripts/ci/dependabot-security-automerge.sh

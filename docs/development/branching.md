@@ -43,6 +43,11 @@ only commits that passed the full merge queue may reach `main`.
     Dependabot PR (security updates ignore `target-branch`) or a change dev admission
     would refuse, such as a CI definition. This only routes work: anything let through
     still runs the full queue, so a branch name grants no authority.
+11. A Dependabot security update that targets main is queued by
+    `dependabot-security-automerge` (see the [CI guide](ci.md)), not by a person. It
+    is queued only while an open Dependabot alert links to the pull request, and
+    it still passes the full queue. Routine updates target dev and wait for a
+    person. Releasing is unchanged: a maintainer tags and publishes.
 
 ## Rollout
 

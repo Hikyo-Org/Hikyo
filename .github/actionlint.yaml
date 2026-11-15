@@ -1,3 +1,10 @@
 self-hosted-runner:
   labels:
     - codspeed-macro-arm64-graviton-ubuntu-22-04
+
+# GitHub added the vulnerability-alerts permission after this actionlint release.
+# Remove the entry when the pinned actionlint knows the scope.
+paths:
+  .github/workflows/dependabot-security-automerge.yml:
+    ignore:
+      - 'unknown permission scope "vulnerability-alerts"'
