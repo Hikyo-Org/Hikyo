@@ -1404,20 +1404,24 @@ func TestIncidentAdapterScope(t *testing.T) {
 			return service.IncidentTarget{Kind: domain.IncidentScopeAdapter, Scope: domain.Scope{Org: org, Project: project}, AdapterID: id}
 		}
 
-		// An adapter in the middle of a route move is visible on the adapter
-		// record, so it is a ledger item the adapter owner resumes.
+		// An adapter in the middle of an origin move has that move as its one
+		// ledger item for the work, which the adapter owner resumes.
 		execRaw(t, db, `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_it_mv','org_a','prj_a1','forgejo','https://git.example','usr_alice','moving',`+ts+`)`)
+		execRaw(t, db, `INSERT INTO adapter_route_moves(id,org_id,project_id,adapter_id,target_id,kind,pending_origin,pending_credential_ciphertext,authority_principal_id,state,keep_remote,created_at) VALUES ('arm_it_mv','org_a','prj_a1','adp_it_mv',NULL,'origin','https://git2.example',`+blobLit(db, []byte("x"))+`,'usr_alice','scrubbing',TRUE,`+ts+`)`)
 		v, err := w.svc.Open(ctx, w.as(incResponder), adapterTarget(orgA, prjA1, "adp_it_mv"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		got := w.itemMap(t, incResponder, v.Incident.ID)
 		wantItems(t, got, map[string]string{
-			"adapter_move.resume|adapter|adp_it_mv":                "pending/",
+			"adapter_move.resume|adapter_move|arm_it_mv":           "pending/",
 			"adapter_credential.upstream_revoke|adapter|adp_it_mv": "unknown/upstream_not_observable",
 		})
-		// Target-level moves and scrub jobs are listed, so a fully read source
-		// leaves no unread-source marker behind.
+		// The move replaces any adapter-level row for the same work, and a fully
+		// read source leaves no unread-source marker behind.
+		if _, ok := got["adapter_move.resume|adapter|adp_it_mv"]; ok {
+			t.Errorf("a moving adapter also lists an adapter-level move item: %v", got)
+		}
 		for k := range got {
 			if strings.Contains(k, "|enumeration|") {
 				t.Errorf("unexpected unread-source marker %s", k)
@@ -1575,6 +1579,89 @@ func TestIncidentListsAdapterMovesAndScrubs(t *testing.T) {
 				t.Errorf("org B incident lists org A's %s", k)
 			}
 		}
+	})
+}
+
+// A scrub that ended failed and orphaned names a route move stored are remote
+// names Hikyo cannot see removed. Each is an open item only an operator's
+// attestation resolves, so an incident never closes clean over them and resume
+// never marks them done.
+func TestIncidentFailedScrubAndStoredOrphansStayOpenUntilAttested(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		ctx := t.Context()
+		const (
+			failedScrub = "adapter_orphan.review|adapter_scrub|scr_fx1"
+			orphanMove  = "adapter_orphan.review|adapter_target|tgt_fx2"
+		)
+		// Each adapter has only a tombstoned target, so the target list adds no
+		// item of its own; the adapter's one open item besides is its upstream
+		// credential, which the operator attests.
+		for n, a := range []string{"adp_fx1", "adp_fx2"} {
+			id := fmt.Sprint(n + 1)
+			execRaw(t, db, `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('`+a+`','org_a','prj_a1','forgejo','https://gitfx`+id+`.example','usr_alice','active',`+ts+`)`)
+			execRaw(t, db, `INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_fx`+id+`','org_a','prj_a1','env_a1','`+a+`','repository','acme','fx`+id+`',6`+id+`,'',1,'tombstoned','converged',`+ts+`)`)
+		}
+		// A RemoveTarget teardown scrub that ended failed: no route move.
+		execRaw(t, db, `INSERT INTO adapter_outbox (id,org_id,project_id,environment_id,target_id,kind,route_move_id,authority_principal_id,generation,dedup_key,next_attempt_at,state,created_at) VALUES ('scr_fx1','org_a','prj_a1','env_a1','tgt_fx1','scrub',NULL,'usr_alice',1,'dk_fx1',`+ts+`,'failed',`+ts+`)`)
+		// A route-move scrub that stored orphans and let the move complete.
+		execRaw(t, db, `INSERT INTO adapter_route_moves(id,org_id,project_id,adapter_id,target_id,kind,authority_principal_id,state,keep_remote,created_at) VALUES ('arm_fx2','org_a','prj_a1','adp_fx2','tgt_fx2','target','usr_alice','completed',TRUE,`+ts+`)`)
+		execRaw(t, db, `INSERT INTO adapter_route_move_targets(move_id,org_id,project_id,environment_id,target_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,orphaned_names) VALUES ('arm_fx2','org_a','prj_a1','env_a1','tgt_fx2','repository','acme','fx2',62,'','["A","B"]')`)
+		// A move whose scrub left nothing behind lists no orphan item.
+		execRaw(t, db, `INSERT INTO adapter_route_moves(id,org_id,project_id,adapter_id,target_id,kind,authority_principal_id,state,keep_remote,created_at) VALUES ('arm_fx1','org_a','prj_a1','adp_fx1','tgt_fx1','target','usr_alice','completed',TRUE,`+ts+`)`)
+		execRaw(t, db, `INSERT INTO adapter_route_move_targets(move_id,org_id,project_id,environment_id,target_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix) VALUES ('arm_fx1','org_a','prj_a1','env_a1','tgt_fx1','repository','acme','fx1',61,'')`)
+
+		for _, tc := range []struct{ adapter, key, other string }{
+			{"adp_fx1", failedScrub, orphanMove},
+			{"adp_fx2", orphanMove, failedScrub},
+		} {
+			v, err := w.svc.Open(ctx, w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeAdapter, Scope: domain.Scope{Org: orgA, Project: prjA1}, AdapterID: tc.adapter})
+			if err != nil {
+				t.Fatal(err)
+			}
+			id := v.Incident.ID
+			got := w.itemMap(t, incResponder, id)
+			wantItems(t, got, map[string]string{tc.key: "unknown/upstream_not_observable"})
+			if _, ok := got[tc.other]; ok {
+				t.Errorf("%s lists the other adapter's %s", tc.adapter, tc.other)
+			}
+			if m := markerKeys(got); len(m) != 0 {
+				t.Errorf("a fully read source left markers %v", m)
+			}
+			// No owner function confirms what Hikyo cannot observe, so resume
+			// leaves these open.
+			if res, err := w.svc.Resume(ctx, w.as(incResponder), id); err != nil || res.Confirmed != 0 {
+				t.Fatalf("resume = %+v, %v, want nothing confirmed", res, err)
+			}
+			if _, err := w.svc.Close(ctx, w.as(incResponder), id, false); !errors.Is(err, service.ErrIncidentOpenItems) {
+				t.Fatalf("clean close over %s = %v, want ErrIncidentOpenItems", tc.key, err)
+			}
+			// Attest everything open: the adapter's upstream credential and the
+			// orphan item. Only then does the incident close clean.
+			for k, v := range got {
+				if strings.HasPrefix(v, "unknown/") && !strings.Contains(k, "|enumeration|") {
+					if err := w.svc.Attest(ctx, w.as(incResponder), id, w.itemIDByKey(t, incResponder, id, k)); err != nil {
+						t.Fatalf("attest %s: %v", k, err)
+					}
+				}
+			}
+			if got := w.itemMap(t, incResponder, id)[tc.key]; got != "attested/upstream_not_observable" {
+				t.Errorf("%s after attest = %q", tc.key, got)
+			}
+			if _, err := w.svc.Close(ctx, w.as(incResponder), id, false); err != nil {
+				t.Errorf("clean close after attesting %s: %v", tc.key, err)
+			}
+		}
+
+		// The project incident lists both, and one attestation does not clear the
+		// other.
+		prj, err := w.svc.Open(ctx, w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeProject, Scope: domain.Scope{Org: orgA, Project: prjA1}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantItems(t, w.itemMap(t, incResponder, prj.Incident.ID), map[string]string{
+			failedScrub: "unknown/upstream_not_observable", orphanMove: "unknown/upstream_not_observable",
+		})
 	})
 }
 

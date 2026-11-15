@@ -925,7 +925,8 @@ const (
 	StoreAdaptersMoveOrigin             StoreOp = "adapters.MoveOrigin"
 	StoreAdaptersMove                   StoreOp = "adapters.Move"
 	StoreAdaptersListOpenMoves          StoreOp = "adapters.ListOpenMoves"
-	StoreAdaptersListPendingScrubs      StoreOp = "adapters.ListPendingScrubs"
+	StoreAdaptersListScrubs             StoreOp = "adapters.ListScrubs"
+	StoreAdaptersListOrphanedTargets    StoreOp = "adapters.ListOrphanedTargets"
 	// Reencrypt walk over the two adapter credential columns.
 	StoreAdaptersListForReencrypt      StoreOp = "adapters.ListAdaptersForReencrypt"
 	StoreAdaptersReencrypt             StoreOp = "adapters.ReencryptAdapter"
@@ -1561,7 +1562,8 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreAdaptersConflicts:                    true,
 	StoreAdaptersMove:                         true,
 	StoreAdaptersListOpenMoves:                true,
-	StoreAdaptersListPendingScrubs:            true,
+	StoreAdaptersListScrubs:                   true,
+	StoreAdaptersListOrphanedTargets:          true,
 	StoreCatalogueGroupGet:                    true,
 	StoreCatalogueGroupList:                   true,
 	StoreCatalogueGroupCount:                  true,
@@ -2371,7 +2373,7 @@ var operationTable = map[Operation]opSpec{
 		class:    ClassTenant,
 		level:    domain.LevelProject,
 		formula:  Formula{{Cap: domain.CapManageAdapters, At: domain.LevelProject}},
-		storeOps: map[StoreOp]bool{StoreAdaptersListOpenMoves: true, StoreAdaptersListPendingScrubs: true},
+		storeOps: map[StoreOp]bool{StoreAdaptersListOpenMoves: true, StoreAdaptersListScrubs: true, StoreAdaptersListOrphanedTargets: true},
 		events:   []audit.EventType{audit.EventIncidentOpened},
 	},
 

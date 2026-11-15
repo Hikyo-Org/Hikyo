@@ -979,7 +979,7 @@ func (q *Queries) AdapterMoveJobs(ctx context.Context, arg AdapterMoveJobsParams
 }
 
 const adapterMoveListOpen = `-- name: AdapterMoveListOpen :many
-SELECT (m.id)::text AS id,(m.adapter_id)::text AS adapter_id,(m.kind)::text AS kind,(m.state)::text AS state FROM adapter_route_moves AS m WHERE m.org_id=$1 AND m.project_id=$2 AND m.state NOT IN ('completed','canceled') AND (CAST($3 AS TEXT)='' OR m.adapter_id=$3) AND m.id>$4 ORDER BY m.id LIMIT $5
+SELECT (m.id)::text AS id FROM adapter_route_moves AS m WHERE m.org_id=$1 AND m.project_id=$2 AND m.state NOT IN ('completed','canceled') AND (CAST($3 AS TEXT)='' OR m.adapter_id=$3) AND m.id>$4 ORDER BY m.id LIMIT $5
 `
 
 type AdapterMoveListOpenParams struct {
@@ -990,17 +990,10 @@ type AdapterMoveListOpenParams struct {
 	RowLimit     int32
 }
 
-type AdapterMoveListOpenRow struct {
-	ID        string
-	AdapterID string
-	Kind      string
-	State     string
-}
-
 // Incident enumeration: the non-terminal route moves of one project, optionally
 // narrowed to one adapter, in id order and bounded by the limit. Only
 // identifiers and states are selected.
-func (q *Queries) AdapterMoveListOpen(ctx context.Context, arg AdapterMoveListOpenParams) ([]AdapterMoveListOpenRow, error) {
+func (q *Queries) AdapterMoveListOpen(ctx context.Context, arg AdapterMoveListOpenParams) ([]string, error) {
 	rows, err := q.db.Query(ctx, adapterMoveListOpen,
 		arg.ChainOrg,
 		arg.ChainProject,
@@ -1012,18 +1005,13 @@ func (q *Queries) AdapterMoveListOpen(ctx context.Context, arg AdapterMoveListOp
 		return nil, err
 	}
 	defer rows.Close()
-	var items []AdapterMoveListOpenRow
+	var items []string
 	for rows.Next() {
-		var i AdapterMoveListOpenRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.AdapterID,
-			&i.Kind,
-			&i.State,
-		); err != nil {
+		var id string
+		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
-		items = append(items, i)
+		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -1031,11 +1019,11 @@ func (q *Queries) AdapterMoveListOpen(ctx context.Context, arg AdapterMoveListOp
 	return items, nil
 }
 
-const adapterMoveListPendingScrubs = `-- name: AdapterMoveListPendingScrubs :many
-SELECT (j.id)::text AS id,(t.adapter_id)::text AS adapter_id,(j.target_id)::text AS target_id,(COALESCE(j.route_move_id,''))::text AS route_move_id,(j.state)::text AS state FROM adapter_outbox AS j JOIN adapter_targets AS t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id WHERE j.org_id=$1 AND j.project_id=$2 AND j.kind='scrub' AND j.state IN ('queued','running') AND (CAST($3 AS TEXT)='' OR t.adapter_id=$3) AND j.id>$4 ORDER BY j.id LIMIT $5
+const adapterMoveListOrphanedTargets = `-- name: AdapterMoveListOrphanedTargets :many
+SELECT DISTINCT (mt.target_id)::text AS target_id FROM adapter_route_move_targets AS mt JOIN adapter_targets AS t ON t.id=mt.target_id AND t.org_id=mt.org_id AND t.project_id=mt.project_id AND t.environment_id=mt.environment_id WHERE mt.org_id=$1 AND mt.project_id=$2 AND mt.orphaned_names<>'[]' AND (CAST($3 AS TEXT)='' OR t.adapter_id=$3) AND mt.target_id>$4 ORDER BY target_id LIMIT $5
 `
 
-type AdapterMoveListPendingScrubsParams struct {
+type AdapterMoveListOrphanedTargetsParams struct {
 	ChainOrg     string
 	ChainProject string
 	AdapterID    string
@@ -1043,19 +1031,11 @@ type AdapterMoveListPendingScrubsParams struct {
 	RowLimit     int32
 }
 
-type AdapterMoveListPendingScrubsRow struct {
-	ID          string
-	AdapterID   string
-	TargetID    string
-	RouteMoveID string
-	State       string
-}
-
-// Incident enumeration: the queued or running scrub jobs of one project's
-// targets, optionally narrowed to one adapter, in id order and bounded by the
-// limit. Only identifiers and states are selected.
-func (q *Queries) AdapterMoveListPendingScrubs(ctx context.Context, arg AdapterMoveListPendingScrubsParams) ([]AdapterMoveListPendingScrubsRow, error) {
-	rows, err := q.db.Query(ctx, adapterMoveListPendingScrubs,
+// Incident enumeration: the targets of one project whose route moves stored
+// orphaned remote names, optionally narrowed to one adapter, in target id order
+// and bounded by the limit. Only target identifiers are selected.
+func (q *Queries) AdapterMoveListOrphanedTargets(ctx context.Context, arg AdapterMoveListOrphanedTargetsParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, adapterMoveListOrphanedTargets,
 		arg.ChainOrg,
 		arg.ChainProject,
 		arg.AdapterID,
@@ -1066,16 +1046,56 @@ func (q *Queries) AdapterMoveListPendingScrubs(ctx context.Context, arg AdapterM
 		return nil, err
 	}
 	defer rows.Close()
-	var items []AdapterMoveListPendingScrubsRow
+	var items []string
 	for rows.Next() {
-		var i AdapterMoveListPendingScrubsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.AdapterID,
-			&i.TargetID,
-			&i.RouteMoveID,
-			&i.State,
-		); err != nil {
+		var target_id string
+		if err := rows.Scan(&target_id); err != nil {
+			return nil, err
+		}
+		items = append(items, target_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const adapterMoveListScrubs = `-- name: AdapterMoveListScrubs :many
+SELECT (j.id)::text AS id,(j.state)::text AS state FROM adapter_outbox AS j JOIN adapter_targets AS t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id WHERE j.org_id=$1 AND j.project_id=$2 AND j.kind='scrub' AND j.state IN ('queued','running','failed') AND (CAST($3 AS TEXT)='' OR t.adapter_id=$3) AND j.id>$4 ORDER BY j.id LIMIT $5
+`
+
+type AdapterMoveListScrubsParams struct {
+	ChainOrg     string
+	ChainProject string
+	AdapterID    string
+	AfterID      string
+	RowLimit     int32
+}
+
+type AdapterMoveListScrubsRow struct {
+	ID    string
+	State string
+}
+
+// Incident enumeration: the scrub jobs of one project's targets that are queued,
+// running or ended failed, optionally narrowed to one adapter, in id order and
+// bounded by the limit. Only identifiers and states are selected.
+func (q *Queries) AdapterMoveListScrubs(ctx context.Context, arg AdapterMoveListScrubsParams) ([]AdapterMoveListScrubsRow, error) {
+	rows, err := q.db.Query(ctx, adapterMoveListScrubs,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.AdapterID,
+		arg.AfterID,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AdapterMoveListScrubsRow
+	for rows.Next() {
+		var i AdapterMoveListScrubsRow
+		if err := rows.Scan(&i.ID, &i.State); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

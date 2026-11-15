@@ -38,7 +38,7 @@ func (r adapterQueries) Move(ctx context.Context, p authz.Proof, moveID string) 
 	return readAdapterMove(ctx, r.db, chain, moveID, false)
 }
 
-func (r adapterQueries) ListOpenMoves(ctx context.Context, p authz.Proof, adapterID, afterID string, limit int) ([]AdapterMoveRef, error) {
+func (r adapterQueries) ListOpenMoves(ctx context.Context, p authz.Proof, adapterID, afterID string, limit int) ([]string, error) {
 	chain, err := authz.Verify(p, authz.StoreAdaptersListOpenMoves, r.tok)
 	if err != nil {
 		return nil, err
@@ -49,15 +49,26 @@ func (r adapterQueries) ListOpenMoves(ctx context.Context, p authz.Proof, adapte
 	return r.db.adapterMoveQueries().listOpen(ctx, chain.Org, chain.Project, adapterID, afterID, limit)
 }
 
-func (r adapterQueries) ListPendingScrubs(ctx context.Context, p authz.Proof, adapterID, afterID string, limit int) ([]AdapterScrubRef, error) {
-	chain, err := authz.Verify(p, authz.StoreAdaptersListPendingScrubs, r.tok)
+func (r adapterQueries) ListScrubs(ctx context.Context, p authz.Proof, adapterID, afterID string, limit int) ([]AdapterScrubRef, error) {
+	chain, err := authz.Verify(p, authz.StoreAdaptersListScrubs, r.tok)
 	if err != nil {
 		return nil, err
 	}
 	if chain.Org == "" || chain.Project == "" || limit < 1 || limit > domain.MaxIncidentPage {
 		return nil, ErrNotFound
 	}
-	return r.db.adapterMoveQueries().listPendingScrubs(ctx, chain.Org, chain.Project, adapterID, afterID, limit)
+	return r.db.adapterMoveQueries().listScrubs(ctx, chain.Org, chain.Project, adapterID, afterID, limit)
+}
+
+func (r adapterQueries) ListOrphanedTargets(ctx context.Context, p authz.Proof, adapterID, afterID string, limit int) ([]string, error) {
+	chain, err := authz.Verify(p, authz.StoreAdaptersListOrphanedTargets, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	if chain.Org == "" || chain.Project == "" || limit < 1 || limit > domain.MaxIncidentPage {
+		return nil, ErrNotFound
+	}
+	return r.db.adapterMoveQueries().listOrphanedTargets(ctx, chain.Org, chain.Project, adapterID, afterID, limit)
 }
 
 func (r adapterQueries) CancelMove(ctx context.Context, p authz.Proof, moveID, authorityPrincipalID string, at time.Time) (AdapterMove, error) {

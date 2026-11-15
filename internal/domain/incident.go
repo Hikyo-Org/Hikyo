@@ -112,6 +112,7 @@ const (
 	OwnerAdapterTargetPause   = "adapter_target.pause"
 	OwnerAdapterMove          = "adapter_move.resume"
 	OwnerAdapterScrub         = "adapter_scrub.complete"
+	OwnerAdapterOrphan        = "adapter_orphan.review"
 	OwnerAdapterCredential    = "adapter_credential.clear"
 	OwnerAdapterUpstream      = "adapter_credential.upstream_revoke"
 	OwnerDynamicCredential    = "dynamic_provider.credential_clear"
@@ -127,7 +128,7 @@ const (
 var IncidentOwnerFunctions = []string{
 	OwnerSessionRevoke, OwnerDeveloperRevoke, OwnerExternalIdentity, OwnerFactorRemoval, OwnerServiceAccountReview,
 	OwnerMachineCredential, OwnerAccountContain, OwnerEmailInvitation, OwnerSCIMCredential, OwnerLeaseRevoke,
-	OwnerAdapterTargetPause, OwnerAdapterMove, OwnerAdapterScrub, OwnerAdapterCredential, OwnerAdapterUpstream,
+	OwnerAdapterTargetPause, OwnerAdapterMove, OwnerAdapterScrub, OwnerAdapterOrphan, OwnerAdapterCredential, OwnerAdapterUpstream,
 	OwnerDynamicCredential, OwnerDynamicUpstream, OwnerConsumerAdoption, OwnerNone,
 }
 

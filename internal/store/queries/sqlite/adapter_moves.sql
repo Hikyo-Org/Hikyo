@@ -136,10 +136,16 @@ SELECT a.provider AS provider,t.variable_protected AS variable_protected,t.varia
 -- narrowed to one adapter, in id order and bounded by the limit. Only
 -- identifiers and states are selected.
 -- name: AdapterMoveListOpen :many
-SELECT m.id AS id,m.adapter_id AS adapter_id,m.kind AS kind,m.state AS state FROM adapter_route_moves AS m WHERE m.org_id=sqlc.arg(chain_org) AND m.project_id=sqlc.arg(chain_project) AND m.state NOT IN ('completed','canceled') AND (CAST(sqlc.arg(adapter_id) AS TEXT)='' OR m.adapter_id=sqlc.arg(adapter_id)) AND m.id>sqlc.arg(after_id) ORDER BY m.id LIMIT sqlc.arg(row_limit);
+SELECT m.id AS id FROM adapter_route_moves AS m WHERE m.org_id=sqlc.arg(chain_org) AND m.project_id=sqlc.arg(chain_project) AND m.state NOT IN ('completed','canceled') AND (CAST(sqlc.arg(adapter_id) AS TEXT)='' OR m.adapter_id=sqlc.arg(adapter_id)) AND m.id>sqlc.arg(after_id) ORDER BY m.id LIMIT sqlc.arg(row_limit);
 
--- Incident enumeration: the queued or running scrub jobs of one project's
--- targets, optionally narrowed to one adapter, in id order and bounded by the
--- limit. Only identifiers and states are selected.
--- name: AdapterMoveListPendingScrubs :many
-SELECT j.id AS id,t.adapter_id AS adapter_id,j.target_id AS target_id,CAST(COALESCE(j.route_move_id,'') AS TEXT) AS route_move_id,j.state AS state FROM adapter_outbox AS j JOIN adapter_targets AS t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id WHERE j.org_id=sqlc.arg(chain_org) AND j.project_id=sqlc.arg(chain_project) AND j.kind='scrub' AND j.state IN ('queued','running') AND (CAST(sqlc.arg(adapter_id) AS TEXT)='' OR t.adapter_id=sqlc.arg(adapter_id)) AND j.id>sqlc.arg(after_id) ORDER BY j.id LIMIT sqlc.arg(row_limit);
+-- Incident enumeration: the scrub jobs of one project's targets that are queued,
+-- running or ended failed, optionally narrowed to one adapter, in id order and
+-- bounded by the limit. Only identifiers and states are selected.
+-- name: AdapterMoveListScrubs :many
+SELECT j.id AS id,j.state AS state FROM adapter_outbox AS j JOIN adapter_targets AS t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id WHERE j.org_id=sqlc.arg(chain_org) AND j.project_id=sqlc.arg(chain_project) AND j.kind='scrub' AND j.state IN ('queued','running','failed') AND (CAST(sqlc.arg(adapter_id) AS TEXT)='' OR t.adapter_id=sqlc.arg(adapter_id)) AND j.id>sqlc.arg(after_id) ORDER BY j.id LIMIT sqlc.arg(row_limit);
+
+-- Incident enumeration: the targets of one project whose route moves stored
+-- orphaned remote names, optionally narrowed to one adapter, in target id order
+-- and bounded by the limit. Only target identifiers are selected.
+-- name: AdapterMoveListOrphanedTargets :many
+SELECT DISTINCT mt.target_id AS target_id FROM adapter_route_move_targets AS mt JOIN adapter_targets AS t ON t.id=mt.target_id AND t.org_id=mt.org_id AND t.project_id=mt.project_id AND t.environment_id=mt.environment_id WHERE mt.org_id=sqlc.arg(chain_org) AND mt.project_id=sqlc.arg(chain_project) AND mt.orphaned_names<>'[]' AND (CAST(sqlc.arg(adapter_id) AS TEXT)='' OR t.adapter_id=sqlc.arg(adapter_id)) AND mt.target_id>sqlc.arg(after_id) ORDER BY target_id LIMIT sqlc.arg(row_limit);

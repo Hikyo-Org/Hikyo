@@ -72,9 +72,9 @@ type tenantRead struct {
 	credentialRevoke bool
 }
 
-// adapterStateMoving is the adapter record state while a route move is in
-// flight; the adapter store has no exported constant for it.
-const adapterStateMoving = "moving"
+// adapterJobFailed is the adapter outbox state of a job that ended without
+// success; the adapter store has no exported constant for it.
+const adapterJobFailed = "failed"
 
 const (
 	srcAdapters = "adapters"
@@ -736,12 +736,6 @@ func (s *Incidents) readAdapters(ctx context.Context, actor Actor, c *collector,
 			}
 			c.add(domain.OwnerAdapterTargetPause, domain.ObjectKindAdapterTarget, t.ID, r.scope, r.configure)
 		}
-		// The adapter list shows an adapter mid route-move, so that move is a ledger
-		// item. Target-level moves and scrub jobs are read below, once for the whole
-		// source.
-		if v.Adapter.State == adapterStateMoving {
-			c.add(domain.OwnerAdapterMove, domain.ObjectKindAdapter, id, r.scope, r.configure)
-		}
 	}
 	if r.verify && !found {
 		return domain.ErrNotFound
@@ -749,20 +743,23 @@ func (s *Incidents) readAdapters(ctx context.Context, actor Actor, c *collector,
 	return s.readAdapterWork(ctx, actor, c, r)
 }
 
-// readAdapterWork lists the non-terminal route moves and the queued or running
-// scrub jobs of the source's project (one adapter's, for an adapter incident)
-// through the bounded store listings, each as a pending item its owner resumes
-// or completes. The read runs under the adapter inspect formula, which the
-// probe already proved the caller holds; a refusal now (the capability moved)
-// records the source as blocked. Rows beyond the bound leave one open
-// enumeration_truncated row, so an incident never closes clean over work it did
-// not list.
+// readAdapterWork lists the non-terminal route moves, the queued or running
+// scrub jobs, the failed scrub jobs and the targets with stored orphaned remote
+// names of the source's project (one adapter's, for an adapter incident)
+// through the bounded store listings. A move or a live scrub is a pending item
+// its owner resumes or completes. A failed scrub and stored orphans are names
+// that may still sit at the provider, which Hikyo cannot see being removed, so
+// each is an unknown item only an operator attests. The read runs under the
+// adapter inspect formula, which the probe already proved the caller holds; a
+// refusal now (the capability moved) records the source as blocked. Rows beyond
+// the bound leave one open enumeration_truncated row per source, so an incident
+// never closes clean over work it did not list.
 func (s *Incidents) readAdapterWork(ctx context.Context, actor Actor, c *collector, r tenantRead) error {
-	var moves []store.AdapterMoveRef
+	var moves, orphans []string
 	var scrubs []store.AdapterScrubRef
-	var movesCut, scrubsCut bool
+	var movesCut, scrubsCut, orphansCut bool
 	now := s.now()
-	err := tx.Write(ctx, s.DB, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
+	err := tx.Read(ctx, s.DB, func(ctx context.Context, repos store.ReadRepos, az *authz.TxAuthorizer) error {
 		caller, err := actor.resolve(ctx, az, now)
 		if err != nil {
 			return err
@@ -772,8 +769,8 @@ func (s *Incidents) readAdapterWork(ctx context.Context, actor Actor, c *collect
 		if err != nil {
 			return err
 		}
-		moves, movesCut, err = pageBounded(maxSourceItems, func(m store.AdapterMoveRef) string { return m.ID },
-			func(after string) ([]store.AdapterMoveRef, error) {
+		moves, movesCut, err = pageBounded(maxSourceItems, func(id string) string { return id },
+			func(after string) ([]string, error) {
 				return repos.Adapters().ListOpenMoves(ctx, proof, r.adapterID, after, authz.MaxIncidentPage)
 			})
 		if err != nil {
@@ -781,36 +778,51 @@ func (s *Incidents) readAdapterWork(ctx context.Context, actor Actor, c *collect
 		}
 		scrubs, scrubsCut, err = pageBounded(maxSourceItems, func(j store.AdapterScrubRef) string { return j.ID },
 			func(after string) ([]store.AdapterScrubRef, error) {
-				return repos.Adapters().ListPendingScrubs(ctx, proof, r.adapterID, after, authz.MaxIncidentPage)
+				return repos.Adapters().ListScrubs(ctx, proof, r.adapterID, after, authz.MaxIncidentPage)
+			})
+		if err != nil {
+			return err
+		}
+		orphans, orphansCut, err = pageBounded(maxSourceItems, func(id string) string { return id },
+			func(after string) ([]string, error) {
+				return repos.Adapters().ListOrphanedTargets(ctx, proof, r.adapterID, after, authz.MaxIncidentPage)
 			})
 		return err
 	})
+	// An unread source keeps its own enumeration row: the object-kind rows the
+	// adapter reader adds under the same owner would otherwise absorb it.
+	marker := string(r.scope.Project)
+	if r.adapterID != "" {
+		marker = r.adapterID
+	}
 	if refusedRead(err) {
-		if r.verify {
-			c.blockedSource(domain.OwnerAdapterMove, domain.ObjectKindAdapter, r.adapterID, r.scope)
-		} else {
-			c.blockedSource(domain.OwnerAdapterMove, domain.ObjectKindProject, string(r.scope.Project), r.scope)
-		}
+		c.blockedSource(domain.OwnerAdapterMove, domain.ObjectKindEnumeration, marker, r.scope)
 		return nil
 	}
 	if err != nil {
 		return err
 	}
 	for _, m := range moves {
-		c.add(domain.OwnerAdapterMove, domain.ObjectKindAdapterMove, m.ID, r.scope, r.configure)
+		c.add(domain.OwnerAdapterMove, domain.ObjectKindAdapterMove, m, r.scope, r.configure)
 	}
 	for _, j := range scrubs {
+		if j.State == adapterJobFailed {
+			c.unknown(domain.OwnerAdapterOrphan, domain.ObjectKindAdapterScrub, j.ID, r.scope, domain.ReasonUpstreamNotObservable)
+			continue
+		}
 		c.add(domain.OwnerAdapterScrub, domain.ObjectKindAdapterScrub, j.ID, r.scope, r.configure)
 	}
-	marker := string(r.scope.Project)
-	if r.adapterID != "" {
-		marker = r.adapterID
+	for _, t := range orphans {
+		c.unknown(domain.OwnerAdapterOrphan, domain.ObjectKindAdapterTarget, t, r.scope, domain.ReasonUpstreamNotObservable)
 	}
 	if movesCut {
 		c.truncated(domain.OwnerAdapterMove, marker, r.scope)
 	}
 	if scrubsCut {
 		c.truncated(domain.OwnerAdapterScrub, marker, r.scope)
+	}
+	if orphansCut {
+		c.truncated(domain.OwnerAdapterOrphan, marker, r.scope)
 	}
 	return nil
 }
