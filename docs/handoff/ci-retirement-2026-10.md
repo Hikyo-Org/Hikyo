@@ -253,11 +253,19 @@ the suite scan hit the old 3-minute deadline, so the discovery deadline is now
 5 minutes inside an 8-minute job. The `retirement_discovery_scan` record reports
 successful `suite_pages`.
 
-Review limits kept open: `listOwnedChecks` and the queue reporter's `existing()`
-still list by commit, so discovery refuses, rather than routes, a synthetic
-target on a commit with more than 900 suites. Teaching both owners the
-per-suite read would remove that refusal. On 2026-11-15 the window held four
-commits over 1,000 suites (1,039, 1,147, 1,715 and 2,005), so the 5,000-suite
-cap has headroom but is not unbounded. Not verified: the
+Review limits kept open:
+
+- `listOwnedChecks` and the queue reporter's `existing()` still list by
+  commit, so discovery refuses, rather than routes, a synthetic target on a
+  commit with more than 900 suites, and targeted dispatch on a head with more
+  than 1,000 suites can miss one silently. No operator tool clears that
+  refusal. Teaching both owners the per-suite read removes both limits.
+- The deadline, not the 5,000-suite cap, bounds oversized commits: suite pages
+  cost about 2 s each and history pages run sequentially, leaving room for
+  about 40 more suite pages per window. On 2026-11-15 the window held four
+  commits over 1,000 suites (1,039, 1,147, 1,715 and 2,005), and `807d433`
+  gained 308 suites in one hour of queue retries.
+- A commit can still cross 1,000 suites after the 900-suite margin check but
+  before an owner lists it; the next hourly run then takes the suite path. Not verified: the
 suite query from hosted runner IPs against any organisation IP allow list; it
 filters by app ID and reads only counts, so it traverses no foreign app object.

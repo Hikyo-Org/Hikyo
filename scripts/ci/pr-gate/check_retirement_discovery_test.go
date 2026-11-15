@@ -664,7 +664,7 @@ func retirementSuitesResponse(f *queueFixture, head string, total int, suites []
 func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 	for _, tc := range []struct{ fault, wantErr string }{
 		{fault: ""},
-		{fault: "many suites, few records", wantErr: "beyond what retirement can list"},
+		{fault: "many suites, few records", wantErr: "may be beyond what retirement can list"},
 		{fault: "many suites, all finished"},
 		{fault: "suites at margin stay on REST"},
 		{fault: "exactly 100 unfinished suites"},

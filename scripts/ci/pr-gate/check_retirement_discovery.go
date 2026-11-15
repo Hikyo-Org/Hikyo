@@ -446,7 +446,8 @@ func (c *controller) retirementCheckInventory(ctx context.Context, head, base st
 func (c *controller) retirementPendingChecks(ctx context.Context, head string, manySuites bool) (bool, bool, []reporterRetirementTarget, error) {
 	checks, err := c.unfinishedRetirementChecks(ctx, head, manySuites)
 	if err != nil {
-		return false, false, nil, err
+		// Up to four workers' errors are joined, so name the failing head.
+		return false, false, nil, fmt.Errorf("retirement inventory for %s: %w", head, err)
 	}
 	queue, observation := false, false
 	reporters := []reporterRetirementTarget{}
@@ -476,7 +477,7 @@ func (c *controller) retirementPendingChecks(ctx context.Context, head string, m
 	// The owners that retire these list by commit, which REST caps at the newest
 	// 1000 suites, so they could silently miss a target routed from here.
 	if manySuites && (queue || observation || len(reporters) > 0) {
-		return false, false, nil, fmt.Errorf("unfinished synthetic context on %s, which has more than %d check suites, is beyond what retirement can list; operator review required", head, retirementSuiteMargin)
+		return false, false, nil, fmt.Errorf("unfinished synthetic context on %s, which has more than %d check suites, may be beyond what retirement can list; operator review required", head, retirementSuiteMargin)
 	}
 	return queue, observation, reporters, nil
 }

@@ -585,15 +585,21 @@ and REST reads only the suites where they differ. Suite status is not used;
 GitHub reports a suite completed while a synthetic run in it is still queued.
 The retire and reporter owners list checks by commit under the same REST cap,
 so an unfinished synthetic context on a commit with more than 900 suites refuses
-for operator review instead of being routed to an owner that cannot see it.
-API failures, incomplete pages, more
+all targets instead of being routed to an owner that may not see it. No operator
+tool clears that refusal: it lasts until the context completes, the commit's
+rollup turns `SUCCESS` or the commit leaves the window. Targeted dispatch on a
+head with more than 1,000 suites can likewise miss such a context and report
+success. API failures, incomplete pages, more
 than 5,000 `github-actions` suites or 100 unfinished suites on such a commit,
 more than 1,000 records in one suite's listing or more than 100 target heads
-refuse all targets. A suite-count refusal persists until the commit leaves the
-1,000-commit window, about three weeks at the current merge rate. A commit still
+refuse all targets. A suite-count refusal persists until the commit's rollup
+turns `SUCCESS` or it leaves the 1,000-commit window, about three weeks at the
+current merge rate. A commit still
 gaining checks, such as a busy main head, can change its totals mid-scan and
 refuse until the next run. A full window takes about three to four minutes, so
-discovery has a five-minute deadline. Window completion is not
+discovery has a five-minute deadline. Each 100 suites scanned adds about 2 s and
+history pages run one after another, so the deadline, not the suite cap, bounds
+oversized commits: about 40 more suite pages per window than today's 36. Window completion is not
 evidence that all history was cleaned.
 Legacy observer heads run in batches of at most ten unique heads concurrently
 under their one global lease and compiled executable. Every child is awaited,
