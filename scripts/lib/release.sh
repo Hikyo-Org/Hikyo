@@ -37,6 +37,12 @@ verify_release_compatibility_artifact() {
 # Arch package metadata cannot preserve +... as an independently checked identity.
 release_semver_pattern='^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z][0-9A-Za-z.-]*)?$'
 
+# One exact rule for "this Actions run is the release-build workflow". The run
+# path is the bare workflow file or the file with an @ref suffix; a different
+# file that merely shares the prefix is not the release build.
+# shellcheck disable=SC2016
+release_run_jq='def release_run: .path == ".github/workflows/release.yml" or (.path | startswith(".github/workflows/release.yml@"));'
+
 sha256_file() {
 	if command -v sha256sum >/dev/null 2>&1; then
 		sha256sum "$1" | awk '{print $1}'

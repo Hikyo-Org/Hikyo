@@ -12,8 +12,9 @@
 #      authenticated latest stable release (the Go verifier decides); the latest
 #      published release must be that stable release; no higher stable tag may
 #      exist. A bot with an empty or different configured id is refused.
-#   2. A person pushed (actor and triggering actor are Users): the tag object
-#      must be GitHub-verified and that person must hold the admin role.
+#   2. A person pushed (actor and triggering actor are both Users): the tag
+#      object must be GitHub-verified with reason "valid". Only repository admins
+#      can create v* tags at all (creation ruleset), so no admin read happens here.
 # HIKYO_RELEASE_RUN_ID names the run; without it the latest push run of the tag
 # is used (the local publication ceremony).
 set -eu
@@ -54,8 +55,8 @@ printf '%s\n' "$run_id" | grep -Eq '^[1-9][0-9]*$' || refuse 'invalid release-bu
 api_to "$scratch/run.json" "repos/$repository/actions/runs/$run_id"
 bot=${STABLE_RELEASE_APP_BOT_ID:-}
 printf '%s\n' "$bot" | grep -Eq '^([1-9][0-9]*)?$' || refuse 'invalid stable-release bot id'
-jq -e --arg repo "$repository" --arg tag "$tag" --arg commit "$commit" '
-  (.path == ".github/workflows/release.yml" or (.path | startswith(".github/workflows/release.yml@"))) and
+jq -e --arg repo "$repository" --arg tag "$tag" --arg commit "$commit" "$release_run_jq"'
+  release_run and
   .event == "push" and .head_branch == $tag and .head_sha == $commit and
   .repository.full_name == $repo and (.actor.id | type == "number") and (.triggering_actor.id | type == "number")
 ' "$scratch/run.json" >/dev/null || refuse 'the run is not the release-build push of this tag and commit'
@@ -93,12 +94,10 @@ else
     refuse 'the tag pusher is neither a person nor the stable-release app'
   printf '%s\n' "$signed_tag" | jq -e '.verification.verified == true and .verification.reason == "valid"' >/dev/null ||
     refuse 'GitHub-verified annotated tag on exact commit required'
-  # The creation ruleset already limits tags to admins; check the pusher again here.
-  for login in $(jq -r '.actor.login, .triggering_actor.login' "$scratch/run.json" | sort -u); do
-    printf '%s\n' "$login" | grep -Eq '^[A-Za-z0-9-]+$' || refuse 'invalid tag pusher login'
-    api_to "$scratch/permission.json" "repos/$repository/collaborators/$login/permission"
-    jq -e '.permission == "admin"' "$scratch/permission.json" >/dev/null || refuse "tag pusher $login is not a repository admin"
-  done
+  # No collaborator-permission read: the creation ruleset (configure-repository.sh
+  # asserts it) lets only repository admins create v* tags, so a person's push of
+  # this tag already proves the admin role. The type and the verified tag are the
+  # remaining checks here.
 fi
 "$script_dir/require-green-main.sh" "$repository" "$commit"
 if [ -n "${HIKYO_AUTHORITY_OUT:-}" ]; then printf '%s\n' "$authority" >"$HIKYO_AUTHORITY_OUT"; fi

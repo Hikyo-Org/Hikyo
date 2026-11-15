@@ -40,11 +40,15 @@ not_found() { printf 'gh: Not Found (HTTP 404)\n' >&2; exit 1; }
 boom() { printf 'gh: server error (HTTP 500)\n' >&2; exit 1; }
 # A mode whose name ends in the lookup's name makes exactly that lookup fail.
 failing() { case "$mode" in *"$1") boom ;; esac; }
+# The run path is the bare workflow file or the file with an @ref suffix. A file
+# that merely shares the prefix is a different workflow and never a release build.
+run_path=.github/workflows/release.yml@refs/tags/v1.1.1
+[ "$mode" != run-prefix-path ] || run_path=.github/workflows/release.yml.evil
 # id actor actor-type triggering triggering-type status conclusion run-number head_sha branch
 run_json() {
 	jq -nc --argjson id "$1" --argjson a "$2" --arg at "$3" --argjson t "$4" --arg tt "$5" --arg status "$6" --arg conclusion "$7" \
-		--argjson n "$8" --arg sha "$9" --arg branch "${10}" '{id:$id,status:$status,conclusion:(if $conclusion == "null" then null else $conclusion end),
-		run_number:$n,run_attempt:1,head_sha:$sha,head_branch:$branch,event:"push",path:".github/workflows/release.yml@refs/tags/v1.1.1",
+		--argjson n "$8" --arg sha "$9" --arg branch "${10}" --arg path "$run_path" '{id:$id,status:$status,conclusion:(if $conclusion == "null" then null else $conclusion end),
+		run_number:$n,run_attempt:1,head_sha:$sha,head_branch:$branch,event:"push",path:$path,
 		repository:{full_name:"o/r"},actor:{id:$a,type:$at},triggering_actor:{id:$t,type:$tt}}'
 }
 tag_run() { # the release-build run of v1.1.1 for this mode
@@ -59,7 +63,7 @@ tag_run() { # the release-build run of v1.1.1 for this mode
 }
 tag_exists() {
 	case "$mode" in
-		tag-exists | build-running | build-ok | build-failed | human-run | human-rerun | run-not-started | run-other-commit | no-artifact | expired-artifact | artifact-fail | runs-fail) return 0 ;;
+		tag-exists | build-running | build-ok | build-failed | human-run | human-rerun | run-not-started | run-prefix-path | run-other-commit | no-artifact | expired-artifact | artifact-fail | runs-fail) return 0 ;;
 		tag-race) [ -e "$FIXTURE/created" ] ;;
 		*) return 1 ;;
 	esac
@@ -300,6 +304,7 @@ done
 expect_stall docs-running wait
 # --- plan: an existing tag decides by who pushed it and how its run ended.
 expect_stall run-not-started wait
+expect_stall run-prefix-path wait
 expect_stall run-other-commit wait
 expect_stall build-running wait
 expect_stall no-artifact wait
@@ -364,7 +369,7 @@ printf '%064d\n' 0 >"$scratch/digest"
 (VERSION=1.1.1 RUN_ID=77 DIGEST_FILE="$scratch/digest" run build-ok publish)
 called "publish o/r v1.1.1 $(printf '%064d' 0) $repo/release/trust run=77 state=" || fail 'publish helper not called with the artifact digest'
 called 'stable verify .*--trust-only --state' || fail 'rollback state was not seeded from main trust'
-for mode in human-run human-rerun run-other-commit build-failed build-running; do
+for mode in human-run human-rerun run-other-commit run-prefix-path build-failed build-running; do
 	(export VERSION=1.1.1 RUN_ID=77 DIGEST_FILE="$scratch/digest"; expect_dies 'not a successful release-build' "published a draft for $mode" run "$mode" publish)
 	called '^publish' && fail "the publish helper ran for $mode"
 done

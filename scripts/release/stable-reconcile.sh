@@ -215,8 +215,8 @@ plan_inner() {
 		tag_commit "$next_tag"
 		api "$work/runs.json" --paginate "repos/$GH_REPO/actions/workflows/release.yml/runs?event=push&head_sha=$tagged_commit&per_page=100"
 		# Only the exact push of this tag at this commit counts, whoever started it.
-		jq -s -c --arg tag "$next_tag" --arg commit "$tagged_commit" '[.[].workflow_runs[] |
-			select(.head_sha == $commit and .head_branch == $tag and .event == "push" and (.path | startswith(".github/workflows/release.yml")))]' \
+		jq -s -c --arg tag "$next_tag" --arg commit "$tagged_commit" "$release_run_jq"'[.[].workflow_runs[] |
+			select(.head_sha == $commit and .head_branch == $tag and .event == "push" and release_run)]' \
 			"$work/runs.json" >"$work/tag-runs.json"
 		jq -c --argjson bot "$STABLE_RELEASE_APP_BOT_ID" '[.[] | select(.actor.id == $bot and .triggering_actor.id == $bot)] | sort_by(.run_number, .run_attempt) | last // empty' \
 			"$work/tag-runs.json" >"$work/bot-run.json"
@@ -384,8 +384,8 @@ publish() {
 	# publish helper checks the same authority again before it touches the release.
 	tag_commit "v$VERSION"
 	api "$work/run.json" "repos/$GH_REPO/actions/runs/$RUN_ID"
-	jq -e --arg tag "v$VERSION" --arg commit "$tagged_commit" --arg repo "$GH_REPO" --argjson bot "$STABLE_RELEASE_APP_BOT_ID" '
-		(.path | startswith(".github/workflows/release.yml")) and .event == "push" and .head_branch == $tag and .head_sha == $commit and
+	jq -e --arg tag "v$VERSION" --arg commit "$tagged_commit" --arg repo "$GH_REPO" --argjson bot "$STABLE_RELEASE_APP_BOT_ID" "$release_run_jq"'
+		release_run and .event == "push" and .head_branch == $tag and .head_sha == $commit and
 		.repository.full_name == $repo and .status == "completed" and .conclusion == "success" and
 		.actor.id == $bot and .triggering_actor.id == $bot and .actor.type == "Bot" and .triggering_actor.type == "Bot"
 	' "$work/run.json" >/dev/null || die "run $RUN_ID is not a successful release-build of v$VERSION started and triggered by the stable-release app; a person's release is published by the ceremony"

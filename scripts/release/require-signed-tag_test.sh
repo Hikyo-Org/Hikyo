@@ -23,8 +23,11 @@ case "$*" in
     # The signature says nothing about the pusher: signed-bot and signed-human differ only in the run.
     verified=false
     [ "${FIXTURE_SIGNED:-}" != 1 ] || verified=true
-    case "$mode" in human*|user-signed-*) verified=true ;; esac
-    jq -nc --argjson verified "$verified" --arg commit "$FIXTURE_COMMIT" '{tag:"v1.1.1",object:{type:"commit",sha:$commit},verification:{verified:$verified,reason:(if $verified then "valid" else "unsigned" end)}}' ;;
+    case "$mode" in user-unsigned) ;; human*|user-*) verified=true ;; esac
+    reason=unsigned
+    [ "$verified" != true ] || reason=valid
+    [ "$mode" != user-bad-reason ] || reason=expired_key
+    jq -nc --argjson verified "$verified" --arg reason "$reason" --arg commit "$FIXTURE_COMMIT" '{tag:"v1.1.1",object:{type:"commit",sha:$commit},verification:{verified:$verified,reason:$reason}}' ;;
   'api repos/owner/repo/actions/workflows/release.yml/runs?event=push&head_sha='*'&per_page=100')
     jq -nc --arg commit "$FIXTURE_COMMIT" '{workflow_runs:[
       {id:41,head_sha:$commit,head_branch:"v1.1.1",event:"push",run_number:1,run_attempt:1},
@@ -32,6 +35,7 @@ case "$*" in
       {id:43,head_sha:$commit,head_branch:"v1.1.0",event:"push",run_number:9,run_attempt:1}]}' ;;
   'api repos/owner/repo/actions/runs/42')
     actor=777 triggering=777 atype=Bot ttype=Bot event=push branch=v1.1.1 path=.github/workflows/release.yml
+    alogin=pusher tlogin=pusher
     case "$mode" in
       human*|user-*) actor=1 triggering=1 atype=User ttype=User ;;
       app-rerun-by-human) triggering=1 ttype=User ;;
@@ -40,15 +44,18 @@ case "$*" in
       wrong-event) event=workflow_dispatch ;;
       wrong-branch) branch=v1.1.2 ;;
       wrong-workflow) path=.github/workflows/other.yml ;;
+      prefix-workflow) path=.github/workflows/release.yml.evil ;;
     esac
-    jq -nc --argjson a "$actor" --argjson t "$triggering" --arg at "$atype" --arg tt "$ttype" --arg event "$event" --arg branch "$branch" --arg path "$path" --arg commit "$FIXTURE_COMMIT" \
-      '{path:$path,event:$event,head_branch:$branch,head_sha:$commit,repository:{full_name:"owner/repo"},actor:{id:$a,type:$at,login:"pusher"},triggering_actor:{id:$t,type:$tt,login:"pusher"}}' ;;
-  'api repos/owner/repo/collaborators/pusher/permission')
     case "$mode" in
-      user-signed-admin-api-failure) printf 'gh: boom (HTTP 500)\n' >&2; exit 1 ;;
-      *nonadmin) echo '{"permission":"write"}' ;;
-      *) echo '{"permission":"admin"}' ;;
-    esac ;;
+      # A person re-ran another person's push: two different logins, both Users.
+      human-rerun) triggering=2 tlogin=other ;;
+      user-actor-bot-type) atype=Bot ;;
+      user-triggering-bot-type) ttype=Bot ;;
+      user-actor-org-type) atype=Organization ;;
+      user-triggering-org-type) ttype=Organization ;;
+    esac
+    jq -nc --argjson a "$actor" --argjson t "$triggering" --arg at "$atype" --arg tt "$ttype" --arg al "$alogin" --arg tl "$tlogin" --arg event "$event" --arg branch "$branch" --arg path "$path" --arg commit "$FIXTURE_COMMIT" \
+      '{path:$path,event:$event,head_branch:$branch,head_sha:$commit,repository:{full_name:"owner/repo"},actor:{id:$a,type:$at,login:$al},triggering_actor:{id:$t,type:$tt,login:$tl}}' ;;
   'api repos/owner/repo/releases/latest')
     if [ "$mode" = stale-latest ]; then echo '{"tag_name":"v1.0.0"}'; elif [ "$mode" = latest-api-failure ]; then exit 1; else echo '{"tag_name":"v1.1.0"}'; fi ;;
   'api --paginate repos/owner/repo/git/matching-refs/tags/v --jq .[].ref')
@@ -76,14 +83,15 @@ reason() {
   case $1 in
     lightweight) echo 'annotated tag on exact commit required' ;;
     app-rerun-by-human|wrong-bot|bot-no-type) echo 'started and triggered by the stable-release app' ;;
-    wrong-event|wrong-branch|wrong-workflow) echo 'not the release-build push of this tag' ;;
+    wrong-event|wrong-branch|wrong-workflow|prefix-workflow) echo 'not the release-build push of this tag' ;;
     not-patch) echo 'patch successor' ;;
     stale-latest) echo 'latest published release is not' ;;
     higher-tag) echo 'higher stable tag exists' ;;
     red-ci) echo 'green' ;;
-    user-signed-nonadmin) echo 'is not a repository admin' ;;
-    user-signed-admin-api-failure|latest-api-failure|tags-api-failure) echo 'cannot read: gh api' ;;
-    user-unsigned) echo 'GitHub-verified annotated tag on exact commit required' ;;
+    latest-api-failure|tags-api-failure) echo 'cannot read: gh api' ;;
+    user-actor-bot-type|user-triggering-bot-type) echo 'started and triggered by the stable-release app' ;;
+    user-actor-org-type|user-triggering-org-type) echo 'neither a person nor the stable-release app' ;;
+    user-unsigned|user-bad-reason) echo 'GitHub-verified annotated tag on exact commit required' ;;
     app) echo 'no stable-release bot id is configured' ;;
     *) echo "$1" ;;
   esac
@@ -108,13 +116,19 @@ expect_accepted app
 [ "$(cat "$scratch/authority")" = app ] || { printf 'a verified bot tag skipped the app rules\n' >&2; exit 1; }
 expect_accepted human
 [ "$(cat "$scratch/authority")" = human ] || { printf 'human authority not reported\n' >&2; exit 1; }
+# A person's re-run of a person's push (two different User logins) is a person's tag.
+expect_accepted human-rerun
+[ "$(cat "$scratch/authority")" = human ] || { printf 'a human rerun lost the human authority\n' >&2; exit 1; }
+# The admin role is never read from the collaborators API.
+if grep -q 'collaborators' "$scratch/calls"; then printf 'the collaborators API was read\n' >&2; exit 1; fi
 # Without HIKYO_RELEASE_RUN_ID (the local ceremony) the latest push run of the tag decides.
 (unset HIKYO_RELEASE_RUN_ID; expect_accepted human; grep -q 'workflows/release.yml/runs?event=push&head_sha=' "$scratch/calls" || { printf 'the run was not looked up\n' >&2; exit 1; })
 (unset HIKYO_RELEASE_RUN_ID; expect_accepted app; [ "$(cat "$scratch/authority")" = app ])
 # A human tag needs no app variable at all.
 (unset STABLE_RELEASE_APP_BOT_ID; expect_accepted human)
-for mode in lightweight app-rerun-by-human wrong-event wrong-branch wrong-workflow not-patch stale-latest higher-tag red-ci \
-  wrong-bot bot-no-type user-signed-nonadmin user-signed-admin-api-failure latest-api-failure tags-api-failure; do
+for mode in lightweight app-rerun-by-human wrong-event wrong-branch wrong-workflow prefix-workflow not-patch stale-latest higher-tag red-ci \
+  wrong-bot bot-no-type latest-api-failure tags-api-failure \
+  user-actor-bot-type user-triggering-bot-type user-actor-org-type user-triggering-org-type user-bad-reason; do
   expect_refused "$mode"
 done
 # A GitHub-verified tag pushed by the bot must still meet every app gate: the
