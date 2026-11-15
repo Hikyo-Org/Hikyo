@@ -1,0 +1,318 @@
+# Unattended stable PATCH release for Dependabot security updates. One
+# level-triggered reconciler: each run inspects live state and does only the
+# next step (tag, wait for the build, publish, sync trust, wait for the docs).
+# It is inert until the owner sets the STABLE_RELEASE_APP_CLIENT_ID and
+# STABLE_RELEASE_APP_BOT_ID repository variables: every job is skipped before
+# its environment is resolved. See docs/release/online-signing.md.
+#
+# This is the main-ref workflow that publishes. The tag-ref release.yml still
+# only stages a signed draft. Each job mints a token scoped to its own step.
+name: stable-release-reconciler
+
+on:
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: [release-build, docs]
+    types: [completed]
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Plan only, print the next step and change nothing."
+        type: boolean
+        default: true
+
+permissions: {}
+
+# Its own group: release.yml holds the repository-wide stable-release group
+# while a build runs, and a cancelled or queued build must never be this run's.
+concurrency:
+  group: stable-release-reconciler
+  cancel-in-progress: false
+
+env:
+  GOFLAGS: -mod=readonly
+
+jobs:
+  # Read-only: decides the next step and the side lanes.
+  plan:
+    if: vars.STABLE_RELEASE_APP_CLIENT_ID != '' && vars.STABLE_RELEASE_APP_BOT_ID != '' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The environment holds the App key and admits only main.
+    environment: stable-release
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      action: ${{ steps.plan.outputs.action }}
+      reason: ${{ steps.plan.outputs.reason }}
+      version: ${{ steps.plan.outputs.version }}
+      commit: ${{ steps.plan.outputs.commit }}
+      run_id: ${{ steps.plan.outputs.run_id }}
+      artifact: ${{ steps.plan.outputs.artifact }}
+      issue: ${{ steps.plan.outputs.issue }}
+      issue_text: ${{ steps.plan.outputs.issue_text }}
+      automerge: ${{ steps.plan.outputs.automerge }}
+      homebrew: ${{ steps.plan.outputs.homebrew }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Mint a token scoped to this step only
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.STABLE_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.STABLE_RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: read
+          permission-pull-requests: read
+          permission-vulnerability-alerts: read
+          permission-metadata: read
+      - name: Plan the single next step
+        id: plan
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: ./scripts/release/stable-reconcile.sh plan
+
+  # Creates the app-authored annotated tag. That push starts release-build as the app.
+  tag:
+    needs: plan
+    if: vars.STABLE_RELEASE_APP_CLIENT_ID != '' && vars.STABLE_RELEASE_APP_BOT_ID != '' && github.ref == 'refs/heads/main' && needs.plan.outputs.action == 'tag' && !inputs.dry_run
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The environment holds the App key and admits only main.
+    environment: stable-release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Mint a token scoped to this step only
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.STABLE_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.STABLE_RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+      - name: Create the annotated tag object and ref
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          COMMIT: ${{ needs.plan.outputs.commit }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: ./scripts/release/stable-reconcile.sh tag
+
+  # Publishes from main. The digest is a tamper check against the exact build run,
+  # not a human review; every draft, OCI and immutability check stays.
+  publish:
+    needs: plan
+    if: vars.STABLE_RELEASE_APP_CLIENT_ID != '' && vars.STABLE_RELEASE_APP_BOT_ID != '' && github.ref == 'refs/heads/main' && needs.plan.outputs.action == 'publish' && !inputs.dry_run
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    # The environment holds the App key and admits only main.
+    environment: stable-release
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Install pinned Cosign
+        run: |
+          mkdir -p "$HOME/.cosign"
+          ./scripts/ci/fetch-pinned-tool.sh cosign-linux-amd64 "$HOME/.cosign/cosign"
+          chmod +x "$HOME/.cosign/cosign"
+          echo "$HOME/.cosign" >>"$GITHUB_PATH"
+      - name: Download the manifest digest of the exact successful run
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.plan.outputs.artifact }}
+          run-id: ${{ needs.plan.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/manifest-digest
+      - name: Mint a token scoped to this step only
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.STABLE_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.STABLE_RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-administration: read
+      - name: Publish the staged draft
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          RUN_ID: ${{ needs.plan.outputs.run_id }}
+          DIGEST_FILE: ${{ runner.temp }}/manifest-digest/release-manifest.sha256
+          STABLE_RELEASE_APP_BOT_ID: ${{ vars.STABLE_RELEASE_APP_BOT_ID }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: ./scripts/release/stable-reconcile.sh publish
+
+  # Records the published release in main trust through a GitHub-signed app commit.
+  sync-trust:
+    needs: plan
+    if: vars.STABLE_RELEASE_APP_CLIENT_ID != '' && vars.STABLE_RELEASE_APP_BOT_ID != '' && github.ref == 'refs/heads/main' && needs.plan.outputs.action == 'sync-trust' && !inputs.dry_run
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The environment holds the App key and admits only main.
+    environment: stable-release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Mint a token scoped to this step only
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.STABLE_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.STABLE_RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Open the app-signed trust PR and queue it
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+          STABLE_RELEASE_APP_BOT_ID: ${{ vars.STABLE_RELEASE_APP_BOT_ID }}
+        run: ./scripts/release/stable-reconcile.sh sync-trust
+
+  # Homebrew follows every latest stable release, human or unattended. The token
+  # reaches only the tap repository.
+  homebrew:
+    needs: plan
+    if: vars.STABLE_RELEASE_APP_CLIENT_ID != '' && vars.STABLE_RELEASE_APP_BOT_ID != '' && github.ref == 'refs/heads/main' && needs.plan.outputs.homebrew != '' && !inputs.dry_run
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The environment holds the App key and admits only main.
+    environment: stable-release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Mint a token scoped to this step only
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.STABLE_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.STABLE_RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: homebrew-tap
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Update the stable cask and merge its PR
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.plan.outputs.homebrew }}
+          HIKYO_HOMEBREW_TAP_REPOSITORY: ${{ github.repository_owner }}/homebrew-tap
+        run: ./scripts/release/stable-reconcile.sh homebrew
+
+  # Runs on the main ref with the App token, never with Dependabot's restricted one.
+  automerge:
+    needs: plan
+    if: vars.STABLE_RELEASE_APP_CLIENT_ID != '' && vars.STABLE_RELEASE_APP_BOT_ID != '' && github.ref == 'refs/heads/main' && needs.plan.outputs.automerge != '' && !inputs.dry_run
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The environment holds the App key and admits only main.
+    environment: stable-release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Mint a token scoped to this step only
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.STABLE_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.STABLE_RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Queue the proven Dependabot security updates
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          PRS: ${{ needs.plan.outputs.automerge }}
+        run: ./scripts/release/stable-reconcile.sh automerge
+
+  # Needs no App permission: the workflow token files the one stall issue.
+  issue:
+    needs: plan
+    if: vars.STABLE_RELEASE_APP_CLIENT_ID != '' && vars.STABLE_RELEASE_APP_BOT_ID != '' && github.ref == 'refs/heads/main' && needs.plan.outputs.issue != 'none' && !inputs.dry_run
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Open, update or close the single stall issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE_TEXT: ${{ needs.plan.outputs.issue_text }}
+          ISSUE_ACTION: ${{ needs.plan.outputs.issue }}
+        run: ./scripts/release/stable-reconcile.sh issue "$ISSUE_ACTION"
