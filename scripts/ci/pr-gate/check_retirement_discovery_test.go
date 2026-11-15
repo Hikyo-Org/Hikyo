@@ -658,7 +658,7 @@ func TestRetirementDiscoveryReportsCompleteAncestryAtExactWindowSize(t *testing.
 }
 
 func retirementSuitesResponse(f *queueFixture, head string, total int, suites []map[string]any, more bool, cursor string) map[string]any {
-	return map[string]any{"data": map[string]any{"repository": map[string]any{"databaseId": f.c.repo.ID, "object": map[string]any{"oid": head, "checkSuites": map[string]any{"totalCount": total, "nodes": suites, "pageInfo": map[string]any{"hasNextPage": more, "endCursor": cursor}}}}}}
+	return map[string]any{"data": map[string]any{"repository": map[string]any{"databaseId": f.c.repo.ID, "object": map[string]any{"oid": head, "every": map[string]any{"totalCount": total}, "checkSuites": map[string]any{"totalCount": total, "nodes": suites, "pageInfo": map[string]any{"hasNextPage": more, "endCursor": cursor}}}}}}
 }
 
 func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
@@ -667,6 +667,9 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 		{fault: "many suites, few records", wantErr: "may be beyond what retirement can list"},
 		{fault: "many suites, all finished"},
 		{fault: "suites grew past margin", wantErr: "may be beyond what retirement can list"},
+		{fault: "foreign suites grew past margin", wantErr: "may be beyond what retirement can list"},
+		{fault: "missing every-app suite count", wantErr: "incomplete retirement check suite count"},
+		{fault: "fewer suites than github-actions", wantErr: "incomplete retirement check suite count"},
 		{fault: "suites at margin stay on REST"},
 		{fault: "exactly 100 unfinished suites"},
 		{fault: "all completed"},
@@ -760,6 +763,13 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 				first[6], second[0] = suite(7, 0), suite(101, 0)
 				first[6]["all"] = map[string]any{"totalCount": 4}
 				suiteRuns = map[int64][]map[string]any{7: {native[1]}}
+			case "foreign suites grew past margin":
+				// REST's suite cap also counts other apps' suites, which the scan filters out.
+				suites["every"] = map[string]any{"totalCount": retirementSuiteMargin + 1}
+			case "missing every-app suite count":
+				delete(suites, "every")
+			case "fewer suites than github-actions":
+				suites["every"] = map[string]any{"totalCount": total - 1}
 			case "foreign repository":
 				firstPage["data"].(map[string]any)["repository"].(map[string]any)["databaseId"] = 11
 			case "foreign object":

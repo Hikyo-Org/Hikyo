@@ -293,7 +293,7 @@ func (c *controller) retirementSuitesQuery(head, after string) string {
 	if after != "" {
 		args += fmt.Sprintf(",after:%q", after)
 	}
-	return fmt.Sprintf(`query{repository(owner:%q,name:%q){databaseId object(oid:%q){... on Commit{oid checkSuites(%s,filterBy:{appId:%d}){totalCount nodes{databaseId all:checkRuns(first:1,filterBy:{checkType:LATEST}){totalCount} done:checkRuns(first:1,filterBy:{checkType:LATEST,statuses:[COMPLETED]}){totalCount}} pageInfo{hasNextPage endCursor}}}}}}`, parts[0], parts[1], head, args, actionsAppID)
+	return fmt.Sprintf(`query{repository(owner:%q,name:%q){databaseId object(oid:%q){... on Commit{oid every:checkSuites{totalCount} checkSuites(%s,filterBy:{appId:%d}){totalCount nodes{databaseId all:checkRuns(first:1,filterBy:{checkType:LATEST}){totalCount} done:checkRuns(first:1,filterBy:{checkType:LATEST,statuses:[COMPLETED]}){totalCount}} pageInfo{hasNextPage endCursor}}}}}}`, parts[0], parts[1], head, args, actionsAppID)
 }
 
 func (c *controller) oversizedRetirementChecks(ctx context.Context, head string) ([]check, int, error) {
@@ -324,7 +324,7 @@ func (c *controller) unfinishedRetirementSuites(ctx context.Context, head string
 	unfinished := []int64{}
 	seen := make(map[int64]bool)
 	seenCursors := make(map[string]bool)
-	total, after := -1, ""
+	total, every, after := -1, 0, ""
 	for page := 1; page <= retirementSuitePages; page++ {
 		var response struct {
 			Errors []json.RawMessage `json:"errors"`
@@ -332,7 +332,10 @@ func (c *controller) unfinishedRetirementSuites(ctx context.Context, head string
 				Repo *struct {
 					ID     int64 `json:"databaseId"`
 					Object *struct {
-						OID    string `json:"oid"`
+						OID   string `json:"oid"`
+						Every *struct {
+							Total *int `json:"totalCount"`
+						} `json:"every"`
 						Suites *struct {
 							Total *int `json:"totalCount"`
 							Nodes []*struct {
@@ -365,6 +368,11 @@ func (c *controller) unfinishedRetirementSuites(ctx context.Context, head string
 			return nil, 0, errors.New("incomplete or changing retirement check suite inventory")
 		}
 		total = *part.Total
+		// REST's newest-1000-suite cap counts every app's suites, not only these.
+		if repo.Object.Every == nil || repo.Object.Every.Total == nil || *repo.Object.Every.Total < total {
+			return nil, 0, errors.New("incomplete retirement check suite count")
+		}
+		every = max(every, *repo.Object.Every.Total)
 		if total > retirementSuitePages*100 {
 			return nil, 0, fmt.Errorf("retirement checks on %s span more than %d github-actions check suites; operator review required", head, retirementSuitePages*100)
 		}
@@ -386,7 +394,7 @@ func (c *controller) unfinishedRetirementSuites(ctx context.Context, head string
 			if len(seen) != total {
 				return nil, 0, errors.New("incomplete retirement check suite pagination")
 			}
-			return unfinished, total, nil
+			return unfinished, every, nil
 		}
 		if len(seen) >= total {
 			return nil, 0, errors.New("incomplete retirement check suite pagination")
