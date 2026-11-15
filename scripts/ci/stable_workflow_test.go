@@ -12,11 +12,12 @@ import (
 )
 
 // sourceProofOutputs lists every value of the flag package's output flag: - or --,
-// space or = separator, quoted or unquoted. Values containing spaces are not supported.
+// space or = separator, quoted or unquoted. Single quotes are kept: bash does not expand
+// variables inside them. Values containing spaces are not supported.
 func sourceProofOutputs(run string) []string {
 	var values []string
 	for _, match := range regexp.MustCompile(`(?:^|\s)--?output(?:=|\s+)(\S+)`).FindAllStringSubmatch(run, -1) {
-		values = append(values, strings.Trim(match[1], `"'`))
+		values = append(values, strings.Trim(match[1], `"`))
 	}
 	return values
 }
@@ -35,6 +36,13 @@ func TestSourceProofOutputsMatchEveryFlagForm(t *testing.T) {
 		if got := sourceProofOutputs(run); len(got) != want {
 			t.Errorf("%q: got %q, want %d output flags", run, got, want)
 		}
+	}
+}
+
+func TestSourceProofOutputsKeepSingleQuotes(t *testing.T) {
+	got := sourceProofOutputs(`--output '$RUNNER_TEMP/a.json'`)
+	if len(got) != 1 || got[0] != `'$RUNNER_TEMP/a.json'` {
+		t.Fatalf("single-quoted value must stay quoted so it cannot equal an expanded path, got %q", got)
 	}
 }
 
