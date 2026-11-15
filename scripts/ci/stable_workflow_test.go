@@ -16,7 +16,7 @@ import (
 // variables inside them. Values containing spaces are not supported.
 func sourceProofOutputs(run string) []string {
 	var values []string
-	for _, match := range regexp.MustCompile(`(?:^|\s)--?output(?:=|\s+)(\S+)`).FindAllStringSubmatch(run, -1) {
+	for _, match := range regexp.MustCompile(`(?:^|\s)--?output(?:=|\s+|$)(\S*)`).FindAllStringSubmatch(run, -1) {
 		values = append(values, strings.Trim(match[1], `"`))
 	}
 	return values
@@ -29,6 +29,8 @@ func TestSourceProofOutputsMatchEveryFlagForm(t *testing.T) {
 		`--output "$RUNNER_TEMP/a.json" --output $RUNNER_TEMP/b.json`:                 2,
 		`--output "$RUNNER_TEMP/a.json" --output=$RUNNER_TEMP/b.json`:                 2,
 		`--output "$RUNNER_TEMP/a.json" -output "$RUNNER_TEMP/b.json"`:                2,
+		`--output "$RUNNER_TEMP/a.json" --output=`:                                    2,
+		`--output "$RUNNER_TEMP/a.json" --output`:                                     2,
 		`--output="$RUNNER_TEMP/a.json"`:                                              1,
 		`--mode main --commit "$GITHUB_SHA"`:                                          0,
 		`--mode main --github-output "$GITHUB_OUTPUT" --output "$RUNNER_TEMP/a.json"`: 1,
