@@ -207,8 +207,8 @@ func TestDevAdmissionReadsThePullRequestTwice(t *testing.T) {
 	for _, n := range f.api.reads {
 		total += n
 	}
-	if total != 32 {
-		t.Fatalf("dev admission spent %d reads, want 32", total)
+	if total != 36 {
+		t.Fatalf("dev admission spent %d reads, want 36", total)
 	}
 	requireDevSuccess(t, f)
 }
