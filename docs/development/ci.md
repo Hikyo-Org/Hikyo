@@ -412,6 +412,13 @@ left on a stacked head stays until the next push, because retirement skips
 completed records. A stack's later retarget to main reruns `ci-feedback`, whose callback
 admits the PR afresh.
 
+The `gate-queue` publisher answers only callbacks whose run path is
+`.github/workflows/ci-feedback.yml`. `ci-feedback-retarget.yml` shares the name
+`ci-feedback` so that `gate-dev` selects it, but a run of it is not feedback: the
+publisher's job condition skips it, where its controller would refuse it as a foreign
+callback and leave a red run on the head's check suite. A retarget to main still
+reaches `gate-queue` through its `edited` pull request event.
+
 Discovery on a push to `dev` selects no PR. A green `ci-dev-required` stays valid
 when `dev` moves: the check is not strict about the base, and GitHub itself refuses
 a merge that now conflicts. It reassesses every open PR only when the push changed

@@ -1,0 +1,162 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+)
+
+// laggingListAPI models GitHub's check-run listing trailing a write: after the
+// first write, the next `lag` listings return the records as they were before
+// it. Group job 43743778985 re-listed under a second after its POST and saw
+// nothing, though the record (id 132902584288) existed.
+type laggingListAPI struct {
+	inner *fakeAPI
+	lag   int
+	// stale is what lagging listings show; nil until armed by the first write.
+	stale  []check
+	armed  bool
+	posts  int
+	onPost func(*fakeAPI)
+}
+
+func (a *laggingListAPI) read(ctx context.Context, path string, result any) error {
+	if a.armed && a.lag > 0 && strings.Contains(path, "/check-runs?") {
+		a.lag--
+		live := a.inner.checks
+		a.inner.checks = a.stale
+		defer func() { a.inner.checks = live }()
+	}
+	return a.inner.read(ctx, path, result)
+}
+
+func (a *laggingListAPI) write(ctx context.Context, method, path string, payload, result any) error {
+	if !a.armed {
+		a.armed, a.stale = true, slices.Clone(a.inner.checks)
+	}
+	if method == "POST" {
+		a.posts++
+	}
+	if err := a.inner.write(ctx, method, path, payload, result); err != nil {
+		return err
+	}
+	if method == "POST" && a.onPost != nil {
+		a.onPost(a.inner)
+	}
+	return nil
+}
+
+func ensureBlockingOnEmptyHead(t *testing.T, f *queueFixture) error {
+	t.Helper()
+	session := &queueReconciliation{q: f.q}
+	return session.ensureBlocking(context.Background(), errors.New("group proof metadata incomplete"))
+}
+
+func TestEnsureBlockingWaitsOutLaggingCheckListing(t *testing.T) {
+	f := newQueueFixture(t)
+	waits := recordReadWaits(t)
+	api := &laggingListAPI{inner: f.api, lag: 2}
+	f.c.api = api
+	if err := ensureBlockingOnEmptyHead(t, f); err != nil {
+		t.Fatalf("barrier written but listed late was not confirmed: %v", err)
+	}
+	if api.posts != 1 || len(f.api.writes) != 1 {
+		t.Fatalf("POST count = %d, writes = %d; the write must happen exactly once", api.posts, len(f.api.writes))
+	}
+	if len(f.api.checks) != 1 || !blockingQueueCheck(&f.api.checks[0]) {
+		t.Fatalf("blocking barrier missing: %+v", f.api.checks)
+	}
+	if want := barrierConfirmBackoff[:2]; !slices.Equal(*waits, want) {
+		t.Fatalf("waits = %v, want %v", *waits, want)
+	}
+}
+
+func TestEnsureBlockingRefusesAfterBoundedLag(t *testing.T) {
+	f := newQueueFixture(t)
+	waits := recordReadWaits(t)
+	api := &laggingListAPI{inner: f.api, lag: 1 << 20}
+	f.c.api = api
+	err := ensureBlockingOnEmptyHead(t, f)
+	if err == nil || !strings.Contains(err.Error(), "could not be confirmed") {
+		t.Fatalf("unconfirmed barrier was accepted: %v", err)
+	}
+	if api.posts != 1 || len(f.api.writes) != 1 {
+		t.Fatalf("an unconfirmed CREATE was retried: POSTs = %d, writes = %d", api.posts, len(f.api.writes))
+	}
+	if !slices.Equal(*waits, barrierConfirmBackoff) {
+		t.Fatalf("re-reads were not bounded: waits = %v, want %v", *waits, barrierConfirmBackoff)
+	}
+	if len(f.api.checks) != 1 || !blockingQueueCheck(&f.api.checks[0]) {
+		t.Fatalf("the written barrier must stay blocking: %+v", f.api.checks)
+	}
+}
+
+func TestEnsureBlockingNeverConfirmsADifferentNewestRecord(t *testing.T) {
+	f := newQueueFixture(t)
+	waits := recordReadWaits(t)
+	api := &laggingListAPI{inner: f.api}
+	// A competing writer's newer owned record: its ID is not the written one.
+	api.onPost = func(inner *fakeAPI) {
+		other := inner.checks[len(inner.checks)-1]
+		other.ID++
+		inner.checks = append(inner.checks, other)
+	}
+	f.c.api = api
+	err := ensureBlockingOnEmptyHead(t, f)
+	if err == nil || !strings.Contains(err.Error(), "could not be confirmed") {
+		t.Fatalf("a different newest record confirmed the barrier: %v", err)
+	}
+	if len(*waits) != 0 {
+		t.Fatalf("waited on a listing that is not behind: %v", *waits)
+	}
+}
+
+func TestNewestAfterWriteFollowsTheWrittenStatus(t *testing.T) {
+	record := func(f *queueFixture, status, conclusion string) check {
+		v := check{ID: 7, Name: queueCheckName, HeadSHA: f.pr.Head.SHA, ExternalID: newBinding(f.pr.Base.Repo.ID, f.pr, nil).externalID(), Status: status, Conclusion: conclusion}
+		v.App.ID, v.App.Slug = actionsAppID, "github-actions"
+		return v
+	}
+	for _, tc := range []struct {
+		name  string
+		lag   int
+		waits int
+		done  bool
+	}{
+		{"visible at once", 0, 0, true},
+		{"completed status trails", 2, 2, true},
+		{"completed status never arrives", 1 << 20, len(barrierConfirmBackoff), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newQueueFixture(t)
+			waits := recordReadWaits(t)
+			written := record(f, "completed", "failure")
+			f.api.checks = []check{written}
+			f.c.api = &laggingListAPI{inner: f.api, lag: tc.lag, armed: true, stale: []check{record(f, "queued", "")}}
+			newest, err := f.c.newestAfterWrite(context.Background(), &written)
+			if err != nil || newest == nil || newest.ID != written.ID {
+				t.Fatalf("newest = %+v, err = %v", newest, err)
+			}
+			if got := newest.Status == "completed"; got != tc.done {
+				t.Fatalf("completed = %t, want %t", got, tc.done)
+			}
+			if len(*waits) != tc.waits {
+				t.Fatalf("waits = %v, want %d", *waits, tc.waits)
+			}
+		})
+	}
+}
+
+func TestNewestAfterWriteStopsWhenTheWaitIsCancelled(t *testing.T) {
+	f := newQueueFixture(t)
+	old := readRetryWait
+	readRetryWait = func(context.Context, time.Duration) error { return context.DeadlineExceeded }
+	t.Cleanup(func() { readRetryWait = old })
+	written := check{ID: 7, Status: "queued"}
+	if _, err := f.c.newestAfterWrite(context.Background(), &written); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("a spent deadline did not end the re-read: %v", err)
+	}
+}

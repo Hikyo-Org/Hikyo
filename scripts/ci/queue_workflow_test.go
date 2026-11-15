@@ -141,7 +141,7 @@ func queuePublisherContract(raw []byte) error {
 	head := "${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}"
 	groupHead := "${{ github.event.workflow_run.head_sha }}"
 	wantIf := map[string]string{
-		"publish":  "vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'ci-feedback'))",
+		"publish":  "vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'ci-feedback' && github.event.workflow_run.path == '.github/workflows/ci-feedback.yml'))",
 		"group":    "vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && github.event_name == 'workflow_run' && github.event.workflow_run.name == 'trusted-merge-ci'",
 		"dispatch": "vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')",
 	}
@@ -454,8 +454,14 @@ func TestQueuePublisherRejectsUnsafeWorkflowMutations(t *testing.T) {
 		"legacy context reuse": func(w map[string]any) {
 			queuePublisherStep(w, 2)["env"].(map[string]any)["PR_GATE_CHECK_NAME"] = "ci-required-next"
 		},
-		"missing queue mode":        func(w map[string]any) { queuePublisherStep(w, 2)["run"] = "go run ./scripts/ci/pr-gate" },
-		"skip publication":          func(w map[string]any) { queuePublisherJob(w)["if"] = "false" },
+		"missing queue mode": func(w map[string]any) { queuePublisherStep(w, 2)["run"] = "go run ./scripts/ci/pr-gate" },
+		"skip publication":   func(w map[string]any) { queuePublisherJob(w)["if"] = "false" },
+		// ci-feedback-retarget.yml shares the name `ci-feedback`; its callbacks
+		// (runs 43724319276, 43715591698) failed the Go path check, and a looser
+		// publisher guard would send every title or body edit to it again.
+		"foreign ci-feedback workflow path": func(w map[string]any) {
+			queuePublisherJob(w)["if"] = "vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'ci-feedback'))"
+		},
 		"skip controller":           func(w map[string]any) { queuePublisherStep(w, 2)["if"] = "false" },
 		"masked controller failure": func(w map[string]any) { queuePublisherStep(w, 2)["continue-on-error"] = true },
 		"masked job failure":        func(w map[string]any) { queuePublisherJob(w)["continue-on-error"] = true },

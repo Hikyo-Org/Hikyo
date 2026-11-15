@@ -26,7 +26,11 @@ permissions:
 jobs:
   publish:
     name: publish-${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
-    if: vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'ci-feedback'))
+    # ci-feedback-retarget.yml shares the name `ci-feedback` (gate-dev selects its
+    # callbacks by name), so the path decides which runs are feedback. The Go
+    # check rejects any other path as a foreign callback, and that rejection was
+    # a red run on the head's check suite for every title or body edit of a PR.
+    if: vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'ci-feedback' && github.event.workflow_run.path == '.github/workflows/ci-feedback.yml'))
     runs-on: ubuntu-latest
     timeout-minutes: 1
     permissions:
