@@ -80,6 +80,31 @@ validate_binary_provenance() {
 	' "$1" >/dev/null
 }
 
+# github_rulesets REPOSITORY FILE: every ruleset of the repository, all pages, as one
+# JSON array in FILE. One unpaginated read returns only the first 30, so a policy on
+# a later page would look absent (created twice) or already deleted. A malformed
+# page, or more than 20 pages, stops the caller.
+github_rulesets() {
+	gr_page=1
+	printf '[]\n' >"$2"
+	while :; do
+		"${GH_BIN:-gh}" api "repos/$1/rulesets?per_page=100&page=$gr_page" >"$2.page" || return 1
+		gr_count=$(jq -ser '
+			if length != 1 or (.[0] | type) != "array" then error("invalid ruleset page") else .[0] end |
+			if length > 100 or any(.[]; type != "object" or (.name | type) != "string" or
+				(.id | type) != "number" or .id <= 0 or (.id | floor) != .id)
+			then error("invalid ruleset entry") else length end' "$2.page") || return 1
+		jq -s '.[0] + .[1]' "$2" "$2.page" >"$2.next" || return 1
+		mv "$2.next" "$2"
+		rm -f "$2.page"
+		[ "$gr_count" -eq 100 ] || return 0
+		[ "$gr_page" -lt 20 ] || {
+			printf 'repository policy: incomplete ruleset discovery after 20 pages\n' >&2
+			return 1
+		}
+		gr_page=$((gr_page + 1))
+	done
+}
 is_semver() {
 	printf '%s\n' "$1" | grep -Eq "$release_semver_pattern"
 }

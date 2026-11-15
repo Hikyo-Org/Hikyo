@@ -40,6 +40,7 @@ case "$*" in
       list-failed) exit 1 ;;
       unsynced) printf '[[{"draft":false,"tag_name":"v1.0.0"}]]\n' ;;
       outstanding-draft) printf '[[{"draft":true,"tag_name":"v1.0.0"}]]\n' ;;
+      prerelease-published) printf '[[{"draft":false,"tag_name":"v1.2.0-rc.1"},{"draft":false,"tag_name":"v1.1.0"},{"draft":false,"tag_name":"v1.0.0"}]]\n' ;;
       *) printf '[[]]\n' ;;
     esac ;;
   'api repos/owner/repo/immutable-releases')
@@ -148,6 +149,20 @@ for mode in unsynced outstanding-draft; do
     printf 'stable fixture: conflicting release accepted: %s\n' "$mode" >&2; exit 1
   fi
 done
+# A person's prerelease that trust never recorded blocks the next candidate; once recorded, and
+# even as the trust's highest release while the latest stable is older, nothing is out of sync.
+printf '{"releases":[{"version":"1.0.0"},{"version":"1.1.0"}],"highest_release":"1.1.0"}\n' >"$scratch/prerelease-metadata.json"
+if FIXTURE_MODE=prerelease-published "$script_dir/require-synced-trust.sh" owner/repo "$scratch/prerelease-metadata.json" >"$scratch/error" 2>&1; then
+  printf 'stable fixture: an unsynchronized human prerelease was accepted\n' >&2; exit 1
+fi
+printf '{"releases":[{"version":"1.0.0"},{"version":"1.1.0"},{"version":"1.2.0-rc.1"}],"highest_release":"1.2.0-rc.1"}\n' >"$scratch/prerelease-metadata.json"
+FIXTURE_MODE=prerelease-published "$script_dir/require-synced-trust.sh" owner/repo "$scratch/prerelease-metadata.json" >/dev/null ||
+  { printf 'stable fixture: a synchronized prerelease as highest release was refused\n' >&2; exit 1; }
+# Trust that names a highest release nobody published is out of sync too.
+printf '{"releases":[{"version":"1.0.0"},{"version":"1.5.0"}],"highest_release":"1.5.0"}\n' >"$scratch/prerelease-metadata.json"
+if FIXTURE_MODE=unsynced "$script_dir/require-synced-trust.sh" owner/repo "$scratch/prerelease-metadata.json" >"$scratch/error" 2>&1; then
+  printf 'stable fixture: a trust highest release that is not published was accepted\n' >&2; exit 1
+fi
 # A failed listing is not "unsynchronized": it exits 4 so callers fail instead of deciding.
 rc=0
 FIXTURE_MODE=list-failed "$script_dir/require-synced-trust.sh" owner/repo "$scratch/metadata.json" >"$scratch/error" 2>&1 || rc=$?

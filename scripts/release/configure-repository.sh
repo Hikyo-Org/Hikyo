@@ -31,30 +31,9 @@ if [ -n "$stable_app_id" ]; then
 	}
 fi
 
-# list_rulesets FILE: every ruleset of the repository, all pages, as one JSON array.
-# A single unpaginated read returns only the first 30, so a policy on a later page
-# would look absent and be created twice, or look deleted when it is not.
-list_rulesets() {
-	printf '[]\n' >"$1"
-	page=1
-	while :; do
-		$GH_BIN api "repos/$repository/rulesets?per_page=100&page=$page" >"$1.page"
-		page_count=$(jq -ser '
-			if length != 1 or (.[0] | type) != "array" then error("invalid ruleset page") else .[0] end |
-			if length > 100 or any(.[]; type != "object" or (.name | type) != "string" or
-				(.id | type) != "number" or .id <= 0 or (.id | floor) != .id)
-			then error("invalid ruleset entry") else length end' "$1.page")
-		jq -s '.[0] + .[1]' "$1" "$1.page" >"$1.next"
-		mv "$1.next" "$1"
-		rm -f "$1.page"
-		[ "$page_count" -eq 100 ] || break
-		[ "$page" -lt 20 ] || {
-			printf 'repository policy: incomplete ruleset discovery after 20 pages\n' >&2
-			exit 1
-		}
-		page=$((page + 1))
-	done
-}
+# shellcheck disable=SC1091
+. "$repo_root/scripts/lib/release.sh"
+list_rulesets() { github_rulesets "$repository" "$1" || exit 1; }
 # ruleset_id LIST NAME: the id of the one ruleset with that name, or nothing; two is an error.
 ruleset_id() {
 	jq -er --arg name "$2" '[.[] | select(.name == $name) | .id] |
@@ -218,94 +197,7 @@ allowed_actions=$($GH_BIN api "repos/$repository/actions/permissions" --jq '.all
 $GH_BIN api --method PUT "repos/$repository/actions/permissions" \
 	-F enabled=true -f allowed_actions="$allowed_actions" -F sha_pinning_required=true >/dev/null
 
-verify_tmp=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-policy-verify.XXXXXX")
-trap 'rm -rf "$verify_tmp"' EXIT HUP INT TERM
-list_rulesets "$verify_tmp/rulesets.json"
-rulesets=$(cat "$verify_tmp/rulesets.json")
-rm -rf "$verify_tmp"
-trap - EXIT HUP INT TERM
-printf '%s\n' "$rulesets" | jq -e '
-	[.[] | select(.name == "release tags are immutable" and .enforcement == "active")] | length == 1
-' >/dev/null
-printf '%s\n' "$rulesets" | jq -e '
-	[.[] | select(.name == "release tags require admin role" and .enforcement == "active")] | length == 1
-' >/dev/null
-printf '%s\n' "$rulesets" | jq -e '
-	[.[] | select(.name == "nightly tags require Hikyo release app" and .enforcement == "active")] | length == 1
-' >/dev/null
-printf '%s\n' "$rulesets" | jq -e '
-	[.[] | select(.name == "nightly promotion branches require Hikyo release app" and .enforcement == "active")] | length == 1
-' >/dev/null
-printf '%s\n' "$rulesets" | jq -e '
-	[.[] | select(.name == "main requires PR and release CI" and .enforcement == "active")] | length == 1
-' >/dev/null
-immutability_id=$(printf '%s\n' "$rulesets" | jq -r '.[] | select(.name == "release tags are immutable") | .id')
-immutability=$($GH_BIN api "repos/$repository/rulesets/$immutability_id")
-printf '%s\n' "$immutability" | jq -e '
-	(.bypass_actors | length) == 0 and
-	([.rules[] | select(.type == "update")] | length) == 1 and
-	([.rules[] | select(.type == "deletion")] | length) == 1 and
-	.conditions.ref_name.include == ["refs/tags/v*"]
-' >/dev/null
-creation_id=$(printf '%s\n' "$rulesets" | jq -r '.[] | select(.name == "release tags require admin role") | .id')
-creation=$($GH_BIN api "repos/$repository/rulesets/$creation_id")
-# GitHub expresses "only repository admins may create this ref" as an admin-role
-# bypass on a creation-block rule. Update/deletion remain in the separate
-# zero-bypass immutability ruleset asserted above.
-printf '%s\n' "$creation" | jq -e --arg app "$stable_app_id" '
-	([.bypass_actors[] | select(.actor_type == "RepositoryRole")] == [{
-		actor_id: 5,
-		actor_type: "RepositoryRole",
-		bypass_mode: "always"
-	}]) and
-	([.bypass_actors[] | select(.actor_type != "RepositoryRole")] ==
-		(if $app == "" then [] else [{actor_id: ($app | tonumber), actor_type: "Integration", bypass_mode: "always"}] end)) and
-	([.rules[] | select(.type == "creation")] | length) == 1 and
-	.conditions.ref_name.include == ["refs/tags/v*"] and
-	.conditions.ref_name.exclude == ["refs/tags/v*-nightly.*"]
-' >/dev/null
-nightly_id=$(printf '%s\n' "$rulesets" | jq -r '.[] | select(.name == "nightly tags require Hikyo release app") | .id')
-nightly=$($GH_BIN api "repos/$repository/rulesets/$nightly_id")
-printf '%s\n' "$nightly" | jq -e '
-	.bypass_actors == [{
-		actor_id: 4700019,
-		actor_type: "Integration",
-		bypass_mode: "always"
-	}] and
-	([.rules[] | select(.type == "creation")] | length) == 1 and
-	.conditions.ref_name.include == ["refs/tags/v*-nightly.*"] and
-	.conditions.ref_name.exclude == []
-' >/dev/null
-promotion_id=$(printf '%s\n' "$rulesets" | jq -r '.[] | select(.name == "nightly promotion branches require Hikyo release app") | .id')
-promotion=$($GH_BIN api "repos/$repository/rulesets/$promotion_id")
-printf '%s\n' "$promotion" | jq -e '
-	.bypass_actors == [{
-		actor_id: 4700019,
-		actor_type: "Integration",
-		bypass_mode: "always"
-	}] and
-	([.rules[].type] | sort) == ["creation", "update"] and
-	.conditions.ref_name.include == ["refs/heads/release/nightly-*"] and
-	.conditions.ref_name.exclude == []
-' >/dev/null
-if [ -n "$stable_app_id" ]; then
-	printf '%s\n' "$rulesets" | jq -e '
-		[.[] | select(.name == "stable trust sync branches require stable-release app" and .enforcement == "active")] | length == 1
-	' >/dev/null
-	trust_id=$(printf '%s\n' "$rulesets" | jq -r '.[] | select(.name == "stable trust sync branches require stable-release app") | .id')
-	# Only the app and the repository admin role may touch these branches.
-	$GH_BIN api "repos/$repository/rulesets/$trust_id" | jq -e --argjson app "$stable_app_id" '
-		def by_actor: sort_by(.actor_type, .actor_id);
-		(.bypass_actors | by_actor) == ([
-			{actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "always"},
-			{actor_id: $app, actor_type: "Integration", bypass_mode: "always"}] | by_actor) and
-		([.rules[].type] | sort) == ["creation", "update"] and
-		.conditions.ref_name.include == ["refs/heads/release/sync-trust-*"] and
-		.conditions.ref_name.exclude == []
-	' >/dev/null
-else
-	printf '%s\n' "$rulesets" | jq -e --arg name "$trust_ruleset" '[.[] | select(.name == $name)] | length == 0' >/dev/null
-fi
+"$repo_root/scripts/release/verify-repository-rulesets.sh" "$repository" "$stable_app_id"
 $GH_BIN api "repos/$repository/immutable-releases" --jq '.enabled' | grep -x true >/dev/null
 $GH_BIN api "repos/$repository/actions/permissions" --jq '.sha_pinning_required' | grep -x true >/dev/null
 $GH_BIN api "repos/$repository/code-scanning/default-setup" | jq -e '
