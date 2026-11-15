@@ -14,7 +14,8 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm/awssmtest"
 )
 
-// Keep both vocabularies in agreement with the trusted runner's exact parser.
+// The code vocabulary is closed: only these operation names and provider codes
+// reach a log line, and anything else collapses to "other".
 // Never format err or pass its message or an unrecognized provider code through.
 func realAWSDiagnosticLine(operation string, err error) (string, bool) {
 	if err == nil {
@@ -46,8 +47,8 @@ func logRealAWSDiagnostic(t *testing.T, operation string, err error) {
 		return
 	}
 	if line, ok := realAWSDiagnosticLine(operation, err); ok {
-		// Deliberately retain this source filename for the runner's anchored
-		// allowlist. Calling t.Helper here would attribute an arbitrary caller.
+		// Deliberately no t.Helper: the line is attributed to this file, never
+		// to an arbitrary caller.
 		t.Logf("%s", line)
 	}
 }

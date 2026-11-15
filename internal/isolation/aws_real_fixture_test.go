@@ -33,15 +33,10 @@ import (
 // All values are synthetic. Only the external oracle can read them. Credentials
 // enter through owner-only regular files, never secret-bearing flags or logs.
 type realAWSActor struct {
-	CredentialFile        string `json:"credential_file"`
-	PrincipalARN          string `json:"principal_arn"`
-	SourceFile            string `json:"source_file,omitempty"`
-	SourcePrincipalARN    string `json:"source_principal_arn,omitempty"`
-	TokenFile             string `json:"token_file,omitempty"`
-	WorkloadRoleARN       string `json:"workload_role_arn,omitempty"`
+	CredentialFile string `json:"credential_file"`
+	PrincipalARN   string `json:"principal_arn"`
+	// Only the live smoke's static writer carries an expired session.
 	ExpiredCredentialFile string `json:"expired_credential_file,omitempty"`
-	ExpiredSourceFile     string `json:"expired_source_file,omitempty"`
-	ExpiredTokenFile      string `json:"expired_token_file,omitempty"`
 }
 
 type realAWSManifest struct {
@@ -73,6 +68,21 @@ var realAWSRegion = regexp.MustCompile(`^[a-z]{2}-[a-z]+-[0-9]+$`)
 var realAWSKeyID = regexp.MustCompile(`^(?:[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}|mrk-[a-f0-9]{32})$`)
 var realAWSName = regexp.MustCompile(`^[A-Za-z0-9/_+=.@-]{1,512}$`)
 var realAWSRole = regexp.MustCompile(`^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$`)
+
+// The live smoke's actors are IAM users holding GetSessionToken credentials
+// or roles.
+var realAWSStaticPrincipal = regexp.MustCompile(`^arn:aws:iam::[0-9]{12}:(?:role|user)/[A-Za-z0-9+=,.@_/-]+$`)
+
+// maxCreations is the cumulative CreateSecret ceiling for one run. The live
+// smoke creates 15 (10 lifecycle, 1 iam-denial canary, 4 promoted-replay) and
+// keeps two for ambiguous creates; a rerun needs a new prefix and so a new budget. The
+// emulator lane has its own larger ceiling.
+func (m realAWSManifest) maxCreations() int {
+	if m.Emulator == nil {
+		return realAWSSmokeMaxCreations
+	}
+	return realAWSEmulatorMaxCreations
+}
 
 // validateLane refuses an emulator manifest on the real lane and the reverse.
 func (m realAWSManifest) validateLane(now time.Time, emulator bool) error {
@@ -145,37 +155,23 @@ func (m realAWSManifest) validateEmulator() error {
 	return nil
 }
 
+// validateReal accepts only the live smoke shape (#158 option A): exactly one
+// static writer plus separate oracle and cleanup identities. Lifecycle's
+// credential fence needs the static writer's authentic expired session.
 func (m realAWSManifest) validateReal() error {
-	if len(m.Writers) != 5 {
-		return errors.New("real AWS fixture requires static, ambient, assume-role, web-identity and kms-denied writers")
+	static, ok := m.Writers["static"]
+	if !ok || len(m.Writers) != 1 {
+		return errors.New("real AWS fixture accepts only the smoke manifest: exactly the static writer")
 	}
-	if m.Writers["static"].ExpiredCredentialFile == "" || m.Writers["assume-role"].ExpiredSourceFile == "" {
-		return errors.New("real AWS fixture requires protected expired temporary static and source descriptors")
-	}
-	actors := []realAWSActor{m.Oracle, m.Cleanup}
-	for _, mode := range []string{"static", "ambient", "assume-role", "web-identity", "kms-denied"} {
-		a, ok := m.Writers[mode]
-		if !ok {
-			return errors.New("real AWS fixture is missing a writer mode")
-		}
-		actors = append(actors, a)
+	if static.ExpiredCredentialFile == "" {
+		return errors.New("real AWS smoke requires a protected expired temporary static descriptor")
 	}
 	seen := make(map[string]bool)
-	for _, a := range actors {
-		if a.CredentialFile == "" || !realAWSRole.MatchString(a.PrincipalARN) || !strings.HasPrefix(a.PrincipalARN, "arn:aws:iam::"+m.Account+":") || seen[a.PrincipalARN] {
-			return errors.New("real AWS actors require distinct explicit roles in the sandbox account")
+	for _, a := range []realAWSActor{m.Oracle, m.Cleanup, static} {
+		if a.CredentialFile == "" || !realAWSStaticPrincipal.MatchString(a.PrincipalARN) || !strings.HasPrefix(a.PrincipalARN, "arn:aws:iam::"+m.Account+":") || seen[a.PrincipalARN] {
+			return errors.New("real AWS smoke actors require distinct explicit IAM principals in the sandbox account")
 		}
 		seen[a.PrincipalARN] = true
-	}
-	for _, mode := range []string{"ambient", "web-identity"} {
-		a := m.Writers[mode]
-		if !realAWSRole.MatchString(a.PrincipalARN) || a.TokenFile == "" || a.ExpiredTokenFile == "" || (mode == "ambient" && a.WorkloadRoleARN != a.PrincipalARN) {
-			return errors.New("workload fixture requires a projected token and an explicit sandbox role")
-		}
-	}
-	source := m.Writers["assume-role"]
-	if source.SourceFile == "" || !realAWSRole.MatchString(source.PrincipalARN) || !realAWSRole.MatchString(source.SourcePrincipalARN) || !strings.HasPrefix(source.SourcePrincipalARN, "arn:aws:iam::"+m.Account+":role/") || seen[source.SourcePrincipalARN] {
-		return errors.New("assume-role fixture requires a separate sandbox source role")
 	}
 	return nil
 }
@@ -220,7 +216,8 @@ func decodeAWSManifest(raw []byte) (realAWSManifest, error) {
 	return m, nil
 }
 
-const realAWSMaxCreations = 32
+const realAWSEmulatorMaxCreations = 32
+const realAWSSmokeMaxCreations = 17
 
 // The owner-approved absolute ceiling does not replace the separately reviewed
 // combined gross admission or a stricter per-fixture budget.
@@ -289,19 +286,14 @@ func openRealAWSSandbox(t *testing.T, path string, emulator bool) *realAWSSandbo
 	t.Cleanup(func() { s.oracle.creds = aws.Credentials{}; s.cleanup.creds = aws.Credentials{} })
 	t.Cleanup(func() { s.clean(t) })
 	// Verify every supplied identity before any test starts its first write.
-	modes := []string{"static", "ambient", "assume-role", "web-identity", "kms-denied"}
-	if emulator {
-		modes = []string{"static"}
-	}
-	for _, mode := range modes {
-		if !t.Run("preflight-"+mode, func(t *testing.T) {
-			if !emulator {
-				s.validateExpiredInputs(t, mode)
-			}
-			s.writer(t, mode)
-		}) {
-			t.Fatal("sandbox identity preflight failed before mutations")
+	if !t.Run("preflight-static", func(t *testing.T) {
+		if !emulator {
+			static := m.Writers["static"]
+			s.expiredStaticDescriptor(t, static.ExpiredCredentialFile, static.CredentialFile)
 		}
+		s.writer(t, "static")
+	}) {
+		t.Fatal("sandbox identity preflight failed before mutations")
 	}
 	// A failed or interrupted attempt must be reconciled, not silently
 	// restarted with a fresh budget for the same namespace.
@@ -362,7 +354,7 @@ func (s *realAWSSandbox) descriptor(t *testing.T, a realAWSActor) string {
 	defer crypto.Zero(raw)
 	d, err := awssm.ParseDescriptor(string(raw))
 	if err != nil || d.Region != s.manifest.Region || d.STSOrigin != s.stsOrigin {
-		// runner.py classifies this exact text; on the emulator "AWS STS" is its STS origin.
+		// On the emulator "AWS STS" is its STS origin.
 		t.Fatal("AWS fixture descriptor must match the approved region and use AWS STS")
 	}
 	return string(raw)
@@ -382,9 +374,9 @@ func matchesAWSPrincipal(actual, expected string) bool {
 	return strings.HasPrefix(actual, prefix) && len(actual) > len(prefix) && !strings.Contains(strings.TrimPrefix(actual, prefix), "/")
 }
 
-func (s *realAWSSandbox) client(t *testing.T, raw string, workload bool, principal string) *awssm.Client {
+func (s *realAWSSandbox) client(t *testing.T, raw string, principal string) *awssm.Client {
 	t.Helper()
-	c, err := awssm.NewClient(s.endpointConfig(awssm.ClientConfig{Origin: s.origin, Credential: raw, WorkloadIdentity: workload, Deadline: 15 * time.Second}))
+	c, err := awssm.NewClient(s.endpointConfig(awssm.ClientConfig{Origin: s.origin, Credential: raw, Deadline: 15 * time.Second}))
 	if err != nil {
 		t.Fatal("AWS fixture client configuration refused")
 	}
@@ -403,13 +395,12 @@ func (s *realAWSSandbox) staticActor(t *testing.T, a realAWSActor) externalAWS {
 	if err != nil || d.Mode != awssm.AuthStatic || d.SessionToken == "" {
 		t.Fatal("oracle and cleanup require protected temporary static descriptors")
 	}
-	s.client(t, raw, false, a.PrincipalARN)
+	s.client(t, raw, a.PrincipalARN)
 	return externalAWS{origin: s.origin, account: s.manifest.Account, region: s.manifest.Region, roots: s.roots, allowed: s.allowed, creds: aws.Credentials{AccessKeyID: d.AccessKeyID, SecretAccessKey: d.SecretKey, SessionToken: d.SessionToken}}
 }
 
 // isolateAWSChain prevents an unrelated local profile, ECS endpoint, or IMDS
-// identity from silently becoming the role source. Ambient mode below uses an
-// actual operator-projected WebIdentity token, not fabricated credentials.
+// identity from silently becoming a credential source for a fixture client.
 func isolateAWSChain(t *testing.T) {
 	t.Helper()
 	empty := filepath.Join(t.TempDir(), "empty-aws-config")
@@ -431,49 +422,13 @@ func (s *realAWSSandbox) writer(t *testing.T, mode string) (string, *awssm.Clien
 	a := s.manifest.Writers[mode]
 	raw := s.descriptor(t, a)
 	d, err := awssm.ParseDescriptor(raw)
-	want := awssm.AuthMode(mode)
-	if mode == "kms-denied" {
-		want = awssm.AuthStatic
-	}
-	if err != nil || d.Mode != want || (want == awssm.AuthStatic && d.SessionToken == "") {
+	if err != nil || d.Mode != awssm.AuthStatic || d.SessionToken == "" {
 		t.Fatal("writer descriptor does not match its declared test mode")
 	}
-	if d.AccessKeyID != "" && (d.AccessKeyID == s.oracle.creds.AccessKeyID || d.AccessKeyID == s.cleanup.creds.AccessKeyID) {
+	if d.AccessKeyID == s.oracle.creds.AccessKeyID || d.AccessKeyID == s.cleanup.creds.AccessKeyID {
 		t.Fatal("writer borrows oracle or cleanup credentials")
 	}
-	if mode == "assume-role" {
-		if a.SourceFile == "" || a.SourcePrincipalARN == "" || d.RoleARN != a.PrincipalARN || d.ExternalID == "" {
-			t.Fatal("assume-role requires an explicit approved source and destination")
-		}
-		source := s.staticActor(t, realAWSActor{CredentialFile: a.SourceFile, PrincipalARN: a.SourcePrincipalARN})
-		if source.creds.AccessKeyID == s.oracle.creds.AccessKeyID || source.creds.AccessKeyID == s.cleanup.creds.AccessKeyID {
-			t.Fatal("role source borrows oracle or cleanup credentials")
-		}
-		t.Setenv("AWS_ACCESS_KEY_ID", source.creds.AccessKeyID)
-		t.Setenv("AWS_SECRET_ACCESS_KEY", source.creds.SecretAccessKey)
-		t.Setenv("AWS_SESSION_TOKEN", source.creds.SessionToken)
-	}
-	if mode == "ambient" || mode == "web-identity" {
-		role := d.RoleARN
-		if mode == "ambient" {
-			role = a.WorkloadRoleARN
-		}
-		if a.TokenFile == "" || role != a.PrincipalARN {
-			t.Fatal("workload modes require an approved projected token and role")
-		}
-		token, err := readAWSProtectedFile(s.file(a.TokenFile))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(bytes.TrimSpace(token)) == 0 {
-			t.Fatal("projected workload token is empty")
-		}
-		crypto.Zero(token)
-		t.Setenv("AWS_WEB_IDENTITY_TOKEN_FILE", s.file(a.TokenFile))
-		t.Setenv("AWS_ROLE_ARN", role)
-		t.Setenv("AWS_ROLE_SESSION_NAME", "hikyo-acceptance")
-	}
-	return raw, s.client(t, raw, d.Mode != awssm.AuthStatic, a.PrincipalARN)
+	return raw, s.client(t, raw, a.PrincipalARN)
 }
 
 func (s *realAWSSandbox) checkName(name string) error {
@@ -498,8 +453,8 @@ func (s *realAWSSandbox) reserveCreate(name string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(s.creations) >= realAWSMaxCreations {
-		return errors.New("AWS full-suite creation budget exhausted")
+	if len(s.creations) >= s.manifest.maxCreations() {
+		return errors.New("AWS run creation budget exhausted")
 	}
 	s.creations = append(s.creations, name)
 	if s.t != nil {
@@ -566,6 +521,46 @@ func (s *realAWSSandbox) remember(name, arn string) error {
 type realAWSResponseError struct {
 	code   string
 	status int
+	// deny is a closed classification of an AccessDenied message. The message
+	// itself carries ARNs and is never stored.
+	deny realAWSDenyKind
+}
+
+type realAWSDenyKind string
+
+const (
+	realAWSDenyUnknown          realAWSDenyKind = ""
+	realAWSDenyExplicitIdentity realAWSDenyKind = "explicit-identity"
+	realAWSDenyExplicitOther    realAWSDenyKind = "explicit-other"
+	realAWSDenyImplicit         realAWSDenyKind = "implicit"
+)
+
+var (
+	realAWSExplicitIdentityDeny = regexp.MustCompile(`(?i)\bwith an explicit deny in an identity-based policy\b`)
+	realAWSExplicitOtherDeny    = regexp.MustCompile(`(?i)\bwith an explicit deny in an? `)
+	realAWSImplicitDeny         = regexp.MustCompile(`(?i)\bbecause no [a-z -]+ policy allows\b`)
+)
+
+// classifyAWSDeny maps AWS's enhanced access-denied message to an enum. Only an
+// explicit deny in an identity-based policy proves NeverReadValues applied.
+func classifyAWSDeny(message string) realAWSDenyKind {
+	switch {
+	case realAWSExplicitIdentityDeny.MatchString(message):
+		return realAWSDenyExplicitIdentity
+	case realAWSExplicitOtherDeny.MatchString(message):
+		return realAWSDenyExplicitOther
+	case realAWSImplicitDeny.MatchString(message):
+		return realAWSDenyImplicit
+	}
+	return realAWSDenyUnknown
+}
+
+func realAWSDeny(err error) realAWSDenyKind {
+	var e *realAWSResponseError
+	if errors.As(err, &e) {
+		return e.deny
+	}
+	return realAWSDenyUnknown
 }
 
 func (e *realAWSResponseError) Error() string {
