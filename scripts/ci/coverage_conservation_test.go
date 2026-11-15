@@ -133,6 +133,9 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	if err := normalizeGoReuseDiskPreparation(workflow.Jobs); err != nil {
 		return err
 	}
+	if err := normalizeAWSSandboxShellcheck(workflow.Jobs["lint"]); err != nil {
+		return err
+	}
 	if err := normalizePinnedToolReuse(workflow.Jobs); err != nil {
 		return err
 	}
@@ -140,6 +143,9 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 		return err
 	}
 	if err := normalizeTestCoreSerial(workflow.Jobs); err != nil {
+		return err
+	}
+	if err := normalizeGitOpsFixtureAddition(workflow.Jobs["supply-chain-checks"]); err != nil {
 		return err
 	}
 	// The feedback fixtures execute the real documentation checker. Pin its

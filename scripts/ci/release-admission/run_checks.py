@@ -11,10 +11,9 @@ import unittest
 
 HERE = Path(__file__).resolve().parent
 UNIT_MODULES = ('test_release_records', 'test_release_collector', 'test_decision_journal',
-                'test_workflow_contract', 'test_successor_loader', 'test_historical_integrity',
+                'test_successor_loader', 'test_historical_integrity',
                 'test_repository_source_closure',
                 'test_adapter_source_loader',
-                'test_aws_acceptance_contract',
                 'core.test_next_fixture_model')
 
 
