@@ -43,6 +43,7 @@ real_declaration 1.1.0 2 "$c0" >"$scratch/baseline/upgrade-compatibility.json"
 real_declaration 1.1.1 3 "$c3" >"$scratch/candidate-decl.json"
 jq -S '.engines[0].schema_sha256 = ("b" * 64)' "$scratch/candidate-decl.json" >"$scratch/changed-decl.json"
 jq -nc --arg c "$c0" '{version:"1.1.0",sequence:2,commit:$c,key_id:"k",public_key:"k.pub"}' >"$scratch/baseline/release-candidate.json"
+# shellcheck disable=SC1091
 . "$script_dir/../lib/release.sh"
 jq -nc --arg c "$c0" --arg sha "$(sha256_file "$scratch/baseline/upgrade-compatibility.json")" \
 	'{source_commit:$c,artifacts:[{name:"upgrade-compatibility.json",kind:"upgrade-compatibility",sha256:$sha}]}' >"$scratch/baseline/release-manifest.json"
