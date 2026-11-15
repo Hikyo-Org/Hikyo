@@ -17,6 +17,18 @@ fi
 repository=$1
 repo_root=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)
 
+# The unattended stable release uses its own GitHub App. Its numeric id only
+# exists after the owner creates it, so it comes from the environment and is
+# injected into the stable policies. Unset means the policies stay admin-only,
+# which keeps unattended releases off. Always export it again on later runs.
+stable_app_id=${HIKYO_STABLE_RELEASE_APP_ID:-}
+if [ -n "$stable_app_id" ]; then
+	printf '%s\n' "$stable_app_id" | grep -Eq '^[1-9][0-9]*$' || {
+		printf 'repository policy: HIKYO_STABLE_RELEASE_APP_ID must be a numeric GitHub App id\n' >&2
+		exit 2
+	}
+fi
+
 upsert_ruleset() {
 	payload=$1
 	name=$(jq -r '.name' "$payload")
@@ -110,9 +122,26 @@ if [ "$main_only" = true ]; then
 fi
 
 upsert_ruleset "$repo_root/release/repository/release-tag-immutability.json"
-upsert_ruleset "$repo_root/release/repository/release-tag-creation.json"
+stable_tmp=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-stable-policy.XXXXXX")
+trap 'rm -rf "$stable_tmp"' EXIT HUP INT TERM
+cp "$repo_root/release/repository/release-tag-creation.json" "$stable_tmp/tags.json"
+if [ -n "$stable_app_id" ]; then
+	# The app may create the annotated stable tag; humans keep the admin role.
+	jq --argjson id "$stable_app_id" \
+		'.bypass_actors += [{actor_id: $id, actor_type: "Integration", bypass_mode: "always"}]' \
+		"$repo_root/release/repository/release-tag-creation.json" >"$stable_tmp/tags.json"
+	jq --argjson id "$stable_app_id" \
+		'.bypass_actors = [{actor_id: $id, actor_type: "Integration", bypass_mode: "always"}]' \
+		"$repo_root/release/repository/stable-trust-branches.json" >"$stable_tmp/trust.json"
+fi
+upsert_ruleset "$stable_tmp/tags.json"
 upsert_ruleset "$repo_root/release/repository/nightly-tag-creation.json"
 upsert_ruleset "$repo_root/release/repository/nightly-promotion-branches.json"
+if [ -n "$stable_app_id" ]; then
+	upsert_ruleset "$stable_tmp/trust.json"
+fi
+rm -rf "$stable_tmp"
+trap - EXIT HUP INT TERM
 configure_main
 
 $GH_BIN api --method PUT "repos/$repository/immutable-releases" >/dev/null
@@ -155,12 +184,14 @@ creation=$($GH_BIN api "repos/$repository/rulesets/$creation_id")
 # GitHub expresses "only repository admins may create this ref" as an admin-role
 # bypass on a creation-block rule. Update/deletion remain in the separate
 # zero-bypass immutability ruleset asserted above.
-printf '%s\n' "$creation" | jq -e '
-	.bypass_actors == [{
+printf '%s\n' "$creation" | jq -e --arg app "$stable_app_id" '
+	([.bypass_actors[] | select(.actor_type == "RepositoryRole")] == [{
 		actor_id: 5,
 		actor_type: "RepositoryRole",
 		bypass_mode: "always"
-	}] and
+	}]) and
+	([.bypass_actors[] | select(.actor_type != "RepositoryRole")] ==
+		(if $app == "" then [] else [{actor_id: ($app | tonumber), actor_type: "Integration", bypass_mode: "always"}] end)) and
 	([.rules[] | select(.type == "creation")] | length) == 1 and
 	.conditions.ref_name.include == ["refs/tags/v*"] and
 	.conditions.ref_name.exclude == ["refs/tags/v*-nightly.*"]
@@ -189,6 +220,18 @@ printf '%s\n' "$promotion" | jq -e '
 	.conditions.ref_name.include == ["refs/heads/release/nightly-*"] and
 	.conditions.ref_name.exclude == []
 ' >/dev/null
+if [ -n "$stable_app_id" ]; then
+	printf '%s\n' "$rulesets" | jq -e '
+		[.[] | select(.name == "stable trust sync branches require stable-release app" and .enforcement == "active")] | length == 1
+	' >/dev/null
+	trust_id=$(printf '%s\n' "$rulesets" | jq -r '.[] | select(.name == "stable trust sync branches require stable-release app") | .id')
+	$GH_BIN api "repos/$repository/rulesets/$trust_id" | jq -e --argjson app "$stable_app_id" '
+		.bypass_actors == [{actor_id: $app, actor_type: "Integration", bypass_mode: "always"}] and
+		([.rules[].type] | sort) == ["creation", "update"] and
+		.conditions.ref_name.include == ["refs/heads/release/sync-trust-*"] and
+		.conditions.ref_name.exclude == []
+	' >/dev/null
+fi
 $GH_BIN api "repos/$repository/immutable-releases" --jq '.enabled' | grep -x true >/dev/null
 $GH_BIN api "repos/$repository/actions/permissions" --jq '.sha_pinning_required' | grep -x true >/dev/null
 $GH_BIN api "repos/$repository/code-scanning/default-setup" | jq -e '

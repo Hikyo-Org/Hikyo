@@ -1,0 +1,16 @@
+{
+  "name": "stable trust sync branches require stable-release app",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": {
+      "include": ["refs/heads/release/sync-trust-*"],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {"type": "creation"},
+    {"type": "update"}
+  ]
+}
