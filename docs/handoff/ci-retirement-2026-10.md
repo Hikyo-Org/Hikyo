@@ -47,6 +47,9 @@ publisher deadlines remain in force.
   readback, and discovery of effective pending checks within the newest 1,000
   commits of an immutable main snapshot. Output explicitly distinguishes full
   ancestry from a limited recent window; older heads use exact-head backfill.
+  A candidate over 1,000 latest records or 1,000 suites is inventoried through
+  a GraphQL scan of its `github-actions` suites, then REST reads of only the
+  suites with unfinished latest runs.
 - `ci-check-retirement.yml`: trusted asynchronous housekeeping under the same
   head-specific queue lease or global legacy-observer lease. Queue writers
   honor the existing operator activation variable. Group-completion cleanup
@@ -229,3 +232,24 @@ its completion. Cancellation is not a substitute for proof authentication.
 Record the final PR head, complete group result, server merge SHA, current main
 rollup and retirement readbacks separately. Never present local tests, queue
 admission or an earlier full group as final merge proof.
+
+## Oversized commits (2026-11-15)
+
+Hourly discovery failed on every scheduled run from 2026-11-05 to 2026-11-15:
+nightly merge `f9b558f3d10fcd04c6ac8d95c166bc373b689d5a` has 1,132 latest
+records, all completed, over the old 1,000-record refusal. No exact-head
+backfill can lower a record count, so the commit would have kept main red until
+it left the window. `807d433ea037d0aa8a8c861c88b4a995919a8de8` has 2,005 suites
+(1,996 `github-actions`): REST showed 1,931 records against 3,912 summed over
+its suites, and a queued native `report` run sat in suite 1,856 from newest,
+invisible to REST. Suites holding queued synthetic runs reported
+`completed/success`, so suite status cannot replace run reads.
+
+Measured live from a workstation: the GraphQL suite scan costs one point and
+about 2 s per 100 suites (12 s for `f9b558f`, 44 s for `807d433`). Full-window
+runs took 133 to 164 s before the regression and 143 s with the first version
+of this fix; one run of the suite scan hit the old 3-minute deadline, so the
+discovery deadline is now 5 minutes inside an 8-minute job. The
+`retirement_discovery_scan` record reports `suite_pages`. Not verified: the
+suite query from hosted runner IPs against any organisation IP allow list; it
+filters by app ID and reads only counts, so it traverses no foreign app object.

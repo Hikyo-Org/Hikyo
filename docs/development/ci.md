@@ -576,9 +576,19 @@ Discovery reads the newest 1,000 main commits without holding a writer lease,
 then routes effective pending contexts to the existing context-specific leases.
 The logged `history_scope` distinguishes complete ancestry from a limited recent
 window, including its immutable snapshot, scanned count and continuation cursor.
-Older history uses exact-head backfill. API failures, incomplete pages, more
-than 1,000 effective contexts per commit or more than 100 target heads refuse
-all targets. Window completion is not evidence that all history was cleaned.
+Older history uses exact-head backfill. REST lists a commit's runs from only
+its newest 1,000 check suites, so a candidate with more than 1,000 latest check
+records or more than 1,000 suites (counted in the history query) is read
+differently: a GraphQL scan of its `github-actions` suites compares each suite's
+latest and finished run counts, and REST reads only the suites where they
+differ. Suite status is not used; GitHub reports a suite completed while a
+synthetic run in it is still queued. API failures, incomplete pages, more than
+3,000 `github-actions` suites or 100 unfinished suites on such a commit, more
+than 1,000 records in one listing or more than 100 target heads refuse all
+targets. A commit still gaining checks, such as a busy main head, can change its
+totals mid-scan and refuse until the next run. A full window takes about three
+minutes, so discovery has a five-minute deadline. Window completion is not
+evidence that all history was cleaned.
 Legacy observer heads run in batches of at most ten unique heads concurrently
 under their one global lease and compiled executable. Every child is awaited,
 then failures are reported together. This bounds batch duration by the slowest

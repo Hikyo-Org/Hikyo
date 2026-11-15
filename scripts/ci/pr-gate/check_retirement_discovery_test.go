@@ -6,14 +6,17 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 )
 
 type retirementDiscoveryAPI struct{ *fakeAPI }
 
+var foreignAppTraversal = regexp.MustCompile(`\bapp\s*\{`)
+
 func (a retirementDiscoveryAPI) read(ctx context.Context, path string, result any) error {
-	if strings.HasPrefix(path, "graphql:") && strings.Contains(path, "checkSuite") && strings.Contains(path, "app") {
+	if strings.HasPrefix(path, "graphql:") && strings.Contains(path, "checkSuite") && foreignAppTraversal.MatchString(path) {
 		return errors.New("organization IP allow list blocks foreign checkSuite.app traversal")
 	}
 	if strings.Contains(path, "/check-runs?") && !strings.Contains(path, "check_name=") {
@@ -75,7 +78,7 @@ func retirementChecksPath(f *queueFixture, head string, page int) string {
 }
 func retirementHistoryNode(f *queueFixture, head string, checks []map[string]any) map[string]any {
 	f.api.responses[retirementChecksPath(f, head, 1)] = map[string]any{"total_count": len(checks), "check_runs": checks}
-	return map[string]any{"oid": head, "statusCheckRollup": map[string]any{"state": "PENDING"}}
+	return map[string]any{"oid": head, "statusCheckRollup": map[string]any{"state": "PENDING"}, "checkSuites": map[string]any{"totalCount": 1}}
 }
 func retirementHistoryResponse(f *queueFixture, head string, nodes []map[string]any, more bool, cursor string) map[string]any {
 	return map[string]any{"data": map[string]any{"repository": map[string]any{"databaseId": f.c.repo.ID, "object": map[string]any{"oid": head, "history": map[string]any{"nodes": nodes, "pageInfo": map[string]any{"hasNextPage": more, "endCursor": cursor}}}}}}
@@ -104,7 +107,7 @@ func TestRetirementDiscoveryFindsMissedCallbacksAcrossMainHistory(t *testing.T) 
 	}
 }
 func TestRetirementDiscoveryRejectsIncompleteOrAmbiguousHistory(t *testing.T) {
-	for _, problem := range []string{"API", "GraphQL", "null repo", "foreign repo", "foreign head", "wrong first head", "null history", "empty history", "duplicate commit", "missing cursor", "repeated cursor", "checks API", "missing check count", "negative check count", "partial checks", "checks overflow", "null checks", "null check", "missing check ID", "duplicate check", "foreign check head", "missing check name", "unknown status", "unknown native status", "foreign binding", "missing app", "missing app ID", "missing app slug"} {
+	for _, problem := range []string{"API", "GraphQL", "null repo", "foreign repo", "foreign head", "wrong first head", "null history", "empty history", "duplicate commit", "missing cursor", "repeated cursor", "checks API", "missing check count", "negative check count", "partial checks", "null checks", "null check", "missing check ID", "duplicate check", "foreign check head", "missing check name", "unknown status", "unknown native status", "foreign binding", "missing app", "missing app ID", "missing app slug"} {
 		t.Run(problem, func(t *testing.T) {
 			f, head := retirementDiscoveryFixture(t)
 			check := retirementHistoryRecord(f, head, queueCheckName, "QUEUED")
@@ -148,8 +151,6 @@ func TestRetirementDiscoveryRejectsIncompleteOrAmbiguousHistory(t *testing.T) {
 				checks["total_count"] = -1
 			case "partial checks":
 				checks["total_count"] = 2
-			case "checks overflow":
-				checks["total_count"] = 1001
 			case "null checks":
 				checks["check_runs"] = nil
 			case "null check":
@@ -652,5 +653,191 @@ func TestRetirementDiscoveryReportsCompleteAncestryAtExactWindowSize(t *testing.
 	want := retirementHistoryScope{Snapshot: head, MaxCommits: 1000, ScannedCommits: 1000, CompleteAncestry: true}
 	if err != nil || got.HistoryScope != want {
 		t.Fatalf("exact-window complete ancestry was misreported: %+v/%v", got, err)
+	}
+}
+
+func retirementSuitesResponse(f *queueFixture, head string, total int, suites []map[string]any, more bool, cursor string) map[string]any {
+	return map[string]any{"data": map[string]any{"repository": map[string]any{"databaseId": f.c.repo.ID, "object": map[string]any{"oid": head, "checkSuites": map[string]any{"totalCount": total, "nodes": suites, "pageInfo": map[string]any{"hasNextPage": more, "endCursor": cursor}}}}}}
+}
+
+func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
+	for _, tc := range []struct{ fault, wantErr string }{
+		{fault: ""},
+		{fault: "many suites, few records"},
+		{fault: "all completed"},
+		{fault: "suite finished since counted"},
+		{fault: "unnamed unfinished status"},
+		{fault: "missing history suite count", wantErr: "incomplete retirement history check suite count"},
+		{fault: "GraphQL error with data", wantErr: "incomplete server result"},
+		{fault: "suite page unavailable", wantErr: "retirement check suites for"},
+		{fault: "foreign repository", wantErr: "foreign retirement check suite snapshot"},
+		{fault: "foreign object", wantErr: "foreign retirement check suite snapshot"},
+		{fault: "null suites", wantErr: "foreign retirement check suite snapshot"},
+		{fault: "missing suite total", wantErr: "changing retirement check suite inventory"},
+		{fault: "changing suite total", wantErr: "changing retirement check suite inventory"},
+		{fault: "null suite nodes", wantErr: "changing retirement check suite inventory"},
+		{fault: "oversized suite page", wantErr: "changing retirement check suite inventory"},
+		{fault: "missing page info", wantErr: "changing retirement check suite inventory"},
+		{fault: "null suite", wantErr: "duplicate retirement check suite identity"},
+		{fault: "invalid suite ID", wantErr: "duplicate retirement check suite identity"},
+		{fault: "duplicate suite", wantErr: "duplicate retirement check suite identity"},
+		{fault: "missing run counts", wantErr: "duplicate retirement check suite identity"},
+		{fault: "more finished than latest", wantErr: "duplicate retirement check suite identity"},
+		{fault: "short suite pagination", wantErr: "incomplete retirement check suite pagination"},
+		{fault: "partial suite page", wantErr: "repeated retirement check suite cursor"},
+		{fault: "missing suite cursor", wantErr: "repeated retirement check suite cursor"},
+		{fault: "repeated suite cursor", wantErr: "repeated retirement check suite cursor"},
+		{fault: "too many unfinished suites", wantErr: "more than 100 check suites"},
+		{fault: "too many suites", wantErr: "more than 3000 github-actions check suites"},
+		{fault: "foreign run in suite", wantErr: "in a github-actions suite"},
+		{fault: "run in two suites", wantErr: "in a github-actions suite"},
+		{fault: "suite run overflow", wantErr: "1000-record budget"},
+	} {
+		t.Run(tc.fault, func(t *testing.T) {
+			f, head := retirementDiscoveryFixture(t)
+			native := make([]map[string]any, 100)
+			for i := range native {
+				native[i] = retirementHistoryRecord(f, head, fmt.Sprintf("native job %d", i), "COMPLETED")
+			}
+			node := retirementHistoryNode(f, head, native)
+			f.api.responses[retirementChecksPath(f, head, 1)] = map[string]any{"total_count": 1132, "check_runs": native}
+			switch tc.fault {
+			case "many suites, few records":
+				// REST would show these 100 records as complete; the suite count must win.
+				node["checkSuites"] = map[string]any{"totalCount": 1001}
+				f.api.responses[retirementChecksPath(f, head, 1)] = map[string]any{"total_count": 100, "check_runs": native}
+			case "missing history suite count":
+				delete(node, "checkSuites")
+			}
+			f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "", 100)] = retirementHistoryResponse(f, head, []map[string]any{node}, false, "")
+			suite := func(id int64, unfinished int) map[string]any {
+				return map[string]any{"databaseId": id, "all": map[string]any{"totalCount": 3 + unfinished}, "done": map[string]any{"totalCount": 3}}
+			}
+			// Two pages: suites 1..100, then 101. Suites 7 and 101 hold unfinished runs.
+			first, second := []map[string]any{}, []map[string]any{suite(101, 1)}
+			for id := int64(1); id <= 100; id++ {
+				unfinished := 0
+				if id == 7 {
+					unfinished = 2
+				}
+				first = append(first, suite(id, unfinished))
+			}
+			total, secondTotal, secondMore, secondCursor := 101, 101, false, "c2"
+			suiteRuns := map[int64][]map[string]any{
+				7:   {retirementHistoryRecord(f, head, queueCheckName, "QUEUED"), retirementHistoryRecord(f, head, "ci-required-next", "IN_PROGRESS"), native[0]},
+				101: {reporterDiscoveryRecord(f, head, 900, 1)},
+			}
+			firstPage := retirementSuitesResponse(f, head, total, first, true, "c1")
+			suites := firstPage["data"].(map[string]any)["repository"].(map[string]any)["object"].(map[string]any)
+			switch tc.fault {
+			case "all completed":
+				first[6], second[0] = suite(7, 0), suite(101, 0)
+			case "suite finished since counted":
+				suiteRuns = map[int64][]map[string]any{7: {native[1]}, 101: {native[2]}}
+			case "unnamed unfinished status":
+				// A status the query never names still differs from the finished count.
+				first[6], second[0] = suite(7, 0), suite(101, 0)
+				first[6]["all"] = map[string]any{"totalCount": 4}
+				suiteRuns = map[int64][]map[string]any{7: {native[1]}}
+			case "foreign repository":
+				firstPage["data"].(map[string]any)["repository"].(map[string]any)["databaseId"] = 11
+			case "foreign object":
+				suites["oid"] = strings.Repeat("e", 40)
+			case "null suites":
+				suites["checkSuites"] = nil
+			case "missing suite total":
+				delete(suites["checkSuites"].(map[string]any), "totalCount")
+			case "changing suite total":
+				secondTotal = 102
+			case "null suite nodes":
+				suites["checkSuites"].(map[string]any)["nodes"] = nil
+			case "oversized suite page":
+				suites["checkSuites"].(map[string]any)["nodes"] = append(first, suite(102, 0))
+			case "missing page info":
+				suites["checkSuites"].(map[string]any)["pageInfo"] = map[string]any{"endCursor": "c1"}
+			case "null suite":
+				first[3] = nil
+			case "invalid suite ID":
+				first[3]["databaseId"] = 0
+			case "duplicate suite":
+				second[0] = suite(100, 0)
+			case "missing run counts":
+				delete(first[3], "done")
+			case "more finished than latest":
+				first[3]["done"] = map[string]any{"totalCount": 9}
+			case "short suite pagination":
+				total, secondTotal = 102, 102
+				firstPage = retirementSuitesResponse(f, head, total, first, true, "c1")
+			case "partial suite page":
+				suites["checkSuites"].(map[string]any)["nodes"] = first[:99]
+			case "missing suite cursor":
+				suites["checkSuites"].(map[string]any)["pageInfo"] = map[string]any{"hasNextPage": true, "endCursor": ""}
+			case "repeated suite cursor":
+				// A full second page, so only the repeated cursor can refuse it.
+				total, secondTotal, secondMore, secondCursor = 300, 300, true, "c1"
+				for id := int64(102); id <= 200; id++ {
+					second = append(second, suite(id, 0))
+				}
+				firstPage = retirementSuitesResponse(f, head, total, first, true, "c1")
+			case "too many unfinished suites":
+				for i := range first {
+					first[i] = suite(int64(i+1), 1)
+				}
+				second[0] = suite(101, 1)
+			case "too many suites":
+				// Refused on the first page, before reading the rest.
+				firstPage = retirementSuitesResponse(f, head, 3001, first, true, "c1")
+			case "foreign run in suite":
+				foreign := retirementHistoryRecord(f, head, queueCheckName, "QUEUED")
+				foreign["app"] = map[string]any{"id": 42, "slug": "other"}
+				suiteRuns[7] = []map[string]any{foreign}
+			case "run in two suites":
+				suiteRuns[101] = suiteRuns[7][:1]
+			case "GraphQL error with data":
+				firstPage["errors"] = []map[string]string{{"message": "incomplete server result"}}
+			}
+			f.api.responses["graphql:"+f.c.retirementSuitesQuery(head, "")] = firstPage
+			f.api.responses["graphql:"+f.c.retirementSuitesQuery(head, "c1")] = retirementSuitesResponse(f, head, secondTotal, second, secondMore, secondCursor)
+			if tc.fault == "suite page unavailable" {
+				f.api.responses["graphql:"+f.c.retirementSuitesQuery(head, "c1")] = errors.New("suite page unavailable")
+			}
+			for id, runs := range suiteRuns {
+				response := map[string]any{"total_count": len(runs), "check_runs": runs}
+				if tc.fault == "suite run overflow" {
+					response["total_count"] = 1001
+				}
+				f.api.responses[f.c.endpoint(fmt.Sprintf("check-suites/%d/check-runs?filter=latest&per_page=100&page=1", id))] = response
+			}
+			got, err := f.c.discoverRetirements(context.Background(), "schedule", f.event)
+			noTargets := len(got.Queue) == 0 && len(got.Observation) == 0 && len(got.ReporterTargets) == 0
+			switch tc.fault {
+			case "", "many suites, few records":
+				wantReporters := []reporterRetirementTarget{{Head: head, Run: 900, Attempt: 1}}
+				if err != nil || !reflect.DeepEqual(got.Queue, []string{head}) || !reflect.DeepEqual(got.Observation, []string{head}) || !reflect.DeepEqual(got.ReporterTargets, wantReporters) {
+					t.Fatalf("over-budget inventory = %+v/%v, want queued, in_progress and reporter targets on %s", got, err, head)
+				}
+				if f.api.reads[f.c.endpoint("check-suites/1/check-runs?filter=latest&per_page=100&page=1")] != 0 {
+					t.Fatal("suite without unfinished runs was read")
+				}
+			case "all completed", "suite finished since counted", "unnamed unfinished status":
+				if err != nil || !noTargets {
+					t.Fatalf("finished over-budget commit = %+v/%v, want no targets", got, err)
+				}
+				read := f.api.reads[f.c.endpoint("check-suites/7/check-runs?filter=latest&per_page=100&page=1")] != 0
+				if tc.fault == "all completed" && read || tc.fault == "unnamed unfinished status" && !read {
+					t.Fatalf("suite 7 read=%v, want it read only when its counts differ", read)
+				}
+			default:
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) || !noTargets {
+					t.Fatalf("over-budget fault = %+v/%v, want refusal containing %q", got, err, tc.wantErr)
+				}
+			}
+			if tc.fault == "too many suites" && f.api.reads["graphql:"+f.c.retirementSuitesQuery(head, "c1")] != 0 {
+				t.Fatal("suite scan read past a refused first page")
+			}
+			if f.api.reads[retirementChecksPath(f, head, 2)] != 0 || len(f.api.writes) != 0 {
+				t.Fatal("over-budget discovery read the full inventory or mutated checks")
+			}
+		})
 	}
 }
