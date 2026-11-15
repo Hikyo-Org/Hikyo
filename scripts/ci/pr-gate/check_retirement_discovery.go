@@ -163,7 +163,7 @@ func (c *controller) discoverRetirements(ctx context.Context, name string, e eve
 					return retirementTargets{}, errors.New("incomplete retirement history check suite count")
 				}
 				candidates = append(candidates, commit.OID)
-				manySuites[commit.OID] = *commit.Suites.Total > 1000
+				manySuites[commit.OID] = *commit.Suites.Total > retirementSuiteMargin
 			default:
 				return retirementTargets{}, errors.New("unknown aggregate retirement rollup state")
 			}
@@ -240,8 +240,12 @@ func (c *controller) discoverRetirements(ctx context.Context, name string, e eve
 	return targets, nil
 }
 
-const retirementSuitePages = 30
+const retirementSuitePages = 50
 const retirementUnfinishedSuites = 100
+
+// REST lists runs from only a commit's newest 1000 suites. The margin covers
+// suites added between the history count and that listing.
+const retirementSuiteMargin = 900
 
 var errRetirementCheckOverflow = errors.New("retirement check inventory exceeds its complete 1000-record budget; operator review required")
 
@@ -253,8 +257,8 @@ var errRetirementCheckOverflow = errors.New("retirement check inventory exceeds 
 //
 // A commit can hold more than 1000 completed records forever, and no backfill
 // lowers that count. REST also lists runs from only the newest 1000 check
-// suites, so manySuites (more than 1000) makes that listing partial however
-// few records it shows. Either way, GraphQL finds the github-actions suites
+// suites, so manySuites (more than retirementSuiteMargin) makes that listing
+// partial however few records it shows. Either way, GraphQL finds the github-actions suites
 // holding unfinished latest runs (filtered server-side, so no foreign app is
 // traversed) and REST reads only those suites. Suite status cannot stand in:
 // GitHub reports a suite completed while a synthetic run in it is queued.
@@ -302,7 +306,7 @@ func (c *controller) oversizedRetirementChecks(ctx context.Context, head string)
 		}
 		for _, check := range checks {
 			if seen[check.ID] || check.App.ID != actionsAppID {
-				return nil, errors.New("duplicate or foreign retirement check in a github-actions suite; operator review required")
+				return nil, fmt.Errorf("duplicate or foreign retirement check on %s in a github-actions suite; operator review required", head)
 			}
 			seen[check.ID] = true
 		}
@@ -380,7 +384,13 @@ func (c *controller) unfinishedRetirementSuites(ctx context.Context, head string
 			}
 			return unfinished, nil
 		}
-		if len(part.Nodes) != 100 || part.Page.End == nil || *part.Page.End == "" || len(*part.Page.End) > 1024 || seenCursors[*part.Page.End] {
+		if len(seen) >= total {
+			return nil, errors.New("incomplete retirement check suite pagination")
+		}
+		if len(part.Nodes) != 100 {
+			return nil, errors.New("short non-final retirement check suite page")
+		}
+		if part.Page.End == nil || *part.Page.End == "" || len(*part.Page.End) > 1024 || seenCursors[*part.Page.End] {
 			return nil, errors.New("missing or repeated retirement check suite cursor")
 		}
 		after = *part.Page.End
@@ -409,7 +419,7 @@ func (c *controller) retirementCheckInventory(ctx context.Context, head, base st
 		}
 		total = *part.Total
 		if total > 1000 {
-			return nil, errRetirementCheckOverflow
+			return nil, fmt.Errorf("retirement checks on %s at %s: %w", head, base, errRetirementCheckOverflow)
 		}
 		for _, check := range part.Checks {
 			if check.ID <= 0 || seen[check.ID] || check.HeadSHA != head || check.Name == "" || check.App.ID <= 0 || check.App.Slug == "" {
@@ -462,6 +472,11 @@ func (c *controller) retirementPendingChecks(ctx context.Context, head string, m
 		} else {
 			observation = true
 		}
+	}
+	// The owners that retire these list by commit, which REST caps at the newest
+	// 1000 suites, so they could silently miss a target routed from here.
+	if manySuites && (queue || observation || len(reporters) > 0) {
+		return false, false, nil, fmt.Errorf("unfinished synthetic context on %s, which has more than %d check suites, is beyond what retirement can list; operator review required", head, retirementSuiteMargin)
 	}
 	return queue, observation, reporters, nil
 }

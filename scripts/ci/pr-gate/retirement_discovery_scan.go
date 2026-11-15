@@ -92,10 +92,6 @@ func (a retirementDiscoveryReadAPI) read(ctx context.Context, path string, out a
 	if inventory {
 		a.scan.restRequests.Add(1)
 	}
-	// Oversized commits' GraphQL suite pages dominate their scan time.
-	if strings.HasPrefix(path, "graphql:") && strings.Contains(path, "checkSuites(") {
-		a.scan.suitePages.Add(1)
-	}
 	// Each counted request must be exactly one attempt, whatever API was wired.
 	reader := a.api
 	if retrying, ok := reader.(retryingAPI); ok {
@@ -104,6 +100,10 @@ func (a retirementDiscoveryReadAPI) read(ctx context.Context, path string, out a
 	err := reader.read(ctx, path, out)
 	if inventory && err == nil {
 		a.scan.restPages.Add(1)
+	}
+	// Oversized commits' GraphQL suite pages dominate their scan time.
+	if err == nil && strings.HasPrefix(path, "graphql:") && strings.Contains(path, "checkSuites(") {
+		a.scan.suitePages.Add(1)
 	}
 	return err
 }

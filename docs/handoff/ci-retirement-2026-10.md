@@ -247,9 +247,17 @@ invisible to REST. Suites holding queued synthetic runs reported
 
 Measured live from a workstation: the GraphQL suite scan costs one point and
 about 2 s per 100 suites (12 s for `f9b558f`, 44 s for `807d433`). Full-window
-runs took 133 to 164 s before the regression and 143 s with the first version
-of this fix; one run of the suite scan hit the old 3-minute deadline, so the
-discovery deadline is now 5 minutes inside an 8-minute job. The
-`retirement_discovery_scan` record reports `suite_pages`. Not verified: the
+runs took 133 to 164 s before the regression, 143 s with the first version
+of this fix and 213 s (36 suite pages, exit 0) with the final one; one run of
+the suite scan hit the old 3-minute deadline, so the discovery deadline is now
+5 minutes inside an 8-minute job. The `retirement_discovery_scan` record reports
+successful `suite_pages`.
+
+Review limits kept open: `listOwnedChecks` and the queue reporter's `existing()`
+still list by commit, so discovery refuses, rather than routes, a synthetic
+target on a commit with more than 900 suites. Teaching both owners the
+per-suite read would remove that refusal. On 2026-11-15 the window held four
+commits over 1,000 suites (1,039, 1,147, 1,715 and 2,005), so the 5,000-suite
+cap has headroom but is not unbounded. Not verified: the
 suite query from hosted runner IPs against any organisation IP allow list; it
 filters by app ID and reads only counts, so it traverses no foreign app object.
