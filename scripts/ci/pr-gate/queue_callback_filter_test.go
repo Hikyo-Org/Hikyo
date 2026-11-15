@@ -38,10 +38,22 @@ func TestPublishFilterAcceptsExactlyTheCallbackPathsTheQueueAccepts(t *testing.T
 	if len(filter) == 0 {
 		t.Fatalf("publish.if names no workflow_run.path: %q", wf.Jobs.Publish.If)
 	}
-	// Every path either side names, plus both known feedback workflows.
+	// Every path either side names, plus both known feedback workflows and every
+	// workflow file in the repository.
 	universe := map[string]bool{feedbackWorkflowPath: true, retargetWorkflowPath: true}
 	for p := range filter {
 		universe[p] = true
+	}
+	// Any workflow file may become an accepted path: a third one that Go accepts
+	// and the filter omits must fail here too.
+	entries, err := os.ReadDir("../../../.github/workflows")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if name := entry.Name(); strings.HasSuffix(name, ".yml") {
+			universe[".github/workflows/"+name] = true
+		}
 	}
 	for path := range universe {
 		f := newQueueFixture(t)

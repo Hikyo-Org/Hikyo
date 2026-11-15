@@ -222,7 +222,7 @@ func (c *controller) confirmRetirement(ctx context.Context, path string, before,
 			return nil
 		}
 		if fresh != *before || attempt == len(writeConfirmBackoff) {
-			return errors.New("retirement readback disagrees with cancelled record")
+			return fmt.Errorf("retirement readback disagrees with cancelled record: readback %s, expected %s", describeCheck(&fresh), describeCheck(written))
 		}
 		if err := readRetryWait(ctx, writeConfirmBackoff[attempt]); err != nil {
 			return err

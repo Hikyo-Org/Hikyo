@@ -21,6 +21,10 @@ type laggingListAPI struct {
 	armed  bool
 	posts  int
 	onPost func(*fakeAPI)
+	// perWrite, when set, re-arms the lag on every write: write n is followed
+	// by perWrite[n] listings that show the records as they were before it.
+	perWrite []int
+	writes   int
 }
 
 func (a *laggingListAPI) read(ctx context.Context, path string, result any) error {
@@ -34,7 +38,13 @@ func (a *laggingListAPI) read(ctx context.Context, path string, result any) erro
 }
 
 func (a *laggingListAPI) write(ctx context.Context, method, path string, payload, result any) error {
-	if !a.armed {
+	if a.perWrite != nil {
+		a.armed, a.stale, a.lag = true, slices.Clone(a.inner.checks), 0
+		if a.writes < len(a.perWrite) {
+			a.lag = a.perWrite[a.writes]
+		}
+		a.writes++
+	} else if !a.armed {
 		a.armed, a.stale = true, slices.Clone(a.inner.checks)
 	}
 	if method == "POST" {
@@ -83,6 +93,13 @@ func TestEnsureBlockingRefusesAfterBoundedLag(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "could not be confirmed") {
 		t.Fatalf("unconfirmed barrier was accepted: %v", err)
 	}
+	// A recurrence must be diagnosable from the log: the written record and what
+	// the listing showed, with IDs, status and conclusion.
+	for _, want := range []string{"written id=", `status="queued"`, "listed none"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error does not name %q: %v", want, err)
+		}
+	}
 	if api.posts != 1 || len(f.api.writes) != 1 {
 		t.Fatalf("an unconfirmed CREATE was retried: POSTs = %d, writes = %d", api.posts, len(f.api.writes))
 	}
@@ -108,6 +125,9 @@ func TestEnsureBlockingNeverConfirmsADifferentNewestRecord(t *testing.T) {
 	err := ensureBlockingOnEmptyHead(t, f)
 	if err == nil || !strings.Contains(err.Error(), "could not be confirmed") {
 		t.Fatalf("a different newest record confirmed the barrier: %v", err)
+	}
+	if !strings.Contains(err.Error(), "listed id=") || strings.Contains(err.Error(), "listed none") {
+		t.Fatalf("error does not name the different newest record: %v", err)
 	}
 	if len(*waits) != 0 {
 		t.Fatalf("waited on a listing that is not behind: %v", *waits)
@@ -140,7 +160,7 @@ func TestNewestAfterWriteFollowsTheWrittenStatus(t *testing.T) {
 			written := record(f, "completed", "failure")
 			f.api.checks = []check{written}
 			f.c.api = &laggingListAPI{inner: f.api, lag: tc.lag, armed: true, stale: []check{record(f, tc.stale[0], tc.stale[1])}}
-			newest, err := f.c.newestAfterWrite(context.Background(), &written)
+			newest, err := f.c.newestAfterWrite(context.Background(), &written, new(time.Duration))
 			if err != nil || newest == nil || newest.ID != written.ID {
 				t.Fatalf("newest = %+v, err = %v", newest, err)
 			}
@@ -160,7 +180,7 @@ func TestNewestAfterWriteStopsWhenTheWaitIsCancelled(t *testing.T) {
 	readRetryWait = func(context.Context, time.Duration) error { return context.DeadlineExceeded }
 	t.Cleanup(func() { readRetryWait = old })
 	written := check{ID: 7, Status: "queued"}
-	if _, err := f.c.newestAfterWrite(context.Background(), &written); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := f.c.newestAfterWrite(context.Background(), &written, new(time.Duration)); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("a spent deadline did not end the re-read: %v", err)
 	}
 }
@@ -187,4 +207,27 @@ func TestGroupColdStartBarrierSurvivesLaggingCheckListing(t *testing.T) {
 		t.Fatalf("listing waits = %v, want %v", *waits, writeConfirmBackoff[:2])
 	}
 	f.assertNewest(t, "success", "Merge group validated", "")
+}
+
+// ensureBlocking creates the barrier and finishGroupFailure then fails it, each
+// confirmed against a listing that trails the write. Both run under one reserve
+// (5 s), so together they may wait no longer than one full backoff.
+func TestBarrierAndFailureConfirmationsShareOneWaitBudget(t *testing.T) {
+	f := newQueueFixture(t)
+	f.q.dco = func(context.Context, pull) (int, error) { return 0, errors.New("DCO check: empty commit range") }
+	waits := recordReadWaits(t)
+	f.c.api = &laggingListAPI{inner: f.api, perWrite: []int{2, 1 << 20}}
+	if err := f.group(); err == nil || !strings.Contains(err.Error(), "empty commit range") {
+		t.Fatalf("group failure not reported: %v", err)
+	}
+	var total time.Duration
+	for _, d := range *waits {
+		total += d
+	}
+	if total > writeConfirmTotal() || len(*waits) == 0 {
+		t.Fatalf("confirmations waited %v (%v) under one reserve, budget %v", total, *waits, writeConfirmTotal())
+	}
+	if want := writeConfirmTotal(); want != 3*time.Second {
+		t.Fatalf("budget %v no longer fits the 5 s reserve with the rest of the pass", want)
+	}
 }
