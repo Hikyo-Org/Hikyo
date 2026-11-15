@@ -197,8 +197,10 @@ func TestIncidentAdapterWorkRefusalBlocksClose(t *testing.T) {
 			if !found {
 				t.Fatalf("no blocked adapter_move.resume enumeration row for %s in %+v", tc.marker, items)
 			}
+			// The marker row above is the proof; a clean close is refused here
+			// regardless because the adapter's other items are open too.
 			if _, err := s.Close(ctx, actor, v.Incident.ID, false); !errors.Is(err, ErrIncidentOpenItems) {
-				t.Errorf("clean close over an unread adapter work source = %v, want ErrIncidentOpenItems", err)
+				t.Errorf("clean close = %v, want ErrIncidentOpenItems", err)
 			}
 		})
 	}

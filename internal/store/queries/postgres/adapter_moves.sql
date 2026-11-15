@@ -133,8 +133,8 @@ INSERT INTO adapter_route_move_claims (move_id,org_id,project_id,environment_id,
 SELECT (a.provider)::text AS provider,t.variable_protected AS variable_protected,t.variable_hidden AS variable_hidden,t.variable_expand AS variable_expand FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.org_id=sqlc.arg(chain_org) AND t.project_id=sqlc.arg(chain_project) AND t.adapter_id=sqlc.arg(target_adapter_id) AND t.id=sqlc.arg(target_id);
 
 -- Incident enumeration: the non-terminal route moves of one project, optionally
--- narrowed to one adapter, in id order and bounded by the limit. Only
--- identifiers and states are selected.
+-- narrowed to one adapter, in id order and bounded by the limit. Only the move
+-- id is selected.
 -- name: AdapterMoveListOpen :many
 SELECT (m.id)::text AS id FROM adapter_route_moves AS m WHERE m.org_id=sqlc.arg(chain_org) AND m.project_id=sqlc.arg(chain_project) AND m.state NOT IN ('completed','canceled') AND (CAST(sqlc.arg(adapter_id) AS TEXT)='' OR m.adapter_id=sqlc.arg(adapter_id)) AND m.id>sqlc.arg(after_id) ORDER BY m.id LIMIT sqlc.arg(row_limit);
 

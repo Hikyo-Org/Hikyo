@@ -991,8 +991,8 @@ type AdapterMoveListOpenParams struct {
 }
 
 // Incident enumeration: the non-terminal route moves of one project, optionally
-// narrowed to one adapter, in id order and bounded by the limit. Only
-// identifiers and states are selected.
+// narrowed to one adapter, in id order and bounded by the limit. Only the move
+// id is selected.
 func (q *Queries) AdapterMoveListOpen(ctx context.Context, arg AdapterMoveListOpenParams) ([]string, error) {
 	rows, err := q.db.Query(ctx, adapterMoveListOpen,
 		arg.ChainOrg,
