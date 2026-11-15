@@ -39,9 +39,7 @@ is advisory for the maintainer: nothing requires it.
   are real (the generator's development declaration plus the reviewed source
   edges); only `gh release download` and the signature verifier are faked.
 - 28 mutations of the script, the shared library and the workflow: every one
-  fails the fixture or `TestReleaseCompatibilityCheckWorkflowBoundaries`, except
-  dropping `length == 2` from the shape check, which is an equivalent mutant
-  (the sorted engine names already force exactly two engines).
+  fails the fixture or `TestReleaseCompatibilityCheckWorkflowBoundaries`.
 - `go test -p 2 ./scripts/ci/... ./scripts/release/...` through `agent-heavy`.
 - shellcheck, the pinned actionlint.
 

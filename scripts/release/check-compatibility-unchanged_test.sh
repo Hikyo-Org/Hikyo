@@ -109,6 +109,8 @@ done
 # A shape that is not a two-engine declaration never compares equal to anything.
 jq -S '.engines |= .[:1]' "$scratch/candidate.json" >"$scratch/changed.json"
 refused same "$scratch/changed.json" 'not a complete two-engine declaration'
+jq -S '.engines |= (map({key: .migrations.engine, value: .}) | from_entries)' "$scratch/candidate.json" >"$scratch/changed.json"
+refused same "$scratch/changed.json" 'not a complete two-engine declaration'
 jq -S '.profile = "stable/v2"' "$scratch/candidate.json" >"$scratch/changed.json"
 refused same "$scratch/changed.json" 'not a complete two-engine declaration'
 printf '{}\n' >"$scratch/changed.json"
