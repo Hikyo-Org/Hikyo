@@ -463,13 +463,15 @@ func (s *queueReconciliation) ensureBlocking(ctx context.Context, cause error) e
 // 43743778985 re-listed under a second after its POST and saw nothing). The
 // bounded waits below cover only that gap and stay inside the caller's own
 // deadline and reserve. They are not a timeout bump and never retry a write.
-var barrierConfirmBackoff = []time.Duration{500 * time.Millisecond, time.Second, 1500 * time.Millisecond}
+var writeConfirmBackoff = []time.Duration{500 * time.Millisecond, time.Second, 1500 * time.Millisecond}
 
 // newestAfterWrite lists the owned records and returns the newest one. It
 // re-lists only while the listing is demonstrably behind the exact record the
-// caller wrote: nothing, an older ID, or the same ID short of the written
-// terminal status. A newer ID or a settled same-ID view is final at once, so
-// the caller compares the exact written ID and never accepts a different one.
+// caller wrote: nothing, an older ID, or the same ID showing a status or
+// conclusion other than the written one (a record PATCHed from success to
+// failure also reads as behind while the old verdict shows). A newer ID or a
+// matching same-ID view is final at once, so the caller compares the exact
+// written ID and never accepts a different one.
 func (c *controller) newestAfterWrite(ctx context.Context, written *check) (*check, error) {
 	for attempt := 0; ; attempt++ {
 		own, err := c.listOwnedChecks(ctx, c.expectedHead)
@@ -477,11 +479,11 @@ func (c *controller) newestAfterWrite(ctx context.Context, written *check) (*che
 			return nil, err
 		}
 		newest := newestQueueCheck(own)
-		behind := newest == nil || newest.ID < written.ID || newest.ID == written.ID && written.Status == "completed" && newest.Status != "completed"
-		if !behind || attempt == len(barrierConfirmBackoff) {
+		behind := newest == nil || newest.ID < written.ID || newest.ID == written.ID && (newest.Status != written.Status || newest.Conclusion != written.Conclusion)
+		if !behind || attempt == len(writeConfirmBackoff) {
 			return newest, nil
 		}
-		if err := readRetryWait(ctx, barrierConfirmBackoff[attempt]); err != nil {
+		if err := readRetryWait(ctx, writeConfirmBackoff[attempt]); err != nil {
 			return newest, err
 		}
 	}

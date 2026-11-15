@@ -69,7 +69,7 @@ func TestEnsureBlockingWaitsOutLaggingCheckListing(t *testing.T) {
 	if len(f.api.checks) != 1 || !blockingQueueCheck(&f.api.checks[0]) {
 		t.Fatalf("blocking barrier missing: %+v", f.api.checks)
 	}
-	if want := barrierConfirmBackoff[:2]; !slices.Equal(*waits, want) {
+	if want := writeConfirmBackoff[:2]; !slices.Equal(*waits, want) {
 		t.Fatalf("waits = %v, want %v", *waits, want)
 	}
 }
@@ -86,8 +86,8 @@ func TestEnsureBlockingRefusesAfterBoundedLag(t *testing.T) {
 	if api.posts != 1 || len(f.api.writes) != 1 {
 		t.Fatalf("an unconfirmed CREATE was retried: POSTs = %d, writes = %d", api.posts, len(f.api.writes))
 	}
-	if !slices.Equal(*waits, barrierConfirmBackoff) {
-		t.Fatalf("re-reads were not bounded: waits = %v, want %v", *waits, barrierConfirmBackoff)
+	if !slices.Equal(*waits, writeConfirmBackoff) {
+		t.Fatalf("re-reads were not bounded: waits = %v, want %v", *waits, writeConfirmBackoff)
 	}
 	if len(f.api.checks) != 1 || !blockingQueueCheck(&f.api.checks[0]) {
 		t.Fatalf("the written barrier must stay blocking: %+v", f.api.checks)
@@ -121,27 +121,31 @@ func TestNewestAfterWriteFollowsTheWrittenStatus(t *testing.T) {
 		return v
 	}
 	for _, tc := range []struct {
-		name  string
-		lag   int
-		waits int
-		done  bool
+		name       string
+		stale      [2]string
+		lag, waits int
+		done       bool
 	}{
-		{"visible at once", 0, 0, true},
-		{"completed status trails", 2, 2, true},
-		{"completed status never arrives", 1 << 20, len(barrierConfirmBackoff), false},
+		{"visible at once", [2]string{"queued", ""}, 0, 0, true},
+		{"completed status trails", [2]string{"queued", ""}, 2, 2, true},
+		{"completed status never arrives", [2]string{"queued", ""}, 1 << 20, len(writeConfirmBackoff), false},
+		// failOwnedBarrier PATCHes a record from completed/success to failure;
+		// a view still showing the old verdict is behind, not settled.
+		{"conclusion trails", [2]string{"completed", "success"}, 2, 2, true},
+		{"conclusion never arrives", [2]string{"completed", "success"}, 1 << 20, len(writeConfirmBackoff), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newQueueFixture(t)
 			waits := recordReadWaits(t)
 			written := record(f, "completed", "failure")
 			f.api.checks = []check{written}
-			f.c.api = &laggingListAPI{inner: f.api, lag: tc.lag, armed: true, stale: []check{record(f, "queued", "")}}
+			f.c.api = &laggingListAPI{inner: f.api, lag: tc.lag, armed: true, stale: []check{record(f, tc.stale[0], tc.stale[1])}}
 			newest, err := f.c.newestAfterWrite(context.Background(), &written)
 			if err != nil || newest == nil || newest.ID != written.ID {
 				t.Fatalf("newest = %+v, err = %v", newest, err)
 			}
-			if got := newest.Status == "completed"; got != tc.done {
-				t.Fatalf("completed = %t, want %t", got, tc.done)
+			if got := newest.Status == written.Status && newest.Conclusion == written.Conclusion; got != tc.done {
+				t.Fatalf("settled = %t, want %t", got, tc.done)
 			}
 			if len(*waits) != tc.waits {
 				t.Fatalf("waits = %v, want %d", *waits, tc.waits)
@@ -179,8 +183,8 @@ func TestGroupColdStartBarrierSurvivesLaggingCheckListing(t *testing.T) {
 		// The verified terminal record updates the barrier; it is never a second CREATE.
 		t.Fatalf("POSTs = %d, want only the barrier", api.posts)
 	}
-	if !slices.Equal(*waits, barrierConfirmBackoff[:2]) {
-		t.Fatalf("listing waits = %v, want %v", *waits, barrierConfirmBackoff[:2])
+	if !slices.Equal(*waits, writeConfirmBackoff[:2]) {
+		t.Fatalf("listing waits = %v, want %v", *waits, writeConfirmBackoff[:2])
 	}
 	f.assertNewest(t, "success", "Merge group validated", "")
 }

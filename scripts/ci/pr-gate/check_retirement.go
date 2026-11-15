@@ -158,12 +158,8 @@ func (c *controller) retireChecksState(ctx context.Context, head string, allowLa
 		if !c.authenticatedQueueCheck(&written, head) || written.ID != selected.ID || written.ExternalID != selected.ExternalID || written.Status != "completed" || written.Conclusion != "cancelled" {
 			return false, errors.New("retirement response did not confirm the exact owned cancelled record")
 		}
-		var fresh check
-		if err := c.api.read(ctx, path, &fresh); err != nil {
+		if err := c.confirmRetirement(ctx, path, &selected, &written); err != nil {
 			return false, err
-		}
-		if fresh != written {
-			return false, errors.New("retirement readback disagrees with cancelled record")
 		}
 		if _, err := fmt.Fprintf(c.output, "Retired %s %s check %d: completed/cancelled, readback verified.\n", head, c.checkName, selected.ID); err != nil {
 			return false, err
@@ -207,4 +203,29 @@ func (q *queueController) inactiveRetirementRoles(ctx context.Context, head stri
 		return false, errors.New("stale-group retirement cannot authenticate current main")
 	}
 	return ref.Object.SHA == head, nil
+}
+
+// confirmRetirement reads the exact record back after its cancelling PATCH. The
+// single-record GET can trail that PATCH like the listing does (gate-queue runs
+// 43448127148 and 43468901510 failed this readback within a second of the
+// record's completed_at, and both records are completed/cancelled). Only a
+// readback that is still the exact pre-PATCH record is behind and is read again,
+// a bounded number of times; any other difference stays a real disagreement.
+// The PATCH is never repeated.
+func (c *controller) confirmRetirement(ctx context.Context, path string, before, written *check) error {
+	for attempt := 0; ; attempt++ {
+		var fresh check
+		if err := c.api.read(ctx, path, &fresh); err != nil {
+			return err
+		}
+		if fresh == *written {
+			return nil
+		}
+		if fresh != *before || attempt == len(writeConfirmBackoff) {
+			return errors.New("retirement readback disagrees with cancelled record")
+		}
+		if err := readRetryWait(ctx, writeConfirmBackoff[attempt]); err != nil {
+			return err
+		}
+	}
 }

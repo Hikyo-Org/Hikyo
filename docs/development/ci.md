@@ -416,7 +416,9 @@ The `gate-queue` publisher answers only callbacks whose run path is
 `.github/workflows/ci-feedback.yml`. `ci-feedback-retarget.yml` shares the name
 `ci-feedback` so that `gate-dev` selects it, but a run of it is not feedback: the
 publisher's job condition skips it, where its controller would refuse it as a foreign
-callback and leave a red run on the head's check suite. A retarget to main still
+callback and leave a red run on the default branch's tip. A test keeps that list
+equal to the paths the Go check accepts, so a backmerge that teaches the check a new
+path fails until the condition follows. A retarget to main still
 reaches `gate-queue` through its `edited` pull request event. `gate-dev` has no
 `edited` trigger, so its discovery and publisher accept a callback from either
 `ci-feedback.yml` or `ci-feedback-retarget.yml` (event `pull_request`, an exact open
