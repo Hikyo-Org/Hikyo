@@ -10,7 +10,10 @@ trust=$1 directory=$2
 version=$(jq -er '.version' "$directory/release-manifest.json")
 commit=$(jq -er '.source_commit' "$directory/release-manifest.json")
 [ "$GITHUB_REF" = "refs/tags/v$version" ] && [ "$commit" = "$GITHUB_SHA" ] || exit 1
-go run ./scripts/release/stable prepare --trust "$trust" --directory "$directory"
+# The unattended release app may only publish the patch successor of the latest stable.
+patch_only=
+[ "${HIKYO_PATCH_ONLY:-}" != 1 ] || patch_only=--patch-only
+go run ./scripts/release/stable prepare --trust "$trust" --directory "$directory" $patch_only
 # Every artifact, including provenance, has its own transparency-backed bundle.
 # The recovery signature on the delegation policy must never be overwritten.
 for file in "$directory"/*; do
