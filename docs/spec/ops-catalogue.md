@@ -30,6 +30,20 @@ failed accounting. Pending evidence is never overwritten to start another
 window. Existing dedicated refusals and authenticated denials keep their own
 durability and cardinality.
 
+## Scheduled credential rotation (#148)
+
+Operative when the pull request implementing the first slice of
+[#148](https://github.com/Hikyo-Org/Hikyo/issues/148) merges. These are
+configuration bounds validated at create time; each hit is a named refusal
+(`invalid`, naming the bound). Mechanics: `docs/handoff/148-credential-rotation.md`.
+
+| Entry | Value | Scope |
+| --- | --- | --- |
+| Minimum rotation interval | 1 hour | fixed |
+| Maximum rotation interval | 90 days | fixed |
+| Minimum revocation delay | 5 minutes | fixed |
+| Maximum revocation delay | 7 days | fixed |
+
 ## SAML (defaults fixed in [saml-sp.md](../adr/saml-sp.md); catalogued here as tunable entries)
 
 | Entry | Default | Scope |
