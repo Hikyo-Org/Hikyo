@@ -1468,6 +1468,8 @@ func seedAdapterWork(t *testing.T, db *store.DB) {
 	job("scr_w1ok", "tgt_w1", "scrub", "arm_w1", "succeeded")
 	job("cvg_w1", "tgt_w1", "converge", "arm_w1", "queued")
 	job("scr_w2", "tgt_w2", "scrub", "arm_w2", "queued")
+	// A teardown scrub belongs to no route move.
+	job("scr_w2td", "tgt_w2", "scrub", "", "queued")
 }
 
 func markerKeys(m map[string]string) []string {
@@ -1516,10 +1518,11 @@ func TestIncidentListsAdapterMovesAndScrubs(t *testing.T) {
 		}
 		pg := w.itemMap(t, incResponder, prj.Incident.ID)
 		wantItems(t, pg, map[string]string{
-			"adapter_move.resume|adapter_move|arm_w1":     "pending/",
-			"adapter_move.resume|adapter_move|arm_w2":     "pending/",
-			"adapter_scrub.complete|adapter_scrub|scr_w1": "pending/",
-			"adapter_scrub.complete|adapter_scrub|scr_w2": "pending/",
+			"adapter_move.resume|adapter_move|arm_w1":       "pending/",
+			"adapter_move.resume|adapter_move|arm_w2":       "pending/",
+			"adapter_scrub.complete|adapter_scrub|scr_w1":   "pending/",
+			"adapter_scrub.complete|adapter_scrub|scr_w2":   "pending/",
+			"adapter_scrub.complete|adapter_scrub|scr_w2td": "pending/",
 		})
 
 		// With no owner registered, resume asks nobody and nothing becomes done;
@@ -1606,6 +1609,15 @@ func TestIncidentAdapterWorkIsBounded(t *testing.T) {
 		}
 		if _, ok := got["adapter_move.resume|enumeration|prj_a1"]; ok {
 			t.Errorf("an unexceeded move source left a marker")
+		}
+		// An adapter incident over the adapter holding the bulk is bounded too,
+		// and its marker is named for the adapter.
+		ad, err := w.svc.Open(ctx, w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeAdapter, Scope: domain.Scope{Org: orgA, Project: prjA1}, AdapterID: "adp_w1"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := w.itemMap(t, incResponder, ad.Incident.ID)["adapter_scrub.complete|enumeration|adp_w1"]; got != "unknown/enumeration_truncated" {
+			t.Errorf("adapter-scope over-bound marker = %q, want enumeration_truncated", got)
 		}
 		if _, err := w.svc.Close(ctx, w.as(incResponder), v.Incident.ID, false); !errors.Is(err, service.ErrIncidentOpenItems) {
 			t.Errorf("clean close of a truncated incident = %v, want ErrIncidentOpenItems", err)

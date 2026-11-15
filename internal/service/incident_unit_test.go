@@ -62,6 +62,8 @@ func TestAttestable(t *testing.T) {
 		"upstream by reason":        {authz.IncidentItem{OwnerFunction: domain.OwnerAdapterTargetPause, Outcome: domain.ItemUnknown, Reason: domain.ReasonUpstreamNotObservable}, true},
 		"upstream by owner":         {authz.IncidentItem{OwnerFunction: domain.OwnerAdapterUpstream, Outcome: domain.ItemUnknown}, true},
 		"consumer adoption":         {authz.IncidentItem{OwnerFunction: domain.OwnerConsumerAdoption, Outcome: domain.ItemPending}, true},
+		"adapter move item":         {authz.IncidentItem{OwnerFunction: domain.OwnerAdapterMove, Outcome: domain.ItemPending}, false},
+		"adapter scrub item":        {authz.IncidentItem{OwnerFunction: domain.OwnerAdapterScrub, Outcome: domain.ItemPending}, false},
 		"factor stays open":         {authz.IncidentItem{OwnerFunction: domain.OwnerFactorRemoval, Outcome: domain.ItemUnknown, Reason: domain.ReasonNoRevokeOwner}, false},
 		"truncated identity marker": {authz.IncidentItem{OwnerFunction: domain.OwnerExternalIdentity, ObjectKind: domain.ObjectKindEnumeration, Outcome: domain.ItemUnknown, Reason: domain.ReasonEnumerationTruncated}, false},
 		"linked identity":           {authz.IncidentItem{OwnerFunction: domain.OwnerExternalIdentity, Outcome: domain.ItemUnknown, Reason: domain.ReasonNoRevokeOwner}, true},
@@ -84,6 +86,39 @@ func TestOwnerErrClassIgnoresOwnerText(t *testing.T) {
 		got := ownerErrClass(err)
 		if got != want || strings.Contains(got, "secret") {
 			t.Errorf("ownerErrClass(%v) = %q, want %q", err, got, want)
+		}
+	}
+}
+
+func TestPageBoundedLimit(t *testing.T) {
+	serve := func(total int) func(string) ([]int, error) {
+		return func(after string) ([]int, error) {
+			start := 0
+			if after != "" {
+				fmt.Sscan(after, &start)
+			}
+			var page []int
+			for i := start; i < total && len(page) < authz.MaxIncidentPage; i++ {
+				page = append(page, i)
+			}
+			return page, nil
+		}
+	}
+	id := func(i int) string { return fmt.Sprint(i + 1) }
+	for _, tc := range []struct {
+		total, limit, wantLen int
+		wantCut               bool
+	}{
+		{3, 2000, 3, false},
+		{2000, 2000, 2000, false},
+		{2001, 2000, 2000, true},
+		{500, 500, 500, false},
+		{501, 500, 500, true},
+		{0, 2000, 0, false},
+	} {
+		out, cut, err := pageBounded(tc.limit, id, serve(tc.total))
+		if err != nil || len(out) != tc.wantLen || cut != tc.wantCut {
+			t.Errorf("total %d limit %d: len %d cut %v err %v, want len %d cut %v", tc.total, tc.limit, len(out), cut, err, tc.wantLen, tc.wantCut)
 		}
 	}
 }
