@@ -417,7 +417,12 @@ The `gate-queue` publisher answers only callbacks whose run path is
 `ci-feedback` so that `gate-dev` selects it, but a run of it is not feedback: the
 publisher's job condition skips it, where its controller would refuse it as a foreign
 callback and leave a red run on the head's check suite. A retarget to main still
-reaches `gate-queue` through its `edited` pull request event.
+reaches `gate-queue` through its `edited` pull request event. `gate-dev` has no
+`edited` trigger, so its discovery and publisher accept a callback from either
+`ci-feedback.yml` or `ci-feedback-retarget.yml` (event `pull_request`, an exact open
+dev PR head); any other path is refused. Such a callback run belongs to the default
+branch commit, not the PR head, so it cannot supersede the suite hosting
+`ci-dev-required`.
 
 Discovery on a push to `dev` selects no PR. A green `ci-dev-required` stays valid
 when `dev` moves: the check is not strict about the base, and GitHub itself refuses

@@ -20,6 +20,10 @@ const queueWorkflowPath = ".github/workflows/ci-merge-group.yml"
 const queueRulesetID = 20539346
 const feedbackWorkflowPath = ".github/workflows/ci-feedback.yml"
 
+// ci-feedback-retarget runs ci-feedback for a base retarget. Its suites are
+// never the oldest on a head, so a metadata edit cannot hide a gate record.
+const retargetWorkflowPath = ".github/workflows/ci-feedback-retarget.yml"
+
 // GitHub can skip a job before expanding its matrix/name expression, and may
 // normalize its parentheses. Match only observed canonical spellings of this
 // ignored job, never an arbitrary successful/skipped run.

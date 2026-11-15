@@ -62,7 +62,8 @@ jq -cse --arg name "$GITHUB_EVENT_NAME" --arg repo "$GH_REPO" --arg scope "$scop
      else error("invalid dev PR event") end
    elif $name == "workflow_run" then
      if $e.workflow_run.event == "pull_request" and
-        $e.workflow_run.path == ".github/workflows/ci-feedback.yml" and ($e.workflow_run.head_sha | sha)
+        ($e.workflow_run.path == ".github/workflows/ci-feedback.yml" or $e.workflow_run.path == ".github/workflows/ci-feedback-retarget.yml") and
+        ($e.workflow_run.head_sha | sha)
      then [$pulls[] | select(.head.sha == $e.workflow_run.head_sha) | {pr:.number,head:.head.sha}]
      else error("invalid feedback callback") end
    elif $name == "workflow_dispatch" then
