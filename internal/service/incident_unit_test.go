@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -95,7 +96,11 @@ func TestPageBoundedLimit(t *testing.T) {
 		return func(after string) ([]int, error) {
 			start := 0
 			if after != "" {
-				fmt.Sscan(after, &start)
+				n, err := strconv.Atoi(after)
+				if err != nil {
+					return nil, err
+				}
+				start = n
 			}
 			var page []int
 			for i := start; i < total && len(page) < authz.MaxIncidentPage; i++ {
