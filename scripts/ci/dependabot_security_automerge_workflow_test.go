@@ -1,6 +1,7 @@
 package ci_test
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -102,7 +103,7 @@ func TestDependabotSecurityAutomergeWorkflowBoundaries(t *testing.T) {
 
 func TestDependabotSecurityAutomergeFixture(t *testing.T) {
 	root := repositoryRoot(t)
-	command := exec.Command("sh", filepath.Join(root, "scripts", "ci", "dependabot-security-automerge_test.sh"))
+	command := exec.CommandContext(context.Background(), "sh", filepath.Join(root, "scripts", "ci", "dependabot-security-automerge_test.sh"))
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, output)
 	}
