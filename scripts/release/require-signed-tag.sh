@@ -74,6 +74,15 @@ if jq -e --arg bot "$bot" '
     .actor.type == "Bot" and .triggering_actor.type == "Bot" and
     (.actor.id | tostring) == $bot and (.triggering_actor.id | tostring) == $bot
   ' "$scratch/run.json" >/dev/null || refuse 'a bot tag needs a release-build run started and triggered by the stable-release app'
+  # The tagged commit's own copy of this script must judge by the pusher too: a tag at an
+  # older commit would run that commit's release workflow under the old signature rule.
+  rc=0
+  commit_has_actor_tag_authority "$repository" "$commit" || rc=$?
+  case $rc in
+  0) ;;
+  1) refuse 'the tagged commit predates the actor-based tag authority' ;;
+  *) refuse 'cannot read the tag authority of the tagged commit' ;;
+  esac
   "$GO_BIN" -C "$repo_root" run ./scripts/release/stable preflight --trust "$trust" >/dev/null ||
     refuse 'stable trust does not authenticate'
   "$GO_BIN" -C "$repo_root" run ./scripts/release/stable candidate --patch-only \

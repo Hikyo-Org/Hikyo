@@ -122,6 +122,7 @@ func TestUnattendedReconcilerIsInertAndMainOnly(t *testing.T) {
 		Uses string            `yaml:"uses"`
 		Run  string            `yaml:"run"`
 		With map[string]string `yaml:"with"`
+		Env  map[string]string `yaml:"env"`
 	}
 	type job struct {
 		If          string            `yaml:"if"`
@@ -164,6 +165,15 @@ func TestUnattendedReconcilerIsInertAndMainOnly(t *testing.T) {
 		t.Fatalf("the reconciler may push-trigger only on main: %v", err)
 	}
 	for name, j := range workflow.Jobs {
+		if name == "misconfigured" {
+			// The one job that runs without the bot id: it fails the run when the client id is
+			// set and the bot id is not, so a half-configured App is loud and never silent.
+			if j.If != "vars.STABLE_RELEASE_APP_CLIENT_ID != '' && vars.STABLE_RELEASE_APP_BOT_ID == ''" || len(j.Permissions) != 0 || j.Env != "" ||
+				len(j.Steps) != 1 || !strings.Contains(j.Steps[0].Run, "exit 1") {
+				t.Fatal("the misconfigured job must fail a run that has the client id and no bot id, and do nothing else")
+			}
+			continue
+		}
 		for _, gate := range []string{"vars.STABLE_RELEASE_APP_CLIENT_ID != ''", "vars.STABLE_RELEASE_APP_BOT_ID != ''", "github.ref == 'refs/heads/main'"} {
 			if !strings.Contains(j.If, gate) {
 				t.Fatalf("job %s must stay inert until the owner provisions the App and run only on main: missing %s", name, gate)
@@ -196,6 +206,14 @@ func TestUnattendedReconcilerIsInertAndMainOnly(t *testing.T) {
 				if !hasPermission {
 					t.Fatalf("job %s: the App token must be down-scoped with permission-* inputs", name)
 				}
+				// Publish rechecks the floor: it reads the Dependabot alerts and the pull requests behind them.
+				if name == "publish" && s.With["repositories"] != "homebrew-tap" {
+					for _, key := range []string{"permission-pull-requests", "permission-vulnerability-alerts"} {
+						if s.With[key] != "read" {
+							t.Fatalf("job publish: the App token needs %s: read to recheck the security floor", key)
+						}
+					}
+				}
 				// The tap and this repository never share a token: the tap token only reads contents.
 				repositories := strings.Split(s.With["repositories"], ",")
 				if len(repositories) > 1 {
@@ -218,15 +236,25 @@ func TestUnattendedReconcilerIsInertAndMainOnly(t *testing.T) {
 		}
 		if name == "issue" {
 			// A failing job must raise the stall issue, so the issue job watches every other job.
-			if !strings.Contains(j.If, "always()") || !strings.Contains(j.If, "contains(needs.*.result, 'failure')") {
+			if !strings.Contains(j.If, "always()") || !strings.Contains(j.If, "contains(needs.*.result, 'failure')") || !strings.Contains(j.If, "contains(needs.*.result, 'cancelled')") {
 				t.Fatal("the issue job must also run when any reconciler job failed")
+			}
+			// The issue text must treat a cancelled (timed-out) job as a failure too.
+			failedExpr := ""
+			for _, st := range j.Steps {
+				if v, ok := st.Env["FAILED"]; ok {
+					failedExpr = v
+				}
+			}
+			if !strings.Contains(failedExpr, "contains(needs.*.result, 'cancelled')") {
+				t.Fatal("the stall issue must be raised when a reconciler job was cancelled or timed out")
 			}
 			var needs []string
 			if err := j.Needs.Decode(&needs); err != nil {
 				t.Fatal(err)
 			}
 			for other := range workflow.Jobs {
-				if other == "issue" {
+				if other == "issue" || other == "misconfigured" {
 					continue
 				}
 				found := false
@@ -337,5 +365,115 @@ func TestReconcilerPlanVerifiesAndGeneratesWhatTheBuildRechecks(t *testing.T) {
 	}
 	if !cosign {
 		t.Fatal("the plan verifies the previous release's signatures and needs the pinned Cosign")
+	}
+}
+
+// Every reconciler job whose subcommand reaches Cosign (through verify_public or
+// stable verify --published) must install the pinned Cosign first. The set of
+// such subcommands is derived from the script's own call graph, so a new lane
+// that starts verifying publicly cannot be added without the install step.
+func TestReconcilerJobsThatReachCosignInstallIt(t *testing.T) {
+	root := repositoryRoot(t)
+	script, err := os.ReadFile(filepath.Join(root, "scripts", "release", "stable-reconcile.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := regexp.MustCompile(`(?m)^([a-z_]+)\(\) \{`)
+	locs := header.FindAllSubmatchIndex(script, -1)
+	bodies := map[string]string{}
+	for i, loc := range locs {
+		end := len(script)
+		if i+1 < len(locs) {
+			end = locs[i+1][0]
+		}
+		var kept []string
+		for _, line := range strings.Split(string(script[loc[1]:end]), "\n") {
+			if line == "}" {
+				break
+			}
+			// tag_checks reaches the compatibility gate only when its caller passes "compat" (the plan does, the tag job does not).
+			if strings.Contains(line, `"$checks_compat"`) {
+				continue
+			}
+			if !strings.HasPrefix(strings.TrimSpace(line), "#") {
+				kept = append(kept, line)
+			}
+		}
+		bodies[string(script[loc[2]:loc[3]])] = strings.Join(kept, "\n")
+	}
+	withCompat := regexp.MustCompile(`tag_checks [^\n]* compat\)`)
+	calls := func(body, name string) bool {
+		if name == "compat_checks" && withCompat.MatchString(body) {
+			return true
+		}
+		return regexp.MustCompile(`(?m)(^|[;&|(]|\$\()[ \t]*` + regexp.QuoteMeta(name) + `([ \t;)]|$)`).MatchString(body)
+	}
+	// A helper script the reconciler runs counts when it verifies publicly or calls Cosign itself.
+	helpers := map[string]bool{}
+	for _, m := range regexp.MustCompile(`(?m)^: "\$\{([A-Z_]+_BIN):=\$script_dir/([^}]+)\}"`).FindAllStringSubmatch(string(script), -1) {
+		text, err := os.ReadFile(filepath.Join(root, "scripts", "release", filepath.FromSlash(m[2])))
+		if err != nil {
+			t.Fatal(err)
+		}
+		helpers[m[1]] = strings.Contains(string(text), "--published") || strings.Contains(string(text), "cosign")
+	}
+	reaches := map[string]bool{}
+	for name, body := range bodies {
+		reaches[name] = strings.Contains(body, "--published") || strings.Contains(body, "verify_public ")
+		for helper, cosign := range helpers {
+			reaches[name] = reaches[name] || (cosign && strings.Contains(body, helper))
+		}
+	}
+	for changed := true; changed; {
+		changed = false
+		for name, body := range bodies {
+			if reaches[name] {
+				continue
+			}
+			for other := range bodies {
+				if other != name && reaches[other] && calls(body, other) {
+					reaches[name], changed = true, true
+					break
+				}
+			}
+		}
+	}
+	if !reaches["sync_trust"] || !reaches["homebrew"] || !reaches["plan"] || !reaches["publish"] || reaches["issue"] || reaches["automerge"] || reaches["cleanup"] {
+		t.Fatalf("the call graph no longer shows which reconciler lanes reach Cosign: %v", reaches)
+	}
+	type step struct {
+		Run string `yaml:"run"`
+	}
+	type job struct {
+		Steps []step `yaml:"steps"`
+	}
+	var workflow struct {
+		Jobs map[string]job `yaml:"jobs"`
+	}
+	raw, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "stable-release-reconciler.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	invoke := regexp.MustCompile(`stable-reconcile\.sh ([a-z-]+)`)
+	checked := 0
+	for name, j := range workflow.Jobs {
+		installed := false
+		for _, s := range j.Steps {
+			if strings.Contains(s.Run, "fetch-pinned-tool.sh cosign-linux-amd64") {
+				installed = true
+			}
+			if m := invoke.FindStringSubmatch(s.Run); m != nil && reaches[strings.ReplaceAll(m[1], "-", "_")] {
+				checked++
+				if !installed {
+					t.Fatalf("job %s runs %s, which reaches Cosign, before installing the pinned Cosign", name, m[1])
+				}
+			}
+		}
+	}
+	if checked < 4 {
+		t.Fatalf("expected plan, publish, sync-trust and homebrew to be checked, got %d", checked)
 	}
 }

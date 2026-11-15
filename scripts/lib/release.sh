@@ -49,6 +49,24 @@ release_semver_pattern='^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z][0-9A-Za-z.-]*)?$'
 # shellcheck disable=SC2016,SC2034
 release_run_jq='def release_run: .path == ".github/workflows/release.yml" or (.path | startswith(".github/workflows/release.yml@"));'
 
+# commit_has_actor_tag_authority REPOSITORY COMMIT: does require-signed-tag.sh at
+# COMMIT decide authority by who pushed the tag (it names the triggering actor
+# and the shared run-path rule)? 0 yes, 1 no, 2 the file could not be read. A
+# stable tag made at an older commit would run that commit's own release
+# workflow, which trusts an unsigned tag from anyone able to create one.
+commit_has_actor_tag_authority() {
+	hat_dir=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-tag-authority-at.XXXXXX") || return 2
+	hat_rc=0
+	if "${GH_BIN:-gh}" api "repos/$1/contents/scripts/release/require-signed-tag.sh?ref=$2" --jq '.content' >"$hat_dir/content.b64" 2>/dev/null &&
+		base64 -d <"$hat_dir/content.b64" >"$hat_dir/script.sh" 2>/dev/null && [ -s "$hat_dir/script.sh" ]; then
+		if grep -F 'triggering_actor' "$hat_dir/script.sh" >/dev/null && grep -F 'release_run_jq' "$hat_dir/script.sh" >/dev/null; then hat_rc=0; else hat_rc=1; fi
+	else
+		hat_rc=2
+	fi
+	rm -rf "$hat_dir"
+	return "$hat_rc"
+}
+
 sha256_file() {
 	if command -v sha256sum >/dev/null 2>&1; then
 		sha256sum "$1" | awk '{print $1}'

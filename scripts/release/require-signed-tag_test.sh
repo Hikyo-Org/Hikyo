@@ -56,6 +56,13 @@ case "$*" in
     esac
     jq -nc --argjson a "$actor" --argjson t "$triggering" --arg at "$atype" --arg tt "$ttype" --arg al "$alogin" --arg tl "$tlogin" --arg event "$event" --arg branch "$branch" --arg path "$path" --arg commit "$FIXTURE_COMMIT" \
       '{path:$path,event:$event,head_branch:$branch,head_sha:$commit,repository:{full_name:"owner/repo"},actor:{id:$a,type:$at,login:$al},triggering_actor:{id:$t,type:$tt,login:$tl}}' ;;
+  'api repos/owner/repo/contents/scripts/release/require-signed-tag.sh?ref='*' --jq .content')
+    # The tagged commit's own copy of this script: the actor-based rule names both markers.
+    [ "$mode" != authority-read-fail ] || exit 1
+    if [ "$mode" = no-authority ]; then printf 'set -eu\n# the older rule: the tag signature only\n' | base64
+    elif [ "$mode" = authority-actor-only ]; then printf 'set -eu\n# triggering_actor decides\n' | base64
+    elif [ "$mode" = authority-run-only ]; then printf 'set -eu\n# release_run_jq decides\n' | base64
+    else printf 'set -eu\n# triggering_actor and release_run_jq decide\n' | base64; fi ;;
   'api repos/owner/repo/releases/latest')
     if [ "$mode" = stale-latest ]; then echo '{"tag_name":"v1.0.0"}'; elif [ "$mode" = latest-api-failure ]; then exit 1; else echo '{"tag_name":"v1.1.0"}'; fi ;;
   'api --paginate repos/owner/repo/git/matching-refs/tags/v --jq .[].ref')
@@ -89,6 +96,8 @@ reason() {
     higher-tag) echo 'higher stable tag exists' ;;
     red-ci) echo 'green' ;;
     latest-api-failure|tags-api-failure) echo 'cannot read: gh api' ;;
+    no-authority | authority-actor-only | authority-run-only) echo 'predates the actor-based tag authority' ;;
+    authority-read-fail) echo 'cannot read the tag authority of the tagged commit' ;;
     user-actor-bot-type|user-triggering-bot-type) echo 'started and triggered by the stable-release app' ;;
     user-actor-org-type|user-triggering-org-type) echo 'neither a person nor the stable-release app' ;;
     user-unsigned|user-bad-reason) echo 'GitHub-verified annotated tag on exact commit required' ;;
@@ -124,16 +133,18 @@ if grep -q 'collaborators' "$scratch/calls"; then printf 'the collaborators API 
 # Without HIKYO_RELEASE_RUN_ID (the local ceremony) the latest push run of the tag decides.
 (unset HIKYO_RELEASE_RUN_ID; expect_accepted human; grep -q 'workflows/release.yml/runs?event=push&head_sha=' "$scratch/calls" || { printf 'the run was not looked up\n' >&2; exit 1; })
 (unset HIKYO_RELEASE_RUN_ID; expect_accepted app; [ "$(cat "$scratch/authority")" = app ])
+# A person's tag is judged by the signature, so an old commit's script is no obstacle to the ceremony.
+(: >"$scratch/calls"; expect_accepted human; grep -q 'contents/scripts/release' "$scratch/calls" && { printf 'a human tag read the tagged commit script\n' >&2; exit 1; } || true)
 # A human tag needs no app variable at all.
 (unset STABLE_RELEASE_APP_BOT_ID; expect_accepted human)
 for mode in lightweight app-rerun-by-human wrong-event wrong-branch wrong-workflow prefix-workflow not-patch stale-latest higher-tag red-ci \
-  wrong-bot bot-no-type latest-api-failure tags-api-failure \
+  wrong-bot bot-no-type latest-api-failure tags-api-failure no-authority authority-actor-only authority-run-only authority-read-fail \
   user-actor-bot-type user-triggering-bot-type user-actor-org-type user-triggering-org-type user-bad-reason; do
   expect_refused "$mode"
 done
 # A GitHub-verified tag pushed by the bot must still meet every app gate: the
 # signature must never choose the authority.
-for mode in not-patch higher-tag stale-latest red-ci app-rerun-by-human wrong-bot latest-api-failure tags-api-failure; do
+for mode in not-patch higher-tag stale-latest red-ci app-rerun-by-human wrong-bot latest-api-failure tags-api-failure no-authority authority-actor-only authority-run-only authority-read-fail; do
   (FIXTURE_SIGNED=1; export FIXTURE_SIGNED; expect_refused "$mode")
 done
 # A person's unsigned tag is refused, and a bot with no configured id is never a person.

@@ -235,7 +235,7 @@ queues proven security PRs, tags the newest fully green main commit, publishes
 the staged draft, and opens an App-signed `release/sync-trust-*` PR that a
 ruleset lets only the stable-release App and repository admins write, and that
 the PR gate admits for the App only when it changes just the four public trust
-files. Only the exact next patch can be released this way, and only when its
+files (and refuses any commit by the App in anyone else's pull request). Only the exact next patch can be released this way, and only when its
 generated upgrade compatibility is identical to the previous stable release's;
 minors, majors, the first release and any patch that changes a migration or
 schema stay on the

@@ -15,6 +15,10 @@ with auto-merge and deletes the merged branch. The next tag waits for the live
 docs itself. The Homebrew cask follows every latest stable release. Nothing in this PR created or changed any tag, release, ruleset,
 environment, secret, variable, App or repository setting.
 
+### Owner-accepted risk (2026-11-15): no admin checkpoint on an unattended patch
+
+The owner accepted and kept "patch from the latest green `main`" exactly as designed; the tag range is not restricted. A human release has an administrator push the tag and a maintainer review the draft. An unattended patch has neither, and it carries everything merged to `main` since the previous stable release, not only the Dependabot update. Main's required CI and the merge queue are the only controls on what ships. Main's ruleset requires 0 approvals, and same-repo `hotfix/` and `release/` branches are admitted. The compatibility gate, the patch-only rule and the security-merge floor narrow the schema and version a patch may change, not the code it contains. Recorded in the [ADR](../adr/stable-workflow-signing.md). The ADR also states plainly that a stolen App key can ship code (it can tag a commit on a branch it pushed and publish through the API); earlier text said it could not.
+
 | Piece | Where |
 | --- | --- |
 | Patch-only candidate rule (exact latest stable plus one patch) | `scripts/release/stable` (`--patch-only` on `candidate` and `prepare`) |
@@ -22,6 +26,8 @@ environment, secret, variable, App or repository setting.
 | Breaking-patch refusal: one shared comparison of the candidate's whole compatibility declaration with the previous stable release's, run at plan time before tagging and again at build time | `scripts/release/check-unattended-compatibility.sh`, `compat_checks` in `stable-reconcile.sh`, `release.yml` |
 | Level-triggered reconciler | `scripts/release/stable-reconcile.sh`, `.github/workflows/stable-release-reconciler.yml` |
 | Build wiring and manifest digest artifact | `.github/workflows/release.yml`, `scripts/release/sign-stable-draft.sh` |
+| PR gate refuses the App everywhere except its trust-sync pull request, and any App commit in another pull request; the bot id is wired into every job that runs `pr-gate` | `scripts/ci/pr-gate/stable_release_app.go`, `ci-queue-gate.yml`, `ci-queue-worker.yml`, `ci-dev-gate.yml`, `ci-check-retirement.yml`, `scripts/ci/stable_release_app_wiring_test.go` |
+| Publish rechecks the tag authority marker and the security-merge floor | `authority_at`, `floor_check`, `publish` in `stable-reconcile.sh`, `commit_has_actor_tag_authority` in `scripts/lib/release.sh` |
 | Repository policy and rollback | `scripts/release/configure-repository.sh`, `release/repository/stable-trust-branches.json`, `scripts/release/configure-stable-rollback_test.sh` |
 
 ## Evidence
@@ -38,25 +44,46 @@ Each row below was mutated by hand-written swaps of the production line (the fix
 
 The earlier claim that every second-round fix was mutation-proved was untrue. Round 2 recorded mutations only for the S-I4 and run-path rows; the other rows had fixtures but no recorded mutation.
 
+### What was mutation-proved (round 4)
+
+51 production-line swaps were applied one at a time and the matching fixture or Go test had to fail. **All 51 were caught** after the survivors below were fixed. **Caught:** the explicit `states:` of the alert query; the numeric-id binding of the alert author, the PR commit author and the PR commit committer; the foreign-commit and unlinked-FIXED-alert alarms, the alarm surviving a later close and the publication-time bound; the tag-authority marker at plan, `tag_checks`, `publish`, `require-signed-tag.sh` (older commit, unreadable commit, each of the two markers alone); the security-merge floor (needs an included merge, grace window, plan, publish); the tap merge judging only the newest `ci-required` run (oldest run, unfiltered list, id instead of start time); the bot sign-off on the squash commit (message, title) and on the tap add and update commits; the PR gate refusing App commits in anyone else's PR (author id, committer id, both noreply emails, the 250-commit limit, pagination), and failing closed on a client id without a bot id; the bot id wired into each of the four gate workflows (and the third `pr-gate` step of the queue gate); the pinned Cosign step in plan, publish, sync-trust and homebrew; the issue job and issue text on `cancelled`; the publish token's pull-request and alert read scopes; the `misconfigured` job (fails, runs).
+
+**Survivors found by the first run and fixed by new tests, then re-mutated to CAUGHT:** the tap update commit sign-off (the fixture only covered the add path; it now drives the update path with `GH_BRANCH_HEAD` at main); each single authority marker of `commit_has_actor_tag_authority` (new `authority-actor-only` and `authority-run-only` modes); the issue text on `cancelled` (the workflow test now reads the step's `FAILED` env); the committer-id clause of the PR gate (the first mutation pattern did not match the line; rerun with the exact text).
+
+**Not mutation-proved (round 4):** the tap ruleset `require_extra_approval_for_unattributed_changes` and strict checks (live items, no code); the 30-minute plan timeout (an estimate from the 99 s measured compatibility step and the 933 MB, 80-asset v1.1.0 download, not a measured run; live item); every documentation edit (ADR, online-signing guide, `branching.md`, `ci.md`, this handoff, the PR body); the OWNER SETUP order; the live verification list; the claim that a stolen App key could publish through the API (reasoning, not tested); equivalent or redundant mutants that were not pursued.
+
 ## LIVE VERIFICATION still open
 
 Nothing below was run. Each item changes behavior if the assumption is wrong, so verify before activation, or on the first run:
 
-1. The value of `needs.*.result` for a job that timed out (the reconciler and the publish gate treat anything other than `success` as not done).
+1. The value of `needs.*.result` for a job that timed out or was cancelled (the issue job now matches `failure` and `cancelled`; confirm a timeout reports one of them).
 2. Whether a contents-read App token can see draft releases (the planner relies on it; a miss reads as no draft and fails closed to a stall).
 3. `gh pr merge --auto` against the merge queue for the Dependabot and the trust-sync PR.
 4. Whether the tap-only token can read this repository's releases (the homebrew job).
-5. The App permission input names (`permission-actions`, `-administration`, `-checks`, `-contents`, `-pull-requests`, `-vulnerability-alerts`, `-metadata`) are accepted by `actions/create-github-app-token`.
-6. The `createCommitOnBranch` author format against the DCO gate (the trailer must equal the bot author).
-7. `require_extra_approval_for_unattributed_changes` at 0 required approvals for the trust-sync PR.
+5. The App permission input names (`permission-actions`, `-administration`, `-checks`, `-contents`, `-pull-requests`, `-vulnerability-alerts`, `-metadata`) are accepted by `actions/create-github-app-token`, including on the publish token, which now also reads pull requests and alerts for the floor recheck.
+6. The `createCommitOnBranch` author format against the DCO gate (the trailer must equal the bot author), and the same sign-off on the tap commit and its squash merge.
+7. The tap's ruleset (id 21276517) has `require_extra_approval_for_unattributed_changes: true` and strict required checks. Verify on the first tap pull request that the App's PR with a signed-off bot commit is mergeable by the App's squash merge without a human approval, and that the strict check leaves the head at the commit the `ci-required` run covers; `require_extra_approval_for_unattributed_changes` also needs checking for the trust-sync PR at 0 required approvals.
+8. The plan job's timeout is 30 minutes, an estimate and not a measurement. Known: "Generate exact compatibility" took 99 s in the v1.1.0 release-build (run 42526720406); v1.1.0 has 80 assets (933 MB). Unmeasured: the baseline download and signature verification through the OCI path. Read the plan job's duration on the first dry run and size the timeout from it.
+9. A real Dependabot security update reports `committer.login == web-flow`, verified, and author id 49699333 / committer id 19864447 on every commit (read-only evidence: PR #1370; the first real security PR confirms it). If not, the reconciler raises the stall issue naming the PR.
+10. The explicit `states: [OPEN, FIXED]` argument of `vulnerabilityAlerts` is accepted, and fixed alerts keep `dependabotUpdate.pullRequest` (read-only evidence: 177 alerts, 149 fixed).
+11. The `misconfigured` job fails a run with only the client id set; no other job may run in that state.
 
-## Owner order: ruleset before activation (S-I2)
+## Owner order
 
-`configure-repository.sh` with `HIKYO_STABLE_RELEASE_APP_ID` refuses to add the App to the stable tag creation policy until the highest stable tag's commit contains the actor-based `require-signed-tag.sh` (the `triggering_actor` and `release_run_jq` markers). Before that release, the tag authority was the old signature rule, and an App bypass would let a stolen key push a verified tag as the App. So the order is: merge this PR, release one human stable (any version) from a commit that has it, then run the script with the App id, then set the two variables. Until a stable tag carries it, the script stops and says why.
+1. Merge this PR. Merge `main` into `dev` afterwards: the PR gate reads `ci-dev-gate.yml` from the base and head of a dev pull request and requires both to equal main's, so until `main` is merged into `dev` the dev gate runs the old publisher copy without the bot id and its stable-release rule is inert for pull requests into `dev` (the `main` gates are covered).
+2. Release one human stable (any version) from a commit that has the actor-based `require-signed-tag.sh` (S-I2 below).
+3. Set `STABLE_RELEASE_APP_BOT_ID` (the App's numeric bot user id) **before** the App is installed or granted contents write, so the PR gate is armed from the first moment the key exists. It does nothing else while the client id is unset.
+4. Install the App, run `HIKYO_STABLE_RELEASE_APP_ID=<id> scripts/release/configure-repository.sh`, and store the key and client id in the `stable-release` environment (main only; no required reviewers is expected).
+5. Set `STABLE_RELEASE_APP_CLIENT_ID` last. It is the on/off switch of the reconciler. With the client id set and the bot id empty the PR gate fails closed and the reconciler's `misconfigured` job fails every run.
+6. Start with a `dry_run` dispatch.
+
+## Ruleset before activation (S-I2)
+
+`configure-repository.sh` with `HIKYO_STABLE_RELEASE_APP_ID` refuses to add the App to the stable tag creation policy until the highest stable tag's commit contains the actor-based `require-signed-tag.sh` (the `triggering_actor` and `release_run_jq` markers). Before that release, the tag authority was the old signature rule, and an App bypass would let a stolen key push a verified tag as the App. The release path enforces the same on the tag being built: `require-signed-tag.sh` (bot branch), and the reconciler's plan, tag and publish steps refuse a tag whose own commit lacks the markers. So the order is the one above. Until a stable tag carries it, the script stops and says why.
 
 ## Remaining work
 
-1. The owner performs the numbered OWNER SETUP in the PR description; the two repository variables are the last step.
+1. The owner performs the numbered OWNER SETUP in the PR description; `STABLE_RELEASE_APP_BOT_ID` comes before the App is installed and `STABLE_RELEASE_APP_CLIENT_ID` is the last step.
 2. Run the live checklist on the first real security patch; start with a `dry_run` dispatch.
 3. Recovery gap: a failed app-tagged build cannot be retried (immutable tag, App has no `actions: write`). The reconciler opens one stall issue. If the failed build staged a draft, delete it, because an outstanding draft blocks every later candidate: `gh release delete vX.Y.Z --repo Hikyo-Org/Hikyo --yes`. The tag stays burned; release the next patch with `ceremony.sh`. To finish a good app-tagged draft by hand, export `STABLE_RELEASE_APP_BOT_ID=<bot id>` and run the ceremony `publish`.
 4. While the `release/sync-trust-*` ruleset is active it admits only the App and repository admins; `ceremony.sh sync-trust` run by an admin still works, a non-admin push does not. Rolling back deletes the ruleset (see Rollback).
@@ -69,5 +96,5 @@ Nothing below was run. Each item changes behavior if the assumption is wrong, so
 
 ## Rollback
 
-1. Delete either `STABLE_RELEASE_APP_*` variable: every job is skipped again.
+1. Delete `STABLE_RELEASE_APP_CLIENT_ID`: every job is skipped again. Keep `STABLE_RELEASE_APP_BOT_ID` set while the App is installed and its key is valid: deleting it disarms the PR gate for a key that still has contents write. Remove it only after the App is uninstalled and its key revoked.
 2. Rerun `configure-repository.sh` without `HIKYO_STABLE_RELEASE_APP_ID`: the tag policy returns to admin-only (the App bypass is removed) and the `stable trust sync branches require stable-release app` ruleset is deleted and asserted gone, so a non-admin human `ceremony.sh sync-trust` works again. Leaving that ruleset in place after step 1 would block it.

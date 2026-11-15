@@ -30,6 +30,9 @@ git -C "$repo" commit -q -a -m c2 --no-gpg-sign
 git -C "$repo" commit -q --allow-empty -m c3 --no-gpg-sign
 c0=$(git -C "$repo" rev-parse HEAD~3) c1=$(git -C "$repo" rev-parse HEAD~2) c2=$(git -C "$repo" rev-parse HEAD~1) c3=$(git -C "$repo" rev-parse HEAD)
 tip=$c3
+# c4 lies after the tip: a security merge only the tip's successor holds, for the floor cases.
+git -C "$repo" commit -q --allow-empty -m c4 --no-gpg-sign
+c4=$(git -C "$repo" rev-parse HEAD)
 hex() { printf "$1%.0s" $(seq 40); }
 # Real-shaped declarations: the migrations of the declaration the real generator
 # makes for this tree, the source edges of the hand-reviewed sources.json.
@@ -47,7 +50,7 @@ jq -nc --arg c "$c0" '{version:"1.1.0",sequence:2,commit:$c,key_id:"k",public_ke
 . "$script_dir/../lib/release.sh"
 jq -nc --arg c "$c0" --arg sha "$(sha256_file "$scratch/baseline/upgrade-compatibility.json")" \
 	'{source_commit:$c,artifacts:[{name:"upgrade-compatibility.json",kind:"upgrade-compatibility",sha256:$sha}]}' >"$scratch/baseline/release-manifest.json"
-export FIXTURE="$scratch" C0="$c0" C1="$c1" C2="$c2" C3="$c3" TIP="$tip" REPO="$repo"
+export FIXTURE="$scratch" C0="$c0" C1="$c1" C2="$c2" C3="$c3" C4="$c4" TIP="$tip" REPO="$repo"
 
 cat >"$scratch/bin/gh" <<'SH'
 #!/bin/sh
@@ -67,7 +70,7 @@ run_path=.github/workflows/release.yml@refs/tags/v1.1.1
 run_json() {
 	jq -nc --argjson id "$1" --argjson a "$2" --arg at "$3" --argjson t "$4" --arg tt "$5" --arg status "$6" --arg conclusion "$7" \
 		--argjson n "$8" --arg sha "$9" --arg branch "${10}" --arg path "$run_path" '{id:$id,status:$status,conclusion:(if $conclusion == "null" then null else $conclusion end),
-		run_number:$n,run_attempt:1,head_sha:$sha,head_branch:$branch,event:"push",path:$path,
+		run_number:$n,run_attempt:1,head_sha:$sha,head_branch:$branch,event:"push",path:$path,created_at:"2026-02-01T00:00:00Z",
 		repository:{full_name:"o/r"},actor:{id:$a,type:$at},triggering_actor:{id:$t,type:$tt}}'
 }
 tag_run() { # the release-build run of v1.1.1 for this mode
@@ -99,32 +102,44 @@ case "$*" in
 	'api repos/o/r/commits/v1.'*) jq -nc --arg sha "${FIXTURE_LATEST_COMMIT:-$C0}" '{sha:$sha}' ;;
 	'api graphql --paginate '*)
 		failing alerts-fail
+		# Every alert state is listed explicitly, so a changed API default cannot hide the fixed ones.
+		case "$*" in *'states:[OPEN,FIXED]'*) ;; *) printf 'the alert query must list its states explicitly\n' >&2; exit 2 ;; esac
 		merged=true
 		case "$mode" in unmerged*) merged=false ;; esac
-		jq -nc --arg oid "${FIXTURE_SEC_OID:-$C1}" --argjson merged "$merged" --arg at "${FIXTURE_MERGED_AT:-2026-01-01T00:00:00Z}" '
-			def pr($n; $m; $ref; $oid): {dependabotUpdate:{pullRequest:{number:$n,merged:$m,mergedAt:(if $m then $at else null end),baseRefName:"main",headRefName:$ref,author:{login:"dependabot"},mergeCommit:(if $m then {oid:$oid} else null end)}}};
-			{data:{repository:{vulnerabilityAlerts:{nodes:[
-				pr(7; $merged; "dependabot/npm_and_yarn/x"; $oid), pr(7; $merged; "dependabot/npm_and_yarn/x"; $oid),
+		# The author is bound by the numeric id; alert-impostor has the right login and the wrong id.
+		bot_id=49699333
+		[ "$mode" != alert-impostor ] || bot_id=1
+		jq -nc --arg oid "${FIXTURE_SEC_OID:-$C1}" --argjson merged "$merged" --arg at "${FIXTURE_MERGED_AT:-2026-01-01T00:00:00Z}" --argjson bot "$bot_id" \
+			--arg oid2 "${FIXTURE_SEC2_OID:-}" --arg at2 "${FIXTURE_SEC2_AT:-2026-01-01T00:00:00Z}" --arg mode "$mode" '
+			def pr($n; $m; $ref; $oid; $at): {state:(if $m then "FIXED" else "OPEN" end),fixedAt:(if $m then $at else null end),dependabotUpdate:{pullRequest:{number:$n,merged:$m,mergedAt:(if $m then $at else null end),baseRefName:"main",headRefName:$ref,author:{login:"dependabot",databaseId:$bot},mergeCommit:(if $m then {oid:$oid} else null end)}}};
+			{data:{repository:{vulnerabilityAlerts:{nodes:([
+				pr(7; $merged; "dependabot/npm_and_yarn/x"; $oid; $at), pr(7; $merged; "dependabot/npm_and_yarn/x"; $oid; $at),
 				{dependabotUpdate:null},
-				pr(8; false; "dependabot/go/y"; null), pr(12; false; "dependabot/go/armed"; null), pr(13; false; "dependabot/go/foreign"; null),
-				{dependabotUpdate:{pullRequest:{number:9,merged:true,mergedAt:"2026-01-01T00:00:00Z",baseRefName:"main",headRefName:"feature/z",author:{login:"someone"},mergeCommit:{oid:"9999999999999999999999999999999999999999"}}}}
-			]}}}}' ;;
+				pr(8; false; "dependabot/go/y"; null; $at), pr(12; false; "dependabot/go/armed"; null; $at), pr(13; false; "dependabot/go/foreign"; null; $at),
+				{dependabotUpdate:{pullRequest:{number:9,merged:true,mergedAt:"2026-01-01T00:00:00Z",baseRefName:"main",headRefName:"feature/z",author:{login:"someone",databaseId:1},mergeCommit:{oid:"9999999999999999999999999999999999999999"}}}}
+			] + (if $oid2 != "" then [pr(14; true; "dependabot/go/second"; $oid2; $at2)] else [] end)
+			+ (if $mode == "unlinked-alert" then [{state:"FIXED",fixedAt:"2026-06-01T00:00:00Z",dependabotUpdate:null}] else [] end))}}}}' ;;
 	'api --paginate repos/o/r/pulls?state=open&base=main&per_page=100')
 		failing pulls-fail
-		jq -nc --arg b "$(hex b)" --arg a "$(hex a)" --arg c "$(hex c)" '[
+		jq -nc --arg b "$(hex b)" --arg a "$(hex a)" --arg c "$(hex c)" --arg foreign "${FIXTURE_FOREIGN:-0}" '[
 			{number:8,user:{id:49699333},head:{ref:"dependabot/go/y",sha:$b,repo:{full_name:"o/r"}},auto_merge:null},
 			{number:8,user:{id:49699333},head:{ref:"dependabot/go/y",sha:$b,repo:{full_name:"fork/r"}},auto_merge:null},
 			{number:10,user:{id:49699333},head:{ref:"dependabot/go/version",sha:$b,repo:{full_name:"o/r"}},auto_merge:null},
 			{number:11,user:{id:1},head:{ref:"dependabot/go/y",sha:$b,repo:{full_name:"o/r"}},auto_merge:null},
-			{number:12,user:{id:49699333},head:{ref:"dependabot/go/armed",sha:$a,repo:{full_name:"o/r"}},auto_merge:{merge_method:"merge"}},
-			{number:13,user:{id:49699333},head:{ref:"dependabot/go/foreign",sha:$c,repo:{full_name:"o/r"}},auto_merge:null}]' ;;
+			{number:12,user:{id:49699333},head:{ref:"dependabot/go/armed",sha:$a,repo:{full_name:"o/r"}},auto_merge:{merge_method:"merge"}}] +
+			(if $foreign == "1" then [{number:13,user:{id:49699333},head:{ref:"dependabot/go/foreign",sha:$c,repo:{full_name:"o/r"}},auto_merge:null}] else [] end)' ;;
 	'api --paginate repos/o/r/pulls/8/commits?per_page=100')
 		failing commits-fail
-		jq -nc --arg b "$([ "$mode" = dependabot-head-moved ] && hex 7 || hex b)" --arg mode "$mode" '[{sha:$b,author:{login:"dependabot[bot]"},committer:{login:(if $mode == "dependabot-committer" then "someone" else "web-flow" end)},
+		# Numeric ids decide: the logins here are always the right ones, so only the ids can fail.
+		jq -nc --arg b "$([ "$mode" = dependabot-head-moved ] && hex 7 || hex b)" --arg mode "$mode" '[{sha:$b,author:{login:"dependabot[bot]",id:(if $mode == "dependabot-author-id" then 1 else 49699333 end)},
+			committer:{login:"web-flow",id:(if $mode == "dependabot-committer" then 1 else 19864447 end)},
 			commit:{verification:{verified:($mode != "dependabot-unverified")}}}]' ;;
 	'api --paginate repos/o/r/pulls/13/commits?per_page=100')
-		jq -nc --arg c "$(hex c)" '[{sha:"1111111111111111111111111111111111111111",author:{login:"dependabot[bot]"},committer:{login:"web-flow"},commit:{verification:{verified:true}}},
-			{sha:$c,author:{login:"someone"},committer:{login:"web-flow"},commit:{verification:{verified:true}}}]' ;;
+		jq -nc --arg c "$(hex c)" '[{sha:"1111111111111111111111111111111111111111",author:{login:"dependabot[bot]",id:49699333},committer:{login:"web-flow",id:19864447},commit:{verification:{verified:true}}},
+			{sha:$c,author:{login:"someone",id:1},committer:{login:"web-flow",id:19864447},commit:{verification:{verified:true}}}]' ;;
+	'api repos/o/r/contents/scripts/release/require-signed-tag.sh?ref='*' --jq .content')
+		failing authority-fail
+		if [ "$mode" = no-authority ] || [ "${FIXTURE_NO_AUTH:-}" = 1 ]; then printf 'set -eu\n# the older rule: the tag signature only\n' | base64; else printf 'set -eu\n# triggering_actor and release_run_jq decide\n' | base64; fi ;;
 	'api repos/o/homebrew-tap/contents/Casks/hikyo.rb?ref=main')
 		failing cask-fail
 		[ "$mode" != cask-missing ] || not_found
@@ -238,12 +253,20 @@ case "$*" in
 	'api --method POST repos/o/r/pulls '*) echo '{"number":42}' ;;
 	'pr merge 8 '*) [ "$mode" != merge-refused ] || { echo 'gh: auto-merge refused' >&2; exit 1; } ;;
 	'pr merge '*) ;;
-	'api repos/o/homebrew-tap/pulls/5') jq -nc --arg sha "$(hex f)" '{head:{sha:$sha}}' ;;
+	'api repos/o/homebrew-tap/pulls/5') jq -nc --arg sha "$(hex f)" '{title:"chore: hikyo 1.1.1",head:{sha:$sha}}' ;;
 	'api repos/o/homebrew-tap/commits/'ffff*)
 		failing checks-fail
-		conclusion=success
-		[ "$mode" != tap-pending ] || conclusion=null
-		jq -nc --arg c "$conclusion" '{check_runs:[{conclusion:(if $c == "null" then null else $c end)}]}' ;;
+		case "$*" in *'check_name=ci-required&filter=latest'*) ;; *) printf 'the tap check must list the latest ci-required runs: %s\n' "$*" >&2; exit 2 ;; esac
+		# The newest run decides: an older success never outranks a newer failure or a re-run in progress.
+		case "$mode" in
+			tap-pending) echo '{"check_runs":[{"id":1,"started_at":"2026-02-01T00:00:00Z","conclusion":null}]}' ;;
+			tap-newest-failed) echo '{"check_runs":[{"id":2,"started_at":"2026-02-01T01:00:00Z","conclusion":"failure"},{"id":1,"started_at":"2026-02-01T00:00:00Z","conclusion":"success"}]}' ;;
+			tap-newest-pending) echo '{"check_runs":[{"id":1,"started_at":"2026-02-01T00:00:00Z","conclusion":"success"},{"id":2,"started_at":"2026-02-01T01:00:00Z","conclusion":null}]}' ;;
+			# GitHub's run ids need not follow start order: the start time decides, never the id.
+		tap-id-skew) echo '{"check_runs":[{"id":9,"started_at":"2026-02-01T00:00:00Z","conclusion":"success"},{"id":3,"started_at":"2026-02-01T01:00:00Z","conclusion":"failure"}]}' ;;
+		tap-newest-success) echo '{"check_runs":[{"id":1,"started_at":"2026-02-01T00:00:00Z","conclusion":"failure"},{"id":2,"started_at":"2026-02-01T01:00:00Z","conclusion":"success"}]}' ;;
+			*) echo '{"check_runs":[{"id":1,"started_at":"2026-02-01T00:00:00Z","conclusion":"success"}]}' ;;
+		esac ;;
 	'api --method PUT repos/o/homebrew-tap/pulls/5/merge '*) echo '{}' ;;
 	'issue list '*)
 		failing issues-fail
@@ -297,6 +320,7 @@ printf 'postgres %s %s\n' "$POSTGRES_DB" "$POSTGRES_PASSWORD" >>"$FIXTURE/calls"
 SH
 cat >"$scratch/bin/homebrew" <<'SH'
 #!/bin/sh
+printf 'homebrew-helper signoff=%s\n' "${HIKYO_HOMEBREW_SIGNOFF:-}" >>"$FIXTURE/calls"
 echo 'homebrew publish: review and merge https://github.com/o/homebrew-tap/pull/5'
 SH
 cat >"$scratch/bin/publish" <<'SH'
@@ -321,6 +345,7 @@ run() { # mode command...
 out() { sed -n "s/^$1=//p" "$scratch/out" | tail -n 1; }
 expect() { [ "$(out "$1")" = "$2" ] || fail "$3: $1 was '$(out "$1")', want '$2'"; }
 called() { grep -q -- "$1" "$scratch/calls"; }
+called_f() { grep -qF -- "$1" "$scratch/calls"; }
 # A refused or unreadable lookup stops the run with the reason, and never writes.
 expect_dies() { # reason-fragment description command...
 	want=$1 what=$2
@@ -355,6 +380,22 @@ expect automerge "8:$b" "security lane"
 for mode in dependabot-committer dependabot-unverified dependabot-head-moved; do
 	run "$mode" plan; expect automerge '' "$mode"
 done
+# Numeric ids decide, never logins: the right logins with a wrong committer id, a wrong author id, or an
+# alert whose pull request author has Dependabot's login and another id, queue nothing.
+for mode in dependabot-author-id alert-impostor; do
+	run "$mode" plan; expect automerge '' "$mode"
+done
+# A refused security PR is alarmed at once, with the PR named, even when nothing else is waiting; a later
+# "close" for an idle plan must never erase the alarm.
+(FIXTURE_FOREIGN=1 run pending plan); expect automerge "8:$b" "foreign commit"; expect issue open "a foreign commit in a security PR"
+case $(out issue_text) in *'#13'*) ;; *) fail 'the alarm does not name the refused pull request' ;; esac
+(FIXTURE_FOREIGN=1 run unmerged plan); expect issue open "an alarm survives an idle plan"; expect action none "an alarm does not decide a tag"
+run dependabot-committer plan; expect issue open "a wrong committer id"
+case $(out issue_text) in *'#8'*) ;; *) fail 'the committer-id alarm does not name the pull request' ;; esac
+# A fixed Dependabot alert that no Dependabot pull request is linked to is never "nothing to release".
+run unlinked-alert plan; expect issue open "an unlinked fixed alert"
+case $(out issue_text) in *'none is linked'*) ;; *) fail 'the unlinked alert is not described' ;; esac
+(FIXTURE_PUBLISHED_AT=2026-11-01T00:00:00Z run unlinked-alert plan); expect issue none "an alert fixed before the latest release is not alarmed"
 # An unchanged-schema patch passes the compatibility gate end to end (the real comparison script runs
 # against a real-shaped declaration), and the scratch database starts only when a tag is decided.
 run pending plan; called '^postgres hikyo_release_schema release-schema-fixture' || fail 'a tag decision did not start scratch PostgreSQL'
@@ -405,6 +446,20 @@ expect_stall no-artifact wait
 expect_stall expired-artifact wait
 run build-ok plan
 expect action publish "built"; expect run_id 77 "built"; expect artifact release-manifest-sha256-77-2 "built"
+# A tag at a commit whose require-signed-tag.sh predates the actor-based authority is never published here.
+(FIXTURE_NO_AUTH=1 run build-ok plan); expect action none "a tag commit without the actor-based authority"; expect issue open "a tag commit without the actor-based authority"
+case $(out reason) in *'actor-based tag authority'*) ;; *) fail 'the missing authority has no reason' ;; esac
+# The floor: the draft must hold a pending security merge, and every one merged before the build started.
+(FIXTURE_SEC_OID=$c4 GITHUB_SHA=$c4 run build-ok plan); expect action none "a draft lacking the only pending merge"; expect issue open "a draft lacking the only pending merge"
+case $(out reason) in *'lacks the security merge'*) ;; *) fail "the stale floor has no reason: $(out reason)" ;; esac
+# At least one pending merge must be in the draft, even when the missing one raced the tag.
+(FIXTURE_SEC_OID=$c4 FIXTURE_MERGED_AT=2026-02-01T00:00:00Z GITHUB_SHA=$c4 run build-ok plan); expect action none "a draft with none of the pending merges"
+case $(out reason) in *'contains none of the security merges'*) ;; *) fail "the empty floor has no reason: $(out reason)" ;; esac
+(FIXTURE_SEC_OID=$c0 run build-ok plan); expect action none "no security merge is pending"; expect issue open "no security merge is pending"
+(FIXTURE_SEC2_OID=$c4 GITHUB_SHA=$c4 run build-ok plan); expect action none "a known merge the draft lacks"
+case $(out reason) in *'lacks the security merge'*) ;; *) fail 'the stale floor has no reason' ;; esac
+# A merge that raced the tag (inside the grace) is not required, or the immutable tag would strand the draft.
+(FIXTURE_SEC2_OID=$c4 FIXTURE_SEC2_AT=2026-02-01T00:00:00Z GITHUB_SHA=$c4 run build-ok plan); expect action publish "a merge that raced the tag"
 # A person's release is the ceremony's: no draft of it is published here and no cannot-retry text is given.
 expect_stall human-run none
 case $(out issue_text) in *'cannot retry'* | *immutable*) fail 'a human build must not get the cannot-retry text' ;; esac
@@ -430,7 +485,7 @@ run pending plan; expect homebrew '' "current cask"
 run cask-missing plan; expect homebrew 1.1.0 "no cask yet"
 run cleanup-merged plan; expect cleanup release/sync-trust-1.1.0 "merged branch"
 # --- plan fails closed on every listing it decides from.
-for mode in releases-fail alerts-fail pulls-fail commits-fail cask-fail docs-fail runs-fail artifact-fail tag-ref-fail heads-ref-fail; do
+for mode in releases-fail alerts-fail pulls-fail commits-fail cask-fail docs-fail runs-fail artifact-fail tag-ref-fail heads-ref-fail authority-fail; do
 	expect_dies 'cannot' "plan with $mode" run "$mode" plan
 	no_writes "plan with $mode"
 done
@@ -527,6 +582,8 @@ tag_refused matching-refs-fail 'cannot read'
 tag_refused release-lookup-fail 'cannot prove the version is unused'
 tag_refused green-read-fail 'cannot read the source proof'
 tag_refused synced-fail 'cannot list the public releases'
+tag_refused no-authority 'actor-based tag authority'
+tag_refused authority-fail 'cannot read the tag authority'
 (export VERSION=1.1.1 COMMIT=$c3 GREEN=''; expect_dies 'green source proof' 'tagged a commit without green proof' run pending tag)
 (export VERSION=1.1.1 COMMIT="$(hex 7)"; expect_dies 'not on main history' 'tagged a commit off main' run pending tag)
 (export VERSION=1.2 COMMIT=$c3; expect_dies 'plain stable version' 'accepted a non-patch version string' run pending tag)
@@ -543,6 +600,14 @@ for mode in human-run human-rerun run-other-commit run-prefix-path build-failed 
 	(export VERSION=1.1.1 RUN_ID=77 DIGEST_FILE="$scratch/digest"; expect_dies 'not a successful release-build' "published a draft for $mode" run "$mode" publish)
 	called '^publish' && fail "the publish helper ran for $mode"
 done
+# The draft is about to become public, so publish rereads the authority and the floor itself.
+(export VERSION=1.1.1 RUN_ID=77 DIGEST_FILE="$scratch/digest" FIXTURE_NO_AUTH=1; expect_dies 'actor-based tag authority' 'published a draft whose tag commit lacks the authority' run build-ok publish)
+(export VERSION=1.1.1 RUN_ID=77 DIGEST_FILE="$scratch/digest" FIXTURE_SEC_OID=$c4 GITHUB_SHA=$c4; expect_dies 'is not published' 'published a draft without the pending security merge' run build-ok publish)
+(export VERSION=1.1.1 RUN_ID=77 DIGEST_FILE="$scratch/digest" FIXTURE_SEC2_OID=$c4 GITHUB_SHA=$c4; expect_dies 'lacks the security merge' 'published a draft that lacks a known merge' run build-ok publish)
+(export VERSION=1.1.1 RUN_ID=77 DIGEST_FILE="$scratch/digest" FIXTURE_SEC2_OID=$c4 FIXTURE_SEC2_AT=2026-02-01T00:00:00Z GITHUB_SHA=$c4; run build-ok publish) || fail 'a draft that holds one pending merge and races the other was refused'
+called '^publish' || fail 'the raced-merge draft was not published'
+(export VERSION=1.1.1 RUN_ID=77 DIGEST_FILE="$scratch/digest" FIXTURE_SEC_OID=$c0; expect_dies 'is not published' 'published with no pending security merge' run build-ok publish)
+called '^publish' && fail 'the publish helper ran despite a failed floor'
 printf 'not-a-digest\n' >"$scratch/digest"
 (export VERSION=1.1.1 RUN_ID=77 DIGEST_FILE="$scratch/digest"; expect_dies 'SHA-256' 'published without a SHA-256 digest' run build-ok publish)
 
@@ -602,9 +667,20 @@ done
 (export BRANCH=release/sync-trust-notaversion; expect_dies 'invalid trust-sync branch' 'cleaned a branch whose suffix is no version' run pending cleanup)
 
 # --- homebrew: merge once the tap's required check is green, otherwise wait for the next run.
-(VERSION=1.1.1 run pending homebrew); called 'merge_method=squash -f sha=ffff' || fail 'tap PR not squash-merged'
-(VERSION=1.1.1 run tap-pending homebrew); called 'merge_method=squash' && fail 'merged a tap PR with a pending check'
-(export VERSION=1.1.1; expect_dies 'cannot read' 'homebrew went on after a failed check-run read' run checks-fail homebrew)
+brew() { (VERSION=1.1.1 APP_SLUG=app run "$1" homebrew); }
+brew pending; called 'merge_method=squash -f sha=ffff' || fail 'tap PR not squash-merged'
+# The squash commit carries the app's DCO sign-off, and so does the helper's own commit through its environment.
+called_f 'commit_title=chore: hikyo 1.1.1 (#5)' || fail 'the squash commit has no title'
+called_f 'commit_message=Signed-off-by: app[bot] <900+app[bot]@users.noreply.github.com>' || fail 'the squash commit has no bot sign-off'
+called_f 'homebrew-helper signoff=app[bot] <900+app[bot]@users.noreply.github.com>' || fail 'the helper did not receive the bot sign-off'
+brew tap-pending; called 'merge_method=squash' && fail 'merged a tap PR with a pending check'
+# Only the newest run of the check counts: an older success never outranks a newer failure or re-run.
+brew tap-newest-failed; called 'merge_method=squash' && fail 'merged a tap PR whose newest check run failed'
+brew tap-newest-pending; called 'merge_method=squash' && fail 'merged a tap PR whose newest check run is still pending'
+brew tap-id-skew; called 'merge_method=squash' && fail 'merged a tap PR whose newest run by start time failed, because its id was lower'
+brew tap-newest-success; called 'merge_method=squash' || fail 'did not merge a tap PR whose newest check run passed'
+(unset APP_SLUG; export VERSION=1.1.1; expect_dies 'APP_SLUG' 'homebrew went on without the app identity' run pending homebrew)
+(export VERSION=1.1.1 APP_SLUG=app; expect_dies 'cannot read' 'homebrew went on after a failed check-run read' run checks-fail homebrew)
 called 'merge_method=squash' && fail 'merged after a failed check-run read'
 unset FIXTURE_PUBLISHED
 

@@ -200,7 +200,7 @@ func queuePublisherContract(raw []byte) error {
 		if err := queueTrustedSetup(j, checkoutIndex, setupIndex, id == "publish"); err != nil {
 			return err
 		}
-		env := map[string]string{"GH_TOKEN": "${{ github.token }}", "GH_REPO": "${{ github.repository }}", "PR_GATE_CHECK_NAME": "ci-queue-required"}
+		env := map[string]string{"GH_TOKEN": "${{ github.token }}", "GH_REPO": "${{ github.repository }}", "PR_GATE_CHECK_NAME": "ci-queue-required", "PR_GATE_STABLE_RELEASE_APP_BOT_ID": "${{ vars.STABLE_RELEASE_APP_BOT_ID }}", "PR_GATE_STABLE_RELEASE_APP_CLIENT_ID": "${{ vars.STABLE_RELEASE_APP_CLIENT_ID }}"}
 		if id != "dispatch" {
 			env["HEAD"] = jobHead
 		}
@@ -325,7 +325,7 @@ fi`
 		return fmt.Errorf("worker compile must remain source-bound to sharedbudget")
 	}
 	final := j.Steps[4]
-	if final.If != "always()" || final.Uses != "" || len(final.With) != 0 || strings.TrimSpace(final.Run) != "test -x \"$RUNNER_TEMP/queue-publisher\"\n\"$RUNNER_TEMP/queue-publisher\" --queue --expected-head \"$HEAD\" --head-worker \"$KIND\"" || !reflect.DeepEqual(final.Env, map[string]string{"GH_TOKEN": "${{ github.token }}", "GH_REPO": "${{ github.repository }}", "PR_GATE_CHECK_NAME": "ci-queue-required", "HEAD": head, "KIND": "${{ matrix.work.kind }}"}) {
+	if final.If != "always()" || final.Uses != "" || len(final.With) != 0 || strings.TrimSpace(final.Run) != "test -x \"$RUNNER_TEMP/queue-publisher\"\n\"$RUNNER_TEMP/queue-publisher\" --queue --expected-head \"$HEAD\" --head-worker \"$KIND\"" || !reflect.DeepEqual(final.Env, map[string]string{"GH_TOKEN": "${{ github.token }}", "GH_REPO": "${{ github.repository }}", "PR_GATE_STABLE_RELEASE_APP_BOT_ID": "${{ vars.STABLE_RELEASE_APP_BOT_ID }}", "PR_GATE_STABLE_RELEASE_APP_CLIENT_ID": "${{ vars.STABLE_RELEASE_APP_CLIENT_ID }}", "PR_GATE_CHECK_NAME": "ci-queue-required", "HEAD": head, "KIND": "${{ matrix.work.kind }}"}) {
 		return fmt.Errorf("worker controller must own exactlyitsinputhead withoutPRshellcode")
 	}
 	return nil

@@ -138,12 +138,19 @@ require_actor_based_tag_authority() {
 		printf 'repository policy: cannot resolve the commit of v%s\n' "$tag" >&2
 		exit 1
 	}
-	$GH_BIN api "repos/$repository/contents/scripts/release/require-signed-tag.sh?ref=$commit" --jq '.content' >"$policy_tmp/tag-authority.b64"
-	base64 -d <"$policy_tmp/tag-authority.b64" >"$policy_tmp/tag-authority.sh" 2>/dev/null || true
-	if ! grep -F 'triggering_actor' "$policy_tmp/tag-authority.sh" >/dev/null || ! grep -F 'release_run_jq' "$policy_tmp/tag-authority.sh" >/dev/null; then
+	rc=0
+	commit_has_actor_tag_authority "$repository" "$commit" || rc=$?
+	case $rc in
+	0) ;;
+	1)
 		printf 'repository policy: the latest stable tag v%s predates the actor-based tag authority; release a stable version that contains it with the ceremony first, then grant the stable-release app\n' "$tag" >&2
 		exit 1
-	fi
+		;;
+	*)
+		printf 'repository policy: cannot read the tag authority of v%s\n' "$tag" >&2
+		exit 1
+		;;
+	esac
 }
 if [ -n "$stable_app_id" ]; then
 	require_actor_based_tag_authority

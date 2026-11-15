@@ -36,11 +36,30 @@ env:
   GOFLAGS: -mod=readonly
 
 jobs:
+  # The reconciler runs only with both variables. With the client id alone the
+  # App is configured but its bot id is missing: pr-gate then refuses every pull
+  # request, and this job fails the run so that the state cannot go unnoticed.
+  misconfigured:
+    if: vars.STABLE_RELEASE_APP_CLIENT_ID != '' && vars.STABLE_RELEASE_APP_BOT_ID == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Refuse a half-configured stable-release App
+        run: |
+          echo "STABLE_RELEASE_APP_CLIENT_ID is set but STABLE_RELEASE_APP_BOT_ID is not. Set the bot user id first; pr-gate fails closed until then." >&2
+          exit 1
+
   # Read-only: decides the next step and the side lanes.
   plan:
     if: vars.STABLE_RELEASE_APP_CLIENT_ID != '' && vars.STABLE_RELEASE_APP_BOT_ID != '' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # A tag-ready run downloads and verifies the previous release (about 80 assets,
+    # 0.93 GB for v1.1.0), starts scratch PostgreSQL and builds the compatibility
+    # generator uncached. release-build measured 99 s for the generator step (run
+    # 42526720406); the download and OCI checks have no measurement yet (see the
+    # handoff). 30 minutes is a documented estimate, not a measurement.
+    timeout-minutes: 30
     # The environment holds the App key and admits only main.
     environment: stable-release
     # The job token reads only the repository and its issues; the App token reads Actions.
@@ -197,6 +216,9 @@ jobs:
           permission-actions: read
           permission-contents: write
           permission-administration: read
+          permission-pull-requests: read
+          permission-vulnerability-alerts: read
+          permission-metadata: read
       - name: Publish the staged draft
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -228,6 +250,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Install pinned Cosign
+        run: |
+          mkdir -p "$HOME/.cosign"
+          ./scripts/ci/fetch-pinned-tool.sh cosign-linux-amd64 "$HOME/.cosign/cosign"
+          chmod +x "$HOME/.cosign/cosign"
+          echo "$HOME/.cosign" >>"$GITHUB_PATH"
       - name: Mint a token scoped to this step only
         id: app
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
@@ -268,6 +296,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Install pinned Cosign
+        run: |
+          mkdir -p "$HOME/.cosign"
+          ./scripts/ci/fetch-pinned-tool.sh cosign-linux-amd64 "$HOME/.cosign/cosign"
+          chmod +x "$HOME/.cosign/cosign"
+          echo "$HOME/.cosign" >>"$GITHUB_PATH"
       - name: Mint a token scoped to this step only
         id: app
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
@@ -284,6 +318,8 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
           VERSION: ${{ needs.plan.outputs.homebrew }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+          STABLE_RELEASE_APP_BOT_ID: ${{ vars.STABLE_RELEASE_APP_BOT_ID }}
           HIKYO_HOMEBREW_TAP_REPOSITORY: ${{ github.repository_owner }}/homebrew-tap
         run: ./scripts/release/stable-reconcile.sh homebrew
 
@@ -360,7 +396,7 @@ jobs:
   # also runs when any job above failed, so a broken reconciler cannot go quiet.
   issue:
     needs: [plan, tag, publish, sync-trust, homebrew, automerge, cleanup]
-    if: always() && vars.STABLE_RELEASE_APP_CLIENT_ID != '' && vars.STABLE_RELEASE_APP_BOT_ID != '' && github.ref == 'refs/heads/main' && !inputs.dry_run && (contains(needs.*.result, 'failure') || needs.plan.outputs.issue == 'open' || needs.plan.outputs.issue == 'close')
+    if: always() && vars.STABLE_RELEASE_APP_CLIENT_ID != '' && vars.STABLE_RELEASE_APP_BOT_ID != '' && github.ref == 'refs/heads/main' && !inputs.dry_run && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || needs.plan.outputs.issue == 'open' || needs.plan.outputs.issue == 'close')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -377,12 +413,12 @@ jobs:
           GH_REPO: ${{ github.repository }}
           ISSUE_TEXT: ${{ needs.plan.outputs.issue_text }}
           ISSUE_ACTION: ${{ needs.plan.outputs.issue }}
-          FAILED: ${{ contains(needs.*.result, 'failure') }}
+          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ "$FAILED" = true ]; then
             ISSUE_ACTION=open
-            ISSUE_TEXT="A stable-release-reconciler job failed. Inspect $RUN_URL. The next run retries every idempotent step; fix the cause if it repeats."
+            ISSUE_TEXT="A stable-release-reconciler job failed, timed out or was cancelled. Inspect $RUN_URL. The next run retries every idempotent step; fix the cause if it repeats."
             export ISSUE_TEXT
           fi
           ./scripts/release/stable-reconcile.sh issue "$ISSUE_ACTION"

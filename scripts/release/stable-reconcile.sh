@@ -36,13 +36,17 @@ repo_root=${HIKYO_REPO_ROOT:-$(CDPATH='' cd -- "$script_dir/../.." && pwd)}
 : "${COMPAT_BIN:=$script_dir/check-unattended-compatibility.sh}"
 : "${POSTGRES_BIN:=$script_dir/../ci/start-ci-postgres.sh}"
 : "${GH_REPO:?}"
+# Numeric ids, never logins: Dependabot's bot user and GitHub's web-flow committer.
 dependabot_user_id=49699333
+web_flow_user_id=19864447
 issue_title='Unattended stable patch release is stalled'
 work=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-stable-reconcile.XXXXXX")
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 trust="$repo_root/release/trust"
 # A security merge that is still unreleased after this long raises the stall issue.
 escalate_after=86400
+# A draft must contain the security merges that were known this long before it was tagged.
+floor_grace=300
 # A trust PR that the queue has not merged after this long is a failure, not a retry.
 trust_pr_patience=10800
 # The scratch database the compatibility generator needs; release.yml uses the same one.
@@ -137,14 +141,30 @@ find_issue() {
 		{ cat "$work/err" >&2; die 'cannot list open issues'; }
 	jq -r --arg title "$issue_title" '[.[] | select(.title == $title)][0].number // empty' "$work/issues.json"
 }
+# Reads every Dependabot alert (all states listed explicitly, so a change of the
+# default cannot hide the fixed ones) and prints the pull requests Dependabot
+# itself linked to an alert. OPEN alerts name the open update PRs, FIXED ones
+# the merged ones; the author is bound by its numeric id.
 security_prs() {
 	# shellcheck disable=SC2016
-	query='query($owner:String!,$name:String!,$endCursor:String){repository(owner:$owner,name:$name){vulnerabilityAlerts(first:100,after:$endCursor){pageInfo{hasNextPage endCursor}nodes{dependabotUpdate{pullRequest{number merged mergedAt baseRefName headRefName author{login} mergeCommit{oid}}}}}}}'
+	query='query($owner:String!,$name:String!,$endCursor:String){repository(owner:$owner,name:$name){vulnerabilityAlerts(first:100,after:$endCursor,states:[OPEN,FIXED]){pageInfo{hasNextPage endCursor}nodes{state fixedAt dependabotUpdate{pullRequest{number merged mergedAt baseRefName headRefName author{login ... on Bot{databaseId}} mergeCommit{oid}}}}}}}'
 	gh api graphql --paginate -f query="$query" -f owner="${GH_REPO%/*}" -f name="${GH_REPO#*/}" >"$work/alerts" ||
 		die 'cannot read Dependabot alerts'
 	# An alert that Dependabot itself linked to a pull request proves a security update.
-	jq -s -c '[.[].data.repository.vulnerabilityAlerts.nodes[].dependabotUpdate.pullRequest | select(. != null) |
-		select(.author.login == "dependabot" and .baseRefName == "main" and (.headRefName | startswith("dependabot/")))] | unique_by(.number)' "$work/alerts"
+	jq -s -c --argjson bot "$dependabot_user_id" '[.[].data.repository.vulnerabilityAlerts.nodes[].dependabotUpdate.pullRequest | select(. != null) |
+		select(.author.databaseId == $bot and .baseRefName == "main" and (.headRefName | startswith("dependabot/")))] | unique_by(.number)' "$work/alerts"
+}
+
+# authority_at COMMIT: 0 when COMMIT carries the actor-based tag authority, 1 when it
+# does not; an unreadable file stops the run.
+authority_at() {
+	rc=0
+	commit_has_actor_tag_authority "$GH_REPO" "$1" || rc=$?
+	case $rc in
+	0) return 0 ;;
+	1) return 1 ;;
+	*) die "cannot read the tag authority of $1" ;;
+	esac
 }
 
 # Everything tag() refuses, so the plan never decides a tag that would die and
@@ -174,6 +194,7 @@ tag_checks() {
 	*) die 'cannot compare the commit with main history' ;;
 	esac
 	is_green "$checks_commit" || refuse "$checks_commit has no complete green source proof"
+	authority_at "$checks_commit" || refuse "$checks_commit predates the actor-based tag authority, so its release build could not tell who pushed the tag"
 	api "$work/matching-tags.json" --paginate "repos/$GH_REPO/git/matching-refs/tags/v"
 	jq -s -e --arg tag "v$checks_version" '
 		def triple: ltrimstr("v") | capture("^(?<a>[0-9]+)\\.(?<b>[0-9]+)\\.(?<c>[0-9]+)") | [.a, .b, .c | tonumber];
@@ -208,10 +229,11 @@ compat_checks() {
 	esac
 }
 
-plan_inner() {
-	# What is published decides, never GitHub's "latest" flag: the highest published
-	# release of any channel (what trust must record) and the highest stable one
-	# (what a patch builds on). Drafts and nightlies never count.
+# What is published decides, never GitHub's "latest" flag: the highest published
+# release of any channel (what trust must record) and the highest stable one
+# (what a patch builds on). Drafts and nightlies never count. Sets published_highest,
+# latest, latest_tag, latest_commit, latest_published_at, highest, next and next_tag.
+read_published() {
 	api "$work/releases.json" --paginate --slurp "repos/$GH_REPO/releases?per_page=100"
 	jq -c "$semver_key_jq"'
 		[.[][] | select(.draft == false and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+(-[A-Za-z][0-9A-Za-z.-]*)?$") and (contains("-nightly.") | not)))] as $published |
@@ -223,34 +245,19 @@ plan_inner() {
 	latest=$(jq -r '.stable // empty' "$work/published.json")
 	[ -n "$latest" ] || die 'there is no published stable release'
 	latest_tag="v$latest"
+	latest_published_at=$(jq -r --arg tag "$latest_tag" '[.[][] | select(.tag_name == $tag)][0].published_at // empty' "$work/releases.json")
+	[ -n "$latest_published_at" ] || die "$latest_tag has no publication time"
 	highest=$(jq -r '.highest_release // empty' "$trust/metadata.json")
 	api "$work/latest-commit.json" "repos/$GH_REPO/commits/$latest_tag"
 	latest_commit=$(jq -er '.sha' "$work/latest-commit.json") || die "cannot resolve $latest_tag"
 	need_sha "$latest_commit"
 	next=$(patch_successor "$latest")
 	next_tag="v$next"
+}
 
-	# Side lane: Dependabot security-update PRs into main. The proof is an alert
-	# that Dependabot itself linked to the pull request, not a label or a title,
-	# and every commit of the PR must be Dependabot's own: authored by
-	# dependabot[bot], committed by GitHub's web-flow and verified by GitHub.
-	security_prs >"$work/security.json"
-	api "$work/pulls.json" --paginate "repos/$GH_REPO/pulls?state=open&base=main&per_page=100"
-	jq -s -r --slurpfile security "$work/security.json" --argjson bot "$dependabot_user_id" --arg repo "$GH_REPO" '
-		.[][] | select(.user.id == $bot and .head.repo.full_name == $repo and (.head.ref | startswith("dependabot/")) and .auto_merge == null and
-			(.number as $n | $security[0] | any(.number == $n))) | "\(.number) \(.head.sha)"' "$work/pulls.json" >"$work/candidates"
-	while read -r number sha; do
-		[ -n "$number" ] || continue
-		api "$work/pr-commits.json" --paginate "repos/$GH_REPO/pulls/$number/commits?per_page=100"
-		if jq -s -e --arg sha "$sha" '[.[][]] | length > 0 and (.[-1].sha == $sha) and
-			all(.[]; .author.login == "dependabot[bot]" and .committer.login == "web-flow" and .commit.verification.verified == true)' "$work/pr-commits.json" >/dev/null; then
-			l_automerge="${l_automerge:+$l_automerge }$number:$sha"
-		else
-			note "stable-reconcile: security PR #$number has a commit that is not Dependabot's own verified commit; it is not queued"
-		fi
-	done <"$work/candidates"
-
-	# Merged security updates whose merge commit the latest stable tag lacks.
+# Merged security updates whose merge commit the latest stable tag lacks, as
+# "OID MERGED_AT" lines in $work/pending.
+read_pending() {
 	jq -r '.[] | select(.merged == true and .mergeCommit != null) | "\(.mergeCommit.oid) \(.mergedAt)"' "$work/security.json" >"$work/merged"
 	: >"$work/pending"
 	while read -r oid merged_at; do
@@ -261,6 +268,77 @@ plan_inner() {
 			printf '%s %s\n' "$oid" "$merged_at" >>"$work/pending"
 		fi
 	done <"$work/merged"
+}
+
+# floor_check COMMIT BUILT_AT: 0 when COMMIT holds the security merges that were
+# already known when the draft was built, else 1 with floor_reason. A merge that
+# landed within floor_grace seconds of the build start is not required: the tag
+# is immutable, so insisting on a merge that raced the tag would strand the draft
+# for good. At least one pending merge must be in COMMIT.
+floor_check() {
+	fc_commit=$1
+	fc_at=$(epoch "$2")
+	if [ ! -s "$work/pending" ]; then
+		floor_reason="no merged Dependabot security update is missing from $latest_tag"
+		return 1
+	fi
+	fc_included=false
+	while read -r oid merged_at; do
+		[ -n "$oid" ] || continue
+		rc=0
+		"$GIT_BIN" -C "$repo_root" merge-base --is-ancestor "$oid" "$fc_commit" || rc=$?
+		case $rc in
+		0) fc_included=true ;;
+		1)
+			if [ "$(epoch "$merged_at")" -le $((fc_at - floor_grace)) ]; then
+				floor_reason="$fc_commit lacks the security merge $oid, which was merged before the draft was built"
+				return 1
+			fi
+			;;
+		*) die "cannot compare $oid with $fc_commit" ;;
+		esac
+	done <"$work/pending"
+	if [ "$fc_included" != true ]; then
+		floor_reason="$fc_commit contains none of the security merges missing from $latest_tag"
+		return 1
+	fi
+	return 0
+}
+
+plan_inner() {
+	read_published
+
+	# Side lane: Dependabot security-update PRs into main. The proof is an alert
+	# that Dependabot itself linked to the pull request, not a label or a title,
+	# and every commit of the PR must be Dependabot's own: authored by
+	# dependabot[bot], committed by GitHub's web-flow and verified by GitHub
+	# (all bound by numeric user id).
+	security_prs >"$work/security.json"
+	# A Dependabot alert that was fixed after the latest release but that no
+	# Dependabot pull request is linked to would leave "no pending merge" looking
+	# like "nothing to release". Raise that, never close the issue over it.
+	unlinked=$(jq -s --arg since "$latest_published_at" '[.[].data.repository.vulnerabilityAlerts.nodes[] |
+		select(.state == "FIXED" and (.fixedAt // "") > $since and .dependabotUpdate.pullRequest == null)] | length' "$work/alerts") ||
+		die 'cannot read the fixed Dependabot alerts'
+	if [ "$unlinked" -gt 0 ]; then
+		raise "$unlinked Dependabot alert(s) were fixed on main after $latest_tag but none is linked to a merged Dependabot pull request, so no unattended patch release is planned; check the alerts or release by hand with scripts/release/ceremony.sh"
+	fi
+	api "$work/pulls.json" --paginate "repos/$GH_REPO/pulls?state=open&base=main&per_page=100"
+	jq -s -r --slurpfile security "$work/security.json" --argjson bot "$dependabot_user_id" --arg repo "$GH_REPO" '
+		.[][] | select(.user.id == $bot and .head.repo.full_name == $repo and (.head.ref | startswith("dependabot/")) and .auto_merge == null and
+			(.number as $n | $security[0] | any(.number == $n))) | "\(.number) \(.head.sha)"' "$work/pulls.json" >"$work/candidates"
+	while read -r number sha; do
+		[ -n "$number" ] || continue
+		api "$work/pr-commits.json" --paginate "repos/$GH_REPO/pulls/$number/commits?per_page=100"
+		if jq -s -e --arg sha "$sha" --argjson dep "$dependabot_user_id" --argjson web "$web_flow_user_id" '[.[][]] | length > 0 and (.[-1].sha == $sha) and
+			all(.[]; .author.id == $dep and .committer.id == $web and .commit.verification.verified == true)' "$work/pr-commits.json" >/dev/null; then
+			l_automerge="${l_automerge:+$l_automerge }$number:$sha"
+		else
+			raise "security PR #$number has a commit that is not Dependabot's own GitHub-verified commit, so it is not queued"
+		fi
+	done <"$work/candidates"
+
+	read_pending
 
 	if [ -z "$highest" ]; then
 		decision none 'trust names no signed latest stable release, so no patch successor exists'
@@ -341,6 +419,12 @@ plan_inner() {
 				if [ -z "$artifact" ]; then
 					decision wait "the manifest digest artifact of run $run_id is missing or expired" "$next" "" "$run_id"
 					escalate "the manifest digest artifact of run $run_id is missing or expired; the draft cannot be published unattended"
+				elif ! authority_at "$tagged_commit"; then
+					decision none "$next_tag was tagged at $tagged_commit, which predates the actor-based tag authority; its draft is not published unattended"
+					want_issue open "The app pushed $next_tag at $tagged_commit, whose release workflow cannot tell who pushed a tag, so the draft is not published unattended. Delete the draft (the tag stays burned): gh release delete $next_tag --repo $GH_REPO --yes. Then release the next patch with scripts/release/ceremony.sh."
+				elif ! floor_check "$tagged_commit" "$(jq -er '.created_at' "$work/bot-run.json")"; then
+					decision none "the draft of $next_tag is not published: $floor_reason"
+					want_issue open "The draft of $next_tag is not published unattended: $floor_reason. The tag is immutable. Delete the draft (the tag stays burned): gh release delete $next_tag --repo $GH_REPO --yes. Then release the next patch with scripts/release/ceremony.sh."
 				else
 					decision publish "the release-build run $run_id of $next_tag succeeded" "$next" "" "$run_id" "$artifact"
 				fi
@@ -426,6 +510,8 @@ decision() { # action reason [version commit run artifact]
 	d_action=$1 d_reason=$2 d_version=${3:-} d_commit=${4:-} d_run=${5:-} d_artifact=${6:-}
 }
 want_issue() { i_action=$1 i_text=${2:-}; }
+# raise TEXT: a condition that must open the stall issue whatever else the plan decides.
+raise() { alarms="${alarms:+$alarms }$1."; }
 # While a security merge waits for its release, every stuck state alerts after a day.
 escalate() {
 	[ -s "$work/pending" ] || return 0
@@ -449,8 +535,13 @@ plan() {
 	: "${GITHUB_SHA:?}"
 	need_sha "$GITHUB_SHA"
 	need_bot
-	d_action=none d_reason='' d_version='' d_commit='' d_run='' d_artifact='' i_action=none i_text='' l_automerge='' l_homebrew='' l_cleanup=''
+	d_action=none d_reason='' d_version='' d_commit='' d_run='' d_artifact='' i_action=none i_text='' l_automerge='' l_homebrew='' l_cleanup='' alarms=''
 	plan_inner
+	# An alarm is never erased by a later "close": it is what a silent plan would hide.
+	if [ -n "$alarms" ]; then
+		note "stable-reconcile: ALARM: $alarms"
+		if [ "$i_action" = open ]; then i_text="$i_text $alarms"; else i_action=open i_text=$alarms; fi
+	fi
 	# Run the issue job only when it has something to do.
 	if [ "$i_action" = close ]; then
 		existing=$(find_issue) || die 'cannot look up the stall issue'
@@ -511,6 +602,14 @@ publish() {
 	' "$work/run.json" >/dev/null || die "run $RUN_ID is not a successful release-build of v$VERSION started and triggered by the stable-release app; a person's release is published by the ceremony"
 	digest=$(cat "$DIGEST_FILE")
 	printf '%s\n' "$digest" | grep -Eq '^[0-9a-f]{64}$' || die 'the retained manifest digest is not a SHA-256'
+	# The plan decided this from the same reads; look again, because the draft is about to become public.
+	authority_at "$tagged_commit" || die "v$VERSION was tagged at $tagged_commit, which predates the actor-based tag authority"
+	: "${GITHUB_SHA:?}"
+	need_sha "$GITHUB_SHA"
+	read_published
+	security_prs >"$work/security.json"
+	read_pending
+	floor_check "$tagged_commit" "$(jq -er '.created_at' "$work/run.json")" || die "v$VERSION is not published: $floor_reason"
 	seed_state
 	# The helper pins the digest to the downloaded draft, rechecks the tag authority
 	# against this run, the build, immutable releases, every signature and OCI subject.
@@ -531,11 +630,19 @@ verify_public() {
 		--state "$state" --latest --published
 }
 
-sync_trust() {
-	: "${VERSION:?}" "${APP_SLUG:?}"
-	need_release "$VERSION"
+# Sets bot_login and bot_email: the app's commit identity, which every commit it
+# writes signs off with (the DCO check needs the trailer to equal the author).
+bot_identity() {
+	[ -n "${APP_SLUG:-}" ] || die 'APP_SLUG is required'
 	need_bot
 	printf '%s\n' "$APP_SLUG" | grep -Eq '^[A-Za-z0-9-]+$' || die 'invalid app slug'
+	bot_login="${APP_SLUG}[bot]"
+	bot_email="$STABLE_RELEASE_APP_BOT_ID+$bot_login@users.noreply.github.com"
+}
+
+sync_trust() {
+	: "${VERSION:?}"
+	need_release "$VERSION"
 	verify_public "$VERSION"
 	files='metadata.json metadata.sigstore.json catalog.json catalog.sigstore.json'
 	same=true
@@ -559,8 +666,7 @@ sync_trust() {
 		gh api --method POST "repos/$GH_REPO/git/refs" -f ref="refs/heads/$branch" -f sha="$main_sha" >/dev/null || die "cannot create $branch"
 		head=$main_sha
 	fi
-	bot_login="${APP_SLUG}[bot]"
-	bot_email="$STABLE_RELEASE_APP_BOT_ID+$bot_login@users.noreply.github.com"
+	bot_identity
 	# check-dco.sh needs this trailer to equal the commit author exactly.
 	body="Public release trust evidence for v$VERSION, verified against the published release.
 
@@ -628,9 +734,10 @@ Signed-off-by: $bot_login <$bot_email>"
 homebrew() {
 	: "${VERSION:?}"
 	need_version "$VERSION"
+	bot_identity
 	tap=${HIKYO_HOMEBREW_TAP_REPOSITORY:-${GH_REPO%/*}/homebrew-tap}
 	verify_public "$VERSION"
-	"$HOMEBREW_BIN" "$GH_REPO" "v$VERSION" "$download" "$tap" >"$work/homebrew.out" || { cat "$work/homebrew.out"; die 'cannot update the tap'; }
+	HIKYO_HOMEBREW_SIGNOFF="$bot_login <$bot_email>" "$HOMEBREW_BIN" "$GH_REPO" "v$VERSION" "$download" "$tap" >"$work/homebrew.out" || { cat "$work/homebrew.out"; die 'cannot update the tap'; }
 	cat "$work/homebrew.out"
 	url=$(sed -n 's/^homebrew publish: review and merge \(https:\/\/github.com\/.*\/pull\/[0-9][0-9]*\)$/\1/p' "$work/homebrew.out")
 	[ -n "$url" ] || return 0
@@ -640,9 +747,13 @@ homebrew() {
 	need_sha "$sha"
 	# The tap disables auto-merge, so merge once its required check is green; a
 	# later run retries while the check is still pending.
-	api "$work/tap-checks.json" "repos/$tap/commits/$sha/check-runs?check_name=ci-required&per_page=100"
-	if jq -e '[.check_runs[] | select(.conclusion == "success")] | length > 0' "$work/tap-checks.json" >/dev/null; then
-		gh api --method PUT "repos/$tap/pulls/$number/merge" -f merge_method=squash -f sha="$sha" >/dev/null || die "cannot merge tap PR #$number"
+	# Only the newest run of the check counts: a later failure or a re-run in
+	# progress outranks an older success.
+	api "$work/tap-checks.json" "repos/$tap/commits/$sha/check-runs?check_name=ci-required&filter=latest&per_page=100"
+	if jq -e '[.check_runs[]] | sort_by(.started_at // "", .id) | last | .conclusion == "success"' "$work/tap-checks.json" >/dev/null; then
+		title=$(jq -er '.title' "$work/tap-pr.json") || die "cannot read the title of tap PR #$number"
+		gh api --method PUT "repos/$tap/pulls/$number/merge" -f merge_method=squash -f sha="$sha" \
+			-f commit_title="$title (#$number)" -f commit_message="Signed-off-by: $bot_login <$bot_email>" >/dev/null || die "cannot merge tap PR #$number"
 		note "stable-reconcile: merged tap PR #$number"
 	else
 		note "stable-reconcile: tap PR #$number waits for ci-required"

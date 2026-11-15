@@ -107,6 +107,15 @@ else
 	grep -F '(HTTP 404)' "$scratch/main-error" >/dev/null || fail 'cannot inspect current tap cask'
 fi
 
+# HIKYO_HOMEBREW_SIGNOFF ("Name <email>") adds the DCO trailer the unattended
+# reconciler needs for its bot commit; a person's run leaves the message as is.
+with_signoff() {
+	if [ -n "${HIKYO_HOMEBREW_SIGNOFF:-}" ]; then
+		printf '%s\n\nSigned-off-by: %s' "$1" "$HIKYO_HOMEBREW_SIGNOFF"
+	else
+		printf '%s' "$1"
+	fi
+}
 branch="release/$cask_name-$version"
 branch_query=$(printf '%s' "$branch" | jq -sRr @uri)
 base_sha=$("$GH_BIN" api "repos/$tap_repository/git/ref/heads/main" \
@@ -143,13 +152,13 @@ if [ "$branch_content" != "$cask_content" ]; then
 	if [ -n "$current_sha" ]; then
 		update_json=$(
 			"$GH_BIN" api --method PUT "$contents_endpoint" \
-				-f message="chore: update $cask_name cask to $version" \
+				-f message="$(with_signoff "chore: update $cask_name cask to $version")" \
 				-f content="$cask_content" -f sha="$current_sha" -f branch="$branch"
 		) || fail 'tap update failed'
 	else
 		update_json=$(
 			"$GH_BIN" api --method PUT "$contents_endpoint" \
-				-f message="chore: add $cask_name cask $version" \
+				-f message="$(with_signoff "chore: add $cask_name cask $version")" \
 				-f content="$cask_content" -f branch="$branch"
 		) || fail 'tap creation failed'
 	fi
