@@ -477,9 +477,10 @@ Queue publishers retry GitHub reads that fail with HTTP 429, 500, 502, 503 or
 cancellation): three attempts with 1 and 3 second backoff, never past the
 invocation deadline. Writes are never retried. Discovery dispatch, retirement
 discovery keep single-attempt reads. After its own check-run write, any publisher
-invocation may re-read that exact record while GitHub's listing or readback
-still trails it (0.5, 1 and 1.5 s, one shared 3 s budget per pass); a different
-record or a spent budget refuses as before.
+invocation may re-list or re-read while GitHub still trails that write (0.5, 1
+and 1.5 s). The barrier and failure confirmations of one pass share one 3 s
+budget, and each retirement readback has its own. A different record or a spent
+budget refuses as before.
 
 The full-group callback and the group worker are the only invocations that
 wait.

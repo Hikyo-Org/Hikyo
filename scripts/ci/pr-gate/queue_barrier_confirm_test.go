@@ -210,8 +210,8 @@ func TestGroupColdStartBarrierSurvivesLaggingCheckListing(t *testing.T) {
 }
 
 // ensureBlocking creates the barrier and finishGroupFailure then fails it, each
-// confirmed against a listing that trails the write. Both run under one reserve
-// (5 s), so together they may wait no longer than one full backoff.
+// confirmed against a listing that trails the write. Both share one pass's
+// confirmation budget, so together they may wait no longer than one full backoff.
 func TestBarrierAndFailureConfirmationsShareOneWaitBudget(t *testing.T) {
 	f := newQueueFixture(t)
 	f.q.dco = func(context.Context, pull) (int, error) { return 0, errors.New("DCO check: empty commit range") }
@@ -222,7 +222,7 @@ func TestBarrierAndFailureConfirmationsShareOneWaitBudget(t *testing.T) {
 		t.Fatalf("group failure not reported: %v", err)
 	}
 	// The failure PATCH never settles, so the refusal must name both records.
-	if !strings.Contains(err.Error(), "failure fallback is not the effective blocking record") || !strings.Contains(err.Error(), "written id=") {
+	if !strings.Contains(err.Error(), "failure fallback is not the effective blocking record") || !strings.Contains(err.Error(), "written id=") || !strings.Contains(err.Error(), "listed id=") {
 		t.Fatalf("failure-fallback refusal does not describe the records: %v", err)
 	}
 	var total time.Duration

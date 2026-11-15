@@ -470,7 +470,8 @@ func (s *queueReconciliation) ensureBlocking(ctx context.Context, cause error) e
 var writeConfirmBackoff = []time.Duration{500 * time.Millisecond, time.Second, 1500 * time.Millisecond}
 
 // writeConfirmTotal is the most one caller-owned budget may wait: one full
-// backoff, 3 s of the 5 s reserve the confirmations run under. The pass's
+// backoff, 3 s of the reserve the confirmations run under (5 s for a single
+// pass, 1 minute for the re-reading group job). The pass's
 // remaining API calls share the rest; a slow GitHub can still exhaust the
 // reserve first, which leaves the barrier blocking (fail closed).
 func writeConfirmTotal() time.Duration {
@@ -482,7 +483,8 @@ func writeConfirmTotal() time.Duration {
 }
 
 // describeCheck names the fields a confirmation failure needs to be diagnosed
-// from its log alone. It carries no secrets: IDs, status words and fixed titles.
+// from its log alone. It carries no secrets: IDs, SHAs, the encoded binding,
+// status words and the gate's own fixed title and summary text.
 func describeCheck(v *check) string {
 	if v == nil {
 		return "none"
