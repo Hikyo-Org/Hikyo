@@ -76,7 +76,6 @@ jobs:
       image: ${{ steps.identity.outputs.image }}
       compatibility_sha256: ${{ steps.compatibility.outputs.sha256 }}
       non_darwin_sha256: ${{ steps.input-digests.outputs.non_darwin_sha256 }}
-      authority: ${{ steps.identity.outputs.authority }}
     permissions:
       actions: read
       contents: write
@@ -565,10 +564,13 @@ jobs:
           CANDIDATE_SHA256: ${{ needs.build-artifacts.outputs.candidate_sha256 }}
           STABLE_RELEASE_APP_BOT_ID: ${{ vars.STABLE_RELEASE_APP_BOT_ID }}
           HIKYO_RELEASE_RUN_ID: ${{ github.run_id }}
+          HIKYO_AUTHORITY_OUT: ${{ runner.temp }}/release-authority
         run: |
           tar -xzf "$RUNNER_TEMP/apple-release-inputs/apple-release-inputs.tar.gz"
           ./scripts/release/check-candidate.sh dist/release-candidate.json "$CANDIDATE_SHA256"
           ./scripts/release/require-signed-tag.sh "$REPOSITORY" "$TAG" "$TAG_SHA"
+          # Who pushed the tag, decided again here from the run itself, picks the draft's rules and wording.
+          printf 'HIKYO_AUTHORITY=%s\n' "$(cat "$HIKYO_AUTHORITY_OUT")" >>"$GITHUB_ENV"
           go run ./scripts/release/stable preflight --trust release/trust
           (cd dist && sha256sum --check --strict checksums.txt)
           for arch in arm64 x86_64; do
@@ -748,7 +750,7 @@ jobs:
 
       - name: Sign draft and provenance with the tag workflow identity
         env:
-          HIKYO_PATCH_ONLY: ${{ needs.build-artifacts.outputs.authority == 'app' && '1' || '' }}
+          HIKYO_PATCH_ONLY: ${{ env.HIKYO_AUTHORITY == 'app' && '1' || '' }}
         run: |
           draft="$RUNNER_TEMP/stable-draft"
           mkdir "$draft"
@@ -767,8 +769,13 @@ jobs:
           if [ "$(./scripts/release/release-channel.sh "$TAG")" = prerelease ]; then
             prerelease=(--prerelease)
           fi
+          if [ "$HIKYO_AUTHORITY" = app ]; then
+            notes="Signed draft built unattended for a Dependabot security patch. Not reviewed by a person: the unattended publisher checks the manifest digest of this exact run, then every signature, provenance and OCI subject, before it publishes."
+          else
+            notes="Signed draft. Review version, source commit, provenance and manifest SHA-256 before publishing from the local online ceremony."
+          fi
           gh release create "$TAG" --verify-tag --draft "${prerelease[@]}" \
-            --title "$TAG" --notes "Signed draft. Review version, source commit, provenance and manifest SHA-256 before publishing from the local online ceremony."
+            --title "$TAG" --notes "$notes"
           gh release upload "$TAG" "$RUNNER_TEMP/stable-draft/"*
           downloaded="$RUNNER_TEMP/staged-release"
           mkdir "$downloaded"
@@ -781,8 +788,13 @@ jobs:
           {
             printf '### Signed draft awaiting publication\n\n'
             printf 'Tag: %s\n\nCommit: %s\n\n' "$TAG" "$GITHUB_SHA"
-            printf 'Review manifest SHA-256: %s\n' "$(sha256sum "$downloaded/release-manifest.json" | awk '{print $1}')"
-            printf 'Use the local online ceremony publish command from current clean main with this version and digest after review.\n'
+            if [ "$HIKYO_AUTHORITY" = app ]; then
+              printf 'Manifest SHA-256: %s\n\n' "$(cat "$RUNNER_TEMP/release-manifest.sha256")"
+              printf 'Unattended build by the stable-release app. The reconciler publishes it after verifying this digest against the retained artifact of this run. If it stalls, see the unattended section of docs/release/online-signing.md.\n'
+            else
+              printf 'Review manifest SHA-256: %s\n' "$(cat "$RUNNER_TEMP/release-manifest.sha256")"
+              printf 'Use the local online ceremony publish command from current clean main with this version and digest after review.\n'
+            fi
           } >>"$GITHUB_STEP_SUMMARY"
       - name: Retain the staged manifest digest for the unattended publisher
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -13,29 +13,46 @@ cat >"$scratch/bin/gh" <<'SH'
 #!/bin/sh
 set -eu
 mode=$FIXTURE_MODE
+printf '%s\n' "$*" >>"$FIXTURE_SCRATCH/calls"
 case "$*" in
   'api repos/owner/repo/git/ref/tags/v1.1.1')
     type=tag
     [ "$mode" != lightweight ] || type=commit
     jq -nc --arg type "$type" '{object:{type:$type,sha:("2"*40)}}' ;;
   'api repos/owner/repo/git/tags/'*)
+    # The signature says nothing about the pusher: signed-bot and signed-human differ only in the run.
     verified=false
-    case "$mode" in human) verified=true ;; esac
+    [ "${FIXTURE_SIGNED:-}" != 1 ] || verified=true
+    case "$mode" in human*|user-signed-*) verified=true ;; esac
     jq -nc --argjson verified "$verified" --arg commit "$FIXTURE_COMMIT" '{tag:"v1.1.1",object:{type:"commit",sha:$commit},verification:{verified:$verified,reason:(if $verified then "valid" else "unsigned" end)}}' ;;
+  'api repos/owner/repo/actions/workflows/release.yml/runs?event=push&head_sha='*'&per_page=100')
+    jq -nc --arg commit "$FIXTURE_COMMIT" '{workflow_runs:[
+      {id:41,head_sha:$commit,head_branch:"v1.1.1",event:"push",run_number:1,run_attempt:1},
+      {id:42,head_sha:$commit,head_branch:"v1.1.1",event:"push",run_number:2,run_attempt:1},
+      {id:43,head_sha:$commit,head_branch:"v1.1.0",event:"push",run_number:9,run_attempt:1}]}' ;;
   'api repos/owner/repo/actions/runs/42')
-    actor=777 triggering=777 event=push branch=v1.1.1 path=.github/workflows/release.yml
+    actor=777 triggering=777 atype=Bot ttype=Bot event=push branch=v1.1.1 path=.github/workflows/release.yml
     case "$mode" in
-      human-rerun) triggering=1 ;;
-      human-actor) actor=1 triggering=1 ;;
+      human*|user-*) actor=1 triggering=1 atype=User ttype=User ;;
+      app-rerun-by-human) triggering=1 ttype=User ;;
+      wrong-bot) actor=778 triggering=778 ;;
+      bot-no-type) atype=User ttype=User ;;
       wrong-event) event=workflow_dispatch ;;
       wrong-branch) branch=v1.1.2 ;;
       wrong-workflow) path=.github/workflows/other.yml ;;
     esac
-    jq -nc --argjson a "$actor" --argjson t "$triggering" --arg event "$event" --arg branch "$branch" --arg path "$path" --arg commit "$FIXTURE_COMMIT" \
-      '{path:$path,event:$event,head_branch:$branch,head_sha:$commit,repository:{full_name:"owner/repo"},actor:{id:$a},triggering_actor:{id:$t}}' ;;
-  'api repos/owner/repo/releases/latest --jq .tag_name')
-    if [ "$mode" = stale-latest ]; then echo v1.0.0; else echo v1.1.0; fi ;;
+    jq -nc --argjson a "$actor" --argjson t "$triggering" --arg at "$atype" --arg tt "$ttype" --arg event "$event" --arg branch "$branch" --arg path "$path" --arg commit "$FIXTURE_COMMIT" \
+      '{path:$path,event:$event,head_branch:$branch,head_sha:$commit,repository:{full_name:"owner/repo"},actor:{id:$a,type:$at,login:"pusher"},triggering_actor:{id:$t,type:$tt,login:"pusher"}}' ;;
+  'api repos/owner/repo/collaborators/pusher/permission')
+    case "$mode" in
+      user-signed-admin-api-failure) printf 'gh: boom (HTTP 500)\n' >&2; exit 1 ;;
+      *nonadmin) echo '{"permission":"write"}' ;;
+      *) echo '{"permission":"admin"}' ;;
+    esac ;;
+  'api repos/owner/repo/releases/latest')
+    if [ "$mode" = stale-latest ]; then echo '{"tag_name":"v1.0.0"}'; elif [ "$mode" = latest-api-failure ]; then exit 1; else echo '{"tag_name":"v1.1.0"}'; fi ;;
   'api --paginate repos/owner/repo/git/matching-refs/tags/v --jq .[].ref')
+    [ "$mode" != tags-api-failure ] || exit 1
     printf 'refs/tags/v-ruleset-probe\nrefs/tags/v1.0.0\nrefs/tags/v1.1.0\nrefs/tags/v1.1.1\nrefs/tags/v1.2.0-nightly.20261112.1.gabcdef12\n'
     [ "$mode" != higher-tag ] || printf 'refs/tags/v1.1.2\n' ;;
   *) printf 'unexpected gh invocation: %s\n' "$*" >&2; exit 2 ;;
@@ -54,26 +71,63 @@ SH
 chmod +x "$scratch/bin/gh" "$scratch/bin/go"
 export GH_BIN="$scratch/bin/gh" GO_BIN="$scratch/bin/go"
 run() { "$script_dir/require-signed-tag.sh" owner/repo v1.1.1 "$commit"; }
+# The refusal must come from the intended gate, not from a fixture gap.
+reason() {
+  case $1 in
+    lightweight) echo 'annotated tag on exact commit required' ;;
+    app-rerun-by-human|wrong-bot|bot-no-type) echo 'started and triggered by the stable-release app' ;;
+    wrong-event|wrong-branch|wrong-workflow) echo 'not the release-build push of this tag' ;;
+    not-patch) echo 'patch successor' ;;
+    stale-latest) echo 'latest published release is not' ;;
+    higher-tag) echo 'higher stable tag exists' ;;
+    red-ci) echo 'green' ;;
+    user-signed-nonadmin) echo 'is not a repository admin' ;;
+    user-signed-admin-api-failure|latest-api-failure|tags-api-failure) echo 'cannot read: gh api' ;;
+    user-unsigned) echo 'GitHub-verified annotated tag on exact commit required' ;;
+    app) echo 'no stable-release bot id is configured' ;;
+    *) echo "$1" ;;
+  esac
+}
 expect_refused() {
   FIXTURE_MODE=$1
   export FIXTURE_MODE
   if run >"$scratch/out" 2>&1; then printf 'require-signed-tag fixture: accepted %s\n' "$1" >&2; exit 1; fi
+  want=${2:-$(reason "$1")}
+  grep -F "$want" "$scratch/out" >/dev/null || { cat "$scratch/out" >&2; printf 'require-signed-tag fixture: %s was refused for the wrong reason, want: %s\n' "$1" "$want" >&2; exit 1; }
+}
+expect_accepted() {
+  FIXTURE_MODE=$1
+  export FIXTURE_MODE
+  run >"$scratch/out" 2>&1 || { cat "$scratch/out" >&2; printf 'require-signed-tag fixture: refused %s\n' "$1" >&2; exit 1; }
 }
 export STABLE_RELEASE_APP_BOT_ID=777 HIKYO_RELEASE_RUN_ID=42 HIKYO_AUTHORITY_OUT="$scratch/authority"
-FIXTURE_MODE=app run >/dev/null
+expect_accepted app
 [ "$(cat "$scratch/authority")" = app ] || { printf 'app authority not reported\n' >&2; exit 1; }
-FIXTURE_MODE=human run >/dev/null
+# The bot's tag is judged by the unattended rules even when GitHub verifies its signature.
+(FIXTURE_SIGNED=1; export FIXTURE_SIGNED; expect_accepted app)
+[ "$(cat "$scratch/authority")" = app ] || { printf 'a verified bot tag skipped the app rules\n' >&2; exit 1; }
+expect_accepted human
 [ "$(cat "$scratch/authority")" = human ] || { printf 'human authority not reported\n' >&2; exit 1; }
-# A human tag needs neither the app variables nor a run.
-(unset STABLE_RELEASE_APP_BOT_ID HIKYO_RELEASE_RUN_ID; FIXTURE_MODE=human run >/dev/null)
-for mode in lightweight human-rerun human-actor wrong-event wrong-branch wrong-workflow not-patch stale-latest higher-tag red-ci; do
+# Without HIKYO_RELEASE_RUN_ID (the local ceremony) the latest push run of the tag decides.
+(unset HIKYO_RELEASE_RUN_ID; expect_accepted human; grep -q 'workflows/release.yml/runs?event=push&head_sha=' "$scratch/calls" || { printf 'the run was not looked up\n' >&2; exit 1; })
+(unset HIKYO_RELEASE_RUN_ID; expect_accepted app; [ "$(cat "$scratch/authority")" = app ])
+# A human tag needs no app variable at all.
+(unset STABLE_RELEASE_APP_BOT_ID; expect_accepted human)
+for mode in lightweight app-rerun-by-human wrong-event wrong-branch wrong-workflow not-patch stale-latest higher-tag red-ci \
+  wrong-bot bot-no-type user-signed-nonadmin user-signed-admin-api-failure latest-api-failure tags-api-failure; do
   expect_refused "$mode"
 done
-# Missing or malformed app configuration falls back to the human-only rule.
-for blank in STABLE_RELEASE_APP_BOT_ID HIKYO_RELEASE_RUN_ID; do
-  (export "$blank="; expect_refused app)
+# A GitHub-verified tag pushed by the bot must still meet every app gate: the
+# signature must never choose the authority.
+for mode in not-patch higher-tag stale-latest red-ci app-rerun-by-human wrong-bot latest-api-failure tags-api-failure; do
+  (FIXTURE_SIGNED=1; export FIXTURE_SIGNED; expect_refused "$mode")
 done
-(STABLE_RELEASE_APP_BOT_ID=0x1; export STABLE_RELEASE_APP_BOT_ID; expect_refused app)
-# Another bot id must not satisfy the check.
-(STABLE_RELEASE_APP_BOT_ID=778; export STABLE_RELEASE_APP_BOT_ID; expect_refused app)
+# A person's unsigned tag is refused, and a bot with no configured id is never a person.
+expect_refused user-unsigned
+(unset STABLE_RELEASE_APP_BOT_ID; expect_refused app)
+(unset STABLE_RELEASE_APP_BOT_ID; FIXTURE_SIGNED=1; export FIXTURE_SIGNED; expect_refused app)
+# Missing or malformed app configuration cannot widen the human rule.
+(export STABLE_RELEASE_APP_BOT_ID=; expect_refused app)
+(STABLE_RELEASE_APP_BOT_ID=0x1; export STABLE_RELEASE_APP_BOT_ID; expect_refused app 'invalid stable-release bot id')
+(STABLE_RELEASE_APP_BOT_ID=778; export STABLE_RELEASE_APP_BOT_ID; expect_refused app 'started and triggered by the stable-release app')
 printf 'require-signed-tag fixture: human and app authorities passed; every refusal case held\n'

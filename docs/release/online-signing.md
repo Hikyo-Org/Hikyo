@@ -88,7 +88,8 @@ Do not run `build 1.0.0` until designs and final-candidate acceptance are done.
    write `release/sync-trust-*`, so this command's branch push is refused. The
    [unattended reconciler](#unattended-security-patch-releases) syncs trust
    itself after a human release too. If it has not, open the PR from a branch
-   with another name.
+   with another name, or roll the App back (`configure-repository.sh` without
+   `HIKYO_STABLE_RELEASE_APP_ID` deletes that ruleset).
 
 There is one human review/publication boundary. With one maintainer it does not
 provide independent two-person approval. GitHub account security, protected
@@ -106,25 +107,52 @@ runs, hourly, and by hand. Each run reads live state and does only the next
 step, so a lost trigger or an overlapping run repeats idempotent work:
 
 1. **Queue:** Dependabot security PRs that GitHub's own alerts prove
-   (labels are not proof) are armed for auto-merge through the merge queue.
+   (labels are not proof, and every commit of the PR must be authored by
+   `dependabot[bot]`) are armed for auto-merge through the merge queue.
 2. **Tag:** the newest main commit at or after the merged update that has
-   complete green source proof gets an annotated tag created by the App. The
-   build refuses anything but the exact next patch.
+   complete green source proof and already records the latest release in its
+   trust gets an annotated tag created by the App. The planner runs every
+   refusal the tag job runs (outstanding drafts, higher tags, patch-only,
+   unused version) first, so it never plans a tag that would be refused.
 3. **Wait:** `release-build` stages a signed draft and uploads its manifest
    SHA-256.
 4. **Publish:** the reconciler publishes that exact run's draft through the same
-   helper the ceremony uses.
+   helper the ceremony uses, but only for a run whose actor and triggering
+   actor are the stable-release bot at the tag commit. A draft of a person's
+   tag waits for the ceremony.
 5. **Sync trust:** an App-signed `createCommitOnBranch` commit on
    `release/sync-trust-VERSION` records the metadata and catalog in a PR with
-   auto-merge; the reconciler then waits for the docs to be live.
+   auto-merge, re-armed for up to three hours if the queue rejects it. The
+   merged branch is deleted afterwards. Nothing waits for the docs here: the
+   next tag defers while a docs deployment runs or hikyo.app fails the live
+   docs gate, so a tag can never start on stale docs.
 6. **Homebrew:** the stable cask follows every latest stable release, human or
    unattended, and its PR is merged once `ci-required` passes.
 
-If a build fails, or a security update has waited over 24 hours without a green
-commit, one issue titled "Unattended stable patch release is stalled" is opened
-and updated in place, and closed when the stall clears. Release the next patch
-by hand with the ceremony above. After a human release, the next unattended
-patch builds on it automatically.
+One issue titled "Unattended stable patch release is stalled" is opened and
+updated in place, and closed when the stall clears. It opens when a merged
+security update has waited over 24 hours in any stuck state (build not started
+or running, digest artifact missing, docs not live, stale fallback channel
+record, no commit with green proof or synchronized trust, a tag that would be
+refused), when a build fails, or when any reconciler job fails.
+
+Recovering a stall:
+
+- **A failed app build.** The tag is immutable and the app cannot rerun it. If
+  the build staged a draft, delete it first, or it blocks every later release:
+  `gh release delete vX.Y.Z --repo Hikyo-Org/Hikyo --yes`. Then release the next
+  patch by hand with the ceremony above. After a human release, the next
+  unattended patch builds on it automatically.
+- **Finishing an app-tagged draft by hand.** Export the bot id first
+  (`export STABLE_RELEASE_APP_BOT_ID=<numeric bot user id>`), then run the
+  ceremony `publish` as usual. The tag authority reads the build run, sees the
+  bot, and applies the unattended rules, which it would refuse for a minor.
+- **Fallback channel record expired.** Run and record a new fallback channel
+  test; the next run proceeds.
+- **Rolling the whole feature back.** Unset both repository variables, which
+  skips every job, and run `configure-repository.sh` without
+  `HIKYO_STABLE_RELEASE_APP_ID` so the tag policy is admin-only again and the
+  app-only trust branch ruleset is deleted.
 
 Dry run: dispatch `stable-release-reconciler` with `dry_run` left on to print
 the next step without changing anything. The owner setup and live verification

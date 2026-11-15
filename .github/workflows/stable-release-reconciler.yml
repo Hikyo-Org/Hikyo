@@ -1,6 +1,6 @@
 # Unattended stable PATCH release for Dependabot security updates. One
 # level-triggered reconciler: each run inspects live state and does only the
-# next step (tag, wait for the build, publish, sync trust, wait for the docs).
+# next step (tag, wait for the build, publish, sync trust, clean up).
 # It is inert until the owner sets the STABLE_RELEASE_APP_CLIENT_ID and
 # STABLE_RELEASE_APP_BOT_ID repository variables: every job is skipped before
 # its environment is resolved. See docs/release/online-signing.md.
@@ -46,6 +46,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      issues: read
     outputs:
       action: ${{ steps.plan.outputs.action }}
       reason: ${{ steps.plan.outputs.reason }}
@@ -57,6 +58,7 @@ jobs:
       issue_text: ${{ steps.plan.outputs.issue_text }}
       automerge: ${{ steps.plan.outputs.automerge }}
       homebrew: ${{ steps.plan.outputs.homebrew }}
+      cleanup: ${{ steps.plan.outputs.cleanup }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -74,17 +76,31 @@ jobs:
           client-id: ${{ vars.STABLE_RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.STABLE_RELEASE_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }},homebrew-tap
+          repositories: ${{ github.event.repository.name }}
           permission-actions: read
           permission-contents: read
           permission-pull-requests: read
           permission-vulnerability-alerts: read
           permission-metadata: read
+      # The plan reads the tap's cask; that token reaches nothing else.
+      - name: Mint a read-only token for the Homebrew tap
+        id: tap
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.STABLE_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.STABLE_RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: homebrew-tap
+          permission-contents: read
       - name: Plan the single next step
         id: plan
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
+          TAP_TOKEN: ${{ steps.tap.outputs.token }}
+          ISSUES_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          HIKYO_HOMEBREW_TAP_REPOSITORY: ${{ github.repository_owner }}/homebrew-tap
+          STABLE_RELEASE_APP_BOT_ID: ${{ vars.STABLE_RELEASE_APP_BOT_ID }}
         run: ./scripts/release/stable-reconcile.sh plan
 
   # Creates the app-authored annotated tag. That push starts release-build as the app.
@@ -299,10 +315,43 @@ jobs:
           PRS: ${{ needs.plan.outputs.automerge }}
         run: ./scripts/release/stable-reconcile.sh automerge
 
-  # Needs no App permission: the workflow token files the one stall issue.
-  issue:
+  # Deletes the merged trust-sync branch of the latest release.
+  cleanup:
     needs: plan
-    if: vars.STABLE_RELEASE_APP_CLIENT_ID != '' && vars.STABLE_RELEASE_APP_BOT_ID != '' && github.ref == 'refs/heads/main' && needs.plan.outputs.issue != 'none' && !inputs.dry_run
+    if: vars.STABLE_RELEASE_APP_CLIENT_ID != '' && vars.STABLE_RELEASE_APP_BOT_ID != '' && github.ref == 'refs/heads/main' && needs.plan.outputs.cleanup != '' && !inputs.dry_run
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The environment holds the App key and admits only main.
+    environment: stable-release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Mint a token scoped to this step only
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.STABLE_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.STABLE_RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: read
+      - name: Delete the merged trust-sync branch
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: ${{ needs.plan.outputs.cleanup }}
+        run: ./scripts/release/stable-reconcile.sh cleanup
+
+  # Needs no App permission: the workflow token files the one stall issue. It
+  # also runs when any job above failed, so a broken reconciler cannot go quiet.
+  issue:
+    needs: [plan, tag, publish, sync-trust, homebrew, automerge, cleanup]
+    if: always() && vars.STABLE_RELEASE_APP_CLIENT_ID != '' && vars.STABLE_RELEASE_APP_BOT_ID != '' && github.ref == 'refs/heads/main' && !inputs.dry_run && (contains(needs.*.result, 'failure') || needs.plan.outputs.issue == 'open' || needs.plan.outputs.issue == 'close')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -319,4 +368,12 @@ jobs:
           GH_REPO: ${{ github.repository }}
           ISSUE_TEXT: ${{ needs.plan.outputs.issue_text }}
           ISSUE_ACTION: ${{ needs.plan.outputs.issue }}
-        run: ./scripts/release/stable-reconcile.sh issue "$ISSUE_ACTION"
+          FAILED: ${{ contains(needs.*.result, 'failure') }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ "$FAILED" = true ]; then
+            ISSUE_ACTION=open
+            ISSUE_TEXT="A stable-release-reconciler job failed. Inspect $RUN_URL. The next run retries every idempotent step; fix the cause if it repeats."
+            export ISSUE_TEXT
+          fi
+          ./scripts/release/stable-reconcile.sh issue "$ISSUE_ACTION"

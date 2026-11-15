@@ -19,8 +19,10 @@ repo_root=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)
 
 # The unattended stable release uses its own GitHub App. Its numeric id only
 # exists after the owner creates it, so it comes from the environment and is
-# injected into the stable policies. Unset means the policies stay admin-only,
-# which keeps unattended releases off. Always export it again on later runs.
+# injected into the stable policies. Unset turns unattended releases off again:
+# the tag policy returns to admin-only and the app-only trust branch policy is
+# deleted, so the human ceremony can push release/sync-trust-* branches. Export
+# the id on every run; leaving it out is the rollback.
 stable_app_id=${HIKYO_STABLE_RELEASE_APP_ID:-}
 if [ -n "$stable_app_id" ]; then
 	printf '%s\n' "$stable_app_id" | grep -Eq '^[1-9][0-9]*$' || {
@@ -137,8 +139,20 @@ fi
 upsert_ruleset "$stable_tmp/tags.json"
 upsert_ruleset "$repo_root/release/repository/nightly-tag-creation.json"
 upsert_ruleset "$repo_root/release/repository/nightly-promotion-branches.json"
+trust_ruleset='stable trust sync branches require stable-release app'
 if [ -n "$stable_app_id" ]; then
 	upsert_ruleset "$stable_tmp/trust.json"
+else
+	# An app-only policy left behind would block the human ceremony's sync-trust push.
+	trust_id=$($GH_BIN api "repos/$repository/rulesets" --jq ".[] | select(.name == \"$trust_ruleset\") | .id")
+	if [ -n "$trust_id" ]; then
+		$GH_BIN api --method DELETE "repos/$repository/rulesets/$trust_id" >/dev/null
+	fi
+	remaining=$($GH_BIN api "repos/$repository/rulesets" --jq ".[] | select(.name == \"$trust_ruleset\") | .id")
+	if [ -n "$remaining" ]; then
+		printf 'repository policy: the stable trust branch policy is still present after rollback\n' >&2
+		exit 1
+	fi
 fi
 rm -rf "$stable_tmp"
 trap - EXIT HUP INT TERM
@@ -231,6 +245,8 @@ if [ -n "$stable_app_id" ]; then
 		.conditions.ref_name.include == ["refs/heads/release/sync-trust-*"] and
 		.conditions.ref_name.exclude == []
 	' >/dev/null
+else
+	printf '%s\n' "$rulesets" | jq -e --arg name "$trust_ruleset" '[.[] | select(.name == $name)] | length == 0' >/dev/null
 fi
 $GH_BIN api "repos/$repository/immutable-releases" --jq '.enabled' | grep -x true >/dev/null
 $GH_BIN api "repos/$repository/actions/permissions" --jq '.sha_pinning_required' | grep -x true >/dev/null

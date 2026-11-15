@@ -127,6 +127,7 @@ func TestUnattendedReconcilerIsInertAndMainOnly(t *testing.T) {
 		If          string            `yaml:"if"`
 		Env         string            `yaml:"environment"`
 		Permissions map[string]string `yaml:"permissions"`
+		Needs       yaml.Node         `yaml:"needs"`
 		Steps       []step            `yaml:"steps"`
 	}
 	var workflow struct {
@@ -194,6 +195,46 @@ func TestUnattendedReconcilerIsInertAndMainOnly(t *testing.T) {
 				}
 				if !hasPermission {
 					t.Fatalf("job %s: the App token must be down-scoped with permission-* inputs", name)
+				}
+				// The tap and this repository never share a token: the tap token only reads contents.
+				repositories := strings.Split(s.With["repositories"], ",")
+				if len(repositories) > 1 {
+					t.Fatalf("job %s: an App token must reach exactly one repository", name)
+				}
+				if s.With["repositories"] == "homebrew-tap" && name == "plan" {
+					for key := range s.With {
+						if strings.HasPrefix(key, "permission-") && key != "permission-contents" {
+							t.Fatalf("job %s: the planning tap token may only read contents, not %s", name, key)
+						}
+					}
+					if s.With["permission-contents"] != "read" {
+						t.Fatalf("job %s: the planning tap token must be read-only", name)
+					}
+				}
+			}
+		}
+		if name == "plan" && j.Permissions["issues"] != "read" {
+			t.Fatal("the plan must read the stall issue list through its workflow token")
+		}
+		if name == "issue" {
+			// A failing job must raise the stall issue, so the issue job watches every other job.
+			if !strings.Contains(j.If, "always()") || !strings.Contains(j.If, "contains(needs.*.result, 'failure')") {
+				t.Fatal("the issue job must also run when any reconciler job failed")
+			}
+			var needs []string
+			if err := j.Needs.Decode(&needs); err != nil {
+				t.Fatal(err)
+			}
+			for other := range workflow.Jobs {
+				if other == "issue" {
+					continue
+				}
+				found := false
+				for _, n := range needs {
+					found = found || n == other
+				}
+				if !found {
+					t.Fatalf("the issue job must watch %s for failure", other)
 				}
 			}
 		}

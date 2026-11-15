@@ -6,13 +6,14 @@ import (
 	"testing"
 )
 
-// The unattended stable release adds three mandatory fixtures to the release
+// The unattended stable release adds four mandatory fixtures to the release
 // owner job. Require each exact unconditional step once, so the frozen baseline
 // digest still proves every historical check without hiding a skipped addition.
 var unattendedReleaseFixtureSteps = []map[string]any{
 	{"name": "Unattended stable tag authority fixture", "run": "./scripts/release/require-signed-tag_test.sh"},
 	{"name": "Unattended stable compatibility fixture", "run": "./scripts/release/check-unattended-compatibility_test.sh"},
 	{"name": "Unattended stable reconciler fixture", "run": "./scripts/release/stable-reconcile_test.sh"},
+	{"name": "Unattended stable repository policy rollback fixture", "run": "./scripts/release/configure-stable-rollback_test.sh"},
 }
 
 func normalizeUnattendedReleaseFixtureAddition(job map[string]any) error {
@@ -58,6 +59,7 @@ func TestUnattendedReleaseFixtureAdditionIsExact(t *testing.T) {
 			step("Unattended stable tag authority fixture", "./scripts/release/require-signed-tag_test.sh"),
 			step("Unattended stable compatibility fixture", "./scripts/release/check-unattended-compatibility_test.sh"),
 			step("Unattended stable reconciler fixture", "./scripts/release/stable-reconcile_test.sh"),
+			step("Unattended stable repository policy rollback fixture", "./scripts/release/configure-stable-rollback_test.sh"),
 		}}
 	}
 	job := good()
@@ -65,7 +67,7 @@ func TestUnattendedReleaseFixtureAdditionIsExact(t *testing.T) {
 		t.Fatalf("exact addition must normalize away: %v", err)
 	}
 	for name, mutate := range map[string]func(map[string]any){
-		"removed": func(j map[string]any) { j["steps"] = j["steps"].([]any)[:3] },
+		"removed": func(j map[string]any) { j["steps"] = j["steps"].([]any)[:4] },
 		"duplicated": func(j map[string]any) {
 			j["steps"] = append(j["steps"].([]any), j["steps"].([]any)[1])
 		},

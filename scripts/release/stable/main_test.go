@@ -97,12 +97,17 @@ func TestStableCandidateIsCanonicalAndCannotOverwrite(t *testing.T) {
 }
 
 func TestPatchOnlyCandidateAcceptsOnlyTheExactStableSuccessor(t *testing.T) {
-	trust, _ := fullDraft(t)
+	trust, directory := fullDraft(t)
 	loaded, err := loadTrust(trust)
 	if err != nil {
 		t.Fatal(err)
 	}
 	commit := strings.Repeat("a", 40)
+	// prepare must carry the flag through: the first-release draft is valid for the ordinary rule only.
+	err = run([]string{"prepare", "--patch-only", "--trust", trust, "--directory", directory}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "patch-only release needs a signed latest stable release") {
+		t.Fatalf("prepare --patch-only must refuse a first release for the patch-only reason: %v", err)
+	}
 	if err := run([]string{"candidate", "--patch-only", "--trust", trust, "--version", "1.0.1", "--commit", commit, "--out", filepath.Join(t.TempDir(), "candidate.json")}, &bytes.Buffer{}); err == nil {
 		t.Fatal("candidate --patch-only accepted a first release")
 	}
@@ -137,7 +142,7 @@ func TestPatchOnlyCandidateAcceptsOnlyTheExactStableSuccessor(t *testing.T) {
 		}
 	}
 	// The ordinary rule still admits a minor release for a human ceremony.
-	if _, err := nextCandidate(latest("1.1.0", 2), "1.2.0", commit, false); err != nil && !strings.Contains(err.Error(), "already authorized") {
+	if _, err := nextCandidate(latest("1.1.0", 2), "1.2.0", commit, false); err != nil {
 		t.Fatalf("ordinary rule rejected a minor release: %v", err)
 	}
 }
