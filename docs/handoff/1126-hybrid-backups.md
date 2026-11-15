@@ -182,7 +182,7 @@ Acceptance criteria, in the issue's order:
 | PQ signatures on receipts and attestation | HOLD (#1132) | P-256 stays |
 | Hybrid identity generation inside the custody vault | NOT BUILT | `create` and enrollment have no selection input. A vault record holding a hybrid identity works; nothing creates one |
 | Vault holds one `backup_identity` | NOT BUILT | Keeping an old identity beside a new one needs its own escrow or a vault format change |
-| Vault re-seal on root rotation | HOLD (#1154) | Out of scope; age-scrypt kept |
+| Vault re-seal on root rotation | DONE for the runtime-owned vault (#1154, PR #1337); the root-only host vault stays unreachable and is documented | Slice 1 adds a hybrid identity through stage and commit (`TestRootRotationKeepsAHybridBackupIdentity`) and archive restore after a real rotation on both engines (`TestRestoreAfterRootRotation*`) |
 | Secret-scanner rule for `AGE-SECRET-KEY-PQ-1...` | NOT BUILT | Checked with `Ruleset.Scan`: the built-in scanner finds **neither** an X25519 nor a hybrid age identity, because the vendored `age-secret-key` rule is not on `internal/scanning/rules/allowlist.txt` and so is not compiled. A rule for either class means an allowlist and generator change under the secret-scanning ADR (64-rule ceiling), not an edit. The migration policy's statement that only the PQ form is unmatched is incomplete |
 | Preflight minimum-reader floor | NOT BUILT | Documented only |
 | `scripts/ci/floor-acceptance.sh:27` and `scripts/ci/check-config-rollout-kind.py:1129` (`prepare_age_identity`) | NOT UPDATED, NOTRUN | Both require `AGE-SECRET-KEY-1` and use `age-keygen` without `-pq`. They are classical-custody runbook and rollout-drill checks; neither was run here and neither is changed |
