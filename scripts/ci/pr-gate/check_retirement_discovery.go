@@ -262,17 +262,21 @@ var errRetirementCheckOverflow = errors.New("retirement check inventory exceeds 
 // holding unfinished latest runs (filtered server-side, so no foreign app is
 // traversed) and REST reads only those suites. Suite status cannot stand in:
 // GitHub reports a suite completed while a synthetic run in it is queued.
-func (c *controller) unfinishedRetirementChecks(ctx context.Context, head string, manySuites bool) ([]check, error) {
+// It also reports whether the suite scan, when run, saw more suites than the
+// margin, since the commit may have gained suites after its history count.
+func (c *controller) unfinishedRetirementChecks(ctx context.Context, head string, manySuites bool) ([]check, bool, error) {
 	var all []check
 	err := errRetirementCheckOverflow
 	if !manySuites {
 		all, err = c.retirementCheckInventory(ctx, head, fmt.Sprintf("commits/%s/check-runs?filter=latest", head))
 	}
 	if errors.Is(err, errRetirementCheckOverflow) {
-		all, err = c.oversizedRetirementChecks(ctx, head)
+		var suites int
+		all, suites, err = c.oversizedRetirementChecks(ctx, head)
+		manySuites = manySuites || suites > retirementSuiteMargin
 	}
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	unfinished := []check{}
 	for _, check := range all {
@@ -280,7 +284,7 @@ func (c *controller) unfinishedRetirementChecks(ctx context.Context, head string
 			unfinished = append(unfinished, check)
 		}
 	}
-	return unfinished, nil
+	return unfinished, manySuites, nil
 }
 
 func (c *controller) retirementSuitesQuery(head, after string) string {
@@ -292,31 +296,31 @@ func (c *controller) retirementSuitesQuery(head, after string) string {
 	return fmt.Sprintf(`query{repository(owner:%q,name:%q){databaseId object(oid:%q){... on Commit{oid checkSuites(%s,filterBy:{appId:%d}){totalCount nodes{databaseId all:checkRuns(first:1,filterBy:{checkType:LATEST}){totalCount} done:checkRuns(first:1,filterBy:{checkType:LATEST,statuses:[COMPLETED]}){totalCount}} pageInfo{hasNextPage endCursor}}}}}}`, parts[0], parts[1], head, args, actionsAppID)
 }
 
-func (c *controller) oversizedRetirementChecks(ctx context.Context, head string) ([]check, error) {
-	suites, err := c.unfinishedRetirementSuites(ctx, head)
+func (c *controller) oversizedRetirementChecks(ctx context.Context, head string) ([]check, int, error) {
+	suites, total, err := c.unfinishedRetirementSuites(ctx, head)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	all := []check{}
 	seen := make(map[int64]bool)
 	for _, suite := range suites {
 		checks, err := c.retirementCheckInventory(ctx, head, fmt.Sprintf("check-suites/%d/check-runs?filter=latest", suite))
 		if err != nil {
-			return nil, fmt.Errorf("retirement check suite %d: %w", suite, err)
+			return nil, 0, fmt.Errorf("retirement check suite %d: %w", suite, err)
 		}
 		for _, check := range checks {
 			if seen[check.ID] || check.App.ID != actionsAppID {
-				return nil, fmt.Errorf("duplicate or foreign retirement check on %s in a github-actions suite; operator review required", head)
+				return nil, 0, fmt.Errorf("duplicate or foreign retirement check on %s in a github-actions suite; operator review required", head)
 			}
 			seen[check.ID] = true
 		}
 		// A suite whose runs all finished since GraphQL counted them yields none here.
 		all = append(all, checks...)
 	}
-	return all, nil
+	return all, total, nil
 }
 
-func (c *controller) unfinishedRetirementSuites(ctx context.Context, head string) ([]int64, error) {
+func (c *controller) unfinishedRetirementSuites(ctx context.Context, head string) ([]int64, int, error) {
 	unfinished := []int64{}
 	seen := make(map[int64]bool)
 	seenCursors := make(map[string]bool)
@@ -347,26 +351,26 @@ func (c *controller) unfinishedRetirementSuites(ctx context.Context, head string
 			} `json:"data"`
 		}
 		if err := c.api.read(ctx, "graphql:"+c.retirementSuitesQuery(head, after), &response); err != nil {
-			return nil, fmt.Errorf("retirement check suites for %s page %d: %w", head, page, err)
+			return nil, 0, fmt.Errorf("retirement check suites for %s page %d: %w", head, page, err)
 		}
 		if len(response.Errors) != 0 {
-			return nil, graphQLDiagnostic(response.Errors)
+			return nil, 0, graphQLDiagnostic(response.Errors)
 		}
 		repo := response.Data.Repo
 		if repo == nil || repo.ID != c.repo.ID || repo.Object == nil || repo.Object.OID != head || repo.Object.Suites == nil {
-			return nil, errors.New("incomplete or foreign retirement check suite snapshot")
+			return nil, 0, errors.New("incomplete or foreign retirement check suite snapshot")
 		}
 		part := repo.Object.Suites
 		if part.Total == nil || *part.Total < 0 || total != -1 && total != *part.Total || part.Nodes == nil || len(part.Nodes) > 100 || part.Page.More == nil {
-			return nil, errors.New("incomplete or changing retirement check suite inventory")
+			return nil, 0, errors.New("incomplete or changing retirement check suite inventory")
 		}
 		total = *part.Total
 		if total > retirementSuitePages*100 {
-			return nil, fmt.Errorf("retirement checks on %s span more than %d github-actions check suites; operator review required", head, retirementSuitePages*100)
+			return nil, 0, fmt.Errorf("retirement checks on %s span more than %d github-actions check suites; operator review required", head, retirementSuitePages*100)
 		}
 		for _, suite := range part.Nodes {
 			if suite == nil || suite.ID <= 0 || seen[suite.ID] || suite.All == nil || suite.All.Total == nil || suite.Done == nil || suite.Done.Total == nil || *suite.Done.Total < 0 || *suite.All.Total < *suite.Done.Total {
-				return nil, errors.New("incomplete or duplicate retirement check suite identity")
+				return nil, 0, errors.New("incomplete or duplicate retirement check suite identity")
 			}
 			seen[suite.ID] = true
 			// Counting finished runs rather than naming unfinished states keeps a
@@ -374,29 +378,29 @@ func (c *controller) unfinishedRetirementSuites(ctx context.Context, head string
 			if *suite.All.Total > *suite.Done.Total {
 				unfinished = append(unfinished, suite.ID)
 				if len(unfinished) > retirementUnfinishedSuites {
-					return nil, fmt.Errorf("retirement checks on %s are unfinished in more than %d check suites; operator review required", head, retirementUnfinishedSuites)
+					return nil, 0, fmt.Errorf("retirement checks on %s are unfinished in more than %d check suites; operator review required", head, retirementUnfinishedSuites)
 				}
 			}
 		}
 		if !*part.Page.More {
 			if len(seen) != total {
-				return nil, errors.New("incomplete retirement check suite pagination")
+				return nil, 0, errors.New("incomplete retirement check suite pagination")
 			}
-			return unfinished, nil
+			return unfinished, total, nil
 		}
 		if len(seen) >= total {
-			return nil, errors.New("incomplete retirement check suite pagination")
+			return nil, 0, errors.New("incomplete retirement check suite pagination")
 		}
 		if len(part.Nodes) != 100 {
-			return nil, errors.New("short non-final retirement check suite page")
+			return nil, 0, errors.New("short non-final retirement check suite page")
 		}
 		if part.Page.End == nil || *part.Page.End == "" || len(*part.Page.End) > 1024 || seenCursors[*part.Page.End] {
-			return nil, errors.New("missing or repeated retirement check suite cursor")
+			return nil, 0, errors.New("missing or repeated retirement check suite cursor")
 		}
 		after = *part.Page.End
 		seenCursors[after] = true
 	}
-	return nil, fmt.Errorf("retirement checks on %s span more than %d github-actions check suites; operator review required", head, retirementSuitePages*100)
+	return nil, 0, fmt.Errorf("retirement checks on %s span more than %d github-actions check suites; operator review required", head, retirementSuitePages*100)
 }
 
 // retirementCheckInventory reads every check at base, a check-runs listing
@@ -444,7 +448,7 @@ func (c *controller) retirementCheckInventory(ctx context.Context, head, base st
 }
 
 func (c *controller) retirementPendingChecks(ctx context.Context, head string, manySuites bool) (bool, bool, []reporterRetirementTarget, error) {
-	checks, err := c.unfinishedRetirementChecks(ctx, head, manySuites)
+	checks, manySuites, err := c.unfinishedRetirementChecks(ctx, head, manySuites)
 	if err != nil {
 		// Up to four workers' errors are joined, so name the failing head.
 		return false, false, nil, fmt.Errorf("retirement inventory for %s: %w", head, err)

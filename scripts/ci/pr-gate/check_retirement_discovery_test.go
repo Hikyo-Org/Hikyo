@@ -666,6 +666,7 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 		{fault: ""},
 		{fault: "many suites, few records", wantErr: "may be beyond what retirement can list"},
 		{fault: "many suites, all finished"},
+		{fault: "suites grew past margin", wantErr: "may be beyond what retirement can list"},
 		{fault: "suites at margin stay on REST"},
 		{fault: "exactly 100 unfinished suites"},
 		{fault: "all completed"},
@@ -818,6 +819,23 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 			}
 			f.api.responses["graphql:"+f.c.retirementSuitesQuery(head, "")] = firstPage
 			f.api.responses["graphql:"+f.c.retirementSuitesQuery(head, "c1")] = retirementSuitesResponse(f, head, secondTotal, second, secondMore, secondCursor)
+			if tc.fault == "suites grew past margin" {
+				// History counted one suite; the scan forced by record overflow sees 901.
+				for page, cursor := 0, ""; page*100 <= retirementSuiteMargin; page++ {
+					nodes := []map[string]any{}
+					for id := int64(page*100 + 1); id <= int64(min(page*100+100, retirementSuiteMargin+1)); id++ {
+						unfinished := 0
+						if id == 7 {
+							unfinished = 2
+						}
+						nodes = append(nodes, suite(id, unfinished))
+					}
+					next := fmt.Sprintf("g%d", page+1)
+					f.api.responses["graphql:"+f.c.retirementSuitesQuery(head, cursor)] = retirementSuitesResponse(f, head, retirementSuiteMargin+1, nodes, (page+1)*100 <= retirementSuiteMargin, next)
+					cursor = next
+				}
+				delete(suiteRuns, 101)
+			}
 			if tc.fault == "suite page unavailable" {
 				f.api.responses["graphql:"+f.c.retirementSuitesQuery(head, "c1")] = errors.New("suite page unavailable")
 			}
