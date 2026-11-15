@@ -76,7 +76,9 @@ jobs:
       image: ${{ steps.identity.outputs.image }}
       compatibility_sha256: ${{ steps.compatibility.outputs.sha256 }}
       non_darwin_sha256: ${{ steps.input-digests.outputs.non_darwin_sha256 }}
+      authority: ${{ steps.identity.outputs.authority }}
     permissions:
+      actions: read
       contents: write
     runs-on: ubuntu-latest
     steps:
@@ -124,9 +126,15 @@ jobs:
           TAG: ${{ github.ref_name }}
           TAG_SHA: ${{ github.sha }}
           GH_TOKEN: ${{ github.token }}
+          # The unsigned tag of the unattended app is accepted only for a run the
+          # app both started and triggered; empty values leave the human rule alone.
+          STABLE_RELEASE_APP_BOT_ID: ${{ vars.STABLE_RELEASE_APP_BOT_ID }}
+          HIKYO_RELEASE_RUN_ID: ${{ github.run_id }}
+          HIKYO_AUTHORITY_OUT: ${{ runner.temp }}/release-authority
         run: |
           ./scripts/release/check-tag.sh "$REPOSITORY" "$TAG" "$TAG_SHA"
           ./scripts/release/require-signed-tag.sh "$REPOSITORY" "$TAG" "$TAG_SHA"
+          printf 'authority=%s\n' "$(cat "$HIKYO_AUTHORITY_OUT")" >>"$GITHUB_OUTPUT"
           test "$(git rev-parse HEAD)" = "$TAG_SHA"
           HIKYO_ALLOW_IMMUTABLE_TAG_PROBE=YES \
             ./scripts/release/probe-tag-move.sh "$REPOSITORY" v-ruleset-probe "$TAG_SHA"
@@ -140,12 +148,16 @@ jobs:
           COMMIT: ${{ github.sha }}
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
+          AUTHORITY: ${{ steps.identity.outputs.authority }}
         run: |
           go run ./scripts/release/stable preflight --trust release/trust
           ./scripts/release/require-synced-trust.sh "$REPOSITORY" release/trust/metadata.json
           version=${TAG#v}
           candidate="$RUNNER_TEMP/release-candidate.json"
-          go run ./scripts/release/stable candidate --trust release/trust \
+          # The unattended app can only ever publish the patch successor.
+          patch_only=
+          [ "$AUTHORITY" != app ] || patch_only=--patch-only
+          go run ./scripts/release/stable candidate --trust release/trust $patch_only \
             --version "$version" --commit "$COMMIT" --out "$candidate"
           candidate_sha256=$(sha256sum "$candidate" | awk '{print $1}')
           resolved_version=$(jq -r '.version' "$candidate")
@@ -207,10 +219,16 @@ jobs:
         id: compatibility
         env:
           CANDIDATE: ${{ steps.candidate.outputs.path }}
+          AUTHORITY: ${{ steps.identity.outputs.authority }}
           HIKYO_RELEASE_SCHEMA_POSTGRES_DSN: postgres://hikyo:release-schema-fixture@127.0.0.1:5432/hikyo_release_schema?sslmode=disable
         run: |
           declaration="$RUNNER_TEMP/upgrade-compatibility.json"
           go run ./scripts/release/compatibility --candidate "$CANDIDATE" --out "$declaration"
+          # Unattended patches must be a plain restart from the previous stable release.
+          if [ "$AUTHORITY" = app ]; then
+            ./scripts/release/check-unattended-compatibility.sh "$declaration" \
+              "$(jq -er '.highest_release_sequence' release/trust/metadata.json)"
+          fi
           {
             printf 'path=%s\n' "$declaration"
             printf 'sha256=%s\n' "$(sha256sum "$declaration" | awk '{print $1}')"
@@ -505,6 +523,7 @@ jobs:
     needs: [validation, docs, floor-bench, build-artifacts, apple-sign, apple-notarize]
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: write
       packages: write
       id-token: write
@@ -544,6 +563,8 @@ jobs:
           TAG: ${{ github.ref_name }}
           TAG_SHA: ${{ github.sha }}
           CANDIDATE_SHA256: ${{ needs.build-artifacts.outputs.candidate_sha256 }}
+          STABLE_RELEASE_APP_BOT_ID: ${{ vars.STABLE_RELEASE_APP_BOT_ID }}
+          HIKYO_RELEASE_RUN_ID: ${{ github.run_id }}
         run: |
           tar -xzf "$RUNNER_TEMP/apple-release-inputs/apple-release-inputs.tar.gz"
           ./scripts/release/check-candidate.sh dist/release-candidate.json "$CANDIDATE_SHA256"
@@ -726,6 +747,8 @@ jobs:
             dist
 
       - name: Sign draft and provenance with the tag workflow identity
+        env:
+          HIKYO_PATCH_ONLY: ${{ needs.build-artifacts.outputs.authority == 'app' && '1' || '' }}
         run: |
           draft="$RUNNER_TEMP/stable-draft"
           mkdir "$draft"
@@ -752,9 +775,19 @@ jobs:
           gh release download "$TAG" --dir "$downloaded"
           go run ./scripts/release/stable verify --trust release/trust --directory "$downloaded" \
             --version "${TAG#v}" --commit "$GITHUB_SHA" --published
+          # The unattended publisher downloads this artifact of the exact successful
+          # run: a tamper check that the draft is the one this run built, not a review.
+          sha256sum "$downloaded/release-manifest.json" | awk '{print $1}' >"$RUNNER_TEMP/release-manifest.sha256"
           {
             printf '### Signed draft awaiting publication\n\n'
             printf 'Tag: %s\n\nCommit: %s\n\n' "$TAG" "$GITHUB_SHA"
             printf 'Review manifest SHA-256: %s\n' "$(sha256sum "$downloaded/release-manifest.json" | awk '{print $1}')"
             printf 'Use the local online ceremony publish command from current clean main with this version and digest after review.\n'
           } >>"$GITHUB_STEP_SUMMARY"
+      - name: Retain the staged manifest digest for the unattended publisher
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-manifest-sha256-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-manifest.sha256
+          if-no-files-found: error
+          retention-days: 30
