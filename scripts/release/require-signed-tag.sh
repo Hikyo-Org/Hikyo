@@ -33,7 +33,7 @@ authority=human
 if ! printf '%s\n' "$signed_tag" | jq -e '.verification.verified == true and .verification.reason == "valid"' >/dev/null; then
   authority=app
   bot=${STABLE_RELEASE_APP_BOT_ID:-} run_id=${HIKYO_RELEASE_RUN_ID:-}
-  printf '%s\n' "$bot" | grep -Eq '^[1-9][0-9]*$' && printf '%s\n' "$run_id" | grep -Eq '^[1-9][0-9]*$' ||
+  printf '%s\n%s\n' "$bot" "$run_id" | grep -Evq '^[1-9][0-9]*$' &&
     refuse 'GitHub-verified annotated tag on exact commit required'
   "$GH_BIN" api "repos/$repository/actions/runs/$run_id" | jq -e \
     --arg repo "$repository" --arg tag "$tag" --arg commit "$commit" --arg bot "$bot" '
