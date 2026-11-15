@@ -217,8 +217,13 @@ func TestBarrierAndFailureConfirmationsShareOneWaitBudget(t *testing.T) {
 	f.q.dco = func(context.Context, pull) (int, error) { return 0, errors.New("DCO check: empty commit range") }
 	waits := recordReadWaits(t)
 	f.c.api = &laggingListAPI{inner: f.api, perWrite: []int{2, 1 << 20}}
-	if err := f.group(); err == nil || !strings.Contains(err.Error(), "empty commit range") {
+	err := f.group()
+	if err == nil || !strings.Contains(err.Error(), "empty commit range") {
 		t.Fatalf("group failure not reported: %v", err)
+	}
+	// The failure PATCH never settles, so the refusal must name both records.
+	if !strings.Contains(err.Error(), "failure fallback is not the effective blocking record") || !strings.Contains(err.Error(), "written id=") {
+		t.Fatalf("failure-fallback refusal does not describe the records: %v", err)
 	}
 	var total time.Duration
 	for _, d := range *waits {

@@ -27,7 +27,7 @@ type queueReconciliation struct {
 	pinned *finishedGroupProof
 	// Wait already spent re-reading a listing that trailed a write. The barrier
 	// and the failure that follows it share one budget, so both confirmations
-	// together fit the reserve they run under.
+	// together wait at most 3 s of the reserve they run under.
 	confirmSpent time.Duration
 }
 
@@ -470,7 +470,9 @@ func (s *queueReconciliation) ensureBlocking(ctx context.Context, cause error) e
 var writeConfirmBackoff = []time.Duration{500 * time.Millisecond, time.Second, 1500 * time.Millisecond}
 
 // writeConfirmTotal is the most one caller-owned budget may wait: one full
-// backoff, which fits the 5 s reserve the confirmations run under.
+// backoff, 3 s of the 5 s reserve the confirmations run under. The pass's
+// remaining API calls share the rest; a slow GitHub can still exhaust the
+// reserve first, which leaves the barrier blocking (fail closed).
 func writeConfirmTotal() time.Duration {
 	var total time.Duration
 	for _, d := range writeConfirmBackoff {
@@ -485,7 +487,9 @@ func describeCheck(v *check) string {
 	if v == nil {
 		return "none"
 	}
-	return fmt.Sprintf("id=%d status=%q conclusion=%q completed_at=%q title=%q", v.ID, v.Status, v.Conclusion, v.CompletedAt, v.Output.Title)
+	// Every field the readback equality compares, so any disagreement is named.
+	return fmt.Sprintf("id=%d status=%q conclusion=%q completed_at=%q title=%q name=%q head_sha=%q external_id=%q app=%d/%q summary=%q",
+		v.ID, v.Status, v.Conclusion, v.CompletedAt, v.Output.Title, v.Name, v.HeadSHA, v.ExternalID, v.App.ID, v.App.Slug, v.Output.Summary)
 }
 
 // newestAfterWrite lists the owned records and returns the newest one. It
