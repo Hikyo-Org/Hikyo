@@ -21,15 +21,19 @@ your deployment.
 | Linux packages | Stable 1.0.0 and nightly release assets: DEB, RPM, APK and Arch packages for amd64/arm64 | Binary and license installation | No daemon service or first-admin setup; no hosted apt/RPM package repository |
 | macOS distribution | Stable 1.0.0 and signed nightly archives and DMGs; nightly publication depends on Apple acceptance | CLI executable; the DMG is not a desktop application bundle | Follow that release's notarization/verification evidence |
 | OCI server image | `ghcr.io/hikyo-org/hikyo`; stable `1.0.0`, exact nightly versions and moving `nightly` tag | Distroless, non-root Linux amd64/arm64 image consuming the verified release binaries | Pin and authenticate the digest; a pull is not installation or upgrade completion |
-| Helm chart | `chart/hikyo` in source; `ghcr.io/hikyo-org/charts/hikyo` holds stable `1.0.0`, and the nightly publisher adds exact prerelease versions | Chart version/appVersion equal the release version; exact matching image digest. Nightly charts also record their source revision | Confirm that exact chart's publication, signature and anonymous retrieval before installing |
+| Helm chart | `chart/hikyo` in source; `ghcr.io/hikyo-org/charts/hikyo` holds stable `1.0.0` and `1.1.0`, and the nightly publisher adds exact prerelease versions | Chart version/appVersion equal the release version; exact matching image digest. Nightly charts also record their source revision | Confirm that exact chart's publication, signature and anonymous retrieval before installing |
 | Compose | `install/compose/server.yaml` and `server-unattended.yaml` | Manual and fresh unattended deployment definitions | Explicit data/key/custody storage, TLS boundary, operator-owned replacement and recovery |
 | Cloud infrastructure | AWS CloudFormation, Azure template, GCP/DigitalOcean/Hetzner guides | Host/infrastructure preparation in the operator's account | Application activation and provider runtime acceptance; these are not managed services |
 
-The nightly chart publisher added by this deployment slice is a publication
-mechanism, not evidence that an existing nightly has a chart. On 2 November 2026
-an anonymous client could pull stable `1.0.0`, the repository's only chart.
-Treat a nightly chart as **HOLD** until its exact publisher run and a clean
-anonymous pull succeed. Older prereleases do not acquire charts retroactively.
+The nightly chart publisher is a publication mechanism, not evidence that a
+given nightly has a chart. Nightlies published before it landed have none, and a
+nightly whose release job failed or was skipped (for example after a failed Apple
+notarization) has none either. Treat a nightly chart as **HOLD** until its exact
+publisher run and a clean anonymous pull succeed. Older prereleases do not
+acquire charts retroactively. On 15 November 2026 the registry listed nightly
+charts published from 4 November, among them
+`1.1.0-nightly.20261111.117.ga8f3cf47` (see the
+[acceptance record](#installation-acceptance-record) below for what was verified).
 Nightly versions are prereleases, so Helm 3.16.1 kept resolving an unpinned chart
 reference to `1.0.0` when both were present. Always pin the exact digest anyway. A successful GitHub
 archive release can coexist with failed image or chart publication; consult the
@@ -74,8 +78,8 @@ the reverse proxy further reduces exposure.
 | Argo CD server installation | Exact-digest generic OCI Application and restricted AppProject; generated after chart/image verification; stable 1.0.0 is refused | Manual sync, no automatic self-heal/pruning; manual full-stop migration | Chart rendering is Argo-owned, not a Helm release; no built-in Cosign plugin is added |
 
 The GitOps generator accepts stable and nightly charts, and the singleton guide's
-commands name the nightly publisher. The generator refuses stable 1.0.0, the only
-published stable chart, because that chart predates two changes in this source:
+commands name the nightly publisher. The generator refuses stable 1.0.0 because that
+chart predates two changes in this source:
 
 - It does not set `HIKYO_ROOT_KEY_FILE`, and `admin` has no root-key flag. Inside a
   running 1.0.0 pod, `admin create` refuses with `no root key configured`. The chart
@@ -84,8 +88,11 @@ published stable chart, because that chart predates two changes in this source:
 - It does not normalize the `helm.sh/chart` label. Flux 2.10.0 verified its signature,
   then failed the install on the invalid label `hikyo-1.0.0+<digest>`.
 
-The first stable release cut from this source can pass the generator, but no published
-stable chart has completed a controller install. In a test, an unsigned chart built from
+Stable 1.1.0 was cut from this source. On 15 November 2026 the generator, with real
+Cosign and `gh` checks, authenticated its chart and image for Flux and Argo CD, and
+Flux 2.10.0 and Argo CD 3.5.6 each completed a zero-replica install of that exact digest in a
+disposable Kind cluster (see the [GitOps runbook](kubernetes-gitops.md#reproduce-controller-qualification)). That is
+controller-mechanics evidence only. A 1.0.0 test is also recorded: an unsigned chart built from
 this source and running the released 1.0.0 image installed under Flux and created its
 first administrator inside the pod. That run used controllers older than the qualified
 Flux 2.10.0, with signature verification removed, and a database and custody already
