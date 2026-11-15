@@ -31,16 +31,45 @@ if [ -n "$stable_app_id" ]; then
 	}
 fi
 
+# list_rulesets FILE: every ruleset of the repository, all pages, as one JSON array.
+# A single unpaginated read returns only the first 30, so a policy on a later page
+# would look absent and be created twice, or look deleted when it is not.
+list_rulesets() {
+	printf '[]\n' >"$1"
+	page=1
+	while :; do
+		$GH_BIN api "repos/$repository/rulesets?per_page=100&page=$page" >"$1.page"
+		page_count=$(jq -ser '
+			if length != 1 or (.[0] | type) != "array" then error("invalid ruleset page") else .[0] end |
+			if length > 100 or any(.[]; type != "object" or (.name | type) != "string" or
+				(.id | type) != "number" or .id <= 0 or (.id | floor) != .id)
+			then error("invalid ruleset entry") else length end' "$1.page")
+		jq -s '.[0] + .[1]' "$1" "$1.page" >"$1.next"
+		mv "$1.next" "$1"
+		rm -f "$1.page"
+		[ "$page_count" -eq 100 ] || break
+		[ "$page" -lt 20 ] || {
+			printf 'repository policy: incomplete ruleset discovery after 20 pages\n' >&2
+			exit 1
+		}
+		page=$((page + 1))
+	done
+}
+# ruleset_id LIST NAME: the id of the one ruleset with that name, or nothing; two is an error.
+ruleset_id() {
+	jq -er --arg name "$2" '[.[] | select(.name == $name) | .id] |
+		if length > 1 then error("ambiguous ruleset name") else (.[0] // "") end' "$1"
+}
+
 upsert_ruleset() {
 	payload=$1
 	name=$(jq -r '.name' "$payload")
-	id=$($GH_BIN api "repos/$repository/rulesets" --jq ".[] | select(.name == \"$name\") | .id")
+	list_rulesets "$policy_tmp/rulesets.json"
+	id=$(ruleset_id "$policy_tmp/rulesets.json" "$name")
 	if [ -z "$id" ] && [ "$name" = 'release tags require admin role' ]; then
-		id=$($GH_BIN api "repos/$repository/rulesets" \
-			--jq '.[] | select(.name == "release tags require maintainer role") | .id')
+		id=$(ruleset_id "$policy_tmp/rulesets.json" 'release tags require maintainer role')
 	elif [ -z "$id" ] && [ "$name" = 'nightly tags require Hikyo release app' ]; then
-		id=$($GH_BIN api "repos/$repository/rulesets" \
-			--jq '.[] | select(.name == "nightly tags require GitHub Actions") | .id')
+		id=$(ruleset_id "$policy_tmp/rulesets.json" 'nightly tags require GitHub Actions')
 	fi
 	if [ -n "$id" ]; then
 		$GH_BIN api --method PUT "repos/$repository/rulesets/$id" --input "$payload" >/dev/null
@@ -54,24 +83,7 @@ configure_main() {
 	"$repo_root/scripts/release/check-main-policy.sh" "$policy"
 	main_tmp=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-main-policy.XXXXXX")
 	trap 'rm -rf "$main_tmp"' EXIT HUP INT TERM
-	printf '[]\n' >"$main_tmp/list.json"
-	page=1
-	while :; do
-		$GH_BIN api "repos/$repository/rulesets?per_page=100&page=$page" >"$main_tmp/page.json"
-		page_count=$(jq -ser '
-			if length != 1 or (.[0] | type) != "array" then error("invalid ruleset page") else .[0] end |
-			if length > 100 or any(.[]; type != "object" or (.name | type) != "string" or
-				(.id | type) != "number" or .id <= 0 or (.id | floor) != .id)
-			then error("invalid ruleset entry") else length end' "$main_tmp/page.json")
-		jq -s '.[0] + .[1]' "$main_tmp/list.json" "$main_tmp/page.json" >"$main_tmp/combined.json"
-		mv "$main_tmp/combined.json" "$main_tmp/list.json"
-		[ "$page_count" -eq 100 ] || break
-		[ "$page" -lt 20 ] || {
-			printf 'repository policy: incomplete ruleset discovery after 20 pages\n' >&2
-			exit 1
-		}
-		page=$((page + 1))
-	done
+	list_rulesets "$main_tmp/list.json"
 	count=$(jq -ser 'if length != 1 or (.[0] | type) != "array" then error("invalid ruleset list") else .[0] end | [.[] | select(.name == "main requires PR and release CI")] | length' "$main_tmp/list.json")
 	if [ "$count" = 0 ] && [ "$main_only" = false ]; then
 		# Preserve initial repository setup; the narrow migration never creates
@@ -123,17 +135,52 @@ if [ "$main_only" = true ]; then
 	exit 0
 fi
 
+policy_tmp=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-stable-policy.XXXXXX")
+trap 'rm -rf "$policy_tmp"' EXIT HUP INT TERM
+stable_tmp=$policy_tmp
+
+# The app may bypass the stable tag and trust-branch policies only once the stable
+# line itself judges a tag by who pushed it. A stable release older than that
+# change still trusts an unsigned tag from anyone able to create one, so granting
+# the bypass first would let a stolen app key mint a tag the shipped workflow
+# accepts. The marker is read from the highest stable tag's own commit.
+require_actor_based_tag_authority() {
+	list="$policy_tmp/stable-tags.json"
+	$GH_BIN api --paginate --slurp "repos/$repository/git/matching-refs/tags/v" >"$list"
+	tag=$(jq -er '
+		def key: capture("^(?<a>[0-9]+)\\.(?<b>[0-9]+)\\.(?<c>[0-9]+)$") | [.a, .b, .c | tonumber];
+		[.[][] | .ref | ltrimstr("refs/tags/") | ltrimstr("v") |
+			select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))] | sort_by(key) | last | select(. != null)' "$list") || {
+		printf 'repository policy: no stable release tag exists, so the stable-release app cannot be granted tag access; release a stable version with the ceremony first\n' >&2
+		exit 1
+	}
+	commit=$($GH_BIN api "repos/$repository/commits/v$tag" --jq '.sha')
+	printf '%s\n' "$commit" | grep -Eq '^[0-9a-f]{40}$' || {
+		printf 'repository policy: cannot resolve the commit of v%s\n' "$tag" >&2
+		exit 1
+	}
+	$GH_BIN api "repos/$repository/contents/scripts/release/require-signed-tag.sh?ref=$commit" --jq '.content' >"$policy_tmp/tag-authority.b64"
+	base64 -d <"$policy_tmp/tag-authority.b64" >"$policy_tmp/tag-authority.sh" 2>/dev/null || true
+	if ! grep -F 'triggering_actor' "$policy_tmp/tag-authority.sh" >/dev/null || ! grep -F 'release_run_jq' "$policy_tmp/tag-authority.sh" >/dev/null; then
+		printf 'repository policy: the latest stable tag v%s predates the actor-based tag authority; release a stable version that contains it with the ceremony first, then grant the stable-release app\n' "$tag" >&2
+		exit 1
+	fi
+}
+if [ -n "$stable_app_id" ]; then
+	require_actor_based_tag_authority
+fi
+
 upsert_ruleset "$repo_root/release/repository/release-tag-immutability.json"
-stable_tmp=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-stable-policy.XXXXXX")
-trap 'rm -rf "$stable_tmp"' EXIT HUP INT TERM
 cp "$repo_root/release/repository/release-tag-creation.json" "$stable_tmp/tags.json"
 if [ -n "$stable_app_id" ]; then
 	# The app may create the annotated stable tag; humans keep the admin role.
 	jq --argjson id "$stable_app_id" \
 		'.bypass_actors += [{actor_id: $id, actor_type: "Integration", bypass_mode: "always"}]' \
 		"$repo_root/release/repository/release-tag-creation.json" >"$stable_tmp/tags.json"
+	# Repository admins keep their role bypass beside the app, so the ceremony can
+	# still push release/sync-trust-* when the app is unavailable.
 	jq --argjson id "$stable_app_id" \
-		'.bypass_actors = [{actor_id: $id, actor_type: "Integration", bypass_mode: "always"}]' \
+		'.bypass_actors += [{actor_id: $id, actor_type: "Integration", bypass_mode: "always"}]' \
 		"$repo_root/release/repository/stable-trust-branches.json" >"$stable_tmp/trust.json"
 fi
 upsert_ruleset "$stable_tmp/tags.json"
@@ -144,17 +191,19 @@ if [ -n "$stable_app_id" ]; then
 	upsert_ruleset "$stable_tmp/trust.json"
 else
 	# An app-only policy left behind would block the human ceremony's sync-trust push.
-	trust_id=$($GH_BIN api "repos/$repository/rulesets" --jq ".[] | select(.name == \"$trust_ruleset\") | .id")
+	list_rulesets "$policy_tmp/rulesets.json"
+	trust_id=$(ruleset_id "$policy_tmp/rulesets.json" "$trust_ruleset")
 	if [ -n "$trust_id" ]; then
 		$GH_BIN api --method DELETE "repos/$repository/rulesets/$trust_id" >/dev/null
 	fi
-	remaining=$($GH_BIN api "repos/$repository/rulesets" --jq ".[] | select(.name == \"$trust_ruleset\") | .id")
+	list_rulesets "$policy_tmp/rulesets.json"
+	remaining=$(ruleset_id "$policy_tmp/rulesets.json" "$trust_ruleset")
 	if [ -n "$remaining" ]; then
 		printf 'repository policy: the stable trust branch policy is still present after rollback\n' >&2
 		exit 1
 	fi
 fi
-rm -rf "$stable_tmp"
+rm -rf "$policy_tmp"
 trap - EXIT HUP INT TERM
 configure_main
 
@@ -169,7 +218,12 @@ allowed_actions=$($GH_BIN api "repos/$repository/actions/permissions" --jq '.all
 $GH_BIN api --method PUT "repos/$repository/actions/permissions" \
 	-F enabled=true -f allowed_actions="$allowed_actions" -F sha_pinning_required=true >/dev/null
 
-rulesets=$($GH_BIN api "repos/$repository/rulesets")
+verify_tmp=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-policy-verify.XXXXXX")
+trap 'rm -rf "$verify_tmp"' EXIT HUP INT TERM
+list_rulesets "$verify_tmp/rulesets.json"
+rulesets=$(cat "$verify_tmp/rulesets.json")
+rm -rf "$verify_tmp"
+trap - EXIT HUP INT TERM
 printf '%s\n' "$rulesets" | jq -e '
 	[.[] | select(.name == "release tags are immutable" and .enforcement == "active")] | length == 1
 ' >/dev/null
@@ -239,8 +293,12 @@ if [ -n "$stable_app_id" ]; then
 		[.[] | select(.name == "stable trust sync branches require stable-release app" and .enforcement == "active")] | length == 1
 	' >/dev/null
 	trust_id=$(printf '%s\n' "$rulesets" | jq -r '.[] | select(.name == "stable trust sync branches require stable-release app") | .id')
+	# Only the app and the repository admin role may touch these branches.
 	$GH_BIN api "repos/$repository/rulesets/$trust_id" | jq -e --argjson app "$stable_app_id" '
-		.bypass_actors == [{actor_id: $app, actor_type: "Integration", bypass_mode: "always"}] and
+		def by_actor: sort_by(.actor_type, .actor_id);
+		(.bypass_actors | by_actor) == ([
+			{actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "always"},
+			{actor_id: $app, actor_type: "Integration", bypass_mode: "always"}] | by_actor) and
 		([.rules[].type] | sort) == ["creation", "update"] and
 		.conditions.ref_name.include == ["refs/heads/release/sync-trust-*"] and
 		.conditions.ref_name.exclude == []

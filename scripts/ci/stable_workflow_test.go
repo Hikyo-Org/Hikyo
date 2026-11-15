@@ -246,3 +246,96 @@ func TestUnattendedReconcilerIsInertAndMainOnly(t *testing.T) {
 		}
 	}
 }
+
+// The unattended rules are the default: a run whose authority is empty or anything
+// but a verified person gets the strict patch-only rules, never the human ones.
+func TestReleaseBuildHoldsEveryNonHumanAuthorityToTheUnattendedRules(t *testing.T) {
+	type step struct {
+		Name string            `yaml:"name"`
+		ID   string            `yaml:"id"`
+		Run  string            `yaml:"run"`
+		Env  map[string]string `yaml:"env"`
+	}
+	type job struct {
+		Steps []step `yaml:"steps"`
+	}
+	var workflow struct {
+		Jobs map[string]job `yaml:"jobs"`
+	}
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	stepByID := func(id string) step {
+		t.Helper()
+		for _, j := range workflow.Jobs {
+			for _, s := range j.Steps {
+				if s.ID == id {
+					return s
+				}
+			}
+		}
+		t.Fatalf("release.yml has no step %q", id)
+		return step{}
+	}
+	candidate := stepByID("candidate")
+	if !strings.Contains(candidate.Run, "patch_only=--patch-only\n") || !strings.Contains(candidate.Run, "[ \"$AUTHORITY\" != human ] || patch_only=\n") {
+		t.Fatal("the candidate must default to --patch-only and lift it only for a verified human authority")
+	}
+	compatibility := stepByID("compatibility")
+	if !strings.Contains(compatibility.Run, `if [ "$AUTHORITY" != human ]; then`) {
+		t.Fatal("the compatibility gate must run for every authority except a verified human")
+	}
+	if !strings.Contains(compatibility.Run, `./scripts/release/check-unattended-compatibility.sh "$REPOSITORY" release/trust "$VERSION" "$declaration"`) {
+		t.Fatal("the build must run the same comparison script the planner runs, on the same trust and version")
+	}
+	for _, key := range []string{"GH_TOKEN", "REPOSITORY", "VERSION", "AUTHORITY"} {
+		if compatibility.Env[key] == "" {
+			t.Fatalf("the compatibility step needs %s", key)
+		}
+	}
+	text := string(raw)
+	if !strings.Contains(text, "HIKYO_PATCH_ONLY: ${{ env.HIKYO_AUTHORITY != 'human' && '1' || '' }}") {
+		t.Fatal("signing must be patch-only for every authority except a verified human")
+	}
+	for _, line := range strings.Split(text, "\n") {
+		if strings.Contains(line, "AUTHORITY\" = app") || strings.Contains(line, "HIKYO_AUTHORITY == 'app'") || strings.Contains(line, "AUTHORITY\" != app") {
+			if strings.Contains(line, "patch_only") || strings.Contains(line, "check-unattended") || strings.Contains(line, "HIKYO_PATCH_ONLY") {
+				t.Fatalf("a rule must not be gated on authority being the app: %s", strings.TrimSpace(line))
+			}
+		}
+	}
+}
+
+func TestReconcilerPlanVerifiesAndGeneratesWhatTheBuildRechecks(t *testing.T) {
+	var workflow struct {
+		Jobs map[string]struct {
+			Permissions map[string]string `yaml:"permissions"`
+			Steps       []struct {
+				Name string `yaml:"name"`
+				Run  string `yaml:"run"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "stable-release-reconciler.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	plan := workflow.Jobs["plan"]
+	if _, ok := plan.Permissions["actions"]; ok {
+		t.Fatal("the plan's job token never reads Actions; the App token does")
+	}
+	cosign := false
+	for _, s := range plan.Steps {
+		cosign = cosign || strings.Contains(s.Run, "fetch-pinned-tool.sh cosign-linux-amd64")
+	}
+	if !cosign {
+		t.Fatal("the plan verifies the previous release's signatures and needs the pinned Cosign")
+	}
+}

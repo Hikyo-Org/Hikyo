@@ -106,7 +106,8 @@ jq -e '.conditions.ref_name.exclude == ["refs/tags/v*-nightly.*"]' \
 # The stable-release app id is owner-provisioned, so the checked-in policies
 # stay admin-only and the configure script injects the id from the environment.
 jq -e '
-	.target == "branch" and .enforcement == "active" and .bypass_actors == [] and
+	.target == "branch" and .enforcement == "active" and
+	.bypass_actors == [{actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "always"}] and
 	.conditions.ref_name.include == ["refs/heads/release/sync-trust-*"] and
 	([.rules[].type] | sort) == ["creation", "update"]
 ' "$repo_root/release/repository/stable-trust-branches.json" >/dev/null || fail 'stable trust branch policy is wrong'

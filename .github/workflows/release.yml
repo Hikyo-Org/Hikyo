@@ -153,9 +153,10 @@ jobs:
           ./scripts/release/require-synced-trust.sh "$REPOSITORY" release/trust/metadata.json
           version=${TAG#v}
           candidate="$RUNNER_TEMP/release-candidate.json"
-          # The unattended app can only ever publish the patch successor.
-          patch_only=
-          [ "$AUTHORITY" != app ] || patch_only=--patch-only
+          # Only a verified person gets the full rules; anything else, an empty value
+          # included, is held to the unattended patch-only rules.
+          patch_only=--patch-only
+          [ "$AUTHORITY" != human ] || patch_only=
           go run ./scripts/release/stable candidate --trust release/trust $patch_only \
             --version "$version" --commit "$COMMIT" --out "$candidate"
           candidate_sha256=$(sha256sum "$candidate" | awk '{print $1}')
@@ -219,14 +220,17 @@ jobs:
         env:
           CANDIDATE: ${{ steps.candidate.outputs.path }}
           AUTHORITY: ${{ steps.identity.outputs.authority }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ steps.candidate.outputs.version }}
           HIKYO_RELEASE_SCHEMA_POSTGRES_DSN: postgres://hikyo:release-schema-fixture@127.0.0.1:5432/hikyo_release_schema?sslmode=disable
         run: |
           declaration="$RUNNER_TEMP/upgrade-compatibility.json"
           go run ./scripts/release/compatibility --candidate "$CANDIDATE" --out "$declaration"
-          # Unattended patches must be a plain restart from the previous stable release.
-          if [ "$AUTHORITY" = app ]; then
-            ./scripts/release/check-unattended-compatibility.sh "$declaration" \
-              "$(jq -er '.highest_release_sequence' release/trust/metadata.json)"
+          # An unattended patch must not change compatibility: the same script the planner
+          # ran before tagging compares this declaration with the previous stable release's.
+          if [ "$AUTHORITY" != human ]; then
+            ./scripts/release/check-unattended-compatibility.sh "$REPOSITORY" release/trust "$VERSION" "$declaration"
           fi
           {
             printf 'path=%s\n' "$declaration"
@@ -750,7 +754,7 @@ jobs:
 
       - name: Sign draft and provenance with the tag workflow identity
         env:
-          HIKYO_PATCH_ONLY: ${{ env.HIKYO_AUTHORITY == 'app' && '1' || '' }}
+          HIKYO_PATCH_ONLY: ${{ env.HIKYO_AUTHORITY != 'human' && '1' || '' }}
         run: |
           draft="$RUNNER_TEMP/stable-draft"
           mkdir "$draft"

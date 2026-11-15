@@ -162,7 +162,9 @@ case "$*" in
 	'api --paginate repos/o/r/git/matching-refs/tags/v')
 		failing matching-refs-fail
 		printf '[{"ref":"refs/tags/v1.1.0"},{"ref":"refs/tags/v-ruleset-probe"},{"ref":"refs/tags/v1.2.0-nightly.20261112.1.gabcdef12"}]\n'
-		[ "$mode" != higher-tag ] || printf '[{"ref":"refs/tags/v1.1.2"}]\n' ;;
+		[ "$mode" != higher-tag ] || printf '[{"ref":"refs/tags/v1.1.2"}]\n'
+		# The very version about to be tagged, seen by the listing before its own ref lookup sees it.
+		[ "$mode" != same-tag-listed ] || printf '[{"ref":"refs/tags/v1.1.1"}]\n' ;;
 	'api repos/o/r/releases/tags/v1.1.1')
 		failing release-lookup-fail
 		if [ "${FIXTURE_PUBLISHED:-}" = 1 ]; then echo '{"draft":false}'; elif [ "$mode" = release-exists ]; then echo '{"draft":false}'; else not_found; fi ;;
@@ -356,6 +358,8 @@ done
 # against a real-shaped declaration), and the scratch database starts only when a tag is decided.
 run pending plan; called '^postgres hikyo_release_schema release-schema-fixture' || fail 'a tag decision did not start scratch PostgreSQL'
 called 'release download v1.1.0 --repo o/r --dir' || fail 'the baseline release was not fetched'
+# The comparison reads the trust of the commit that would be tagged, which is what the build will read.
+called 'stable verify --trust [^ ]*/target-tree/release/trust --trust-only' || fail 'the compatibility gate did not use the trust of the tagged commit'
 called 'stable verify .*--directory .*--version 1.1.0 .*--published --latest' || fail 'the baseline was not verified as the signed published latest'
 run unmerged plan; called '^postgres' && fail 'scratch PostgreSQL started without a tag decision'
 (GREEN="$c2 $c1" run pending plan); expect action tag "red tip"; expect commit "$c2" "red tip"
@@ -366,8 +370,17 @@ run unmerged plan; called '^postgres' && fail 'scratch PostgreSQL started withou
 # Nothing to release: the stall issue closes only when there is one to close.
 run unmerged plan; expect action none "unmerged"; expect issue none "no stall issue to close"
 run unmerged-issue-open plan; expect issue close "an open stall issue is closed"
+# A git that cannot answer is a failed read, not "the commit is not on main".
+cat >"$scratch/bin/git" <<SH
+#!/bin/sh
+case "\$*" in *"merge-base --is-ancestor $c3 $c3") [ "\${FIXTURE_MODE:-}" != merge-base-fail ] || exit 2 ;; esac
+exec $(command -v git) "\$@"
+SH
+chmod +x "$scratch/bin/git"
+(GIT_BIN="$scratch/bin/git"; export GIT_BIN; expect_dies 'cannot compare the commit with main history' 'a failed merge-base passed for a refusal' run merge-base-fail plan)
+no_writes 'plan with a failed merge-base'
 # --- plan: every refusal tag() would hit keeps the plan from deciding tag, and alerts after a day.
-for mode in higher-tag not-patch preflight-fail unsynced release-exists compat-diff compat-unverifiable baseline-missing; do
+for mode in higher-tag same-tag-listed not-patch preflight-fail unsynced release-exists compat-diff compat-unverifiable baseline-missing; do
 	expect_stall "$mode" none
 done
 # A stray tag names its recovery, a changed declaration says a maintainer must release.
@@ -504,6 +517,7 @@ tag_refused() { # mode reason
 	no_writes "tag with $1"
 }
 tag_refused higher-tag 'stable tag at or above v1.1.1 already exists'
+tag_refused same-tag-listed 'stable tag at or above v1.1.1 already exists'
 tag_refused not-patch 'patch successor'
 tag_refused preflight-fail 'does not authenticate'
 tag_refused unsynced 'not synchronized'
@@ -548,6 +562,12 @@ called 'pr merge' && fail 'armed an unverified commit'
 must_fail 'committed an empty trust file' sync download-empty
 grep -q 'is empty' "$scratch/log" || fail 'the empty trust file was not named'
 called 'graphql --input' && fail 'a commit was created from an empty trust file'
+# An encoder that exits 0 with no output must not become an empty file in a commit either.
+mkdir "$scratch/emptyb64"
+printf '#!/bin/sh\ncat >/dev/null\n' >"$scratch/emptyb64/base64"
+chmod +x "$scratch/emptyb64/base64"
+(PATH="$scratch/emptyb64:$PATH"; export PATH; VERSION=1.1.1 APP_SLUG=app expect_dies 'encoded to nothing' 'committed a trust file the encoder turned into nothing' run pending sync-trust)
+called 'graphql --input' && fail 'a commit was created from an empty encoding'
 # Trust already records the release: nothing to commit.
 sync trust-recorded; grep -q 'already records' "$scratch/log" || fail 'trust-recorded was not recognised'
 no_writes 'trust already recorded'
@@ -578,6 +598,7 @@ for mode in cleanup-unmerged cleanup-other-head; do
 	(BRANCH=release/sync-trust-1.1.0 run $mode cleanup); called 'DELETE' && fail "deleted a branch for $mode"
 done
 (export BRANCH=release/other; expect_dies 'invalid trust-sync branch' 'cleaned an arbitrary branch' run pending cleanup)
+(export BRANCH=release/sync-trust-notaversion; expect_dies 'invalid trust-sync branch' 'cleaned a branch whose suffix is no version' run pending cleanup)
 
 # --- homebrew: merge once the tap's required check is green, otherwise wait for the next run.
 (VERSION=1.1.1 run pending homebrew); called 'merge_method=squash -f sha=ffff' || fail 'tap PR not squash-merged'

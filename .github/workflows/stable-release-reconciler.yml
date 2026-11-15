@@ -43,8 +43,8 @@ jobs:
     timeout-minutes: 20
     # The environment holds the App key and admits only main.
     environment: stable-release
+    # The job token reads only the repository and its issues; the App token reads Actions.
     permissions:
-      actions: read
       contents: read
       issues: read
     outputs:
@@ -69,6 +69,15 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      # The plan verifies the previous release's signatures and generates the
+      # candidate's compatibility declaration on scratch PostgreSQL, the very
+      # checks release-build runs again after the tag.
+      - name: Install pinned Cosign
+        run: |
+          mkdir -p "$HOME/.cosign"
+          ./scripts/ci/fetch-pinned-tool.sh cosign-linux-amd64 "$HOME/.cosign/cosign"
+          chmod +x "$HOME/.cosign/cosign"
+          echo "$HOME/.cosign" >>"$GITHUB_PATH"
       - name: Mint a token scoped to this step only
         id: app
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
