@@ -11,6 +11,33 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// sourceProofOutputs lists every value of the flag package's output flag: - or --,
+// space or = separator, quoted or unquoted. Values containing spaces are not supported.
+func sourceProofOutputs(run string) []string {
+	var values []string
+	for _, match := range regexp.MustCompile(`(?:^|\s)--?output(?:=|\s+)(\S+)`).FindAllStringSubmatch(run, -1) {
+		values = append(values, strings.Trim(match[1], `"'`))
+	}
+	return values
+}
+
+func TestSourceProofOutputsMatchEveryFlagForm(t *testing.T) {
+	for run, want := range map[string]int{
+		`--mode main --output "$RUNNER_TEMP/a.json"`:                                  1,
+		`--output "$RUNNER_TEMP/a.json" --output "$RUNNER_TEMP/b.json"`:               2,
+		`--output "$RUNNER_TEMP/a.json" --output $RUNNER_TEMP/b.json`:                 2,
+		`--output "$RUNNER_TEMP/a.json" --output=$RUNNER_TEMP/b.json`:                 2,
+		`--output "$RUNNER_TEMP/a.json" -output "$RUNNER_TEMP/b.json"`:                2,
+		`--output="$RUNNER_TEMP/a.json"`:                                              1,
+		`--mode main --commit "$GITHUB_SHA"`:                                          0,
+		`--mode main --github-output "$GITHUB_OUTPUT" --output "$RUNNER_TEMP/a.json"`: 1,
+	} {
+		if got := sourceProofOutputs(run); len(got) != want {
+			t.Errorf("%q: got %q, want %d output flags", run, got, want)
+		}
+	}
+}
+
 func TestStableSigningAndPublicationStaySeparate(t *testing.T) {
 	type step struct {
 		ID   string            `yaml:"id"`
@@ -71,8 +98,8 @@ func TestStableSigningAndPublicationStaySeparate(t *testing.T) {
 		evidence.With["path"] != "${{ runner.temp }}/release-source-proof.json" {
 		t.Fatal("successful release source proof must be retained as exact small evidence")
 	}
-	outputs := regexp.MustCompile(`--output "([^"]+)"`).FindAllStringSubmatch(source.Run, -1)
-	if len(outputs) != 1 || strings.ReplaceAll(outputs[0][1], "$RUNNER_TEMP", "${{ runner.temp }}") != evidence.With["path"] {
+	outputs := sourceProofOutputs(source.Run)
+	if len(outputs) != 1 || strings.ReplaceAll(outputs[0], "$RUNNER_TEMP", "${{ runner.temp }}") != evidence.With["path"] {
 		t.Fatal("release source proof must have one --output, the exact file the evidence uploader retains")
 	}
 	signer := build.Jobs["build-signed-draft"]
