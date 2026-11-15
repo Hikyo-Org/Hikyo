@@ -646,7 +646,7 @@ func (c *controller) verifyPR(ctx context.Context, p pull) (policyDecision, erro
 	}
 	if reason != "" {
 		if c.diagnostics != nil {
-			fmt.Fprintln(c.diagnostics, "PR gate:", reason)
+			_, _ = fmt.Fprintln(c.diagnostics, "PR gate:", reason)
 		}
 		return policyDecision{Code: 1}, nil
 	}
