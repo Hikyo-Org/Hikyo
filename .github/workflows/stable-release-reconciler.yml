@@ -74,7 +74,8 @@ jobs:
           client-id: ${{ vars.STABLE_RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.STABLE_RELEASE_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
+          repositories: ${{ github.event.repository.name }},homebrew-tap
+          permission-actions: read
           permission-contents: read
           permission-pull-requests: read
           permission-vulnerability-alerts: read
@@ -114,6 +115,7 @@ jobs:
           private-key: ${{ secrets.STABLE_RELEASE_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
+          permission-actions: read
           permission-contents: write
       - name: Create the annotated tag object and ref
         env:
@@ -167,6 +169,7 @@ jobs:
           private-key: ${{ secrets.STABLE_RELEASE_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
+          permission-actions: read
           permission-contents: write
           permission-administration: read
       - name: Publish the staged draft
@@ -248,6 +251,7 @@ jobs:
           private-key: ${{ secrets.STABLE_RELEASE_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: homebrew-tap
+          permission-checks: read
           permission-contents: write
           permission-pull-requests: write
       - name: Update the stable cask and merge its PR

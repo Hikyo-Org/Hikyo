@@ -39,6 +39,7 @@ for activation, promotion and operator commands.
 | Promote dev to main for the nightly | `nightly-promote` | Daily at 22:17 UTC or manual on main. Opens a `release/nightly-*` PR for the last green dev commit when main lacks it and queues it. A merged promotion starts the nightly. |
 | Publish nightly builds | `nightly-release` | Scheduled publication or the repository-dispatch path, built and signed from main after complete verified source proof of that exact commit. A commit that is already published is skipped. |
 | Publish stable releases | `release-build` | Signed tag pipeline consuming exact-source full proof; artifact acceptance remains fresh. |
+| Release security patches unattended | `stable-release-reconciler` | Main push, hourly, after `release-build` and `docs`, or manual (`dry_run` prints the next step only). Inert until the `STABLE_RELEASE_APP_CLIENT_ID` and `STABLE_RELEASE_APP_BOT_ID` variables exist. Tags, publishes, syncs trust and updates the Homebrew cask for the exact next patch through the stable-release App; every job mints a token scoped to its own step. |
 | Publish documentation | `docs` | Main-push Pages/Storybook build, deployment, and public-site verification. |
 
 New PR heads need fresh admission evidence. Main movement, membership changes,

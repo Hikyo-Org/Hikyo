@@ -226,3 +226,13 @@ revalidate it during construction. Fresh tag-bound floor/docs checks and actual
 artifact acceptance remain required. Missing or stale source proof blocks
 publication; full manual `ci-main` is the recovery route on selected main.
 Source proof does not establish signing, publication or native acceptance.
+
+## Stable security patches
+
+A Dependabot security update that lands on main releases itself as the next
+patch through `stable-release-reconciler`, with no promotion from dev. It
+queues proven security PRs, tags the newest fully green main commit, publishes
+the staged draft, and opens an App-signed `release/sync-trust-*` PR that a
+ruleset lets only the stable-release App write. Only the exact next patch can
+be released this way; minors, majors and the first release stay on the
+[maintainer ceremony](../release/online-signing.md#unattended-security-patch-releases).

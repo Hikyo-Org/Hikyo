@@ -84,9 +84,51 @@ Do not run `build 1.0.0` until designs and final-candidate acceptance are done.
    refuses to start until this synchronization is complete, and it checks the
    same landing page link.
 
+   Once the stable-release App is provisioned, a ruleset lets only that App
+   write `release/sync-trust-*`, so this command's branch push is refused. The
+   [unattended reconciler](#unattended-security-patch-releases) syncs trust
+   itself after a human release too. If it has not, open the PR from a branch
+   with another name.
+
 There is one human review/publication boundary. With one maintainer it does not
 provide independent two-person approval. GitHub account security, protected
 workflow changes and careful source review remain part of release security.
+
+## Unattended security patch releases
+
+A merged Dependabot security update that targets `main` releases itself as the
+next PATCH version. Everything below is inert until the owner sets the
+`STABLE_RELEASE_APP_CLIENT_ID` and `STABLE_RELEASE_APP_BOT_ID` repository
+variables; until then every job in `stable-release-reconciler` is skipped.
+
+The reconciler runs on every push to `main`, after `release-build` and `docs`
+runs, hourly, and by hand. Each run reads live state and does only the next
+step, so a lost trigger or an overlapping run repeats idempotent work:
+
+1. **Queue:** Dependabot security PRs that GitHub's own alerts prove
+   (labels are not proof) are armed for auto-merge through the merge queue.
+2. **Tag:** the newest main commit at or after the merged update that has
+   complete green source proof gets an annotated tag created by the App. The
+   build refuses anything but the exact next patch.
+3. **Wait:** `release-build` stages a signed draft and uploads its manifest
+   SHA-256.
+4. **Publish:** the reconciler publishes that exact run's draft through the same
+   helper the ceremony uses.
+5. **Sync trust:** an App-signed `createCommitOnBranch` commit on
+   `release/sync-trust-VERSION` records the metadata and catalog in a PR with
+   auto-merge; the reconciler then waits for the docs to be live.
+6. **Homebrew:** the stable cask follows every latest stable release, human or
+   unattended, and its PR is merged once `ci-required` passes.
+
+If a build fails, or a security update has waited over 24 hours without a green
+commit, one issue titled "Unattended stable patch release is stalled" is opened
+and updated in place, and closed when the stall clears. Release the next patch
+by hand with the ceremony above. After a human release, the next unattended
+patch builds on it automatically.
+
+Dry run: dispatch `stable-release-reconciler` with `dry_run` left on to print
+the next step without changing anything. The owner setup and live verification
+steps are in the pull request that introduced this section.
 
 ## Verification and retries
 
