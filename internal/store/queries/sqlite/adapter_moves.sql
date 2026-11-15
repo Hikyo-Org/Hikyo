@@ -144,8 +144,8 @@ SELECT m.id AS id FROM adapter_route_moves AS m WHERE m.org_id=sqlc.arg(chain_or
 -- name: AdapterMoveListScrubs :many
 SELECT j.id AS id,j.state AS state FROM adapter_outbox AS j JOIN adapter_targets AS t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id WHERE j.org_id=sqlc.arg(chain_org) AND j.project_id=sqlc.arg(chain_project) AND j.kind='scrub' AND j.state IN ('queued','running','failed') AND (CAST(sqlc.arg(adapter_id) AS TEXT)='' OR t.adapter_id=sqlc.arg(adapter_id)) AND j.id>sqlc.arg(after_id) ORDER BY j.id LIMIT sqlc.arg(row_limit);
 
--- Incident enumeration: the targets of one project whose route moves stored
--- orphaned remote names, optionally narrowed to one adapter, in target id order
--- and bounded by the limit. Only target identifiers are selected.
--- name: AdapterMoveListOrphanedTargets :many
-SELECT DISTINCT mt.target_id AS target_id FROM adapter_route_move_targets AS mt JOIN adapter_targets AS t ON t.id=mt.target_id AND t.org_id=mt.org_id AND t.project_id=mt.project_id AND t.environment_id=mt.environment_id WHERE mt.org_id=sqlc.arg(chain_org) AND mt.project_id=sqlc.arg(chain_project) AND mt.orphaned_names<>'[]' AND (CAST(sqlc.arg(adapter_id) AS TEXT)='' OR t.adapter_id=sqlc.arg(adapter_id)) AND mt.target_id>sqlc.arg(after_id) ORDER BY target_id LIMIT sqlc.arg(row_limit);
+-- Incident enumeration: the route moves of one project that stored orphaned
+-- remote names, optionally narrowed to one adapter, in move id order and bounded
+-- by the limit. Only move identifiers are selected.
+-- name: AdapterMoveListOrphanedMoves :many
+SELECT DISTINCT mt.move_id AS move_id FROM adapter_route_move_targets AS mt JOIN adapter_targets AS t ON t.id=mt.target_id AND t.org_id=mt.org_id AND t.project_id=mt.project_id AND t.environment_id=mt.environment_id WHERE mt.org_id=sqlc.arg(chain_org) AND mt.project_id=sqlc.arg(chain_project) AND mt.orphaned_names<>'[]' AND (CAST(sqlc.arg(adapter_id) AS TEXT)='' OR t.adapter_id=sqlc.arg(adapter_id)) AND mt.move_id>sqlc.arg(after_id) ORDER BY move_id LIMIT sqlc.arg(row_limit);

@@ -60,15 +60,15 @@ func (r adapterQueries) ListScrubs(ctx context.Context, p authz.Proof, adapterID
 	return r.db.adapterMoveQueries().listScrubs(ctx, chain.Org, chain.Project, adapterID, afterID, limit)
 }
 
-func (r adapterQueries) ListOrphanedTargets(ctx context.Context, p authz.Proof, adapterID, afterID string, limit int) ([]string, error) {
-	chain, err := authz.Verify(p, authz.StoreAdaptersListOrphanedTargets, r.tok)
+func (r adapterQueries) ListOrphanedMoves(ctx context.Context, p authz.Proof, adapterID, afterID string, limit int) ([]string, error) {
+	chain, err := authz.Verify(p, authz.StoreAdaptersListOrphanedMoves, r.tok)
 	if err != nil {
 		return nil, err
 	}
 	if chain.Org == "" || chain.Project == "" || limit < 1 || limit > domain.MaxIncidentPage {
 		return nil, ErrNotFound
 	}
-	return r.db.adapterMoveQueries().listOrphanedTargets(ctx, chain.Org, chain.Project, adapterID, afterID, limit)
+	return r.db.adapterMoveQueries().listOrphanedMoves(ctx, chain.Org, chain.Project, adapterID, afterID, limit)
 }
 
 func (r adapterQueries) CancelMove(ctx context.Context, p authz.Proof, moveID, authorityPrincipalID string, at time.Time) (AdapterMove, error) {

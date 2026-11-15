@@ -57,7 +57,7 @@ type adapterMoveQueries interface {
 	flags(ctx context.Context, chainOrg domain.OrgID, chainProject domain.ProjectID, targetAdapterID string, targetID string) (adapterMoveFlagsRow, error)
 	listOpen(ctx context.Context, chainOrg domain.OrgID, chainProject domain.ProjectID, adapterID, afterID string, limit int) ([]string, error)
 	listScrubs(ctx context.Context, chainOrg domain.OrgID, chainProject domain.ProjectID, adapterID, afterID string, limit int) ([]AdapterScrubRef, error)
-	listOrphanedTargets(ctx context.Context, chainOrg domain.OrgID, chainProject domain.ProjectID, adapterID, afterID string, limit int) ([]string, error)
+	listOrphanedMoves(ctx context.Context, chainOrg domain.OrgID, chainProject domain.ProjectID, adapterID, afterID string, limit int) ([]string, error)
 }
 
 type sqliteAdapterMoveQueries struct {
@@ -682,13 +682,13 @@ func (q pgAdapterMoveQueries) listScrubs(ctx context.Context, chainOrg domain.Or
 	})
 }
 
-func (q sqliteAdapterMoveQueries) listOrphanedTargets(ctx context.Context, chainOrg domain.OrgID, chainProject domain.ProjectID, adapterID, afterID string, limit int) ([]string, error) {
-	return q.queries.AdapterMoveListOrphanedTargets(ctx, sqlitegen.AdapterMoveListOrphanedTargetsParams{ChainOrg: string(chainOrg), ChainProject: string(chainProject), AdapterID: adapterID, AfterID: afterID, RowLimit: int64(limit)})
+func (q sqliteAdapterMoveQueries) listOrphanedMoves(ctx context.Context, chainOrg domain.OrgID, chainProject domain.ProjectID, adapterID, afterID string, limit int) ([]string, error) {
+	return q.queries.AdapterMoveListOrphanedMoves(ctx, sqlitegen.AdapterMoveListOrphanedMovesParams{ChainOrg: string(chainOrg), ChainProject: string(chainProject), AdapterID: adapterID, AfterID: afterID, RowLimit: int64(limit)})
 }
 
-func (q pgAdapterMoveQueries) listOrphanedTargets(ctx context.Context, chainOrg domain.OrgID, chainProject domain.ProjectID, adapterID, afterID string, limit int) ([]string, error) {
+func (q pgAdapterMoveQueries) listOrphanedMoves(ctx context.Context, chainOrg domain.OrgID, chainProject domain.ProjectID, adapterID, afterID string, limit int) ([]string, error) {
 	if limit < 1 || limit > domain.MaxIncidentPage {
 		return nil, domain.ErrInvalid
 	}
-	return q.queries.AdapterMoveListOrphanedTargets(ctx, pggen.AdapterMoveListOrphanedTargetsParams{ChainOrg: string(chainOrg), ChainProject: string(chainProject), AdapterID: adapterID, AfterID: afterID, RowLimit: int32(limit)})
+	return q.queries.AdapterMoveListOrphanedMoves(ctx, pggen.AdapterMoveListOrphanedMovesParams{ChainOrg: string(chainOrg), ChainProject: string(chainProject), AdapterID: adapterID, AfterID: afterID, RowLimit: int32(limit)})
 }

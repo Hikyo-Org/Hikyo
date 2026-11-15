@@ -744,9 +744,9 @@ func (s *Incidents) readAdapters(ctx context.Context, actor Actor, c *collector,
 }
 
 // readAdapterWork lists the non-terminal route moves, the queued or running
-// scrub jobs, the failed scrub jobs and the targets with stored orphaned remote
-// names of the source's project (one adapter's, for an adapter incident)
-// through the bounded store listings. A move or a live scrub is a pending item
+// scrub jobs, the failed scrub jobs and the route moves that stored orphaned
+// remote names of the source's project (one adapter's, for an adapter
+// incident) through the bounded store listings. A move or a live scrub is a pending item
 // its owner resumes or completes. A failed scrub and stored orphans are names
 // that may still sit at the provider, which Hikyo cannot see being removed, so
 // each is an unknown item only an operator attests. The read runs under the
@@ -785,7 +785,7 @@ func (s *Incidents) readAdapterWork(ctx context.Context, actor Actor, c *collect
 		}
 		orphans, orphansCut, err = pageBounded(maxSourceItems, func(id string) string { return id },
 			func(after string) ([]string, error) {
-				return repos.Adapters().ListOrphanedTargets(ctx, proof, r.adapterID, after, authz.MaxIncidentPage)
+				return repos.Adapters().ListOrphanedMoves(ctx, proof, r.adapterID, after, authz.MaxIncidentPage)
 			})
 		return err
 	})
@@ -812,8 +812,8 @@ func (s *Incidents) readAdapterWork(ctx context.Context, actor Actor, c *collect
 		}
 		c.add(domain.OwnerAdapterScrub, domain.ObjectKindAdapterScrub, j.ID, r.scope, r.configure)
 	}
-	for _, t := range orphans {
-		c.unknown(domain.OwnerAdapterOrphan, domain.ObjectKindAdapterTarget, t, r.scope, domain.ReasonUpstreamNotObservable)
+	for _, m := range orphans {
+		c.unknown(domain.OwnerAdapterOrphan, domain.ObjectKindAdapterMove, m, r.scope, domain.ReasonUpstreamNotObservable)
 	}
 	if movesCut {
 		c.truncated(domain.OwnerAdapterMove, marker, r.scope)

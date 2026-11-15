@@ -1592,7 +1592,7 @@ func TestIncidentFailedScrubAndStoredOrphansStayOpenUntilAttested(t *testing.T) 
 		ctx := t.Context()
 		const (
 			failedScrub = "adapter_orphan.review|adapter_scrub|scr_fx1"
-			orphanMove  = "adapter_orphan.review|adapter_target|tgt_fx2"
+			orphanMove  = "adapter_orphan.review|adapter_move|arm_fx2"
 		)
 		// Each adapter has only a tombstoned target, so the target list adds no
 		// item of its own; the adapter's one open item besides is its upstream

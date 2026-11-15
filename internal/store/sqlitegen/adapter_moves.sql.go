@@ -1033,11 +1033,11 @@ func (q *Queries) AdapterMoveListOpen(ctx context.Context, arg AdapterMoveListOp
 	return items, nil
 }
 
-const adapterMoveListOrphanedTargets = `-- name: AdapterMoveListOrphanedTargets :many
-SELECT DISTINCT mt.target_id AS target_id FROM adapter_route_move_targets AS mt JOIN adapter_targets AS t ON t.id=mt.target_id AND t.org_id=mt.org_id AND t.project_id=mt.project_id AND t.environment_id=mt.environment_id WHERE mt.org_id=?1 AND mt.project_id=?2 AND mt.orphaned_names<>'[]' AND (CAST(?3 AS TEXT)='' OR t.adapter_id=?3) AND mt.target_id>?4 ORDER BY target_id LIMIT ?5
+const adapterMoveListOrphanedMoves = `-- name: AdapterMoveListOrphanedMoves :many
+SELECT DISTINCT mt.move_id AS move_id FROM adapter_route_move_targets AS mt JOIN adapter_targets AS t ON t.id=mt.target_id AND t.org_id=mt.org_id AND t.project_id=mt.project_id AND t.environment_id=mt.environment_id WHERE mt.org_id=?1 AND mt.project_id=?2 AND mt.orphaned_names<>'[]' AND (CAST(?3 AS TEXT)='' OR t.adapter_id=?3) AND mt.move_id>?4 ORDER BY move_id LIMIT ?5
 `
 
-type AdapterMoveListOrphanedTargetsParams struct {
+type AdapterMoveListOrphanedMovesParams struct {
 	ChainOrg     string
 	ChainProject string
 	AdapterID    string
@@ -1045,11 +1045,11 @@ type AdapterMoveListOrphanedTargetsParams struct {
 	RowLimit     int64
 }
 
-// Incident enumeration: the targets of one project whose route moves stored
-// orphaned remote names, optionally narrowed to one adapter, in target id order
-// and bounded by the limit. Only target identifiers are selected.
-func (q *Queries) AdapterMoveListOrphanedTargets(ctx context.Context, arg AdapterMoveListOrphanedTargetsParams) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, adapterMoveListOrphanedTargets,
+// Incident enumeration: the route moves of one project that stored orphaned
+// remote names, optionally narrowed to one adapter, in move id order and bounded
+// by the limit. Only move identifiers are selected.
+func (q *Queries) AdapterMoveListOrphanedMoves(ctx context.Context, arg AdapterMoveListOrphanedMovesParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, adapterMoveListOrphanedMoves,
 		arg.ChainOrg,
 		arg.ChainProject,
 		arg.AdapterID,
@@ -1062,11 +1062,11 @@ func (q *Queries) AdapterMoveListOrphanedTargets(ctx context.Context, arg Adapte
 	defer rows.Close()
 	var items []string
 	for rows.Next() {
-		var target_id string
-		if err := rows.Scan(&target_id); err != nil {
+		var move_id string
+		if err := rows.Scan(&move_id); err != nil {
 			return nil, err
 		}
-		items = append(items, target_id)
+		items = append(items, move_id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

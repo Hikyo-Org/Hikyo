@@ -964,14 +964,14 @@ type AdapterReader interface {
 	Environments(ctx context.Context, p authz.Proof, adapterID string) ([]string, error)
 	Conflicts(ctx context.Context, p authz.Proof, targetID string) ([]AdapterConflictArtifact, error)
 	Move(ctx context.Context, p authz.Proof, moveID string) (AdapterMove, error)
-	// ListOpenMoves, ListScrubs and ListOrphanedTargets page one project's
+	// ListOpenMoves, ListScrubs and ListOrphanedMoves page one project's
 	// non-terminal route move ids, queued, running or failed scrub jobs, and
 	// target ids whose route moves stored orphaned remote names, in id order, for
 	// the incident enumeration; a non-empty adapterID narrows the page to that
 	// adapter and the limit is at most domain.MaxIncidentPage.
 	ListOpenMoves(ctx context.Context, p authz.Proof, adapterID, afterID string, limit int) ([]string, error)
 	ListScrubs(ctx context.Context, p authz.Proof, adapterID, afterID string, limit int) ([]AdapterScrubRef, error)
-	ListOrphanedTargets(ctx context.Context, p authz.Proof, adapterID, afterID string, limit int) ([]string, error)
+	ListOrphanedMoves(ctx context.Context, p authz.Proof, adapterID, afterID string, limit int) ([]string, error)
 }
 
 type AdapterPlanMaterial struct {
