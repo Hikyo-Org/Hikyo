@@ -61,10 +61,12 @@ they never manufacture a durable safety hold.
 ## Release evidence and source roles
 
 The fixed policy owns repository/owner IDs, authority, Go 1.27.4, root
-`go.work` absence, the fifteen trusted regular Git blobs, seven historical
-helper pins, exact 49 candidate and 48 queue jobs, and all original bounds.
+`go.work` absence, the fourteen trusted regular Git blobs, seven historical
+helper pins, the exact 48 queue jobs, and all original bounds.
 The inventories include three isolation, three fuzz and twelve race shards.
-Only candidate vouch may be skipped. Release data cannot override policy.
+The open-PR candidate run (`ci-candidate.yml`, 49 jobs) was retired with
+the workflow; the merge queue is the only full proof. Release data cannot
+override policy.
 
 Current releases require explicit post-merge owner approval. Supported whole
 REST PR/timeline and GraphQL merged-event originals must agree on repository,
@@ -79,11 +81,14 @@ The original #1017 causal checker, c03/c04 history, timestamps, raw custody
 and consumed allowance remain literal. They cannot become current release
 approval. Current release, current main and candidate proof are distinct
 roles. Later signed first-parent main descendants may reuse approval only
-when all fifteen trusted blobs match and the descendant has its own exact
-full queue proof. Every candidate/main pair needs fresh proof. The eight CI
-definition/helper paths must match approved bytes at candidate head and its
-tested merge. Candidate `go.mod` is separately bound. Acceptance tooling
-comes from main, with candidate code in its separate checkout.
+when all fourteen trusted blobs match and the descendant has its own exact
+full queue proof. Every candidate/main pair needs fresh proof. The candidate is
+the merged current-main PR, so its head and queue-tested merge are the current
+main episode. The seven CI definition/helper paths must match approved bytes at
+that head and its tested merge, and the head's `go.mod` must equal the tested
+one, so a candidate that changes dependencies needs a new release first.
+Acceptance tooling comes from main, with candidate code in its separate
+checkout.
 
 Changed trusted bytes require separate complete source review, evidence,
 owner approval and Root adoption. Changed toolchain, authority, source roles,

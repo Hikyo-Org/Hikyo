@@ -110,8 +110,8 @@ a reserved attempt, refund its charges or enable a retry.
    policy and unchanged resource scope. Root authenticates it and adopts the
    exact configuration, creating a status genesis under the authoritative
    decision stream. Hashes and successful CI do not supply this consent.
-4. Select the exact candidate/main pair and both complete CI runs. Later main
-   needs its own queue proof, even when all fifteen trusted source hashes match.
+4. Select the exact candidate/main pair and its complete queue CI run. Later main
+   needs its own queue proof, even when all fourteen trusted source hashes match.
    Bind the composite configuration, source manifest and immutable attempt
    before preparation. Keep whole capture originals outside nested model
    records, with exact replay correspondence and the original bounds.

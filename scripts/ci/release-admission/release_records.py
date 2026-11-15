@@ -246,10 +246,9 @@ def record_checked(record):
         _hash_map(record['candidateFileSHA256s'], {'go.mod'})
         _hash_map(record['candidateCIFileSHA256s'], CANDIDATE_CI_FILES)
         _hash_map(record['workflowFileSHA256s'], TRUSTED_FILES)
-        exact(record['requiredCIJobs'], {'candidate', 'workflow'})
-        for lane, jobs in record['requiredCIJobs'].items():
-            exact(jobs, REQUIRED_CI_JOBS[lane])
-            require(jobs == REQUIRED_CI_JOBS[lane], 'fixed-complete-ci-jobs')
+        exact(record['requiredCIJobs'], {'workflow'})
+        exact(record['requiredCIJobs']['workflow'], REQUIRED_CI_JOBS['workflow'])
+        require(record['requiredCIJobs']['workflow'] == REQUIRED_CI_JOBS['workflow'], 'fixed-complete-ci-jobs')
     elif kind == 'attemptTrustBinding':
         require(sha(record['candidateHeadSHA'], 40) and sha(record['mainSHA'], 40), 'pair-git-shas')
         exact(record['candidateRun'], {'id', 'attempt'})
@@ -261,6 +260,9 @@ def record_checked(record):
         _integer(run['mergedPRNumber'], 'main-merged-pr')
         require(all(sha(run[key], 40) for key in ('headSHA', 'baseSHA', 'mergeSHA'))
                 and run['mergeSHA'] == record['mainSHA'], 'main-run-exact-sha')
+        # The candidate is the merged current-main PR episode (retired open-PR candidate run).
+        require(record['candidateRun'] == {'id': run['id'], 'attempt': run['attempt']}
+                and record['candidateHeadSHA'] == run['headSHA'], 'candidate-is-the-current-main-episode')
     return deepcopy(record)
 
 
