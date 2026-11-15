@@ -9,7 +9,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"encoding/pem"
 	"fmt"
 	"log"
@@ -19,6 +20,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func main() {
@@ -66,16 +69,16 @@ func (g *gitlabFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/v4")
 	switch path {
 	case "/version":
-		json.NewEncoder(w).Encode(map[string]string{"version": "18.0.0"})
+		_ = json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), map[string]string{"version": "18.0.0"})
 		return
 	case "/personal_access_tokens/self":
-		json.NewEncoder(w).Encode(map[string]any{"scopes": []string{"api"}, "active": true, "revoked": false})
+		_ = json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), map[string]any{"scopes": []string{"api"}, "active": true, "revoked": false})
 		return
 	case "/user":
-		json.NewEncoder(w).Encode(map[string]bool{"bot": true})
+		_ = json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), map[string]bool{"bot": true})
 		return
 	case "/projects/fixture/project", "/projects/42":
-		json.NewEncoder(w).Encode(map[string]any{"id": 42, "path_with_namespace": "fixture/project"})
+		_ = json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), map[string]any{"id": 42, "path_with_namespace": "fixture/project"})
 		return
 	}
 	const collection = "/projects/42/variables"
@@ -108,7 +111,7 @@ func (g *gitlabFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var v variable
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&v); err != nil {
+	if err := json.UnmarshalRead(http.MaxBytesReader(w, r.Body, 1<<20), &v); err != nil {
 		http.Error(w, "invalid variable", http.StatusBadRequest)
 		return
 	}
@@ -141,7 +144,7 @@ func (g *gitlabFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // Keep JSON serialization separate from ResponseWriter side effects. Provider
 // values roundtrip unchanged, while HTML characters stay escaped on the wire.
 func writeVariable(w http.ResponseWriter, status int, value variable) {
-	body, err := json.Marshal(value)
+	body, err := json.Marshal(value, jsonwire.Stable)
 	if err != nil {
 		http.Error(w, "invalid variable response", http.StatusInternalServerError)
 		return

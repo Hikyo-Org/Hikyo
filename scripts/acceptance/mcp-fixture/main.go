@@ -6,7 +6,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,6 +17,8 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type settings struct {
@@ -112,7 +115,7 @@ func run(ctx context.Context, args []string) error {
 		if err := mutate(ctx, *dir, db, kr, args[0]); err != nil {
 			return errors.New("supported fixture mutation refused")
 		}
-		return json.NewEncoder(os.Stdout).Encode(map[string]any{"action": args[0], "committed_at_utc": time.Now().UTC()})
+		return json.MarshalEncode(jsontext.NewEncoder(os.Stdout, jsonwire.Stable), map[string]any{"action": args[0], "committed_at_utc": time.Now().UTC()})
 	case "hold":
 		return holdFixtureCatalogue(ctx, cfg)
 	default:
@@ -164,13 +167,11 @@ func readPrivate(path string, value any) error {
 	if err != nil || !info.Mode().IsRegular() || info.Size() > 1<<20 {
 		return errors.New("protected input must be a bounded regular file")
 	}
-	d := json.NewDecoder(io.LimitReader(f, (1<<20)+1))
-	d.DisallowUnknownFields()
-	if err := d.Decode(value); err != nil {
+	d := jsontext.NewDecoder(io.LimitReader(f, (1<<20)+1))
+	if err := json.UnmarshalDecode(d, value, json.RejectUnknownMembers(true)); err != nil {
 		return errors.New("invalid protected input")
 	}
-	var extra json.RawMessage
-	if d.Decode(&extra) != io.EOF {
+	if _, err := d.ReadValue(); !errors.Is(err, io.EOF) {
 		return errors.New("trailing protected input refused")
 	}
 	return nil
@@ -181,7 +182,7 @@ func writePrivate(path string, value any) error {
 	if err != nil {
 		return errors.New("refusing to overwrite protected output")
 	}
-	if err := json.NewEncoder(f).Encode(value); err != nil {
+	if err := json.MarshalEncode(jsontext.NewEncoder(f, jsonwire.Stable), value); err != nil {
 		f.Close()
 		return errors.New("protected output failed")
 	}

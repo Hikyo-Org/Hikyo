@@ -5,7 +5,7 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"os"
@@ -16,6 +16,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/yaml"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestRenderedResourcesAreIsolatedAndStartServersOnlyAfterSeeding(t *testing.T) {
@@ -38,7 +40,7 @@ func TestRenderedResourcesAreIsolatedAndStartServersOnlyAfterSeeding(t *testing.
 		hash := sha256.Sum256(b)
 		inventory[path] = fmt.Sprintf("%x", hash)
 	}
-	b, err := json.Marshal(inventory)
+	b, err := json.Marshal(inventory, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

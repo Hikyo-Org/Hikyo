@@ -1,7 +1,7 @@
 package ci_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type docsQueueFixture struct {
@@ -85,7 +87,7 @@ func newDocsQueueFixture(t *testing.T, paths []string) *docsQueueFixture {
 
 func (f *docsQueueFixture) env(t *testing.T) []string {
 	t.Helper()
-	data, err := json.Marshal(f.metadata)
+	data, err := json.Marshal(f.metadata, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +224,7 @@ func TestDocsQueueWorkflowUsesTrustedPlanAndRecomputesGate(t *testing.T) {
 		}
 		results[name] = map[string]string{"result": result}
 	}
-	needs, err := json.Marshal(results)
+	needs, err := json.Marshal(results, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +278,7 @@ func TestDocsQueueFullValidationDoesNotRequireMetadataReauthorization(t *testing
 	}
 	encode := func(value any) string {
 		t.Helper()
-		data, err := json.Marshal(value)
+		data, err := json.Marshal(value, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

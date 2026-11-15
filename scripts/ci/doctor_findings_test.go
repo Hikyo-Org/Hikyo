@@ -2,12 +2,14 @@ package ci_test
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type ciDoctorFinding struct {
@@ -66,7 +68,7 @@ func TestDeploymentDoctorFindingContract(t *testing.T) {
 						report.Findings = append(report.Findings, finding)
 					}
 				}
-				raw, err := json.Marshal(report)
+				raw, err := json.Marshal(report, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}

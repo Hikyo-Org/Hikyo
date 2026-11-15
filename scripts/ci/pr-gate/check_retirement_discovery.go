@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"os"
@@ -108,7 +108,7 @@ func (c *controller) discoverRetirements(ctx context.Context, name string, e eve
 	for page := 1; page <= retirementHistoryPages; page++ {
 		first := min(100, retirementHistoryWindow-len(seenCommits))
 		var response struct {
-			Errors []json.RawMessage `json:"errors"`
+			Errors []jsontext.Value `json:"errors"`
 			Data   struct {
 				Repo *struct {
 					ID     int64 `json:"databaseId"`

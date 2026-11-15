@@ -2,7 +2,8 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/gofrs/flock"
@@ -134,7 +136,7 @@ func verifyDirectory(t publicTrust, directory, version, commit, state string, la
 	if err := saveFloor(state, snapshot.Floor()); err != nil {
 		return err
 	}
-	return json.NewEncoder(output).Encode(struct {
+	return json.MarshalEncode(jsontext.NewEncoder(output, jsonwire.Stable), struct {
 		Identity           releaseidentity.Identity `json:"identity"`
 		PublishedInventory bool                     `json:"published_oci_verified"`
 	}{release.Identity(), published})

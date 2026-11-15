@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Execute the canonical shell verifier, stubbing only its external gh transport.
@@ -29,10 +31,12 @@ func canonicalPolicyFixture(t *testing.T, f *queueFixture, authority, movement s
 		f.feedbackRun.Pulls = []pull{f.pr}
 		f.feedbackRefresh()
 	}
+	// v2 refuses to embed pull because *pull has an UnmarshalJSON method; plainPull has none.
+	type plainPull pull
 	pr, err := json.Marshal(struct {
-		pull
+		plainPull
 		ChangedFiles int `json:"changed_files"`
-	}{pull: f.pr, ChangedFiles: 1})
+	}{plainPull: plainPull(f.pr), ChangedFiles: 1}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

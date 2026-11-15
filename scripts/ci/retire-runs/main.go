@@ -4,7 +4,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -261,7 +262,7 @@ func (s *sweeper) roles(ctx context.Context) (map[string]bool, error) {
 		}
 		query := fmt.Sprintf(`query{repository(owner:%q,name:%q){databaseId defaultBranchRef{name target{... on Commit{oid}}} pullRequests(states:OPEN,%s){nodes{number headRefOid baseRefName} pageInfo{hasNextPage endCursor}} mergeQueue(branch:%q){id entries(%s){nodes{id position state headCommit{oid} baseCommit{oid} pullRequest{number headRefOid baseRefName}} pageInfo{hasNextPage endCursor}}}}}`, parts[0], parts[1], pullArgs, s.branch, queueArgs)
 		var response struct {
-			Errors []json.RawMessage `json:"errors"`
+			Errors []jsontext.Value `json:"errors"`
 			Data   struct {
 				Repository *struct {
 					ID      int64 `json:"databaseId"`

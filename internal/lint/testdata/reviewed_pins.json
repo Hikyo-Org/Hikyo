@@ -2759,14 +2759,14 @@
         "darwin"
       ],
       "callers": {
-        "scripts/acceptance/mcp-fixture/main.go:run": "9272c094d4adf13ee5da3e43936c5a7b9c3f8d2f0b67f1ca9bba05d600107e31"
+        "scripts/acceptance/mcp-fixture/main.go:run": "21fedbca11aa714436ea451ad649baa93cff18160de7192bc9d12dc06900d7b4"
       },
       "dependencies": [
         "scripts/acceptance/mcp-fixture/seed.go:validateDSN"
       ]
     },
     "scripts/acceptance/mcp-fixture/public.go:observeReadOnly": {
-      "hash": "0e9b1865bd3c0e50d34039ab5715fa59ac30b1c67d01fbf91ffa1f184857b312",
+      "hash": "e8dd74cbff15a1d4179b7a29595edfddc563cadb38d4ef4fee39ac3f9ebd8834",
       "reason": "Exact MCP fixture read-only cancellation observation, after the unchanged dedicated datastore guard. Counts committed in-flight claims and blocked catalogue queries on the two named fixture processes, without tenant rows or admission writes. Only the reviewed command dispatcher may invoke it.",
       "build_contexts": [
         "default",
@@ -2774,7 +2774,7 @@
         "darwin"
       ],
       "callers": {
-        "scripts/acceptance/mcp-fixture/main.go:run": "9272c094d4adf13ee5da3e43936c5a7b9c3f8d2f0b67f1ca9bba05d600107e31"
+        "scripts/acceptance/mcp-fixture/main.go:run": "21fedbca11aa714436ea451ad649baa93cff18160de7192bc9d12dc06900d7b4"
       },
       "dependencies": [
         "scripts/acceptance/mcp-fixture/seed.go:validateDSN"
@@ -3102,14 +3102,14 @@
     "scripts/acceptance/mcp-fixture/main.go:privatePath": "20d33614496344b681c2bfde779d356a01a63addcd4c7c79a9a02fff728e8093",
     "scripts/acceptance/mcp-fixture/main.go:privatePathModes": "47d5feaa828b5c5d143652bb1faab10e9512647758e3567c8735f19e50258d8b",
     "scripts/acceptance/mcp-fixture/probe.go:probe.args": "5119760188523cbeac2e64fb3d92de443cada693773ff9ce4171b54dbe7b7a60",
-    "scripts/acceptance/mcp-fixture/probe.go:probe.call": "a37a8e7613f8557a3ac5a235e091a1c4dd6a9a90ea86cdd70862c5caa8f2b054",
+    "scripts/acceptance/mcp-fixture/probe.go:probe.call": "e362ee16e3c8b5c0e0069da51238681afa58cf25df6d285074cfa42eb67ace93",
     "scripts/acceptance/mcp-fixture/probe.go:receipt.event": "afe3080b651d5a47fbae99c9562fb3dc2f0131fa0a92d3b268f4d963d335ff8e",
     "scripts/acceptance/mcp-fixture/probe.go:successful": "4ab2839bfb99d4335b837132f24a33f34e1281cfec660a031cbb747bce9c90ce",
     "scripts/acceptance/mcp-fixture/seed.go:validateDSN": "55a5c235e56dfe749a921a85a86d55667d4ae55c7b26d8a56ff228b0c6a578c1",
     "scripts/security/alert-route/collector_snapshot.go:binding": "e8c470ea6ae9fec13c93943c24a82a41ef30dbfbe59f809e751c1e3995aeba85",
-    "scripts/security/alert-route/config.go:decode": "161a475815090c9065b475eac7d4fb6b26ab9715772b54c2dce938aa94108085",
+    "scripts/security/alert-route/config.go:decode": "1e19c1d48b64ea36755a5954ba5d9a5ed8f10de1353405629a5b9b9a40d83f06",
     "scripts/security/alert-route/config.go:digest": "8e03bd89d9b32020248066e07ea5eda2acfe5ea18b12ebc6e1e5380a1566239b",
-    "scripts/security/alert-route/main.go:mustJSON": "807d9e740b73076b4fcba80bcbb060f6d3e90b04757f9b741e7bd2efd7727267",
+    "scripts/security/alert-route/main.go:mustJSON": "1b4149c52b3ac48a80c3fd1a574bb386092f222cf3c2d922b511f7da80b5f831",
     "scripts/security/artifact-harness/runtime.go:ownedDisposableDatabaseIdentifier": "fd1bdf16828e043a8b228f131983e0ed407c4c4a4ce0c5188d506f1b5064f028"
   },
   "build_helpers": {

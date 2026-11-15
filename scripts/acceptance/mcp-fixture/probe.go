@@ -7,7 +7,8 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
 )
 
@@ -69,13 +71,13 @@ type response struct {
 	Challenge string `json:"-"`
 	Process   string `json:"-"`
 	Result    struct {
-		IsError    bool            `json:"isError"`
-		Structured json.RawMessage `json:"structuredContent"`
+		IsError    bool           `json:"isError"`
+		Structured jsontext.Value `json:"structuredContent"`
 		Tools      []struct {
 			Name string `json:"name"`
 		} `json:"tools"`
 	} `json:"result"`
-	Error json.RawMessage `json:"error"`
+	Error jsontext.Value `json:"error"`
 }
 
 func newProbe(t target, f fixture, r *receipt) (*probe, error) {
@@ -103,7 +105,7 @@ func (p *probe) call(ctx context.Context, method, name string, args map[string]a
 	if method == "tools/call" {
 		params["name"], params["arguments"] = name, args
 	}
-	b, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
+	b, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": method, "params": params}, jsonwire.Stable)
 	if err != nil {
 		return response{}, errors.New("request encoding failed")
 	}

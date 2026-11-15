@@ -10,7 +10,8 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -30,6 +31,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Only explicitly selected runtime settings reach the target. No inherited
@@ -372,7 +375,7 @@ func (t *target) requestWithHeaders(method, path, token string, body any, header
 	var reader io.Reader
 	var encoded []byte
 	if body != nil {
-		data, err := json.Marshal(body)
+		data, err := json.Marshal(body, jsonwire.Stable)
 		if err != nil {
 			return response{}, err
 		}
@@ -489,34 +492,22 @@ func (t *target) inspect(token, org, project, environment string) (response, err
 func noCanary(body []byte, canaries []string) error {
 	// Decode escapes before scanning. A response containing \u0066ixture must
 	// not evade an oracle for fixture metadata just because its wire spelling differs.
-	var decoded any
-	if json.Unmarshal(body, &decoded) == nil {
-		var walk func(any) bool
-		walk = func(value any) bool {
-			switch v := value.(type) {
-			case string:
-				for _, c := range canaries {
-					if c != "" && strings.Contains(v, c) {
-						return true
-					}
-				}
-			case []any:
-				for _, item := range v {
-					if walk(item) {
-						return true
-					}
-				}
-			case map[string]any:
-				for key, item := range v {
-					if walk(key) || walk(item) {
-						return true
-					}
-				}
-			}
-			return false
+	// Walk every string and member name as a token: duplicate names and invalid
+	// UTF-8 stay tolerated here, so a hostile response cannot hide a canary by
+	// being undecodable.
+	decoder := jsontext.NewDecoder(bytes.NewReader(body), jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true))
+	for {
+		token, err := decoder.ReadToken()
+		if err != nil {
+			break
 		}
-		if walk(decoded) {
-			return errors.New("protected canary appeared in response")
+		if token.Kind() != '"' {
+			continue
+		}
+		for _, c := range canaries {
+			if c != "" && strings.Contains(token.String(), c) {
+				return errors.New("protected canary appeared in response")
+			}
 		}
 	}
 	for _, c := range canaries {
@@ -551,7 +542,7 @@ func sameDenial(got, twin response, status int, canaries []string) error {
 	if status == http.StatusOK {
 		for _, r := range []response{got, twin} {
 			var envelope struct {
-				Error  json.RawMessage `json:"error"`
+				Error  jsontext.Value `json:"error"`
 				Result struct {
 					IsError bool `json:"isError"`
 				} `json:"result"`
@@ -615,10 +606,10 @@ func successfulRPC(r response, required string) error {
 		return fmt.Errorf("MCP authorized HTTP status %d", r.status)
 	}
 	var envelope struct {
-		Error  json.RawMessage `json:"error"`
+		Error  jsontext.Value `json:"error"`
 		Result struct {
-			IsError           bool            `json:"isError"`
-			StructuredContent json.RawMessage `json:"structuredContent"`
+			IsError           bool           `json:"isError"`
+			StructuredContent jsontext.Value `json:"structuredContent"`
 		} `json:"result"`
 	}
 	if json.Unmarshal(r.body, &envelope) != nil || len(envelope.Error) > 0 || envelope.Result.IsError || len(envelope.Result.StructuredContent) == 0 {

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type queueFixture struct {
@@ -27,7 +29,7 @@ type queueFixture struct {
 }
 
 func encodedRule(kind string, p any) rule {
-	data, _ := json.Marshal(p)
+	data, _ := json.Marshal(p, jsonwire.Stable)
 	return rule{Type: kind, Parameters: data}
 }
 func newQueueFixture(t *testing.T) *queueFixture {

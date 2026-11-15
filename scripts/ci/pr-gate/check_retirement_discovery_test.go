@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type retirementDiscoveryAPI struct{ *fakeAPI }
@@ -27,7 +29,7 @@ func (a retirementDiscoveryAPI) read(ctx context.Context, path string, result an
 		if err, ok := response.(error); ok {
 			return err
 		}
-		data, err := json.Marshal(response)
+		data, err := json.Marshal(response, jsonwire.Stable)
 		if err != nil {
 			return err
 		}

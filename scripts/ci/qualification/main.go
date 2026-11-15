@@ -5,7 +5,8 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -22,6 +23,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type requirement struct {
@@ -109,24 +112,24 @@ type migration struct {
 }
 
 type inventory struct {
-	Schema        string                     `json:"schema"`
-	Phase         string                     `json:"phase"`
-	Verdict       string                     `json:"release_verdict"`
-	Commit        string                     `json:"commit"`
-	Tree          string                     `json:"committed_tree"`
-	Dirty         bool                       `json:"working_tree_dirty"`
-	APIRevision   int                        `json:"source_api_revision"`
-	FullDomains   []string                   `json:"full_domains"`
-	Migrations    map[string]migration       `json:"source_migrations_not_runtime"`
-	FreezeRef     string                     `json:"local_freeze_ref"`
-	FreezeCommit  string                     `json:"local_freeze_commit"`
-	FreezeMode    string                     `json:"freeze_mode"`
-	SkewMode      string                     `json:"skew_mode"`
-	Inputs        map[string]string          `json:"input_sha256"`
-	Criteria      []criterion                `json:"criteria"`
-	Specification specification              `json:"qualification"`
-	Workflows     map[string]map[string]job  `json:"workflow_graphs"`
-	Plans         map[string]json.RawMessage `json:"shard_plans,omitempty"`
+	Schema        string                    `json:"schema"`
+	Phase         string                    `json:"phase"`
+	Verdict       string                    `json:"release_verdict"`
+	Commit        string                    `json:"commit"`
+	Tree          string                    `json:"committed_tree"`
+	Dirty         bool                      `json:"working_tree_dirty"`
+	APIRevision   int                       `json:"source_api_revision"`
+	FullDomains   []string                  `json:"full_domains"`
+	Migrations    map[string]migration      `json:"source_migrations_not_runtime"`
+	FreezeRef     string                    `json:"local_freeze_ref"`
+	FreezeCommit  string                    `json:"local_freeze_commit"`
+	FreezeMode    string                    `json:"freeze_mode"`
+	SkewMode      string                    `json:"skew_mode"`
+	Inputs        map[string]string         `json:"input_sha256"`
+	Criteria      []criterion               `json:"criteria"`
+	Specification specification             `json:"qualification"`
+	Workflows     map[string]map[string]job `json:"workflow_graphs"`
+	Plans         map[string]jsontext.Value `json:"shard_plans,omitempty"`
 }
 
 func main() {
@@ -159,9 +162,7 @@ func run(args []string, out io.Writer) error {
 			return err
 		}
 	}
-	encoder := json.NewEncoder(out)
-	encoder.SetIndent("", "  ")
-	return encoder.Encode(i)
+	return json.MarshalEncode(jsontext.NewEncoder(out, jsonwire.Stable, jsontext.WithIndent("  ")), i)
 }
 
 func git(root string, args ...string) (string, error) {
@@ -227,9 +228,7 @@ func prepare(root string) (*inventory, error) {
 	if err != nil {
 		return nil, err
 	}
-	d := json.NewDecoder(strings.NewReader(string(raw)))
-	d.DisallowUnknownFields()
-	if err := d.Decode(&i.Specification); err != nil {
+	if err := json.Unmarshal(raw, &i.Specification, json.RejectUnknownMembers(true)); err != nil {
 		return nil, err
 	}
 	workflowPaths := []string{".github/workflows/ci-main.yml", ".github/workflows/ci.yml", ".github/workflows/reliability.yml", ".github/workflows/release-acceptance.yml", ".github/workflows/ops-floor.yml", ".github/workflows/floor-bench.yml"}
@@ -273,7 +272,7 @@ func prepare(root string) (*inventory, error) {
 		return nil, err
 	}
 	var registry struct {
-		Jobs        map[string]json.RawMessage `json:"jobs"`
+		Jobs        map[string]jsontext.Value `json:"jobs"`
 		PathClasses struct {
 			Full []string `json:"full"`
 		} `json:"path_classes"`
@@ -380,7 +379,7 @@ func nodeYAML(n yaml.Node) string {
 	return strings.TrimSpace(string(raw))
 }
 
-func checkRegistry(registry map[string]json.RawMessage, graph map[string]job) error {
+func checkRegistry(registry map[string]jsontext.Value, graph map[string]job) error {
 	if len(graph) == 0 || len(graph) != len(registry) {
 		return errors.New("full workflow/registry job inventory differs")
 	}

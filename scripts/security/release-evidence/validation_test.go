@@ -4,7 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/scripts/ci"
@@ -69,7 +70,7 @@ func TestMandatoryArtifactInventoryFailsClosed(t *testing.T) {
 func TestBrowserReceiptRequiresExactBinaryAndMandatoryControls(t *testing.T) {
 	digest, source := strings.Repeat("a", 64), strings.Repeat("b", 40)
 	valid := map[string]any{"schema_version": 1, "profile": "hikyo-browser-security-v1", "status": "passed", "artifact_kind": "provided-binary", "binary_sha256": digest, "source_sha": source, "datastore": "sqlite", "authentication": "native-password-totp", "fixture_configuration": passingBrowserConfiguration(), "elapsed_ms": 100, "required_tests": []string{"stored-content", "hostile-origin", "oracle-negative-controls"}, "tests": []map[string]any{{"id": "stored-content", "status": "passed", "duration_ms": 1}, {"id": "hostile-origin", "status": "passed", "duration_ms": 1}, {"id": "oracle-negative-controls", "status": "passed", "duration_ms": 1}}}
-	raw, _ := json.Marshal(valid)
+	raw, _ := json.Marshal(valid, jsonwire.Stable)
 	if err := validateBrowser(raw, digest, source); err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +81,7 @@ func TestBrowserReceiptRequiresExactBinaryAndMandatoryControls(t *testing.T) {
 				copy[k] = v
 			}
 			delete(copy, key)
-			raw, _ := json.Marshal(copy)
+			raw, _ := json.Marshal(copy, jsonwire.Stable)
 			if validateBrowser(raw, digest, source) == nil {
 				t.Fatal("incomplete browser evidence accepted")
 			}
@@ -313,7 +314,7 @@ func TestBrowserFixtureConfigurationCannotInheritWeakenedControls(t *testing.T) 
 					}
 				}
 				report := map[string]any{"schema_version": 1, "profile": "hikyo-browser-security-v1", "status": "passed", "artifact_kind": "provided-binary", "binary_sha256": digest, "source_sha": source, "datastore": "sqlite", "authentication": "native-password-totp", "fixture_configuration": config, "elapsed_ms": 100, "required_tests": []string{"stored-content", "hostile-origin", "oracle-negative-controls"}, "tests": []map[string]any{{"id": "stored-content", "status": "passed", "duration_ms": 1}, {"id": "hostile-origin", "status": "passed", "duration_ms": 1}, {"id": "oracle-negative-controls", "status": "passed", "duration_ms": 1}}}
-				raw, err := json.Marshal(report)
+				raw, err := json.Marshal(report, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}

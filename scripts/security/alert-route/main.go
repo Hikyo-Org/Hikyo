@@ -2,7 +2,8 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -13,10 +14,12 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func mustJSON(v interface{}) string {
-	b, err := json.Marshal(v)
+	b, err := json.Marshal(v, jsonwire.Stable)
 	if err != nil {
 		panic("cannot encode alert contract")
 	}
@@ -26,7 +29,7 @@ func mustJSON(v interface{}) string {
 // Replace is durable before returning. A single scheduler owns the directory;
 // the exclusive lock refuses concurrent runs rather than racing outbox writes.
 func save(path string, st state) error {
-	b, err := json.Marshal(st)
+	b, err := json.Marshal(st, jsonwire.Stable)
 	if err != nil {
 		return errors.New("cannot encode state")
 	}
@@ -236,7 +239,7 @@ func run(args []string, out io.Writer) error {
 			if err := save(path, st); err != nil {
 				return err
 			}
-			return json.NewEncoder(out).Encode(map[string]string{"mode": "enrolled-no-delivery", "configuration": st.Config})
+			return json.MarshalEncode(jsontext.NewEncoder(out, jsonwire.Stable), map[string]string{"mode": "enrolled-no-delivery", "configuration": st.Config})
 		}
 		b, err := readBounded(path)
 		if err != nil {
@@ -278,7 +281,7 @@ func run(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if err := json.NewEncoder(out).Encode(r); err != nil {
+	if err := json.MarshalEncode(jsontext.NewEncoder(out, jsonwire.Stable), r); err != nil {
 		return err
 	}
 	if len(health) > 0 || len(r.Escalate) > 0 {

@@ -3,7 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
@@ -108,7 +110,7 @@ func runPublicProfile(t *testing.T, loseReplacement bool, evidence io.Writer) er
 			http.Error(w, "unknown method", http.StatusNotFound)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "result": modernResult(result, method != "tools/call")})
+		_ = json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), map[string]any{"jsonrpc": "2.0", "id": 1, "result": modernResult(result, method != "tools/call")})
 	}))
 	t.Cleanup(server.Close)
 	t.Setenv("TEST_MCP_LIVE", "live-runtime-token")
@@ -167,7 +169,7 @@ func TestRunRefusesToolErrorAsAuthenticationDenial(t *testing.T) {
 			http.Error(w, "unknown method", http.StatusNotFound)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "result": modernResult(result, method != "tools/call")})
+		_ = json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), map[string]any{"jsonrpc": "2.0", "id": 1, "result": modernResult(result, method != "tools/call")})
 	}))
 	t.Cleanup(server.Close)
 	t.Setenv("TEST_MCP_LIVE", "live-runtime-token")
@@ -203,7 +205,7 @@ func TestRunRefusesRedirectBeforeBearerCanReachDowngradedTarget(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if r.Header.Get("Mcp-Method") == "server/discover" {
-			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "result": modernResult(map[string]any{
+			_ = json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), map[string]any{"jsonrpc": "2.0", "id": 1, "result": modernResult(map[string]any{
 				"supportedVersions": []string{mcpserver.ProtocolVersion}, "capabilities": map[string]any{"tools": map[string]any{}},
 			}, true)})
 			return
@@ -212,7 +214,7 @@ func TestRunRefusesRedirectBeforeBearerCanReachDowngradedTarget(t *testing.T) {
 		for _, name := range mcpserver.ProductionToolNames() {
 			tools = append(tools, map[string]string{"name": name})
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "result": modernResult(map[string]any{"tools": tools}, true)})
+		_ = json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), map[string]any{"jsonrpc": "2.0", "id": 1, "result": modernResult(map[string]any{"tools": tools}, true)})
 	}))
 	t.Cleanup(source.Close)
 	t.Setenv("TEST_MCP_LIVE", "live-runtime-token")
@@ -246,7 +248,7 @@ func TestDecodeRPCResponseRejectsNonCanonicalEnvelopes(t *testing.T) {
 }
 
 func TestSuccessfulToolResultRequiresTypedExactShape(t *testing.T) {
-	valid, err := json.Marshal(modernResult(successfulDefinitionsResult(), false))
+	valid, err := json.Marshal(modernResult(successfulDefinitionsResult(), false), jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,14 +302,14 @@ func TestValidateCatalogRequiresExactProductionSet(t *testing.T) {
 	for _, name := range mcpserver.AllToolNames() {
 		withWrite = append(withWrite, map[string]string{"name": name})
 	}
-	withWriteTools, err := json.Marshal(map[string]any{"tools": withWrite})
+	withWriteTools, err := json.Marshal(map[string]any{"tools": withWrite}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := validateCatalog(modernJSON(t, string(withWriteTools), true)); err != nil {
 		t.Fatalf("read plus write catalog refused: %v", err)
 	}
-	partialWriteTools, err := json.Marshal(map[string]any{"tools": withWrite[:len(withWrite)-1]})
+	partialWriteTools, err := json.Marshal(map[string]any{"tools": withWrite[:len(withWrite)-1]}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,14 +322,14 @@ func TestValidateCatalogRequiresExactProductionSet(t *testing.T) {
 		tools = append(tools, map[string]string{"name": name})
 	}
 	tools = append(tools, map[string]string{"name": "hikyo_unapproved"})
-	result, err := json.Marshal(map[string]any{"tools": tools})
+	result, err := json.Marshal(map[string]any{"tools": tools}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if validateCatalog(modernJSON(t, string(result), true)) == nil {
 		t.Fatal("widened catalog accepted")
 	}
-	result, err = json.Marshal(map[string]any{"tools": tools[:len(tools)-1], "tenant": "fact"})
+	result, err = json.Marshal(map[string]any{"tools": tools[:len(tools)-1], "tenant": "fact"}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,13 +359,13 @@ func modernResult(fields map[string]any, cacheable bool) map[string]any {
 	}
 	return fields
 }
-func modernJSON(t *testing.T, raw string, cacheable bool) json.RawMessage {
+func modernJSON(t *testing.T, raw string, cacheable bool) jsontext.Value {
 	t.Helper()
 	var fields map[string]any
 	if err := json.Unmarshal([]byte(raw), &fields); err != nil {
 		t.Fatal(err)
 	}
-	b, err := json.Marshal(modernResult(fields, cacheable))
+	b, err := json.Marshal(modernResult(fields, cacheable), jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -417,21 +419,21 @@ func (c unexpectedCursorUse) Open(context.Context, string) ([]byte, error) {
 
 func TestModernPublicEnvelopeRejectsExtraFacts(t *testing.T) {
 	base := modernJSON(t, `{"supportedVersions":["2026-07-28"],"capabilities":{"tools":{}}}`, true)
-	for _, mutate := range []func(map[string]json.RawMessage){
-		func(f map[string]json.RawMessage) { f["_meta"] = json.RawMessage(`{"tenant":"fact"}`) },
-		func(f map[string]json.RawMessage) {
-			f["_meta"] = json.RawMessage(`{"io.modelcontextprotocol/serverInfo":{"name":"hikyo","title":"Hikyo","description":"Read-only Hikyo configuration tools.","version":"test","tenant":"fact"}}`)
+	for _, mutate := range []func(map[string]jsontext.Value){
+		func(f map[string]jsontext.Value) { f["_meta"] = jsontext.Value(`{"tenant":"fact"}`) },
+		func(f map[string]jsontext.Value) {
+			f["_meta"] = jsontext.Value(`{"io.modelcontextprotocol/serverInfo":{"name":"hikyo","title":"Hikyo","description":"Read-only Hikyo configuration tools.","version":"test","tenant":"fact"}}`)
 		},
-		func(f map[string]json.RawMessage) { f["resultType"] = json.RawMessage(`"incomplete"`) },
-		func(f map[string]json.RawMessage) { f["ttlMs"] = json.RawMessage(`-1`) },
-		func(f map[string]json.RawMessage) { f["cacheScope"] = json.RawMessage(`"private"`) },
+		func(f map[string]jsontext.Value) { f["resultType"] = jsontext.Value(`"incomplete"`) },
+		func(f map[string]jsontext.Value) { f["ttlMs"] = jsontext.Value(`-1`) },
+		func(f map[string]jsontext.Value) { f["cacheScope"] = jsontext.Value(`"private"`) },
 	} {
-		var fields map[string]json.RawMessage
+		var fields map[string]jsontext.Value
 		if err := json.Unmarshal(base, &fields); err != nil {
 			t.Fatal(err)
 		}
 		mutate(fields)
-		body, err := json.Marshal(fields)
+		body, err := json.Marshal(fields, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -449,7 +451,7 @@ func TestDuplicateMembersCannotHideTenantFacts(t *testing.T) {
 		`{"_meta":{"io.modelcontextprotocol/serverInfo":{"tenant":"fact"},"io.modelcontextprotocol/serverInfo":{"name":"hikyo","title":"Hikyo","description":"Read-only Hikyo configuration tools.","version":"test"}},"resultType":"complete","ttlMs":0,"cacheScope":"public","supportedVersions":["2026-07-28"],"capabilities":{"tools":{}}}`,
 		`{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"hikyo","title":"Hikyo","description":"tenant fact","description":"Read-only Hikyo configuration tools.","version":"test"}},"resultType":"complete","ttlMs":0,"cacheScope":"public","supportedVersions":["2026-07-28"],"capabilities":{"tools":{}}}`,
 	} {
-		if validateDiscovery(json.RawMessage(raw)) == nil {
+		if validateDiscovery(jsontext.Value(raw)) == nil {
 			t.Fatal("discovery accepted duplicate members hiding tenant facts")
 		}
 		if _, err := decodeRPCResponse([]byte(`{"jsonrpc":"2.0","id":1,"result":` + raw + `}`)); err == nil {

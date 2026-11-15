@@ -6,7 +6,8 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,6 +17,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 const proofSchema = "hikyo.dev/source-validation/v1"
@@ -88,7 +91,7 @@ func execute(ctx context.Context, args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(verified, "", "  ")
+	data, err := json.Marshal(verified, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}
@@ -147,63 +150,57 @@ func decode(data []byte, target any) error {
 	if err := uniqueMembers(data); err != nil {
 		return err
 	}
-	d := json.NewDecoder(bytes.NewReader(data))
-	if err := d.Decode(target); err != nil {
+	d := jsontext.NewDecoder(bytes.NewReader(data))
+	if err := json.UnmarshalDecode(d, target); err != nil {
 		return err
 	}
-	var extra any
-	if err := d.Decode(&extra); !errors.Is(err, io.EOF) {
+	if _, err := d.ReadValue(); !errors.Is(err, io.EOF) {
 		return errors.New("GitHub response contains trailing data")
 	}
 	return nil
 }
 
 func uniqueMembers(data []byte) error {
-	d := json.NewDecoder(bytes.NewReader(data))
-	d.UseNumber()
+	// The scanner reports duplicates itself, so the tokenizer must not stop first.
+	d := jsontext.NewDecoder(bytes.NewReader(data), jsontext.AllowDuplicateNames(true))
 	var value func() error
 	value = func() error {
-		token, err := d.Token()
+		token, err := d.ReadToken()
 		if err != nil {
 			return err
 		}
-		delim, ok := token.(json.Delim)
-		if !ok {
-			return nil
-		}
-		switch delim {
+		switch token.Kind() {
 		case '{':
 			seen := map[string]bool{}
-			for d.More() {
-				name, err := d.Token()
+			for d.PeekKind() != '}' {
+				name, err := d.ReadToken()
 				if err != nil {
 					return err
 				}
-				key, ok := name.(string)
-				if !ok || seen[key] {
+				if name.Kind() != '"' || seen[name.String()] {
 					return errors.New("duplicate or invalid JSON member")
 				}
-				seen[key] = true
+				seen[name.String()] = true
 				if err := value(); err != nil {
 					return err
 				}
 			}
 		case '[':
-			for d.More() {
+			for d.PeekKind() != ']' {
 				if err := value(); err != nil {
 					return err
 				}
 			}
 		default:
-			return errors.New("invalid JSON delimiter")
+			return nil
 		}
-		_, err = d.Token()
+		_, err = d.ReadToken()
 		return err
 	}
 	if err := value(); err != nil {
 		return err
 	}
-	if _, err := d.Token(); !errors.Is(err, io.EOF) {
+	if _, err := d.ReadToken(); !errors.Is(err, io.EOF) {
 		return errors.New("GitHub response contains multiple JSON documents")
 	}
 	return nil

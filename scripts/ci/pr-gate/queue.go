@@ -4,7 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/url"
@@ -62,8 +63,8 @@ type queueController struct {
 	admissions map[int]*admissionTrace
 }
 type rule struct {
-	Type       string          `json:"type"`
-	Parameters json.RawMessage `json:"parameters"`
+	Type       string         `json:"type"`
+	Parameters jsontext.Value `json:"parameters"`
 }
 type queueParameters struct {
 	Build    int    `json:"max_entries_to_build"`
@@ -90,11 +91,11 @@ func (q *queueController) policy(ctx context.Context) (liveQueuePolicy, error) {
 		return q.devPolicy(ctx)
 	}
 	var owner struct {
-		ID          int               `json:"id"`
-		Target      string            `json:"target"`
-		Enforcement string            `json:"enforcement"`
-		UpdatedAt   string            `json:"updated_at"`
-		Bypass      []json.RawMessage `json:"bypass_actors"`
+		ID          int              `json:"id"`
+		Target      string           `json:"target"`
+		Enforcement string           `json:"enforcement"`
+		UpdatedAt   string           `json:"updated_at"`
+		Bypass      []jsontext.Value `json:"bypass_actors"`
 		Conditions  struct {
 			Ref struct {
 				Include []string `json:"include"`
@@ -186,7 +187,7 @@ func (q *queueController) policy(ctx context.Context) (liveQueuePolicy, error) {
 	encoded, err := json.Marshal(struct {
 		Owner     any
 		Effective []rule
-	}{owner, effective})
+	}{owner, effective}, stableJSON)
 	if err != nil {
 		return liveQueuePolicy{}, err
 	}
@@ -853,7 +854,7 @@ type queueData struct {
 	} `json:"entries"`
 }
 
-func graphQLDiagnostic(raw []json.RawMessage) error {
+func graphQLDiagnostic(raw []jsontext.Value) error {
 	var first struct {
 		Message    string `json:"message"`
 		Type       string `json:"type"`
@@ -889,7 +890,7 @@ func graphQLDiagnostic(raw []json.RawMessage) error {
 		}
 	}
 	if validPath && first.Path != nil {
-		encoded, _ := json.Marshal(first.Path)
+		encoded, _ := json.Marshal(first.Path, stableJSON)
 		path = string(encoded)
 	} else if !validPath {
 		path = "<invalid>"
@@ -914,7 +915,7 @@ func (q *queueController) readQueueSnapshot(ctx context.Context) (*queueData, er
 		}
 		query := fmt.Sprintf(`query{repository(owner:%q,name:%q){mergeQueue(branch:%q){id entries(%s){nodes{id position state headCommit{oid} baseCommit{oid} pullRequest{number headRefOid baseRefName}} pageInfo{hasNextPage endCursor}}}}}`, parts[0], parts[1], q.repo.DefaultBranch, args)
 		var response struct {
-			Errors []json.RawMessage `json:"errors"`
+			Errors []jsontext.Value `json:"errors"`
 			Data   struct {
 				Repo struct {
 					Queue *queueData `json:"mergeQueue"`
@@ -1022,7 +1023,7 @@ func (q *queueController) snapshotQueue(live *queueData, head string) (queueSnap
 	encoded, err := json.Marshal(struct {
 		ID      string
 		Entries []queueEntry
-	}{snap.ID, snap.Entries})
+	}{snap.ID, snap.Entries}, stableJSON)
 	if err != nil {
 		return snap, err
 	}

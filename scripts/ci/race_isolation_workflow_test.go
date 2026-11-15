@@ -1,7 +1,7 @@
 package ci_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"go/ast"
 	"go/parser"

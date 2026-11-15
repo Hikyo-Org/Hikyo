@@ -4,7 +4,8 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"slices"
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Masterminds/semver/v3"
@@ -310,7 +312,7 @@ func prepare(t publicTrust, directory string) error {
 }
 
 func marshal(value any) ([]byte, error) {
-	raw, err := json.MarshalIndent(value, "", "  ")
+	raw, err := json.Marshal(value, jsonwire.Stable, jsontext.WithIndent("  "))
 	return append(raw, '\n'), err
 }
 
@@ -331,7 +333,7 @@ func writeCandidate(path string, candidate releasetrust.Candidate) error {
 		Sequence  int64  `json:"sequence"`
 		Version   string `json:"version"`
 	}{candidate.Commit, candidate.KeyID, candidate.PublicKey, candidate.Sequence, candidate.Version}
-	raw, err := json.Marshal(ordered)
+	raw, err := json.Marshal(ordered, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

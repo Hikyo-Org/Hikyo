@@ -18,7 +18,8 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -36,6 +37,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securitydeployment"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -119,7 +121,7 @@ func report(observed securitydeployment.Observation, err error) error {
 	if err != nil {
 		return err
 	}
-	return json.NewEncoder(os.Stdout).Encode(observed)
+	return json.MarshalEncode(jsontext.NewEncoder(os.Stdout, jsonwire.Stable), observed)
 }
 
 // fixtureTarget is the bypass: the coordinator's driver would derive this from a
@@ -283,7 +285,7 @@ func serveGitHub(fixture, authority, listen string, extra []string) error {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			_ = json.NewEncoder(w).Encode(release)
+			_ = json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), release)
 		case host == "api.github.com" && r.URL.Path == "/repos/Hikyo-Org/Hikyo/releases":
 			var releases []any
 			for tag, directory := range directories {
@@ -294,7 +296,7 @@ func serveGitHub(fixture, authority, listen string, extra []string) error {
 				}
 				releases = append(releases, release)
 			}
-			_ = json.NewEncoder(w).Encode(releases)
+			_ = json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), releases)
 		case host == "github.com" && strings.HasPrefix(r.URL.Path, "/Hikyo-Org/Hikyo/releases/download/"):
 			parts := strings.Split(r.URL.Path, "/")
 			file, ok := releaseAsset(directories[parts[len(parts)-2]], parts[len(parts)-1])

@@ -7,7 +7,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
 	"github.com/jackc/pgx/v5"
 )
@@ -185,7 +187,7 @@ func publicCampaign(ctx context.Context, dir string) (result error) {
 		return err
 	}
 	for i, pod := range pods {
-		raw, _ := json.Marshal(pod)
+		raw, _ := json.Marshal(pod, jsonwire.Stable)
 		hash := sha256.Sum256(raw)
 		r.Identities[fmt.Sprintf("process_%d_observation_sha256", i)] = fmt.Sprintf("%x", hash)
 	}
@@ -308,7 +310,7 @@ func observeReadOnly(ctx context.Context, cfg settings) error {
 			return errors.New("store context observation failed")
 		}
 	}
-	return json.NewEncoder(os.Stdout).Encode(c)
+	return json.MarshalEncode(jsontext.NewEncoder(os.Stdout, jsonwire.Stable), c)
 }
 
 func holdFixtureCatalogue(ctx context.Context, cfg settings) error {
@@ -499,7 +501,7 @@ func (p *probe) publicLifecycle(ctx context.Context, c publicControl, pods []obs
 		return errors.New("operational listener positive controls failed")
 	}
 	deletion := c.kubectl(drainCtx, "delete", "--raw", "/api/v1/namespaces/hikyo-mcp-651/pods/"+current.Metadata.Name, "-f", "-")
-	preconditions, _ := json.Marshal(map[string]any{"apiVersion": "v1", "kind": "DeleteOptions", "preconditions": map[string]string{"uid": current.Metadata.UID}})
+	preconditions, _ := json.Marshal(map[string]any{"apiVersion": "v1", "kind": "DeleteOptions", "preconditions": map[string]string{"uid": current.Metadata.UID}}, jsonwire.Stable)
 	deletion.Stdin = bytes.NewReader(preconditions)
 	if _, err := deletion.Output(); err != nil {
 		return errors.New("fixture SIGTERM deletion refused")
