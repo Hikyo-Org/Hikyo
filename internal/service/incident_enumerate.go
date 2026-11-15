@@ -8,6 +8,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
 // Incident enumeration (incident-containment ADR, "Enumerating unresolved
@@ -736,21 +737,106 @@ func (s *Incidents) readAdapters(ctx context.Context, actor Actor, c *collector,
 			c.add(domain.OwnerAdapterTargetPause, domain.ObjectKindAdapterTarget, t.ID, r.scope, r.configure)
 		}
 		// The adapter list shows an adapter mid route-move, so that move is a ledger
-		// item. Target-level moves and scrub jobs are not observable: the target
-		// reader lists active targets only, tombstoned adapters are hidden, and no
-		// existing reader lists non-terminal moves or scrub work (the move counter
-		// is private to teardown). Until the S4 reader exists, each adapter carries
-		// one open unknown row for that unread source, so an adapter or project
-		// incident never closes clean while it is unread.
+		// item. Target-level moves and scrub jobs are read below, once for the whole
+		// source.
 		if v.Adapter.State == adapterStateMoving {
 			c.add(domain.OwnerAdapterMove, domain.ObjectKindAdapter, id, r.scope, r.configure)
 		}
-		c.truncated(domain.OwnerAdapterMove, id, r.scope)
 	}
 	if r.verify && !found {
 		return domain.ErrNotFound
 	}
+	return s.readAdapterWork(ctx, actor, c, r)
+}
+
+// readAdapterWork lists the non-terminal route moves and the queued or running
+// scrub jobs of the source's project (one adapter's, for an adapter incident)
+// through the bounded store listings, each as a pending item its owner resumes
+// or completes. The read runs under the adapter inspect formula, which the
+// probe already proved the caller holds; a refusal now (the capability moved)
+// records the source as blocked. Rows beyond the bound leave one open
+// enumeration_truncated row, so an incident never closes clean over work it did
+// not list.
+func (s *Incidents) readAdapterWork(ctx context.Context, actor Actor, c *collector, r tenantRead) error {
+	var moves []store.AdapterMoveRef
+	var scrubs []store.AdapterScrubRef
+	var movesCut, scrubsCut bool
+	now := s.now()
+	err := tx.Write(ctx, s.DB, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
+		caller, err := actor.resolve(ctx, az, now)
+		if err != nil {
+			return err
+		}
+		az.SetClock(now)
+		proof, err := az.Authorize(ctx, caller, authz.OpIncidentAdapterWork, r.scope)
+		if err != nil {
+			return err
+		}
+		moves, movesCut, err = pageBounded(maxSourceItems, func(m store.AdapterMoveRef) string { return m.ID },
+			func(after string) ([]store.AdapterMoveRef, error) {
+				return repos.Adapters().ListOpenMoves(ctx, proof, r.adapterID, after, authz.MaxIncidentPage)
+			})
+		if err != nil {
+			return err
+		}
+		scrubs, scrubsCut, err = pageBounded(maxSourceItems, func(j store.AdapterScrubRef) string { return j.ID },
+			func(after string) ([]store.AdapterScrubRef, error) {
+				return repos.Adapters().ListPendingScrubs(ctx, proof, r.adapterID, after, authz.MaxIncidentPage)
+			})
+		return err
+	})
+	if refusedRead(err) {
+		if r.verify {
+			c.blockedSource(domain.OwnerAdapterMove, domain.ObjectKindAdapter, r.adapterID, r.scope)
+		} else {
+			c.blockedSource(domain.OwnerAdapterMove, domain.ObjectKindProject, string(r.scope.Project), r.scope)
+		}
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, m := range moves {
+		c.add(domain.OwnerAdapterMove, domain.ObjectKindAdapterMove, m.ID, r.scope, r.configure)
+	}
+	for _, j := range scrubs {
+		c.add(domain.OwnerAdapterScrub, domain.ObjectKindAdapterScrub, j.ID, r.scope, r.configure)
+	}
+	marker := string(r.scope.Project)
+	if r.adapterID != "" {
+		marker = r.adapterID
+	}
+	if movesCut {
+		c.truncated(domain.OwnerAdapterMove, marker, r.scope)
+	}
+	if scrubsCut {
+		c.truncated(domain.OwnerAdapterScrub, marker, r.scope)
+	}
 	return nil
+}
+
+// pageBounded reads pages of at most authz.MaxIncidentPage rows until the
+// source ends or holds more than limit rows. It returns the first limit rows
+// and whether any were left out.
+func pageBounded[T any](limit int, id func(T) string, next func(after string) ([]T, error)) ([]T, bool, error) {
+	var out []T
+	after := ""
+	for {
+		rows, err := next(after)
+		if err != nil {
+			return nil, false, err
+		}
+		for _, row := range rows {
+			if len(out) >= limit {
+				return out, true, nil
+			}
+			out = append(out, row)
+		}
+		if len(rows) < authz.MaxIncidentPage {
+			return out, false, nil
+		}
+		after = id(rows[len(rows)-1])
+	}
 }
 
 func (s *Incidents) readDynamic(ctx context.Context, actor Actor, c *collector, r tenantRead) error {

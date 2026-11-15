@@ -202,7 +202,7 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpCredentialReset, authz.OpCredentialResetInstance,
 		// incident ledger (#1039): one incident row and a bounded page of items
 		// per call; the lease listings are bounded pages
-		authz.OpIncidentOrg, authz.OpIncidentInstance, authz.OpIncidentLeasesProject, authz.OpIncidentLeasesInstance,
+		authz.OpIncidentOrg, authz.OpIncidentInstance, authz.OpIncidentLeasesProject, authz.OpIncidentLeasesInstance, authz.OpIncidentAdapterWork,
 		authz.OpCredentialPolicyRead, authz.OpCredentialPolicyUpdate,
 		authz.OpBindingCreate,
 		// Bounded developer delegation: authenticated API budget governs lifecycle

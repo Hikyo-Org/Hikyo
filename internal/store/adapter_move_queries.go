@@ -55,6 +55,8 @@ type adapterMoveQueries interface {
 	aWSPendingNames(ctx context.Context, chainOrg domain.OrgID, chainProject domain.ProjectID, origin string, targetDestinationOwner string, targetID string) ([]adapterMoveAWSPendingNamesRow, error)
 	insertAWSClaim(ctx context.Context, moveID string, chainOrg domain.OrgID, chainProject domain.ProjectID, targetEnvironmentID string, targetID string, keyID string, origin string, targetDestinationKind string, targetDestinationOwner string, targetDestinationName string, targetDestinationEnvironment string, surface string, claimEffectiveName string, normalizedName string) (int64, error)
 	flags(ctx context.Context, chainOrg domain.OrgID, chainProject domain.ProjectID, targetAdapterID string, targetID string) (adapterMoveFlagsRow, error)
+	listOpen(ctx context.Context, chainOrg domain.OrgID, chainProject domain.ProjectID, adapterID, afterID string, limit int) ([]AdapterMoveRef, error)
+	listPendingScrubs(ctx context.Context, chainOrg domain.OrgID, chainProject domain.ProjectID, adapterID, afterID string, limit int) ([]AdapterScrubRef, error)
 }
 
 type sqliteAdapterMoveQueries struct {
@@ -643,4 +645,50 @@ func (q pgAdapterMoveQueries) flags(ctx context.Context, chainOrg domain.OrgID, 
 		return adapterMoveFlagsRow{}, err
 	}
 	return adapterMoveFlagsRow{Provider: row.Provider, Protected: row.VariableProtected, Hidden: row.VariableHidden, Expand: row.VariableExpand}, nil
+}
+
+func (q sqliteAdapterMoveQueries) listOpen(ctx context.Context, chainOrg domain.OrgID, chainProject domain.ProjectID, adapterID, afterID string, limit int) ([]AdapterMoveRef, error) {
+	rows, err := q.queries.AdapterMoveListOpen(ctx, sqlitegen.AdapterMoveListOpenParams{ChainOrg: string(chainOrg), ChainProject: string(chainProject), AdapterID: adapterID, AfterID: afterID, RowLimit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(row sqlitegen.AdapterMoveListOpenRow) (AdapterMoveRef, error) {
+		return AdapterMoveRef(row), nil
+	})
+}
+
+func (q pgAdapterMoveQueries) listOpen(ctx context.Context, chainOrg domain.OrgID, chainProject domain.ProjectID, adapterID, afterID string, limit int) ([]AdapterMoveRef, error) {
+	if limit < 1 || limit > domain.MaxIncidentPage {
+		return nil, domain.ErrInvalid
+	}
+	rows, err := q.queries.AdapterMoveListOpen(ctx, pggen.AdapterMoveListOpenParams{ChainOrg: string(chainOrg), ChainProject: string(chainProject), AdapterID: adapterID, AfterID: afterID, RowLimit: int32(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(row pggen.AdapterMoveListOpenRow) (AdapterMoveRef, error) {
+		return AdapterMoveRef(row), nil
+	})
+}
+
+func (q sqliteAdapterMoveQueries) listPendingScrubs(ctx context.Context, chainOrg domain.OrgID, chainProject domain.ProjectID, adapterID, afterID string, limit int) ([]AdapterScrubRef, error) {
+	rows, err := q.queries.AdapterMoveListPendingScrubs(ctx, sqlitegen.AdapterMoveListPendingScrubsParams{ChainOrg: string(chainOrg), ChainProject: string(chainProject), AdapterID: adapterID, AfterID: afterID, RowLimit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(row sqlitegen.AdapterMoveListPendingScrubsRow) (AdapterScrubRef, error) {
+		return AdapterScrubRef(row), nil
+	})
+}
+
+func (q pgAdapterMoveQueries) listPendingScrubs(ctx context.Context, chainOrg domain.OrgID, chainProject domain.ProjectID, adapterID, afterID string, limit int) ([]AdapterScrubRef, error) {
+	if limit < 1 || limit > domain.MaxIncidentPage {
+		return nil, domain.ErrInvalid
+	}
+	rows, err := q.queries.AdapterMoveListPendingScrubs(ctx, pggen.AdapterMoveListPendingScrubsParams{ChainOrg: string(chainOrg), ChainProject: string(chainProject), AdapterID: adapterID, AfterID: afterID, RowLimit: int32(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(row pggen.AdapterMoveListPendingScrubsRow) (AdapterScrubRef, error) {
+		return AdapterScrubRef(row), nil
+	})
 }

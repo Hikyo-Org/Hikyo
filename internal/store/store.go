@@ -916,6 +916,17 @@ type AdapterMoveTarget struct {
 	Jobs                                                                                                                                          []AdapterMoveJob
 }
 
+// AdapterMoveRef is the identifiers-and-state view of one non-terminal route
+// move that the incident enumeration lists. It carries no destination or secret.
+type AdapterMoveRef struct {
+	ID, AdapterID, Kind, State string
+}
+
+// AdapterScrubRef is the same view of one queued or running scrub job.
+type AdapterScrubRef struct {
+	ID, AdapterID, TargetID, RouteMoveID, State string
+}
+
 type AdapterMove struct {
 	ID, AdapterID, Kind, State, PendingOrigin, CreatedAt string
 	KeepRemote                                           bool
@@ -957,6 +968,12 @@ type AdapterReader interface {
 	Environments(ctx context.Context, p authz.Proof, adapterID string) ([]string, error)
 	Conflicts(ctx context.Context, p authz.Proof, targetID string) ([]AdapterConflictArtifact, error)
 	Move(ctx context.Context, p authz.Proof, moveID string) (AdapterMove, error)
+	// ListOpenMoves and ListPendingScrubs page one project's non-terminal route
+	// moves and queued or running scrub jobs in id order, for the incident
+	// enumeration; a non-empty adapterID narrows the page to that adapter and the
+	// limit is at most domain.MaxIncidentPage.
+	ListOpenMoves(ctx context.Context, p authz.Proof, adapterID, afterID string, limit int) ([]AdapterMoveRef, error)
+	ListPendingScrubs(ctx context.Context, p authz.Proof, adapterID, afterID string, limit int) ([]AdapterScrubRef, error)
 }
 
 type AdapterPlanMaterial struct {

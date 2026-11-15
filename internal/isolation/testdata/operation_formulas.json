@@ -985,6 +985,14 @@
     ]
   },
   {
+    "operation": "incident.adapter-work",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-adapters@project"
+    ]
+  },
+  {
     "operation": "incident.instance",
     "class": "instance",
     "level": "instance",

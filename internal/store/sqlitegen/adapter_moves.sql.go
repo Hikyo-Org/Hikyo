@@ -989,6 +989,120 @@ func (q *Queries) AdapterMoveJobs(ctx context.Context, arg AdapterMoveJobsParams
 	return items, nil
 }
 
+const adapterMoveListOpen = `-- name: AdapterMoveListOpen :many
+SELECT m.id AS id,m.adapter_id AS adapter_id,m.kind AS kind,m.state AS state FROM adapter_route_moves AS m WHERE m.org_id=?1 AND m.project_id=?2 AND m.state NOT IN ('completed','canceled') AND (CAST(?3 AS TEXT)='' OR m.adapter_id=?3) AND m.id>?4 ORDER BY m.id LIMIT ?5
+`
+
+type AdapterMoveListOpenParams struct {
+	ChainOrg     string
+	ChainProject string
+	AdapterID    string
+	AfterID      string
+	RowLimit     int64
+}
+
+type AdapterMoveListOpenRow struct {
+	ID        string
+	AdapterID string
+	Kind      string
+	State     string
+}
+
+// Incident enumeration: the non-terminal route moves of one project, optionally
+// narrowed to one adapter, in id order and bounded by the limit. Only
+// identifiers and states are selected.
+func (q *Queries) AdapterMoveListOpen(ctx context.Context, arg AdapterMoveListOpenParams) ([]AdapterMoveListOpenRow, error) {
+	rows, err := q.db.QueryContext(ctx, adapterMoveListOpen,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.AdapterID,
+		arg.AfterID,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AdapterMoveListOpenRow
+	for rows.Next() {
+		var i AdapterMoveListOpenRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AdapterID,
+			&i.Kind,
+			&i.State,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const adapterMoveListPendingScrubs = `-- name: AdapterMoveListPendingScrubs :many
+SELECT j.id AS id,t.adapter_id AS adapter_id,j.target_id AS target_id,CAST(COALESCE(j.route_move_id,'') AS TEXT) AS route_move_id,j.state AS state FROM adapter_outbox AS j JOIN adapter_targets AS t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id WHERE j.org_id=?1 AND j.project_id=?2 AND j.kind='scrub' AND j.state IN ('queued','running') AND (CAST(?3 AS TEXT)='' OR t.adapter_id=?3) AND j.id>?4 ORDER BY j.id LIMIT ?5
+`
+
+type AdapterMoveListPendingScrubsParams struct {
+	ChainOrg     string
+	ChainProject string
+	AdapterID    string
+	AfterID      string
+	RowLimit     int64
+}
+
+type AdapterMoveListPendingScrubsRow struct {
+	ID          string
+	AdapterID   string
+	TargetID    string
+	RouteMoveID string
+	State       string
+}
+
+// Incident enumeration: the queued or running scrub jobs of one project's
+// targets, optionally narrowed to one adapter, in id order and bounded by the
+// limit. Only identifiers and states are selected.
+func (q *Queries) AdapterMoveListPendingScrubs(ctx context.Context, arg AdapterMoveListPendingScrubsParams) ([]AdapterMoveListPendingScrubsRow, error) {
+	rows, err := q.db.QueryContext(ctx, adapterMoveListPendingScrubs,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.AdapterID,
+		arg.AfterID,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AdapterMoveListPendingScrubsRow
+	for rows.Next() {
+		var i AdapterMoveListPendingScrubsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AdapterID,
+			&i.TargetID,
+			&i.RouteMoveID,
+			&i.State,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const adapterMoveMarkAdapterMoving = `-- name: AdapterMoveMarkAdapterMoving :execrows
 UPDATE adapters SET state='moving',authority_principal_id=?1 WHERE id=?2 AND org_id=?3 AND project_id=?4 AND state='active'
 `
