@@ -23,12 +23,14 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Hikyo-Org/hikyo/scripts/ci/checksuites"
 )
 
 const externalPrefix = "hikyo-pr-gate:v2:"
 const legacyExternalPrefix = "hikyo-pr-gate:v1:"
 const externalIDLimit = 255
-const actionsAppID = 15368
+const actionsAppID = checksuites.AppID
 
 var shaPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
 var repoPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
@@ -815,16 +817,37 @@ func (c *controller) ownedChecks(ctx context.Context, p pull) (checks []check, e
 	return c.listOwnedChecks(ctx, p.Head.SHA)
 }
 
+// listOwnedChecks lists this context's controller checks on head. REST lists a
+// commit's runs from only its newest 1000 check suites, so a commit with more
+// suites is read one holding suite at a time.
 func (c *controller) listOwnedChecks(ctx context.Context, head string) ([]check, error) {
+	listings, err := checksuites.Listings(ctx, c.suiteSource(), head, c.checkName)
+	if err != nil {
+		return nil, err
+	}
+	var own []check
+	seen := make(map[int64]bool)
+	for _, listing := range listings {
+		part, err := c.listOwnedChecksAt(ctx, head, listing, seen)
+		if err != nil {
+			return nil, err
+		}
+		own = append(own, part...)
+	}
+	return own, nil
+}
+
+// listOwnedChecksAt pages through one check-runs listing. seen spans listings, so
+// a run reported twice, by two suites, is refused.
+func (c *controller) listOwnedChecksAt(ctx context.Context, head, listing string, seen map[int64]bool) ([]check, error) {
 	var own []check
 	listed := 0
-	seen := make(map[int64]bool)
 	for page := 1; page <= 10; page++ {
 		var list struct {
 			Total  int     `json:"total_count"`
 			Checks []check `json:"check_runs"`
 		}
-		if err := c.api.read(ctx, c.endpoint(fmt.Sprintf("commits/%s/check-runs?check_name=%s&filter=all&per_page=100&page=%d", head, c.checkName, page)), &list); err != nil {
+		if err := c.api.read(ctx, c.endpoint(fmt.Sprintf("%s?check_name=%s&filter=all&per_page=100&page=%d", listing, c.checkName, page)), &list); err != nil {
 			return nil, err
 		}
 		if list.Checks == nil || list.Total < 0 || list.Total > 1000 {

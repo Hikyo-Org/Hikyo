@@ -253,19 +253,29 @@ the suite scan hit the old 3-minute deadline, so the discovery deadline is now
 5 minutes inside an 8-minute job. The `retirement_discovery_scan` record reports
 successful `suite_pages`.
 
-Review limits kept open:
+Resolved by #1397: `listOwnedChecks`, the queue's `groupChecks` and the queue
+reporter's `existing()` read per suite above 900 suites through the shared
+`scripts/ci/checksuites` reader (a GraphQL suite scan selected by check name,
+then one REST listing per holding suite), so discovery no longer refuses a
+synthetic target on an oversized commit and targeted dispatch no longer misses
+one. Every listing now costs one extra GraphQL count read, which the pinned
+admission read budgets include.
 
-- `listOwnedChecks` and the queue reporter's `existing()` still list by
-  commit, so discovery refuses, rather than routes, a synthetic target on a
-  commit with more than 900 suites, and targeted dispatch on a head with more
-  than 1,000 suites can miss one silently. No operator tool clears that
-  refusal. Teaching both owners the per-suite read removes both limits.
+Limits kept open:
+
 - The deadline, not the 5,000-suite cap, bounds oversized commits: suite pages
   cost about 2 s each and history pages run sequentially, leaving room for
-  about 40 more suite pages per window. On 2026-11-15 the window held four
-  commits over 1,000 suites (1,039, 1,147, 1,715 and 2,005), and `807d433`
-  gained 308 suites in one hour of queue retries.
-- A commit can still cross 1,000 suites after the 900-suite margin check but
-  before an owner lists it; the next hourly run then takes the suite path. Not verified: the
-suite query from hosted runner IPs against any organisation IP allow list; it
-filters by app ID and reads only counts, so it traverses no foreign app object.
+  about 40 more suite pages per window. A deadline spent on suite pages now says
+  so. On 2026-11-15 the window held four commits over 1,000 suites (1,039,
+  1,147, 1,715 and 2,005), and `807d433` gained 308 suites in one hour of queue
+  retries. Reading candidates across history pages concurrently is not done.
+- A commit can still cross 1,000 suites between discovery's REST inventory and
+  the history count that chose it; the next hourly run then takes the suite
+  path. The owners count suites immediately before each listing, so a
+  commit crossing 900 suites mid-read is the only residual race.
+
+Not verified: the suite query from hosted runner IPs against any organisation IP
+allow list; it filters by app ID and reads only counts, so it traverses no
+foreign app object. The suite scan selected by check name was run read-only from a
+workstation against `807d433` (2,005 suites) and returned its suites without
+errors.
