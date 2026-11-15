@@ -10,6 +10,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // A strict import server: it declares LOG_LEVEL and DATABASE_URL and rejects any
@@ -36,7 +37,7 @@ func strictImportHandler(t *testing.T) http.Handler {
 			}
 			imported = append(imported, string(e.Key))
 		}
-		_ = writeJSONLine(w, apigen.ImportValuesResult{Imported: imported})
+		_ = jsonwire.Encode(w, apigen.ImportValuesResult{Imported: imported})
 	})
 }
 

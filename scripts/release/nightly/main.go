@@ -64,7 +64,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 		if err != nil {
 			return err
 		}
-		return json.MarshalEncode(jsontext.NewEncoder(output, jsonwire.Stable), release.Identity())
+		return jsonwire.Encode(output, release.Identity())
 	case "legacy-bridges":
 		release, err := upgradebundle.VerifyNightlyDirectory(ctx, directory, snapshot)
 		if err != nil {
@@ -167,7 +167,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 		if err != nil {
 			return err
 		}
-		return errors.Join(json.MarshalEncode(jsontext.NewEncoder(file, jsonwire.Stable), document), file.Close())
+		return errors.Join(jsonwire.Encode(file, document), file.Close())
 	default:
 		return errors.New("unknown nightly operation")
 	}

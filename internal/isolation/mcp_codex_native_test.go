@@ -149,7 +149,7 @@ bearer_token_env_var = "HIKYO_NATIVE_TEST_TOKEN"
 		rpc := func(method string, params any) jsontext.Value {
 			t.Helper()
 			sequence++
-			if err := encodeLine(input, map[string]any{"jsonrpc": "2.0", "id": sequence, "method": method, "params": params}); err != nil {
+			if err := jsonwire.Encode(input, map[string]any{"jsonrpc": "2.0", "id": sequence, "method": method, "params": params}); err != nil {
 				t.Fatal(err)
 			}
 			for scanner.Scan() {
@@ -176,7 +176,7 @@ bearer_token_env_var = "HIKYO_NATIVE_TEST_TOKEN"
 			return nil
 		}
 		rpc("initialize", map[string]any{"clientInfo": map[string]string{"name": "hikyo-native-proof", "version": "1"}, "capabilities": map[string]bool{"experimentalApi": true}})
-		if err := encodeLine(input, map[string]any{"jsonrpc": "2.0", "method": "initialized"}); err != nil {
+		if err := jsonwire.Encode(input, map[string]any{"jsonrpc": "2.0", "method": "initialized"}); err != nil {
 			t.Fatal(err)
 		}
 		thread := rpc("thread/start", map[string]any{"cwd": home, "ephemeral": true, "approvalPolicy": "never", "sandbox": "read-only"})

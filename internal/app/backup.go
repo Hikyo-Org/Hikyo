@@ -33,6 +33,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 
@@ -897,7 +898,7 @@ func rtoVerdict(r service.DrillReport) string {
 }
 
 func writeDrillJSON(w io.Writer, r service.DrillReport) error {
-	return encodeJSON(w, map[string]any{
+	return jsonwire.Encode(w, map[string]any{
 		"archive":         r.Archive,
 		"archive_digest":  r.ArchiveDigest,
 		"engine":          string(r.Engine),

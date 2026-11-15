@@ -338,7 +338,7 @@ func RunSecurityMaintenance(ctx context.Context, args []string, out io.Writer) e
 		if err != nil {
 			return err
 		}
-		return encodeJSON(out, struct {
+		return jsonwire.Encode(out, struct {
 			securitymaintenance.Status
 			Stale bool `json:"stale"`
 		}{state, state.Phase == "stale" || state.LastVerified.IsZero() || !state.KnownUntil.After(time.Now())})
@@ -356,13 +356,13 @@ func RunSecurityMaintenance(ctx context.Context, args []string, out io.Writer) e
 	if action == "reconcile" {
 		state, err := engine.Reconcile(ctx, confirm)
 		deploymentDriverOf(engine.Driver).PublishStatus(ctx, c.StatusFile)
-		return errors.Join(err, encodeJSON(out, state))
+		return errors.Join(err, jsonwire.Encode(out, state))
 	}
 	follower := newCoordinatorFollower(c, deploymentDriverOf(engine.Driver))
 	for {
 		state, runErr := engine.RunOnce(ctx, action == "run")
 		deploymentDriverOf(engine.Driver).PublishStatus(ctx, c.StatusFile)
-		if err := encodeJSON(out, state); err != nil {
+		if err := jsonwire.Encode(out, state); err != nil {
 			return errors.Join(runErr, err)
 		}
 		if action == "run" && runErr == nil {
@@ -449,7 +449,7 @@ func enrollSecurityMaintenance(ctx context.Context, engine *securitymaintenance.
 			return fmt.Errorf("pin the Deployment identity: %w", err)
 		}
 		deploymentDriverOf(engine.Driver).PublishStatus(ctx, statusFile)
-		return encodeJSON(out, state)
+		return jsonwire.Encode(out, state)
 	}
 	// Pinning first means a crash between the two steps cannot leave an enrolled
 	// installation whose Deployment identity was never recorded.
@@ -466,7 +466,7 @@ func enrollSecurityMaintenance(ctx context.Context, engine *securitymaintenance.
 	}
 	state, err := engine.Enroll(ctx)
 	deploymentDriverOf(engine.Driver).PublishStatus(ctx, statusFile)
-	return errors.Join(err, encodeJSON(out, state))
+	return errors.Join(err, jsonwire.Encode(out, state))
 }
 
 func runSecurityImageCommand(ctx context.Context, args []string, out io.Writer) error {
@@ -511,7 +511,7 @@ func runSecurityImageCommand(ctx context.Context, args []string, out io.Writer) 
 		if err != nil {
 			return err
 		}
-		return encodeJSON(out, report)
+		return jsonwire.Encode(out, report)
 	}
 	var observed securitymaintenance.Observation
 	if action == "stage" {
@@ -527,7 +527,7 @@ func runSecurityImageCommand(ctx context.Context, args []string, out io.Writer) 
 	if err != nil {
 		return err
 	}
-	return encodeJSON(out, observed)
+	return jsonwire.Encode(out, observed)
 }
 
 func securityOperationalHealth(ctx context.Context, cfg *config.Config) error {

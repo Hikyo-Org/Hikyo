@@ -29,12 +29,26 @@ func TestJSONv1ImportsCatchesViolations(t *testing.T) {
 	write("fresh/testdata/fixture.go", "package fixture\n\nimport \"encoding/json\"\n")
 	assertFindings(t, CheckJSONv1Imports(root), []string{
 		"jsonv1: fresh/new.go imports encoding/json",
-		"jsonv1: allowlisted api/apigen no longer imports encoding/json",
+		"jsonv1: api/apigen no longer imports encoding/json",
 	})
 	for _, f := range CheckJSONv1Imports(root) {
 		if f == "jsonv1: fresh/v2.go imports encoding/json; use encoding/json/v2 and encoding/json/jsontext" ||
 			f == "jsonv1: fresh/testdata/fixture.go imports encoding/json; use encoding/json/v2 and encoding/json/jsontext" {
 			t.Errorf("unexpected finding: %s", f)
 		}
+	}
+}
+
+func TestJSONv1ImportsAllowsOnlyGeneratedAPI(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "api", "apigen")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "gen.go"), []byte("package apigen\n\nimport \"encoding/json\"\n\nvar _ = json.Marshal\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := CheckJSONv1Imports(root); len(got) != 0 {
+		t.Fatalf("api/apigen must be allowed: %v", got)
 	}
 }

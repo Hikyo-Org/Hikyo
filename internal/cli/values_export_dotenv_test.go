@@ -8,6 +8,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func exportHandler(t *testing.T) http.Handler {
@@ -35,7 +36,7 @@ func exportHandler(t *testing.T) http.Handler {
 		} else {
 			items = append(items, apigen.ExportedValue{Name: "API_KEY", Classification: "secret"})
 		}
-		_ = writeJSONLine(w, apigen.ExportedValues{Items: items})
+		_ = jsonwire.Encode(w, apigen.ExportedValues{Items: items})
 	})
 }
 

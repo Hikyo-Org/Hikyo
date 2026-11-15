@@ -9,7 +9,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"encoding/pem"
 	"fmt"
@@ -69,16 +68,16 @@ func (g *gitlabFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/v4")
 	switch path {
 	case "/version":
-		_ = json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), map[string]string{"version": "18.0.0"})
+		_ = jsonwire.Encode(w, map[string]string{"version": "18.0.0"})
 		return
 	case "/personal_access_tokens/self":
-		_ = json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), map[string]any{"scopes": []string{"api"}, "active": true, "revoked": false})
+		_ = jsonwire.Encode(w, map[string]any{"scopes": []string{"api"}, "active": true, "revoked": false})
 		return
 	case "/user":
-		_ = json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), map[string]bool{"bot": true})
+		_ = jsonwire.Encode(w, map[string]bool{"bot": true})
 		return
 	case "/projects/fixture/project", "/projects/42":
-		_ = json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), map[string]any{"id": 42, "path_with_namespace": "fixture/project"})
+		_ = jsonwire.Encode(w, map[string]any{"id": 42, "path_with_namespace": "fixture/project"})
 		return
 	}
 	const collection = "/projects/42/variables"

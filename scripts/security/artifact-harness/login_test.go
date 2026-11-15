@@ -30,7 +30,7 @@ func TestEnrolledFixtureLoginUsesBrowserMFAAndPKCE(t *testing.T) {
 					_ = json.UnmarshalRead(r.Body, &body)
 				}
 				reply := func(value any) {
-					if err := json.MarshalEncode(jsontext.NewEncoder(w, jsonwire.Stable), value); err != nil {
+					if err := jsonwire.Encode(w, value); err != nil {
 						t.Error(err)
 					}
 				}

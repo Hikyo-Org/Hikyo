@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // `hikyo access registration show|set|delete` (#606, api-cli-spellings
@@ -122,8 +123,8 @@ func readRegistrationPolicyFile(path string) (apigen.RegistrationPolicyPutReques
 	// "PROOF" reached the proof field and earned this refusal, and the strict
 	// decode below would now report it as just another unknown member.
 	var members map[string]jsontext.Value
-	if err := decodeDocument(bytes.NewReader(raw), &members); err != nil {
-		if errors.Is(err, errTrailingJSON) {
+	if err := jsonwire.Decode(bytes.NewReader(raw), &members); err != nil {
+		if errors.Is(err, jsonwire.ErrTrailing) {
 			return body, failf(ExitUsage, "the registration policy %s holds more than one JSON document", path)
 		}
 		return body, failf(ExitUsage, "the registration policy %s is not a policy document: %v", path, err)

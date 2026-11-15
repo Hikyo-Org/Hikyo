@@ -2646,7 +2646,7 @@
       ]
     },
     "internal/store/upgrade/storage.go:Session.persist": {
-      "hash": "c19c47007e4b51ff94a20392078cda0ec9f981f8b1c5fafe99bb79a0c1007682",
+      "hash": "dd4aaadddebc48518cf9945e57a6e8cd1628e7e5f68655d8f4c352b4dd583ad1",
       "reason": "Durable upgrade control CAS/transaction protocol operates on the exact exclusion-owning database/sql connection, using control/pending tables independent of runtime migration lineage and retaining SQLite IMMEDIATE/PostgreSQL control row locks.",
       "dependencies": [
         "internal/releaseidentity/floor.go:SnapshotFloor.Validate",
@@ -2759,14 +2759,14 @@
         "darwin"
       ],
       "callers": {
-        "scripts/acceptance/mcp-fixture/main.go:run": "21fedbca11aa714436ea451ad649baa93cff18160de7192bc9d12dc06900d7b4"
+        "scripts/acceptance/mcp-fixture/main.go:run": "301ef3296c5003f6cc8ca91f78bd78770a056840aa0f97b47701f548a8742878"
       },
       "dependencies": [
         "scripts/acceptance/mcp-fixture/seed.go:validateDSN"
       ]
     },
     "scripts/acceptance/mcp-fixture/public.go:observeReadOnly": {
-      "hash": "e8dd74cbff15a1d4179b7a29595edfddc563cadb38d4ef4fee39ac3f9ebd8834",
+      "hash": "28dc2d7f84b95b1e3fd0cbe743a56f9fc26e7177bc8ca7f86168d6f3c21be3e0",
       "reason": "Exact MCP fixture read-only cancellation observation, after the unchanged dedicated datastore guard. Counts committed in-flight claims and blocked catalogue queries on the two named fixture processes, without tenant rows or admission writes. Only the reviewed command dispatcher may invoke it.",
       "build_contexts": [
         "default",
@@ -2774,9 +2774,10 @@
         "darwin"
       ],
       "callers": {
-        "scripts/acceptance/mcp-fixture/main.go:run": "21fedbca11aa714436ea451ad649baa93cff18160de7192bc9d12dc06900d7b4"
+        "scripts/acceptance/mcp-fixture/main.go:run": "301ef3296c5003f6cc8ca91f78bd78770a056840aa0f97b47701f548a8742878"
       },
       "dependencies": [
+        "internal/jsonwire/jsonwire.go:Encode",
         "scripts/acceptance/mcp-fixture/seed.go:validateDSN"
       ]
     },
@@ -2917,6 +2918,7 @@
     "internal/dynamic/postgres/postgres.go:quoteLiteral": "ec67b02af82349faed72c0df3aa275378a2bb33ffc4ca41eec2072e7aa5593a7",
     "internal/freetext/sanitize.go:RedactTokens": "37b500c450d366e200f05e0a5e9cd6237a68944200c6977907873524aff4b61f",
     "internal/freetext/sanitize.go:SanitizeFreeText": "90852a3f5bb27bad809bc80a020013398bd261d821f1ec719786e022543abfca",
+    "internal/jsonwire/jsonwire.go:Encode": "e6d55d6c72c284d96b68e2926842cfcfaea04a95d07bc771da7c11f83e23391e",
     "internal/pathutil/contain.go:Within": "be35236d6adb2c5a5694c34f76021b8c8052a85a4c173fe9aa7a164136eb7eeb",
     "internal/releaseidentity/floor.go:SnapshotFloor.Advance": "6ec49ef4659b7e734ed896d5ae5e862a2e1a38c0e56a4744ceece2b2bcb3d940",
     "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
@@ -3028,7 +3030,7 @@
     "internal/store/store.go:rollbackPostgresSourceProof": "b205da554b3350237751826e7871f89f4cd21199737916e052ad03814b6641f6",
     "internal/store/store.go:sqliteReadDSN": "acc83922e07014cade2291fa1400ce7e2a5ef32321de9e82f15e0c65546f3acc",
     "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
-    "internal/store/upgrade/acceptance.go:encodeFloor": "42f2c4e8933bc223b8d5ef6704e9d2fc111a67838c7730ac7b40d3f648fdf625",
+    "internal/store/upgrade/acceptance.go:encodeFloor": "795f0ea95297623527f6704e4baa78e8b4af226a865a7e02bd2e25a438d77c39",
     "internal/store/upgrade/admission.go:Admission.CheckTarget": "44cf9f112831d34ab6a76149f7a02031df842785b935f834a9d8df4fc838fa5f",
     "internal/store/upgrade/admission.go:Admission.LockSQLite": "1ade230167630084b38e202e998653bfa96e3f9809ef20c9371146b09c8cf99b",
     "internal/store/upgrade/admission.go:Admission.Valid": "58082f20394b138763d955fb5f86d3d4ebd4034d14cfe17e5ff31719b63e787d",

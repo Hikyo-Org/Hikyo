@@ -8,6 +8,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Existing command fixtures exercise operation-specific behavior. Give them
@@ -16,7 +17,7 @@ func newRevisionAwareFixtureServer(handler http.Handler) *httptest.Server {
 	return httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet && r.URL.Path == api.PathPrefix+"/meta" {
 			w.Header().Set("Content-Type", "application/json")
-			_ = writeJSONLine(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+			_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
 			return
 		}
 		handler.ServeHTTP(w, r)
@@ -42,7 +43,7 @@ func TestClientRefusesSubminimumOperationBeforeDispatch(t *testing.T) {
 			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/api/v1/meta" {
 					discovery++
-					_ = writeJSONLine(w, apigen.Meta{ServerVersion: "old-fixture", ApiRevision: tc.revision})
+					_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "old-fixture", ApiRevision: tc.revision})
 					return
 				}
 				operations++
@@ -69,7 +70,7 @@ func TestClientReusesDiscoveryOnlyWithinItsOriginBoundCommand(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v1/meta" {
 			discovery++
-			_ = writeJSONLine(w, apigen.Meta{ServerVersion: "current", ApiRevision: api.Revision})
+			_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "current", ApiRevision: api.Revision})
 			return
 		}
 		operations++
@@ -117,7 +118,7 @@ func TestClientChangingOriginCannotReuseAnotherServersRevision(t *testing.T) {
 	old := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == api.PathPrefix+"/meta" {
 			discovery++
-			_ = writeJSONLine(w, apigen.Meta{ServerVersion: "old-origin", ApiRevision: 0})
+			_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "old-origin", ApiRevision: 0})
 			return
 		}
 		operations++

@@ -14,6 +14,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestMachineExportUsesAuthorizedDelivery(t *testing.T) {
@@ -35,7 +36,7 @@ func TestMachineExportUsesAuthorizedDelivery(t *testing.T) {
 			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				if r.URL.Path == api.PathPrefix+"/meta" {
-					_ = writeJSONLine(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+					_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
 					return
 				}
 				requests++
@@ -53,7 +54,7 @@ func TestMachineExportUsesAuthorizedDelivery(t *testing.T) {
 					}
 					keys = append(keys, secret)
 				}
-				_ = writeJSONLine(w, apigen.DeliveryResponse{Revision: 7, Keys: keys})
+				_ = jsonwire.Encode(w, apigen.DeliveryResponse{Revision: 7, Keys: keys})
 			}))
 			defer srv.Close()
 			_, stateDir := machineState(t, srv.URL, SPKIFingerprint(srv.Certificate()))
@@ -90,11 +91,11 @@ func TestMachineExportRefusesOldServerAndUnexpectedConditionalResponse(t *testin
 			requests := 0
 			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == api.PathPrefix+"/meta" {
-					_ = writeJSONLine(w, apigen.Meta{ServerVersion: "fixture", ApiRevision: revision})
+					_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture", ApiRevision: revision})
 					return
 				}
 				requests++
-				_ = writeJSONLine(w, apigen.DeliveryResponse{Current: true})
+				_ = jsonwire.Encode(w, apigen.DeliveryResponse{Current: true})
 			}))
 			defer srv.Close()
 			client, err := NewClient(pinnedTestEntry("test", srv), "machine-test")
@@ -122,13 +123,13 @@ func throttledDelivery(t *testing.T, script []string, requests *int) *httptest.S
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == api.PathPrefix+"/meta" {
-			_ = writeJSONLine(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+			_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
 			return
 		}
 		step := script[min(*requests, len(script)-1)]
 		*requests++
 		if step == "ok" {
-			_ = writeJSONLine(w, apigen.DeliveryResponse{Revision: 7})
+			_ = jsonwire.Encode(w, apigen.DeliveryResponse{Revision: 7})
 			return
 		}
 		if step != "" {
@@ -137,7 +138,7 @@ func throttledDelivery(t *testing.T, script []string, requests *int) *httptest.S
 		w.WriteHeader(http.StatusTooManyRequests)
 		var body apigen.Error
 		body.Error.Code, body.Error.Message = apigen.ErrorCodeTooManyRequests, "too many requests"
-		_ = writeJSONLine(w, body)
+		_ = jsonwire.Encode(w, body)
 	}))
 	t.Cleanup(srv.Close)
 	return srv

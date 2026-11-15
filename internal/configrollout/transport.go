@@ -204,8 +204,8 @@ func (m *Mailbox) Send(ctx context.Context, signed SignedCommand) error {
 	if !validCommand(signed.Command, m.enrollment) || !validEnvelope(signed, m.enrollment) {
 		return ErrInvalid
 	}
-	raw := mustJSON(signed)
-	if len(raw) > maxRecordBytes {
+	raw, err := json.Marshal(signed, jsonwire.Stable)
+	if err != nil || len(raw) > maxRecordBytes {
 		return ErrInvalid
 	}
 	s, err := m.client.CoreV1().Secrets(m.enrollment.Target.Namespace).Get(ctx, m.enrollment.CommandSecret, metav1.GetOptions{})

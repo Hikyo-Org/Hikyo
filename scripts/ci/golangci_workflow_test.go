@@ -260,7 +260,7 @@ func golangciConfigProblems(raw string) []string {
 	slices.Sort(enabled)
 	check("version", config.Version, "2")
 	check("linters.default", config.Linters.Default, "none")
-	check("linters.enable", enabled, []string{"errcheck", "errchkjson", "errorlint", "gosec", "noctx", "staticcheck"})
+	check("linters.enable", enabled, []string{"errcheck", "errorlint", "gosec", "noctx", "staticcheck"})
 	// A configured list replaces staticcheck's default of SA, S, ST and QF. SA4006
 	// and SA4009 are excluded because the strict config owns them.
 	check("staticcheck.checks", config.Linters.Settings.Staticcheck.Checks, []string{"SA*", "-SA4006", "-SA4009", "QF1001", "QF1003"})

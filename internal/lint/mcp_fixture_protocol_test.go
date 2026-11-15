@@ -17,7 +17,7 @@ import (
 
 func TestMCPFixtureDriverAuthorityIsExactFileScoped(t *testing.T) {
 	const owner = Module + "/scripts/acceptance/mcp-fixture"
-	pkgs, err := Load("../../scripts/acceptance/mcp-fixture")
+	pkgs, err := Load("../../scripts/acceptance/mcp-fixture", "../../internal/jsonwire")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,13 +90,24 @@ func TestMCPFixtureProtocolsRejectDrift(t *testing.T) {
 		Dir: root,
 		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax |
 			packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports,
-	}, Module+"/scripts/acceptance/mcp-fixture")
-	if err != nil || len(loaded) != 1 {
+	}, Module+"/scripts/acceptance/mcp-fixture", Module+"/internal/jsonwire")
+	if err != nil || len(loaded) != 2 {
 		t.Fatalf("real fixture load: %v", err)
 	}
-	actual := loaded[0]
-	for _, err := range actual.Errors {
-		t.Fatal(err)
+	// jsonwire is a reviewed helper dependency of the fixture's protocols.
+	var actual, helpers *packages.Package
+	for _, p := range loaded {
+		for _, err := range p.Errors {
+			t.Fatal(err)
+		}
+		if p.PkgPath == Module+"/internal/jsonwire" {
+			helpers = p
+		} else {
+			actual = p
+		}
+	}
+	if actual == nil || helpers == nil {
+		t.Fatal("real fixture or jsonwire package not loaded")
 	}
 	protocols, err := reviewedPins.rawProtocols()
 	if err != nil {
@@ -159,7 +170,7 @@ func TestMCPFixtureProtocolsRejectDrift(t *testing.T) {
 				}
 			}
 			candidate := typecheckMCPFixtureMutation(t, actual, overlay)
-			findings := CheckRawSQL([]*packages.Package{candidate}, root, Module, pins)
+			findings := CheckRawSQL([]*packages.Package{candidate, helpers}, root, Module, pins)
 			if tc.refusal == "" {
 				if len(findings) != 0 {
 					t.Fatalf("reviewed fixture refused: %v", findings)
@@ -226,7 +237,7 @@ func typecheckMCPFixtureMutation(t *testing.T, actual *packages.Package, overlay
 
 func TestMCPFixtureProtocolBuildContextsFailClosed(t *testing.T) {
 	root := repoRoot(t)
-	pkgs, err := Load("../../scripts/acceptance/mcp-fixture")
+	pkgs, err := Load("../../scripts/acceptance/mcp-fixture", "../../internal/jsonwire")
 	if err != nil {
 		t.Fatal(err)
 	}

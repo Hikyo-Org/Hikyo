@@ -57,7 +57,7 @@ func serveWireSnapshot(ctx context.Context, dir string, recorder *wireRecorder) 
 				return
 			}
 			connection.SetWriteDeadline(time.Now().Add(time.Second))
-			_ = json.MarshalEncode(jsontext.NewEncoder(connection, jsonwire.Stable), recorder.snapshot())
+			_ = jsonwire.Encode(connection, recorder.snapshot())
 			connection.Close()
 		}
 	}()
@@ -96,5 +96,5 @@ func readWireSnapshot(ctx context.Context, dir string) error {
 	if err != nil {
 		return err
 	}
-	return json.MarshalEncode(jsontext.NewEncoder(os.Stdout, jsonwire.Stable), document)
+	return jsonwire.Encode(os.Stdout, document)
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func deliveredPersonal(name string, personal apigen.DeliveredKeyPersonal, reason string) apigen.DeliveredKey {
@@ -60,10 +61,10 @@ func TestHumanSessionRunRefusesHeldPersonalKeys(t *testing.T) {
 		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			if r.URL.Path == api.PathPrefix+"/meta" {
-				_ = writeJSONLine(w, apigen.Meta{ServerVersion: "fixture", ApiRevision: revision})
+				_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture", ApiRevision: revision})
 				return
 			}
-			_ = writeJSONLine(w, apigen.PersonalValueList{Items: []apigen.PersonalValueEntry{
+			_ = jsonwire.Encode(w, apigen.PersonalValueList{Items: []apigen.PersonalValueEntry{
 				{Name: "MINE", Set: true},
 				{Name: "NOTICED", Notice: &notice},
 				{Name: "REQUIRED_ONLY", Required: &required},
@@ -128,10 +129,10 @@ func TestHumanSessionRunFailsClosedOnLookupError(t *testing.T) {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			if r.URL.Path == api.PathPrefix+"/meta" {
-				_ = writeJSONLine(w, apigen.Meta{ServerVersion: "fixture", ApiRevision: api.Revision})
+				_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture", ApiRevision: api.Revision})
 				return
 			}
-			_ = writeJSONLine(w, apigen.PersonalValueList{})
+			_ = jsonwire.Encode(w, apigen.PersonalValueList{})
 		}))
 		client, err := NewClient(pinnedTestEntry("test", srv), "human-test")
 		if err != nil {

@@ -6,7 +6,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"os"
@@ -81,7 +80,7 @@ func TestUnattendedCoordinatorChild(t *testing.T) {
 		t.Fatal(err)
 	}
 	var fixture unattendedChildFixture
-	if err := json.Unmarshal(raw, &fixture, durationNanos); err != nil {
+	if err := json.Unmarshal(raw, &fixture); err != nil {
 		t.Fatal(err)
 	}
 	if fixture.Inspect != "" {
@@ -99,23 +98,6 @@ func TestUnattendedCoordinatorChild(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-
-// durationNanos carries config.Config's time.Duration fields between the test
-// process and its child as nanosecond numbers, as encoding/json v1 did; v2 has
-// no default representation for a Duration.
-var durationNanos = json.JoinOptions(
-	json.WithMarshalers(json.MarshalToFunc(func(enc *jsontext.Encoder, d time.Duration) error {
-		return enc.WriteToken(jsontext.Int(int64(d)))
-	})),
-	json.WithUnmarshalers(json.UnmarshalFromFunc(func(dec *jsontext.Decoder, d *time.Duration) error {
-		var nanos int64
-		if err := json.UnmarshalDecode(dec, &nanos); err != nil {
-			return err
-		}
-		*d = time.Duration(nanos)
-		return nil
-	})),
-)
 
 func mustJSON(t *testing.T, value any) []byte {
 	t.Helper()
@@ -210,7 +192,7 @@ func TestUnattendedPackagedEnrollmentUpgradeAndIntermediateCredential(t *testing
 			}
 			runChild := func(index int) error {
 				fixture.Target = route.Executables[identities[index]]
-				raw, err := json.Marshal(fixture, durationNanos)
+				raw, err := json.Marshal(fixture)
 				if err != nil {
 					return err
 				}
@@ -378,7 +360,7 @@ func unattendedTargetFailsBeforeWritingAndSourceResumes(t *testing.T, live store
 	}
 	inspect := func(index int) securitymaintenance.Observation {
 		fixture.Target, fixture.Inspect = fixture.Releases[index], filepath.Join(t.TempDir(), "inspect.json")
-		raw, err := json.Marshal(fixture, durationNanos)
+		raw, err := json.Marshal(fixture)
 		if err != nil {
 			t.Fatal(err)
 		}

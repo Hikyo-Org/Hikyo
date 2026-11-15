@@ -9,6 +9,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
@@ -176,7 +177,7 @@ func (a *API) requireCSRF(next http.Handler) http.Handler {
 func refuseUnauthenticated(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusUnauthorized)
-	_ = encodeJSON(w, errorBody(apigen.ErrorCodeUnauthenticated, ""))
+	_ = jsonwire.Encode(w, errorBody(apigen.ErrorCodeUnauthenticated, ""))
 }
 
 // writeJSONWithCookies is the response shape every cookie-bearing operation
@@ -197,7 +198,7 @@ func writeJSONWithCookies(w http.ResponseWriter, cookies []*http.Cookie, status 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	return encodeJSON(w, body)
+	return jsonwire.Encode(w, body)
 }
 
 // ---------------------------------------------------------------------------

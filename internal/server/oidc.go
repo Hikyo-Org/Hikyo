@@ -11,6 +11,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
@@ -86,7 +87,7 @@ func (r oidcStartResponse) VisitOidcStartResponse(w http.ResponseWriter) error {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	return encodeJSON(w, r.body)
+	return jsonwire.Encode(w, r.body)
 }
 
 // OidcStart forwards the purpose, login intent and optional sign-up org to the
@@ -264,7 +265,7 @@ func (r oidcLinkStartResponse) VisitLinkIdentityResponse(w http.ResponseWriter) 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	return encodeJSON(w, r.body)
+	return jsonwire.Encode(w, r.body)
 }
 
 func (a *API) ListIdentities(ctx context.Context, _ apigen.ListIdentitiesRequestObject) (apigen.ListIdentitiesResponseObject, error) {

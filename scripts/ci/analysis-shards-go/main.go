@@ -24,13 +24,15 @@ import (
 
 // stableJSON reproduces encoding/json (v1) output bytes. The planner is built
 // as a lone file copied outside the module (see ci.yml), so it cannot import
-// internal/jsonwire and keeps its own copy of those options.
+// internal/jsonwire and keeps its own copy of those options; internal/lint fails
+// when the two option lists differ.
 var stableJSON = json.JoinOptions(
 	json.Deterministic(true),
 	json.FormatNilSliceAsNull(true),
 	json.FormatNilMapAsNull(true),
 	jsontext.EscapeForHTML(true),
 	jsontext.EscapeForJS(true),
+	jsontext.PreserveRawStrings(true),
 )
 
 type packageInfo struct {

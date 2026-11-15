@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -310,7 +309,7 @@ func observeReadOnly(ctx context.Context, cfg settings) error {
 			return errors.New("store context observation failed")
 		}
 	}
-	return json.MarshalEncode(jsontext.NewEncoder(os.Stdout, jsonwire.Stable), c)
+	return jsonwire.Encode(os.Stdout, c)
 }
 
 func holdFixtureCatalogue(ctx context.Context, cfg settings) error {

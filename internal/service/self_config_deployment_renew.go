@@ -70,8 +70,14 @@ func (s *SelfConfig) renewDeploymentDelivery(ctx context.Context, b store.SelfCo
 		}
 		normalized := signed.Command
 		normalized.Sequence, normalized.IssuedAt, normalized.ExpiresAt = persisted.Command.Sequence, persisted.Command.IssuedAt, persisted.Command.ExpiresAt
-		before, _ := json.Marshal(persisted.Command, jsonwire.Stable)
-		after, _ := json.Marshal(normalized, jsonwire.Stable)
+		before, err := json.Marshal(persisted.Command, jsonwire.Stable)
+		if err != nil {
+			return err
+		}
+		after, err := json.Marshal(normalized, jsonwire.Stable)
+		if err != nil {
+			return err
+		}
 		if string(before) != string(after) || signed.Command.Sequence != uint64(sequence) || !s.now().Before(signed.Command.ExpiresAt) {
 			return domain.ErrConflict
 		}

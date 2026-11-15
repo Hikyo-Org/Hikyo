@@ -10,6 +10,13 @@
 // effects, idempotency, error semantics), and no schema differ can police
 // that. What CI *can* police is that the document and the Go registries agree
 // — see the cross-check tests beside this file.
+//
+// After any openapi.yaml change, regenerate the Go types from the repo root, in
+// this order (omitzero-overlay.yaml makes optional properties `omitzero`, which
+// encoding/json/v2 needs to keep present empty values; see api/omitzero):
+//
+//	go run ./api/omitzero
+//	go tool oapi-codegen --config api/oapi-codegen.yaml api/openapi.yaml
 package api
 
 import (

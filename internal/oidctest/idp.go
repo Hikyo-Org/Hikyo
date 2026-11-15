@@ -501,20 +501,12 @@ func (p *IdP) signJWT(claims map[string]any) (string, error) {
 func oauthError(w http.ResponseWriter, code string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusBadRequest)
-	encodeLine(w, map[string]string{"error": code})
+	_ = jsonwire.Encode(w, map[string]string{"error": code})
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
-	encodeLine(w, v)
-}
-
-// encodeLine writes v the way encoding/json's Encoder did: v1 bytes plus a
-// newline. A value that cannot be encoded writes nothing, as before.
-func encodeLine(w http.ResponseWriter, v any) {
-	if raw, err := json.Marshal(v, jsonwire.Stable); err == nil {
-		_, _ = w.Write(append(raw, '\n'))
-	}
+	_ = jsonwire.Encode(w, v)
 }
 
 func randomToken() string {

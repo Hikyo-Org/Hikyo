@@ -30,13 +30,13 @@ func TestInteractiveLoginClockSkewPreservesServerExpiry(t *testing.T) {
 					switch r.URL.Path {
 					case api.PathPrefix + "/auth/cli-login/start":
 						_ = json.UnmarshalRead(r.Body, &start)
-						_ = writeJSONLine(w, apigen.CLILoginStart{State: start.State, ExpiresAt: time.Now().Add(skew + 10*time.Minute)})
+						_ = jsonwire.Encode(w, apigen.CLILoginStart{State: start.State, ExpiresAt: time.Now().Add(skew + 10*time.Minute)})
 					case api.PathPrefix + "/auth/cli-login/redeem":
-						_ = writeJSONLine(w, result)
+						_ = jsonwire.Encode(w, result)
 					case api.PathPrefix + "/auth/cli-login/device/start":
-						_ = writeJSONLine(w, apigen.CLIDeviceStart{DeviceCode: "secret", UserCode: "ABCD1234", VerificationUri: client.Entry.Origin + "/login/cli?device=1", ExpiresIn: 900, Interval: 5, ExpiresAt: time.Now().Add(skew + 15*time.Minute)})
+						_ = jsonwire.Encode(w, apigen.CLIDeviceStart{DeviceCode: "secret", UserCode: "ABCD1234", VerificationUri: client.Entry.Origin + "/login/cli?device=1", ExpiresIn: 900, Interval: 5, ExpiresAt: time.Now().Add(skew + 15*time.Minute)})
 					case api.PathPrefix + "/auth/cli-login/device/token":
-						_ = writeJSONLine(w, apigen.CLIDeviceToken{AccessToken: loginTestToken, TokenType: "Bearer", ExpiresIn: 86400, Session: result.Session, Principal: result.Principal})
+						_ = jsonwire.Encode(w, apigen.CLIDeviceToken{AccessToken: loginTestToken, TokenType: "Bearer", ExpiresIn: 86400, Session: result.Session, Principal: result.Principal})
 					default:
 						t.Errorf("unexpected login request %s", r.URL.Path)
 						w.WriteHeader(http.StatusNotFound)
@@ -151,16 +151,16 @@ func TestDeviceLoginClockSkew(t *testing.T) {
 			client = loginTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case api.PathPrefix + "/auth/cli-login/device/start":
-					_ = writeJSONLine(w, apigen.CLIDeviceStart{DeviceCode: "secret", UserCode: "ABCD1234", VerificationUri: client.Entry.Origin + "/login/cli?device=1", ExpiresIn: 900, Interval: 5, ExpiresAt: time.Now().Add(scenario.serverClock + 15*time.Minute)})
+					_ = jsonwire.Encode(w, apigen.CLIDeviceStart{DeviceCode: "secret", UserCode: "ABCD1234", VerificationUri: client.Entry.Origin + "/login/cli?device=1", ExpiresIn: 900, Interval: 5, ExpiresAt: time.Now().Add(scenario.serverClock + 15*time.Minute)})
 				case api.PathPrefix + "/auth/cli-login/device/token":
 					polls++
 					if scenario.serverError {
 						w.WriteHeader(http.StatusBadRequest)
-						_ = writeJSONLine(w, apigen.CLIDeviceError{Error: "expired_token"})
+						_ = jsonwire.Encode(w, apigen.CLIDeviceError{Error: "expired_token"})
 						return
 					}
 					result := loginTestResult()
-					_ = writeJSONLine(w, apigen.CLIDeviceToken{AccessToken: loginTestToken, TokenType: "Bearer", ExpiresIn: 3600, Session: result.Session, Principal: result.Principal})
+					_ = jsonwire.Encode(w, apigen.CLIDeviceToken{AccessToken: loginTestToken, TokenType: "Bearer", ExpiresIn: 3600, Session: result.Session, Principal: result.Principal})
 				default:
 					t.Errorf("unexpected login request %s", r.URL.Path)
 					w.WriteHeader(http.StatusNotFound)
@@ -247,10 +247,10 @@ func TestInteractiveLoginRejectsMalformedServerSession(t *testing.T) {
 			var client *Client
 			client = loginTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == api.PathPrefix+"/auth/cli-login/device/start" {
-					_ = writeJSONLine(w, apigen.CLIDeviceStart{DeviceCode: "secret", UserCode: "ABCD1234", VerificationUri: client.Entry.Origin + "/login/cli?device=1", ExpiresIn: 900, Interval: 5, ExpiresAt: time.Now().Add(15 * time.Minute)})
+					_ = jsonwire.Encode(w, apigen.CLIDeviceStart{DeviceCode: "secret", UserCode: "ABCD1234", VerificationUri: client.Entry.Origin + "/login/cli?device=1", ExpiresIn: 900, Interval: 5, ExpiresAt: time.Now().Add(15 * time.Minute)})
 					return
 				}
-				_ = writeJSONLine(w, apigen.CLIDeviceToken{AccessToken: loginTestToken, TokenType: "Bearer", ExpiresIn: 86400, Session: result.Session, Principal: result.Principal})
+				_ = jsonwire.Encode(w, apigen.CLIDeviceToken{AccessToken: loginTestToken, TokenType: "Bearer", ExpiresIn: 86400, Session: result.Session, Principal: result.Principal})
 			}))
 			client.sleep = func(context.Context, time.Duration) error { return nil }
 			state := &State{dir: t.TempDir()}

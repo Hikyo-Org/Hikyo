@@ -11,6 +11,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestDeviceLoginUsesRFCFormsAndStoresOnlyCLISession(t *testing.T) {
@@ -19,7 +20,7 @@ func TestDeviceLoginUsesRFCFormsAndStoresOnlyCLISession(t *testing.T) {
 	client = loginTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests = append(requests, r.URL.Path)
 		if r.URL.Path == api.PathPrefix+"/auth/methods" {
-			_ = writeJSONLine(w, apigen.AuthMethods{Providers: []apigen.AuthMethodProvider{{Kind: "oidc", Slug: "work"}}})
+			_ = jsonwire.Encode(w, apigen.AuthMethods{Providers: []apigen.AuthMethodProvider{{Kind: "oidc", Slug: "work"}}})
 			return
 		}
 		if r.Method != http.MethodPost || r.Header.Get("Content-Type") != "application/x-www-form-urlencoded" || r.Header.Get("Authorization") != "" {
@@ -33,13 +34,13 @@ func TestDeviceLoginUsesRFCFormsAndStoresOnlyCLISession(t *testing.T) {
 			if len(r.PostForm) != 1 {
 				t.Error("device authorization includes terminal provider state")
 			}
-			_ = writeJSONLine(w, apigen.CLIDeviceStart{DeviceCode: "device-secret-never-display", UserCode: "ABCD1234", VerificationUri: client.Entry.Origin + "/login/cli?device=1", ExpiresAt: time.Now().Add(15 * time.Minute), ExpiresIn: 900, Interval: 5})
+			_ = jsonwire.Encode(w, apigen.CLIDeviceStart{DeviceCode: "device-secret-never-display", UserCode: "ABCD1234", VerificationUri: client.Entry.Origin + "/login/cli?device=1", ExpiresAt: time.Now().Add(15 * time.Minute), ExpiresIn: 900, Interval: 5})
 		case api.PathPrefix + "/auth/cli-login/device/token":
 			if r.PostForm.Get("device_code") != "device-secret-never-display" || r.PostForm.Get("grant_type") != "urn:ietf:params:oauth:grant-type:device_code" {
 				t.Error("device grant type or code changed")
 			}
 			result := loginTestResult()
-			_ = writeJSONLine(w, apigen.CLIDeviceToken{AccessToken: loginTestToken, TokenType: "Bearer", ExpiresIn: 86400, Session: result.Session, Principal: result.Principal})
+			_ = jsonwire.Encode(w, apigen.CLIDeviceToken{AccessToken: loginTestToken, TokenType: "Bearer", ExpiresIn: 86400, Session: result.Session, Principal: result.Principal})
 		default:
 			http.NotFound(w, r)
 		}
@@ -95,7 +96,7 @@ func TestDeviceLoginRefusesInvalidAuthorizationBeforePrintingOrPolling(t *testin
 				case "missing-device-code":
 					start.DeviceCode = ""
 				}
-				_ = writeJSONLine(w, start)
+				_ = jsonwire.Encode(w, start)
 			}))
 			var stderr bytes.Buffer
 			_, err := loginWithDevice(t.Context(), IO{Stderr: &stderr}, client, "")

@@ -14,6 +14,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/localsocket"
 )
 
@@ -36,7 +37,7 @@ func TestClientCarriesBearerOnlyOverSameUserSocket(t *testing.T) {
 		ReadHeaderTimeout: time.Second,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == api.PathPrefix+"/meta" {
-				_ = writeJSONLine(w, apigen.Meta{ServerVersion: "socket-fixture", ApiRevision: api.Revision})
+				_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "socket-fixture", ApiRevision: api.Revision})
 				return
 			}
 			seenBearer <- r.Header.Get("Authorization")

@@ -15,6 +15,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/remotefetch"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -70,7 +71,7 @@ func newFakeRemote(t *testing.T, identity string) *fakeRemote {
 		// counts disagree with its names, and a fixture that hard-coded them
 		// would eventually disagree with its own fixture.
 		listing.OrgCount, listing.ProjectCount = len(listing.Orgs), listing.CountProjects()
-		_ = encodeLine(w, listing)
+		_ = jsonwire.Encode(w, listing)
 	}))
 	t.Cleanup(f.server.Close)
 	f.pin = remotefetch.SPKIFingerprint(f.server.Certificate())

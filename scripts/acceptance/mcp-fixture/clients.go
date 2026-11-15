@@ -186,7 +186,7 @@ func (p *probe) codex(ctx context.Context, dir string) error {
 	sequence := 0
 	rpc := func(method string, params any) (jsontext.Value, error) {
 		sequence++
-		if json.MarshalEncode(jsontext.NewEncoder(input, jsonwire.Stable), map[string]any{"jsonrpc": "2.0", "id": sequence, "method": method, "params": params}) != nil {
+		if jsonwire.Encode(input, map[string]any{"jsonrpc": "2.0", "id": sequence, "method": method, "params": params}) != nil {
 			return nil, errors.New("native client input failed")
 		}
 		for scanner.Scan() {
@@ -211,7 +211,7 @@ func (p *probe) codex(ctx context.Context, dir string) error {
 	if _, err := rpc("initialize", map[string]any{"clientInfo": map[string]string{"name": "hikyo-651-proof", "version": "1"}, "capabilities": map[string]bool{"experimentalApi": true}}); err != nil {
 		return err
 	}
-	if err := json.MarshalEncode(jsontext.NewEncoder(input, jsonwire.Stable), map[string]any{"jsonrpc": "2.0", "method": "initialized"}); err != nil {
+	if err := jsonwire.Encode(input, map[string]any{"jsonrpc": "2.0", "method": "initialized"}); err != nil {
 		return errors.New("native initialization failed")
 	}
 	thread, err := rpc("thread/start", map[string]any{"cwd": home, "ephemeral": true, "approvalPolicy": "never", "sandbox": "read-only"})

@@ -12,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
 	"github.com/Hikyo-Org/hikyo/internal/importer"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func importDiagnosticLines(output string) string {
@@ -45,7 +46,7 @@ func TestValuesImportDiagnostics(t *testing.T) {
 						t.Errorf("incorrect import payload")
 					}
 					w.Header().Set("Content-Type", "application/json")
-					_ = writeJSONLine(w, apigen.ImportValuesResult{Imported: []string{"SECRET_SENTINEL"}})
+					_ = jsonwire.Encode(w, apigen.ImportValuesResult{Imported: []string{"SECRET_SENTINEL"}})
 				}))
 				path := filepath.Join(t.TempDir(), "path-sentinel")
 				var data []byte

@@ -15,6 +15,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func runDeveloper(ctx context.Context, ios IO, args []string) error {
@@ -204,7 +205,7 @@ func runDeveloper(ctx context.Context, ios IO, args []string) error {
 
 func printDeveloperCredentials(ios IO, items []apigen.DeveloperCredential, output string, environmentLabel func(string) string) error {
 	if output == "json" {
-		return writeJSONLine(ios.Stdout, items)
+		return jsonwire.Encode(ios.Stdout, items)
 	}
 	for _, c := range items {
 		fmt.Fprintf(ios.Stdout, "%s\t%s\t%s\t%s\n", c.Id, environmentLabel(string(c.EnvironmentId)), c.ExpiresAt.Format(time.RFC3339), idWithName(string(c.AuthorityPrincipalId), c.AuthorityPrincipalName))
@@ -310,7 +311,7 @@ func runDeveloperCredentialPolicy(ctx context.Context, ios IO, args []string) er
 		return err
 	}
 	if format == "json" {
-		return writeJSONLine(ios.Stdout, policy)
+		return jsonwire.Encode(ios.Stdout, policy)
 	}
 	_, err = fmt.Fprintf(ios.Stdout, "max lifetime: %s\n", time.Duration(policy.MaxLifetimeSeconds)*time.Second)
 	return err

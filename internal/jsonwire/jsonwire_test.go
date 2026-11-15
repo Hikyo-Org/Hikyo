@@ -1,8 +1,11 @@
 package jsonwire
 
 import (
+	"bytes"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
+	"strings"
 	"testing"
 )
 
@@ -39,5 +42,43 @@ func TestStableMatchesV1Bytes(t *testing.T) {
 	}
 	if _, err := json.Marshal("\xff", Stable); err == nil {
 		t.Fatal("invalid UTF-8 must fail instead of being replaced")
+	}
+}
+
+func TestEncodeMatchesV1Encoder(t *testing.T) {
+	var buf bytes.Buffer
+	if err := Encode(&buf, map[string]any{"b": []string(nil), "a": "<&>"}); err != nil {
+		t.Fatal(err)
+	}
+	// The bytes encoding/json (v1) Encoder.Encode wrote.
+	if want := "{\"a\":\"\\u003c\\u0026\\u003e\",\"b\":null}\n"; buf.String() != want {
+		t.Fatalf("Encode:\n got %q\nwant %q", buf.String(), want)
+	}
+	buf.Reset()
+	if err := Encode(&buf, []int{1}, jsontext.WithIndent("  ")); err != nil {
+		t.Fatal(err)
+	}
+	if want := "[\n  1\n]\n"; buf.String() != want {
+		t.Fatalf("indented Encode: got %q want %q", buf.String(), want)
+	}
+	buf.Reset()
+	if err := Encode(&buf, "\xff"); err == nil || buf.Len() != 0 {
+		t.Fatalf("invalid UTF-8 must fail without writing: err=%v wrote %q", err, buf.String())
+	}
+}
+
+func TestDecodeKeepsMalformedApartFromTrailing(t *testing.T) {
+	var v struct{ A int }
+	if err := Decode(strings.NewReader(` {"A":1} `), &v); err != nil || v.A != 1 {
+		t.Fatalf("one document: err=%v v=%+v", err, v)
+	}
+	if err := Decode(strings.NewReader(`{"A":1}{"A":2}`), &v); !errors.Is(err, ErrTrailing) {
+		t.Fatalf("second document: got %v, want ErrTrailing", err)
+	}
+	if err := Decode(strings.NewReader(`{"A":`), &v); err == nil || errors.Is(err, ErrTrailing) {
+		t.Fatalf("truncated document: got %v, want a decoder error", err)
+	}
+	if err := Decode(strings.NewReader(`{"B":1}`), &v, json.RejectUnknownMembers(true)); err == nil {
+		t.Fatal("options must reach the decoder")
 	}
 }

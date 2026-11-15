@@ -11,6 +11,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // The inline TOTP disclosure ceremony (reveal_window.go): a dead window with
@@ -28,10 +29,10 @@ func ceremonyServer(t *testing.T, window apigen.RevealWindow) (http.Handler, *[]
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
 			window.Live = live
-			_ = writeJSONLine(w, window)
+			_ = jsonwire.Encode(w, window)
 		case strings.HasSuffix(r.URL.Path, "/auth/totp"):
 			// The inline path dispatches on enrolment: an authenticator stands.
-			_ = writeJSONLine(w, apigen.TotpStatus{Confirmed: true})
+			_ = jsonwire.Encode(w, apigen.TotpStatus{Confirmed: true})
 		case strings.HasSuffix(r.URL.Path, "/auth/reauth/totp"):
 			var body apigen.TotpReauthRequest
 			_ = json.UnmarshalRead(r.Body, &body)
@@ -42,7 +43,7 @@ func ceremonyServer(t *testing.T, window apigen.RevealWindow) (http.Handler, *[]
 				return
 			}
 			live = true
-			_ = writeJSONLine(w, apigen.ReauthResult{
+			_ = jsonwire.Encode(w, apigen.ReauthResult{
 				EnvironmentId: "env_70", SessionId: "ses_rotated", SessionToken: &rotated,
 				WindowExpires: apigen.Timestamp(time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC)),
 			})
@@ -53,7 +54,7 @@ func ceremonyServer(t *testing.T, window apigen.RevealWindow) (http.Handler, *[]
 				return
 			}
 			v := "s3cret"
-			_ = writeJSONLine(w, apigen.ExportedValues{Items: []apigen.ExportedValue{{Name: "DATABASE_PASSWORD", Classification: apigen.KeyClassificationSecret, Value: &v}}})
+			_ = jsonwire.Encode(w, apigen.ExportedValues{Items: []apigen.ExportedValue{{Name: "DATABASE_PASSWORD", Classification: apigen.KeyClassificationSecret, Value: &v}}})
 		case strings.HasSuffix(r.URL.Path, "/values/DATABASE_PASSWORD/reveal"):
 			if !live || !strings.Contains(r.Header.Get("Authorization"), rotated) {
 				w.WriteHeader(http.StatusForbidden)
@@ -61,7 +62,7 @@ func ceremonyServer(t *testing.T, window apigen.RevealWindow) (http.Handler, *[]
 				return
 			}
 			v := "s3cret"
-			_ = writeJSONLine(w, apigen.ValueCell{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_1", Set: true, Revealed: true, Value: &v})
+			_ = jsonwire.Encode(w, apigen.ValueCell{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_1", Set: true, Revealed: true, Value: &v})
 		default:
 			http.NotFound(w, r)
 		}
@@ -186,9 +187,9 @@ func TestRevealCeremonyHandsOffToTheBrowserAtZeroWindow(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
-			_ = writeJSONLine(w, apigen.RevealWindow{CanReveal: true, Protected: true, EffectiveWindowSeconds: 0, Live: live})
+			_ = jsonwire.Encode(w, apigen.RevealWindow{CanReveal: true, Protected: true, EffectiveWindowSeconds: 0, Live: live})
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/environments/env_70/values"):
-			_ = writeJSONLine(w, apigen.ValueList{Items: []apigen.ValueCell{
+			_ = jsonwire.Encode(w, apigen.ValueList{Items: []apigen.ValueCell{
 				{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_pw", Set: true},
 				{Name: "LOG_LEVEL", Classification: "config", KeyId: "key_ll", Set: true},
 			}})
@@ -206,7 +207,7 @@ func TestRevealCeremonyHandsOffToTheBrowserAtZeroWindow(t *testing.T) {
 				return
 			}
 			v := "s3cret"
-			_ = writeJSONLine(w, apigen.ValueCell{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_pw", Set: true, Revealed: true, Value: &v})
+			_ = jsonwire.Encode(w, apigen.ValueCell{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_pw", Set: true, Revealed: true, Value: &v})
 		default:
 			http.NotFound(w, r)
 		}
@@ -252,11 +253,11 @@ func TestRevealCeremonyHandsOffWhenNoAuthenticatorIsEnrolled(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
-			_ = writeJSONLine(w, apigen.RevealWindow{CanReveal: true, EffectiveWindowSeconds: 300, TotpOffered: true, Live: started})
+			_ = jsonwire.Encode(w, apigen.RevealWindow{CanReveal: true, EffectiveWindowSeconds: 300, TotpOffered: true, Live: started})
 		case strings.HasSuffix(r.URL.Path, "/auth/totp"):
-			_ = writeJSONLine(w, apigen.TotpStatus{Confirmed: false})
+			_ = jsonwire.Encode(w, apigen.TotpStatus{Confirmed: false})
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/environments/env_70/values"):
-			_ = writeJSONLine(w, apigen.ValueList{Items: []apigen.ValueCell{{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_pw", Set: true}}})
+			_ = jsonwire.Encode(w, apigen.ValueList{Items: []apigen.ValueCell{{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_pw", Set: true}}})
 		case strings.HasSuffix(r.URL.Path, "/auth/cli-reauth/start"):
 			started = true
 			// The handoff began; the test needs no browser round trip to prove

@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestAccountPasswordAndFactorSocialOnlyRefuseBeforePrompt(t *testing.T) {
@@ -60,7 +62,7 @@ func TestAccountPasswordPersistsReplacementWithoutDisclosingSecrets(t *testing.T
 			server := newRevisionAwareFixtureServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case "/api/v1/auth/totp":
-					_ = writeJSONLine(w, map[string]bool{"confirmed": true, "pending": false, "has_password": tc.hasPassword, "has_passkey": false, "can_reauth_oidc": false})
+					_ = jsonwire.Encode(w, map[string]bool{"confirmed": true, "pending": false, "has_password": tc.hasPassword, "has_passkey": false, "can_reauth_oidc": false})
 				case "/api/v1/auth/password":
 					mutations++
 					if r.Method != http.MethodPut || r.Header.Get("Authorization") != "Bearer old-session-secret" {
@@ -181,7 +183,7 @@ func TestCLIReauthUnavailableRefusesBeforeBrowser(t *testing.T) {
 		starts++
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		_ = writeJSONLine(w, map[string]map[string]string{"error": {"code": "bad_request", "message": "the request does not satisfy the API contract", "detail": detail}})
+		_ = jsonwire.Encode(w, map[string]map[string]string{"error": {"code": "bad_request", "message": "the request does not satisfy the API contract", "detail": detail}})
 	}))
 	defer server.Close()
 	st, _, _, _ := passwordTestIO(t, server.URL, pinnedTestEntry("local", server))

@@ -138,7 +138,7 @@ func (s *Session) accept(ctx context.Context, previous *State, next *State) erro
 	return err
 }
 
-func encodeFloor(f releaseidentity.SnapshotFloor) string {
-	raw, _ := json.Marshal(f, jsonwire.Stable)
-	return string(raw)
+func encodeFloor(f releaseidentity.SnapshotFloor) (string, error) {
+	raw, err := json.Marshal(f, jsonwire.Stable)
+	return string(raw), err
 }
