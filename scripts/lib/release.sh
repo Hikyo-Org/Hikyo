@@ -2,13 +2,10 @@
 
 # Source-owned declaration is generated before the binary; its enclosing
 # signed manifest supplies the nonrecursive artifact identity.
-validate_release_compatibility() {
-	compatibility_file=$1
-	compatibility_candidate=$2
-	jq -e --slurpfile candidate "$compatibility_candidate" '
+# Shape only: a complete two-engine declaration. Binding to a candidate is separate.
+validate_compatibility_shape() {
+	jq -e '
 		.schema == "hikyo.dev/upgrade-compatibility/v1" and .profile == "stable/v1" and
-		.version == $candidate[0].version and .sequence == $candidate[0].sequence and
-		.commit == $candidate[0].commit and
 		(.engines | type == "array" and length == 2) and
 		([.engines[].migrations.engine] | sort) == ["postgres", "sqlite"] and
 		all(.engines[];
@@ -17,6 +14,16 @@ validate_release_compatibility() {
 			all(.migrations.entries[]; (.version | type == "number") and .version > 0 and
 				(.version | floor) == .version and (.sha256 | test("^[0-9a-f]{64}$"))) and
 			(.sources | type == "array"))
+	' "$1" >/dev/null
+}
+
+validate_release_compatibility() {
+	compatibility_file=$1
+	compatibility_candidate=$2
+	validate_compatibility_shape "$compatibility_file" || return 1
+	jq -e --slurpfile candidate "$compatibility_candidate" '
+		.version == $candidate[0].version and .sequence == $candidate[0].sequence and
+		.commit == $candidate[0].commit
 	' "$compatibility_file" >/dev/null
 }
 

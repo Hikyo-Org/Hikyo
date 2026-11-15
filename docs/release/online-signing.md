@@ -53,6 +53,15 @@ builds refuse to run until this delegation authenticates.
 Use the actual approved version in place of `VERSION`, without a leading `v`.
 Do not run `build 1.0.0` until designs and final-candidate acceptance are done.
 
+Optional pre-check: to learn before tagging whether `VERSION` changes upgrade
+compatibility, run the `release-compatibility-check` workflow from main with
+that version (`gh workflow run release-compatibility-check.yml --ref main -f version=VERSION`).
+It compares the compatibility declaration generated from main's tip with the one
+the highest earlier stable release published, verified through the signed trust.
+Green means identical; red means a difference, an unverifiable earlier release or
+a failed lookup, and the log says which. It is read-only and tags nothing. Run it
+again if main moves before you tag.
+
 1. **Build the draft:** from clean current main, run
    `scripts/release/ceremony.sh build VERSION`. The helper requires green CI
    for the exact commit and synchronized published trust. Review the commit

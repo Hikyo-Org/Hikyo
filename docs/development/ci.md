@@ -38,6 +38,7 @@ for activation, promotion and operator commands.
 | Measure performance | `perf-codspeed` or `perf-control` | Measurements preserve the paid-run budget. Required benchmark smoke does not use paid runners. |
 | Promote dev to main for the nightly | `nightly-promote` | Daily at 22:17 UTC or manual on main. Opens a `release/nightly-*` PR for the last green dev commit when main lacks it and queues it. A merged promotion starts the nightly. |
 | Publish nightly builds | `nightly-release` | Scheduled publication or the repository-dispatch path, built and signed from main after complete verified source proof of that exact commit. A commit that is already published is skipped. |
+| Check compatibility before tagging | `release-compatibility-check` | Manual, on main, read-only. For a given `X.Y.Z` it generates the upgrade-compatibility declaration at main's tip and compares it with the highest earlier stable release's signed declaration (see [online signing](../release/online-signing.md)). It tags and publishes nothing and `release-build` does not depend on it. |
 | Publish stable releases | `release-build` | Signed tag pipeline consuming exact-source full proof; artifact acceptance remains fresh. |
 | Publish documentation | `docs` | Main-push Pages/Storybook build, deployment, and public-site verification. |
 

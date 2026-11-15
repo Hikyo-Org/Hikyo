@@ -113,5 +113,17 @@ requires out-of-band rebootstrap. Revocations reach only verifiers that fetch
 authenticated updates. No offline-generated-root or independent-human claim is
 made.
 
+**Pre-tag compatibility check (owner decision 2026-11-15, option B; the human tag ceremony stays).**
+`release-compatibility-check` is an optional, read-only, dispatch-only workflow. Before tagging,
+a maintainer can ask whether a release of a given `X.Y.Z` built from main's tip leaves upgrade
+compatibility unchanged. It generates the candidate's `upgrade-compatibility.json` with the release
+generator on scratch PostgreSQL and compares it, minus version, sequence and commit, byte for byte with
+the declaration of the highest plain stable version below it in authenticated trust. That baseline is
+fetched and verified through `stable verify --published` and its declaration is bound to the signed
+manifest; neither GitHub's "latest" flag nor a prerelease decides. A difference, a missing or
+unverifiable baseline, or a malformed declaration is reported and left to a maintainer. The check
+creates no tag, release or trust change and is not part of the build; `release-build` and the
+signing and publication path are unchanged. Fully unattended tagging stays deferred to a later App phase.
+
 Operational entry point: [online signing](../release/online-signing.md).
 Primary-source evidence: [release ceremony research](../research/release-signing-ceremonies.md).
