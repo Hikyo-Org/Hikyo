@@ -160,3 +160,27 @@ func TestNewestAfterWriteStopsWhenTheWaitIsCancelled(t *testing.T) {
 		t.Fatalf("a spent deadline did not end the re-read: %v", err)
 	}
 }
+
+// The route group job 43743778985 took: no barrier yet, proof metadata still
+// lagging, so reconcile creates the barrier and must confirm it from a listing
+// that trails the POST, inside the re-reading loop's own reserve.
+func TestGroupColdStartBarrierSurvivesLaggingCheckListing(t *testing.T) {
+	f := newQueueFixture(t)
+	f.staleGroup()
+	clock := newGroupClock(t)
+	clock.before = func(int) { f.groupRefresh() }
+	waits := recordReadWaits(t)
+	api := &laggingListAPI{inner: f.api, lag: 2}
+	f.c.api = api
+	if err := f.group(); err != nil {
+		t.Fatalf("cold-start barrier behind a lagging listing failed the job: %v", err)
+	}
+	if api.posts != 1 {
+		// The verified terminal record updates the barrier; it is never a second CREATE.
+		t.Fatalf("POSTs = %d, want only the barrier", api.posts)
+	}
+	if !slices.Equal(*waits, barrierConfirmBackoff[:2]) {
+		t.Fatalf("listing waits = %v, want %v", *waits, barrierConfirmBackoff[:2])
+	}
+	f.assertNewest(t, "success", "Merge group validated", "")
+}
