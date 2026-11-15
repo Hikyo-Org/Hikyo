@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"filippo.io/age"
+
 	"github.com/Hikyo-Org/hikyo/internal/app"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
@@ -111,7 +113,7 @@ func runRestoreAfterRootRotation(t *testing.T, target drillTarget, c custody) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	refuses := func(t *testing.T, name string, content []byte, identity string, want error) {
+	refuses := func(t *testing.T, name string, content []byte, identity string, wantNoMatch bool) {
 		t.Helper()
 		t.Run(name, func(t *testing.T) {
 			from := filepath.Join(t.TempDir(), "archive.age")
@@ -124,8 +126,9 @@ func runRestoreAfterRootRotation(t *testing.T, target drillTarget, c custody) {
 			if err == nil {
 				t.Fatal("the restore was accepted")
 			}
-			if want != nil && !errors.Is(err, want) {
-				t.Fatalf("restore error = %v, want %v", err, want)
+			var noMatch *age.NoIdentityMatchError
+			if wantNoMatch && !errors.As(err, &noMatch) {
+				t.Fatalf("restore error = %v, want age's no-identity-match refusal", err)
 			}
 			assertTargetUntouched(t, target)
 		})
@@ -136,15 +139,17 @@ func runRestoreAfterRootRotation(t *testing.T, target drillTarget, c custody) {
 		tampered[at] ^= 0x01
 		return tampered
 	}
-	// The header (recipient stanza and its MAC) and the payload fail for
-	// different reasons: flipping a header byte breaks the header MAC or the
-	// stanza; flipping a payload byte breaks that chunk's authentication tag.
+	// The stanza, the header MAC and the payload fail for different reasons:
+	// a stanza byte stops the file key unwrapping, a MAC byte fails the header
+	// check, a payload byte fails that chunk's authentication tag.
 	mac := bytes.Index(archive, []byte("\n--- "))
 	if mac < 0 {
 		t.Fatal("no age header MAC line in the archive")
 	}
-	refuses(t, "tampered_header_refused_before_any_state", flip(mac+6), c.identityFile(), nil)
-	refuses(t, "tampered_payload_refused_before_any_state", flip(len(archive)-24), c.identityFile(), nil)
+	stanza := bytes.IndexByte(archive, '\n') + 1 // first byte of the first stanza line
+	refuses(t, "tampered_stanza_refused_before_any_state", flip(stanza+4), c.identityFile(), false)
+	refuses(t, "tampered_header_mac_refused_before_any_state", flip(mac+6), c.identityFile(), false)
+	refuses(t, "tampered_payload_refused_before_any_state", flip(len(archive)-24), c.identityFile(), false)
 
 	foreign := map[string]func() (string, string, error){
 		"foreign_x25519_identity": backup.GenerateIdentity,
@@ -159,14 +164,14 @@ func runRestoreAfterRootRotation(t *testing.T, target drillTarget, c custody) {
 		if err := os.WriteFile(file, []byte(identity+"\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		refuses(t, name+"_is_refused_before_any_state", archive, file, nil)
+		refuses(t, name+"_is_refused_before_any_state", archive, file, true)
 	}
 	// The root key is not a backup identity in either direction.
 	rootFile := filepath.Join(c.rootStore, "rootkey")
 	if raw, err := os.ReadFile(rootFile); err != nil || strings.TrimSpace(string(raw)) == "" {
 		t.Fatalf("root key store: %v", err)
 	}
-	refuses(t, "root_key_file_is_not_an_identity", archive, rootFile, nil)
+	refuses(t, "root_key_file_is_not_an_identity", archive, rootFile, false)
 }
 
 // rotateRootThroughEveryPhase runs prepare, install, verify and finalize
