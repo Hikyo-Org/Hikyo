@@ -91,8 +91,10 @@ http_probe() {
     shift 6
     local result rc attempt limit=1
     # Policy programming is asynchronous. Retain each failed convergence
-    # attempt, and require the final positive controls below as well.
-    [[ "$expected" == deny || "$name" == recovered-* ]] && limit=15
+    # attempt, and require the final positive controls below as well. The
+    # default egress controls are the first reads of Services exposed just
+    # before them, whose endpoints and dataplane rules are also asynchronous.
+    [[ "$expected" == deny || "$name" == recovered-* || "$name" == default-egress-* ]] && limit=15
     for ((attempt=1; attempt<=limit; attempt++)); do
         # Hikyo serves its SPA only for an explicit HTML Accept header.
         if result=$(kubectl -n "$namespace" exec "$source" -c "$container" -- \
