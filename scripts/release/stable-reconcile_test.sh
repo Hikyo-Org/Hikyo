@@ -16,18 +16,36 @@ git -C "$repo" config user.name test
 git -C "$repo" config commit.gpgsign false
 # c0 is the latest stable release; trust records it only from c2 on, so a build
 # at c0 or c1 would read stale trust and burn the tag.
-printf '{"highest_release":"1.0.0"}\n' >"$repo/release/trust/metadata.json"
+trust_metadata() { jq -nc --arg highest "$1" --args '{highest_release:$highest, releases:($ARGS.positional | map({version:., sequence:1, manifest_sha256:("a"*64)}))}' "$@"; }
+trust_metadata 1.0.0 1.0.0 >"$repo/release/trust/metadata.json"
 for name in metadata.sigstore.json catalog.json catalog.sigstore.json; do printf 'old %s\n' "$name" >"$repo/release/trust/$name"; done
 printf '{}\n' >"$repo/release/repository/fallback-channel-test.json"
+mkdir -p "$repo/release/compatibility"
+cp "$script_dir/../../release/compatibility/sources.json" "$repo/release/compatibility/sources.json"
 git -C "$repo" add -A
 git -C "$repo" commit -q -m c0 --no-gpg-sign
 git -C "$repo" commit -q --allow-empty -m c1 --no-gpg-sign
-printf '{"highest_release":"1.1.0"}\n' >"$repo/release/trust/metadata.json"
+trust_metadata 1.1.0 1.0.0 1.1.0 >"$repo/release/trust/metadata.json"
 git -C "$repo" commit -q -a -m c2 --no-gpg-sign
 git -C "$repo" commit -q --allow-empty -m c3 --no-gpg-sign
 c0=$(git -C "$repo" rev-parse HEAD~3) c1=$(git -C "$repo" rev-parse HEAD~2) c2=$(git -C "$repo" rev-parse HEAD~1) c3=$(git -C "$repo" rev-parse HEAD)
 tip=$c3
 hex() { printf "$1%.0s" $(seq 40); }
+# Real-shaped declarations: the migrations of the declaration the real generator
+# makes for this tree, the source edges of the hand-reviewed sources.json.
+real_declaration() { # version sequence commit
+	jq -S --slurpfile sources "$script_dir/../../release/compatibility/sources.json" --arg v "$1" --argjson s "$2" --arg c "$3" '
+		.version = $v | .sequence = $s | .commit = $c |
+		.engines |= map(.sources = $sources[0].engines[.migrations.engine])' "$script_dir/../../internal/buildcompat/development.json"
+}
+mkdir "$scratch/baseline"
+real_declaration 1.1.0 2 "$c0" >"$scratch/baseline/upgrade-compatibility.json"
+real_declaration 1.1.1 3 "$c3" >"$scratch/candidate-decl.json"
+jq -S '.engines[0].schema_sha256 = ("b" * 64)' "$scratch/candidate-decl.json" >"$scratch/changed-decl.json"
+jq -nc --arg c "$c0" '{version:"1.1.0",sequence:2,commit:$c,key_id:"k",public_key:"k.pub"}' >"$scratch/baseline/release-candidate.json"
+. "$script_dir/../lib/release.sh"
+jq -nc --arg c "$c0" --arg sha "$(sha256_file "$scratch/baseline/upgrade-compatibility.json")" \
+	'{source_commit:$c,artifacts:[{name:"upgrade-compatibility.json",kind:"upgrade-compatibility",sha256:$sha}]}' >"$scratch/baseline/release-manifest.json"
 export FIXTURE="$scratch" C0="$c0" C1="$c1" C2="$c2" C3="$c3" TIP="$tip" REPO="$repo"
 
 cat >"$scratch/bin/gh" <<'SH'
@@ -69,13 +87,20 @@ tag_exists() {
 	esac
 }
 case "$*" in
-	'api repos/o/r/releases/latest') failing latest-fail; printf '{"tag_name":"%s"}\n' "${FIXTURE_LATEST:-v1.1.0}" ;;
-	'api repos/o/r/commits/v1.'*) jq -nc --arg sha "$C0" '{sha:$sha}' ;;
+	'api --paginate --slurp repos/o/r/releases?per_page=100')
+		failing releases-fail
+		# Pages of published releases (and a draft, which never counts). FIXTURE_LATEST names the
+		# newest stable release; FIXTURE_EXTRA adds more tags, for example a prerelease.
+		at=${FIXTURE_PUBLISHED_AT:-2026-01-01T00:00:00Z}
+		jq -nc --arg latest "${FIXTURE_LATEST:-v1.1.0}" --arg extra "${FIXTURE_EXTRA:-}" --arg at "$at" '
+			[($latest, "v1.0.0", ($extra | select(. != "") | split(" ")[]), "v9.9.9-nightly.20260101.1.gabcdef12")] |
+			map({tag_name: ., draft: false, prerelease: contains("-"), published_at: $at}) + [{tag_name: "v8.0.0", draft: true, prerelease: false, published_at: null}] | [.]' ;;
+	'api repos/o/r/commits/v1.'*) jq -nc --arg sha "${FIXTURE_LATEST_COMMIT:-$C0}" '{sha:$sha}' ;;
 	'api graphql --paginate '*)
 		failing alerts-fail
 		merged=true
 		case "$mode" in unmerged*) merged=false ;; esac
-		jq -nc --arg oid "$C1" --argjson merged "$merged" --arg at "${FIXTURE_MERGED_AT:-2026-01-01T00:00:00Z}" '
+		jq -nc --arg oid "${FIXTURE_SEC_OID:-$C1}" --argjson merged "$merged" --arg at "${FIXTURE_MERGED_AT:-2026-01-01T00:00:00Z}" '
 			def pr($n; $m; $ref; $oid): {dependabotUpdate:{pullRequest:{number:$n,merged:$m,mergedAt:(if $m then $at else null end),baseRefName:"main",headRefName:$ref,author:{login:"dependabot"},mergeCommit:(if $m then {oid:$oid} else null end)}}};
 			{data:{repository:{vulnerabilityAlerts:{nodes:[
 				pr(7; $merged; "dependabot/npm_and_yarn/x"; $oid), pr(7; $merged; "dependabot/npm_and_yarn/x"; $oid),
@@ -94,14 +119,21 @@ case "$*" in
 			{number:13,user:{id:49699333},head:{ref:"dependabot/go/foreign",sha:$c,repo:{full_name:"o/r"}},auto_merge:null}]' ;;
 	'api --paginate repos/o/r/pulls/8/commits?per_page=100')
 		failing commits-fail
-		jq -nc --arg b "$(hex b)" '[{sha:$b,author:{login:"dependabot[bot]"}}]' ;;
+		jq -nc --arg b "$([ "$mode" = dependabot-head-moved ] && hex 7 || hex b)" --arg mode "$mode" '[{sha:$b,author:{login:"dependabot[bot]"},committer:{login:(if $mode == "dependabot-committer" then "someone" else "web-flow" end)},
+			commit:{verification:{verified:($mode != "dependabot-unverified")}}}]' ;;
 	'api --paginate repos/o/r/pulls/13/commits?per_page=100')
-		jq -nc --arg c "$(hex c)" '[{sha:"1111111111111111111111111111111111111111",author:{login:"dependabot[bot]"}},{sha:$c,author:{login:"someone"}}]' ;;
+		jq -nc --arg c "$(hex c)" '[{sha:"1111111111111111111111111111111111111111",author:{login:"dependabot[bot]"},committer:{login:"web-flow"},commit:{verification:{verified:true}}},
+			{sha:$c,author:{login:"someone"},committer:{login:"web-flow"},commit:{verification:{verified:true}}}]' ;;
 	'api repos/o/homebrew-tap/contents/Casks/hikyo.rb?ref=main')
 		failing cask-fail
 		[ "$mode" != cask-missing ] || not_found
+		case "$mode" in
+			cask-null) echo '{"content":null}'; exit 0 ;;
+			cask-empty) echo '{"content":""}'; exit 0 ;;
+		esac
 		jq -nc --arg c "$(printf 'cask "hikyo" do\n  version "%s"\nend\n' "${FIXTURE_CASK:-1.1.0}" | base64)" '{content:$c}' ;;
 	'api repos/o/r/git/ref/tags/v1.1.1')
+		failing tag-ref-fail
 		tag_exists || not_found
 		echo '{"object":{"type":"tag","sha":"dddddddddddddddddddddddddddddddddddddddd"}}' ;;
 	'api repos/o/r/git/tags/'*) jq -nc --arg c "$C3" '{object:{type:"commit",sha:$c}}' ;;
@@ -133,27 +165,34 @@ case "$*" in
 		[ "$mode" != higher-tag ] || printf '[{"ref":"refs/tags/v1.1.2"}]\n' ;;
 	'api repos/o/r/releases/tags/v1.1.1')
 		failing release-lookup-fail
-		if [ "${FIXTURE_PUBLISHED:-}" = 1 ]; then echo '{"draft":false}'; elif [ "$mode" = release-exists ]; then echo '{"draft":true}'; else not_found; fi ;;
+		if [ "${FIXTURE_PUBLISHED:-}" = 1 ]; then echo '{"draft":false}'; elif [ "$mode" = release-exists ]; then echo '{"draft":false}'; else not_found; fi ;;
 	'api --method POST repos/o/r/git/tags '*) echo '{"sha":"dddddddddddddddddddddddddddddddddddddddd"}' ;;
 	'api --method POST repos/o/r/git/refs -f ref=refs/tags/'*)
 		if [ "$mode" = tag-race ]; then : >"$FIXTURE/created"; printf 'gh: Reference already exists (HTTP 422)\n' >&2; exit 1; fi
 		echo '{}' ;;
 	'api --method POST repos/o/r/git/refs '*) echo '{}' ;;
+	'release download v1.1.0 --repo o/r --dir '*)
+		failing download-fail
+		for last; do :; done
+		[ "$mode" != baseline-missing ] || { printf 'release not found\n' >&2; exit 1; }
+		cp "$FIXTURE/baseline/"* "$last/" ;;
 	'release download v1.1.1 --repo o/r --dir '*)
 		for last; do :; done
 		jq -nc --arg c "$C3" '{source_commit:$c}' >"$last/release-manifest.json"
 		for name in metadata.json metadata.sigstore.json catalog.json catalog.sigstore.json; do
-			if [ "$mode" = trust-recorded ]; then cp "$REPO/release/trust/$name" "$last/$name"; else printf 'new %s\n' "$name" >"$last/$name"; fi
+			if [ "$mode" = download-empty ] && [ "$name" = catalog.json ]; then : >"$last/$name"; elif [ "$mode" = trust-recorded ]; then cp "$REPO/release/trust/$name" "$last/$name"; else printf 'new %s\n' "$name" >"$last/$name"; fi
 		done ;;
 	'api repos/o/r/git/ref/heads/main') jq -nc --arg sha "$TIP" '{object:{sha:$sha}}' ;;
 	'api repos/o/r/git/ref/heads/release/sync-trust-1.1.1')
 		case "$mode" in
 			branch-unrelated | branch-related | contents-fail) jq -nc --arg sha "$C2" '{object:{sha:$sha}}' ;;
-			branch-has-commit | pr-armed | pr-unarmed-recent | pr-unarmed-old) jq -nc --arg sha "$(hex e)" '{object:{sha:$sha}}' ;;
+			branch-has-commit | pr-armed | pr-unarmed-recent | pr-unarmed-old | pr-unarmed-reopened) jq -nc --arg sha "$(hex e)" '{object:{sha:$sha}}' ;;
 			*) not_found ;;
 		esac ;;
 	'api repos/o/r/git/ref/heads/release/sync-trust-1.1.0')
+		failing heads-ref-fail
 		case "$mode" in cleanup-merged | cleanup-unmerged | cleanup-other-head) jq -nc --arg sha "$(hex 5)" '{object:{sha:$sha}}' ;; *) not_found ;; esac ;;
+	'api repos/o/r/git/ref/heads/release/sync-trust-'*) not_found ;;
 	'api repos/o/r/compare/'*)
 		if [ "$mode" = branch-unrelated ]; then echo '{"files":[{"filename":"release/trust/metadata.json"},{"filename":"scripts/evil.sh"}]}'; else echo '{"files":[{"filename":"release/trust/metadata.json"}]}'; fi ;;
 	'api repos/o/r/contents/release/trust/'*)
@@ -161,7 +200,7 @@ case "$*" in
 		name=${2#repos/o/r/contents/release/trust/}
 		name=${name%%\?*}
 		case "$mode" in
-			branch-has-commit | pr-armed | pr-unarmed-recent | pr-unarmed-old) jq -nc --arg c "$(printf 'new %s\n' "$name" | base64)" '{content:$c}' ;;
+			branch-has-commit | pr-armed | pr-unarmed-recent | pr-unarmed-old | pr-unarmed-reopened) jq -nc --arg c "$(printf 'new %s\n' "$name" | base64)" '{content:$c}' ;;
 			*) jq -nc --arg c "$(printf 'old %s\n' "$name" | base64)" '{content:$c}' ;;
 		esac ;;
 	'api graphql --input '*)
@@ -175,9 +214,16 @@ case "$*" in
 		now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 		case "$mode" in
 			pr-armed) jq -nc --arg now "$now" '[{number:42,created_at:$now,auto_merge:{merge_method:"merge"}}]' ;;
-			pr-unarmed-recent) jq -nc --arg now "$now" '[{number:42,created_at:$now,auto_merge:null}]' ;;
+			pr-unarmed-recent | pr-unarmed-reopened) jq -nc --arg now "$now" '[{number:42,created_at:$now,auto_merge:null}]' ;;
 			pr-unarmed-old) echo '[{"number":42,"created_at":"2026-01-01T00:00:00Z","auto_merge":null}]' ;;
 			*) echo '[]' ;;
+		esac ;;
+	'api --paginate repos/o/r/pulls?state=all&base=main&head=o:release/sync-trust-1.1.1&per_page=100')
+		now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+		case "$mode" in
+			pr-unarmed-reopened) jq -nc --arg now "$now" '[{number:42,created_at:$now},{number:41,created_at:"2026-01-01T00:00:00Z"}]' ;;
+			pr-unarmed-old) echo '[{"number":42,"created_at":"2026-01-01T00:00:00Z"}]' ;;
+			*) jq -nc --arg now "$now" '[{number:42,created_at:$now}]' ;;
 		esac ;;
 	'api repos/o/r/pulls?state=closed&base=main&head=o:release/sync-trust-1.1.0&per_page=100')
 		case "$mode" in
@@ -213,10 +259,18 @@ printf 'go %s\n' "$*" >>"$FIXTURE/calls"
 case "$*" in
 	*'stable candidate --patch-only '*) [ "${FIXTURE_MODE:-}" != not-patch ] || exit 1 ;;
 	*'stable preflight '*) [ "${FIXTURE_MODE:-}" != preflight-fail ] || exit 1 ;;
+	*'stable verify '*'--directory '*) [ "${FIXTURE_MODE:-}" != compat-unverifiable ] || exit 1 ;;
+	-C*' run ./scripts/release/compatibility '*)
+		# Generated at the target commit's own tree, on scratch PostgreSQL.
+		[ -f "$2/release/compatibility/sources.json" ] && [ -n "${HIKYO_RELEASE_SCHEMA_POSTGRES_DSN:-}" ] || exit 1
+		[ "${FIXTURE_MODE:-}" != compat-gen-fail ] || exit 1
+		for last; do :; done
+		case "${FIXTURE_MODE:-}" in compat-diff) cp "$FIXTURE/changed-decl.json" "$last" ;; *) cp "$FIXTURE/candidate-decl.json" "$last" ;; esac ;;
 esac
 SH
 cat >"$scratch/bin/green" <<'SH'
 #!/bin/sh
+if [ "${FIXTURE_MODE:-}" = green-read-fail ]; then printf 'source proof: GitHub read failed for repos/o/r/x: boom\n' >&2; exit 1; fi
 case " $GREEN " in *" $2 "*) exit 0 ;; esac
 exit 1
 SH
@@ -230,7 +284,13 @@ cat >"$scratch/bin/fallback" <<'SH'
 SH
 cat >"$scratch/bin/synced" <<'SH'
 #!/bin/sh
+[ "${FIXTURE_MODE:-}" != synced-fail ] || exit 4
 [ "${FIXTURE_MODE:-}" != unsynced ]
+SH
+cat >"$scratch/bin/postgres" <<'SH'
+#!/bin/sh
+printf 'postgres %s %s\n' "$POSTGRES_DB" "$POSTGRES_PASSWORD" >>"$FIXTURE/calls"
+[ "${FIXTURE_MODE:-}" != postgres-fail ]
 SH
 cat >"$scratch/bin/homebrew" <<'SH'
 #!/bin/sh
@@ -242,7 +302,7 @@ printf 'publish %s run=%s state=%s\n' "$*" "$HIKYO_RELEASE_RUN_ID" "$HIKYO_RELEA
 SH
 chmod +x "$scratch"/bin/*
 export GH_BIN="$scratch/bin/gh" GO_BIN="$scratch/bin/go" GREEN_BIN="$scratch/bin/green" SYNCED_BIN="$scratch/bin/synced" \
-	DOCS_LIVE_BIN="$scratch/bin/docs" FALLBACK_BIN="$scratch/bin/fallback" HOMEBREW_BIN="$scratch/bin/homebrew" PUBLISH_BIN="$scratch/bin/publish" \
+	DOCS_LIVE_BIN="$scratch/bin/docs" FALLBACK_BIN="$scratch/bin/fallback" HOMEBREW_BIN="$scratch/bin/homebrew" PUBLISH_BIN="$scratch/bin/publish" POSTGRES_BIN="$scratch/bin/postgres" \
 	GH_REPO=o/r HIKYO_REPO_ROOT="$repo" GITHUB_SHA="$tip" STABLE_RELEASE_APP_BOT_ID=900
 
 fail() { printf 'stable-reconcile fixture: %s\n' "$*" >&2; exit 1; }
@@ -287,6 +347,17 @@ expect action tag "green tip"; expect commit "$tip" "green tip"; expect version 
 # Dependabot lane: only the proven, unarmed, same-repo PR whose commits are all Dependabot's. #12 is
 # already armed, #13 has a commit by someone else, #10 has no alert, #11 is not Dependabot, the fork copy is foreign.
 expect automerge "8:$b" "security lane"
+# The proof is Dependabot's own verified commits for exactly the head the queue would merge: a committer
+# other than GitHub, an unverified commit, or a head that is not the PR's last commit queue nothing.
+for mode in dependabot-committer dependabot-unverified dependabot-head-moved; do
+	run "$mode" plan; expect automerge '' "$mode"
+done
+# An unchanged-schema patch passes the compatibility gate end to end (the real comparison script runs
+# against a real-shaped declaration), and the scratch database starts only when a tag is decided.
+run pending plan; called '^postgres hikyo_release_schema release-schema-fixture' || fail 'a tag decision did not start scratch PostgreSQL'
+called 'release download v1.1.0 --repo o/r --dir' || fail 'the baseline release was not fetched'
+called 'stable verify .*--directory .*--version 1.1.0 .*--published --latest' || fail 'the baseline was not verified as the signed published latest'
+run unmerged plan; called '^postgres' && fail 'scratch PostgreSQL started without a tag decision'
 (GREEN="$c2 $c1" run pending plan); expect action tag "red tip"; expect commit "$c2" "red tip"
 # c1 holds the security merge but its trust predates the latest release: the build would burn the tag.
 (GREEN="$c1" run pending plan); expect action none "stale trust at the only green commit"
@@ -296,8 +367,17 @@ expect automerge "8:$b" "security lane"
 run unmerged plan; expect action none "unmerged"; expect issue none "no stall issue to close"
 run unmerged-issue-open plan; expect issue close "an open stall issue is closed"
 # --- plan: every refusal tag() would hit keeps the plan from deciding tag, and alerts after a day.
-for mode in higher-tag not-patch preflight-fail unsynced release-exists matching-refs-fail release-lookup-fail; do
+for mode in higher-tag not-patch preflight-fail unsynced release-exists compat-diff compat-unverifiable baseline-missing; do
 	expect_stall "$mode" none
+done
+# A stray tag names its recovery, a changed declaration says a maintainer must release.
+run higher-tag plan; case $(out reason) in *'stray tag'*'docs/release/online-signing.md'*) ;; *) fail 'the stray tag refusal lacks its recovery pointer' ;; esac
+run compat-diff plan; case $(out reason) in *'a maintainer must release this version'*) ;; *) fail 'the compatibility refusal does not say a maintainer must release' ;; esac
+# A failed lookup is not a refusal: the run fails, nothing is decided and nothing is written.
+for mode in matching-refs-fail release-lookup-fail synced-fail green-read-fail download-fail postgres-fail compat-gen-fail; do
+	expect_dies 'cannot' "plan with $mode" run "$mode" plan
+	no_writes "plan with $mode"
+	grep -q '^issue ' "$scratch/calls" && fail "$mode: touched issues"
 done
 (DOCS_FAIL=1; export DOCS_FAIL; expect_stall pending wait)
 (FALLBACK_FAIL=1; export FALLBACK_FAIL; expect_stall pending wait)
@@ -311,11 +391,14 @@ expect_stall no-artifact wait
 expect_stall expired-artifact wait
 run build-ok plan
 expect action publish "built"; expect run_id 77 "built"; expect artifact release-manifest-sha256-77-2 "built"
-# A person's release is the ceremony's, even when the bot's run was rerun by a person.
-for mode in human-run human-rerun; do
-	expect_stall "$mode" none
-	case $(out issue_text) in *'cannot retry'* | *immutable*) fail "$mode: a human build must not get the cannot-retry text" ;; esac
-done
+# A person's release is the ceremony's: no draft of it is published here and no cannot-retry text is given.
+expect_stall human-run none
+case $(out issue_text) in *'cannot retry'* | *immutable*) fail 'a human build must not get the cannot-retry text' ;; esac
+# A person re-running the app's build leaves a draft that nobody can publish: that is its own state,
+# alerted at once, with the recovery steps and without the retry advice of a failed build.
+run human-rerun plan; expect action none "re-run by a person"; expect issue open "re-run by a person"
+case $(out reason) in *'re-run by a person'*) ;; *) fail 'the re-run state has no re-run reason' ;; esac
+case $(out issue_text) in *'re-ran its release-build run 77'*'gh release delete v1.1.1 --repo o/r --yes'*'do not re-run an app build'*) ;; *) fail 'the re-run issue lacks the recovery steps' ;; esac
 run build-failed plan; expect action none "failed build"; expect issue open "failed build"
 case $(out issue_text) in *'gh release delete v1.1.1 --repo o/r --yes'*) ;; *) fail 'the failed build issue lacks the draft deletion command' ;; esac
 # Trust behind the published release: sync it first. Semver precedence, not text order.
@@ -333,11 +416,81 @@ run pending plan; expect homebrew '' "current cask"
 run cask-missing plan; expect homebrew 1.1.0 "no cask yet"
 run cleanup-merged plan; expect cleanup release/sync-trust-1.1.0 "merged branch"
 # --- plan fails closed on every listing it decides from.
-for mode in latest-fail alerts-fail pulls-fail commits-fail cask-fail docs-fail runs-fail artifact-fail; do
+for mode in releases-fail alerts-fail pulls-fail commits-fail cask-fail docs-fail runs-fail artifact-fail tag-ref-fail heads-ref-fail; do
 	expect_dies 'cannot' "plan with $mode" run "$mode" plan
 	no_writes "plan with $mode"
 done
 expect_dies 'cannot list open issues' 'closing with a failed issue listing' run unmerged-issues-fail plan
+expect_dies 'tap cask answer has no content' 'a cask answer without content passed' run cask-null plan
+expect_dies 'Homebrew cask is empty' 'an empty cask passed for a missing cask' run cask-empty plan
+expect_dies 'cannot inspect tags/v1.1.1' 'a failed tag ref lookup passed for "no tag"' run tag-ref-fail plan
+expect_dies 'cannot inspect heads/release/sync-trust-1.1.0' 'a failed branch ref lookup passed for "no branch"' run heads-ref-fail plan
+
+# --- plan: the walk back from the tip stops at the commit holding the security merge, and after 60 commits.
+mkrepo() { # dir
+	mkdir -p "$1/release/trust" "$1/release/repository" "$1/release/compatibility"
+	git -C "$1" init -q -b main
+	git -C "$1" config user.email test@example.com
+	git -C "$1" config user.name test
+	git -C "$1" config commit.gpgsign false
+	cp "$script_dir/../../release/compatibility/sources.json" "$1/release/compatibility/sources.json"
+	printf '{}\n' >"$1/release/repository/fallback-channel-test.json"
+	trust_metadata 1.0.0 1.0.0 >"$1/release/trust/metadata.json"
+	for name in metadata.sigstore.json catalog.json catalog.sigstore.json; do printf 'old %s\n' "$name" >"$1/release/trust/$name"; done
+	git -C "$1" add -A
+	git -C "$1" commit -q -m base --no-gpg-sign
+}
+repo2="$scratch/repo2"
+mkrepo "$repo2"
+base2=$(git -C "$repo2" rev-parse HEAD)
+trust_metadata 1.1.0 1.0.0 1.1.0 >"$repo2/release/trust/metadata.json"
+git -C "$repo2" commit -q -a -m older --no-gpg-sign
+older=$(git -C "$repo2" rev-parse HEAD)
+git -C "$repo2" commit -q --allow-empty -m security --no-gpg-sign
+sec=$(git -C "$repo2" rev-parse HEAD)
+git -C "$repo2" commit -q --allow-empty -m t1 --no-gpg-sign
+git -C "$repo2" commit -q --allow-empty -m t2 --no-gpg-sign
+tip2=$(git -C "$repo2" rev-parse HEAD)
+repo2_run() { # green-list mode
+	(export GREEN="$1" HIKYO_REPO_ROOT="$repo2" GITHUB_SHA="$tip2" FIXTURE_SEC_OID="$sec" FIXTURE_LATEST_COMMIT="$base2"; run "$2" plan)
+}
+# Only a commit older than the security merge is green and records the latest release: it lacks the fix.
+repo2_run "$older" pending; expect action none "an older green commit without the security merge"
+called '^postgres' && fail 'scratch PostgreSQL started for a commit without the security merge'
+repo2_run "$sec $older" pending; expect action tag "green security commit"; expect commit "$sec" "green security commit"
+repo2="$scratch/repo3"
+mkrepo "$repo2"
+base2=$(git -C "$repo2" rev-parse HEAD)
+trust_metadata 1.1.0 1.0.0 1.1.0 >"$repo2/release/trust/metadata.json"
+git -C "$repo2" commit -q -a -m security --no-gpg-sign
+sec=$(git -C "$repo2" rev-parse HEAD)
+i=0
+while [ "$i" -lt 64 ]; do git -C "$repo2" commit -q --allow-empty -m "t$i" --no-gpg-sign; i=$((i + 1)); done
+tip2=$(git -C "$repo2" rev-parse HEAD)
+# Chain (newest first): 64 empty commits, then the security commit as the 65th. The 60th is the last one checked.
+at60=$(git -C "$repo2" rev-list --first-parent "$base2..$tip2" | sed -n 60p)
+at61=$(git -C "$repo2" rev-list --first-parent "$base2..$tip2" | sed -n 61p)
+# The empty commits carry the latest release's trust through their parent, so only green proof varies.
+repo2_run "$at60" pending; expect action tag "the 60th commit is inside the cap"; expect commit "$at60" "the 60th commit"
+repo2_run "$at61" pending; expect action none "the 61st commit is beyond the cap"
+repo2_run "$sec" pending; expect action none "the security commit is beyond the cap"
+
+# --- plan: published releases decide, not GitHub's latest flag; prereleases count for trust.
+# A person's prerelease that main's trust never recorded is synchronized, by the app.
+(FIXTURE_EXTRA=v1.2.0-rc.1 run pending plan); expect action sync-trust "an unsynced prerelease"; expect version 1.2.0-rc.1 "an unsynced prerelease"
+# A trust that already records the prerelease while the latest stable is older is in sync: no false
+# "older than trusted" stall, and no unattended patch on top of a prerelease.
+git -C "$repo" checkout -q -- release/trust/metadata.json
+trust_metadata 1.2.0-rc.1 1.0.0 1.1.0 1.2.0-rc.1 >"$repo/release/trust/metadata.json"
+(FIXTURE_EXTRA=v1.2.0-rc.1 FIXTURE_MERGED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ) run pending plan)
+expect action none "trust records the prerelease"; expect issue none "trust records the prerelease"
+case $(out reason) in *'a prerelease'*) ;; *) fail 'the prerelease state has no prerelease reason' ;; esac
+case $(out reason) in *'older than'*) fail 'a recorded prerelease was reported as older than trusted' ;; esac
+(FIXTURE_EXTRA=v1.2.0-rc.1 run pending plan); expect action none "trust records the prerelease"; expect issue open "a prerelease blocks a waiting security release for a day"
+git -C "$repo" checkout -q -- release/trust/metadata.json
+# A trust sync that has been outstanding for a day alerts even with no security merge waiting.
+(FIXTURE_LATEST=v1.1.1 run unmerged plan); expect action sync-trust "old unsynced release"; expect issue open "an old unsynced release alerts without a pending merge"
+(FIXTURE_LATEST=v1.1.1 FIXTURE_PUBLISHED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ) run unmerged plan); expect action sync-trust "recent unsynced release"; expect issue none "a recent unsynced release does not alert"
 
 # --- tag: creates the annotated tag object, then the ref, for exactly the planned commit.
 (VERSION=1.1.1 COMMIT=$c3 run pending tag)
@@ -357,6 +510,8 @@ tag_refused unsynced 'not synchronized'
 tag_refused release-exists 'already has a release'
 tag_refused matching-refs-fail 'cannot read'
 tag_refused release-lookup-fail 'cannot prove the version is unused'
+tag_refused green-read-fail 'cannot read the source proof'
+tag_refused synced-fail 'cannot list the public releases'
 (export VERSION=1.1.1 COMMIT=$c3 GREEN=''; expect_dies 'green source proof' 'tagged a commit without green proof' run pending tag)
 (export VERSION=1.1.1 COMMIT="$(hex 7)"; expect_dies 'not on main history' 'tagged a commit off main' run pending tag)
 (export VERSION=1.2 COMMIT=$c3; expect_dies 'plain stable version' 'accepted a non-patch version string' run pending tag)
@@ -385,6 +540,14 @@ called 'pr merge 42 --repo o/r --auto --merge --match-head-commit eeee' || fail 
 must_fail 'accepted an unverified commit' sync unverified
 called 'pr merge' && fail 'armed an unverified commit'
 (export VERSION=1.1.1 APP_SLUG=app STABLE_RELEASE_APP_BOT_ID=0; expect_dies 'numeric bot user id' 'accepted a bad bot id' run pending sync-trust)
+# A prerelease is a release trust must record too (a person's prerelease is synchronized by the app),
+# so its version passes validation and reaches the release lookup; a malformed version never does.
+(export VERSION=1.2.0-rc.1 APP_SLUG=app; expect_dies 'releases/tags/v1.2.0-rc.1' 'a prerelease version was refused before any lookup' run pending sync-trust)
+(export VERSION=1.2 APP_SLUG=app; expect_dies 'is required' 'a malformed version was accepted' run pending sync-trust)
+# An empty trust file must never become an empty file in a commit.
+must_fail 'committed an empty trust file' sync download-empty
+grep -q 'is empty' "$scratch/log" || fail 'the empty trust file was not named'
+called 'graphql --input' && fail 'a commit was created from an empty trust file'
 # Trust already records the release: nothing to commit.
 sync trust-recorded; grep -q 'already records' "$scratch/log" || fail 'trust-recorded was not recognised'
 no_writes 'trust already recorded'
@@ -402,6 +565,10 @@ sync pr-unarmed-recent; called 'pr merge 42' || fail 'did not re-arm a recent un
 must_fail 're-armed a PR the queue has refused for hours' sync pr-unarmed-old
 grep -q 'no longer queued' "$scratch/log" || fail 'wrong error for an abandoned trust PR'
 called 'pr merge' && fail 'armed a stale trust PR'
+# Closing and reopening, or replacing, the pull request never restarts the patience.
+must_fail 're-armed a reopened PR whose first version is hours old' sync pr-unarmed-reopened
+grep -q 'no longer queued' "$scratch/log" || fail 'wrong error for a reopened trust PR'
+called 'pr merge' && fail 'armed a reopened stale trust PR'
 # A failed contents read must not become a redundant commit.
 must_fail 'went on after a failed contents read' sync contents-fail
 called 'graphql --input' && fail 'created a commit after a failed contents read'

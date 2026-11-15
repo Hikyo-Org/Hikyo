@@ -54,6 +54,7 @@ commit=$(jq -er '.source_commit' "$scratch/draft/release-manifest.json")
 if [ -n "${HIKYO_RELEASE_RUN_ID:-}" ]; then
   printf '%s\n' "$HIKYO_RELEASE_RUN_ID" | grep -Eq '^[1-9][0-9]*$' || { printf 'publication: invalid release-build run id\n' >&2; exit 1; }
   "$GH_BIN" api "repos/$repository/actions/runs/$HIKYO_RELEASE_RUN_ID" >"$scratch/build.json" || { printf 'publication: cannot read the release-build run\n' >&2; exit 1; }
+  # shellcheck disable=SC2154
   jq -e --arg tag "$tag" --arg commit "$commit" "$release_run_jq"'
     release_run and .event == "push" and .head_branch == $tag and .head_sha == $commit and
     .status == "completed" and .conclusion == "success"

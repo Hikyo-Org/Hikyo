@@ -55,6 +55,8 @@ printf '%s\n' "$run_id" | grep -Eq '^[1-9][0-9]*$' || refuse 'invalid release-bu
 api_to "$scratch/run.json" "repos/$repository/actions/runs/$run_id"
 bot=${STABLE_RELEASE_APP_BOT_ID:-}
 printf '%s\n' "$bot" | grep -Eq '^([1-9][0-9]*)?$' || refuse 'invalid stable-release bot id'
+# release_run_jq comes from the shared release library.
+# shellcheck disable=SC2154
 jq -e --arg repo "$repository" --arg tag "$tag" --arg commit "$commit" "$release_run_jq"'
   release_run and
   .event == "push" and .head_branch == $tag and .head_sha == $commit and

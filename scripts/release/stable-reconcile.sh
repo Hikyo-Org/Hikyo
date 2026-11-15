@@ -33,6 +33,8 @@ repo_root=${HIKYO_REPO_ROOT:-$(CDPATH='' cd -- "$script_dir/../.." && pwd)}
 : "${FALLBACK_BIN:=$script_dir/../ci/check-fallback-channel-test.sh}"
 : "${HOMEBREW_BIN:=$script_dir/publish-homebrew-cask.sh}"
 : "${PUBLISH_BIN:=$script_dir/publish-stable-draft.sh}"
+: "${COMPAT_BIN:=$script_dir/check-unattended-compatibility.sh}"
+: "${POSTGRES_BIN:=$script_dir/../ci/start-ci-postgres.sh}"
 : "${GH_REPO:?}"
 dependabot_user_id=49699333
 issue_title='Unattended stable patch release is stalled'
@@ -43,10 +45,19 @@ trust="$repo_root/release/trust"
 escalate_after=86400
 # A trust PR that the queue has not merged after this long is a failure, not a retry.
 trust_pr_patience=10800
+# The scratch database the compatibility generator needs; release.yml uses the same one.
+scratch_postgres_dsn='postgres://hikyo:release-schema-fixture@127.0.0.1:5432/hikyo_release_schema?sslmode=disable'
 
 die() {
 	printf 'stable-reconcile: %s\n' "$*" >&2
 	exit 1
+}
+# A rule says no: the plan turns exit 3 into "do not tag" and a stall alert.
+# Everything else that stops a run (die) is a failed read or a broken tool, and
+# must fail the run instead of passing for "no".
+refuse() {
+	printf 'stable-reconcile: %s\n' "$*" >&2
+	exit 3
 }
 note() {
 	printf '%s\n' "$*"
@@ -73,22 +84,39 @@ ref_exists() {
 need_version() {
 	printf '%s\n' "${1:-}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || die 'a plain stable version X.Y.Z is required'
 }
+need_release() { is_semver "${1:-}" || die "a release version X.Y.Z or X.Y.Z-pre is required: ${1:-empty}"; }
 need_sha() { printf '%s\n' "${1:-}" | grep -Eq '^[0-9a-f]{40}$' || die "a full commit SHA is required: ${1:-empty}"; }
 need_bot() { printf '%s\n' "${STABLE_RELEASE_APP_BOT_ID:-}" | grep -Eq '^[1-9][0-9]*$' || die 'STABLE_RELEASE_APP_BOT_ID must be the numeric bot user id'; }
 patch_successor() { printf '%s\n' "$1" | awk -F. '{printf "%d.%d.%d\n", $1, $2, $3 + 1}'; }
-# semver_gt A B: A has higher SemVer precedence than B (a release outranks its own prerelease).
+# SemVer precedence key: a release outranks its own prerelease; numeric
+# prerelease identifiers sort below alphanumeric ones.
+semver_key_jq='def key: capture("^(?<core>[0-9]+\\.[0-9]+\\.[0-9]+)(?:-(?<pre>[0-9A-Za-z.-]+))?(?:\\+.*)?$") |
+	[(.core | split(".") | map(tonumber)),
+	 (if .pre == null then [1] else [0, (.pre | split(".") | map(if test("^[0-9]+$") then tonumber else . end))] end)];'
+# semver_gt A B: A has higher SemVer precedence than B.
 semver_gt() {
-	jq -n -e --arg a "$1" --arg b "$2" '
-		def key: capture("^(?<core>[0-9]+\\.[0-9]+\\.[0-9]+)(?:-(?<pre>[0-9A-Za-z.-]+))?(?:\\+.*)?$") |
-			[(.core | split(".") | map(tonumber)),
-			 (if .pre == null then [1] else [0, (.pre | split(".") | map(if test("^[0-9]+$") then tonumber else . end))] end)];
-		($a | key) > ($b | key)' >/dev/null
+	jq -n -e --arg a "$1" --arg b "$2" "$semver_key_jq"'($a | key) > ($b | key)' >/dev/null
 }
 epoch() { date -u -d "$1" +%s 2>/dev/null || date -u -j -f %Y-%m-%dT%H:%M:%SZ "$1" +%s; }
 # Seeds the rollback floor from main's authenticated trust, never from a local file.
 seed_state() {
 	state="$work/release-trust-state.json"
 	go_stable verify --trust "$trust" --trust-only --state "$state" >/dev/null
+}
+# is_green COMMIT: 0 = complete green source proof, 1 = not proven green. A failed
+# GitHub read stops the run: "could not look" is never the same as "not green".
+is_green() {
+	if "$GREEN_BIN" "$GH_REPO" "$1" </dev/null >"$work/green.out" 2>&1; then return 0; fi
+	if grep -F 'GitHub read failed' "$work/green.out" >/dev/null; then cat "$work/green.out" >&2; die "cannot read the source proof of $1"; fi
+	return 1
+}
+# b64_oneline FILE: the file as one base64 line; an empty or failed encoding stops the run.
+b64_oneline() {
+	[ -s "$1" ] || die "$1 is empty"
+	base64 <"$1" >"$work/b64.tmp" || die "cannot encode $1"
+	tr -d '\n' <"$work/b64.tmp" >"$work/b64.line" || die "cannot encode $1"
+	[ -s "$work/b64.line" ] || die "$1 encoded to nothing"
+	cat "$work/b64.line"
 }
 # Sets tagged_commit to the commit the tag names, through an annotated tag object if any.
 tag_commit() {
@@ -121,31 +149,80 @@ security_prs() {
 
 # Everything tag() refuses, so the plan never decides a tag that would die and
 # the job never burns an immutable tag on a state the build would refuse.
+# Exit 3 (refuse) = a rule says no. Any other failure = a read failed; the run
+# fails instead of pretending the answer was no.
 tag_checks() {
 	checks_version=$1
 	checks_commit=$2
-	"$SYNCED_BIN" "$GH_REPO" "$trust/metadata.json" ||
-		die 'trust is not synchronized with the public releases (an outstanding stable draft also stops this)'
-	go_stable preflight --trust "$trust" >/dev/null || die 'stable trust does not authenticate'
+	checks_compat=${3:-}
+	rc=0
+	"$SYNCED_BIN" "$GH_REPO" "$trust/metadata.json" || rc=$?
+	case $rc in
+	0) ;;
+	1) refuse 'trust is not synchronized with the public releases (an outstanding stable draft also stops this)' ;;
+	*) die 'cannot list the public releases to check that trust is synchronized' ;;
+	esac
+	go_stable preflight --trust "$trust" >/dev/null || refuse 'stable trust does not authenticate'
 	go_stable candidate --patch-only --trust "$trust" --version "$checks_version" --commit "$checks_commit" \
-		--out "$work/candidate.json" || die "v$checks_version is not the patch successor of the signed latest stable release"
-	"$GIT_BIN" -C "$repo_root" merge-base --is-ancestor "$checks_commit" "$GITHUB_SHA" || die 'the commit is not on main history'
-	"$GREEN_BIN" "$GH_REPO" "$checks_commit" </dev/null || die "$checks_commit has no complete green source proof"
+		--out "$work/candidate.json" || refuse "v$checks_version is not the patch successor of the signed latest stable release"
+	"$GIT_BIN" -C "$repo_root" cat-file -e "$checks_commit^{commit}" 2>/dev/null || refuse 'the commit is not on main history'
+	rc=0
+	"$GIT_BIN" -C "$repo_root" merge-base --is-ancestor "$checks_commit" "$GITHUB_SHA" || rc=$?
+	case $rc in
+	0) ;;
+	1) refuse 'the commit is not on main history' ;;
+	*) die 'cannot compare the commit with main history' ;;
+	esac
+	is_green "$checks_commit" || refuse "$checks_commit has no complete green source proof"
 	api "$work/matching-tags.json" --paginate "repos/$GH_REPO/git/matching-refs/tags/v"
 	jq -s -e --arg tag "v$checks_version" '
 		def triple: ltrimstr("v") | capture("^(?<a>[0-9]+)\\.(?<b>[0-9]+)\\.(?<c>[0-9]+)") | [.a, .b, .c | tonumber];
 		([.[][] | .ref | ltrimstr("refs/tags/") | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+") and (contains("-nightly.") | not)) | triple | select(. >= ($tag | triple))] | length) == 0
-	' "$work/matching-tags.json" >/dev/null || die "a stable tag at or above v$checks_version already exists"
-	if gh api "repos/$GH_REPO/releases/tags/v$checks_version" >/dev/null 2>"$work/err"; then die "v$checks_version already has a release"; fi
+	' "$work/matching-tags.json" >/dev/null || refuse "a stable tag at or above v$checks_version already exists; a stray tag (for example one made with a stolen app key) blocks the unattended release until a repository admin removes it, see docs/release/online-signing.md"
+	if gh api "repos/$GH_REPO/releases/tags/v$checks_version" >/dev/null 2>"$work/err"; then refuse "v$checks_version already has a release"; fi
 	grep -F '(HTTP 404)' "$work/err" >/dev/null || { cat "$work/err" >&2; die 'cannot prove the version is unused'; }
+	[ -z "$checks_compat" ] || compat_checks "$checks_version" "$checks_commit"
+}
+
+# The candidate's compatibility declaration is generated at the commit that would
+# be tagged, with the real generator on scratch PostgreSQL, and compared with the
+# previous stable release's published one by the very script release-build runs
+# again. PostgreSQL starts only here, when a tag is otherwise ready.
+compat_checks() {
+	cc_version=$1
+	cc_commit=$2
+	cc_tree="$work/target-tree"
+	mkdir "$cc_tree"
+	"$GIT_BIN" -C "$repo_root" archive "$cc_commit" | tar -x -C "$cc_tree" || die "cannot export $cc_commit"
+	[ -f "$cc_tree/release/compatibility/sources.json" ] || die "$cc_commit carries no release/compatibility/sources.json"
+	POSTGRES_PASSWORD=release-schema-fixture POSTGRES_DB=hikyo_release_schema POSTGRES_HEALTH_RETRIES=12 \
+		"$POSTGRES_BIN" >/dev/null || die 'cannot start scratch PostgreSQL for the compatibility declaration'
+	HIKYO_RELEASE_SCHEMA_POSTGRES_DSN=$scratch_postgres_dsn "$GO_BIN" -C "$cc_tree" run ./scripts/release/compatibility \
+		--candidate "$work/candidate.json" --out "$work/declaration.json" || die "cannot generate the compatibility declaration of $cc_commit"
+	rc=0
+	"$COMPAT_BIN" "$GH_REPO" "$cc_tree/release/trust" "$cc_version" "$work/declaration.json" >"$work/compat.out" 2>&1 || rc=$?
+	case $rc in
+	0) ;;
+	1) refuse "$(tail -n 1 "$work/compat.out")" ;;
+	*) cat "$work/compat.out" >&2; die 'cannot compare the compatibility declaration with the previous release' ;;
+	esac
 }
 
 plan_inner() {
-	latest_tag_file="$work/latest.json"
-	api "$latest_tag_file" "repos/$GH_REPO/releases/latest"
-	latest_tag=$(jq -er '.tag_name' "$latest_tag_file") || die 'cannot read the latest release'
-	printf '%s\n' "$latest_tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || die "latest release $latest_tag is not a plain stable tag"
-	latest=${latest_tag#v}
+	# What is published decides, never GitHub's "latest" flag: the highest published
+	# release of any channel (what trust must record) and the highest stable one
+	# (what a patch builds on). Drafts and nightlies never count.
+	api "$work/releases.json" --paginate --slurp "repos/$GH_REPO/releases?per_page=100"
+	jq -c "$semver_key_jq"'
+		[.[][] | select(.draft == false and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+(-[A-Za-z][0-9A-Za-z.-]*)?$") and (contains("-nightly.") | not)))] as $published |
+		($published | map(.tag_name | ltrimstr("v"))) as $all |
+		{highest: ($all | max_by(key)), stable: ($all | map(select(contains("-") | not)) | max_by(key)),
+		 published_at: ($published | max_by(.tag_name | ltrimstr("v") | key) | .published_at)}
+	' "$work/releases.json" >"$work/published.json" || die 'cannot read the published releases'
+	published_highest=$(jq -r '.highest // empty' "$work/published.json")
+	latest=$(jq -r '.stable // empty' "$work/published.json")
+	[ -n "$latest" ] || die 'there is no published stable release'
+	latest_tag="v$latest"
 	highest=$(jq -r '.highest_release // empty' "$trust/metadata.json")
 	api "$work/latest-commit.json" "repos/$GH_REPO/commits/$latest_tag"
 	latest_commit=$(jq -er '.sha' "$work/latest-commit.json") || die "cannot resolve $latest_tag"
@@ -155,7 +232,8 @@ plan_inner() {
 
 	# Side lane: Dependabot security-update PRs into main. The proof is an alert
 	# that Dependabot itself linked to the pull request, not a label or a title,
-	# and every commit of the PR must be authored by Dependabot.
+	# and every commit of the PR must be Dependabot's own: authored by
+	# dependabot[bot], committed by GitHub's web-flow and verified by GitHub.
 	security_prs >"$work/security.json"
 	api "$work/pulls.json" --paginate "repos/$GH_REPO/pulls?state=open&base=main&per_page=100"
 	jq -s -r --slurpfile security "$work/security.json" --argjson bot "$dependabot_user_id" --arg repo "$GH_REPO" '
@@ -164,10 +242,11 @@ plan_inner() {
 	while read -r number sha; do
 		[ -n "$number" ] || continue
 		api "$work/pr-commits.json" --paginate "repos/$GH_REPO/pulls/$number/commits?per_page=100"
-		if jq -s -e --arg sha "$sha" '[.[][]] | length > 0 and (.[-1].sha == $sha) and all(.[]; .author.login == "dependabot[bot]")' "$work/pr-commits.json" >/dev/null; then
+		if jq -s -e --arg sha "$sha" '[.[][]] | length > 0 and (.[-1].sha == $sha) and
+			all(.[]; .author.login == "dependabot[bot]" and .committer.login == "web-flow" and .commit.verification.verified == true)' "$work/pr-commits.json" >/dev/null; then
 			l_automerge="${l_automerge:+$l_automerge }$number:$sha"
 		else
-			note "stable-reconcile: security PR #$number has a commit not authored by dependabot[bot]; it is not queued"
+			note "stable-reconcile: security PR #$number has a commit that is not Dependabot's own verified commit; it is not queued"
 		fi
 	done <"$work/candidates"
 
@@ -187,14 +266,16 @@ plan_inner() {
 		decision none 'trust names no signed latest stable release, so no patch successor exists'
 		return 0
 	fi
-	if [ "$latest" != "$highest" ]; then
-		if semver_gt "$latest" "$highest"; then
-			decision sync-trust "v$latest is published but main's trust still ends at v$highest" "$latest"
-			escalate "main's trust still ends at v$highest although v$latest is published"
-		else
-			decision none "the latest release v$latest is older than trusted v$highest"
-			want_issue open "The latest GitHub release v$latest is older than the signed latest v$highest. A maintainer must reconcile them."
-		fi
+	if semver_gt "$published_highest" "$highest"; then
+		# Includes a person's prerelease that was never synced.
+		decision sync-trust "v$published_highest is published but main's trust still ends at v$highest" "$published_highest"
+		escalate "main's trust still ends at v$highest although v$published_highest is published"
+		escalate_trust_lag "$published_highest"
+		return 0
+	fi
+	if semver_gt "$highest" "$published_highest"; then
+		decision none "trust names v$highest, which is not published; the highest published release is v$published_highest"
+		want_issue open "Main's signed trust names v$highest, but the highest published release is v$published_highest. A maintainer must reconcile them."
 		return 0
 	fi
 
@@ -203,26 +284,45 @@ plan_inner() {
 	tap=${HIKYO_HOMEBREW_TAP_REPOSITORY:-${GH_REPO%/*}/homebrew-tap}
 	cask=
 	if tap_gh api "repos/$tap/contents/Casks/hikyo.rb?ref=main" >"$work/cask.json" 2>"$work/err"; then
-		jq -er '.content' "$work/cask.json" | base64 -d >"$work/cask.rb" || die 'cannot decode the Homebrew cask'
+		jq -er '.content' "$work/cask.json" >"$work/cask.b64" || die 'the tap cask answer has no content'
+		base64 -d <"$work/cask.b64" >"$work/cask.rb" || die 'cannot decode the Homebrew cask'
+		[ -s "$work/cask.rb" ] || die 'the Homebrew cask is empty'
 		cask=$(sed -n 's/^[[:space:]]*version[[:space:]]*"\([^"]*\)".*/\1/p' "$work/cask.rb" | head -n 1)
 	else
 		grep -F '(HTTP 404)' "$work/err" >/dev/null || { cat "$work/err" >&2; die "cannot read the cask of $tap"; }
 	fi
 	[ "$cask" = "$latest" ] || l_homebrew=$latest
-	if ref_exists "heads/release/sync-trust-$latest"; then l_cleanup="release/sync-trust-$latest"; fi
+	if ref_exists "heads/release/sync-trust-$highest"; then l_cleanup="release/sync-trust-$highest"; fi
+
+	if [ "$highest" != "$latest" ]; then
+		# trust and the published releases agree on a prerelease above the stable line:
+		# there is no stable signed latest to build a patch on.
+		decision none "the signed latest v$highest is a prerelease; an unattended patch needs a stable signed latest"
+		escalate "the signed latest v$highest is a prerelease, so the unattended patch release of v$latest cannot run"
+		return 0
+	fi
 
 	if ref_exists "tags/$next_tag"; then
 		tag_commit "$next_tag"
 		api "$work/runs.json" --paginate "repos/$GH_REPO/actions/workflows/release.yml/runs?event=push&head_sha=$tagged_commit&per_page=100"
 		# Only the exact push of this tag at this commit counts, whoever started it.
+		# shellcheck disable=SC2154
 		jq -s -c --arg tag "$next_tag" --arg commit "$tagged_commit" "$release_run_jq"'[.[].workflow_runs[] |
 			select(.head_sha == $commit and .head_branch == $tag and .event == "push" and release_run)]' \
 			"$work/runs.json" >"$work/tag-runs.json"
 		jq -c --argjson bot "$STABLE_RELEASE_APP_BOT_ID" '[.[] | select(.actor.id == $bot and .triggering_actor.id == $bot)] | sort_by(.run_number, .run_attempt) | last // empty' \
 			"$work/tag-runs.json" >"$work/bot-run.json"
+		jq -c --argjson bot "$STABLE_RELEASE_APP_BOT_ID" '[.[] | select(.actor.id == $bot and .triggering_actor.id != $bot)] | sort_by(.run_number, .run_attempt) | last // empty' \
+			"$work/tag-runs.json" >"$work/rerun.json"
 		if [ "$(jq 'length' "$work/tag-runs.json")" = 0 ]; then
 			decision wait "$next_tag exists and its release-build run has not started" "$next"
 			escalate "$next_tag exists but no release-build run has started"
+		elif [ -s "$work/rerun.json" ] && [ ! -s "$work/bot-run.json" ]; then
+			# GitHub keeps only the latest attempt of a run, with the re-runner as triggering
+			# actor. The tag authority refuses such a run for the reconciler and for the ceremony.
+			rerun_id=$(jq -er '.id' "$work/rerun.json")
+			decision none "the release-build run $rerun_id of $next_tag was re-run by a person, so no one can publish its draft"
+			want_issue open "The app pushed $next_tag, but a person re-ran its release-build run $rerun_id. GitHub then reports the person as the triggering actor and the tag authority refuses the draft for the reconciler and for the ceremony alike. The tag is immutable. Recovery: delete the draft (the tag stays burned): gh release delete $next_tag --repo $GH_REPO --yes. Then release the next patch with scripts/release/ceremony.sh; do not re-run an app build."
 		elif [ ! -s "$work/bot-run.json" ]; then
 			# A person tagged this release: the ceremony reviews and publishes it.
 			decision none "$next_tag was tagged by a person; its draft awaits the human ceremony, not this reconciler"
@@ -270,13 +370,15 @@ plan_inner() {
 	fi
 	# The build reads trust at the tag commit, so a commit whose trust predates the
 	# latest release would burn the tag. Take only commits that already record it.
+	# The walk stops at the commit that holds the security merge (nothing older
+	# contains it) and after 60 commits.
 	target=
 	checked=0
 	while read -r commit; do
 		checked=$((checked + 1))
 		[ "$checked" -le 60 ] || break
 		at=$("$GIT_BIN" -C "$repo_root" show "$commit:release/trust/metadata.json" 2>/dev/null | jq -r '.highest_release // empty' || true)
-		if [ "$at" = "$latest" ] && "$GREEN_BIN" "$GH_REPO" "$commit" </dev/null >/dev/null 2>&1; then target=$commit; break; fi
+		if [ "$at" = "$latest" ] && is_green "$commit"; then target=$commit; break; fi
 		[ "$commit" != "$floor" ] || break
 	done <"$work/chain"
 	if [ -z "$target" ]; then
@@ -301,12 +403,21 @@ plan_inner() {
 		escalate 'the fallback channel test record is stale (it expires after 93 days); a maintainer must run and record a new test'
 		return 0
 	fi
-	if ! (tag_checks "$next" "$target") >"$work/refusal" 2>&1; then
-		refusal=$(tail -n 1 "$work/refusal" | tr '\n' ' ')
+	rc=0
+	(tag_checks "$next" "$target" compat) >"$work/refusal" 2>&1 || rc=$?
+	case $rc in
+	0) ;;
+	3)
+		refusal=$(tail -n 1 "$work/refusal" | sed 's/^stable-reconcile: //' | tr '\n' ' ')
 		decision none "the tag would be refused: $refusal"
 		escalate "the next tag would be refused: $refusal"
 		return 0
-	fi
+		;;
+	*)
+		cat "$work/refusal" >&2
+		die 'a lookup failed while checking the next tag; nothing was decided'
+		;;
+	esac
 	decision tag "merged security updates are missing from $latest_tag; $target is the newest green commit at or after them" "$next" "$target"
 	want_issue close
 }
@@ -322,6 +433,15 @@ escalate() {
 	age=$(($(date +%s) - $(epoch "$oldest")))
 	if [ "$age" -gt "$escalate_after" ]; then
 		want_issue open "A merged Dependabot security update has waited more than 24 hours for its release: $1."
+	fi
+}
+# A trust sync that has been outstanding for a day alerts with or without a pending
+# security merge: until it lands, nothing else can be released from main.
+escalate_trust_lag() {
+	published_at=$(jq -er '.published_at' "$work/published.json") || die 'the published release has no publication time'
+	age=$(($(date +%s) - $(epoch "$published_at")))
+	if [ "$age" -gt "$escalate_after" ]; then
+		want_issue open "The trust synchronization of v$1 has been outstanding for more than 24 hours. Check the trust-sync pull request and the stable-release-reconciler runs, or run scripts/release/ceremony.sh sync-trust."
 	fi
 }
 
@@ -413,7 +533,7 @@ verify_public() {
 
 sync_trust() {
 	: "${VERSION:?}" "${APP_SLUG:?}"
-	need_version "$VERSION"
+	need_release "$VERSION"
 	need_bot
 	printf '%s\n' "$APP_SLUG" | grep -Eq '^[A-Za-z0-9-]+$' || die 'invalid app slug'
 	verify_public "$VERSION"
@@ -445,9 +565,13 @@ sync_trust() {
 	body="Public release trust evidence for v$VERSION, verified against the published release.
 
 Signed-off-by: $bot_login <$bot_email>"
-	additions=$(for name in $files; do
-		jq -n --arg path "release/trust/$name" --arg contents "$(base64 <"$download/$name" | tr -d '\n')" '{path: $path, contents: $contents}'
-	done | jq -s '.')
+	: >"$work/additions.jsonl"
+	for name in $files; do
+		encoded=$(b64_oneline "$download/$name")
+		jq -n --arg path "release/trust/$name" --arg contents "$encoded" '{path: $path, contents: $contents}' >>"$work/additions.jsonl" || die 'cannot build the trust additions'
+	done
+	additions=$(jq -s '.' "$work/additions.jsonl") || die 'cannot build the trust additions'
+	[ "$(printf '%s' "$additions" | jq 'length')" = 4 ] || die 'the trust commit must carry exactly four files'
 	jq -n --arg repo "$GH_REPO" --arg branch "$branch" --arg oid "$head" --arg headline "chore(release): record published $VERSION trust" \
 		--arg body "$body" --argjson additions "$additions" '{
 		query: "mutation($input: CreateCommitOnBranchInput!){createCommitOnBranch(input:$input){commit{oid}}}",
@@ -459,8 +583,10 @@ Signed-off-by: $bot_login <$bot_email>"
 		matches=true
 		for name in $files; do
 			api "$work/branch-file.json" "repos/$GH_REPO/contents/release/trust/$name?ref=$branch"
-			have=$(jq -r '.content // empty' "$work/branch-file.json" | tr -d '\n')
-			[ "$have" = "$(base64 <"$download/$name" | tr -d '\n')" ] || matches=false
+			jq -r '.content // empty' "$work/branch-file.json" >"$work/branch-file.b64" || die "cannot read $name on $branch"
+			have=$(tr -d '\n' <"$work/branch-file.b64")
+			want=$(b64_oneline "$download/$name")
+			[ -n "$have" ] && [ "$have" = "$want" ] || matches=false
 		done
 		[ "$matches" = false ] || committed=true
 	fi
@@ -485,7 +611,10 @@ Signed-off-by: $bot_login <$bot_email>"
 		number=$(jq -er '.number' "$work/pr-created.json") || die 'the trust pull request was not created'
 	elif [ "$(jq -r '.[0].auto_merge != null' "$work/prs.json")" != true ]; then
 		# The queue removes auto-merge from a rejected PR. Re-arm for a while, then stop and alert.
-		opened=$(jq -r '.[0].created_at' "$work/prs.json")
+		# The clock starts at the first pull request ever opened from this branch, so closing
+		# and reopening or replacing the pull request never restarts the patience.
+		api "$work/pr-history.json" --paginate "repos/$GH_REPO/pulls?state=all&base=main&head=${GH_REPO%/*}:$branch&per_page=100"
+		opened=$(jq -s -er '[.[][] | .created_at] | sort | first' "$work/pr-history.json") || die "cannot tell when the first trust PR of $branch was opened"
 		[ $(($(date +%s) - $(epoch "$opened"))) -le "$trust_pr_patience" ] ||
 			die "trust PR #$number was not merged within $((trust_pr_patience / 3600)) hours and is no longer queued; a maintainer must resolve it"
 	fi
@@ -538,7 +667,7 @@ automerge() {
 # Deletes the trust-sync branch only after its pull request merged exactly that head.
 cleanup() {
 	: "${BRANCH:?}"
-	printf '%s\n' "$BRANCH" | grep -Eq '^release/sync-trust-[0-9]+\.[0-9]+\.[0-9]+$' || die 'invalid trust-sync branch'
+	case "$BRANCH" in release/sync-trust-*) is_semver "${BRANCH#release/sync-trust-}" ;; *) false ;; esac || die 'invalid trust-sync branch'
 	ref_exists "heads/$BRANCH" || { note "stable-reconcile: $BRANCH is already gone"; return 0; }
 	api "$work/branch-ref.json" "repos/$GH_REPO/git/ref/heads/$BRANCH"
 	head=$(jq -er '.object.sha' "$work/branch-ref.json") || die "cannot read $BRANCH"

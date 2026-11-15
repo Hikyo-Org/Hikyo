@@ -37,6 +37,7 @@ case "$*" in
       exit 0
     fi
     case "$FIXTURE_MODE" in
+      list-failed) exit 1 ;;
       unsynced) printf '[[{"draft":false,"tag_name":"v1.0.0"}]]\n' ;;
       outstanding-draft) printf '[[{"draft":true,"tag_name":"v1.0.0"}]]\n' ;;
       *) printf '[[]]\n' ;;
@@ -147,6 +148,10 @@ for mode in unsynced outstanding-draft; do
     printf 'stable fixture: conflicting release accepted: %s\n' "$mode" >&2; exit 1
   fi
 done
+# A failed listing is not "unsynchronized": it exits 4 so callers fail instead of deciding.
+rc=0
+FIXTURE_MODE=list-failed "$script_dir/require-synced-trust.sh" owner/repo "$scratch/metadata.json" >"$scratch/error" 2>&1 || rc=$?
+[ "$rc" = 4 ] || { printf 'stable fixture: a failed release listing exited %s, want 4\n' "$rc" >&2; exit 1; }
 jq -ncS --arg commit "$commit" '{version:"1.0.0",sequence:1,commit:$commit,key_id:"github-actions-stable",public_key:"stable-policy.json"}' >"$scratch/candidate.json"
 printf 'artifact\n' >"$scratch/dist/file.tar.gz"
 printf 'recovery signature\n' >"$scratch/dist/stable-policy.sigstore.json"
