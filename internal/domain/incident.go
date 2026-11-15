@@ -111,6 +111,8 @@ const (
 	OwnerLeaseRevoke          = "lease.revoke"
 	OwnerAdapterTargetPause   = "adapter_target.pause"
 	OwnerAdapterMove          = "adapter_move.resume"
+	OwnerAdapterScrub         = "adapter_scrub.complete"
+	OwnerAdapterOrphan        = "adapter_orphan.review"
 	OwnerAdapterCredential    = "adapter_credential.clear"
 	OwnerAdapterUpstream      = "adapter_credential.upstream_revoke"
 	OwnerDynamicCredential    = "dynamic_provider.credential_clear"
@@ -126,7 +128,7 @@ const (
 var IncidentOwnerFunctions = []string{
 	OwnerSessionRevoke, OwnerDeveloperRevoke, OwnerExternalIdentity, OwnerFactorRemoval, OwnerServiceAccountReview,
 	OwnerMachineCredential, OwnerAccountContain, OwnerEmailInvitation, OwnerSCIMCredential, OwnerLeaseRevoke,
-	OwnerAdapterTargetPause, OwnerAdapterMove, OwnerAdapterCredential, OwnerAdapterUpstream,
+	OwnerAdapterTargetPause, OwnerAdapterMove, OwnerAdapterScrub, OwnerAdapterOrphan, OwnerAdapterCredential, OwnerAdapterUpstream,
 	OwnerDynamicCredential, OwnerDynamicUpstream, OwnerConsumerAdoption, OwnerNone,
 }
 
@@ -146,6 +148,8 @@ const (
 	ObjectKindLease              = "lease"
 	ObjectKindAdapter            = "adapter"
 	ObjectKindAdapterTarget      = "adapter_target"
+	ObjectKindAdapterMove        = "adapter_move"
+	ObjectKindAdapterScrub       = "adapter_scrub"
 	ObjectKindDynamicProvider    = "dynamic_provider"
 	ObjectKindEnumeration        = "enumeration"
 	ObjectKindOrg                = "org"
@@ -161,7 +165,7 @@ const (
 var IncidentObjectKinds = []string{
 	ObjectKindSession, ObjectKindDeveloperCred, ObjectKindExternalIdentity, ObjectKindTOTPFactor, ObjectKindPasskey, ObjectKindServiceAccount,
 	ObjectKindMachineCredential, ObjectKindAccount, ObjectKindEmailInvitation, ObjectKindSCIMCredential, ObjectKindSCIMBinding, ObjectKindLease,
-	ObjectKindAdapter, ObjectKindAdapterTarget, ObjectKindDynamicProvider, ObjectKindEnumeration, ObjectKindOrg, ObjectKindProject,
+	ObjectKindAdapter, ObjectKindAdapterTarget, ObjectKindAdapterMove, ObjectKindAdapterScrub, ObjectKindDynamicProvider, ObjectKindEnumeration, ObjectKindOrg, ObjectKindProject,
 	ObjectKindDeliveredPlaintext, ObjectKindLocalCopy, ObjectKindRunningProcess, ObjectKindExternalSession, ObjectKindIssuedCertificate,
 }
 

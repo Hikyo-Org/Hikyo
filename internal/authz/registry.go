@@ -377,6 +377,9 @@ const (
 	OpIncidentInstance       Operation = "incident.instance"
 	OpIncidentLeasesProject  Operation = "incident.leases-project"
 	OpIncidentLeasesInstance Operation = "incident.leases-instance"
+	// OpIncidentAdapterWork is the enumeration's bounded read of one project's
+	// non-terminal route moves and pending scrub jobs.
+	OpIncidentAdapterWork Operation = "incident.adapter-work"
 
 	// Audit trail reads (#45, audit-model ADR). One operation per addressed
 	// depth — the registry pins one depth per tenant operation, so the three
@@ -921,6 +924,9 @@ const (
 	StoreAdaptersMoveTarget             StoreOp = "adapters.MoveTarget"
 	StoreAdaptersMoveOrigin             StoreOp = "adapters.MoveOrigin"
 	StoreAdaptersMove                   StoreOp = "adapters.Move"
+	StoreAdaptersListOpenMoves          StoreOp = "adapters.ListOpenMoves"
+	StoreAdaptersListScrubs             StoreOp = "adapters.ListScrubs"
+	StoreAdaptersListOrphanedMoves      StoreOp = "adapters.ListOrphanedMoves"
 	// Reencrypt walk over the two adapter credential columns.
 	StoreAdaptersListForReencrypt      StoreOp = "adapters.ListAdaptersForReencrypt"
 	StoreAdaptersReencrypt             StoreOp = "adapters.ReencryptAdapter"
@@ -1555,6 +1561,9 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreAdaptersEnvironments:                 true,
 	StoreAdaptersConflicts:                    true,
 	StoreAdaptersMove:                         true,
+	StoreAdaptersListOpenMoves:                true,
+	StoreAdaptersListScrubs:                   true,
+	StoreAdaptersListOrphanedMoves:            true,
 	StoreCatalogueGroupGet:                    true,
 	StoreCatalogueGroupList:                   true,
 	StoreCatalogueGroupCount:                  true,
@@ -2354,6 +2363,17 @@ var operationTable = map[Operation]opSpec{
 		class:    ClassInstance,
 		formula:  Formula{{Cap: domain.CapCredentialReset, At: domain.LevelNone}},
 		storeOps: map[StoreOp]bool{StoreDynamicLeasesListNonTerminalInstance: true},
+		events:   []audit.EventType{audit.EventIncidentOpened},
+	},
+
+	// The adapter work read runs under the adapter inspect formula: the
+	// enumeration reaches it only for a caller who may inspect adapters, so the
+	// moves and scrubs are read under the same authority as the adapter list.
+	OpIncidentAdapterWork: {
+		class:    ClassTenant,
+		level:    domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageAdapters, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreAdaptersListOpenMoves: true, StoreAdaptersListScrubs: true, StoreAdaptersListOrphanedMoves: true},
 		events:   []audit.EventType{audit.EventIncidentOpened},
 	},
 

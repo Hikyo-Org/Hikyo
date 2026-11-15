@@ -1404,45 +1404,28 @@ func TestIncidentAdapterScope(t *testing.T) {
 			return service.IncidentTarget{Kind: domain.IncidentScopeAdapter, Scope: domain.Scope{Org: org, Project: project}, AdapterID: id}
 		}
 
-		// An adapter in the middle of a route move is visible on the adapter
-		// record, so it is a ledger item the adapter owner resumes.
+		// An adapter in the middle of an origin move has that move as its one
+		// ledger item for the work, which the adapter owner resumes.
 		execRaw(t, db, `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_it_mv','org_a','prj_a1','forgejo','https://git.example','usr_alice','moving',`+ts+`)`)
+		execRaw(t, db, `INSERT INTO adapter_route_moves(id,org_id,project_id,adapter_id,target_id,kind,pending_origin,pending_credential_ciphertext,authority_principal_id,state,keep_remote,created_at) VALUES ('arm_it_mv','org_a','prj_a1','adp_it_mv',NULL,'origin','https://git2.example',`+blobLit(db, []byte("x"))+`,'usr_alice','scrubbing',TRUE,`+ts+`)`)
 		v, err := w.svc.Open(ctx, w.as(incResponder), adapterTarget(orgA, prjA1, "adp_it_mv"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		got := w.itemMap(t, incResponder, v.Incident.ID)
 		wantItems(t, got, map[string]string{
-			"adapter_move.resume|adapter|adp_it_mv":                "pending/",
+			"adapter_move.resume|adapter_move|arm_it_mv":           "pending/",
 			"adapter_credential.upstream_revoke|adapter|adp_it_mv": "unknown/upstream_not_observable",
-			// Target-level moves and scrub jobs are not read yet (the S4 reader), so
-			// every adapter carries an open row that says so.
-			"adapter_move.resume|enumeration|adp_it_mv": "unknown/enumeration_truncated",
 		})
-		if _, err := w.svc.Close(ctx, w.as(incResponder), v.Incident.ID, false); !errors.Is(err, service.ErrIncidentOpenItems) {
-			t.Errorf("clean close with the move and scrub source unread = %v, want ErrIncidentOpenItems", err)
+		// The move replaces any adapter-level row for the same work, and a fully
+		// read source leaves no unread-source marker behind.
+		if _, ok := got["adapter_move.resume|adapter|adp_it_mv"]; ok {
+			t.Errorf("a moving adapter also lists an adapter-level move item: %v", got)
 		}
-		// A resume pass, with an owner registered for the move, does not ask it
-		// about the unread-source row: the marker stays open.
-		w.svc.Owners = map[string]service.IncidentOwner{domain.OwnerAdapterMove: func(context.Context, service.Actor, authz.IncidentItem) (service.IncidentOwnerResult, error) {
-			return service.OwnerConfirmed, nil
-		}}
-		if _, err := w.svc.Resume(ctx, w.as(incResponder), v.Incident.ID); err != nil {
-			t.Fatal(err)
-		}
-		if got := w.itemMap(t, incResponder, v.Incident.ID)["adapter_move.resume|enumeration|adp_it_mv"]; got != "unknown/enumeration_truncated" {
-			t.Errorf("unread-source marker after resume = %q, want it still open", got)
-		}
-		if _, err := w.svc.Close(ctx, w.as(incResponder), v.Incident.ID, false); !errors.Is(err, service.ErrIncidentOpenItems) {
-			t.Errorf("clean close after resume = %v, want ErrIncidentOpenItems", err)
-		}
-		// A project incident over the same adapter carries the marker too.
-		prj, err := w.svc.Open(ctx, w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeProject, Scope: domain.Scope{Org: orgA, Project: prjA1}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := w.itemMap(t, incResponder, prj.Incident.ID)["adapter_move.resume|enumeration|adp_it_mv"]; got != "unknown/enumeration_truncated" {
-			t.Errorf("project incident unread-source marker = %q, want it open", got)
+		for k := range got {
+			if strings.Contains(k, "|enumeration|") {
+				t.Errorf("unexpected unread-source marker %s", k)
+			}
 		}
 
 		// A credential-reset holder without the adapter capability records an
@@ -1461,6 +1444,292 @@ func TestIncidentAdapterScope(t *testing.T) {
 		}
 		if _, err := w.svc.Get(ctx, w.as(incOrgB), squat.Incident.ID); !errors.Is(err, domain.ErrNotFound) {
 			t.Errorf("org B reading org A's adapter incident = %v, want not found", err)
+		}
+	})
+}
+
+// seedAdapterWork seeds two adapters in prj_a1 with one target each, a
+// non-terminal move per adapter (one more completed), and scrub jobs: queued and
+// running count, succeeded and a converge job do not.
+func seedAdapterWork(t *testing.T, db *store.DB) {
+	t.Helper()
+	for i, a := range []string{"adp_w1", "adp_w2"} {
+		n := i + 1
+		execRaw(t, db, `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('`+a+`','org_a','prj_a1','forgejo','https://git`+fmt.Sprint(n)+`.example','usr_alice','active',`+ts+`)`)
+		execRaw(t, db, `INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_w`+fmt.Sprint(n)+`','org_a','prj_a1','env_a1','`+a+`','repository','acme','app`+fmt.Sprint(n)+`',4`+fmt.Sprint(n)+`,'',1,'moving','converging',`+ts+`)`)
+		execRaw(t, db, `INSERT INTO adapter_route_moves(id,org_id,project_id,adapter_id,target_id,kind,authority_principal_id,state,keep_remote,created_at) VALUES ('arm_w`+fmt.Sprint(n)+`','org_a','prj_a1','`+a+`','tgt_w`+fmt.Sprint(n)+`','target','usr_alice','scrubbing',TRUE,`+ts+`)`)
+	}
+	execRaw(t, db, `INSERT INTO adapter_route_moves(id,org_id,project_id,adapter_id,target_id,kind,authority_principal_id,state,keep_remote,created_at) VALUES ('arm_wdone','org_a','prj_a1','adp_w1','tgt_w1','target','usr_alice','completed',TRUE,`+ts+`)`)
+	job := func(id, target, kind, move, state string) {
+		mv := "NULL"
+		if move != "" {
+			mv = "'" + move + "'"
+		}
+		execRaw(t, db, `INSERT INTO adapter_outbox (id,org_id,project_id,environment_id,target_id,kind,route_move_id,authority_principal_id,generation,dedup_key,next_attempt_at,state,created_at) VALUES ('`+id+`','org_a','prj_a1','env_a1','`+target+`','`+kind+`',`+mv+`,'usr_alice',1,'dk_`+id+`',`+ts+`,'`+state+`',`+ts+`)`)
+	}
+	job("scr_w1", "tgt_w1", "scrub", "arm_w1", "queued")
+	job("scr_w1run", "tgt_w1", "scrub", "arm_w1", "running")
+	job("scr_w1ok", "tgt_w1", "scrub", "arm_w1", "succeeded")
+	job("cvg_w1", "tgt_w1", "converge", "arm_w1", "queued")
+	job("scr_w2", "tgt_w2", "scrub", "arm_w2", "queued")
+	// A teardown scrub belongs to no route move.
+	job("scr_w2td", "tgt_w2", "scrub", "", "queued")
+}
+
+func markerKeys(m map[string]string) []string {
+	var out []string
+	for k := range m {
+		if strings.Contains(k, "|enumeration|") {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+func TestIncidentListsAdapterMovesAndScrubs(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		ctx := t.Context()
+		seedAdapterWork(t, db)
+
+		adapterInc, err := w.svc.Open(ctx, w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeAdapter, Scope: domain.Scope{Org: orgA, Project: prjA1}, AdapterID: "adp_w1"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := w.itemMap(t, incResponder, adapterInc.Incident.ID)
+		wantItems(t, got, map[string]string{
+			"adapter_move.resume|adapter_move|arm_w1":        "pending/",
+			"adapter_scrub.complete|adapter_scrub|scr_w1":    "pending/",
+			"adapter_scrub.complete|adapter_scrub|scr_w1run": "pending/",
+		})
+		for _, absent := range []string{
+			"adapter_move.resume|adapter_move|arm_wdone", "adapter_move.resume|adapter_move|arm_w2",
+			"adapter_scrub.complete|adapter_scrub|scr_w1ok", "adapter_scrub.complete|adapter_scrub|cvg_w1",
+			"adapter_scrub.complete|adapter_scrub|scr_w2",
+		} {
+			if _, ok := got[absent]; ok {
+				t.Errorf("adapter incident lists %s", absent)
+			}
+		}
+		if m := markerKeys(got); len(m) != 0 {
+			t.Errorf("a fully read source left markers %v", m)
+		}
+
+		// The project incident lists the work of every adapter in the project.
+		prj, err := w.svc.Open(ctx, w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeProject, Scope: domain.Scope{Org: orgA, Project: prjA1}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		pg := w.itemMap(t, incResponder, prj.Incident.ID)
+		wantItems(t, pg, map[string]string{
+			"adapter_move.resume|adapter_move|arm_w1":       "pending/",
+			"adapter_move.resume|adapter_move|arm_w2":       "pending/",
+			"adapter_scrub.complete|adapter_scrub|scr_w1":   "pending/",
+			"adapter_scrub.complete|adapter_scrub|scr_w2":   "pending/",
+			"adapter_scrub.complete|adapter_scrub|scr_w2td": "pending/",
+		})
+
+		// With no owner registered, resume asks nobody and nothing becomes done;
+		// the incident cannot close clean while the moves and scrubs are open.
+		res, err := w.svc.Resume(ctx, w.as(incResponder), adapterInc.Incident.ID)
+		if err != nil || res.Confirmed != 0 {
+			t.Fatalf("resume = %+v, %v, want nothing confirmed", res, err)
+		}
+		after := w.itemMap(t, incResponder, adapterInc.Incident.ID)
+		if after["adapter_move.resume|adapter_move|arm_w1"] != "pending/" || after["adapter_scrub.complete|adapter_scrub|scr_w1"] != "pending/" {
+			t.Errorf("resume changed the move or scrub items: %v", after)
+		}
+		if _, err := w.svc.Close(ctx, w.as(incResponder), adapterInc.Incident.ID, false); !errors.Is(err, service.ErrIncidentOpenItems) {
+			t.Errorf("clean close with a move and scrubs open = %v, want ErrIncidentOpenItems", err)
+		}
+		// An owner that does not confirm leaves them open; only its confirmation
+		// writes done.
+		w.svc.Owners = map[string]service.IncidentOwner{
+			domain.OwnerAdapterMove: func(context.Context, service.Actor, authz.IncidentItem) (service.IncidentOwnerResult, error) {
+				return service.OwnerUnconfirmed, nil
+			},
+			domain.OwnerAdapterScrub: func(context.Context, service.Actor, authz.IncidentItem) (service.IncidentOwnerResult, error) {
+				return service.OwnerUnconfirmed, nil
+			},
+		}
+		if _, err := w.svc.Resume(ctx, w.as(incResponder), adapterInc.Incident.ID); err != nil {
+			t.Fatal(err)
+		}
+		for k, v := range w.itemMap(t, incResponder, adapterInc.Incident.ID) {
+			if (strings.HasPrefix(k, "adapter_move.resume|adapter_move|") || strings.HasPrefix(k, "adapter_scrub.complete|")) && strings.HasPrefix(v, "done") {
+				t.Errorf("%s = %s after an unconfirmed owner", k, v)
+			}
+		}
+
+		// Another org learns nothing: opening on org A's project answers as a
+		// missing project, the same as a project that does not exist, and its own
+		// incident on the same adapter id lists none of org A's work.
+		_, errOther := w.svc.Open(ctx, w.as(incOrgB), service.IncidentTarget{Kind: domain.IncidentScopeAdapter, Scope: domain.Scope{Org: orgA, Project: prjA1}, AdapterID: "adp_w1"})
+		_, errGhost := w.svc.Open(ctx, w.as(incOrgB), service.IncidentTarget{Kind: domain.IncidentScopeAdapter, Scope: domain.Scope{Org: orgA, Project: "prj_does_not_exist"}, AdapterID: "adp_w1"})
+		assertUniformNotFound(t, errOther, errGhost)
+		_, errRead := w.svc.Get(ctx, w.as(incOrgB), adapterInc.Incident.ID)
+		_, errMissing := w.svc.Get(ctx, w.as(incOrgB), "inc_does_not_exist")
+		assertUniformNotFound(t, errRead, errMissing)
+		own, err := w.svc.Open(ctx, w.as(incOrgB), service.IncidentTarget{Kind: domain.IncidentScopeAdapter, Scope: domain.Scope{Org: orgB, Project: prjB1}, AdapterID: "adp_w1"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for k := range w.itemMap(t, incOrgB, own.Incident.ID) {
+			if strings.Contains(k, "arm_w") || strings.Contains(k, "scr_w") {
+				t.Errorf("org B incident lists org A's %s", k)
+			}
+		}
+	})
+}
+
+// A scrub that ended failed and orphaned names a route move stored are remote
+// names Hikyo cannot see removed. Each is an open item only an operator's
+// attestation resolves, so an incident never closes clean over them and resume
+// never marks them done.
+func TestIncidentFailedScrubAndStoredOrphansStayOpenUntilAttested(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		ctx := t.Context()
+		const (
+			failedScrub = "adapter_orphan.review|adapter_scrub|scr_fx1"
+			orphanMove  = "adapter_orphan.review|adapter_move|arm_fx2"
+		)
+		// Each adapter has only a tombstoned target, so the target list adds no
+		// item of its own; the adapter's one open item besides is its upstream
+		// credential, which the operator attests.
+		for n, a := range []string{"adp_fx1", "adp_fx2"} {
+			id := fmt.Sprint(n + 1)
+			execRaw(t, db, `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('`+a+`','org_a','prj_a1','forgejo','https://gitfx`+id+`.example','usr_alice','active',`+ts+`)`)
+			execRaw(t, db, `INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_fx`+id+`','org_a','prj_a1','env_a1','`+a+`','repository','acme','fx`+id+`',6`+id+`,'',1,'tombstoned','converged',`+ts+`)`)
+		}
+		// A RemoveTarget teardown scrub that ended failed: no route move.
+		execRaw(t, db, `INSERT INTO adapter_outbox (id,org_id,project_id,environment_id,target_id,kind,route_move_id,authority_principal_id,generation,dedup_key,next_attempt_at,state,created_at) VALUES ('scr_fx1','org_a','prj_a1','env_a1','tgt_fx1','scrub',NULL,'usr_alice',1,'dk_fx1',`+ts+`,'failed',`+ts+`)`)
+		// A route-move scrub that stored orphans and let the move complete.
+		execRaw(t, db, `INSERT INTO adapter_route_moves(id,org_id,project_id,adapter_id,target_id,kind,authority_principal_id,state,keep_remote,created_at) VALUES ('arm_fx2','org_a','prj_a1','adp_fx2','tgt_fx2','target','usr_alice','completed',TRUE,`+ts+`)`)
+		execRaw(t, db, `INSERT INTO adapter_route_move_targets(move_id,org_id,project_id,environment_id,target_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,orphaned_names) VALUES ('arm_fx2','org_a','prj_a1','env_a1','tgt_fx2','repository','acme','fx2',62,'','["A","B"]')`)
+		// A move whose scrub left nothing behind lists no orphan item.
+		execRaw(t, db, `INSERT INTO adapter_route_moves(id,org_id,project_id,adapter_id,target_id,kind,authority_principal_id,state,keep_remote,created_at) VALUES ('arm_fx1','org_a','prj_a1','adp_fx1','tgt_fx1','target','usr_alice','completed',TRUE,`+ts+`)`)
+		execRaw(t, db, `INSERT INTO adapter_route_move_targets(move_id,org_id,project_id,environment_id,target_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix) VALUES ('arm_fx1','org_a','prj_a1','env_a1','tgt_fx1','repository','acme','fx1',61,'')`)
+
+		for _, tc := range []struct{ adapter, key, other string }{
+			{"adp_fx1", failedScrub, orphanMove},
+			{"adp_fx2", orphanMove, failedScrub},
+		} {
+			v, err := w.svc.Open(ctx, w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeAdapter, Scope: domain.Scope{Org: orgA, Project: prjA1}, AdapterID: tc.adapter})
+			if err != nil {
+				t.Fatal(err)
+			}
+			id := v.Incident.ID
+			got := w.itemMap(t, incResponder, id)
+			wantItems(t, got, map[string]string{tc.key: "unknown/upstream_not_observable"})
+			if _, ok := got[tc.other]; ok {
+				t.Errorf("%s lists the other adapter's %s", tc.adapter, tc.other)
+			}
+			if m := markerKeys(got); len(m) != 0 {
+				t.Errorf("a fully read source left markers %v", m)
+			}
+			// No owner function confirms what Hikyo cannot observe, so resume
+			// leaves these open.
+			if res, err := w.svc.Resume(ctx, w.as(incResponder), id); err != nil || res.Confirmed != 0 {
+				t.Fatalf("resume = %+v, %v, want nothing confirmed", res, err)
+			}
+			if _, err := w.svc.Close(ctx, w.as(incResponder), id, false); !errors.Is(err, service.ErrIncidentOpenItems) {
+				t.Fatalf("clean close over %s = %v, want ErrIncidentOpenItems", tc.key, err)
+			}
+			// Attest everything open: the adapter's upstream credential and the
+			// orphan item. Only then does the incident close clean.
+			for k, v := range got {
+				if strings.HasPrefix(v, "unknown/") && !strings.Contains(k, "|enumeration|") {
+					if err := w.svc.Attest(ctx, w.as(incResponder), id, w.itemIDByKey(t, incResponder, id, k)); err != nil {
+						t.Fatalf("attest %s: %v", k, err)
+					}
+				}
+			}
+			if got := w.itemMap(t, incResponder, id)[tc.key]; got != "attested/upstream_not_observable" {
+				t.Errorf("%s after attest = %q", tc.key, got)
+			}
+			if _, err := w.svc.Close(ctx, w.as(incResponder), id, false); err != nil {
+				t.Errorf("clean close after attesting %s: %v", tc.key, err)
+			}
+		}
+
+		// The project incident lists both, and one attestation does not clear the
+		// other.
+		prj, err := w.svc.Open(ctx, w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeProject, Scope: domain.Scope{Org: orgA, Project: prjA1}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantItems(t, w.itemMap(t, incResponder, prj.Incident.ID), map[string]string{
+			failedScrub: "unknown/upstream_not_observable", orphanMove: "unknown/upstream_not_observable",
+		})
+	})
+}
+
+func TestIncidentAdapterWorkIsBounded(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		ctx := t.Context()
+		seedAdapterWork(t, db)
+		// More queued scrubs than one source may list, over several pages.
+		execRaw(t, db, `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 2100) `+
+			`INSERT INTO adapter_outbox (id,org_id,project_id,environment_id,target_id,kind,route_move_id,authority_principal_id,generation,dedup_key,next_attempt_at,state,created_at) `+
+			`SELECT 'scr_bulk_' || i, 'org_a', 'prj_a1', 'env_a1', 'tgt_w1', 'scrub', 'arm_w1', 'usr_alice', 1, 'dk_bulk_' || i, `+ts+`, 'queued', `+ts+` FROM n`)
+		v, err := w.svc.Open(ctx, w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeProject, Scope: domain.Scope{Org: orgA, Project: prjA1}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := w.itemMap(t, incResponder, v.Incident.ID)
+		scrubs := 0
+		for k := range got {
+			if strings.HasPrefix(k, "adapter_scrub.complete|adapter_scrub|") {
+				scrubs++
+			}
+		}
+		if scrubs != 2000 {
+			t.Errorf("listed %d scrub items, want the bound of 2000", scrubs)
+		}
+		if got["adapter_scrub.complete|enumeration|prj_a1"] != "unknown/enumeration_truncated" {
+			t.Errorf("over-bound scrub source = %v, want an enumeration_truncated row", markerKeys(got))
+		}
+		if got["adapter_move.resume|adapter_move|arm_w1"] != "pending/" {
+			t.Errorf("the move source, within its bound, was not listed")
+		}
+		if _, ok := got["adapter_move.resume|enumeration|prj_a1"]; ok {
+			t.Errorf("an unexceeded move source left a marker")
+		}
+		// An adapter incident over the adapter holding the bulk is bounded too,
+		// and its marker is named for the adapter.
+		ad, err := w.svc.Open(ctx, w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeAdapter, Scope: domain.Scope{Org: orgA, Project: prjA1}, AdapterID: "adp_w1"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := w.itemMap(t, incResponder, ad.Incident.ID)["adapter_scrub.complete|enumeration|adp_w1"]; got != "unknown/enumeration_truncated" {
+			t.Errorf("adapter-scope over-bound marker = %q, want enumeration_truncated", got)
+		}
+		if _, err := w.svc.Close(ctx, w.as(incResponder), v.Incident.ID, false); !errors.Is(err, service.ErrIncidentOpenItems) {
+			t.Errorf("clean close of a truncated incident = %v, want ErrIncidentOpenItems", err)
+		}
+	})
+}
+
+func TestIncidentAdapterWorkBlockedWithoutInspect(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		ctx := t.Context()
+		seedAdapterWork(t, db)
+		// A credential-reset holder without adapter inspect sees the source as
+		// blocked, with no move or job id.
+		lim, err := w.svc.Open(ctx, w.as(incLimited), service.IncidentTarget{Kind: domain.IncidentScopeProject, Scope: domain.Scope{Org: orgA, Project: prjA1}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for k := range w.itemMap(t, incLimited, lim.Incident.ID) {
+			if strings.Contains(k, "arm_w") || strings.Contains(k, "scr_w") {
+				t.Errorf("limited caller learned %s", k)
+			}
+		}
+		if got := w.itemMap(t, incLimited, lim.Incident.ID)["adapter_target.pause|project|prj_a1"]; got != "blocked/needs_another_operator" {
+			t.Errorf("adapter source for a caller without inspect = %q, want blocked", got)
 		}
 	})
 }
