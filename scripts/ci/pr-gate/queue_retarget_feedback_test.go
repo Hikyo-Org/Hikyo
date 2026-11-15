@@ -17,6 +17,9 @@ func retargetRun(f *queueFixture, id int64) run {
 }
 
 func setJobs(f *queueFixture, r run, jobs ...job) {
+	if jobs == nil {
+		jobs = []job{} // GitHub lists no jobs as [], not null
+	}
 	for i := range jobs {
 		jobs[i].ID, jobs[i].RunID, jobs[i].Attempt = int64(400+i), r.ID, r.Attempt
 		if jobs[i].HeadSHA == "" {
@@ -132,6 +135,8 @@ func TestQueueSkippedRetargetWithoutJobsStaysPending(t *testing.T) {
 	r.Conclusion = "skipped"
 	f.retargetRefresh(r)
 	setJobs(f, r)
-	_ = f.admit()
+	if err := f.admit(); err != nil {
+		t.Fatalf("zero-job skipped run was not held pending: %v", err)
+	}
 	f.assertNoSuccess(t)
 }
