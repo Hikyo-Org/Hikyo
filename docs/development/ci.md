@@ -612,7 +612,8 @@ take about 42 s. It then fails closed and the PR needs a new head.
 Because those reads open only `github-actions` suites, the owners also list the
 name by commit and refuse another app's same-name record there, as a listing by
 commit alone did. They refuse when the `github-actions` suite total changes during a scan, so a
-head still gaining suites can refuse until a later attempt.
+head still gaining suites can refuse until a later attempt. A controller record the listing by commit shows but the suite inventory lacks is
+refused, not treated as absent.
 Both use the shared `scripts/ci/checksuites` reader. A suite inventory that
 cannot be completed, a run reported by two suites, or a check in more than 100
 suites refuses instead of listing partially. Discovery refuses all targets on

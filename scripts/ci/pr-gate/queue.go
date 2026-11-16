@@ -1307,7 +1307,7 @@ func (q *queueController) groupChecks(ctx context.Context, p pull) ([]check, err
 	if err != nil {
 		return nil, err
 	}
-	foreign, err := q.foreignSameName(ctx, p.Head.SHA, listings)
+	foreign, local, err := q.sameNameByCommit(ctx, p.Head.SHA, listings)
 	if err != nil {
 		return nil, err
 	}
@@ -1336,6 +1336,11 @@ func (q *queueController) groupChecks(ctx context.Context, p pull) ([]check, err
 			seen[v.ID] = true
 		}
 		checks = append(checks, all.Checks...)
+	}
+	for _, v := range local {
+		if !seen[v.ID] {
+			return nil, errors.New("merge-group required check missing from the check suite inventory")
+		}
 	}
 	return checks, nil
 }

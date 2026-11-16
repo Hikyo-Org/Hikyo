@@ -825,7 +825,7 @@ func (c *controller) listOwnedChecks(ctx context.Context, head string) ([]check,
 	if err != nil {
 		return nil, err
 	}
-	foreign, err := c.foreignSameName(ctx, head, listings)
+	foreign, local, err := c.sameNameByCommit(ctx, head, listings)
 	if err != nil {
 		return nil, err
 	}
@@ -843,45 +843,61 @@ func (c *controller) listOwnedChecks(ctx context.Context, head string) ([]check,
 		}
 		own = append(own, part...)
 	}
+	for _, v := range local {
+		if (strings.HasPrefix(v.ExternalID, externalPrefix) || strings.HasPrefix(v.ExternalID, legacyExternalPrefix)) && !seen[v.ID] {
+			return nil, errors.New("controller check missing from the check suite inventory")
+		}
+	}
 	return own, nil
 }
 
-// foreignSameName returns the records of this context's name that other apps show
-// on head. When owners read by suite, only github-actions suites are read, so
-// this lists by commit as well, which keeps the refusal a listing by commit gave.
-// It sees only REST's newest 1000 suites: a record another app adds to an older
-// suite of its own is not visible here, as it was not before.
-func (c *controller) foreignSameName(ctx context.Context, head string, listings []string) ([]check, error) {
+// sameNameByCommit lists this context's name by commit when owners read by suite,
+// which sees REST's newest 1000 suites of every app. It returns the records of
+// other apps, so the refusal a listing by commit gave still holds, and those of
+// github-actions, so a fresh record the suite inventory has not indexed yet is
+// refused rather than taken for absent. A record another app adds to an older
+// suite of its own, or one older than the newest 1000 suites that the inventory
+// lacks, is not visible here, as it was not before.
+func (c *controller) sameNameByCommit(ctx context.Context, head string, listings []string) (foreign, local []check, err error) {
 	if len(listings) == 1 && strings.HasPrefix(listings[0], "commits/") {
-		return nil, nil
+		return nil, nil, nil
 	}
-	var foreign []check
 	listed := 0
+	seen := make(map[int64]bool)
 	for page := 1; page <= 10; page++ {
 		var list struct {
 			Total  int     `json:"total_count"`
 			Checks []check `json:"check_runs"`
 		}
 		if err := c.api.read(ctx, c.endpoint(fmt.Sprintf("commits/%s/check-runs?check_name=%s&filter=all&per_page=100&page=%d", head, c.checkName, page)), &list); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if list.Checks == nil || list.Total < 0 || list.Total > 1000 {
-			return nil, errors.New("invalid check list")
+			return nil, nil, errors.New("invalid check list")
 		}
 		for _, v := range list.Checks {
+			if v.ID <= 0 || seen[v.ID] {
+				return nil, nil, errors.New("invalid or duplicate current check identity")
+			}
+			seen[v.ID] = true
 			listed++
-			if v.Name == c.checkName && (v.App.ID != actionsAppID || v.App.Slug != "github-actions") {
+			if v.Name != c.checkName {
+				continue
+			}
+			if v.App.ID != actionsAppID || v.App.Slug != "github-actions" {
 				foreign = append(foreign, v)
+			} else {
+				local = append(local, v)
 			}
 		}
 		if listed == list.Total {
-			return foreign, nil
+			return foreign, local, nil
 		}
 		if len(list.Checks) < 100 || listed > list.Total {
-			return nil, errors.New("incomplete current check listing")
+			return nil, nil, errors.New("incomplete current check listing")
 		}
 	}
-	return nil, errors.New("check pagination limit reached")
+	return nil, nil, errors.New("check pagination limit reached")
 }
 
 // listOwnedChecksAt pages through one check-runs listing. seen spans listings, so

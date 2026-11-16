@@ -291,3 +291,39 @@ func TestOwnedChecksOfHeadBeyondRESTSuiteCapRefuseForeignAppRecords(t *testing.T
 		})
 	}
 }
+
+// The suite inventory comes from GraphQL, which can lag a run REST already lists.
+// The listing by commit shows runs of the newest suites, so a controller record
+// it shows that the suites did not is refused instead of taken for absent.
+func TestOwnedChecksRefuseRecordTheSuiteInventoryHasNotIndexed(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		holding []int64
+		dup     bool
+		wantErr bool
+	}{
+		{name: "indexed in a holding suite", holding: []int64{1856}},
+		{name: "not indexed yet", wantErr: true},
+		{name: "commit listing repeats a run", holding: []int64{1856}, dup: true, wantErr: true},
+	} {
+		for _, owners := range []string{"owned", "group"} {
+			t.Run(tc.name+", "+owners, func(t *testing.T) {
+				f, _ := retirementFixture(t, queueCheckName)
+				head := installOversizedHead(f, 2005, tc.holding...)
+				head.foreign = []check{f.api.checks[0]}
+				if tc.dup {
+					head.foreign = append(head.foreign, f.api.checks[0])
+				}
+				var err error
+				if owners == "owned" {
+					_, err = f.c.listOwnedChecks(context.Background(), f.c.expectedHead)
+				} else {
+					_, err = f.q.groupChecks(context.Background(), f.pr)
+				}
+				if (err != nil) != tc.wantErr {
+					t.Fatalf("err = %v, want refusal=%v", err, tc.wantErr)
+				}
+			})
+		}
+	}
+}

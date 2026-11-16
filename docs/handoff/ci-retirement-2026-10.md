@@ -329,5 +329,8 @@ The GraphQL named count agreed with REST there: suite 113231756024 held run
 returned exactly that run, and the commit-wide REST listing returned none. The
 per-suite REST call returned 404 once without `per_page` and `page`; the owners
 always send both. Residual risk: GraphQL's named run count could lag the REST
-listing for a run created moments earlier, which would hide that run from one
-listing; the next listing sees it.
+listing for a run created moments earlier. The listing by commit that owners also
+read shows such a run while it sits in REST's newest 1,000 suites, and a
+controller record it shows that the suite inventory lacks is refused rather than
+taken for absent, so a lagging count cannot make a publisher create a second
+record there. A lag on a run in an older suite is not caught.
