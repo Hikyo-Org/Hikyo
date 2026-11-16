@@ -2925,7 +2925,7 @@
     "internal/dynamic/dynamic.go:inAlphabet": "1de2dc30f219b6ce33ca59905216f0723e8e9dbc9d2ba9acf9933f9668b03cd2",
     "internal/dynamic/dynamic.go:inRoleAlphabet": "86d562ef415150399f7c4d89b83f3b653479f1b5333f4e8fd96ce68649f885dc",
     "internal/dynamic/postgres/postgres.go:Provider.connect": "5da80205a17e200685d9a71e89aa157f3fc3bbed023db72eeeb54c8da4bfee8a",
-    "internal/dynamic/postgres/postgres.go:classifyExec": "81f67cfb50638588f34f2d8c580370989c15ba2fb112c640e8fc2b6200033b61",
+    "internal/dynamic/postgres/postgres.go:classifyExec": "a3f36a4c42d11f1286b6f1aa2e714351c48baa83e1a6c456f92a3508f26a1b40",
     "internal/dynamic/postgres/postgres.go:createRoleSQL": "708c40acb8c646cf4d968032edec98c943fd61d883a971328419e7bfc113916e",
     "internal/dynamic/postgres/postgres.go:dropRoleSQL": "b88fc8c188d8fce4c1c30c3a20ae8864837bdb37c77205de277b9c5e3d4c4ce1",
     "internal/dynamic/postgres/postgres.go:extendRoleSQL": "49bbdc39f38fc8dc2e18362b983d3a6dc06b616000ad301fde561df6e5e1ea94",

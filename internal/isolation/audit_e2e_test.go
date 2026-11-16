@@ -645,6 +645,7 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		managed := runSelfConfigAuditLifecycle(t, db.Engine())
 		migrated := runManagedMigrationAuditLifecycle(t, db.Engine())
 		personal := runPersonalAuditLifecycle(t, db.Engine())
+		rotated := runRotationExecutorAuditLifecycle(t, db.Engine())
 
 		for _, typ := range audit.Types() {
 			spec, _ := audit.Spec(typ)
@@ -654,6 +655,7 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 				seen += queryInt(t, recovered, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
 				seen += queryInt(t, managed, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
 				seen += queryInt(t, personal, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
+				seen += queryInt(t, rotated, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
 			}
 			if spec.Trails[audit.TrailInstance] {
 				seen += queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type = '"+string(typ)+"'")

@@ -3360,6 +3360,34 @@
   },
   {
     "engine": "postgres",
+    "name": "RotationProviderLiveRuns",
+    "annotation": "instance-scoped",
+    "hash": "7ee122d4767b2734b91445443b3fa596505e99c03d8cbcbc4421097804d2e16f",
+    "reason": "The provider delete guard counts runs across the provider's rotations under the org and project chain; the effect join is pinned to the run's own chain."
+  },
+  {
+    "engine": "postgres",
+    "name": "RotationRtClaimDueRun",
+    "annotation": "instance-scoped",
+    "hash": "8d4f73ce18598f7a4a3a8d8712f85adeee57a06eaeb42b8e884364752a5000c3",
+    "reason": "RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension."
+  },
+  {
+    "engine": "postgres",
+    "name": "RotationRtDueRotation",
+    "annotation": "instance-scoped",
+    "hash": "302c8d242bd3ab59515e5754da14efb583c8af7241e15ed8d2422f73167874e9",
+    "reason": "RotationRuntime closed scheduler picks one due rotation across tenants under the per-org concurrency cap; the run is then created under the recorded authority's proof and binds the selected immutable chain."
+  },
+  {
+    "engine": "postgres",
+    "name": "RotationUnconfirmedFailedRunRotations",
+    "annotation": "instance-scoped",
+    "hash": "0d929ed2569aa903ae06286d3bbc85d3cb5dc2a62c5f66106725d3799a78629b",
+    "reason": "A failed run that never published may still hold a live candidate role until a drop is confirmed; the chain is bound on the run row and the effect rows join under the same chain."
+  },
+  {
+    "engine": "postgres",
     "name": "RuntimeDynamicClaimDueLease",
     "annotation": "instance-scoped",
     "hash": "29acf34d40a14f9adc61eab1f35f124425ee2a97d76e2f98823cbf49cf072670",
@@ -7091,6 +7119,34 @@
     "name": "RotateSessionFactors",
     "annotation": "authn-resolution",
     "hash": "7b657d72d590c757f8ff97a6ce19a015d434dedd618878fc2eef6ee31d5e63c5"
+  },
+  {
+    "engine": "sqlite",
+    "name": "RotationProviderLiveRuns",
+    "annotation": "instance-scoped",
+    "hash": "7ee122d4767b2734b91445443b3fa596505e99c03d8cbcbc4421097804d2e16f",
+    "reason": "The provider delete guard counts runs across the provider's rotations under the org and project chain; the effect join is pinned to the run's own chain."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RotationRtClaimDueRun",
+    "annotation": "instance-scoped",
+    "hash": "7399f78de50f116972c51363affa25b7abe2451bfee0787fd2d6928e3a01618e",
+    "reason": "RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RotationRtDueRotation",
+    "annotation": "instance-scoped",
+    "hash": "302c8d242bd3ab59515e5754da14efb583c8af7241e15ed8d2422f73167874e9",
+    "reason": "RotationRuntime closed scheduler picks one due rotation across tenants under the per-org concurrency cap; the run is then created under the recorded authority's proof and binds the selected immutable chain."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RotationUnconfirmedFailedRunRotations",
+    "annotation": "instance-scoped",
+    "hash": "0d929ed2569aa903ae06286d3bbc85d3cb5dc2a62c5f66106725d3799a78629b",
+    "reason": "A failed run that never published may still hold a live candidate role until a drop is confirmed; the chain is bound on the run row and the effect rows join under the same chain."
   },
   {
     "engine": "sqlite",

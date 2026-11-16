@@ -835,7 +835,7 @@ func pgRotation(c pggen.RotationGetRow) (RotationRecord, error) {
 }
 
 func (r rotationQueries) BeginRunPublish(ctx context.Context, p authz.Proof, run RotationRun, now time.Time) error {
-	chain, err := r.envChain(p, authz.StoreRotationsRunPublish)
+	chain, err := r.envChain(p, authz.StoreRotationsBeginRunPublish)
 	if err != nil {
 		return err
 	}
@@ -853,7 +853,7 @@ func (r rotationQueries) BeginRunPublish(ctx context.Context, p authz.Proof, run
 }
 
 func (r rotationQueries) RecordRunPublish(ctx context.Context, p authz.Proof, rec RotationPublishRecord) error {
-	chain, err := r.envChain(p, authz.StoreRotationsRunPublish)
+	chain, err := r.envChain(p, authz.StoreRotationsRecordRunPublish)
 	if err != nil {
 		return err
 	}
@@ -889,7 +889,7 @@ func (r rotationQueries) RecordRunPublish(ctx context.Context, p authz.Proof, re
 }
 
 func (r rotationQueries) AbandonOpenRuns(ctx context.Context, p authz.Proof, rotationID string, at time.Time) ([]AbandonedRun, error) {
-	chain, err := r.envChain(p, authz.StoreRotationsAbandonRuns)
+	chain, err := r.envChain(p, authz.StoreRotationsAbandonOpenRuns)
 	if err != nil {
 		return nil, err
 	}

@@ -243,40 +243,37 @@ func rotationGateReason(err error) (string, bool) {
 // rotation is still active at the generation the run started under; the
 // authority still holds edit, publish and reveal on both keys; the keys exist and
 // the password key is still secret; the environment is still unattended; the
-// provider can still mint. It authorizes as the recorded authority principal,
-// which is what lets the publish that follows act as that principal.
-func (e *RotationExecutor) gateWithin(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity, scope domain.Scope, rotationID string, generation int64) (authz.Proof, error) {
-	proof, err := az.Authorize(ctx, caller, authz.OpRotationRun, scope)
-	if err != nil {
-		return nil, err
-	}
+// provider can still mint. The caller's proof is the rotation-run authorization
+// of the recorded authority principal, which is what lets the publish that
+// follows act as that principal.
+func (e *RotationExecutor) gateWithin(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity, scope domain.Scope, proof authz.Proof, rotationID string, generation int64) error {
 	rec, err := r.Rotations().Get(ctx, proof, rotationID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if rec.State != store.RotationStateActive || rec.Generation != generation {
-		return nil, errRotationInactive
+		return errRotationInactive
 	}
 	if err := requireUnattendedEnvironment(ctx, r, az, proof, scope); err != nil {
-		return nil, err
+		return err
 	}
 	if err := requireRotationProvider(ctx, r, proof, rec.ProviderID); err != nil {
-		return nil, err
+		return err
 	}
 	if err := requireRotationKeys(ctx, r, proof, rec.KeyID, rec.UsernameKeyID, true); err != nil {
-		return nil, err
+		return err
 	}
 	for _, id := range []string{rec.KeyID, rec.UsernameKeyID} {
 		key := authz.KeyByID(id)
 		holds, err := az.RecordedPrincipalHolds(ctx, caller, caller.Principal, authz.OpRotationResume, scope, &key)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if !holds {
-			return nil, ErrRotationAuthorityLost
+			return ErrRotationAuthorityLost
 		}
 	}
-	return proof, nil
+	return nil
 }
 
 // gate runs gateWithin in its own transaction, before a run is created.
@@ -288,8 +285,11 @@ func (e *RotationExecutor) gate(ctx context.Context, d store.DueRotation, now ti
 			return err
 		}
 		az.SetClock(now)
-		_, err = e.gateWithin(ctx, r, az, caller, d.Chain(), d.ID, d.Generation)
-		return err
+		proof, err := az.Authorize(ctx, caller, authz.OpRotationRun, d.Chain())
+		if err != nil {
+			return err
+		}
+		return e.gateWithin(ctx, r, az, caller, d.Chain(), proof, d.ID, d.Generation)
 	})
 }
 
@@ -779,8 +779,11 @@ func (e *RotationExecutor) publish(ctx context.Context, provider dynamic.Provide
 			if now.After(run.StartedAt.Add(rotationPublishBudget)) {
 				return errRotationBudget
 			}
-			proof, err := e.gateWithin(ctx, r, az, caller, scope, run.RotationID, run.RunGeneration)
+			proof, err := az.Authorize(ctx, caller, authz.OpRotationRun, scope)
 			if err != nil {
+				return err
+			}
+			if err := e.gateWithin(ctx, r, az, caller, scope, proof, run.RotationID, run.RunGeneration); err != nil {
 				return err
 			}
 			return r.Rotations().BeginRunPublish(ctx, proof, run, now)

@@ -1009,12 +1009,13 @@ const (
 	// environment, or of the whole project, that became protected or gained an
 	// approval policy.
 	StoreRotationsPauseForEnvironment StoreOp = "rotations.PauseForEnvironment"
-	// StoreRotationsRunPublish is the run row's fenced write inside the
-	// executor's publish transaction (begin and record); StoreRotationsAbandonRuns
-	// is the delete --abandon quarantine; StoreRotationsProviderLiveRuns is the
-	// provider delete guard (#148, S2).
-	StoreRotationsRunPublish       StoreOp = "rotations.RunPublish"
-	StoreRotationsAbandonRuns      StoreOp = "rotations.AbandonRuns"
+	// StoreRotationsBeginRunPublish and StoreRotationsRecordRunPublish are the run
+	// row's fenced writes inside the executor's publish transaction;
+	// StoreRotationsAbandonOpenRuns is the delete --abandon quarantine;
+	// StoreRotationsProviderLiveRuns is the provider delete guard (#148, S2).
+	StoreRotationsBeginRunPublish  StoreOp = "rotations.BeginRunPublish"
+	StoreRotationsRecordRunPublish StoreOp = "rotations.RecordRunPublish"
+	StoreRotationsAbandonOpenRuns  StoreOp = "rotations.AbandonOpenRuns"
 	StoreRotationsProviderLiveRuns StoreOp = "rotations.ProviderLiveRuns"
 
 	// SSH user certificates (#155). Proof-carrying, environment-bound; the
@@ -5525,14 +5526,14 @@ var operationTable = map[Operation]opSpec{
 	OpRotationDelete: {
 		class: ClassTenant, level: domain.LevelEnv,
 		formula:  Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
-		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSetState: true, StoreRotationsCountOpenRuns: true, StoreRotationsAbandonRuns: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSetState: true, StoreRotationsCountOpenRuns: true, StoreRotationsAbandonOpenRuns: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventRotationConfigured, audit.EventRotationQuarantined},
 	},
 	OpRotationRun: {
 		class: ClassTenant, level: domain.LevelEnv,
 		formula:  Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
-		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsRunPublish: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StoreAuditTenantInsert: true},
-		events:   []audit.EventType{audit.EventRotationRunOutcome},
+		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsBeginRunPublish: true, StoreRotationsRecordRunPublish: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventRotationRunIntent, audit.EventRotationRunOutcome, audit.EventRotationQuarantined},
 	},
 
 	// --- SSH user certificates (#155) -----------------------------------------

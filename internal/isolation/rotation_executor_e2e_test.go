@@ -1345,3 +1345,22 @@ func runRotationDeliveryPath(t *testing.T, db *store.DB) {
 		}
 	}
 }
+
+// runRotationExecutorAuditLifecycle gives the executor's run events real
+// emitters for the audit coverage proof: a full cycle emits the run intent and
+// outcome rows, and a delete with abandon over a published run emits the
+// quarantine. It runs on its own database because the rotation fixture owns key
+// and grant ids the shared audit database already uses.
+func runRotationExecutorAuditLifecycle(t *testing.T, engine store.Engine) *store.DB {
+	t.Helper()
+	db := seededDB(t, func(t *testing.T) *store.DB { return openSelfConfigAuditDB(t, engine, "_rotationexec") })
+	x := newRotExec(t, db)
+	rot := x.create(rotPasswordKey, rotUsernameKey)
+	x.cycle(rot.ID)
+	x.advance(24 * time.Hour)
+	x.drain()
+	if _, err := x.svc.Delete(tctx(t), x.actor, x.scope, service.RotationStateRequest{RotationID: rot.ID, Abandon: true}); err != nil {
+		t.Fatalf("rotation delete --abandon: %v", err)
+	}
+	return db
+}
