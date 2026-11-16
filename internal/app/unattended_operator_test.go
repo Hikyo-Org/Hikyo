@@ -12,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/selfupdate"
+	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 	"github.com/Hikyo-Org/hikyo/internal/upgradecompat"
 )
 
@@ -58,6 +59,7 @@ func TestResolveUnattendedOperatorRefusals(t *testing.T) {
 		{name: "manual operator key", change: func(_ *testing.T, i installation) { i.cfg.Upgrade.OperatorPublicKeyFile = "/operator.pub" }, want: "HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY belongs to manual"},
 		{name: "manual target", change: func(_ *testing.T, i installation) { i.cfg.Upgrade.TargetManifestSHA256 = "x" }, want: "HIKYO_UPGRADE_TARGET_MANIFEST belongs to manual"},
 		{name: "manual evidence", change: func(_ *testing.T, i installation) { i.cfg.Upgrade.EvidenceDirectory = "/evidence" }, want: "HIKYO_UPGRADE_EVIDENCE belongs to manual"},
+		{name: "manual legacy writers claim", change: func(_ *testing.T, i installation) { i.cfg.Upgrade.LegacyWritersStopped = true }, want: "HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED belongs to manual"},
 		{name: "manual ciphertext", change: func(_ *testing.T, i installation) { i.cfg.Upgrade.CiphertextPath = "/backup" }, want: "HIKYO_UPGRADE_BACKUP belongs to manual"},
 		{name: "never enrolled", change: func(t *testing.T, i installation) {
 			if err := os.RemoveAll(i.directory); err != nil {
@@ -123,5 +125,27 @@ func TestResolveUnattendedOperatorLeavesManualInstallationsAlone(t *testing.T) {
 	before := *cfg
 	if err := ResolveUnattendedOperator(t.Context(), cfg); err != nil || !reflect.DeepEqual(*cfg, before) {
 		t.Fatalf("a manual installation was changed or refused: %v %+v", err, cfg.Upgrade)
+	}
+}
+
+func TestRequireHealthyAdmittedState(t *testing.T) {
+	healthy := func() upgrade.State { return upgrade.State{Pending: &upgrade.Operation{Phase: upgrade.Healthy}} }
+	if err := requireHealthyAdmittedState(healthy()); err != nil {
+		t.Fatalf("healthy state refused: %v", err)
+	}
+	for name, change := range map[string]func(*upgrade.State){
+		"no pending operation": func(s *upgrade.State) { s.Pending = nil },
+		"restore required":     func(s *upgrade.State) { s.Pending.Phase = upgrade.RestoreRequired },
+		"mid upgrade":          func(s *upgrade.State) { s.Pending.Phase = upgrade.SchemaApplied },
+		"maintenance":          func(s *upgrade.State) { s.Maintenance = true },
+		"invalidated":          func(s *upgrade.State) { s.Pending.Invalidated = true },
+	} {
+		t.Run(name, func(t *testing.T) {
+			state := healthy()
+			change(&state)
+			if err := requireHealthyAdmittedState(state); err == nil || !strings.Contains(err.Error(), "not in a healthy admitted state") {
+				t.Fatalf("got %v", err)
+			}
+		})
 	}
 }

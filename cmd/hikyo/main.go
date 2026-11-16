@@ -492,8 +492,8 @@ func runOperator(ctx context.Context, name string, args []string,
 		log.Warn(w)
 	}
 	// An escrow check reads only a root-key file and opens no datastore, so it
-	// needs no installed release or operator pin.
-	if name != "escrow" {
+	// needs no installed release or operator pin; help opens nothing either.
+	if name != "escrow" && !cli.HelpRequested(args) {
 		if err := app.ResolveUnattendedOperator(ctx, cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "hikyo %s: %v\n", name, err)
 			return 1

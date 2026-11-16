@@ -7,7 +7,7 @@ Nightlies remain unsupported prereleases, and this example does not turn one int
 a supported release. Its commands authenticate the nightly publisher. The stable
 1.0.0 chart cannot complete this runbook's first-administrator step; see the
 [deployment matrix](deployment-support.md#runtime-matrix). See the
-[unattended operator-command gap](deployment-support.md#unattended-operator-command-gap)
+[unattended operator commands](deployment-support.md#unattended-operator-commands)
 before choosing a different initial custody model.
 
 Run repository commands from the repository root. Kubernetes changes below are

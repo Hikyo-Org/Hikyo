@@ -4,8 +4,11 @@
 # lets the server enroll and finish its first start, then runs the commands an
 # operator runs with `docker exec` or `kubectl exec`: first administrator,
 # credential establishment, diagnostics, encrypted backup and readable restore
-# drill. No shell, cat or tar exists in the container; the harness reads files
-# through a separate helper container only to verify results.
+# drill. No shell, cat or tar exists in the container. Values reach the operator
+# through the terminal channel (a pseudo terminal, as kubectl exec -it) or an
+# --output-file the command creates inside the container and later commands read
+# in place. A separate helper container only prepares the empty volumes before the
+# server starts and inspects results afterward; it never carries a secret in.
 # Artifact acquisition is the preseeded, authenticated offline cache fixture that
 # unattended-docker.sh uses. Every resource this script creates is tracked and
 # removed on exit.
@@ -34,7 +37,7 @@ created_volumes=()
 created_network=false
 network_flags=()
 cleanup() {
-	docker rm --force "$container" "$container-fresh" "$postgres" >/dev/null 2>&1 || true
+	docker rm --force "$container" "$postgres" >/dev/null 2>&1 || true
 	for volume in ${created_volumes[@]+"${created_volumes[@]}"}; do docker volume rm "$volume" >/dev/null 2>&1 || true; done
 	if [ "$created_network" = true ]; then docker network rm "$network" >/dev/null 2>&1 || true; fi
 	docker image rm "$image" >/dev/null 2>&1 || true
@@ -157,7 +160,9 @@ refused() {
 	grep -Fq -- "$want" <<<"$output" || fail "refusal did not contain '$want': $output"
 }
 snapshot() {
-	helper 'cd /state/unattended; sha256sum enrollment.json image.json operator.pub; ls -1 | sort; ls /state/unattended/operation.json 2>/dev/null && sha256sum operation.json || true'
+	# Every file under the upgrade state (journal, image record, pin, enrollment, custody
+	# vault and record), by content and mode, except the download cache.
+	helper "cd /state && find . -path ./unattended/downloads -prune -o -type f -print0 | sort -z | xargs -0 sha256sum; find . -path ./unattended/downloads -prune -o -print | sort"
 }
 control() {
 	if [ "$engine" = sqlite ]; then
@@ -169,27 +174,57 @@ control() {
 if [ "$engine" = sqlite ]; then
 	mkdir -p "$work/tools"
 	CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -o "$work/tools/inspect" ./scripts/ci/unattendedfixture/inspect
-	control_json() { control | jq -c .; }
-else
-	control_json() { control | jq -c .; }
 fi
+control_json() { control | jq -c .; }
 before_state=$(snapshot)
 before_control=$(control_json)
 printf 'unattended operator (%s): server admitted; running operator commands\n' "$engine"
 
-# 1. First administrator, file channel. The authority never reaches stdout or a log.
-created=$(op admin create --username operator --output-file /var/lib/hikyo/data/ops/authority 2>&1) || fail "admin create: $created"
-principal=$(printf '%s' "$created" | sed -n 's/.*principal \([^)]*\)).*/\1/p')
-[ -n "$principal" ] || fail "admin create did not report its principal: $created"
-case "$created" in *hik_*) fail 'admin create printed the authority' ;; esac
-# shellcheck disable=SC2016 # the expression runs in the helper container
-helper 'test "$(stat -c %a /data/ops/authority)" = 600 && test -s /data/ops/authority' || fail 'authority file is not an owner-only, non-empty file'
+# tty_exec runs a command with a pseudo terminal, answers its one y/N prompt, and prints
+# the terminal transcript. It is the operator typing "y" at kubectl exec -it.
+tty_exec() {
+	python3 -I - "$@" <<'PY'
+import os, pty, select, subprocess, sys, time
+master, slave = pty.openpty()
+child = subprocess.Popen(["docker", "exec", "-it", *sys.argv[1:]], stdin=slave, stdout=slave, stderr=slave, close_fds=True)
+os.close(slave)
+seen, answered, deadline = b"", False, time.time() + 60
+while time.time() < deadline:
+    ready, _, _ = select.select([master], [], [], 1)
+    if ready:
+        try:
+            chunk = os.read(master, 4096)
+        except OSError:
+            break
+        if not chunk:
+            break
+        seen += chunk
+        if not answered and b"[y/N]" in seen:
+            os.write(master, b"y\n")
+            answered = True
+    elif child.poll() is not None:
+        break
+try:
+    child.wait(timeout=10)
+except subprocess.TimeoutExpired:
+    child.kill()
+    child.wait()
+sys.stdout.write(seen.decode(errors="replace").replace("\r", ""))
+sys.exit(child.returncode)
+PY
+}
+# 1. First administrator over the terminal channel: the authority is displayed on the
+# terminal once and never reaches stdout, a file or a log.
+created=$(tty_exec "$container" /usr/local/bin/hikyo admin create --username operator) || fail 'admin create on a terminal failed (transcript withheld: it may hold the authority)'
+authority=$(printf '%s\n' "$created" | grep -Eo 'hik_[A-Za-z0-9_-]+' | head -n1)
+principal=$(printf '%s\n' "$created" | sed -n 's/.*principal \([^)]*\)).*/\1/p' | head -n1)
+[ -n "$authority" ] && [ -n "$principal" ] || fail 'admin create did not display an authority and principal on the terminal'
+case "$(op admin create --username nobody 2>&1 || true)" in *hik_*) fail 'admin create disclosed to a non-terminal stdout' ;; esac
 op admin grant --principal "$principal" --capability instance-config >/dev/null 2>&1 || fail 'admin grant failed'
 refused 'conflict' op admin create --username second --output-file /var/lib/hikyo/data/ops/second
 wait_ready 'after the first administrator'
 
 # 2. Establish the credential and sign in through the public listener.
-authority=$(helper 'cat /data/ops/authority' | tr -d '\n')
 base=http://127.0.0.1:$public_port
 password=operator-acceptance-password-long-enough
 jar=$work/jar
@@ -246,50 +281,22 @@ printf 'unattended operator (%s): first administrator established, one secret st
 op admin config status >"$work/config-status.txt" 2>&1 || fail "admin config status: $(cat "$work/config-status.txt")"
 op restore status >"$work/restore-status.txt" 2>&1 || fail "restore status: $(cat "$work/restore-status.txt")"
 
-# 4. Backup identity over the terminal channel (-t gives the container a controlling
-# terminal; the value is displayed there and never written to stdout or a file).
-# tty_exec runs a command with a pseudo terminal, answers its one y/N prompt, and prints
-# the terminal transcript. It is the operator typing "y" at kubectl exec -it.
-tty_exec() {
-	python3 -I - "$@" <<'PY'
-import os, pty, select, subprocess, sys, time
-master, slave = pty.openpty()
-child = subprocess.Popen(["docker", "exec", "-it", *sys.argv[1:]], stdin=slave, stdout=slave, stderr=slave, close_fds=True)
-os.close(slave)
-seen, answered, deadline = b"", False, time.time() + 60
-while time.time() < deadline:
-    ready, _, _ = select.select([master], [], [], 1)
-    if ready:
-        try:
-            chunk = os.read(master, 4096)
-        except OSError:
-            break
-        if not chunk:
-            break
-        seen += chunk
-        if not answered and b"[y/N]" in seen:
-            os.write(master, b"y\n")
-            answered = True
-    elif child.poll() is not None:
-        break
-child.wait(timeout=10)
-sys.stdout.write(seen.decode(errors="replace").replace("\r", ""))
-sys.exit(child.returncode)
-PY
-}
-keygen=$(tty_exec "$container" /usr/local/bin/hikyo backup keygen) || fail "backup keygen on a terminal: $keygen"
-identity=$(printf '%s\n' "$keygen" | grep -Eo 'AGE-SECRET-KEY-[A-Z0-9]+' | head -n1)
-recipient=$(printf '%s\n' "$keygen" | grep -Eo 'age1[a-z0-9]+' | head -n1)
-[ -n "$identity" ] && [ -n "$recipient" ] || fail "backup keygen did not display an identity and recipient on the terminal: $keygen"
+# 4. Backup identity over the file channel: the identity is created by the command in an owner-only file inside the
+# container, and the drill below reads it in place.
 case "$(op backup keygen 2>&1 || true)" in *AGE-SECRET-KEY-*) fail 'keygen disclosed to a non-terminal stdout' ;; esac
-helper "printf '%s\n' '$identity' >/data/ops/identity; chmod 600 /data/ops/identity; chown 65532:65532 /data/ops/identity"
+keygen=$(op backup keygen --output-file /var/lib/hikyo/data/ops/identity 2>&1) || fail "backup keygen: $keygen"
+case "$keygen" in *AGE-SECRET-KEY-*) fail 'keygen printed the identity' ;; esac
+recipient=$(printf '%s\n' "$keygen" | grep -Eo 'age1[a-z0-9]+' | head -n1)
+[ -n "$recipient" ] || fail "backup keygen did not report a recipient: $keygen"
+# shellcheck disable=SC2016 # the expression runs in the helper container
+helper 'test "$(stat -c %a /data/ops/identity)" = 600 && test -s /data/ops/identity' || fail 'identity file is not an owner-only, non-empty file'
 
 # 5. Encrypted backup, then the readable restore drill into an empty scratch target.
 op backup export --out /var/lib/hikyo/data/ops/backup --recipient "$recipient" >"$work/export.txt" 2>&1 || fail "backup export: $(cat "$work/export.txt")"
-archive=$(helper 'ls /data/ops/backup/*.age 2>/dev/null || ls /data/ops/backup/* | head -n1' | head -n1)
+archive=$(helper 'ls /data/ops/backup' | head -n1)
 [ -n "$archive" ] || fail 'backup export wrote no archive'
-archive=/var/lib/hikyo/data/ops/backup/$(basename "$archive")
-if helper "head -c 64 /data/ops/backup/$(basename "$archive") | grep -aq readable-after-restore"; then fail 'backup archive is not encrypted'; fi
+helper "head -c 21 /data/ops/backup/$archive" | grep -Fxq 'age-encryption.org/v1' || fail 'backup archive is not an age-encrypted file'
+archive=/var/lib/hikyo/data/ops/backup/$archive
 op restore drill --from "$archive" --identity-file /var/lib/hikyo/data/ops/identity --root-key-file /var/lib/hikyo/upgrade/root.key \
 	--principal "$principal" --project "$org/$project" "${drill_target[@]}" -o json >"$work/drill.out" 2>"$work/drill.err" || fail "restore drill: $(cat "$work/drill.err")"
 # The report is the one JSON object on stderr that carries a verdict.

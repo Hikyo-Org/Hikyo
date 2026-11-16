@@ -56,6 +56,9 @@ func resolveUnattendedOperator(ctx context.Context, cfg *config.Config, executab
 			return fmt.Errorf("%s belongs to manual installations; an unattended installation derives it from its enrollment", input.name)
 		}
 	}
+	if cfg.Upgrade.LegacyWritersStopped {
+		return errors.New("HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED belongs to manual installations; an unattended installation asserts no legacy-writer claim")
+	}
 	directory := filepath.Join(cfg.Upgrade.StateDirectory, "unattended")
 	info, err := os.Lstat(directory)
 	if errors.Is(err, os.ErrNotExist) {
@@ -85,9 +88,11 @@ func resolveUnattendedOperator(ctx context.Context, cfg *config.Config, executab
 	if err != nil {
 		return fmt.Errorf("unattended installation has no usable image record: %w", err)
 	}
+	// A consistency check only: the state volume is writable by the same user, so
+	// the real binding is the signed build claim matched against the bundle below.
 	digest, err := fileDigest(executable)
 	if err != nil || strings.TrimPrefix(digest, "sha256:") != string(image.BinarySHA256) {
-		return errors.New("this executable differs from the image the installation last admitted")
+		return errors.Join(err, errors.New("this executable differs from the image the installation last admitted"))
 	}
 	claim, _, err := buildcompat.Current()
 	if err != nil {
@@ -104,13 +109,16 @@ func resolveUnattendedOperator(ctx context.Context, cfg *config.Config, executab
 	if state.InstanceID != enrollment.Instance {
 		return errors.New("unattended enrollment differs from installed database")
 	}
+	if err := requireHealthyAdmittedState(state); err != nil {
+		return err
+	}
 	bundle, err := upgradebundle.Load(ctx, image.BundleDirectory, pinned, state.Floor)
 	if err != nil {
 		return err
 	}
 	node, err := bundle.MatchBuild(claim)
 	if err != nil || node.Identity() != image.Identity {
-		return errors.New("this release differs from the one the installation last admitted")
+		return errors.Join(err, errors.New("this release differs from the one the installation last admitted"))
 	}
 	if err := buildcompat.Verify(node); err != nil {
 		return err
@@ -118,12 +126,27 @@ func resolveUnattendedOperator(ctx context.Context, cfg *config.Config, executab
 	publicPath := filepath.Join(directory, "operator.pub")
 	public, err := backupreceipt.ReadPublicArtifact(publicPath, 1<<20)
 	if err != nil || releaseidentity.Hash(public) != enrollment.Operator {
-		return errors.New("unattended operator pin differs from enrolled custody")
+		return errors.Join(err, errors.New("unattended operator pin differs from enrolled custody"))
 	}
 	cfg.Upgrade.BundleDirectory, cfg.Upgrade.OperatorPublicKeyFile = image.BundleDirectory, publicPath
 	cfg.Upgrade.TargetManifestSHA256 = string(image.Identity.ManifestSHA256)
 	cfg.Upgrade.LegacyWritersStopped = false
 	cfg.AutoMigrate = false
+	return nil
+}
+
+// requireHealthyAdmittedState refuses a database that is mid-upgrade, in
+// maintenance, awaiting a restore or invalidated, whatever the journal says. The
+// shared gate can run recovery for some of these states; an operator command must
+// never be what starts it.
+func requireHealthyAdmittedState(state upgrade.State) error {
+	if state.Pending == nil || state.Pending.Phase != upgrade.Healthy || state.Maintenance || state.Pending.Invalidated {
+		phase := upgrade.Phase("")
+		if state.Pending != nil {
+			phase = state.Pending.Phase
+		}
+		return fmt.Errorf("the installation is not in a healthy admitted state (phase %q, maintenance %t); operator commands wait until the server completes or recovers it", phase, state.Maintenance)
+	}
 	return nil
 }
 

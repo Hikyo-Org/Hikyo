@@ -42,8 +42,8 @@ type unattendedChildFixture struct {
 	Inspect string
 	// Operator selects an operator-command step: "record" starts the target as
 	// the server does and records its image; "resolve" only resolves its
-	// installed inputs and passes the gate; "create" also creates the first
-	// administrator through the real command.
+	// installed inputs and passes the gate. The first administrator is created
+	// by the container acceptance script, which runs a real server first.
 	Operator string
 }
 
@@ -397,8 +397,8 @@ func TestUnattendedPackagedEnrollmentUpgradeAndIntermediateCredential(t *testing
 }
 
 // unattendedOperatorCommands covers #1112: a command started later in the same
-// admitted container resolves the installed public inputs, passes the real gate
-// and creates the first administrator, without running a second updater or
+// admitted container resolves the installed public inputs and passes the real gate,
+// without running a second updater or
 // changing the selected release. Each refusal below leaves the database, the
 // journal and the image record exactly as they were.
 func unattendedOperatorCommands(t *testing.T, engine store.Engine, live store.Config, directory string, release releaseidentity.Identity, fixture *unattendedChildFixture, runChild func(int) error) {
@@ -459,6 +459,22 @@ func unattendedOperatorCommands(t *testing.T, engine store.Engine, live store.Co
 	refuse("replaced operator pin", "operator pin differs from enrolled custody", func() func() {
 		return replaceFile("operator.pub", []byte("replaced"), 0644)
 	})
+	refuse("missing operator pin", "operator pin differs from enrolled custody", func() func() {
+		path := filepath.Join(directory, "operator.pub")
+		original, err := os.ReadFile(path)
+		info, statErr := os.Stat(path)
+		if err != nil || statErr != nil {
+			t.Fatal(err, statErr)
+		}
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		return func() {
+			if err := os.WriteFile(path, original, info.Mode().Perm()); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
 	refuse("enrollment bound to another database", "enrollment differs from installed database", func() func() {
 		other := enrollment
 		other.Instance = "another-installation"
@@ -485,7 +501,7 @@ func unattendedOperatorCommands(t *testing.T, engine store.Engine, live store.Co
 		image.BinarySHA256 = releaseidentity.Hash([]byte("another executable"))
 		return replaceFile("image.json", mustJSON(t, image), 0600)
 	})
-	refuse("malformed bundle", "", func() func() {
+	refuse("missing bundle", "open offline upgrade bundle", func() func() {
 		image, err := readUnattendedImage(directory)
 		if err != nil {
 			t.Fatal(err)

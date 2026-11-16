@@ -159,15 +159,28 @@ The command refuses, with a distinct message and no change to state, when:
 - the enrolled operator pin or the database instance differs from the installed one;
 - the schema, floor or custody gate would need a migration or otherwise refuses; or
 - `HIKYO_UPGRADE_BUNDLE`, `HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY`,
-  `HIKYO_UPGRADE_TARGET_MANIFEST`, `HIKYO_UPGRADE_EVIDENCE` or `HIKYO_UPGRADE_BACKUP`
-  is also set, because an unattended installation has one source for them.
+  `HIKYO_UPGRADE_TARGET_MANIFEST`, `HIKYO_UPGRADE_EVIDENCE`, `HIKYO_UPGRADE_BACKUP`
+  or `HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED=true` is also set, because an unattended installation has one source for them.
 
 The Compose example sets `HIKYO_ROOT_KEY_FILE` in the container environment, and the
-chart already does, so `docker exec` and `kubectl exec` find the root key. Pass files
-the command reads (a backup passphrase, a drill target DSN) on a writable volume
-owned by the runtime user, and send disclosed values to the terminal or to
-`--output-file`; the image has no `cat`, `tar` or shell. Manual installations
-(`HIKYO_UPGRADE_UNATTENDED` unset) are unchanged and keep the manual inputs.
+chart already does, so `docker exec` and `kubectl exec` find the root key. The image
+has no shell, `cat` or `tar`, so `kubectl cp` and `docker exec cat` do not work. Move
+values this way instead:
+
+- Disclosed values (an authority, a backup identity) go to the terminal (`-it`, and
+  answer the prompt) or to `--output-file`, which the command creates owner-only
+  inside the container. A later command reads that file in place, for example
+  `restore drill --identity-file`. `--output-file` needs a parent directory owned by
+  the runtime user, such as the unattended state directory.
+- Input files (a drill target DSN, a backup passphrase) are mounted before the pod or
+  container starts: a Secret or ConfigMap volume on Kubernetes, a bind mount or
+  prepared volume on Docker. `docker cp` can also copy a file out of or into a Docker
+  container without a tool inside it.
+
+Manual installations (`HIKYO_UPGRADE_UNATTENDED` unset) are unchanged and keep the
+manual inputs. The earlier recipe that set `HIKYO_UPGRADE_BUNDLE` and
+`HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY` for `admin create` in an unattended container now
+exits with the refusal above; remove those variables.
 
 ## Interruption and browser behavior
 
