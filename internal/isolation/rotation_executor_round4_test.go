@@ -20,9 +20,9 @@ import (
 // publication clock, the budget check, the superseded-dead skew, the extend
 // intent, the abandon lease and the org lease cap.
 
-// The overlap deadline is the publication time plus the revocation delay, where
-// the publication time is read after the project lock is held, not when the
-// publish transaction began.
+// The overlap deadline gives consumers the whole revocation delay after the new
+// credential is committed: it is anchored to the clock at the end of the publish,
+// not to the time the project lock was won or the transaction began.
 func TestRotationOverlapDeadlineFollowsPublicationTime(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		x := newRotExec(t, db)
@@ -34,8 +34,7 @@ func TestRotationOverlapDeadlineFollowsPublicationTime(t *testing.T) {
 		}
 		x.advance(24*time.Hour + time.Minute)
 		// The lock wait: 90 seconds pass between the transaction's start and the
-		// lock. The run's two-minute lease bounds the wait, so the deadline anchor
-		// is what a longer wait would otherwise move.
+		// lock. The run's two-minute lease bounds the wait.
 		x.exec.Revisions.PublishProbe = &rotPublishProbe{onBefore: func() {
 			x.exec.Revisions.PublishProbe = nil
 			x.advance(90 * time.Second)
@@ -45,18 +44,46 @@ func TestRotationOverlapDeadlineFollowsPublicationTime(t *testing.T) {
 		if got := x.phase(run); got != "overlap" {
 			t.Fatalf("run = %s (%s), want overlap", got, x.lastRun(rot.ID, "last_error"))
 		}
-		published := mustParseStamp(t, queryString(t, db, "SELECT "+stampText(db, "published_at")+" FROM snapshots WHERE environment_id='"+string(x.env)+"' AND revision="+x.lastRun(rot.ID, "published_revision")))
 		next := mustParseStamp(t, queryString(t, db, "SELECT "+stampText(db, "next_attempt_at")+" FROM rotation_runs WHERE id='"+run+"'"))
-		if want := published.Add(5 * time.Minute); !next.Equal(want) {
-			t.Fatalf("overlap deadline = %s, want publication %s + 5m = %s", next, published, want)
-		}
 		// The clock stood still after the lock was won, so the commit happened at
-		// x.now(): the superseded role must stay valid a full delay after it.
-		if min := x.now().Add(5 * time.Minute); next.Before(min) {
-			t.Fatalf("overlap deadline %s is before the commit time %s + the revocation delay", next, x.now())
+		// x.now() and the superseded role must stay valid a full delay after it.
+		if want := x.now().Add(5 * time.Minute); !next.Equal(want) {
+			t.Fatalf("overlap deadline = %s, want the commit time %s + 5m = %s", next, x.now(), want)
 		}
 		if x.ctl.count("drop:") != 0 {
 			t.Fatal("the superseded role was revoked before its overlap")
+		}
+	})
+}
+
+// Work that takes time after the lock was won (staging, materialization) is not
+// taken out of the overlap: the deadline follows the end of the publish.
+func TestRotationOverlapDeadlineCountsWorkAfterTheLockRefresh(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		req := x.request(rotPasswordKey, rotUsernameKey)
+		req.RevocationDelaySeconds = 300
+		rot, err := x.svc.Create(tctx(t), x.actor, x.scope, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		x.advance(24*time.Hour + time.Minute)
+		x.exec.Revisions.PublishProbe = &rotPublishProbe{onBaseline: func() {
+			x.exec.Revisions.PublishProbe = nil
+			x.advance(45 * time.Second) // after the lock was won and the clock refreshed
+		}}
+		x.drain()
+		run := x.openRunID(rot.ID)
+		if got := x.phase(run); got != "overlap" {
+			t.Fatalf("run = %s (%s), want overlap", got, x.lastRun(rot.ID, "last_error"))
+		}
+		published := mustParseStamp(t, queryString(t, db, "SELECT "+stampText(db, "published_at")+" FROM snapshots WHERE environment_id='"+string(x.env)+"' AND revision="+x.lastRun(rot.ID, "published_revision")))
+		next := mustParseStamp(t, queryString(t, db, "SELECT "+stampText(db, "next_attempt_at")+" FROM rotation_runs WHERE id='"+run+"'"))
+		if want := x.now().Add(5 * time.Minute); !next.Equal(want) {
+			t.Fatalf("overlap deadline = %s, want the end of the publish %s + 5m = %s (stamped %s)", next, x.now(), want, published)
+		}
+		if !next.After(published.Add(5 * time.Minute)) {
+			t.Fatalf("the deadline %s ignores the 45s of work after the lock refresh (publication %s)", next, published)
 		}
 	})
 }

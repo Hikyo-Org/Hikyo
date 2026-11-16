@@ -970,6 +970,20 @@ Round 4 review additions (CodeRabbit threads on PR #1426):
     not prove that no provider call was made. The orphan call is best effort by design:
     the worker that took the run owns the drop under its own events.
 
+38. Publish clocks. The publish transaction reads the clock three times for a rotation:
+    at its start (authorization), right after the project lock (the publish stamps and the
+    one-hour budget check, which `stage` and `commit` both apply), and at the end of the
+    commit hook (the overlap deadline stored with the `published` phase). The settle into
+    `overlap` after the commit reads the clock again and anchors the deadline there,
+    never earlier than the hook's read, so consumers keep the whole revocation delay after
+    the credential is durable even when staging and materialization took time. If the
+    process dies between the commit and that settle, the stored deadline (the hook's
+    read) is within one commit of the real commit. Tests:
+    `TestRotationOverlapDeadlineFollowsPublicationTime` and
+    `TestRotationOverlapDeadlineCountsWorkAfterTheLockRefresh` (a delay injected after
+    the baseline read); the harness has no hook between the commit and the settle, so
+    the post-commit read itself is not separately exercised.
+
 ### Owner decisions on the S2a review (resolved)
 
 - A. A restore never clears the restore-hazard hold by itself: the hold ends only when the

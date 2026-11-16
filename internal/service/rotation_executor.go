@@ -1067,9 +1067,11 @@ func (e *RotationExecutor) publish(ctx context.Context, provider dynamic.Provide
 			return ids, nil
 		},
 		commit: func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity, now time.Time, out PublishResult) error {
-			// The one publication time: read after the project lock, it stamps the
-			// snapshot, the publish record and the overlap deadline, so a long lock
-			// wait cannot leave the deadline before the commit.
+			// The publication time: read after the project lock, it stamps the
+			// snapshot and the publish record and is what the budget is checked
+			// against. The overlap deadline is anchored later (below and after the
+			// commit), because the staging and materialization that follow the lock
+			// also take time that consumers must not lose.
 			now = store.CanonTime(now)
 			if now.After(run.StartedAt.Add(rotationPublishBudget)) {
 				return errRotationBudget
@@ -1093,12 +1095,19 @@ func (e *RotationExecutor) publish(ctx context.Context, provider dynamic.Provide
 			}
 			interval := time.Duration(run.IntervalSeconds) * time.Second
 			delay := time.Duration(run.RevocationDelaySeconds) * time.Second
+			// Everything but the commit itself is done: this is the latest time the
+			// callback can stamp, so the deadline stored here (the fallback if the
+			// settle after the commit never runs) is within one commit of the real
+			// commit instead of a whole staging pass before it.
+			committedAt = store.CanonTime(e.now())
+			if committedAt.Before(now) {
+				committedAt = now
+			}
 			if err := r.Rotations().RecordRunPublish(ctx, proof, store.RotationPublishRecord{
-				Run: run, Revision: revision, Now: now, NextRunAt: now.Add(interval), NextAttempt: now.Add(delay), Outcome: *closed,
+				Run: run, Revision: revision, Now: now, NextRunAt: now.Add(interval), NextAttempt: committedAt.Add(delay), Outcome: *closed,
 			}); err != nil {
 				return err
 			}
-			committedAt = now
 			return nil
 		},
 	}
@@ -1108,10 +1117,17 @@ func (e *RotationExecutor) publish(ctx context.Context, provider dynamic.Provide
 	}
 	// Committed. The phase is `published`; settle into the overlap wait and release
 	// the claim. A failed fence here is harmless: the next claim finds `published`.
+	// The deadline is the clock read now, which is at or after the commit, plus the
+	// delay: consumers get the whole delay after the new credential is durable, not
+	// after the moment the callback stamped it.
 	now := e.now()
+	deadlineFrom := now
+	if committedAt.After(deadlineFrom) {
+		deadlineFrom = committedAt
+	}
 	err = e.Runtime.Settle(ctx, run, store.RotationSettle{
 		Now: now, FromPhases: []string{"published"}, Phase: "overlap",
-		NextAttempt: committedAt.Add(time.Duration(run.RevocationDelaySeconds) * time.Second),
+		NextAttempt: deadlineFrom.Add(time.Duration(run.RevocationDelaySeconds) * time.Second),
 	})
 	if errors.Is(err, store.ErrRotationFenceLost) {
 		return nil
