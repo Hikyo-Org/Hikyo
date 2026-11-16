@@ -935,6 +935,14 @@ Round 4 review additions (CodeRabbit threads on PR #1426):
     live leases) but cannot force the interleaving, so it also passes when the starts
     happen to serialize.
 
+37. The user docs now state three limits: rollback and pause ATTEMPT to delete an
+    unpublished role and a failed or unknown drop stays tracked for retry
+    (`dropCandidate`), so a pause is not proof of cleanup; the intent and outcome events
+    cover tracked effects only; `dropOrphan` (a worker that lost its fence while the mint
+    was in flight) may call `DropRole` with no intent or outcome, so a missing event does
+    not prove that no provider call was made. The orphan call is best effort by design:
+    the worker that took the run owns the drop under its own events.
+
 ### Owner decisions on the S2a review (resolved)
 
 - A. A restore never clears the restore-hazard hold except through expiry or absence of

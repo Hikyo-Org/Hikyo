@@ -118,8 +118,10 @@ cleanly:
    revoke would break (for example after `revision restore`). If one does, the run
    is held in `revoke_refused` and nothing is dropped.
 
-A failed step before the publish drops the new role and leaves the keys
-unchanged. A failure after the publish never fails the run: it keeps retrying
+A failed step before the publish attempts to drop the new role and leaves the keys
+unchanged. If that drop fails or its result is unknown, the run stays tracked
+(`quarantine` or `failed` with the drop unconfirmed) and is retried until the
+provider confirms the role gone, so the role can outlive the failure until then. A failure after the publish never fails the run: it keeps retrying
 the drop with backoff and stays visible until it settles. A superseded role that
 has already expired on its own (five minutes past its `VALID UNTIL`, to allow for
 clock skew against the database) skips the restore check and settles by expiry
@@ -142,7 +144,10 @@ never releases it. The server never drops a role that a key may be using.
 
 Pausing a rotation does not touch a run in flight: a run that has published
 continues to its end, and a run that has not published is rolled back by the next
-gate check, so a paused rotation never leaves an unpublished credential behind.
+gate check. The rollback attempts to delete the unpublished role; it is not proof
+that the role is gone. A deletion that fails or whose result is unknown stays
+tracked on the run and is retried, so during incident cleanup check that the run
+has settled before treating the credential as removed.
 Infrastructure faults (database or keyring) back off with the same capped
 exponential schedule and do not spend the attempt cap; a rotation whose window has
 closed is still halted. A decryption failure is a definite fault and counts as an
@@ -198,7 +203,8 @@ They require a human session. See the [HTTP API](/docs/http-api/).
 
 ## Audit
 
-Every provider call is bracketed by an intent and an outcome event, a halt is
+Every tracked provider effect (mint, publish, extend, revoke and the candidate
+drop) is bracketed by an intent and an outcome event, a halt is
 audited as `rotation.configured`, and an abandon writes one event per run it
 closed (`rotation.quarantined` for a run that still owes a role, otherwise a
 `rotation.run_outcome` of phase `abandon`). The executor's run events use the
@@ -209,3 +215,10 @@ the run id as the correlation id. `rotation.configured` records each create, pau
 credential revoked, environment protected, approval policy enabled) with its
 `reason`. Reads are not audited events. Audit payloads carry identifiers and
 schedule values only, never a credential.
+
+The events cover tracked effects only. When a worker loses its claim on a run
+while the role is being created, it may issue a best-effort drop of that role
+with no intent or outcome event, because it no longer holds the run's fence; the
+worker that took the run drops the candidate under its own events. A missing event
+is therefore not proof that no provider call was made. Conversely, an extend outcome with the error code `extend_skipped` records that
+the extend ended before any provider call was made.
