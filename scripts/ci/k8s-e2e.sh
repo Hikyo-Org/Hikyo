@@ -123,5 +123,8 @@ echo "k8s-e2e: building authenticated unattended replacement fixtures"
 go test -count=1 -run '^TestWriteUnattendedContainerFixture$' ./scripts/ci/unattendedfixture
 echo "k8s-e2e: checking actual Docker SQLite image replacements"
 ./scripts/ci/unattended-docker.sh
+echo "k8s-e2e: checking operator commands inside admitted SQLite and PostgreSQL containers"
+./scripts/ci/unattended-operator.sh sqlite
+./scripts/ci/unattended-operator.sh postgres
 echo "k8s-e2e: checking actual singleton Kubernetes PostgreSQL replacements"
 ./scripts/ci/unattended-kind.sh

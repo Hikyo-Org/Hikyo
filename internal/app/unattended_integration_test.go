@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,6 +28,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 	"github.com/Hikyo-Org/hikyo/internal/upgradebundle"
+	"github.com/Hikyo-Org/hikyo/internal/upgradegate"
 )
 
 type unattendedChildFixture struct {
@@ -38,6 +40,11 @@ type unattendedChildFixture struct {
 	Releases  []selfupdate.PreparedNightly
 	// Inspect names a file that receives this image's own security observation.
 	Inspect string
+	// Operator selects an operator-command step: "record" starts the target as
+	// the server does and records its image; "resolve" only resolves its
+	// installed inputs and passes the gate; "create" also creates the first
+	// administrator through the real command.
+	Operator string
 }
 
 type unattendedFixtureInstaller struct{ releases []selfupdate.PreparedNightly }
@@ -93,9 +100,52 @@ func TestUnattendedCoordinatorChild(t *testing.T) {
 		}
 		return
 	}
+	if fixture.Operator != "" {
+		unattendedOperatorChild(t, fixture)
+		return
+	}
 	installer := unattendedFixtureInstaller{fixture.Releases}
 	if err := runPreparedUnattended(t.Context(), &fixture.Config, UnattendedUpgradeOptions{}, fixture.Directory, fixture.Root, fixture.Pinned, installer, installer, fixture.Target); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// unattendedOperatorChild runs inside a binary linked to the exact signed claim.
+// The packaged binary's own digest stands in for the downloaded executable's, as
+// the production server checks it before recording the image.
+func unattendedOperatorChild(t *testing.T, fixture unattendedChildFixture) {
+	t.Helper()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fixture.Operator == "record" {
+		installer := unattendedFixtureInstaller{fixture.Releases}
+		if err := runPreparedUnattended(t.Context(), &fixture.Config, UnattendedUpgradeOptions{}, fixture.Directory, fixture.Root, fixture.Pinned, installer, installer, fixture.Target); err != nil {
+			t.Fatal(err)
+		}
+		digest, err := fileDigest(executable)
+		if err != nil {
+			t.Fatal(err)
+		}
+		target := fixture.Target
+		target.BundleDirectory, target.BinarySHA256 = fixture.Config.Upgrade.BundleDirectory, releaseidentity.Digest(strings.TrimPrefix(digest, "sha256:"))
+		if err := recordUnattendedImage(fixture.Directory, target); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	cfg := fixture.Config
+	if err := resolveUnattendedOperator(t.Context(), &cfg, executable); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AutoMigrate || cfg.Upgrade.OperatorPublicKeyFile != filepath.Join(fixture.Directory, "operator.pub") || cfg.Upgrade.TargetManifestSHA256 != string(fixture.Target.Identity.ManifestSHA256) {
+		t.Fatalf("resolution applied the wrong inputs: %+v", cfg.Upgrade)
+	}
+	// The same gate every admin and backup command passes first, with its real
+	// bundle, operator pin and custody directory.
+	if _, err := databaseGate(t.Context(), &cfg, fixture.Root, upgradegate.Boot); err != nil {
+		t.Fatalf("an admitted installation refused its own operator command: %v", err)
 	}
 }
 
@@ -330,6 +380,7 @@ func TestUnattendedPackagedEnrollmentUpgradeAndIntermediateCredential(t *testing
 			if err != nil || state.Applied.Release != identities[1] || state.Maintenance {
 				t.Fatalf("replacement did not finish: %v", err)
 			}
+			unattendedOperatorCommands(t, engine, live, directory, identities[1], &fixture, runChild)
 			if err := runChild(0); err == nil {
 				t.Fatal("older image silently rolled back")
 			}
@@ -342,6 +393,121 @@ func TestUnattendedPackagedEnrollmentUpgradeAndIntermediateCredential(t *testing
 			}
 
 		})
+	}
+}
+
+// unattendedOperatorCommands covers #1112: a command started later in the same
+// admitted container resolves the installed public inputs, passes the real gate
+// and creates the first administrator, without running a second updater or
+// changing the selected release. Each refusal below leaves the database, the
+// journal and the image record exactly as they were.
+func unattendedOperatorCommands(t *testing.T, engine store.Engine, live store.Config, directory string, release releaseidentity.Identity, fixture *unattendedChildFixture, runChild func(int) error) {
+	t.Helper()
+	database := upgrade.Config{Engine: releaseidentity.Engine(engine), Path: live.Path, DSN: live.DSN}
+	operator := func(mode string) error {
+		fixture.Operator = mode
+		defer func() { fixture.Operator = "" }()
+		return runChild(1)
+	}
+	if err := operator("record"); err != nil {
+		t.Fatalf("record the admitted image: %v", err)
+	}
+	before, err := upgrade.InspectControl(t.Context(), database)
+	if err != nil || before.Applied.Release != release || before.Pending.Phase != upgrade.Healthy || before.Maintenance {
+		t.Fatalf("admitted installation is not healthy: %v", err)
+	}
+	snapshot := func() string {
+		var state []string
+		for _, name := range []string{"enrollment.json", "image.json", "operator.pub", "operation.json"} {
+			raw, err := os.ReadFile(filepath.Join(directory, name))
+			state = append(state, name+":"+string(raw)+":"+fmt.Sprint(err))
+		}
+		return strings.Join(state, "\n")
+	}
+	admitted := snapshot()
+	refuse := func(name, want string, mutate func() (restore func())) {
+		t.Helper()
+		restore := mutate()
+		defer restore()
+		err := operator("resolve")
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("%s: got %v, want %q", name, err, want)
+		}
+	}
+	replaceFile := func(name string, raw []byte, mode os.FileMode) func() {
+		path := filepath.Join(directory, name)
+		original, err := os.ReadFile(path)
+		existed := err == nil
+		if err := os.WriteFile(path, raw, mode); err != nil {
+			t.Fatal(err)
+		}
+		return func() {
+			if existed {
+				err = os.WriteFile(path, original, mode)
+			} else {
+				err = os.Remove(path)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	enrollment, enrolled, err := readUnattendedEnrollment(directory)
+	if err != nil || !enrolled {
+		t.Fatalf("read enrollment: %v", err)
+	}
+	refuse("replaced operator pin", "operator pin differs from enrolled custody", func() func() {
+		return replaceFile("operator.pub", []byte("replaced"), 0644)
+	})
+	refuse("enrollment bound to another database", "enrollment differs from installed database", func() func() {
+		other := enrollment
+		other.Instance = "another-installation"
+		return replaceFile("enrollment.json", mustJSON(t, other), 0600)
+	})
+	refuse("unfinished enrollment", "enrollment is unfinished", func() func() {
+		other := enrollment
+		other.Instance = ""
+		return replaceFile("enrollment.json", mustJSON(t, other), 0600)
+	})
+	refuse("another release", "differs from the one the installation last admitted", func() func() {
+		image, err := readUnattendedImage(directory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		image.Identity = fixture.Releases[0].Identity
+		return replaceFile("image.json", mustJSON(t, image), 0600)
+	})
+	refuse("another executable", "executable differs from the image the installation last admitted", func() func() {
+		image, err := readUnattendedImage(directory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		image.BinarySHA256 = releaseidentity.Hash([]byte("another executable"))
+		return replaceFile("image.json", mustJSON(t, image), 0600)
+	})
+	refuse("malformed bundle", "", func() func() {
+		image, err := readUnattendedImage(directory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		image.BundleDirectory = filepath.Join(directory, "absent-bundle")
+		return replaceFile("image.json", mustJSON(t, image), 0600)
+	})
+	if snapshot() != admitted {
+		t.Fatal("a refusal changed the installation's state files")
+	}
+	if err := operator("resolve"); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if err := operator("resolve"); err != nil {
+		t.Fatalf("repeated resolve: %v", err)
+	}
+	if snapshot() != admitted {
+		t.Fatal("operator commands changed the installation's state files")
+	}
+	after, err := upgrade.InspectControl(t.Context(), database)
+	if err != nil || after.Applied != before.Applied || after.Pending.Phase != upgrade.Healthy || after.Maintenance || after.InstanceID != before.InstanceID || after.Floor != before.Floor {
+		t.Fatalf("operator commands changed the selected release: %+v %v", after, err)
 	}
 }
 
