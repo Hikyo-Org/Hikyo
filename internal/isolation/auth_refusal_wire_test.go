@@ -82,11 +82,23 @@ func runAuthenticationRefusalWireCompatibility(t *testing.T, blockFirst bool) {
 				queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type='"+typ+"'")
 		}
 		var refusalBody string
-		refused := func(label, path, token string, cookie bool) {
+		// staged reports whether the generic window must gain the refusal: the
+		// dedicated developer event is owned by its own type, not this window.
+		refusedWith := func(label, path, token string, cookie, staged bool) {
 			t.Helper()
 			before := count("grant.denied")
 			eventsBefore := queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events")
+			_, accountedBefore := refusalWireAccounting(t, db)
+			failuresBefore := signals.RefusalHealth().Failures
 			w := request(http.MethodGet, path, token, cookie, nil)
+			_, accountedAfter := refusalWireAccounting(t, db)
+			unconfirmed := signals.RefusalHealth().Failures != failuresBefore
+			switch {
+			case !staged && accountedAfter != accountedBefore:
+				t.Fatalf("%s: dedicated refusal also entered the generic window", label)
+			case staged && accountedAfter == accountedBefore && !unconfirmed:
+				t.Fatalf("%s: confirmed refusal staged no generic signal", label)
+			}
 			if w.Code != http.StatusUnauthorized {
 				t.Fatalf("%s: status %d, want 401: %s", label, w.Code, w.Body)
 			}
@@ -102,6 +114,10 @@ func runAuthenticationRefusalWireCompatibility(t *testing.T, blockFirst bool) {
 			// A summary is pending in durable staging until its database window seals.
 			t.Logf("%s: 401, instance event delta %d", label,
 				queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events")-eventsBefore)
+		}
+		refused := func(label, path, token string, cookie bool) {
+			t.Helper()
+			refusedWith(label, path, token, cookie, true)
 		}
 		refused("missing", api.PathPrefix+"/auth/whoami", "", false)
 		for _, artifact := range []crypto.ArtifactType{crypto.ArtifactCLISession, crypto.ArtifactBrowserSession} {
@@ -135,9 +151,13 @@ func runAuthenticationRefusalWireCompatibility(t *testing.T, blockFirst bool) {
 				}
 			} else {
 				before := count("grant.denied")
+				_, accountedBefore := refusalWireAccounting(t, db)
 				w := request(http.MethodGet, settings, live, false, nil)
 				if w.Code != http.StatusNotFound || count("grant.denied") != before+1 {
 					t.Fatalf("authenticated missing scope must produce exactly one denial: %d: %s", w.Code, w.Body)
+				}
+				if _, accountedAfter := refusalWireAccounting(t, db); accountedAfter != accountedBefore {
+					t.Fatal("authorization denial entered the authentication refusal window")
 				}
 			}
 		}
@@ -178,9 +198,13 @@ func runAuthenticationRefusalWireCompatibility(t *testing.T, blockFirst bool) {
 				continue
 			}
 			before := count("auth.artifact_class_refused")
+			_, accountedBefore := refusalWireAccounting(t, db)
 			w := request(http.MethodGet, settings, token, false, nil)
 			if w.Code != http.StatusNotFound || count("auth.artifact_class_refused") != before+1 {
 				t.Fatalf("live disallowed machine must produce exactly one dedicated refusal: %d: %s", w.Code, w.Body)
+			}
+			if _, accountedAfter := refusalWireAccounting(t, db); accountedAfter != accountedBefore {
+				t.Fatal("live wrong-class refusal also entered the generic window")
 			}
 			liveMachine = token
 			if source := queryString(t, db, "SELECT source_ip FROM audit_instance_events WHERE type='auth.artifact_class_refused' ORDER BY seq DESC LIMIT 1"); source != "192.0.2.103" {
@@ -211,7 +235,7 @@ func runAuthenticationRefusalWireCompatibility(t *testing.T, blockFirst bool) {
 		}
 		tokens = append(tokens, dev)
 		dedicatedBefore := count("auth.artifact_class_refused")
-		refused("developer/dedicated", settings, dev, false)
+		refusedWith("developer/dedicated", settings, dev, false, false)
 		if count("auth.artifact_class_refused") != dedicatedBefore+1 || queryString(t, db, "SELECT state FROM auth_refusal_window WHERE id=1") != stateBefore {
 			t.Fatal("dedicated developer refusal lost or duplicated")
 		}

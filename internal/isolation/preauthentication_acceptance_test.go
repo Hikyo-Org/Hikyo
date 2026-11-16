@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strconv"
 	"strings"
@@ -28,6 +29,31 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
+// countCredentialReads counts the datastore queries a request issues, except
+// those issued while its refusal is being recorded: the window write, and the
+// event writes of a seal at a minute boundary, are not credential reads.
+// Requests are served one at a time, so the recording flag cannot misattribute.
+func countCredentialReads(sink *service.RefusalSignals, queries *atomic.Int64) (server.RefusalRecorder, func()) {
+	var recording atomic.Bool
+	restore := authn.SetQueryObserver(func(string) {
+		if !recording.Load() {
+			queries.Add(1)
+		}
+	})
+	return recordingRefusals{sink: sink, recording: &recording}, restore
+}
+
+type recordingRefusals struct {
+	sink      *service.RefusalSignals
+	recording *atomic.Bool
+}
+
+func (r recordingRefusals) Record(ctx context.Context, sample audit.RefusalSample) error {
+	r.recording.Store(true)
+	defer r.recording.Store(false)
+	return r.sink.Record(ctx, sample)
+}
+
 // assertChargedBeforeWork proves one dead artifact at the last slot of its
 // source allowance: the request is still resolved with the unchanged uniform
 // refusal and read count, and the next presentation from the same source is a
@@ -43,11 +69,27 @@ func assertChargedBeforeWork(t *testing.T, db *store.DB, token string, kind cryp
 			t.Fatal(err)
 		}
 	}
-	handler := server.New(&server.API{Auth: &service.Auth{DB: db}, Orgs: &service.Orgs{DB: db}, Workspace: &service.Workspace{DB: db}, Admission: limiter}, nil)
+	signals := service.NewRefusalSignals(db)
 	var queries atomic.Int64
-	restore := authn.SetQueryObserver(func(string) { queries.Add(1) })
+	sink, restore := countCredentialReads(signals, &queries)
 	defer restore()
-	rec := preauthRequest(handler, token, kind, "192.0.2.83", http.MethodGet, path)
+	handler := server.New(&server.API{Auth: &service.Auth{DB: db}, Orgs: &service.Orgs{DB: db}, Workspace: &service.Workspace{DB: db}, Admission: limiter, Refusals: sink}, nil)
+	// Each refusal must also produce its signal: the dead artifact an artifact
+	// refusal and the overflow an admission refusal. A commit that missed its
+	// accounting budget is visible in health and is not asserted as staged.
+	signalled := func(label string, serve func() *httptest.ResponseRecorder) *httptest.ResponseRecorder {
+		t.Helper()
+		_, before := refusalWireAccounting(t, db)
+		failures := signals.RefusalHealth().Failures
+		rec := serve()
+		if _, after := refusalWireAccounting(t, db); signals.RefusalHealth().Failures == failures && after <= before {
+			t.Fatalf("%s: confirmed refusal staged no signal", label)
+		}
+		return rec
+	}
+	rec := signalled("last allowance", func() *httptest.ResponseRecorder {
+		return preauthRequest(handler, token, kind, "192.0.2.83", http.MethodGet, path)
+	})
 	if rec.Code != http.StatusUnauthorized || queries.Load() != reads+outside {
 		t.Fatalf("last allowance = %d %s, %d queries, want uniform 401 and %d reads", rec.Code, rec.Body.String(), queries.Load(), reads+outside)
 	}
@@ -58,7 +100,9 @@ func assertChargedBeforeWork(t *testing.T, db *store.DB, token string, kind cryp
 		t.Fatal("credential state changed the unauthenticated body")
 	}
 	queries.Store(0)
-	rec = preauthRequest(handler, token, kind, "192.0.2.83", http.MethodGet, path)
+	rec = signalled("overflow", func() *httptest.ResponseRecorder {
+		return preauthRequest(handler, token, kind, "192.0.2.83", http.MethodGet, path)
+	})
 	if rec.Code != http.StatusTooManyRequests || queries.Load() != outside || rec.Header().Get("Retry-After") == "" {
 		t.Fatalf("overflow = %d %s, %d queries, want 429 without resolution", rec.Code, rec.Body.String(), queries.Load())
 	}
@@ -247,10 +291,12 @@ func TestPreauthenticationRefusalsAreBoundedAndSecretFree(t *testing.T) {
 		admissionStage := slices.Index(audit.RefusalStages(), audit.RefusalAdmission)
 		for _, kind := range []crypto.ArtifactType{crypto.ArtifactCLISession, crypto.ArtifactBrowserSession, crypto.ArtifactWorkload, crypto.ArtifactAutomation, crypto.ArtifactInstanceConn} {
 			t.Run(string(kind), func(t *testing.T) {
-				// The window seals into a durable audit event when it rolls over a minute,
-				// so start only with room left in the current one.
-				if left := 60 - time.Now().Second(); left < 10 {
-					time.Sleep(time.Duration(left) * time.Second)
+				// A window seals into durable events 60 s after its first refusal. The
+				// subtests share one window, so seal one that is about to expire
+				// before taking the baseline, not after the first refusal below.
+				if start := queryInt(t, db, "SELECT window_start FROM auth_refusal_window WHERE id = 1"); start != 0 && time.Now().Unix()-start > 45 {
+					expireRefusalWindow(t, db)
+					sealRefusals(t, service.NewRefusalSignals(db))
 				}
 				var before audit.RefusalWindow
 				if err := json.Unmarshal([]byte(queryString(t, db, "SELECT state FROM auth_refusal_window WHERE id = 1")), &before); err != nil {
@@ -263,19 +309,15 @@ func TestPreauthenticationRefusalsAreBoundedAndSecretFree(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				handler := server.New(&server.API{Auth: authService(t, db), Orgs: &service.Orgs{DB: db}, Admission: limiter, Refusals: service.NewRefusalSignals(db)}, nil)
+				var queries atomic.Int64
+				sink, restore := countCredentialReads(service.NewRefusalSignals(db), &queries)
+				defer restore()
+				handler := server.New(&server.API{Auth: authService(t, db), Orgs: &service.Orgs{DB: db}, Admission: limiter, Refusals: sink}, nil)
 				token, _, err := crypto.NewArtifact(kind)
 				if err != nil {
 					t.Fatal(err)
 				}
 				events := queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events")
-				var queries atomic.Int64
-				restore := authn.SetQueryObserver(func(q string) {
-					if !strings.Contains(q, "auth_refusal_window") {
-						queries.Add(1)
-					}
-				})
-				defer restore()
 				for i := range refused {
 					rec := preauthRequest(handler, token, kind, source, http.MethodGet, "/me/orgs")
 					if rec.Code != http.StatusTooManyRequests {
