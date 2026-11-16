@@ -1,0 +1,83 @@
+---
+title: Scheduled credential rotation
+description: Record the schedule for rotating one PostgreSQL credential pair, the first slice of scheduled provider-managed rotation.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/rotation.mdx
+---
+
+Scheduled rotation will keep one pair of secret keys (a PostgreSQL role name
+and its password) fresh without a person pasting values: mint a new role,
+publish it through an ordinary revision, wait for consumers to pick it up, then
+drop the old role. PostgreSQL is the only provider, one adapter at a time.
+
+:::caution[Configuration only]
+This release ships the **configuration** half only. You can create, list, show,
+pause, resume and delete a rotation, and each is audited, but **nothing is
+minted, published or revoked yet**. A configured rotation records its schedule
+and its authority and does not run. The executor arrives in a later release;
+until then rotate by hand with [dynamic secrets](/docs/dynamic-secrets/) and
+`hikyo values set`.
+:::
+
+## What a rotation records
+
+- The [dynamic provider](/docs/dynamic-secrets/) that will mint the role. It
+  must exist and have its admin credential set.
+- The **password key** that will receive the credential. It must be
+  secret-classified.
+- The **username key** that will receive the generated role name.
+- The **interval** between rotations: 1 hour to 90 days.
+- The **revocation delay**, how long the superseded credential stays valid after
+  the new one is published so consumers can pick it up: 5 minutes to 7 days, and
+  always shorter than the interval.
+- The **authority principal**: the person who created the rotation.
+
+A bound that is hit is refused as `invalid`, naming the bound. The record holds
+no password, no role name and no handle for a minted credential.
+
+## Who may configure it
+
+Creating a rotation is a person's standing delegation, so the caller must be a
+human who currently holds **edit**, **publish** and **reveal** on both keys in
+the environment. Machine principals and developer credentials are refused. That
+person is recorded as the authority principal, and the executor will re-check
+their authority before every transition. It never acts as a system principal. If
+the authority is lost, `resume` refuses with a named error rather than
+rescheduling.
+
+A key can be driven by one live rotation at a time. Pause, resume and delete
+need `publish` on the environment; list and show need `read`.
+
+## Create and manage
+
+```sh
+hikyo rotation create \
+  --provider dprov_0198... \
+  --key key_0198... --username-key key_0198... \
+  --interval 720h --revocation-delay 24h \
+  --env production
+
+hikyo rotation list --env production
+hikyo rotation show rot_0198... --env production
+hikyo rotation pause rot_0198... --env production
+hikyo rotation resume rot_0198... --env production
+hikyo rotation delete rot_0198... --env production
+```
+
+`pause`, `resume` and `delete` accept `--expected-generation N`, which fails
+with a conflict if another change landed first. Resume recomputes the next run
+from the current time. Delete disables the rotation and keeps it as history; it
+frees the keys for another rotation.
+
+## API
+
+The routes live under
+`/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations`:
+`GET` and `POST` on the collection, `GET` and `DELETE` on
+`/{rotation}`, and `POST` on `/{rotation}/pause` and `/{rotation}/resume`.
+They require a human session. See the [HTTP API](/docs/http-api/).
+
+## Audit
+
+`rotation.configured` records each create, pause, resume and delete with its
+`action`. Reads are not audited events. Audit payloads carry identifiers and
+schedule values only, never a credential.

@@ -40,12 +40,12 @@ human who configured it), re-authorized before every transition. Never a
 ### Progress
 
 - [x] S1 ADR banners + this doc
-- [ ] S1 migration 00091 (both engines) + sqlc + store + compat pin + upgrade drill
-- [ ] S1 authz op + store ops + audit event + budget classification + bound registry
-- [ ] S1 service (create/list/show/pause/resume/delete) + key-delete refusal
-- [ ] S1 OpenAPI + apigen + TS client + server handlers + parity
-- [ ] S1 CLI `rotation create|list|show|pause|resume|delete` + help golden
-- [ ] S1 docs page (`rotation.mdx`) + cli-reference
+- [x] S1 migration 00091 (both engines) + sqlc + store + compat pin + upgrade drill
+- [x] S1 authz op + store ops + audit event + budget classification + bound registry
+- [x] S1 service (create/list/show/pause/resume/delete); key-delete refusal dropped, see decision 2
+- [x] S1 OpenAPI + apigen + TS client + server handlers + parity
+- [x] S1 CLI `rotation create|list|show|pause|resume|delete` + help golden
+- [x] S1 docs page (`rotation.mdx`) + cli-reference
 - [ ] S2 state machine, worker, run-now, runs, metrics, doctor, audit run events
 - [ ] S2 dual-engine restart/failure/multi-node takeover e2e, Compose pickup e2e
 - [ ] S3 SPA status surface, parity flip
@@ -58,15 +58,23 @@ human who configured it), re-authorized before every transition. Never a
    `rotation_runs` gains the tenant chain (`org_id`, `project_id`, `environment_id`
    with a composite FK to `rotations`, the `dynamic_effects` shape), the row-lease
    fence (`lease_owner`, `lease_expires_at`, `lease_claim_token`, as
-   `dynamic_leases`), `trigger` (`schedule|manual`), `revocation_delay_seconds` (the
+   `dynamic_leases`), `run_trigger` (`schedule|manual`), `revocation_delay_seconds` (the
    per-run snapshot, `0` for a skip-overlap run), and `candidate_valid_until`.
    **Divergence: a third table `rotation_effects`** (INTENT/OUTCOME ledger mirroring
    `dynamic_effects`): the issue handoff mandates INTENT/OUTCOME per transition and an
    `unknown` metric, which needs the ledger. A third separate outbox, not a reuse.
 2. **Integrity constraints.** One non-terminal run per rotation (partial unique index);
-   one non-`disabled` rotation per `(environment_id, key_id)`; `username_key_id <>
-   key_id`; both key ids carry a composite FK to `keys` (so key deletion refuses
-   by name while a live rotation references the key: `Keys.Delete` checks first).
+   one non-`disabled` rotation per `(environment_id, key_id)` and per
+   `(environment_id, username_key_id)`; `username_key_id <> key_id`; a CHECK ties
+   `next_run_at` to the `active` state. **Divergence: no foreign key to `keys`.** A
+   disabled rotation is history and must outlive a deleted key, and the soft delete
+   frees the slot, so a key FK would either block key deletion forever or erase
+   history. As a result `Keys.Delete` does **not** refuse while a live rotation
+   references the key. The S2 gate must re-check, before every transition, that both
+   keys still exist and are secret-classified, and halt with a named refusal
+   otherwise. A rotation whose provider is deleted is held by the FK to
+   `dynamic_providers`; provider deletion with a live rotation fails on that FK and
+   has no named refusal or test in S1 (follow-up).
 3. **Delete is soft.** `rotation delete` transitions to `disabled` and keeps the row,
    so run history and effect FKs survive and the key slot is released. A rotation
    with a non-terminal run refuses delete (S1 can have none; the check and its
@@ -255,7 +263,8 @@ S1 (this PR): both engines for Hikyo's own state (SQLite default; PostgreSQL whe
 per key, one non-terminal run), tenant isolation fixtures, bounds, create refusals
 (authority lacks publish, provider missing or credential unset, key missing or not
 secret, out-of-bounds, duplicate), CAS conflict, resume re-authorization refusal,
-audit payload free of credentials, key-delete refusal, contract and freeze tests.
+audit payload free of credentials, contract and freeze tests. The S2 gate, not S1,
+owns key-deleted-underneath-a-rotation handling.
 
 S2: full happy path with a fake clock (mint, publish, overlap, revoke, role absent;
 cursor changes exactly once per publish; Compose render picks up the value), failure
@@ -277,9 +286,24 @@ operator e2e (`k8se2e`) asserting a rollout after rotation.
    `credential expires at` in status. Recommendation: (b), with the field.
 3. **Username key.** Roles are minted per cycle with a new name, so an overlap only
    works if consumers also receive the new role name, which means `username_key_id`
-   is effectively required. S1 keeps it optional per the issue handoff. Options: (a)
-   require it in S1, (b) keep it optional and let S2 define a password-only mode
-   (`ALTER ROLE ... PASSWORD`, no overlap). Recommendation: (a).
+   is effectively required. **S1 requires it in the service and API (the column stays
+   nullable)**, diverging from the issue handoff. Options: (a) keep it required, (b)
+   make it optional and let S2 define a password-only mode (`ALTER ROLE ...
+   PASSWORD`, no overlap). Recommendation: (a), the current behaviour.
 4. **Incident containment.** Should the incident ledger enumerate rotations by
    `authority_principal_id` so a contained principal's rotations are paused? Not done
    in S1; there is no executor yet.
+
+## S1 divergences from the issue handoff (summary)
+
+- A third table, `rotation_effects`, is created now (decision 1).
+- No foreign key to `keys`, so no `Keys.Delete` refusal (decision 2).
+- Only `rotation.configured` is registered; run events, `run-now` and `runs` ops and
+  paths wait for S2 (decision 6).
+- `username_key_id` is required by the service; the revocation delay must be shorter
+  than the interval; only a human session (or local host authority) may create.
+- Reads (`rotation.inspect`) are human-session only.
+- API revision 17 (`x-hikyo-min-revision: 17`); parity rows use `{issue: 148}`, so
+  #148 must stay open until S3 flips them.
+- Review: cross-provider review was SKIPPED (OpenAI unavailable by owner instruction);
+  independent adversarial Claude review is recorded on the PR, not in this file.
