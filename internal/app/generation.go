@@ -343,7 +343,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		Adapters:            adapterService,
 		FileTargets:         &service.FileTargets{DB: db},
 		Dynamic:             dynamicService,
-		CredentialRotations: &service.CredentialRotations{DB: db},
+		CredentialRotations: &service.CredentialRotations{DB: db, Auth: authSvc},
 		SSH:                 sshService,
 		Transit:             transitService,
 		PKI:                 pkiService,

@@ -996,6 +996,11 @@ const (
 	StoreRotationsList          StoreOp = "rotations.List"
 	StoreRotationsSetState      StoreOp = "rotations.SetState"
 	StoreRotationsCountOpenRuns StoreOp = "rotations.CountOpenRuns"
+	// StoreRotationsPurgeEnvironment removes a deleted environment's rotation
+	// rows; StoreRotationsPauseForProvider pauses a project's active rotations
+	// that mint from a provider being deleted or losing its credential.
+	StoreRotationsPurgeEnvironment StoreOp = "rotations.PurgeEnvironment"
+	StoreRotationsPauseForProvider StoreOp = "rotations.PauseForProvider"
 
 	// SSH user certificates (#155). Proof-carrying, environment-bound; the
 	// sweeper's revocation SQL runs through the proof-free SSHRuntime.
@@ -2587,7 +2592,10 @@ var operationTable = map[Operation]opSpec{
 			// SSH rows (#155) go with the environment, but only once no live
 			// CA remains: the purge refuses otherwise.
 			StoreSSHPurgeEnvironment: true,
-			StoreEnvironmentsDelete:  true, StoreAuditTenantInsert: true,
+			// Rotation rows (#148) go with it too, but only once no rotation
+			// is live and no run is in flight: the purge refuses otherwise.
+			StoreRotationsPurgeEnvironment: true,
+			StoreEnvironmentsDelete:        true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventRuleRevoked, audit.EventEnvDeleted, audit.EventGrantRevoked, audit.EventPersonalValueDeleted},
 	},
@@ -2939,7 +2947,8 @@ var operationTable = map[Operation]opSpec{
 			StoreScanningDismissalsDeleteByKey: true,
 			StoreSnapshotsProjectRevisions:     true, StoreSnapshotsDeleteEnvironment: true,
 			StorePinsDeleteEnvironment: true, StoreSSHPurgeEnvironment: true,
-			StoreDefinitionsPlanGet: true, StoreDefinitionsPlanApply: true,
+			StoreRotationsPurgeEnvironment: true,
+			StoreDefinitionsPlanGet:        true, StoreDefinitionsPlanApply: true,
 			StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventPersonalValueDeleted, audit.EventRuleMoveWideningConfirmed, audit.EventRuleRevoked,
@@ -5406,14 +5415,16 @@ var operationTable = map[Operation]opSpec{
 	OpDynamicProviderCredentialRevoke: {
 		class: ClassTenant, level: domain.LevelProject,
 		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
-		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersRevokeCredential: true, StoreAuditTenantInsert: true},
-		events:   []audit.EventType{audit.EventDynamicProviderCredentialRevoke},
+		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersRevokeCredential: true, StoreRotationsPauseForProvider: true, StoreAuditTenantInsert: true},
+		// A rotation minting from the provider is paused with it (#148).
+		events: []audit.EventType{audit.EventDynamicProviderCredentialRevoke, audit.EventRotationConfigured},
 	},
 	OpDynamicProviderDelete: {
 		class: ClassTenant, level: domain.LevelProject,
 		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
-		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersDelete: true, StoreDynamicLeasesActiveIDsForProvider: true, StoreDynamicLeasesGet: true, StoreDynamicLeasesEnqueueTransition: true, StoreAuditTenantInsert: true},
-		events:   []audit.EventType{audit.EventDynamicProviderDeleted, audit.EventDynamicLeaseTransitionIntent},
+		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersDelete: true, StoreDynamicLeasesActiveIDsForProvider: true, StoreDynamicLeasesGet: true, StoreDynamicLeasesEnqueueTransition: true, StoreRotationsPauseForProvider: true, StoreAuditTenantInsert: true},
+		// A rotation minting from the provider is paused with it (#148).
+		events: []audit.EventType{audit.EventDynamicProviderDeleted, audit.EventDynamicLeaseTransitionIntent, audit.EventRotationConfigured},
 	},
 	OpLeaseMint: {
 		class: ClassTenant, level: domain.LevelEnv, postGrantForbidden: true,
@@ -5456,7 +5467,7 @@ var operationTable = map[Operation]opSpec{
 			{Cap: domain.CapPublish, At: domain.LevelEnv},
 			{Cap: domain.CapReveal, At: domain.LevelEnv},
 		},
-		storeOps: map[StoreOp]bool{StoreRotationsCreate: true, StoreRotationsGet: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreRotationsCreate: true, StoreRotationsGet: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventRotationConfigured},
 	},
 	OpRotationInspect: {
@@ -5473,8 +5484,13 @@ var operationTable = map[Operation]opSpec{
 	},
 	OpRotationResume: {
 		class: ClassTenant, level: domain.LevelEnv,
-		formula:  Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
-		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSetState: true, StoreAuditTenantInsert: true},
+		formula: Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
+		// Resume consumes the publish reauthentication window over the keys after
+		// the grant passes; its refusal is a reachable 403.
+		postGrantForbidden: true,
+		// Resume re-checks the provider can mint and both keys still exist and are
+		// secret-classified before the per-key authority checks.
+		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSetState: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventRotationConfigured},
 	},
 	OpRotationDelete: {

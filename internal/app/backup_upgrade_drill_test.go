@@ -472,8 +472,9 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate, PKI, temporary-access, file-target, member-access-rule or manual-pairing evidence", query, err)
 		}
 	}
-	// Reverse 00091 only after proving no rotation is configured. Effects and
-	// runs reference rotations, so they go first.
+	// Reverse 00091 only after proving no rotation is configured. Effects, runs
+	// and key claims reference rotations, so they go first.
+	drillExec(t, db, "DROP TABLE rotation_key_claims")
 	drillExec(t, db, "DROP TABLE rotation_effects")
 	drillExec(t, db, "DROP TABLE rotation_runs")
 	drillExec(t, db, "DROP TABLE rotations")

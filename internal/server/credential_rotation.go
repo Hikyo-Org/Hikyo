@@ -25,22 +25,23 @@ func credentialRotationResponse(v service.RotationView) (apigen.CredentialRotati
 	if err != nil {
 		return apigen.CredentialRotation{}, err
 	}
-	var username *string
-	if v.UsernameKeyID != "" {
-		username = &v.UsernameKeyID
+	expires, err := parseOptTime(v.CredentialExpiresAt)
+	if err != nil {
+		return apigen.CredentialRotation{}, err
 	}
 	return apigen.CredentialRotation{
 		Id:                     apigen.ID(v.ID),
 		EnvironmentId:          apigen.ID(v.EnvironmentID),
 		ProviderId:             apigen.ID(v.ProviderID),
 		KeyId:                  apigen.ID(v.KeyID),
-		UsernameKeyId:          username,
+		UsernameKeyId:          apigen.ID(v.UsernameKeyID),
 		IntervalSeconds:        v.IntervalSeconds,
 		RevocationDelaySeconds: v.RevocationDelaySeconds,
 		AuthorityPrincipalId:   apigen.ID(v.AuthorityPrincipalID),
 		CreatedBy:              apigen.ID(v.CreatedBy),
 		State:                  apigen.CredentialRotationState(v.State),
 		NextRunAt:              next,
+		CredentialExpiresAt:    expires,
 		Generation:             v.Generation,
 		CreatedAt:              created,
 		UpdatedAt:              updated,
@@ -48,7 +49,8 @@ func credentialRotationResponse(v service.RotationView) (apigen.CredentialRotati
 }
 
 func (a *API) ListRotations(ctx context.Context, req apigen.ListRotationsRequestObject) (apigen.ListRotationsResponseObject, error) {
-	rows, err := a.CredentialRotations.List(ctx, service.Bearer(bearer(ctx)), dynamicEnvScope(req.Org, req.Project, req.Environment))
+	includeDisabled := req.Params.IncludeDisabled != nil && *req.Params.IncludeDisabled
+	rows, err := a.CredentialRotations.List(ctx, service.Bearer(bearer(ctx)), dynamicEnvScope(req.Org, req.Project, req.Environment), includeDisabled)
 	if err != nil {
 		return nil, err
 	}
@@ -132,12 +134,8 @@ func (a *API) ResumeRotation(ctx context.Context, req apigen.ResumeRotationReque
 }
 
 func (a *API) DeleteRotation(ctx context.Context, req apigen.DeleteRotationRequestObject) (apigen.DeleteRotationResponseObject, error) {
-	var expected *int64
-	if req.Params.ExpectedGeneration != nil {
-		expected = req.Params.ExpectedGeneration
-	}
 	view, err := a.CredentialRotations.Delete(ctx, service.Bearer(bearer(ctx)), dynamicEnvScope(req.Org, req.Project, req.Environment),
-		service.RotationStateRequest{RotationID: string(req.Rotation), ExpectedGeneration: expectedGeneration(expected)})
+		service.RotationStateRequest{RotationID: string(req.Rotation), ExpectedGeneration: expectedGeneration(req.Params.ExpectedGeneration)})
 	if err != nil {
 		return nil, err
 	}

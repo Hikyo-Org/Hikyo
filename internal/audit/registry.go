@@ -3751,17 +3751,26 @@ var registry = map[EventType]TypeSpec{
 	}),
 	// A rotation's configuration lifecycle. The payload names the rotation, its
 	// key ids and bounds and the recorded authority principal; no credential,
-	// candidate handle or password is ever in it (none exists in S1).
+	// candidate handle or password is ever in it (none exists in S1). A provider
+	// delete or credential revoke pauses the rotations that mint from it and
+	// records each with reason set (#148).
 	EventRotationConfigured: adapterLifecycleEvent(Schema{
 		"action":                   {Kind: KindString, Required: true, Enum: []string{"created", "paused", "resumed", "deleted"}},
 		"rotation_id":              {Kind: KindString, Required: true},
 		"provider_id":              {Kind: KindString, Required: true},
 		"key_id":                   {Kind: KindString, Required: true},
-		"username_key_id":          {Kind: KindString},
+		"username_key_id":          {Kind: KindString, Required: true},
 		"interval_seconds":         {Kind: KindInt, Required: true},
 		"revocation_delay_seconds": {Kind: KindInt, Required: true},
 		"authority_principal_id":   {Kind: KindString, Required: true},
 		"generation":               {Kind: KindInt, Required: true},
+		// environment_id names the rotation's environment on the provider-driven
+		// pause, which is recorded at project scope; reason is set only there.
+		"environment_id": {Kind: KindString},
+		"reason":         {Kind: KindString, Enum: []string{"provider_deleted", "provider_credential_revoked"}},
+		// credential_expires_at is the delivered role's VALID UNTIL when one is
+		// known, so a pause or delete says when the live credential lapses.
+		"credential_expires_at": {Kind: KindString},
 	}),
 	EventDynamicProviderInspected: {
 		SchemaVersion: 1, Retention: RetentionAccess,

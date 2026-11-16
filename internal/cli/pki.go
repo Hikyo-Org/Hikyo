@@ -214,7 +214,7 @@ func runPKIIssuer(ctx context.Context, ios IO, args []string) error {
 	}
 	var ttlSecs *int64
 	if ttl != "" {
-		secs, err := ttlSeconds(ttl)
+		secs, err := durationSeconds("--ttl", ttl, false)
 		if err != nil {
 			return err
 		}
@@ -681,7 +681,7 @@ func runCert(ctx context.Context, ios IO, args []string) (returnErr error) {
 			body.Uris = &values
 		}
 		if ttl != "" {
-			secs, err := ttlSeconds(ttl)
+			secs, err := durationSeconds("--ttl", ttl, false)
 			if err != nil {
 				return err
 			}

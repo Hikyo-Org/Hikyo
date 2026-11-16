@@ -6825,6 +6825,9 @@ type CredentialRotation struct {
 	// CreatedBy A prefixed UUIDv7, e.g. `org_0198…`.
 	CreatedBy ID `json:"created_by"`
 
+	// CredentialExpiresAt When the credential currently delivered into the keys lapses (the delivered role's VALID UNTIL, from the latest published run). Null until a run has published, or when the role never expires. Pausing or deleting the rotation does not revoke it.
+	CredentialExpiresAt *time.Time `json:"credential_expires_at,omitzero"`
+
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId ID    `json:"environment_id"`
 	Generation    int64 `json:"generation"`
@@ -6847,8 +6850,8 @@ type CredentialRotation struct {
 	// UpdatedAt RFC 3339 UTC, microsecond precision.
 	UpdatedAt Timestamp `json:"updated_at"`
 
-	// UsernameKeyId The key that receives the generated role name.
-	UsernameKeyId *string `json:"username_key_id,omitzero"`
+	// UsernameKeyId A prefixed UUIDv7, e.g. `org_0198…`.
+	UsernameKeyId ID `json:"username_key_id"`
 }
 
 // CredentialRotationList defines model for CredentialRotationList.
@@ -13795,6 +13798,12 @@ type ListRevisionsParams struct {
 	Limit *RevisionLimit `form:"limit" json:"limit,omitzero"`
 }
 
+// ListRotationsParams defines parameters for ListRotations.
+type ListRotationsParams struct {
+	// IncludeDisabled List deleted (disabled) rotations as well. Off by default.
+	IncludeDisabled *bool `form:"include_disabled" json:"include_disabled,omitzero"`
+}
+
 // DeleteRotationParams defines parameters for DeleteRotation.
 type DeleteRotationParams struct {
 	// ExpectedGeneration The generation the caller last read. A different current generation is a conflict.
@@ -16376,9 +16385,9 @@ type ServerInterface interface {
 	// RollbackRevision Stage an environment or key restore from one revision.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/{revision}/rollback)
 	RollbackRevision(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, revision int64)
-	// ListRotations List an environment's scheduled credential rotations, disabled history included.
+	// ListRotations List an environment's scheduled credential rotations.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations)
-	ListRotations(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	ListRotations(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params ListRotationsParams)
 	// CreateRotation Configure scheduled rotation of one PostgreSQL credential pair.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations)
 	CreateRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
@@ -18551,9 +18560,9 @@ func (_ Unimplemented) RollbackRevision(w http.ResponseWriter, r *http.Request, 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// ListRotations List an environment's scheduled credential rotations, disabled history included.
+// ListRotations List an environment's scheduled credential rotations.
 // (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations)
-func (_ Unimplemented) ListRotations(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+func (_ Unimplemented) ListRotations(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params ListRotationsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -29494,8 +29503,24 @@ func (siw *ServerInterfaceWrapper) ListRotations(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListRotationsParams
+
+	// ------------- Optional query parameter "include_disabled" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "include_disabled", r.URL.Query(), &params.IncludeDisabled, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "include_disabled"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "include_disabled", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListRotations(w, r, org, project, environment)
+		siw.Handler.ListRotations(w, r, org, project, environment, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -70317,6 +70342,7 @@ type ListRotationsRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
 	Environment EnvironmentID `json:"environment"`
+	Params      ListRotationsParams
 }
 
 type ListRotationsResponseObject interface {
@@ -70540,6 +70566,20 @@ func (response DeleteRotation200JSONResponse) VisitDeleteRotationResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRotation400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DeleteRotation400JSONResponse) VisitDeleteRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -70858,6 +70898,20 @@ func (response ResumeRotation401JSONResponse) VisitResumeRotationResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeRotation403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ResumeRotation403JSONResponse) VisitResumeRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -87227,7 +87281,7 @@ type StrictServerInterface interface {
 	// RollbackRevision Stage an environment or key restore from one revision.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/{revision}/rollback)
 	RollbackRevision(ctx context.Context, request RollbackRevisionRequestObject) (RollbackRevisionResponseObject, error)
-	// ListRotations List an environment's scheduled credential rotations, disabled history included.
+	// ListRotations List an environment's scheduled credential rotations.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations)
 	ListRotations(ctx context.Context, request ListRotationsRequestObject) (ListRotationsResponseObject, error)
 	// CreateRotation Configure scheduled rotation of one PostgreSQL credential pair.
@@ -96206,12 +96260,13 @@ func (sh *strictHandler) RollbackRevision(w http.ResponseWriter, r *http.Request
 }
 
 // ListRotations operation middleware
-func (sh *strictHandler) ListRotations(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+func (sh *strictHandler) ListRotations(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params ListRotationsParams) {
 	var request ListRotationsRequestObject
 
 	request.Org = org
 	request.Project = project
 	request.Environment = environment
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.ListRotations(ctx, request.(ListRotationsRequestObject))

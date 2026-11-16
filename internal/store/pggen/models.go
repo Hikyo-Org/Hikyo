@@ -1405,7 +1405,7 @@ type Rotation struct {
 	EnvironmentID          string
 	ProviderID             string
 	KeyID                  string
-	UsernameKeyID          pgtype.Text
+	UsernameKeyID          string
 	IntervalSeconds        int64
 	RevocationDelaySeconds int64
 	AuthorityPrincipalID   string
@@ -1429,6 +1429,14 @@ type RotationEffect struct {
 	Outcome        pgtype.Text
 	CreatedAt      pgtype.Timestamptz
 	FinishedAt     pgtype.Timestamptz
+}
+
+type RotationKeyClaim struct {
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	KeyID         string
+	RotationID    string
 }
 
 type RotationRun struct {

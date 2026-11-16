@@ -254,7 +254,7 @@
   "RebindSAMLExternalIdentityProvider": "func(ctx context.Context, id, expectedProviderID, newProviderID string) (bool, error)",
   "ReconcilePrincipal": "func(ctx context.Context, p domain.PrincipalID) (bool, error)",
   "RecordAuthEvent": "func(ctx context.Context, e audit.Event) error",
-  "RecordedPrincipalHolds": "func(ctx context.Context, caller Identity,\n\tprincipal domain.PrincipalID, op Operation, scope domain.Scope) (bool, error)",
+  "RecordedPrincipalHolds": "func(ctx context.Context, caller Identity,\n\tprincipal domain.PrincipalID, op Operation, scope domain.Scope, key *KeyTarget) (bool, error)",
   "RecoveryAccountByID": "func(ctx context.Context, id string) (Account, error)",
   "RecoveryAccountByPrincipal": "func(ctx context.Context, p domain.PrincipalID) (Account, error)",
   "RecoveryCodesFor": "func(ctx context.Context, accountID string) (RecoveryBatch, error)",

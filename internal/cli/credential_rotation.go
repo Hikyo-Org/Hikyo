@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -18,21 +19,21 @@ func credentialRotationTable(list apigen.CredentialRotationList) Table {
 		if r.NextRunAt != nil {
 			next = r.NextRunAt.UTC().Format(time.RFC3339)
 		}
-		username := "-"
-		if r.UsernameKeyId != nil {
-			username = *r.UsernameKeyId
+		expires := "-"
+		if r.CredentialExpiresAt != nil {
+			expires = r.CredentialExpiresAt.UTC().Format(time.RFC3339)
 		}
 		rows = append(rows, []string{
-			string(r.Id), string(r.State), string(r.ProviderId), string(r.KeyId), username,
+			string(r.Id), string(r.State), string(r.ProviderId), string(r.KeyId), string(r.UsernameKeyId),
 			(time.Duration(r.IntervalSeconds) * time.Second).String(),
 			(time.Duration(r.RevocationDelaySeconds) * time.Second).String(),
-			next, strconv.FormatInt(r.Generation, 10),
+			next, expires, strconv.FormatInt(r.Generation, 10),
 		})
 	}
 	return Table{
 		// No credential column: this record holds configuration only; no password
 		// or role handle is stored or returned.
-		Columns: []string{"ID", "STATE", "PROVIDER", "KEY", "USERNAME KEY", "INTERVAL", "REVOCATION DELAY", "NEXT RUN", "GENERATION"},
+		Columns: []string{"ID", "STATE", "PROVIDER", "KEY", "USERNAME KEY", "INTERVAL", "REVOCATION DELAY", "NEXT RUN", "CREDENTIAL EXPIRES", "GENERATION"},
 		Rows:    rows,
 		JSON:    list,
 	}
@@ -45,14 +46,18 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 	}
 	var format, provider, key, usernameKey, interval, delay string
 	var expectedGeneration int64
+	var includeDisabled bool
 	st, flags, err := parseCommon("rotation "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
+		if sub == "list" {
+			fs.BoolVar(&includeDisabled, "include-disabled", false, "also list deleted rotations (history)")
+		}
 		if sub == "create" {
 			fs.StringVar(&provider, "provider", "", "the dynamic provider that mints the credential")
 			fs.StringVar(&key, "key", "", "the secret key that receives the password")
 			fs.StringVar(&usernameKey, "username-key", "", "the key that receives the generated role name")
-			fs.StringVar(&interval, "interval", "", "time between rotations, 1h to 90d, e.g. 720h")
-			fs.StringVar(&delay, "revocation-delay", "", "how long the superseded credential stays valid, 5m to 7d")
+			fs.StringVar(&interval, "interval", "", "time between rotations, 1h to 90d, e.g. 30d")
+			fs.StringVar(&delay, "revocation-delay", "", "how long the superseded credential stays valid, 5m to 7d, e.g. 1d")
 		}
 		if sub == "pause" || sub == "resume" || sub == "delete" {
 			fs.Int64Var(&expectedGeneration, "expected-generation", 0, "fail unless the rotation is at this generation (0 = current)")
@@ -65,15 +70,11 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
-	client, _, resolved, err := authenticatedTarget(st, ios, flags)
+	client, artifact, resolved, err := authenticatedTarget(st, ios, flags)
 	if err != nil {
 		return err
 	}
-	org, err := resolved.Require(DimOrg)
-	if err != nil {
-		return err
-	}
-	project, err := resolved.Require(DimProject)
+	projectPath, err := projectBase(resolved)
 	if err != nil {
 		return err
 	}
@@ -81,7 +82,7 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
-	base := adapterBase(org, project) + "/environments/" + url.PathEscape(env) + "/rotations"
+	base := projectPath + "/environments/" + url.PathEscape(env) + "/rotations"
 	one := func(out apigen.CredentialRotation) error {
 		return Render(ios.Stdout, f, credentialRotationTable(apigen.CredentialRotationList{Items: []apigen.CredentialRotation{out}}))
 	}
@@ -91,8 +92,12 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 		if err := flags.checkNoPositionals("rotation list"); err != nil {
 			return err
 		}
+		target := base
+		if includeDisabled {
+			target += "?include_disabled=true"
+		}
 		var out apigen.CredentialRotationList
-		if err := client.Do(ctx, http.MethodGet, base, nil, &out); err != nil {
+		if err := client.Do(ctx, http.MethodGet, target, nil, &out); err != nil {
 			return err
 		}
 		return Render(ios.Stdout, f, credentialRotationTable(out))
@@ -113,11 +118,11 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 		if provider == "" || key == "" || usernameKey == "" || interval == "" || delay == "" {
 			return failf(ExitUsage, "rotation create requires --provider, --key, --username-key, --interval and --revocation-delay")
 		}
-		intervalSeconds, err := durationSeconds("--interval", interval)
+		intervalSeconds, err := durationSeconds("--interval", interval, false)
 		if err != nil {
 			return err
 		}
-		delaySeconds, err := durationSeconds("--revocation-delay", delay)
+		delaySeconds, err := durationSeconds("--revocation-delay", delay, false)
 		if err != nil {
 			return err
 		}
@@ -126,7 +131,8 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 			IntervalSeconds: intervalSeconds, RevocationDelaySeconds: delaySeconds,
 		}
 		var out apigen.CredentialRotation
-		if err := client.Do(ctx, http.MethodPost, base, body, &out); err != nil {
+		act := func() error { return client.Do(ctx, http.MethodPost, base, body, &out) }
+		if err := withRotationCeremony(ctx, client, st, ios, artifact, projectPath, env, []string{key, usernameKey}, act); err != nil {
 			return err
 		}
 		return one(out)
@@ -140,8 +146,26 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 			body.ExpectedGeneration = &expectedGeneration
 		}
 		var out apigen.CredentialRotation
-		if err := client.Do(ctx, http.MethodPost, base+"/"+url.PathEscape(id)+"/"+sub, body, &out); err != nil {
+		act := func() error { return client.Do(ctx, http.MethodPost, base+"/"+url.PathEscape(id)+"/"+sub, body, &out) }
+		if sub == "resume" {
+			// Resume is a human act like create: the ceremony is over the keys
+			// the rotation records, which the show route names.
+			var cur apigen.CredentialRotation
+			keys := func(ctx context.Context, _ string) ([]string, error) {
+				if err := client.Do(ctx, http.MethodGet, base+"/"+url.PathEscape(id), nil, &cur); err != nil {
+					return nil, err
+				}
+				return []string{string(cur.KeyId), string(cur.UsernameKeyId)}, nil
+			}
+			err = withRevealCeremony(ctx, client, st, ios, artifact, projectPath, []string{env}, disclosure{purpose: "publish", keys: keys}, act)
+		} else {
+			err = act()
+		}
+		if err != nil {
 			return err
+		}
+		if sub == "pause" {
+			noteCredentialExpiry(ios, out, "paused")
 		}
 		return one(out)
 	case "delete":
@@ -157,17 +181,28 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 		if err := client.Do(ctx, http.MethodDelete, target, nil, &out); err != nil {
 			return err
 		}
+		noteCredentialExpiry(ios, out, "deleted")
 		return one(out)
 	}
 	return failf(ExitUsage, "unknown rotation verb %q", sub)
 }
 
-// durationSeconds parses a positive duration into whole seconds. The server
-// owns the bounds; this only refuses what cannot be a duration.
-func durationSeconds(flagName, raw string) (int64, error) {
-	d, err := time.ParseDuration(raw)
-	if err != nil || d < time.Second {
-		return 0, failf(ExitUsage, "%s must be a duration of at least one second, e.g. 24h", flagName)
+// withRotationCeremony runs a create under the publish ceremony over both keys:
+// an unattended publish can never satisfy a per-publish ceremony, so the person
+// configuring the rotation does, here.
+func withRotationCeremony(ctx context.Context, client *Client, st *State, ios IO, artifact AuthArtifact,
+	projectPath, env string, keys []string, act func() error) error {
+	d := disclosure{purpose: "publish", keys: func(context.Context, string) ([]string, error) { return keys, nil }}
+	return withRevealCeremony(ctx, client, st, ios, artifact, projectPath, []string{env}, d, act)
+}
+
+// noteCredentialExpiry says, on stderr, when the credential already delivered
+// into the keys lapses, because pausing or deleting a rotation does not revoke
+// it. Nothing is printed until a run has published a credential.
+func noteCredentialExpiry(ios IO, r apigen.CredentialRotation, verb string) {
+	if r.CredentialExpiresAt == nil {
+		return
 	}
-	return int64(d / time.Second), nil
+	fmt.Fprintf(ios.Stderr, "rotation %s %s; the credential already delivered stays valid until %s\n",
+		r.Id, verb, r.CredentialExpiresAt.UTC().Format(time.RFC3339))
 }

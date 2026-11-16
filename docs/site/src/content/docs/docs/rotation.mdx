@@ -24,28 +24,70 @@ until then rotate by hand with [dynamic secrets](/docs/dynamic-secrets/) and
   must exist and have its admin credential set.
 - The **password key** that will receive the credential. It must be
   secret-classified.
-- The **username key** that will receive the generated role name.
-- The **interval** between rotations: 1 hour to 90 days.
+- The **username key** that will receive the generated role name. It is
+  required: the password and the role name are delivered together, so a consumer
+  always reads a matching pair.
+- The **interval** between rotations: 1 hour to 90 days (`--interval`).
 - The **revocation delay**, how long the superseded credential stays valid after
   the new one is published so consumers can pick it up: 5 minutes to 7 days, and
-  always shorter than the interval.
+  always shorter than the interval (`--revocation-delay`).
 - The **authority principal**: the person who created the rotation.
 
-A bound that is hit is refused as `invalid`, naming the bound. The record holds
-no password, no role name and no handle for a minted credential.
+A bound that is hit is refused as `invalid`, naming the flag and the bound in the
+unit you typed, for example `--interval (interval_seconds) 30m is below the 1h
+minimum rotation interval`. The record holds no password, no role name and no
+handle for a minted credential.
 
 ## Who may configure it
 
 Creating a rotation is a person's standing delegation, so the caller must be a
-human who currently holds **edit**, **publish** and **reveal** on both keys in
-the environment. Machine principals and developer credentials are refused. That
-person is recorded as the authority principal, and the executor will re-check
-their authority before every transition. It never acts as a system principal. If
-the authority is lost, `resume` refuses with a named error rather than
-rescheduling.
+signed-in human who currently holds **edit**, **publish** and **reveal** on both
+keys in the environment. A member access rule narrowed to specific keys applies:
+both keys must be covered. Machine principals and developer credentials are
+refused.
 
-A key can be driven by one live rotation at a time. Pause, resume and delete
-need `publish` on the environment; list and show need `read`.
+Because no per-publish ceremony will ever gate the unattended publishes that
+follow, **creating and resuming a rotation each consume a publish
+reauthentication ceremony** over the environment and both keys, the same step a
+values publish of those keys takes. `hikyo rotation create` and `hikyo rotation
+resume` prompt for it through the usual browser handoff.
+
+The person who creates the rotation is recorded as the authority principal, and
+the executor will re-check their authority before every transition. It never acts
+as a system principal. `resume` requires the caller to hold the same access on
+both keys, and requires the recorded authority principal to still hold it; if
+that authority was lost, `resume` refuses with a named error rather than
+rescheduling, so a person who can only publish cannot re-arm someone else's
+delegation.
+
+A rotation publishes unattended, so it is refused, by name, in an environment that
+is **protected** (its publishes need a ceremony each time) or covered by an
+**approval policy** (its publishes become approval requests). The same check runs
+again at resume.
+
+A key can be driven by one live rotation at a time, whichever role (password or
+username) it plays. Pause and delete need `publish` on the environment; list and
+show need `read`.
+
+## Providers, keys and environments
+
+- Deleting a provider, or revoking its admin credential, **pauses** every active
+  rotation that mints from it, and the audit event names the reason. `resume`
+  refuses until the provider exists, is active and has its credential again.
+- `resume` also re-checks that both keys still exist and the password key is still
+  secret-classified, and refuses by name if not.
+- Deleting an environment is refused, naming the rotation, while a rotation in it
+  is active or paused or has a run in flight. Delete the rotation first; a deleted
+  rotation's history is removed with the environment.
+
+## When the delivered credential expires
+
+Pausing or deleting a rotation stops future rotations, but the credential it last
+delivered keeps its expiry. `show` and `list` report it as `credential_expires_at`
+(the `CREDENTIAL EXPIRES` column in the CLI), and `pause` and `delete` name it in
+their response and on stderr, so stopping a rotation never silently schedules an
+outage. A credential that was already in the keys before the first rotation ran is
+the operator's own and is never revoked by a rotation.
 
 ## Create and manage
 
@@ -53,17 +95,21 @@ need `publish` on the environment; list and show need `read`.
 hikyo rotation create \
   --provider dprov_0198... \
   --key key_0198... --username-key key_0198... \
-  --interval 720h --revocation-delay 24h \
+  --interval 30d --revocation-delay 1d \
   --env production
 
 hikyo rotation list --env production
+hikyo rotation list --env production --include-disabled
 hikyo rotation show rot_0198... --env production
 hikyo rotation pause rot_0198... --env production
 hikyo rotation resume rot_0198... --env production
 hikyo rotation delete rot_0198... --env production
 ```
 
-`pause`, `resume` and `delete` accept `--expected-generation N`, which fails
+`--interval` and `--revocation-delay` take Go durations (`90m`, `720h`) or a whole
+number of days with a `d` suffix (`30d`). `list` shows live rotations; add
+`--include-disabled` to include deleted history. `pause`, `resume` and `delete`
+accept `--expected-generation N`, which fails
 with a conflict if another change landed first. Resume recomputes the next run
 from the current time. Delete disables the rotation and keeps it as history; it
 frees the keys for another rotation.
@@ -72,7 +118,8 @@ frees the keys for another rotation.
 
 The routes live under
 `/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations`:
-`GET` and `POST` on the collection, `GET` and `DELETE` on
+`GET` (with the optional `include_disabled` query parameter) and `POST` on the
+collection, `GET` and `DELETE` on
 `/{rotation}`, and `POST` on `/{rotation}/pause` and `/{rotation}/resume`.
 They require a human session. See the [HTTP API](/docs/http-api/).
 

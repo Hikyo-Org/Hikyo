@@ -6056,11 +6056,14 @@ export const settleLease = <ThrowOnError extends boolean = false>(options: Optio
 });
 
 /**
- * List an environment's scheduled credential rotations, disabled history included.
+ * List an environment's scheduled credential rotations.
  *
  * Metadata only: no credential, candidate handle or password is stored or
- * returned. Slice one of scheduled rotation records the configuration;
- * runs arrive with the executor.
+ * returned. Deleted (disabled) rotations are history and are listed only
+ * with `include_disabled`. `credential_expires_at` is when the credential
+ * currently delivered into the rotation's keys lapses, once a run has
+ * published one. Slice one of scheduled rotation records the
+ * configuration; runs arrive with the executor.
  *
  */
 export const listRotations = <ThrowOnError extends boolean = false>(options: Options<ListRotationsData, ThrowOnError>): RequestResult<ListRotationsResponses, ListRotationsErrors, ThrowOnError> => (options.client ?? client).get<ListRotationsResponses, ListRotationsErrors, ThrowOnError>({
@@ -6072,13 +6075,19 @@ export const listRotations = <ThrowOnError extends boolean = false>(options: Opt
 /**
  * Configure scheduled rotation of one PostgreSQL credential pair.
  *
- * The caller must be a human who currently holds edit, publish and reveal
- * on both keys. They are recorded as the rotation's authority principal,
- * which the executor re-authorizes before every transition. A machine
- * principal is refused. The dynamic provider must exist with its admin
- * credential set, the password key must be secret-classified, and a key may
- * be driven by one live rotation at a time. Interval and revocation delay
- * are bounded; each bound hit is a named invalid refusal.
+ * The caller must be a signed-in person who currently holds edit, publish
+ * and reveal on both keys. They are recorded as the rotation's authority
+ * principal, which the executor re-authorizes before every transition. A
+ * machine principal is refused. Because an unattended publish can never
+ * satisfy a per-publish ceremony, creating a rotation consumes a publish
+ * reauthentication window over the environment and both keys, exactly as
+ * a values publish of those keys would; the CLI runs that ceremony. The
+ * dynamic provider must exist with its admin credential set, the password
+ * key must be secret-classified, and a key may be driven by one live
+ * rotation at a time, whichever role it plays. A protected environment, or
+ * one covered by a secret-change approval policy, is refused by name:
+ * its publishes cannot run unattended. Interval and revocation delay are
+ * bounded; each bound hit is a named invalid refusal.
  *
  */
 export const createRotation = <ThrowOnError extends boolean = false>(options: Options<CreateRotationData, ThrowOnError>): RequestResult<CreateRotationResponses, CreateRotationErrors, ThrowOnError> => (options.client ?? client).post<CreateRotationResponses, CreateRotationErrors, ThrowOnError>({
@@ -6096,7 +6105,9 @@ export const createRotation = <ThrowOnError extends boolean = false>(options: Op
  *
  * Soft delete: the rotation moves to `disabled` and frees its keys. A
  * rotation with a run in flight is refused. `expected_generation`, when
- * given, must equal the rotation's current generation.
+ * given, must equal the rotation's current generation. The credential
+ * already delivered into the keys stays valid until
+ * `credential_expires_at`; deleting does not revoke it.
  *
  */
 export const deleteRotation = <ThrowOnError extends boolean = false>(options: Options<DeleteRotationData, ThrowOnError>): RequestResult<DeleteRotationResponses, DeleteRotationErrors, ThrowOnError> => (options.client ?? client).delete<DeleteRotationResponses, DeleteRotationErrors, ThrowOnError>({
@@ -6118,7 +6129,10 @@ export const showRotation = <ThrowOnError extends boolean = false>(options: Opti
  * Pause a rotation so it stops being scheduled.
  *
  * `expected_generation`, when given, must equal the rotation's current
- * generation, so a stale client cannot overwrite a newer change.
+ * generation, so a stale client cannot overwrite a newer change. The
+ * credential already delivered into the keys stays valid until
+ * `credential_expires_at`; pausing does not revoke it. Pause needs
+ * publish on the environment, not per-key access.
  *
  */
 export const pauseRotation = <ThrowOnError extends boolean = false>(options: Options<PauseRotationData, ThrowOnError>): RequestResult<PauseRotationResponses, PauseRotationErrors, ThrowOnError> => (options.client ?? client).post<PauseRotationResponses, PauseRotationErrors, ThrowOnError>({
@@ -6135,7 +6149,12 @@ export const pauseRotation = <ThrowOnError extends boolean = false>(options: Opt
  * Resume a paused rotation and recompute its next run.
  *
  * `expected_generation`, when given, must equal the rotation's current
- * generation, so a stale client cannot overwrite a newer change. It first proves the recorded authority principal still holds edit, publish and reveal on the keys.
+ * generation, so a stale client cannot overwrite a newer change. Resume is
+ * a human act like create: the caller must hold edit, publish and reveal on
+ * both keys and consume the publish reauthentication window over them, the
+ * recorded authority principal must still hold the same access, the
+ * provider must still be able to mint, and both keys must still exist.
+ * Each refusal is named.
  *
  */
 export const resumeRotation = <ThrowOnError extends boolean = false>(options: Options<ResumeRotationData, ThrowOnError>): RequestResult<ResumeRotationResponses, ResumeRotationErrors, ThrowOnError> => (options.client ?? client).post<ResumeRotationResponses, ResumeRotationErrors, ThrowOnError>({

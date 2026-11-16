@@ -279,7 +279,7 @@ func runLease(ctx context.Context, ios IO, args []string) (returnErr error) {
 		}
 		var body apigen.RenewLeaseRequest
 		if ttl != "" {
-			secs, err := ttlSeconds(ttl)
+			secs, err := durationSeconds("--ttl", ttl, false)
 			if err != nil {
 				return err
 			}
@@ -317,7 +317,7 @@ func runLease(ctx context.Context, ios IO, args []string) (returnErr error) {
 		if provider == "" || ttl == "" {
 			return failf(ExitUsage, "lease mint requires --provider and --ttl")
 		}
-		secs, err := ttlSeconds(ttl)
+		secs, err := durationSeconds("--ttl", ttl, false)
 		if err != nil {
 			return err
 		}
@@ -331,13 +331,4 @@ func runLease(ctx context.Context, ios IO, args []string) (returnErr error) {
 		return Render(ios.Stdout, f, dynamicLeaseTable(apigen.DynamicLeaseList{Items: []apigen.DynamicLease{out.Lease}}))
 	}
 	return failf(ExitUsage, "unknown lease verb %q", sub)
-}
-
-// ttlSeconds parses a positive duration into whole seconds.
-func ttlSeconds(raw string) (int64, error) {
-	d, err := time.ParseDuration(raw)
-	if err != nil || d < time.Second {
-		return 0, failf(ExitUsage, "--ttl must be a duration of at least one second, e.g. 1h")
-	}
-	return int64(d / time.Second), nil
 }

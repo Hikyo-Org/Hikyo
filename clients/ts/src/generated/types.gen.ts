@@ -883,10 +883,7 @@ export type CredentialRotation = {
     environment_id: Id;
     provider_id: Id;
     key_id: Id;
-    /**
-     * The key that receives the generated role name.
-     */
-    username_key_id?: string | null;
+    username_key_id: Id;
     interval_seconds: number;
     revocation_delay_seconds: number;
     authority_principal_id: Id;
@@ -896,6 +893,10 @@ export type CredentialRotation = {
      * Set only while the rotation is active.
      */
     next_run_at?: string | null;
+    /**
+     * When the credential currently delivered into the keys lapses (the delivered role's VALID UNTIL, from the latest published run). Null until a run has published, or when the role never expires. Pausing or deleting the rotation does not revoke it.
+     */
+    credential_expires_at?: string | null;
     generation: number;
     created_at: Timestamp;
     updated_at: Timestamp;
@@ -33589,7 +33590,12 @@ export type ListRotationsData = {
          */
         environment: Id;
     };
-    query?: never;
+    query?: {
+        /**
+         * List deleted (disabled) rotations as well. Off by default.
+         */
+        include_disabled?: boolean;
+    };
     url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations';
 };
 
@@ -33743,6 +33749,13 @@ export type DeleteRotationData = {
 };
 
 export type DeleteRotationErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
     /**
      * No usable authentication artifact was presented. Uniform: absent,
      * malformed, unknown, expired, revoked and epoch-superseded artifacts
@@ -33950,6 +33963,23 @@ export type ResumeRotationErrors = {
      *
      */
     401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
      * it: indistinguishable by design, byte-identical in status and body.

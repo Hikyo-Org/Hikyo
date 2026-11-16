@@ -21,12 +21,12 @@ func TestRotationBoundsAreNamedRefusals(t *testing.T) {
 	}{
 		{"minimum interval and delay accepted", domain.MinRotationInterval, domain.MinRevocationDelay, ""},
 		{"maximum interval and delay accepted", domain.MaxRotationInterval, domain.MaxRevocationDelay, ""},
-		{"interval below minimum", domain.MinRotationInterval - time.Second, domain.MinRevocationDelay, "minimum rotation interval"},
-		{"interval above maximum", domain.MaxRotationInterval + time.Second, domain.MinRevocationDelay, "maximum rotation interval"},
-		{"delay below minimum", 24 * time.Hour, domain.MinRevocationDelay - time.Second, "minimum revocation delay"},
-		{"delay above maximum", domain.MaxRotationInterval, domain.MaxRevocationDelay + time.Second, "maximum revocation delay"},
-		{"delay equal to interval", time.Hour, time.Hour, "shorter than interval_seconds"},
-		{"delay longer than interval", 2 * time.Hour, 3 * time.Hour, "shorter than interval_seconds"},
+		{"interval below minimum", domain.MinRotationInterval - time.Second, domain.MinRevocationDelay, "--interval (interval_seconds) 3599s is below the 1h minimum rotation interval"},
+		{"interval above maximum", domain.MaxRotationInterval + time.Second, domain.MinRevocationDelay, "above the 90d maximum rotation interval"},
+		{"delay below minimum", 24 * time.Hour, domain.MinRevocationDelay - time.Second, "--revocation-delay (revocation_delay_seconds) 299s is below the 5m minimum revocation delay"},
+		{"delay above maximum", domain.MaxRotationInterval, domain.MaxRevocationDelay + time.Second, "above the 7d maximum revocation delay"},
+		{"delay equal to interval", time.Hour, time.Hour, "shorter than --interval"},
+		{"delay longer than interval", 2 * time.Hour, 3 * time.Hour, "shorter than --interval"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := ValidateRotationBounds(sec(tc.interval), sec(tc.delay))
@@ -40,13 +40,5 @@ func TestRotationBoundsAreNamedRefusals(t *testing.T) {
 				t.Fatalf("ValidateRotationBounds = %v, want ErrInvalid naming %q", err, tc.wantErr)
 			}
 		})
-	}
-}
-
-func TestRotationBoundConstantsMatchOpsCatalogue(t *testing.T) {
-	if domain.MinRotationInterval != time.Hour || domain.MaxRotationInterval != 90*24*time.Hour ||
-		domain.MinRevocationDelay != 5*time.Minute || domain.MaxRevocationDelay != 7*24*time.Hour {
-		t.Fatalf("rotation bounds drifted from docs/spec/ops-catalogue.md: %v %v %v %v",
-			domain.MinRotationInterval, domain.MaxRotationInterval, domain.MinRevocationDelay, domain.MaxRevocationDelay)
 	}
 }

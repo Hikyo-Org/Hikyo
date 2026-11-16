@@ -740,13 +740,14 @@ export const zCredentialRotation = z.object({
     environment_id: zId,
     provider_id: zId,
     key_id: zId,
-    username_key_id: z.string().nullish(),
+    username_key_id: zId,
     interval_seconds: z.coerce.bigint().gte(BigInt(3600)).lte(BigInt(7776000)),
     revocation_delay_seconds: z.coerce.bigint().gte(BigInt(300)).lte(BigInt(604800)),
     authority_principal_id: zId,
     created_by: zId,
     state: zCredentialRotationState,
     next_run_at: z.iso.datetime().nullish(),
+    credential_expires_at: z.iso.datetime().nullish(),
     generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     created_at: zTimestamp,
     updated_at: zTimestamp
@@ -9580,6 +9581,10 @@ export const zListRotationsPath = z.object({
     org: zId,
     project: zId,
     environment: zId
+});
+
+export const zListRotationsQuery = z.object({
+    include_disabled: z.boolean().optional().default(false)
 });
 
 /**

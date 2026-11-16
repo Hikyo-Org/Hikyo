@@ -11,6 +11,67 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const rotationClaimInsert = `-- name: RotationClaimInsert :exec
+INSERT INTO rotation_key_claims (org_id,project_id,environment_id,key_id,rotation_id) VALUES ($1,$2,$3,$4,$5)
+`
+
+type RotationClaimInsertParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	KeyID        string
+	RotationID   string
+}
+
+func (q *Queries) RotationClaimInsert(ctx context.Context, arg RotationClaimInsertParams) error {
+	_, err := q.db.Exec(ctx, rotationClaimInsert,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.KeyID,
+		arg.RotationID,
+	)
+	return err
+}
+
+const rotationClaimsRelease = `-- name: RotationClaimsRelease :exec
+DELETE FROM rotation_key_claims WHERE rotation_id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4
+`
+
+type RotationClaimsReleaseParams struct {
+	RotationID   string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+func (q *Queries) RotationClaimsRelease(ctx context.Context, arg RotationClaimsReleaseParams) error {
+	_, err := q.db.Exec(ctx, rotationClaimsRelease,
+		arg.RotationID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+	)
+	return err
+}
+
+const rotationCountLiveInEnvironment = `-- name: RotationCountLiveInEnvironment :one
+SELECT COUNT(*) FROM rotations WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND state<>'disabled'
+`
+
+type RotationCountLiveInEnvironmentParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+func (q *Queries) RotationCountLiveInEnvironment(ctx context.Context, arg RotationCountLiveInEnvironmentParams) (int64, error) {
+	row := q.db.QueryRow(ctx, rotationCountLiveInEnvironment, arg.ChainOrg, arg.ChainProject, arg.ChainEnv)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const rotationCountOpenRuns = `-- name: RotationCountOpenRuns :one
 SELECT COUNT(*) FROM rotation_runs WHERE rotation_id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4 AND phase NOT IN ('done','quarantine','failed')
 `
@@ -34,6 +95,23 @@ func (q *Queries) RotationCountOpenRuns(ctx context.Context, arg RotationCountOp
 	return count, err
 }
 
+const rotationCountOpenRunsInEnvironment = `-- name: RotationCountOpenRunsInEnvironment :one
+SELECT COUNT(*) FROM rotation_runs WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND phase NOT IN ('done','quarantine','failed')
+`
+
+type RotationCountOpenRunsInEnvironmentParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+func (q *Queries) RotationCountOpenRunsInEnvironment(ctx context.Context, arg RotationCountOpenRunsInEnvironmentParams) (int64, error) {
+	row := q.db.QueryRow(ctx, rotationCountOpenRunsInEnvironment, arg.ChainOrg, arg.ChainProject, arg.ChainEnv)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const rotationCreate = `-- name: RotationCreate :execrows
 INSERT INTO rotations (id,org_id,project_id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,'active',$11,1,$12,$12)
 `
@@ -45,7 +123,7 @@ type RotationCreateParams struct {
 	ChainEnv               string
 	ProviderID             string
 	KeyID                  string
-	UsernameKeyID          pgtype.Text
+	UsernameKeyID          string
 	IntervalSeconds        int64
 	RevocationDelaySeconds int64
 	AuthorityPrincipalID   string
@@ -74,6 +152,37 @@ func (q *Queries) RotationCreate(ctx context.Context, arg RotationCreateParams) 
 	return result.RowsAffected(), nil
 }
 
+const rotationCredentialExpiry = `-- name: RotationCredentialExpiry :one
+SELECT ru.id AS run_id, ru.candidate_valid_until AS expires_at FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id WHERE ru.org_id=$1 AND ru.project_id=$2 AND ru.environment_id=$3 AND ro.key_id=$4 AND ru.published_revision IS NOT NULL ORDER BY ru.started_at DESC, ru.id DESC LIMIT 1
+`
+
+type RotationCredentialExpiryParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	KeyID        string
+}
+
+type RotationCredentialExpiryRow struct {
+	RunID     string
+	ExpiresAt pgtype.Timestamptz
+}
+
+// The delivered credential's expiry: the VALID UNTIL of the latest published run
+// for this key across rotations, so a delete and recreate on the same keys still
+// reports the role that is live in them.
+func (q *Queries) RotationCredentialExpiry(ctx context.Context, arg RotationCredentialExpiryParams) (RotationCredentialExpiryRow, error) {
+	row := q.db.QueryRow(ctx, rotationCredentialExpiry,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.KeyID,
+	)
+	var i RotationCredentialExpiryRow
+	err := row.Scan(&i.RunID, &i.ExpiresAt)
+	return i, err
+}
+
 const rotationGet = `-- name: RotationGet :one
 SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4
 `
@@ -90,7 +199,7 @@ type RotationGetRow struct {
 	EnvironmentID          string
 	ProviderID             string
 	KeyID                  string
-	UsernameKeyID          pgtype.Text
+	UsernameKeyID          string
 	IntervalSeconds        int64
 	RevocationDelaySeconds int64
 	AuthorityPrincipalID   string
@@ -130,7 +239,7 @@ func (q *Queries) RotationGet(ctx context.Context, arg RotationGetParams) (Rotat
 }
 
 const rotationList = `-- name: RotationList :many
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 ORDER BY id
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND state<>'disabled' ORDER BY id
 `
 
 type RotationListParams struct {
@@ -144,7 +253,7 @@ type RotationListRow struct {
 	EnvironmentID          string
 	ProviderID             string
 	KeyID                  string
-	UsernameKeyID          pgtype.Text
+	UsernameKeyID          string
 	IntervalSeconds        int64
 	RevocationDelaySeconds int64
 	AuthorityPrincipalID   string
@@ -189,6 +298,214 @@ func (q *Queries) RotationList(ctx context.Context, arg RotationListParams) ([]R
 		return nil, err
 	}
 	return items, nil
+}
+
+const rotationListActiveByProvider = `-- name: RotationListActiveByProvider :many
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE org_id=$1 AND project_id=$2 AND provider_id=$3 AND state='active' ORDER BY id
+`
+
+type RotationListActiveByProviderParams struct {
+	ChainOrg     string
+	ChainProject string
+	ProviderID   string
+}
+
+type RotationListActiveByProviderRow struct {
+	ID                     string
+	EnvironmentID          string
+	ProviderID             string
+	KeyID                  string
+	UsernameKeyID          string
+	IntervalSeconds        int64
+	RevocationDelaySeconds int64
+	AuthorityPrincipalID   string
+	CreatedBy              string
+	State                  string
+	NextRunAt              pgtype.Timestamptz
+	Generation             int64
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+}
+
+func (q *Queries) RotationListActiveByProvider(ctx context.Context, arg RotationListActiveByProviderParams) ([]RotationListActiveByProviderRow, error) {
+	rows, err := q.db.Query(ctx, rotationListActiveByProvider, arg.ChainOrg, arg.ChainProject, arg.ProviderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RotationListActiveByProviderRow
+	for rows.Next() {
+		var i RotationListActiveByProviderRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.EnvironmentID,
+			&i.ProviderID,
+			&i.KeyID,
+			&i.UsernameKeyID,
+			&i.IntervalSeconds,
+			&i.RevocationDelaySeconds,
+			&i.AuthorityPrincipalID,
+			&i.CreatedBy,
+			&i.State,
+			&i.NextRunAt,
+			&i.Generation,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rotationListAll = `-- name: RotationListAll :many
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 ORDER BY id
+`
+
+type RotationListAllParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+type RotationListAllRow struct {
+	ID                     string
+	EnvironmentID          string
+	ProviderID             string
+	KeyID                  string
+	UsernameKeyID          string
+	IntervalSeconds        int64
+	RevocationDelaySeconds int64
+	AuthorityPrincipalID   string
+	CreatedBy              string
+	State                  string
+	NextRunAt              pgtype.Timestamptz
+	Generation             int64
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+}
+
+func (q *Queries) RotationListAll(ctx context.Context, arg RotationListAllParams) ([]RotationListAllRow, error) {
+	rows, err := q.db.Query(ctx, rotationListAll, arg.ChainOrg, arg.ChainProject, arg.ChainEnv)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RotationListAllRow
+	for rows.Next() {
+		var i RotationListAllRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.EnvironmentID,
+			&i.ProviderID,
+			&i.KeyID,
+			&i.UsernameKeyID,
+			&i.IntervalSeconds,
+			&i.RevocationDelaySeconds,
+			&i.AuthorityPrincipalID,
+			&i.CreatedBy,
+			&i.State,
+			&i.NextRunAt,
+			&i.Generation,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rotationPauseActive = `-- name: RotationPauseActive :execrows
+UPDATE rotations SET state='paused',next_run_at=NULL,generation=generation+1,updated_at=$1 WHERE id=$2 AND org_id=$3 AND project_id=$4 AND state='active'
+`
+
+type RotationPauseActiveParams struct {
+	At           pgtype.Timestamptz
+	RotationID   string
+	ChainOrg     string
+	ChainProject string
+}
+
+func (q *Queries) RotationPauseActive(ctx context.Context, arg RotationPauseActiveParams) (int64, error) {
+	result, err := q.db.Exec(ctx, rotationPauseActive,
+		arg.At,
+		arg.RotationID,
+		arg.ChainOrg,
+		arg.ChainProject,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const rotationPurge = `-- name: RotationPurge :exec
+DELETE FROM rotations WHERE org_id=$1 AND project_id=$2 AND environment_id=$3
+`
+
+type RotationPurgeParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+func (q *Queries) RotationPurge(ctx context.Context, arg RotationPurgeParams) error {
+	_, err := q.db.Exec(ctx, rotationPurge, arg.ChainOrg, arg.ChainProject, arg.ChainEnv)
+	return err
+}
+
+const rotationPurgeClaims = `-- name: RotationPurgeClaims :exec
+DELETE FROM rotation_key_claims WHERE org_id=$1 AND project_id=$2 AND environment_id=$3
+`
+
+type RotationPurgeClaimsParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+func (q *Queries) RotationPurgeClaims(ctx context.Context, arg RotationPurgeClaimsParams) error {
+	_, err := q.db.Exec(ctx, rotationPurgeClaims, arg.ChainOrg, arg.ChainProject, arg.ChainEnv)
+	return err
+}
+
+const rotationPurgeEffects = `-- name: RotationPurgeEffects :exec
+DELETE FROM rotation_effects WHERE org_id=$1 AND project_id=$2 AND environment_id=$3
+`
+
+type RotationPurgeEffectsParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+func (q *Queries) RotationPurgeEffects(ctx context.Context, arg RotationPurgeEffectsParams) error {
+	_, err := q.db.Exec(ctx, rotationPurgeEffects, arg.ChainOrg, arg.ChainProject, arg.ChainEnv)
+	return err
+}
+
+const rotationPurgeRuns = `-- name: RotationPurgeRuns :exec
+DELETE FROM rotation_runs WHERE org_id=$1 AND project_id=$2 AND environment_id=$3
+`
+
+type RotationPurgeRunsParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+func (q *Queries) RotationPurgeRuns(ctx context.Context, arg RotationPurgeRunsParams) error {
+	_, err := q.db.Exec(ctx, rotationPurgeRuns, arg.ChainOrg, arg.ChainProject, arg.ChainEnv)
+	return err
 }
 
 const rotationSetState = `-- name: RotationSetState :execrows

@@ -532,16 +532,21 @@ dynamic secrets:
 scheduled credential rotation:
   hikyo rotation create --provider <provider> --key <password-key> --username-key <key>
       --interval <duration> --revocation-delay <duration> --env E
-  hikyo rotation list --env E [-o table|json]
+  hikyo rotation list --env E [--include-disabled] [-o table|json]
   hikyo rotation show <rotation> --env E [-o table|json]
   hikyo rotation pause <rotation> --env E [--expected-generation N]
   hikyo rotation resume <rotation> --env E [--expected-generation N]
   hikyo rotation delete <rotation> --env E [--expected-generation N]
 
-  configuration only: a human holding edit, publish and reveal on both keys
-  records the schedule and is kept as its authority; interval 1h to 90d and
-  revocation delay 5m to 7d, the delay shorter than the interval; delete
-  disables the rotation and keeps it as history; no credential is stored.
+  configuration only: a signed-in person holding edit, publish and reveal on
+  both keys records the schedule and is kept as its authority. create and
+  resume run the publish ceremony over both keys (an unattended publish can
+  never run one itself); a protected environment or one under an approval
+  policy is refused. Durations take h, m, s or d, e.g. 90d. Interval 1h to 90d
+  and revocation delay 5m to 7d, the delay shorter than the interval. pause
+  and delete do not revoke the credential already delivered; it stays valid
+  until the CREDENTIAL EXPIRES time they print. delete keeps the rotation as
+  history (list --include-disabled); no credential is stored.
 
 ssh certificates:
   hikyo ssh-ca create <name> --env E [--algorithm ed25519|ecdsa-p256|rsa-3072]

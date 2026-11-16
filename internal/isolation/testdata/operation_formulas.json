@@ -1994,7 +1994,8 @@
     "level": "environment",
     "formula": [
       "publish@environment"
-    ]
+    ],
+    "post_grant_forbidden": true
   },
   {
     "operation": "rule.create",

@@ -9,13 +9,15 @@
 -- column here holds a secret: the candidate password exists only in worker
 -- memory and in the single publish transaction, never stored (see
 -- docs/handoff/148-credential-rotation.md). Handles are public role names.
--- Slice S1 creates both tables so the executor slice needs no table rebuild;
+-- Slice S1 creates every table so the executor slice needs no table rebuild;
 -- nothing writes rotation_runs or rotation_effects until it ships.
 
 -- hikyo:table rotations class=environment chain=org_id,project_id
 -- key_id and username_key_id carry no foreign key on purpose: a disabled rotation
 -- is history and must outlive a deleted key, and the executor's gate re-checks
 -- that both keys still exist and are secret-classified before every transition.
+-- Both keys are required: the generated password and the generated role name are
+-- delivered together, so a consumer always reads a matching pair.
 CREATE TABLE rotations (
     id TEXT PRIMARY KEY,
     org_id TEXT NOT NULL,
@@ -23,7 +25,7 @@ CREATE TABLE rotations (
     environment_id TEXT NOT NULL,
     provider_id TEXT NOT NULL,
     key_id TEXT NOT NULL,
-    username_key_id TEXT,
+    username_key_id TEXT NOT NULL,
     interval_seconds INTEGER NOT NULL CHECK (interval_seconds > 0),
     revocation_delay_seconds INTEGER NOT NULL CHECK (revocation_delay_seconds > 0),
     authority_principal_id TEXT NOT NULL,
@@ -35,17 +37,31 @@ CREATE TABLE rotations (
     updated_at TEXT NOT NULL,
     UNIQUE (org_id, project_id, environment_id, id),
     CHECK ((state = 'active') = (next_run_at IS NOT NULL)),
-    CHECK (username_key_id IS NULL OR username_key_id <> key_id),
+    CHECK (username_key_id <> key_id),
     FOREIGN KEY (org_id, project_id, environment_id) REFERENCES environments (org_id, project_id, id),
     FOREIGN KEY (org_id, project_id, provider_id) REFERENCES dynamic_providers (org_id, project_id, id),
     FOREIGN KEY (authority_principal_id) REFERENCES principals (id),
     FOREIGN KEY (created_by) REFERENCES principals (id)
 );
--- One live rotation may drive a key, so two rotations never fight over a value.
-CREATE UNIQUE INDEX rotations_live_key ON rotations (environment_id, key_id) WHERE state <> 'disabled';
-CREATE UNIQUE INDEX rotations_live_username_key ON rotations (environment_id, username_key_id) WHERE state <> 'disabled' AND username_key_id IS NOT NULL;
 CREATE INDEX rotations_due ON rotations (state, next_run_at);
 CREATE INDEX rotations_provider ON rotations (provider_id, state);
+
+-- hikyo:table rotation_key_claims class=environment chain=org_id,project_id
+-- One live rotation may drive a key, whichever role (password or username) the
+-- key plays, so two rotations never fight over one value. The primary key is the
+-- exclusion: a rotation inserts a claim for each of its two keys when it is
+-- created and releases them when it is disabled, and the environment delete
+-- purges them with the rotation.
+CREATE TABLE rotation_key_claims (
+    org_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    environment_id TEXT NOT NULL,
+    key_id TEXT NOT NULL,
+    rotation_id TEXT NOT NULL,
+    PRIMARY KEY (environment_id, key_id),
+    FOREIGN KEY (org_id, project_id, environment_id, rotation_id) REFERENCES rotations (org_id, project_id, environment_id, id)
+);
+CREATE INDEX rotation_key_claims_rotation ON rotation_key_claims (rotation_id);
 
 -- hikyo:table rotation_runs class=environment chain=org_id,project_id
 -- phase 'staged' is reserved: the chosen design stages and publishes in one
@@ -91,12 +107,13 @@ CREATE TABLE rotation_effects (
     project_id TEXT NOT NULL,
     environment_id TEXT NOT NULL,
     run_id TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK (kind IN ('mint', 'publish', 'revoke', 'drop_candidate')),
+    kind TEXT NOT NULL CHECK (kind IN ('mint', 'publish', 'extend', 'revoke', 'drop_candidate')),
     intent_audit_id TEXT NOT NULL UNIQUE,
     outcome_audit_id TEXT UNIQUE,
     outcome TEXT CHECK (outcome IN ('success', 'failure', 'unknown')),
     created_at TEXT NOT NULL,
     finished_at TEXT,
+    CHECK ((outcome IS NULL) = (outcome_audit_id IS NULL) AND (outcome IS NULL) = (finished_at IS NULL)),
     FOREIGN KEY (org_id, project_id, environment_id, run_id) REFERENCES rotation_runs (org_id, project_id, environment_id, id)
 );
 CREATE INDEX rotation_effects_run ON rotation_effects (run_id);

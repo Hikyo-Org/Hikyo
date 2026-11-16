@@ -3,9 +3,14 @@
 Issue: https://github.com/Hikyo-Org/Hikyo/issues/148 (blocked by #147, #63, #64, all merged).
 Depends on `docs/handoff/147-dynamic-secrets.md` (provider, effects, worker pattern).
 
-ADR amendments (operative when the PR implementing slice S1 merges; cross-provider
-review SKIPPED because OpenAI review is unavailable by owner instruction, so it is
-not CLEAN; independent adversarial Claude review is recorded on the PR):
+ADR amendments (operative when the PR implementing slice S1 merges). Cross-model
+review waiver, dated 2026-11-16: the owner's 2026-11-02 instruction (the Anthropic
+subscription is active, the Codex subscription has ended, so OpenAI reviewers and
+`codex exec` routes are unavailable until explicitly restored; WORKSTYLE review
+policy owner update) makes cross-provider review unavailable, so it was not run and
+is not reported CLEAN. Independent adversarial Standards, Spec and Security reviews
+by Claude Opus 5.5 ran in two rounds; their findings and this document's responses
+are recorded on the PR:
 
 - `mvp-boundary.md` §4.1 "Arbitrary third-party rotation": flipped **In for exactly
   one provider, PostgreSQL**; every other provider keeps the per-provider trigger.
@@ -46,7 +51,11 @@ human who configured it), re-authorized before every transition. Never a
 - [x] S1 OpenAPI + apigen + TS client + server handlers + parity
 - [x] S1 CLI `rotation create|list|show|pause|resume|delete` + help golden
 - [x] S1 docs page (`rotation.mdx`) + cli-reference
-- [ ] S2 state machine, worker, run-now, runs, metrics, doctor, audit run events
+- [x] S1 round 2 review fixes: owner decisions Q1 to Q5 below, key claims table, environment
+  delete purge or refusal, provider delete and credential revoke pause rotations,
+  ceremony at create and resume, protected and approval-covered environments refused,
+  credential expiry in status, bounded list, shared `d` duration parsing in the CLI
+- [ ] S2 state machine, worker, run-now, runs, metrics, doctor, audit run events (see the S2 checklist at the end)
 - [ ] S2 dual-engine restart/failure/multi-node takeover e2e, Compose pickup e2e
 - [ ] S3 SPA status surface, parity flip
 
@@ -63,42 +72,77 @@ human who configured it), re-authorized before every transition. Never a
    **Divergence: a third table `rotation_effects`** (INTENT/OUTCOME ledger mirroring
    `dynamic_effects`): the issue handoff mandates INTENT/OUTCOME per transition and an
    `unknown` metric, which needs the ledger. A third separate outbox, not a reuse.
-2. **Integrity constraints.** One non-terminal run per rotation (partial unique index);
-   one non-`disabled` rotation per `(environment_id, key_id)` and per
-   `(environment_id, username_key_id)`; `username_key_id <> key_id`; a CHECK ties
-   `next_run_at` to the `active` state. **Divergence: no foreign key to `keys`.** A
-   disabled rotation is history and must outlive a deleted key, and the soft delete
-   frees the slot, so a key FK would either block key deletion forever or erase
-   history. As a result `Keys.Delete` does **not** refuse while a live rotation
-   references the key. The S2 gate must re-check, before every transition, that both
-   keys still exist and are secret-classified, and halt with a named refusal
-   otherwise. A rotation whose provider is deleted is held by the FK to
-   `dynamic_providers`; provider deletion with a live rotation fails on that FK and
-   has no named refusal or test in S1 (follow-up).
+2. **Integrity constraints.** One non-terminal run per rotation (partial unique
+   index). One live rotation per key in the environment, whichever role the key plays:
+   table `rotation_key_claims` has primary key `(environment_id, key_id)` and a rotation
+   inserts one claim per key (password and username) when it is created and releases
+   both when it is disabled. This replaces two per-role partial unique indexes, which
+   could not stop rotation B using rotation A's password key as its username key. A
+   unique violation on the claim insert alone maps to the named in-use refusal; foreign
+   key and CHECK violations keep their own errors. `username_key_id` is `NOT NULL` and
+   `<> key_id`; a CHECK ties `next_run_at` to the `active` state; a CHECK ties a
+   `rotation_effects` outcome, its audit id and its finish time together (all set or all
+   unset). **Divergence: no foreign key to `keys`.** A disabled rotation is history and
+   must outlive a deleted key, and the soft delete frees the slot, so a key FK would
+   either block key deletion forever or erase history. As a result `Keys.Delete` does
+   **not** refuse while a live rotation references the key. Resume re-checks that both
+   keys exist and the password key is still `secret`, and refuses by name
+   (`ErrRotationKeyMissing`); the S2 gate must do the same before every transition and
+   halt with a named refusal. **Correction to the round 1 text:** provider deletion is a
+   soft tombstone, not a foreign key failure. Deleting a provider, or revoking its admin
+   credential, now pauses every active rotation that mints from it in the same
+   transaction and audits each pause with a `reason` (`provider_deleted` or
+   `provider_credential_revoked`); resume refuses with `ErrRotationProviderInactive`
+   until the provider is active and has a credential. Deleting an environment refuses by
+   name (`ErrEnvironmentHasLiveRotation`) while any rotation is not `disabled` or has a
+   non-terminal run, and otherwise purges the environment's rotation effects, runs, claims
+   and rotations in the same transaction (the SSH `PurgeEnvironment` pattern), on both
+   the direct delete and the definitions-apply path. (Dynamic leases have a similar
+   unpurged-history gap; that is issue #1420 and is not changed here.)
 3. **Delete is soft.** `rotation delete` transitions to `disabled` and keeps the row,
    so run history and effect FKs survive and the key slot is released. A rotation
    with a non-terminal run refuses delete (S1 can have none; the check and its
    error exist so S2 slots in; `--abandon` is S2).
 4. **Authz (all S1 operations human-session only).** Configure (create):
-   `edit ∧ publish ∧ reveal @environment`, so the authorizing chokepoint itself proves
-   the creator currently holds all three, and the creator is recorded as
-   `authority_principal_id`. Pause, resume, delete: `publish@environment`. Inspect
-   (list, show): `read@environment`. Reads are human-session only for now; widening to
-   machine credentials is additive later, narrowing is not. `manage-identities` is
-   deliberately **not** required: `lease.mint` already admits any `read` plus
-   `reveal` holder to mint from any provider in the project, so a rotation does not
-   widen who can obtain a provider credential. Create additionally validates: the
-   provider exists, is active and has its credential set; `key_id` exists and is
-   `secret`-classified (a `config` key would hand the password to plain readers);
-   `username_key_id` exists; the two keys differ; neither key is already driven by a
-   live rotation; interval and delay are inside the bounds.
-   Resume re-authorizes the **recorded authority principal** (not the caller) for the
-   configure formula and refuses by name if it no longer holds it. This is the
-   S2 `Gate` shape in miniature.
+   `edit ∧ publish ∧ reveal @environment`, authorized on BOTH stored keys as
+   individual keys (`AuthorizeKey`), so a key-narrowed member access rule applies and an
+   invisible key is the uniform not-found. The creator is recorded as
+   `authority_principal_id`. Create and resume are human acts: the caller must be a
+   signed-in person (`Class` human with a session), because a machine or session-less
+   caller has no ceremony to consume and would silently skip the step that authorizes the
+   delegation. They consume a `PurposePublish` reauthentication ceremony over the
+   environment and both keys (owner decision Q1), through the same `requireCeremony` a
+   values publish uses; the CLI reuses the existing ceremony handoff. Pause and delete are
+   `publish@environment` with no key target: they only reduce what the rotation does. Their
+   human-only property rests on the contract (`x-hikyo-artifacts: [human-session]`, tested
+   by `TestRotationOperationsAdmitHumanSessionOnly`), not on a service check. Inspect (list,
+   show): `read@environment`. Reads are human-session only for now; widening to machine
+   credentials is additive later, narrowing is not. `manage-identities` is deliberately
+   **not** required: `lease.mint` already admits any `read` plus `reveal` holder to mint
+   from any provider in the project, so a rotation does not widen who can obtain a provider
+   credential.
+   Create additionally validates: the provider exists in this project, is active and has
+   its credential set; `key_id` exists and is `secret`-classified (a `config` key would
+   hand the password to plain readers); `username_key_id` exists; the two keys differ;
+   neither key is already claimed by a live rotation; interval and delay are inside the
+   bounds; the environment is not protected and no approval policy covers it. A scheduled
+   rotation publishes unattended, so an environment whose publishes need a per-publish
+   ceremony or an approval request cannot be its target; both refusals are named
+   (`ErrRotationProtectedEnvironment`, `ErrRotationApprovalPolicy`) and apply again at
+   resume. Lifting either refusal later is additive (a looser rule never breaks a stored
+   rotation).
+   Resume (owner decision Q5) requires, in order: a human caller, the environment still
+   unattended, the provider active with a credential, both keys present and secret, the
+   CALLER holding the create formula on both stored keys, the recorded authority principal
+   still holding it on both stored keys (`RecordedPrincipalHolds` with a key target; the
+   caller stays the actor of any denial and `AuthorityID` names the authority), and the
+   ceremony. A publish-only caller therefore cannot re-arm another person's delegation.
+   This is the S2 `Gate` shape in miniature.
 5. **CAS.** `pause`, `resume`, `delete` carry `expected_generation`; a stale value is
    `409`. Every mutation increments `generation`.
-6. **Audit.** Only `rotation.configured` (`change`: `created|paused|resumed|deleted`)
-   is registered in S1. **Divergence from the brief:** the run events are *specified*
+6. **Audit.** Only `rotation.configured` (`action`: `created|paused|resumed|deleted`;
+   plus `environment_id`, the optional `reason` of a provider-driven pause and the
+   `credential_expires_at` in force) is registered in S1. **Divergence from the brief:** the run events are *specified*
    below but not registered, because the registry-emitter closure test fails any
    registered type that nothing emits. S2 registers and emits them. Likewise
    `run-now` and `runs-read` operations are not declared in the authz registry (no
@@ -116,7 +160,29 @@ human who configured it), re-authorized before every transition. Never a
 9. **Restore.** No sealed column exists, so there is nothing to invalidate. S2 should
    decide whether a restored rotation starts `paused` (a restored instance must not
    mint against a provider before its operator has reconciled grants); S1 leaves the
-   rows as restored, and no scheduler exists to act on them yet.
+   rows as restored, and no scheduler exists to act on them yet. The S2 checklist records
+   a `restore_hold` column for this.
+10. **Credential expiry is visible (owner decision Q2).** A paused, deleted or failed
+    rotation lets PostgreSQL expire the delivered role at `VALID UNTIL`, an outage the
+    operator can cause. `show`, `list`, and the pause and delete responses carry
+    `credential_expires_at`, derived (no new column) from the latest `rotation_runs` row
+    with `published_revision IS NOT NULL` for the key across all rotations that ever drove
+    it, so a delete and recreate still reports the live role. The CLI names the expiry on
+    pause and delete. The credential already in the keys before the first run (the
+    operator's own value) is never revoked by a rotation and has no expiry here. The
+    `extend` effect kind is admitted by the `rotation_effects` CHECK now so S2 can add an
+    extend action without a table rebuild.
+11. **List is bounded.** `list` returns live rotations by default; `include_disabled`
+    (`--include-disabled`) adds the deleted history, so soft-deleted rows cannot grow an
+    unbounded response.
+12. **Pause semantics.** A pause before publish rolls the unpublished candidate back; a
+    pause after publish lets the run finish, so a delivered credential never strands its
+    predecessor. S1 has no runs, so a pause only stops scheduling today.
+13. **Full gate before publish, fail-safe after.** The full authority gate (edit, publish
+    and reveal per key, provider active, keys present and secret) runs before the publish.
+    After the publish only fail-safe checks apply: the row fence, the recorded
+    `published_revision` and the provider's existence. See `system-architecture.md` and
+    `mvp-boundary.md`.
 
 ## S2 state machine (design; nothing here executes in S1)
 
@@ -193,13 +259,45 @@ transaction. It is never stored, not even sealed. Order:
 | Publish tx commit ambiguous | read the row | `published` continues, else roll back |
 | After publish, before drop | `published` / `overlap` / `revoking` | resume, idempotent drop |
 | During `DropRole` | `revoking`, effect INTENT only | re-probe `RoleStatus`, settle |
+| Fence-losing worker after `CreateRole` (multi-node takeover) | candidate role exists, run `failed` or `quarantine` | reconciler re-probes `RoleStatus(candidate_handle)` and drops it (below) |
+
+**`superseded_handle` is derived across rotations.** The role being superseded is the
+candidate of the latest run with `published_revision IS NOT NULL` for the same
+`(environment_id, key_id)`, across ALL rotations that ever drove the key, not only this
+rotation's previous `done` run. A deleted and recreated rotation therefore still revokes
+the role that is live in the keys, and the first run of a recreated rotation does not skip
+the revoke. Only a key that no run ever published (the operator's own initial value) has a
+`NULL` superseded handle.
+
+**Multi-node takeover orphan.** A worker whose row lease expired mid-run can still finish
+`CreateRole` after another node took the run over and rolled it back to `failed`. The
+fence-losing worker, on losing the fence, best-effort drops its candidate. The reconciler
+also re-probes `RoleStatus(candidate_handle)` for `failed` and `quarantine` runs once the
+lease has expired plus the provider deadline, and drops any role still present. The lease
+TTL must exceed the provider deadline so a live worker is never taken over mid-call. Add
+this row to the S2 crash tests and to the multi-node takeover e2e.
+
+**`DROP ROLE` refused for a role that owns objects.** PostgreSQL refuses `DROP ROLE` with
+SQLSTATE `2BP01` (dependent objects) when the role owns objects or holds privileges. Map it
+to `ErrRefused` in `classifyExec` (`internal/dynamic/postgres/postgres.go`). The run then
+enters a named state, `revoke_refused`, visible in `rotation show`, `rotation runs` and
+`hikyo doctor`, retried with backoff and never marked `done`. Decision: the rotation does
+NOT run `REASSIGN OWNED BY candidate TO grant_role` before the drop. Reasoning: a rotation
+mints roles that are only ever members of the provider's `grant_role`, and silently
+reassigning ownership would hide a consumer that created objects as the rotated role (a
+real misconfiguration that would also break after the next rotation). The documented rule
+is that rotated roles must not own objects; objects belong to the grant role. The named
+refusal makes a violation loud rather than a silent outage.
 
 ### The Gate (re-authorization per transition)
 
 Identity is rebuilt from the recorded `authority_principal_id` (class human) and
 `az.Authorize` runs in a fresh read transaction, as the adapter and dynamic workers
-do. Pre-publish transitions (`minting`, publish) require: authority still holds
-`edit ∧ publish @env` and `reveal @env`; provider active with credential set;
+do. The per-key check is `RecordedPrincipalHolds(ctx, caller, authority, OpRotationCreate,
+scope, &key)` for each of the two stored keys, exactly as S1 resume does, so a key-narrowed
+member rule on the authority applies and a denial stays attributed to its actor with
+`AuthorityID` naming the authority. Pre-publish transitions (`minting`, publish) require:
+authority still holds `edit ∧ publish ∧ reveal` on both keys at the environment; provider active with credential set;
 rotation `active`; `generation` unchanged. **Post-publish transitions (`overlap`,
 `revoking`) re-assert only the row fence, the recorded `published_revision` and the
 provider's existence**, the fail-safe direction `dynamic_leases` already takes for
@@ -213,10 +311,15 @@ revoke: losing authority must never strand a live superseded credential.
   Post-publish phases always continue to completion. This is the reading of the issue
   handoff's "never leaves a candidate unrevoked" that cannot strand a credential.
 - Resume re-authorizes the recorded authority and recomputes `next_run_at`.
-- Delete requires no non-terminal run, or `--abandon`, which quarantines the
-  candidate, keeps the superseded role live, and is loud.
+- Delete requires no non-terminal run, or `--abandon`. For a run before publish,
+  `--abandon` quarantines the candidate, keeps the superseded role live, and is loud. For
+  a run past publish the candidate IS the delivered credential: it stays live, `--abandon`
+  only stops future cycles, the run is closed as `quarantine`, and the credential stays
+  recorded (so `credential_expires_at` still names it and the superseded role is still
+  dropped by the reconciler's revoke retry). Nothing about `--abandon` revokes a delivered
+  credential.
 - A paused or disabled rotation does not extend the delivered role's `VALID UNTIL`.
-  See open question 2.
+  See owner decision 2 and decision 10.
 
 ### Run-now (S2)
 
@@ -238,9 +341,10 @@ All tenant trail, `RetentionSecurity`, no credential material in any payload:
 - `rotation.quarantined`: `{run_id, candidate_handle, superseded_handle}`.
 - `rotation.run_now`: `{run_id, skip_overlap (bool)}`.
 
-`rotation.configured` (registered in S1) carries `change`, `provider_id`, `key_id`,
-`username_key_id`, `interval_seconds`, `revocation_delay_seconds`, `generation`,
-`authority`.
+`rotation.configured` (registered in S1) carries `action`, `rotation_id`,
+`environment_id`, `provider_id`, `key_id`, `username_key_id`, `interval_seconds`,
+`revocation_delay_seconds`, `authority_principal_id`, `generation`, and optionally
+`reason` and `credential_expires_at`.
 
 ## Bounds
 
@@ -259,12 +363,20 @@ overflows it.
 ## Test plan
 
 S1 (this PR): both engines for Hikyo's own state (SQLite default; PostgreSQL when
-`HIKYO_TEST_POSTGRES_DSN` is set): store round trips, constraints (one live rotation
-per key, one non-terminal run), tenant isolation fixtures, bounds, create refusals
-(authority lacks publish, provider missing or credential unset, key missing or not
-secret, out-of-bounds, duplicate), CAS conflict, resume re-authorization refusal,
-audit payload free of credentials, contract and freeze tests. The S2 gate, not S1,
-owns key-deleted-underneath-a-rotation handling.
+`HIKYO_TEST_POSTGRES_DSN` is set), every actor a real signed-in session with a ceremony
+window: store round trips, constraints (one live rotation per key across roles, one
+non-terminal run, run and effect CHECKs, delete refused with a run in flight), tenant
+isolation fixtures, bounds, create refusals (ceremony missing, protected and
+approval-covered environments, machine caller, key-narrowed creator, publish-only caller,
+provider missing, cross-project, tombstoned or without a credential, key missing or not
+secret, out-of-bounds, duplicate), CAS conflict, resume refusals (authority lost, attributed
+to the caller with the authority named; keys missing or reclassified; provider inactive),
+provider delete and credential revoke pausing rotations with a reason, environment delete
+refusal and purge, credential expiry derivation, `include_disabled`, audit payload free of
+credentials, contract admission and freeze tests. The definitions-apply environment-delete
+path calls the same `purgeEnvironmentRotations` helper as the direct delete and is covered
+by that test through the helper only. The S2 gate, not S1, owns key-deleted-underneath-a-rotation
+handling during a run.
 
 S2: full happy path with a fake clock (mint, publish, overlap, revoke, role absent;
 cursor changes exactly once per publish; Compose render picks up the value), failure
@@ -275,34 +387,42 @@ reconcile), pause mid-overlap, run-now without confirmation refused, authority l
 revokes), multi-node takeover, audit payloads free of credentials, Kubernetes
 operator e2e (`k8se2e`) asserting a rollout after rotation.
 
-## Open questions for the owner
+## Owner decisions (resolved)
 
-1. **Ceremony at creation.** Should `rotation create` consume a `PurposePublish`
-   ceremony, given it delegates publish authority to a standing worker? S1 requires
-   only the three-atom formula and a human session.
-2. **Pause and `VALID UNTIL`.** A paused rotation lets PostgreSQL expire the delivered
-   role at `VALID UNTIL`, an outage the operator caused by pausing. Options: (a) S2
-   `ExtendRole`s the delivered role while paused, (b) document the expiry and surface
-   `credential expires at` in status. Recommendation: (b), with the field.
-3. **Username key.** Roles are minted per cycle with a new name, so an overlap only
-   works if consumers also receive the new role name, which means `username_key_id`
-   is effectively required. **S1 requires it in the service and API (the column stays
-   nullable)**, diverging from the issue handoff. Options: (a) keep it required, (b)
-   make it optional and let S2 define a password-only mode (`ALTER ROLE ...
-   PASSWORD`, no overlap). Recommendation: (a), the current behaviour.
-4. **Incident containment.** Should the incident ledger enumerate rotations by
-   `authority_principal_id` so a contained principal's rotations are paused? Not done
-   in S1; there is no executor yet.
+1. **Ceremony at creation (Q1): required.** Create and resume consume a `PurposePublish`
+   ceremony whose unit is the environment plus both stored key ids, because the rotation
+   delegates publish authority to a standing worker that no ceremony will ever gate again.
+2. **Pause and `VALID UNTIL` (Q2): widened.** S1 exposes `credential_expires_at` in status
+   and in the pause and delete responses and CLI output, and admits the `extend` effect
+   kind. S2 adds the doctor warning, the metric and the extend action itself.
+3. **Username key (Q3): required.** `rotations.username_key_id` is `NOT NULL`; the dead
+   nullable branches are removed.
+4. **Incident containment (Q4): S2.** The incident ledger enumerates rotations by
+   authority principal, never auto-resumes on release, and a failed gate moves a rotation
+   to a named halted state. Nothing in S1 touches the incident ledger.
+5. **Key-narrowed authority (Q5): resume is key-aware, pause and delete stay
+   `publish@environment`.** Resume requires the caller to hold the create formula on both
+   stored keys (`AuthorizeKey` per key) in addition to the recorded-authority re-check.
+   A creator authorized only by a rule narrowed to the two keys can create and resume but
+   not pause or delete; the key-aware variant for those two is on the S2 checklist.
 
-5. **Key-narrowed authority.** Pause, resume and delete are `publish@environment`
-   with no key target, so a key-narrowed member access rule cannot satisfy them
-   (fail closed). A creator authorized only by a rule narrowed to the two keys can
-   therefore create a rotation but not pause, resume or delete it. Options: (a) keep
-   publish across the whole environment for these three; (b) make them key-aware by
-   reading the row under the inspect proof and then authorizing the operation on both
-   stored keys. Recommendation: (a) for S1; revisit with the S2 gate, which already
-   re-authorizes per key.
+## S2 checklist (carried forward from review)
 
+- Gate: `RecordedPrincipalHolds` with a key target per stored key (see The Gate).
+- Doctor warning, metric and `extend` action for an approaching `credential_expires_at`
+  (Q2).
+- Incident containment by authority principal; never auto-resume on release; a named
+  halted state for a failed gate (Q4).
+- Key-aware pause and delete (Q5).
+- `restore_hold` column: a restored rotation starts held until an operator releases it
+  (decision 9), so a restored instance never mints before grants are reconciled.
+- `superseded_handle` across rotations, `--abandon` past publish, multi-node takeover
+  orphan reconciliation, and the `2BP01` named refusal (see the state machine section).
+- Scheduled revocation reports consumers that may still hold the superseded credential
+  (machine principals with `read@env` whose last delivery precedes the publish, adapter
+  targets whose `converged_revision < published_revision`) in the revoke OUTCOME, not only
+  for `run-now --skip-overlap`.
+- Run, quarantine and run-now events and operations, metrics, `hikyo doctor`.
 
 ## S1 divergences from the issue handoff (summary)
 
@@ -310,10 +430,14 @@ operator e2e (`k8se2e`) asserting a rollout after rotation.
 - No foreign key to `keys`, so no `Keys.Delete` refusal (decision 2).
 - Only `rotation.configured` is registered; run events, `run-now` and `runs` ops and
   paths wait for S2 (decision 6).
-- `username_key_id` is required by the service; the revocation delay must be shorter
-  than the interval; only a human session (or local host authority) may create.
+- `username_key_id` is required by the service and the column; the revocation delay must
+  be shorter than the interval; only a signed-in person with a ceremony may create or
+  resume.
+- A key claims table replaces the per-role unique indexes; environment delete refuses or
+  purges; provider delete and credential revoke pause rotations (decision 2).
 - Reads (`rotation.inspect`) are human-session only.
 - API revision 17 (`x-hikyo-min-revision: 17`); parity rows use `{issue: 148}`, so
   #148 must stay open until S3 flips them.
-- Review: cross-provider review was SKIPPED (OpenAI unavailable by owner instruction);
-  independent adversarial Claude review is recorded on the PR, not in this file.
+- Review: cross-provider review was not run (owner waiver dated 2026-11-16 citing the
+  2026-11-02 instruction; see the top of this file); independent adversarial Claude review
+  is recorded on the PR, not in this file.

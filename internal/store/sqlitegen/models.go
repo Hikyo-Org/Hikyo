@@ -1403,7 +1403,7 @@ type Rotation struct {
 	EnvironmentID          string
 	ProviderID             string
 	KeyID                  string
-	UsernameKeyID          sql.NullString
+	UsernameKeyID          string
 	IntervalSeconds        int64
 	RevocationDelaySeconds int64
 	AuthorityPrincipalID   string
@@ -1427,6 +1427,14 @@ type RotationEffect struct {
 	Outcome        sql.NullString
 	CreatedAt      string
 	FinishedAt     sql.NullString
+}
+
+type RotationKeyClaim struct {
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	KeyID         string
+	RotationID    string
 }
 
 type RotationRun struct {

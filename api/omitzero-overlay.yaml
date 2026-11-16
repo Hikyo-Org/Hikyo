@@ -56,6 +56,10 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
+  - target: $['paths']['/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations']['get']['parameters'][0]
+    update:
+      x-omitempty: false
+      x-omitzero: true
   - target: $['paths']['/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile}']['delete']['parameters'][0]
     update:
       x-omitempty: false
@@ -180,7 +184,7 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
-  - target: $['components']['schemas']['CredentialRotation']['properties']['username_key_id','next_run_at']
+  - target: $['components']['schemas']['CredentialRotation']['properties']['next_run_at','credential_expires_at']
     update:
       x-omitempty: false
       x-omitzero: true
