@@ -95,7 +95,8 @@ note() {
 	printf '%s\n' "$*"
 	if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then printf '%s\n' "$*" >>"$GITHUB_STEP_SUMMARY"; fi
 }
-gh() { "$GH_BIN" "$@"; }
+# command: GH_BIN defaults to gh, which would otherwise call this function again.
+gh() { command "$GH_BIN" "$@"; }
 go_stable() { "$GO_BIN" -C "$repo_root" run ./scripts/release/stable "$@"; }
 git_() { "$GIT_BIN" -C "$repo_root" "$@"; }
 # The maintainer's recheck reads the repository the ceremony uses; CI always passes GH_REPO.

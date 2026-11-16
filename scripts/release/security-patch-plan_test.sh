@@ -364,6 +364,11 @@ lacks() { if body | grep -F -- "$2" >/dev/null; then body >&2; fail "$1: the iss
 no_tag_commands() { lacks "$1" 'git tag -s'; lacks "$1" 'ceremony.sh build'; }
 
 # --- the ready issue and its commands --------------------------------------
+# The workflow leaves GH_BIN at its default, a bare gh found on PATH.
+mkdir -p "$scratch/gh-on-path"
+ln -sf "$scratch/bin/gh" "$scratch/gh-on-path/gh"
+plan 'the default GH_BIN runs gh from PATH' 0 GH_BIN=gh PATH="$scratch/gh-on-path:$PATH"
+expect_action 'default GH_BIN' open
 plan 'ready at the green tip' 0
 expect_action ready open
 has ready '## Security patch v1.1.1 is ready to tag'
