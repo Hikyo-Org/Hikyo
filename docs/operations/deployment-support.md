@@ -110,24 +110,32 @@ establish a tested EKS/AKS/GKE or every-distribution matrix. Record the actual
 Kubernetes, Helm, CSI and CNI versions used by an installation and retain its
 source/artifact/runtime evidence separately.
 
-## Unattended operator-command gap
+## Unattended operator commands
 
 Unattended server startup resolves its authenticated bundle and operator public
-key into its in-memory configuration. Separately executed `admin`, `backup export`
-and `restore drill` processes do not inherit those resolved paths. These commands
-require the actual public bundle, operator pin and installed
-custody; `HIKYO_DB` and the root key alone are insufficient. The chart now exposes
-the staged root-key path for operator commands, but that does not resolve the
-other unattended inputs automatically.
+key into its in-memory configuration, and records the admitted image and the
+enrolled operator pin in the unattended state directory. Separately executed
+`admin`, `backup` and `restore` processes (`docker exec`, `kubectl exec`) read
+those records back and pass the same signed-release and custody gate, so they
+need only the environment the server already has: `HIKYO_DB`, the root key path
+(set by the chart and the Compose example) and the unattended state directory.
+They never enroll, migrate, take the coordinator lock or start an updater, and
+refuse a missing, malformed, stale or replaced record, another release, or an
+unfinished upgrade. See [local operator
+commands](unattended-container-upgrades.md#local-operator-commands).
 
-The complete singleton example therefore uses the manual-custody path. A safe
-admitted-custody resolver and end-to-end operator-command checks are still needed
-before advertising a complete fresh unattended Kubernetes operating experience.
-Do not bypass release admission, invent installation pins, relaunch an upgrade
-coordinator merely to run an admin command, or copy a custody journal into a
-different authority directory. Runtime unattended upgrade coverage remains
-separate from this operator-command gap. The repair and required runtime
-acceptance are tracked in [#1112](https://github.com/Hikyo-Org/Hikyo/issues/1112).
+Real-container acceptance (`scripts/ci/unattended-operator.sh`) covers the first
+administrator, credential establishment, diagnostics, encrypted backup and the
+readable restore drill in a distroless SQLite container and a singleton
+PostgreSQL container through Docker. The kind singleton run (`unattended-kind.sh`)
+repeats `admin create`, `backup keygen`, `backup export`, `restore status` and
+`admin config status` through `kubectl exec` in the admitted pod; credential
+establishment and the restore drill are covered only through Docker. The complete
+singleton example still documents manual custody; choosing unattended custody
+for a fresh Kubernetes install remains an operator decision. Do not bypass
+release admission, invent installation pins, relaunch an upgrade coordinator
+merely to run an admin command, or copy a custody journal into a different
+authority directory.
 
 ## Installation acceptance record
 

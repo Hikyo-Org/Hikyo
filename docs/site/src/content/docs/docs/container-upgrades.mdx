@@ -50,6 +50,21 @@ that exact release and its permitted migration route. It never changes the targe
 to a newer release discovered during boot. The server needs no Docker socket,
 Git credentials or Kubernetes deployment token.
 
+## Operator commands in the container
+
+After the server's first start has finished, run the host-only commands in the
+running container with no extra settings:
+
+```sh
+docker exec -it hikyo /usr/local/bin/hikyo admin create --username admin
+```
+
+`hikyo admin`, `backup` and `restore` read back the release and operator pin the
+server admitted and pass the same signed-release and custody gate. They never
+enroll, migrate or start an updater, and they refuse while an upgrade is unfinished.
+See the [runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/unattended-container-upgrades.md#local-operator-commands)
+for the exact refusals.
+
 ## During an upgrade
 
 Writers are excluded before the encrypted backup and real scratch restore.
