@@ -41,7 +41,9 @@ func (w *rotationWorker) Run(ctx context.Context) {
 			w.sweeps.Add(1)
 		}
 		if err != nil && !errors.Is(err, context.Canceled) {
-			w.log.Error("credential rotation worker failed", "err", err)
+			// The error can carry provider, tenant or driver detail; only its class
+			// is logged, and the executor already logs the run it belongs to.
+			w.log.Error("credential rotation worker failed", "class", service.RotationErrorClass(err))
 		}
 		if worked && err == nil && ctx.Err() == nil {
 			continue

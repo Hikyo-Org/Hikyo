@@ -35,7 +35,9 @@ func TestRotationWorkerIsWiredAndStartedByTheGeneration(t *testing.T) {
 	}
 }
 
-// The loop stops with its context.
+// A loop that is demonstrably running stops when its context is cancelled: the
+// test waits for completed sweeps before it cancels, so a loop that never
+// started, or one that ignores cancellation, cannot pass.
 func TestRotationWorkerStopsWithItsContext(t *testing.T) {
 	srv, err := Boot(t.Context(), devConfig(t), testLogger())
 	if err != nil {
@@ -45,12 +47,25 @@ func TestRotationWorkerStopsWithItsContext(t *testing.T) {
 	wired := srv.owner.current.graph.rotationWorker
 	worker := &rotationWorker{svc: wired.svc, id: "stop-test", poll: time.Millisecond, log: testLogger()}
 	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
 	done := make(chan struct{})
 	go func() { worker.Run(ctx); close(done) }()
+	deadline := time.Now().Add(10 * time.Second)
+	for worker.sweeps.Load() < 3 {
+		if time.Now().After(deadline) {
+			t.Fatal("the loop never ran its sweeps")
+		}
+		time.Sleep(time.Millisecond)
+	}
 	cancel()
 	select {
 	case <-done:
 	case <-time.After(10 * time.Second):
-		t.Fatal("the rotation loop did not stop with its context")
+		t.Fatal("the running rotation loop did not stop with its context")
+	}
+	settled := worker.sweeps.Load()
+	time.Sleep(50 * time.Millisecond)
+	if after := worker.sweeps.Load(); after != settled {
+		t.Fatalf("the loop swept %d more times after it stopped", after-settled)
 	}
 }
