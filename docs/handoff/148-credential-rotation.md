@@ -358,9 +358,10 @@ transaction. It is never stored, not even sealed. Order:
    `revision.restore`, or a manual publish, can put the superseded value back; dropping
    its role then is an outage. On mismatch the run moves to `revoke_refused` with
    `last_error = 'published_versions_changed'`, the revoke is NOT performed, and the hold
-   is visible in `rotation show`, `rotation runs` and `hikyo doctor`. The hold is
-   re-evaluated on each backoff retry, so it clears itself once the keys serve a version
-   this run (or a later run) published again.
+   is visible in `rotation show`, `rotation runs` and `hikyo doctor` (the last two are S2b).
+   The hold is re-evaluated on each backoff retry, but per owner decision A only the
+   expiry or absence of the superseded role ends it: a restore or republish stages a new
+   version id, and no later run can start while this one is held.
 8. **Delayed-commit hazard.** A publish transaction can commit after another worker has
    already looked at the run (a stalled COMMIT, a partition healing). Every place that
    resolves an ambiguous run state (`minting` or `minted` after a crash or takeover, an
@@ -633,9 +634,8 @@ S2 additions for the hazards and obligations above:
 - Restore hazard: after publish, `revision.restore` (and separately a manual publish) put
   the superseded value back; assert the revoke step does NOT call `DropRole(superseded)`,
   the run is `revoke_refused` with `last_error = 'published_versions_changed'`, it is
-  named in status and `hikyo doctor`, a later publish of the run's own version clears it
-  on the next retry and the drop then happens, and a LATER run's versions pass the
-  assertion.
+  named in status and `hikyo doctor`, only the superseded role's expiry or absence ends the hold (owner decision A);
+  a restore or republish does not.
 - Revoke obligation: an abandoned-past-publish run (`quarantine`, `published_revision`
   set) has its `superseded_handle` dropped by the revoke-obligation loop after the overlap
   deadline and ends `done`, its candidate role survives both loops, and the candidate
@@ -734,11 +734,12 @@ configurable grid.
   password key or its username key), so a recreated rotation still revokes the live role.
 - Restore hazard (rule 7): before the superseded drop the executor asserts that the
   current entry ids of the delivered keys are still the ones it published; a mismatch
-  holds the run in `revoke_refused` / `versions_changed` instead of dropping.
+  holds the run in `revoke_refused` / `published_versions_changed` instead of dropping.
 - Quarantine exits: probe says the role is absent or expired -> `done`; reachable and
   still present -> the drop is retried; `ErrRoleOwnsObjects` (SQLSTATE `2BP01`) ->
   `revoke_refused` / `role_owns_objects`, retried on the backoff and never lost.
-- Pause and service-level delete abandon: pre-publish runs go to `quarantine` due now
+- Service-level delete with `--abandon` (pause does not abandon: it leaves runs alone and
+  the next pre-publish gate rolls an unpublished run back): pre-publish runs go to `quarantine` due now
   (the reconciler confirms the candidate gone); published runs keep their overlap
   deadline and the revoke loop drops the superseded role after it.
 
@@ -758,6 +759,10 @@ not emitted yet (see S2b).
 
 ### Test map
 
+`internal/isolation/rotation_executor_round1_test.go` (round 1: grouped keys, drafts,
+restore assertion, resume scheduling, held-run extend, expiry exits, superseded-provider
+binding, audit attribution, abandon, races, per-org cap) and
+`internal/app/rotation_wiring_test.go` (worker wiring and shutdown) were added in round 1.
 `internal/isolation/rotation_executor_e2e_test.go` (fake provider, fake clock, both
 engines): happy path, crash table (three pre-publish points, revoke before and after
 the drop), delayed commit (commit and rollback, stale-claim fence), restore hazard,
@@ -786,7 +791,7 @@ refused as `role_owns_objects` and dropped after the object moves).
 5. A new generation's cycle `D` is anchored at its first run.
 6. The publish rate budget applies to the authority principal.
 7. A superseded role that the provider reports absent or expired no longer needs the
-   restore assertion: `supersededDead` self-heals a `versions_changed` hold, and an
+   restore assertion: `supersededDead` self-heals a `published_versions_changed` hold, and an
    expired role (`VALID UNTIL` passed, no uncertain extend) settles by expiry without
    opening the provider or running the assertion. A restore stages new versions, so it
    can never clear the assertion (owner decision A).
@@ -800,7 +805,12 @@ refused as `role_owns_objects` and dropped after the object moves).
 
 Round 1 review additions:
 
-11. Grouped keys are refused at create and resume (`ErrRotationKeyGrouped`); an authority
+11. Gate placement: the pre-start gate (`startRun`) and the extend gate (`extendDelivered`)
+    each run `gateWithin` in their own write transaction as the recorded authority
+    (`Authorize(OpRotationRun)` first, then `RecordedPrincipalHolds` per key). The publish
+    runs `gateWithin` again inside the publish transaction's `begin` hook, with the
+    run's generation. The draft check is part of the pre-start gate only.
+    Grouped keys are refused at create and resume (`ErrRotationKeyGrouped`); an authority
     draft on either key is refused at create and resume (`ErrRotationDraftPending`). A
     draft appearing on a rotated key halts the rotation `gate_failed` at the pre-start
     gate; at stage time the run rolls back. The gate's draft check runs in the same read
@@ -858,10 +868,8 @@ Status after S2a and its round 1 review: closed in S2a are the Gate, the provide
 guards, retry with backoff, `extend` and `halted`, the two loops, quarantine exits, the
 rule 7 and rule 8 tests, the schedule bounds test, `superseded_handle` across rotations,
 the service side of `--abandon`, multi-node takeover, the `2BP01` refusal, the grouped-key
-and draft refusals, resume scheduling, the held-run extend and expiry exits. Note: the
-Gate's "environment unattended" and provider checks run in the gate read transaction, and
-the checklist items above that mention a Gate-only authority check are satisfied by the
-same `RecordedPrincipalHolds` call per key. Carried to
+and draft refusals, resume scheduling, the held-run extend and expiry exits. Gate placement is described in
+judgment call 11. Carried to
 S2b: the doctor warning and metric, incident containment, the `restore_hold` column,
 key-aware resume, pause and delete, the consumer-convergence report and run-now/runs.
 The list below is the original text and stays as the acceptance record.
