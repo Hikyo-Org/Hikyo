@@ -396,3 +396,16 @@ func TestNonTransientReadFailuresAreNotRetried(t *testing.T) {
 		}
 	})
 }
+
+// The suite count and scan are POSTs to GraphQL but read-only, so they retry like reads.
+func TestGraphQLReadRetriesTransientFailureThenSucceeds(t *testing.T) {
+	probe := stubRetry(t)
+	c, hits := stepClient(t, respondStatus(502), respondOK)
+	var out map[string]bool
+	if err := c.graphql(context.Background(), "query{viewer{login}}", &out); err != nil {
+		t.Fatal(err)
+	}
+	if !out["ok"] || hits.Load() != 2 || len(probe.waits) != 1 {
+		t.Fatalf("ok=%v hits=%d waits=%v", out["ok"], hits.Load(), probe.waits)
+	}
+}
