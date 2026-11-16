@@ -165,7 +165,7 @@ func TestRequestRefusalAttributesProxyClientAcrossTransports(t *testing.T) {
 		for _, tc := range cases {
 			t.Run("rest/"+tc.name, func(t *testing.T) {
 				rec := confirmedRefusal(t, signals, func() *httptest.ResponseRecorder {
-					r := httptest.NewRequest(http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
+					r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
 					r.Header.Set("Authorization", "Bearer "+cli)
 					rec := httptest.NewRecorder()
 					withPeer(rest, tc.peer, tc.forwarded).ServeHTTP(rec, r)
@@ -429,7 +429,7 @@ func TestRequestRefusalCapturesNoCredentialOrRequestDataAnywhere(t *testing.T) {
 			return w
 		}
 		rest := func(method, path, source string, edit func(*http.Request)) {
-			r := httptest.NewRequest(method, path, nil)
+			r := httptest.NewRequestWithContext(t.Context(), method, path, nil)
 			r.RemoteAddr = source + ":1234"
 			if edit != nil {
 				edit(r)
@@ -538,7 +538,7 @@ func TestRequestRefusalCapturesNoCredentialOrRequestDataAnywhere(t *testing.T) {
 			t.Fatalf("scenario sealed only %d refusals", sealed)
 		}
 		op := server.NewOperational(nil, mcpOperationalHealth{}, metrics)
-		scrape := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+		scrape := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil)
 		scrape.RemoteAddr = "127.0.0.1:12345"
 		rec := httptest.NewRecorder()
 		op.ServeHTTP(rec, scrape)
@@ -627,7 +627,7 @@ func TestRequestRefusalConcurrentFloodIsBoundedAndNeverLocksOut(t *testing.T) {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					r := httptest.NewRequest(http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
+					r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
 					r.RemoteAddr = fmt.Sprintf("198.51.100.%d:1234", i%250+1)
 					switch i % 4 {
 					case 0:
@@ -712,7 +712,7 @@ func TestRequestRefusalConcurrentFloodIsBoundedAndNeverLocksOut(t *testing.T) {
 		if after := datastoreText(t, db, credentialTables...); after != identityBefore {
 			t.Fatal("a refusal flood changed credential, grant or session state")
 		}
-		r := httptest.NewRequest(http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
+		r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
 		r.RemoteAddr = "203.0.113.200:1234"
 		r.Header.Set("Authorization", "Bearer "+victim)
 		w := httptest.NewRecorder()
@@ -751,7 +751,7 @@ func TestRequestRefusalSurvivesCancelledRequestContext(t *testing.T) {
 			t.Fatalf("service record under a cancelled context staged %d refusals, want 1", after-before)
 		}
 		handler := server.New(&server.API{Auth: authService(t, db), Refusals: signals}, nil)
-		r := httptest.NewRequest(http.MethodGet, api.PathPrefix+"/auth/whoami", nil).WithContext(cancelled)
+		r := httptest.NewRequestWithContext(cancelled, http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
 		r.RemoteAddr = "192.0.2.8:1234"
 		// A proof-scheme refusal is decided before any datastore read, so the
 		// cancelled context reaches only the refusal accounting.
