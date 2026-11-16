@@ -11,7 +11,7 @@ and matching image. Flux starts suspended; Argo CD requires manual sync.
 The generator accepts signed stable and nightly charts, and nightlies remain
 unsupported prereleases. It refuses the stable 1.0.0 chart:
 that chart gives `hikyo admin create` no root key, and it fails to install under
-Flux. Stable 1.1.0 and later pass the generator, and 1.1.0 completed a zero-replica
+Flux. Stable 1.1.0 passes the generator and completed a zero-replica
 controller install under both Flux and Argo CD. That proves controller mechanics only,
 not the application or a database. For 1.0.0 artifacts, use
 [stable downloads](/docs/installation/#stable-downloads).

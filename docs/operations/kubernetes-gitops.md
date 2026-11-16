@@ -17,7 +17,7 @@ The version you select decides what the generator requires:
 Nightlies remain unsupported prereleases. Passing the generator does not qualify a
 stable chart; record its controller and application results as described below.
 
-**Stable 1.0.0 is refused; stable 1.1.0 and later pass.** The 1.0.0
+**Stable 1.0.0 is refused; stable 1.1.0 passes.** The 1.0.0
 chart does not set `HIKYO_ROOT_KEY_FILE`, and it has no value that could add it.
 `admin` has no root-key flag, so the first-administrator step fails with
 `no root key configured`. The 1.0.0 image and chart signatures themselves verify.
@@ -25,7 +25,7 @@ Under Flux 2.10.0 the same chart also fails to install: Flux versions it
 `1.0.0+<digest>`, and the chart copies that into an invalid `helm.sh/chart` label.
 Both are fixed in this source, so stable 1.1.0, cut from it, passes the generator and
 completed a zero-replica controller install under Flux and Argo CD
-([published-artifact run](#reproduce-controller-qualification)).
+([published-artifact run](#published-artifact-run)).
 See the [deployment matrix](deployment-support.md#runtime-matrix).
 
 These recipes do not authorize installation into an existing cluster. Source
@@ -344,7 +344,7 @@ deployment acceptance, and is not an unconditional stable-release gate.
 On 15 November 2026 the same controllers (Flux 2.10.0 with helm-controller 1.7.1 and
 source-controller 1.10.1, Argo CD 3.5.6, Kubernetes 1.36.1, Helm 4.2.3) ran against the
 real registry in a disposable Kind cluster, with no local registry or verification
-bypass. The generator's output was applied unmodified for nightly
+bypass. The run asserted each condition below and failed otherwise. The generator's output was applied unmodified for nightly
 `1.1.0-nightly.20261111.117.ga8f3cf47` (chart `sha256:dbb858b2...`, image
 `sha256:f1cc49d1...`, source `a8f3cf47`) and stable `1.1.0` (chart `sha256:bab52fb1...`,
 source `c56b8b44`), each at zero replicas:

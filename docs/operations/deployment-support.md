@@ -17,10 +17,10 @@ your deployment.
 
 | Artifact | Source and distribution | What it provides | What remains separate |
 | --- | --- | --- | --- |
-| Native archives | GitHub stable 1.0.0 and signed nightly releases; Linux, macOS and Windows, each amd64/arm64 | One multicall executable with the browser UI embedded | Server configuration, keys, installation custody, service operation and backups |
-| Linux packages | Stable 1.0.0 and nightly release assets: DEB, RPM, APK and Arch packages for amd64/arm64 | Binary and license installation | No daemon service or first-admin setup; no hosted apt/RPM package repository |
-| macOS distribution | Stable 1.0.0 and signed nightly archives and DMGs; nightly publication depends on Apple acceptance | CLI executable; the DMG is not a desktop application bundle | Follow that release's notarization/verification evidence |
-| OCI server image | `ghcr.io/hikyo-org/hikyo`; stable `1.0.0`, exact nightly versions and moving `nightly` tag | Distroless, non-root Linux amd64/arm64 image consuming the verified release binaries | Pin and authenticate the digest; a pull is not installation or upgrade completion |
+| Native archives | GitHub stable 1.0.0 and 1.1.0 and signed nightly releases; Linux, macOS and Windows, each amd64/arm64 | One multicall executable with the browser UI embedded | Server configuration, keys, installation custody, service operation and backups |
+| Linux packages | Stable 1.0.0 and 1.1.0 and nightly release assets: DEB, RPM, APK and Arch packages for amd64/arm64 | Binary and license installation | No daemon service or first-admin setup; no hosted apt/RPM package repository |
+| macOS distribution | Stable 1.0.0 and 1.1.0 and signed nightly archives and DMGs; nightly publication depends on Apple acceptance | CLI executable; the DMG is not a desktop application bundle | Follow that release's notarization/verification evidence |
+| OCI server image | `ghcr.io/hikyo-org/hikyo`; stable `1.0.0` and `1.1.0`, exact nightly versions and moving `nightly` tag | Distroless, non-root Linux amd64/arm64 image consuming the verified release binaries | Pin and authenticate the digest; a pull is not installation or upgrade completion |
 | Helm chart | `chart/hikyo` in source; `ghcr.io/hikyo-org/charts/hikyo` holds stable `1.0.0` and `1.1.0`, and the nightly publisher adds exact prerelease versions | Chart version/appVersion equal the release version; exact matching image digest. Nightly charts also record their source revision | Confirm that exact chart's publication, signature and anonymous retrieval before installing |
 | Compose | `install/compose/server.yaml` and `server-unattended.yaml` | Manual and fresh unattended deployment definitions | Explicit data/key/custody storage, TLS boundary, operator-owned replacement and recovery |
 | Cloud infrastructure | AWS CloudFormation, Azure template, GCP/DigitalOcean/Hetzner guides | Host/infrastructure preparation in the operator's account | Application activation and provider runtime acceptance; these are not managed services |
@@ -33,9 +33,9 @@ publisher run and a clean anonymous pull succeed. Older prereleases do not
 acquire charts retroactively. On 15 November 2026 the registry listed nightly
 charts published from 4 November, among them
 `1.1.0-nightly.20261111.117.ga8f3cf47` (see the
-[acceptance record](#installation-acceptance-record) below for what was verified).
+[published-artifact run](kubernetes-gitops.md#published-artifact-run) for what was verified).
 Nightly versions are prereleases, so Helm 3.16.1 kept resolving an unpinned chart
-reference to `1.0.0` when both were present. Always pin the exact digest anyway. A successful GitHub
+reference to the newest stable version (then `1.0.0`) when stable and nightly charts were both present. Always pin the exact digest anyway. A successful GitHub
 archive release can coexist with failed image or chart publication; consult the
 individual job and artifact digest rather than assuming the whole release exists.
 
@@ -91,7 +91,7 @@ chart predates two changes in this source:
 Stable 1.1.0 was cut from this source. On 15 November 2026 the generator, with real
 Cosign and `gh` checks, authenticated its chart and image for Flux and Argo CD, and
 Flux 2.10.0 and Argo CD 3.5.6 each completed a zero-replica install of that exact digest in a
-disposable Kind cluster (see the [GitOps runbook](kubernetes-gitops.md#reproduce-controller-qualification)). That is
+disposable Kind cluster (see the [GitOps runbook](kubernetes-gitops.md#published-artifact-run)). That is
 controller-mechanics evidence only. A 1.0.0 test is also recorded: an unsigned chart built from
 this source and running the released 1.0.0 image installed under Flux and created its
 first administrator inside the pod. That run used controllers older than the qualified
