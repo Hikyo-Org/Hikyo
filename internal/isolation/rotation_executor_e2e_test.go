@@ -532,9 +532,21 @@ func runRotationDelayedCommit(t *testing.T, db *store.DB, commit bool) {
 		<-release
 	}}
 	ctxA, cancelA := context.WithCancel(tctx(t))
-	defer cancelA()
+	var releaseOnce sync.Once
+	releaseA := func() { releaseOnce.Do(func() { close(release) }) }
+	// Worker A holds its publish transaction open until released. A failed assertion
+	// must not leave it (or worker B queued behind it) running into the database
+	// teardown, so the cleanup releases the hook and joins both workers.
+	var workers sync.WaitGroup
+	t.Cleanup(func() {
+		cancelA()
+		releaseA()
+		workers.Wait()
+	})
 	doneA := make(chan error, 1)
+	workers.Add(1)
 	go func() {
+		defer workers.Done()
 		_, err := x.exec.RunRotationSweep(ctxA, "wrk_a")
 		doneA <- err
 	}()
@@ -550,7 +562,9 @@ func runRotationDelayedCommit(t *testing.T, db *store.DB, commit bool) {
 	// the claim skips the locked row. Either way it must drop nothing while the
 	// publish is open, and it must never fail the run out from under it.
 	doneB := make(chan error, 1)
+	workers.Add(1)
 	go func() {
+		defer workers.Done()
 		_, err := x.exec.RunRotationSweep(tctx(t), "wrk_b")
 		doneB <- err
 	}()
@@ -566,7 +580,7 @@ func runRotationDelayedCommit(t *testing.T, db *store.DB, commit bool) {
 	if !commit {
 		cancelA()
 	}
-	close(release)
+	releaseA()
 	if err := <-doneA; commit && err != nil {
 		t.Fatalf("the publishing worker: %v", err)
 	}
