@@ -153,3 +153,31 @@ func TestRotationSupersededDeadNeedsTheSkewMargin(t *testing.T) {
 }
 
 const rotationSkewForTest = 5 * time.Minute
+
+// An extend that ends because a later run published since closes its INTENT as a
+// definite failure: no provider call was made, so the role is not left permanently
+// "uncertain" for the later run's revoke read.
+func TestRotationExtendSkippedBySupersessionClosesItsIntent(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		rot := x.create(rotPasswordKey, rotUsernameKey)
+		run1 := x.cycle(rot.ID)
+		role1 := x.lastRun(rot.ID, "candidate_handle")
+		x.cycle(rot.ID)
+		// Run 1's credential falls due for an extension after run 2 replaced it.
+		x.advance(40 * time.Hour)
+		x.drain()
+		if x.ctl.count("extend:"+role1) != 0 {
+			t.Fatal("a superseded credential was extended")
+		}
+		if got := x.effects("extend", "open"); got != 0 {
+			t.Fatalf("%d extend intents left open", got)
+		}
+		if got := queryInt(t, db, `SELECT COUNT(*) FROM rotation_effects WHERE run_id='`+run1+`' AND kind='extend' AND outcome='failure'`); got != 1 {
+			t.Fatal("the skipped extend did not record a closed intent")
+		}
+		if got := queryInt(t, db, `SELECT COUNT(*) FROM rotation_effects WHERE run_id='`+run1+`' AND kind='extend' AND (outcome IS NULL OR outcome='unknown')`); got != 0 {
+			t.Fatalf("run 1 is left with %d uncertain extends", got)
+		}
+	})
+}

@@ -892,6 +892,29 @@ Round 3 review additions:
 32. `RotationRtInfraFaults` counts all infrastructure faults of the cycle since its
     start, not a consecutive streak: a definite failure in between does not reset it.
 
+Round 4 review additions (CodeRabbit threads on PR #1426):
+
+33. The superseded-role restore hold lets go only when the provider reports the role
+    absent or its `VALID UNTIL` more than the 5-minute skew margin past (`supersededDead`
+    applies `rotationExpirySkew` like `roleExpired`).
+34. `extendDelivered` records its extend INTENT before the `LaterPublished` check, and
+    every exit that makes no provider call (superseded, window spent, inactive, gate or
+    provider-open failure, a failed read) closes that intent as a `failure` with code
+    `extend_skipped`. Race against a later publish: a publish that commits after the intent
+    is durable runs its revoke read afterwards, so the read counts this extend as
+    uncertain (`extend_uncertain=1`) and the role is judged by the provider, not the
+    recorded `VALID UNTIL`; a publish that committed before the check is seen by the check
+    and ends the extend. The window between the intent commit and the provider call is
+    therefore covered either way. A closed-without-call intent has outcome `failure`, which
+    `RotationRtLoadSupersededRole` does not count, so the superseded role is not left
+    uncertain. Crash table: a worker that dies between the intent and its close leaves an
+    open intent that the next claimant closes `unknown` (`staleEffect`); that role stays
+    uncertain, which is the safe side (the revoke asks the provider). The close-write
+    failing after a read error has the same outcome. The race window itself is not
+    inducible in the harness (no hook between the intent commit and the supersession
+    read); the superseded exit is covered by
+    `TestRotationExtendSkippedBySupersessionClosesItsIntent`.
+
 ### Owner decisions on the S2a review (resolved)
 
 - A. A restore never clears the restore-hazard hold except through expiry or absence of

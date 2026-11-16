@@ -166,6 +166,7 @@ const (
 	rotCodeVersionsChanged = "published_versions_changed"
 	rotCodeRevokeFailed    = "revoke_failed"
 	rotCodeExtendFailed    = "extend_failed"
+	rotCodeExtendSkipped   = "extend_skipped"
 	rotCodeExpired         = "expired"
 	// rotCodeInfra marks a run that failed only because the executor's own
 	// datastore or keyring faulted before the provider was touched. It is not
@@ -1398,15 +1399,21 @@ func (e *RotationExecutor) supersededDead(ctx context.Context, provider dynamic.
 
 // ---------------------------------------------------------------- extend
 
-// haltRun halts the rotation of a run that stays where it is. The halt audit is
-// written only if the halt changed a row.
-func (e *RotationExecutor) haltRun(ctx context.Context, run store.RotationRun, from []string, reason string, now time.Time, next time.Time) error {
+// haltClosing halts the rotation of a run that stays where it is, and closes the
+// extend INTENT it holds (a definite failure, no provider call was made) in the same
+// fenced write. The halt audit is written only if the halt changed a row. It reports
+// the run as handled.
+func (e *RotationExecutor) haltClosing(ctx context.Context, run store.RotationRun, from []string, reason string, now, next time.Time, intent store.RotationEffectIntent) (bool, error) {
+	closed, err := e.outcome(run, intent.EffectID, "extend", audit.OutcomeFailure, rotCodeExtendSkipped, now)
+	if err != nil {
+		return true, err
+	}
 	a, err := e.haltAudit(run.Chain(), subjectOfRun(run), reason, now)
 	if err != nil {
-		return err
+		return true, err
 	}
-	return e.settleDrop(ctx, run, store.RotationSettle{
-		Now: now, FromPhases: from, Phase: run.Phase, LastError: run.LastError, NextAttempt: next, HaltReason: reason, HaltAudit: &a,
+	return true, e.settleDrop(ctx, run, store.RotationSettle{
+		Now: now, FromPhases: from, Phase: run.Phase, LastError: run.LastError, NextAttempt: next, HaltReason: reason, HaltAudit: &a, Close: closed,
 	})
 }
 
@@ -1442,53 +1449,11 @@ func (e *RotationExecutor) extendDelivered(ctx context.Context, run store.Rotati
 	if due := rotationExtendDue(run.CandidateValidUntil); now.Before(due) {
 		return park(due)
 	}
-	superseded, err := e.Runtime.LaterPublished(ctx, run)
-	if err != nil {
-		return true, err
-	}
-	if superseded {
-		return park(rotationNever)
-	}
-	published, err := e.Runtime.PublishedAt(ctx, run)
-	if err != nil {
-		return true, err
-	}
-	if w := rotationCycleWindow(published, time.Duration(run.IntervalSeconds)*time.Second); now.After(w.D) {
-		if !held {
-			return park(rotationNever)
-		}
-		// The window is spent and the run is still open: the credential is about to
-		// lapse with nothing left to extend it. Stop loudly rather than silently.
-		return true, e.haltRun(ctx, run, from, rotHaltExhausted, now, now)
-	}
-	if err := e.gate(ctx, run.Chain(), run.RotationID, run.AuthorityPrincipalID, gateCheck{generation: anyGeneration}, now); err != nil {
-		if errors.Is(err, errRotationInactive) {
-			return park(rotationNever)
-		}
-		reason, definite := rotationGateReason(err)
-		if !definite {
-			e.warn("rotation extend gate failed", run, "extend", err)
-			if held {
-				return false, nil
-			}
-			return park(backoff)
-		}
-		next := rotationNever
-		if held {
-			// The halt is on record: the held run's own revoke follows at once.
-			next = now
-		}
-		return true, e.haltRun(ctx, run, from, reason, now, next)
-	}
-	provider, _, err := e.openProvider(ctx, run)
-	if err != nil {
-		e.warn("rotation extend could not open its provider", run, "extend", err)
-		if held {
-			return false, nil
-		}
-		return park(backoff)
-	}
-	defer provider.Close()
+	// The extend INTENT is durable before the supersession check, so a later run that
+	// publishes after that check reads this extend as uncertain when it decides
+	// whether the role can be dropped; a publish that landed before the check is seen
+	// by it and ends the extend. Every exit below closes the intent as a definite
+	// failure (the provider was never called), which no reader counts as uncertain.
 	intent, err := e.intent(run, "extend", now)
 	if err != nil {
 		return true, err
@@ -1505,6 +1470,69 @@ func (e *RotationExecutor) extendDelivered(ctx context.Context, run store.Rotati
 		}
 		return true, err
 	}
+	// skip ends the extend without a provider call: it closes the intent and then
+	// parks (or, for a held run, leaves the run to its own revoke step).
+	skip := func(next time.Time) (bool, error) {
+		closed, err := e.outcome(run, intent.EffectID, "extend", audit.OutcomeFailure, rotCodeExtendSkipped, now)
+		if err != nil {
+			return true, err
+		}
+		if held {
+			err := e.Runtime.Settle(ctx, run, store.RotationSettle{Now: now, FromPhases: from, Phase: run.Phase, LastError: run.LastError, NextAttempt: now, KeepLease: true, Close: closed})
+			if errors.Is(err, store.ErrRotationFenceLost) {
+				return true, nil
+			}
+			return err != nil, err
+		}
+		return true, e.settleDrop(ctx, run, store.RotationSettle{Now: now, FromPhases: from, Phase: "done", NextAttempt: next, Close: closed})
+	}
+	// failed is skip for a read that errored: the intent is closed best effort, and
+	// the read's error is what the caller sees.
+	failed := func(readErr error) (bool, error) {
+		_, cerr := skip(backoff)
+		return true, errors.Join(readErr, cerr)
+	}
+	superseded, err := e.Runtime.LaterPublished(ctx, run)
+	if err != nil {
+		return failed(err)
+	}
+	if superseded {
+		return skip(rotationNever)
+	}
+	published, err := e.Runtime.PublishedAt(ctx, run)
+	if err != nil {
+		return failed(err)
+	}
+	if w := rotationCycleWindow(published, time.Duration(run.IntervalSeconds)*time.Second); now.After(w.D) {
+		if !held {
+			return skip(rotationNever)
+		}
+		// The window is spent and the run is still open: the credential is about to
+		// lapse with nothing left to extend it. Stop loudly rather than silently.
+		return e.haltClosing(ctx, run, from, rotHaltExhausted, now, now, intent)
+	}
+	if err := e.gate(ctx, run.Chain(), run.RotationID, run.AuthorityPrincipalID, gateCheck{generation: anyGeneration}, now); err != nil {
+		if errors.Is(err, errRotationInactive) {
+			return skip(rotationNever)
+		}
+		reason, definite := rotationGateReason(err)
+		if !definite {
+			e.warn("rotation extend gate failed", run, "extend", err)
+			return skip(backoff)
+		}
+		next := rotationNever
+		if held {
+			// The halt is on record: the held run's own revoke follows at once.
+			next = now
+		}
+		return e.haltClosing(ctx, run, from, reason, now, next, intent)
+	}
+	provider, _, err := e.openProvider(ctx, run)
+	if err != nil {
+		e.warn("rotation extend could not open its provider", run, "extend", err)
+		return skip(backoff)
+	}
+	defer provider.Close()
 	newValidUntil := run.CandidateValidUntil.Add(rotationSlack)
 	opCtx, cancel := context.WithTimeout(ctx, e.providerDeadline())
 	err = provider.ExtendRole(opCtx, run.CandidateHandle, newValidUntil)
