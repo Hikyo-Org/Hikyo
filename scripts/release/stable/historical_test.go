@@ -69,7 +69,7 @@ func TestHistoricalUsesCurrentAuthorizationWithoutRollingBack(t *testing.T) {
 	// {identity, published_oci_verified}, with the identity derived from the verified files.
 	var verified struct {
 		Identity           releaseidentity.Identity `json:"identity"`
-		PublishedInventory bool                     `json:"published_oci_verified"`
+		PublishedInventory *bool                    `json:"published_oci_verified"`
 	}
 	if err := definitions.DecodeStrict(printed.Bytes(), &verified); err != nil {
 		t.Fatalf("verify output is not {identity, published_oci_verified}: %v\n%s", err, printed.String())
@@ -82,8 +82,11 @@ func TestHistoricalUsesCurrentAuthorizationWithoutRollingBack(t *testing.T) {
 	}
 	wantIdentity := releaseidentity.Identity{Profile: releaseidentity.StableV1, Version: "1.0.0", Sequence: uint64(verifiedManifest.ReleaseSequence), Commit: strings.Repeat("a", 40),
 		CompatibilitySHA256: releaseidentity.Hash(compatibilityFile), ManifestSHA256: releaseidentity.Hash(manifestFile)}
-	if verified.Identity != wantIdentity || verified.PublishedInventory {
-		t.Fatalf("verify printed identity %+v (published %v), want %+v", verified.Identity, verified.PublishedInventory, wantIdentity)
+	if verified.PublishedInventory == nil {
+		t.Fatalf("verify output lacks published_oci_verified:\n%s", printed.String())
+	}
+	if verified.Identity != wantIdentity || *verified.PublishedInventory {
+		t.Fatalf("verify printed identity %+v (published %v), want %+v", verified.Identity, *verified.PublishedInventory, wantIdentity)
 	}
 	var floor releasetrust.SnapshotFloor
 	saved := fixtureReadJSON(t, state, &floor)

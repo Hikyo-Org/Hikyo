@@ -71,10 +71,10 @@ case "$*" in
 		while [ $# -gt 0 ]; do [ "$1" != --directory ] || dir=$2; shift; done
 		# The verifier alone decides the identity: the fixture's own files say sequence 2, the other-identity
 		# verifier says 3, and the check must follow the verifier. A wrong version or commit is refused.
-		sequence=2 version=1.1.0 commit=$FIXTURE_COMMIT
-		case "$FIXTURE_MODE" in other-identity) sequence=3 ;; other-version) version=1.0.0 ;; other-commit) commit=$(printf '9%.0s' $(seq 40)) ;; esac
-		identity=$(jq -nc --arg c "$commit" --arg v "$version" --argjson s "$sequence" --arg decl "$(shasum -a 256 "$dir/upgrade-compatibility.json" | cut -d' ' -f1)" --arg man "$(shasum -a 256 "$dir/release-manifest.json" | cut -d' ' -f1)" \
-			'{identity: {profile: "stable/v1", version: $v, sequence: $s, commit: $c, compatibility_sha256: $decl, manifest_sha256: $man}, published_oci_verified: true}')
+		profile=stable/v1 sequence=2 version=1.1.0 commit=$FIXTURE_COMMIT
+		case "$FIXTURE_MODE" in other-identity) sequence=3 ;; other-version) version=1.0.0 ;; other-commit) commit=$(printf '9%.0s' $(seq 40)) ;; other-profile) profile=nightly/v1 ;; esac
+		identity=$(jq -nc --arg p "$profile" --arg c "$commit" --arg v "$version" --argjson s "$sequence" --arg decl "$(shasum -a 256 "$dir/upgrade-compatibility.json" | cut -d' ' -f1)" --arg man "$(shasum -a 256 "$dir/release-manifest.json" | cut -d' ' -f1)" \
+			'{identity: {profile: $p, version: $v, sequence: $s, commit: $c, compatibility_sha256: $decl, manifest_sha256: $man}, published_oci_verified: true}')
 		printf '%s\n' "$identity"
 		[ "$FIXTURE_MODE" != two-documents ] || printf '%s\n' "$identity" ;;
 	*) exit 2 ;;
@@ -257,6 +257,7 @@ refused empty-identity "$scratch/candidate.json" 'printed no release identity' 5
 refused two-documents "$scratch/candidate.json" 'printed no release identity' 5
 refused other-version "$scratch/candidate.json" 'printed no release identity' 5
 refused other-commit "$scratch/candidate.json" 'printed no release identity' 5
+refused other-profile "$scratch/candidate.json" 'printed no release identity' 5
 # The identity is the verifier's, not the files': when it says sequence 3, the edge that names sequence 2 (what the
 # files say) is no longer the edge from the baseline, and the required identity printed is the verifier's.
 refused other-identity "$scratch/candidate.json" 'compatibility check: sqlite: no release-source edge from v1.1.0 (an edge names v1.1.0 with a different release identity)' 1
