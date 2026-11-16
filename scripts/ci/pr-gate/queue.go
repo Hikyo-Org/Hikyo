@@ -256,7 +256,9 @@ func (q *queueController) executeProof(ctx context.Context, name string, e event
 		}
 		numbers = []int{n}
 	case "workflow_run":
-		if e.Run.Event != "pull_request" || !isFeedbackPath(e.Run.Path) || e.Run.Repository.ID != q.repo.ID || !shaPattern.MatchString(e.Run.HeadSHA) {
+		// Only ci-feedback.yml callbacks reach gate-queue: the publish job's filter
+		// skips ci-feedback-retarget.yml, which hosts no record (gate-dev takes it).
+		if e.Run.Event != "pull_request" || e.Run.Path != feedbackWorkflowPath || e.Run.Repository.ID != q.repo.ID || !shaPattern.MatchString(e.Run.HeadSHA) {
 			return errors.New("invalid feedback callback")
 		}
 		// Routing is only a hint. Admission independently finds current exact-head

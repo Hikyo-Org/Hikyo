@@ -48,7 +48,8 @@ contributor environment. CI's existing `scripts/ci/k8s-e2e.sh` builds and runs
 the same fixture. Do not run the internal helper against another cluster.
 The `cluster.json`, `cni.json`, Kubernetes version, default/restricted/recovered
 policy UID/spec snapshots, source head/diff and `probes.jsonl` retain identity
-and every curl result, including enforcement-convergence attempts.
+and every curl result, including convergence attempts for denials and for
+first reads of new or replaced Service backends.
 
 The exercise first proves every denied destination is live without restrictions.
 It then tests trusted proxy/workload/operator peers, same-namespace and

@@ -106,8 +106,10 @@ http_probe() {
     shift 6
     local result rc attempt limit=1
     # Policy programming is asynchronous. Retain each failed convergence
-    # attempt, and require the final positive controls below as well.
-    [[ "$expected" == deny || "$name" == recovered-* ]] && limit=15
+    # attempt, and require the final positive controls below as well. The
+    # default egress controls and the reboot read are the first reads of a
+    # Service whose endpoints and dataplane rules were just (re)programmed.
+    [[ "$expected" == deny || "$name" == recovered-* || "$name" == default-egress-* || "$name" == restricted-reboot ]] && limit=15
     for ((attempt=1; attempt<=limit; attempt++)); do
         # Hikyo serves its SPA only for an explicit HTML Accept header.
         if result=$(kubectl -n "$namespace" exec "$source" -c "$container" -- \
@@ -125,7 +127,11 @@ http_probe() {
             --argjson exit "$rc" --argjson attempt "$attempt" --argjson passed "$passed" \
             '{name:$name,expected:$expected,http:$http,exit:$exit,attempt:$attempt,passed:$passed}' >>"$results"
         if [[ "$passed" == true ]]; then
-            echo "network-policy: PASS $name"
+            if [[ "$attempt" == 1 ]]; then
+                echo "network-policy: PASS $name"
+            else
+                echo "network-policy: PASS $name (attempt $attempt)"
+            fi
             return
         fi
         [[ "$attempt" == "$limit" ]] || sleep 1
@@ -173,13 +179,15 @@ helm upgrade "$release" chart/hikyo -n "$ns" --reuse-values -f "$work/restricted
 snapshot restricted
 [[ "$(jq -r '.items[0].metadata.uid' "$evidence/restricted-policies.json")" == "$policy_uid" ]]
 
-http_probe approved-proxy "$approved" proxy probe 200 "$server"
-http_probe approved-workload "$ns" workload probe 200 "$server"
-http_probe approved-operator "$ns" operator probe 200 "$server"
+# Denials converge first, so the approved peers below are read under the
+# enforced restricted policy rather than the allow-all one it replaced.
 http_probe denied-same-namespace "$ns" unapproved probe deny "$server"
 http_probe denied-wrong-label "$approved" wrong-label probe deny "$server"
 http_probe denied-pod-ip "$ns" unapproved probe deny "https://$pod_ip:8080/"
 http_probe denied-operational "$approved" proxy probe deny "http://$pod_ip:8081/metrics"
+http_probe approved-proxy "$approved" proxy probe 200 "$server"
+http_probe approved-workload "$ns" workload probe 200 "$server"
+http_probe approved-operator "$ns" operator probe 200 "$server"
 for role in idp adapter remote collector; do
     # Use the actual pod IP for ipBlock, avoiding CNI-specific Service DNAT.
     host="$role.$targets.svc"

@@ -25,6 +25,10 @@ type queueReconciliation struct {
 	// The first finished-group identity a re-reading invocation observed. Later
 	// passes may only confirm it; a different one is movement, never new proof.
 	pinned *finishedGroupProof
+	// Wait already spent re-reading a listing that trailed a write. The barrier
+	// and the failure that follows it share one budget, so both confirmations
+	// together wait at most 3 s of the reserve they run under.
+	confirmSpent time.Duration
 }
 
 type finishedGroupProof struct {
@@ -444,15 +448,77 @@ func (s *queueReconciliation) ensureBlocking(ctx context.Context, cause error) e
 		}
 		return errors.Join(scanErr, writeErr)
 	}
-	fresh, finalErr := q.listOwnedChecks(ctx, q.expectedHead)
-	current := newestQueueCheck(fresh)
+	var current *check
+	var finalErr error
+	if written != nil {
+		current, finalErr = q.newestAfterWrite(ctx, written, &s.confirmSpent)
+	}
 	if finalErr != nil || written == nil || current == nil || current.ID != written.ID || !blockingQueueCheck(current) {
-		return errors.Join(scanErr, finalErr, errors.New("newest owned blocking barrier could not be confirmed"))
+		return errors.Join(scanErr, finalErr, fmt.Errorf("newest owned blocking barrier could not be confirmed: written %s, listed %s", describeCheck(written), describeCheck(current)))
 	}
 	if s.terminalGroupCause(cause) {
 		return s.finishGroupFailure(ctx, p, b, current, s.groupFailure())
 	}
 	return scanErr
+}
+
+// GitHub's check-run listing can trail a write: the pass that created or failed
+// a record lists it as absent, older or still queued for a moment (group job
+// 43743778985 re-listed under a second after its POST and saw nothing). The
+// bounded waits below cover only that gap and stay inside the caller's own
+// deadline and reserve. They are not a timeout bump and never retry a write.
+var writeConfirmBackoff = []time.Duration{500 * time.Millisecond, time.Second, 1500 * time.Millisecond}
+
+// writeConfirmTotal is the most one caller-owned budget may wait: one full
+// backoff, 3 s of the reserve the confirmations run under (5 s for a single
+// pass, 1 minute for the re-reading group job). The pass's
+// remaining API calls share the rest; a slow GitHub can still exhaust the
+// reserve first, which leaves the barrier blocking (fail closed).
+func writeConfirmTotal() time.Duration {
+	var total time.Duration
+	for _, d := range writeConfirmBackoff {
+		total += d
+	}
+	return total
+}
+
+// describeCheck names the fields a confirmation failure needs to be diagnosed
+// from its log alone. It carries no secrets: IDs, SHAs, the encoded binding,
+// status words and the gate's own fixed title and summary text.
+func describeCheck(v *check) string {
+	if v == nil {
+		return "none"
+	}
+	// Every field the readback equality compares, so any disagreement is named.
+	return fmt.Sprintf("id=%d status=%q conclusion=%q completed_at=%q title=%q name=%q head_sha=%q external_id=%q app=%d/%q summary=%q",
+		v.ID, v.Status, v.Conclusion, v.CompletedAt, v.Output.Title, v.Name, v.HeadSHA, v.ExternalID, v.App.ID, v.App.Slug, v.Output.Summary)
+}
+
+// newestAfterWrite lists the owned records and returns the newest one. It
+// re-lists only while the listing is demonstrably behind the exact record the
+// caller wrote: nothing, an older ID, or the same ID showing a status or
+// conclusion other than the written one (a record PATCHed from success to
+// failure also reads as behind while the old verdict shows). A newer ID or a
+// matching same-ID view is final at once, so the caller compares the exact
+// written ID and never accepts a different one. The caller's spent counter is
+// shared by every confirmation under one reserve: once it holds a full backoff
+// the next wait would not fit, so the current view is returned as it is.
+func (c *controller) newestAfterWrite(ctx context.Context, written *check, spent *time.Duration) (*check, error) {
+	for attempt := 0; ; attempt++ {
+		own, err := c.listOwnedChecks(ctx, c.expectedHead)
+		if err != nil {
+			return nil, err
+		}
+		newest := newestQueueCheck(own)
+		behind := newest == nil || newest.ID < written.ID || newest.ID == written.ID && (newest.Status != written.Status || newest.Conclusion != written.Conclusion)
+		if !behind || attempt == len(writeConfirmBackoff) || *spent+writeConfirmBackoff[attempt] > writeConfirmTotal() {
+			return newest, nil
+		}
+		*spent += writeConfirmBackoff[attempt]
+		if err := readRetryWait(ctx, writeConfirmBackoff[attempt]); err != nil {
+			return newest, err
+		}
+	}
 }
 
 var unsafeProofRefusal = refused("Current proof could not be safely established; the owned verdict is blocking.")
@@ -532,10 +598,9 @@ func (s *queueReconciliation) failOwnedBarrier(ctx context.Context, p pull, b bi
 	if !q.authenticatedQueueCheck(&written, q.expectedHead) || written.ID != latest.ID || written.ExternalID != b.externalID() || written.Status != "completed" || written.Conclusion != "failure" {
 		return errors.New("failure fallback response did not establish an owned blocking verdict")
 	}
-	own, err = q.listOwnedChecks(ctx, q.expectedHead)
-	newest := newestQueueCheck(own)
+	newest, err := q.newestAfterWrite(ctx, &written, &s.confirmSpent)
 	if err != nil || newest == nil || newest.ID != written.ID || newest.Status != "completed" || newest.Conclusion != "failure" {
-		return errors.Join(err, errors.New("failure fallback is not the effective blocking record"))
+		return errors.Join(err, fmt.Errorf("failure fallback is not the effective blocking record: written %s, listed %s", describeCheck(&written), describeCheck(newest)))
 	}
 	return nil
 }
