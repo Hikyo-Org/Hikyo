@@ -2,14 +2,11 @@ package isolation
 
 import (
 	"bytes"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"filippo.io/age"
 
 	"github.com/Hikyo-Org/hikyo/internal/app"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
@@ -126,8 +123,9 @@ func runRestoreAfterRootRotation(t *testing.T, target drillTarget, c custody) {
 			if err == nil {
 				t.Fatal("the restore was accepted")
 			}
-			var noMatch *age.NoIdentityMatchError
-			if wantNoMatch && !errors.As(err, &noMatch) {
+			// boundary confines filippo.io/age to the crypto packages, so the
+			// refusal is pinned by age's own message text.
+			if wantNoMatch && !strings.Contains(err.Error(), "identity did not match any of the recipients") {
 				t.Fatalf("restore error = %v, want age's no-identity-match refusal", err)
 			}
 			assertTargetUntouched(t, target)
