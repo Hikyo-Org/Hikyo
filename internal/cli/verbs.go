@@ -200,6 +200,7 @@ var verbHandlers = map[string]func(context.Context, IO, []string) error{
 	"adapter":             runAdapter,
 	"dynamic-provider":    runDynamicProvider,
 	"lease":               runLease,
+	"rotation":            runCredentialRotation,
 	"ssh-ca":              runSSHCA,
 	"ssh-profile":         runSSHProfile,
 	"ssh-cert":            runSSHCert,
@@ -527,6 +528,20 @@ dynamic secrets:
   the minted credential is shown exactly once, through the print triad (a
   controlling terminal, --output-file, or --dangerously-print); the admin
   provider credential is read like an adapter credential, never on argv.
+
+scheduled credential rotation:
+  hikyo rotation create --provider <provider> --key <password-key> --username-key <key>
+      --interval <duration> --revocation-delay <duration> --env E
+  hikyo rotation list --env E [-o table|json]
+  hikyo rotation show <rotation> --env E [-o table|json]
+  hikyo rotation pause <rotation> --env E [--expected-generation N]
+  hikyo rotation resume <rotation> --env E [--expected-generation N]
+  hikyo rotation delete <rotation> --env E [--expected-generation N]
+
+  configuration only: a human holding edit, publish and reveal on both keys
+  records the schedule and is kept as its authority; interval 1h to 90d and
+  revocation delay 5m to 7d, the delay shorter than the interval; delete
+  disables the rotation and keeps it as history; no credential is stored.
 
 ssh certificates:
   hikyo ssh-ca create <name> --env E [--algorithm ed25519|ecdsa-p256|rsa-3072]
