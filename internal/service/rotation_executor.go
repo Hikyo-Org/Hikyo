@@ -41,6 +41,11 @@ type RotationExecutor struct {
 	// the claim lease so a slow provider cannot outlive the crash fence.
 	ProviderDeadline time.Duration
 	Now              func() time.Time
+	// AfterExtendSupersessionCheck is a conformance seam: it runs once an extend
+	// has recorded its intent and found no later publish, before the extend does
+	// anything else. A test publishes a replacement run there to prove that the
+	// replacement's revoke read counts the extend as uncertain. nil in production.
+	AfterExtendSupersessionCheck func()
 	// Log receives the executor's operational faults as redacted error classes,
 	// never the cause text. nil logs to the default logger.
 	Log *slog.Logger
@@ -1521,6 +1526,9 @@ func (e *RotationExecutor) extendDelivered(ctx context.Context, run store.Rotati
 	}
 	if superseded {
 		return skip(rotationNever)
+	}
+	if e.AfterExtendSupersessionCheck != nil {
+		e.AfterExtendSupersessionCheck()
 	}
 	published, err := e.Runtime.PublishedAt(ctx, run)
 	if err != nil {

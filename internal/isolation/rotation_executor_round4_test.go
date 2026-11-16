@@ -190,6 +190,86 @@ func TestRotationOverlapDeadlineIsCommitTimePlusDelayAfterLateWork(t *testing.T)
 	})
 }
 
+// A replacement run that publishes AFTER the extend's supersession check is not
+// seen by that check, so the extend proceeds; the replacement's revoke read must
+// then count the extend as uncertain (its VALID UNTIL is only a lower bound) and
+// must not settle the superseded role as expired. This holds only because the
+// extend intent is recorded before the check: the hook fires right after it.
+func TestRotationExtendIntentCoversAPublishAfterTheSupersessionCheck(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		rot := x.create(rotPasswordKey, rotUsernameKey)
+		run1 := x.cycle(rot.ID)
+		role1 := x.lastRun(rot.ID, "candidate_handle")
+		validUntil := mustParseStamp(t, queryString(t, db, "SELECT "+stampText(db, "candidate_valid_until")+" FROM rotation_runs WHERE id='"+run1+"'"))
+		// Failing mints keep run 1 the newest published run until its credential is
+		// due for an extension.
+		x.ctl.set(func() { x.ctl.createErr = dynamic.ErrUnreachable })
+		fired := false
+		x.exec.AfterExtendSupersessionCheck = func() {
+			x.exec.AfterExtendSupersessionCheck = nil
+			fired = true
+			openExtends := func() int64 {
+				return queryInt(t, db, "SELECT COUNT(*) FROM rotation_effects WHERE run_id='"+run1+"' AND kind='extend' AND (outcome IS NULL OR outcome='unknown')")
+			}
+			if got := openExtends(); got != 1 {
+				t.Fatalf("%d extend intents of run 1 are open after the supersession check, want 1", got)
+			}
+			// Run 1's lease stays with the extending worker for the whole scenario;
+			// another worker takes over the rotation.
+			execRaw(t, db, "UPDATE rotation_runs SET lease_expires_at='2099-01-01T00:00:00.000000Z' WHERE id='"+run1+"'")
+			x.ctl.set(func() { x.ctl.createErr = nil })
+			sweep := func() {
+				if _, err := x.sweep("wrk_b"); err != nil {
+					t.Fatalf("replacement sweep: %v", err)
+				}
+			}
+			for i := 0; i < 60 && x.phase(x.openRunID(rot.ID)) != "overlap"; i++ {
+				x.advance(5 * time.Minute)
+				sweep()
+			}
+			run2 := x.openRunID(rot.ID)
+			if run2 == run1 || x.phase(run2) != "overlap" {
+				t.Fatalf("the replacement run = %s (%s), want a published run in overlap", x.phase(run2), x.lastRun(rot.ID, "last_error"))
+			}
+			// Past the superseded role's recorded VALID UNTIL plus the skew, and past
+			// the overlap: if the extend were not counted, the role would read expired.
+			deadline := mustParseStamp(t, queryString(t, db, "SELECT "+stampText(db, "next_attempt_at")+" FROM rotation_runs WHERE id='"+run2+"'"))
+			target := validUntil.Add(10 * time.Minute)
+			if deadline.Add(time.Minute).After(target) {
+				target = deadline.Add(time.Minute)
+			}
+			x.advance(target.Sub(x.now()))
+			x.ctl.set(func() { x.ctl.dropErr = dynamic.ErrRefused })
+			for i := 0; i < 5; i++ {
+				sweep()
+			}
+			if got := openExtends(); got != 1 {
+				t.Fatalf("%d extend intents of run 1 are open at the replacement's revoke, want 1", got)
+			}
+			if x.ctl.count("drop:"+role1) == 0 {
+				t.Fatal("the replacement's revoke never tried to drop the superseded role")
+			}
+			if got := x.phase(run2); got == "done" {
+				t.Fatalf("the replacement settled the superseded role as %s (%s): its extend was open", got, x.lastRun(rot.ID, "last_error"))
+			}
+			if got := x.lastRun(rot.ID, "last_error"); got != "revoke_failed" {
+				t.Fatalf("last error = %q, want revoke_failed: the role may still authenticate", got)
+			}
+			if got := queryInt(t, db, "SELECT COUNT(*) FROM rotation_effects WHERE run_id='"+run2+"' AND kind='revoke' AND outcome='success'"); got != 0 {
+				t.Fatalf("%d revoke effects settled as success for a role with an uncertain extend", got)
+			}
+		}
+		for i := 0; i < 90 && !fired; i++ {
+			x.advance(30 * time.Minute)
+			x.drain()
+		}
+		if !fired {
+			t.Fatal("the extend never reached its supersession check")
+		}
+	})
+}
+
 // stampText selects a timestamp column as an RFC 3339 string on either engine
 // (PostgreSQL stores these as timestamptz).
 func stampText(db *store.DB, column string) string {

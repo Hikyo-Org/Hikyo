@@ -987,6 +987,15 @@ Round 4 review additions (CodeRabbit threads on PR #1426):
     the harness has no hook between the commit and the settle, so the post-commit read
     itself is not separately exercised.
 
+39. Extend intent ordering. `extendDelivered` records its INTENT before the
+    `LaterPublished` check, so a replacement run that publishes after that check (and so
+    is invisible to it) still has its revoke read count the extend as uncertain
+    (`extend_uncertain` = 1) and never settle the superseded role as expired.
+    `RotationExecutor.AfterExtendSupersessionCheck` is the conformance seam (nil in
+    production) between the check and the rest of the extend;
+    `TestRotationExtendIntentCoversAPublishAfterTheSupersessionCheck` publishes a
+    replacement there and fails if the intent moves after the check.
+
 ### Owner decisions on the S2a review (resolved)
 
 - A. A restore never clears the restore-hazard hold by itself: the hold ends only when the
