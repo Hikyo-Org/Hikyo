@@ -150,9 +150,13 @@ and that job also runs after a failed or timed-out plan to say so in the issue. 
 at parse time runs no job, so that case is repaired only by the next successful run.
 The issue's command starts with `security-patch-plan.sh recheck`, run by the maintainer with their own
 login, which refuses when the checkout is dirty, when a newer pending security merge exists, or when the
-version, the trust record or the tag checks no longer hold. It does not close the window between the
-recheck and the tag push, and it does not regenerate the compatibility declaration; it guards stale
-instructions, it is not a lock. Fully unattended tagging stays deferred to a later
+version, the trust record, the tag checks, the fallback-channel gate or the release-source edge no
+longer hold. It does not close the window between the recheck and the tag push, and it does not
+regenerate the compatibility declaration; it guards stale instructions, it is not a lock. For a patch
+as well as a minor, the plan requires the reviewed release-source edge from the latest stable release in
+`release/compatibility/sources.json` (validated against that release's verified declaration), because
+an installed release is routed only through an edge whose source is its exact identity. No supported
+command authors that edge yet (a tooling gap); the issue says so. Fully unattended tagging stays deferred to a later
 App phase. The workflow lands on `dev` and reaches `main` by promotion; its triggers run only from
 `main`, so it goes live then.
 

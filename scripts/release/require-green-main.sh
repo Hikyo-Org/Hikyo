@@ -26,18 +26,21 @@ repo_root=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)
 # manual/legacy full-main proof. It authenticates the producer, latest attempt,
 # approved execution definition and every native job; a same-name check or
 # candidate-authored artifact cannot replace source execution evidence.
-# "go run" hides the program's exit status, so the verifier reports a failed
-# GitHub read through a file: exit 4 means "could not look", never "not green".
+# "go run" hides the program's exit status, so the verifier reports its class
+# through a file. The class starts as "lookup" (could not look), and only the
+# verifier's own definite verdict changes it to "not-green": a build failure or a
+# crash before the verdict is never read as "not green".
 class=$(mktemp "${TMPDIR:-/tmp}/hikyo-green-class.XXXXXX")
 trap 'rm -f "$class"' EXIT HUP INT TERM
+printf 'lookup\n' >"$class"
 if ! "$GO_BIN" -C "$repo_root" run -p 2 ./scripts/ci/source-proof \
 	--repository "$repository" --mode main --commit "$commit" --authority-commit "$commit" --failure-class "$class" >/dev/null; then
-	if [ "$(cat "$class")" = lookup ]; then
-		printf 'green main: could not read GitHub for exact commit %s; nothing is decided\n' "$commit" >&2
-		exit 4
+	if [ "$(cat "$class")" = not-green ]; then
+		printf 'green main: exact commit %s needs complete authenticated source proof; run full ci-main.yml on the selected main commit when proof is unavailable\n' "$commit" >&2
+		exit 1
 	fi
-	printf 'green main: exact commit %s needs complete authenticated source proof; run full ci-main.yml on the selected main commit when proof is unavailable\n' "$commit" >&2
-	exit 1
+	printf 'green main: could not read GitHub or run the verifier for exact commit %s; nothing is decided\n' "$commit" >&2
+	exit 4
 fi
 
 printf 'green main: exact commit %s passed CI\n' "$commit"

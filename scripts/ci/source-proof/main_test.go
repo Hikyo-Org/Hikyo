@@ -637,6 +637,20 @@ func TestFailedReadIsClassifiedForTheCaller(t *testing.T) {
 	if got, err := os.ReadFile(class); err != nil || string(got) != "lookup\n" {
 		t.Fatalf("a failed read must be classified as a lookup failure: %q %v", got, err)
 	}
+	// A readable answer that holds no proof is a definite "not green", a different class.
+	empty := filepath.Join(dir, "gh-empty")
+	if err := os.WriteFile(empty, []byte("#!/bin/sh\necho '{}'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GH_BIN", empty)
+	verdict := filepath.Join(dir, "verdict")
+	args = []string{"--repository", "example/hikyo", "--mode", "main", "--commit", testSource, "--failure-class", verdict}
+	if err := execute(context.Background(), args, os.Stdout); err == nil {
+		t.Fatal("an answer without a proof was accepted")
+	}
+	if got, err := os.ReadFile(verdict); err != nil || string(got) != "not-green\n" {
+		t.Fatalf("a definite refusal must be classified not-green: %q %v", got, err)
+	}
 	// A rule that says no (here: invalid selectors) is not a lookup failure.
 	other := filepath.Join(dir, "other")
 	bad := []string{"--repository", "example/hikyo", "--mode", "main", "--commit", "main", "--failure-class", other}

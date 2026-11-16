@@ -62,8 +62,14 @@ type readError struct{ err error }
 func (e readError) Error() string { return e.err.Error() }
 func (e readError) Unwrap() error { return e.err }
 
-// lookupFailedClass is written to --failure-class when the failure was a read.
-const lookupFailedClass = "lookup"
+// The classes a caller may read from --failure-class. A caller that runs this
+// through "go run" cannot see the exit status, so it pre-writes lookupFailedClass
+// and only a definite verdict replaces it: a build failure or a crash before the
+// verdict leaves "could not look", never "not green".
+const (
+	lookupFailedClass = "lookup"
+	notGreenClass     = "not-green"
+)
 
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -74,10 +80,9 @@ func main() {
 	}
 }
 
-// execute runs the proof. When --failure-class names a file and the failure was
-// a failed GitHub read, the file receives lookupFailedClass: a caller that runs
-// this through "go run" cannot see the exit status, so it reads the class here
-// instead of matching error text.
+// execute runs the proof. When --failure-class names a file, a failed GitHub read
+// writes lookupFailedClass to it and a definite verdict (the proof is missing or
+// wrong) writes notGreenClass; a refusal of the arguments writes nothing.
 func execute(ctx context.Context, args []string, stdout io.Writer) (err error) {
 	var opt options
 	flags := flag.NewFlagSet("source-proof", flag.ContinueOnError)
@@ -87,15 +92,20 @@ func execute(ctx context.Context, args []string, stdout io.Writer) (err error) {
 	flags.StringVar(&opt.Authority, "authority-commit", "", "immutable approved main definition SHA")
 	flags.StringVar(&opt.Output, "output", "", "small verified JSON receipt")
 	flags.StringVar(&opt.GitHubOutput, "github-output", "", "append validated Actions outputs")
-	flags.StringVar(&opt.FailureClass, "failure-class", "", "file that receives \"lookup\" when the failure was a failed GitHub read")
+	flags.StringVar(&opt.FailureClass, "failure-class", "", "file that receives \"lookup\" when the failure was a failed GitHub read and \"not-green\" for a definite no")
 	flags.BoolVar(&opt.Latest, "latest", false, "select last fully validated dev ancestor")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
+	decided := false
 	defer func() {
 		var read readError
-		if err != nil && opt.FailureClass != "" && errors.As(err, &read) {
+		switch {
+		case err == nil || opt.FailureClass == "":
+		case errors.As(err, &read):
 			_ = os.WriteFile(opt.FailureClass, []byte(lookupFailedClass+"\n"), 0o600)
+		case decided:
+			_ = os.WriteFile(opt.FailureClass, []byte(notGreenClass+"\n"), 0o600)
 		}
 	}()
 	if flags.NArg() != 0 || !validRepository(opt.Repository) || (opt.Mode != "main" && opt.Mode != "dev") ||
@@ -108,6 +118,7 @@ func execute(ctx context.Context, args []string, stdout io.Writer) (err error) {
 		gh = "gh"
 	}
 	r := resolver{api: githubCLI{binary: gh}, requested: opt.Repository}
+	decided = true
 	verified, err := r.resolve(ctx, opt)
 	if err != nil {
 		return err

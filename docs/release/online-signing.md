@@ -102,18 +102,29 @@ the commands in the latest version of that issue.
   compatibility declaration differs from the latest stable release's (once a
   promotion brings unreleased migrations, every patch is refused), the issue
   proposes the next minor `X.(Y+1).0` instead and lists a checklist of
-  prerequisites that block tagging: read the declaration difference, review the
-  edge modes against the compatibility ADR, accept that everything on the commit
-  ships, write the release notes. A minor ships everything on its commit, not only
-  the security fix.
+  prerequisites that block tagging: read the declaration difference (the issue
+  embeds it, cut at 200 lines), review the edge modes against the compatibility
+  ADR, accept that everything on the commit ships. The release notes are step 2:
+  `publish` refuses the placeholder. A minor ships everything on its commit, not
+  only the security fix.
+- **The release-source edge.** For a patch as well as a minor, the plan checks
+  (before generating anything) that the target's `release/compatibility/sources.json`
+  carries a sound edge from the latest stable release per engine. When it does not,
+  the state is `blocked` and the issue names the missing edge and how to write it.
+  No supported command authors a stable edge today (`scripts/release/nightly
+  sources` reads verified nightly directories only); this is a known gap. The
+  recheck enforces the same check against the commit you tag, and it also runs the
+  fallback-channel gate that `release.yml` asserts.
 - **The recheck.** The first command, `security-patch-plan.sh recheck KIND
   VERSION COMMIT`, is run with your own login on a clean checkout. It refuses,
   tagging nothing, when the checkout is dirty or not at the planned commit,
   when `main` moved (green tip), when the version is not the kind's successor of
   the latest stable release, when trust is not synchronized, when a newer
   security merge exists, when a security merge cannot be placed in main's history
-  or a fixed alert has no linked merge, or when a patch would carry a migration or
-  compatibility-source change. It does not regenerate the compatibility
+  or a fixed alert has no linked merge, when the release tools its commands run
+  differ between the commit and the main tip, when the release-source edge or the
+  fallback-channel record fails, or when a patch would carry a migration or a
+  compatibility change other than the release-source edge. It does not regenerate the compatibility
   declaration (the plan did, for the planned commit; that needs scratch
   PostgreSQL) and it cannot see what happens between the recheck and the tag push:
   that window is seconds to minutes, and a merge that lands in it is caught only by
@@ -123,12 +134,17 @@ the commands in the latest version of that issue.
   check) instead of `ceremony.sh build`, because `build` can only tag the tip.
 - **A burned tag.** A pushed tag is never moved or recreated. If `release-build`
   fails before the draft is complete and the byte set cannot be completed safely,
-  the version is burned and you use a new version; the issue repeats this.
+  the version is burned and you use a new version; the issue repeats this. When
+  every `release-build` run of a tag has failed and no release exists for it, the
+  plan marks that patch version burned and plans the next one.
 - **An unlinked fixed alert.** A Dependabot alert fixed after the latest stable
   release without a linked merged pull request on main (a promotion that bumped
-  the dependency, or a fix by hand) raises a standing alarm and `recheck` refuses.
-  Decide by hand whether the fix is released; to clear it, publish the fix in a
-  stable release through the ordinary ceremony (`ceremony.sh build VERSION`),
+  the dependency, or a fix by hand) raises a standing alarm, the plan offers no tag
+  command and `recheck` refuses. A linked pull request counts only when it passes
+  the same filter as the listing (Dependabot's numeric id, base `main`, a
+  `dependabot/` branch). Decide by hand whether the fix is released; to clear it,
+  publish the fix in a stable release through the ordinary ceremony (`ceremony.sh
+  build VERSION`),
   because the alarm counts only alerts fixed after the latest stable release was
   published.
 - **After the release.** The issue closes itself once the security merges are

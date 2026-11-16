@@ -32,13 +32,28 @@ lands it on `main`**. `recheck` and the fixture work from `dev` today.
   unreleased migrations, the compatibility check refuses every patch, so the
   issue proposes `X.(Y+1).0` with a checklist of prerequisites that block
   tagging (read the declaration difference, review the edge modes against the
-  compatibility ADR, accept that everything on the commit ships, write the release
-  notes). `recheck` takes the kind (`patch` or `minor`) and refuses when the
+  compatibility ADR, accept that everything on the commit ships; the release notes
+  belong to step 2, where `publish` refuses the placeholder). `recheck` takes the kind (`patch` or `minor`) and refuses when the
   version is not that kind's successor of the latest stable release.
 - **Homebrew stays manual.** `ceremony.sh homebrew X` remains the last step in
   the issue and no tap credential is added. This replaces, for now, the earlier
   decision that Homebrew follows the latest release automatically (part 3 found
   that automation would need a cross-repo credential that does not exist).
+
+- **The release-source edge is required, for a patch and for a minor.** An
+  installed release is recorded under its release identity and `PlanRoute` only
+  follows an edge whose source is that exact release; the genesis edges of
+  v1.0.0, v1.1.0, main and dev never match it. The plan therefore checks, with
+  part 2's `check-compatibility-unchanged.sh --edges-only` and before it starts
+  PostgreSQL, that the target's `release/compatibility/sources.json` has a sound
+  edge from the latest stable release per engine (validated against that
+  release's own verified declaration). A missing or wrong edge makes the state
+  `blocked` with a prerequisite naming the edge, and `recheck` enforces the same
+  check against the commit that is tagged. **Tooling gap, reported to the owner:**
+  no supported command authors a stable release edge (`scripts/release/nightly
+  sources` reads verified nightly directories only), so the issue says the edge
+  is written by hand and reviewed. Until one is added, expect "edge missing" on
+  the first post-promotion run.
 
 ## Result
 
@@ -51,7 +66,16 @@ lands it on `main`**. `recheck` and the fixture work from `dev` today.
   pending merge; there the target's tree must also equal the tip's for every
   release tool path the commands run. It then checks trust synchronization,
   authentication, the candidate, main history, source proof, stray tags,
-  existing releases and, last, compatibility with the previous stable release.
+  existing releases, the fallback-channel gate that `release.yml` asserts (the
+  target's own script and record, so a stale record stops the plan rather than the
+  build), the release-source edge and, last, compatibility with the previous
+  stable release. A version whose tag exists, has no release and whose
+  `release-build` runs all failed is burned: the plan skips it (a patch) and says
+  so. A fixed alert that is not explained by a merged security pull request
+  (the same filter as the listing: Dependabot's numeric id, base `main`,
+  `dependabot/` branch) blocks the tag instead of only raising an alarm. An
+  alert list with no alert at all is cross-checked over REST before it is
+  believed.
   A published release that trust does not record keeps the issue open (trust
   commands first) even when nothing else is pending.
 - `issue FILE` applies the plan to the single issue (marker, title and the
@@ -66,8 +90,10 @@ lands it on `main`**. `recheck` and the fixture work from `dev` today.
   It refuses unless the checkout is clean and at the planned commit and every
   pending security merge is in it (no grace period), no fixed alert lacks a
   linked merge, the version is the kind's successor, trust records the latest
-  release, a patch carries no change to the migrations or compatibility sources,
-  and the tag checks pass.
+  release, a patch carries no change to the migrations or compatibility files and
+  its `sources.json` only gained release-source edges, the release tools the
+  commands run from the commit equal the main tip's (below the tip), and the tag
+  checks pass (including the fallback gate and the edge).
 - With a green tip the command is `recheck ... --tip && ceremony.sh build`.
   With a red tip `build` cannot be used (it tags the tip), so the issue gives
   an explicit signed tag of the green commit, a signature check of the new
@@ -113,15 +139,25 @@ lands it on `main`**. `recheck` and the fixture work from `dev` today.
   security pull request.
 - The maintainer's own `gh` login needs the scopes `recheck` reads (Dependabot
   alerts through GraphQL); confirm once with a real `recheck`.
-- The repository's `pre-push` hook needs `refs/remotes/hikyo-upstream/main`;
-  `git fetch hikyo-upstream main` before the red-tip push if it refuses.
+- The red-tip tag block runs `git fetch hikyo-upstream main` before the signature
+  check, which needs `refs/remotes/hikyo-upstream/main` (CONTRIBUTING.md sets the
+  remote up); a clone without that remote stops there.
 - `gh issue` behavior (list limit, body files) is exercised only against a fake.
 - The job timeout (45 minutes) is an estimate, not a measurement.
-- The planner does not check the docs-live or fallback-channel record; the
-  ceremony does.
+- The planner checks the fallback-channel gate (it needs `node`, as on the
+  hosted runner) but not the other gates that run after the tag: docs-live, the
+  floor benchmark and the Apple jobs. A failure there burns the version, and
+  nothing here sees it coming.
 - `recheck` does not rerun the compatibility comparison (it needs scratch
-  PostgreSQL); the plan did, for the planned commit. For a patch it checks only
-  that no migration or compatibility source changed since the latest release.
+  PostgreSQL); the plan did, for the planned commit. For a patch it checks that no
+  migration or compatibility file changed since the latest release and that
+  `sources.json` only gained release edges, and it enforces the edge itself.
+- The burned-version rule trusts `release-build` run conclusions; a failed run that
+  a person re-runs successfully clears it once a draft exists. A burned minor
+  needs no skipping: its tag is above every patch, so the plan blocks.
+- The edge's behavior in `PlanRoute` is not exercised against real v1.1.0 files.
+  By reading the code, no existing test covers a release-to-release upgrade from
+  a real v1.0.0 install: v1.1.0 declares only genesis edges.
 - The window between `recheck` and the tag push is not closed. The ceremony's
   own build checks apply after the tag.
 - A persistent alarm for a fixed alert with no linked merge clears when a stable
@@ -132,5 +168,8 @@ lands it on `main`**. `recheck` and the fixture work from `dev` today.
 1. Merge #1413 and part 2 (#1406) to `dev`, retarget this PR to `dev`, merge it.
 2. After the promotion to `main`, dispatch the workflow once and record the run and issue.
 3. Live checks that remain after promotion: the first sweep, `gh issue` writes with
-   the real token, the `vulnerability-alerts` acceptance, and one real `recheck`
-   run by a maintainer.
+   the real token, the `vulnerability-alerts` acceptance, one real `recheck`
+   run by a maintainer, the first dispatch of the compatibility check (expect
+   "edge missing" until a reviewed edge from the latest stable release is on
+   main), the post-tag gates (docs-live, floor benchmark, Apple jobs) that
+   the planner cannot see, and a decision on the missing stable edge tool.

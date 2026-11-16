@@ -21,7 +21,10 @@ set -eu
 [ "${13}" = --authority-commit ] && [ "${14}" = "$EXPECTED_COMMIT" ]
 [ "${15}" = --failure-class ]
 printf 'called\n' >>"$CALLS"
-# Status 4 stands for a failed GitHub read: the verifier says so through the class file.
+# Status 1 is the verifier's definite "no" and says so through the class file; status 4 a failed
+# read (it also writes its class). Any other status is a crash or a build failure that never
+# reached a verdict, so the wrapper's own default class stays in place.
+[ "$PROOF_STATUS" != 1 ] || printf 'not-green\n' >"${16}"
 [ "$PROOF_STATUS" != 4 ] || printf 'lookup\n' >"${16}"
 [ "$PROOF_STATUS" = 0 ] || exit 1
 exit 0
@@ -31,14 +34,21 @@ export EXPECTED_ROOT="$repo_root" EXPECTED_COMMIT="$commit"
 export CALLS="$fixture_dir/calls" PROOF_STATUS=0
 GO_BIN="$fixture_dir/go" "$script_dir/require-green-main.sh" Hikyo-Org/hikyo "$commit" >/dev/null
 [ "$(wc -l <"$CALLS" | tr -d ' ')" = 1 ]
-for status in 1 2 17; do
+PROOF_STATUS=1
+export PROOF_STATUS
+if GO_BIN="$fixture_dir/go" "$script_dir/require-green-main.sh" Hikyo-Org/hikyo "$commit" >"$fixture_dir/out" 2>&1; then
+ printf 'green main fixture: a definite not-green verdict was ignored\n' >&2
+ exit 1
+fi
+grep -F 'needs complete authenticated source proof' "$fixture_dir/out" >/dev/null
+# A verifier that never reached a verdict (a build failure, a crash) is "could not look", not "not green".
+for status in 2 17; do
  PROOF_STATUS=$status
  export PROOF_STATUS
- if GO_BIN="$fixture_dir/go" "$script_dir/require-green-main.sh" Hikyo-Org/hikyo "$commit" >"$fixture_dir/out" 2>&1; then
-  printf 'green main fixture: verifier failure %s was ignored\n' "$status" >&2
-  exit 1
- fi
- grep -F 'needs complete authenticated source proof' "$fixture_dir/out" >/dev/null
+ rc=0
+ GO_BIN="$fixture_dir/go" "$script_dir/require-green-main.sh" Hikyo-Org/hikyo "$commit" >"$fixture_dir/out" 2>&1 || rc=$?
+ [ "$rc" = 4 ] || { printf 'green main fixture: verifier status %s without a verdict exited %s, want 4\n' "$status" "$rc" >&2; exit 1; }
+ grep -F 'nothing is decided' "$fixture_dir/out" >/dev/null
 done
 # A failed GitHub read is its own exit code, so a caller never reads "could not look" as "not green".
 PROOF_STATUS=4

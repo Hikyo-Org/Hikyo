@@ -14,7 +14,7 @@ script=$script_dir/security-patch-plan.sh
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-security-patch-test.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT HUP INT TERM
 repo="$scratch/repo"
-mkdir -p "$scratch/bin" "$repo/release/trust" "$repo/release/compatibility"
+mkdir -p "$scratch/bin" "$repo/release/trust" "$repo/release/compatibility" "$repo/release/repository" "$repo/scripts/ci"
 fail() {
 	printf 'security-patch-plan fixture: %s\n' "$*" >&2
 	exit 1
@@ -27,8 +27,10 @@ trust_metadata() { jq -nc --arg highest "$1" --args '{highest_release:$highest, 
 # c0 is v1.1.0, whose trust is synchronized from c2 on; c3 is the security merge,
 # c4 an ordinary commit after it. A build at c0 or c1 would read stale trust.
 trust_metadata 1.0.0 1.0.0 >"$repo/release/trust/metadata.json"
-printf '{}\n' >"$repo/release/compatibility/sources.json"
-mkdir -p "$repo/internal/store/migrations/postgres" "$repo/scripts/release" "$repo/scripts/lib" "$repo/scripts/git" "$repo/scripts/ci"
+printf '{"schema":"hikyo.dev/upgrade-sources/v1","engines":{"sqlite":[{"source":{"genesis":"fresh/v1"}}],"postgres":[{"source":{"genesis":"fresh/v1"}}]}}\n' >"$repo/release/compatibility/sources.json"
+printf '{"schema":"fallback"}\n' >"$repo/release/repository/fallback-channel-test.json"
+printf '#!/bin/sh\nexit 0\n' >"$repo/scripts/ci/check-fallback-channel-test.sh"
+mkdir -p "$repo/internal/store/migrations/postgres" "$repo/scripts/release" "$repo/scripts/lib" "$repo/scripts/git" "$repo/scripts/ci" "$repo/release/repository"
 printf -- '-- 1\n' >"$repo/internal/store/migrations/postgres/00001_x.sql"
 # The tools the issue's commands run are the real ones, committed in the repository the way the
 # target commit would carry them; the hooks installer and the signature check are stand-ins
@@ -38,7 +40,7 @@ cp "$real_root/scripts/lib/release.sh" "$repo/scripts/lib/release.sh"
 printf '#!/bin/sh\nexit 0\n' >"$repo/scripts/git/install-hooks.sh"
 printf '#!/bin/sh\nprintf "signature check %%s\\n" "$*" >>"${FIXTURE:-/dev/null}/signature-calls"\nexit "${SIGNATURES:-0}"\n' >"$repo/scripts/ci/check-commit-signatures.sh"
 printf '#!/bin/sh\nexit 0\n' >"$repo/scripts/release/ceremony.sh"
-chmod +x "$repo"/scripts/release/*.sh "$repo/scripts/git/install-hooks.sh" "$repo/scripts/ci/check-commit-signatures.sh"
+chmod +x "$repo"/scripts/release/*.sh "$repo/scripts/git/install-hooks.sh" "$repo/scripts/ci/check-commit-signatures.sh" "$repo/scripts/ci/check-fallback-channel-test.sh"
 git -C "$repo" add -A
 git -C "$repo" commit -q -m c0
 git -C "$repo" commit -q --allow-empty -m c1
@@ -88,10 +90,20 @@ git -C "$repo" commit -q -m cmig
 cmig=$(git -C "$repo" rev-parse HEAD)
 git -C "$repo" switch -q --detach "$c4"
 mkdir -p "$repo/release/compatibility"
-printf '{"changed":1}\n' >"$repo/release/compatibility/sources.json"
+jq -c '.changed = 1' "$repo/release/compatibility/sources.json" >"$scratch/sources.tmp" && cp "$scratch/sources.tmp" "$repo/release/compatibility/sources.json"
 git -C "$repo" add -A
 git -C "$repo" commit -q -m ccomp
 ccomp=$(git -C "$repo" rev-parse HEAD)
+# cedge adds only the reviewed release edge per engine; cedgeplus adds a genesis edge besides.
+git -C "$repo" switch -q --detach "$c4"
+jq -c '.engines |= map_values(. + [{source:{release:{profile:"stable/v1",version:"1.1.0"}},mode:"maintenance"}])' "$repo/release/compatibility/sources.json" >"$scratch/sources.tmp" && cp "$scratch/sources.tmp" "$repo/release/compatibility/sources.json"
+git -C "$repo" add -A
+git -C "$repo" commit -q -m cedge
+cedge=$(git -C "$repo" rev-parse HEAD)
+jq -c '.engines.sqlite += [{source:{genesis:"legacy/v1"}}]' "$repo/release/compatibility/sources.json" >"$scratch/sources.tmp" && cp "$scratch/sources.tmp" "$repo/release/compatibility/sources.json"
+git -C "$repo" add -A
+git -C "$repo" commit -q -m cedgeplus
+cedgeplus=$(git -C "$repo" rev-parse HEAD)
 git -C "$repo" switch -q main
 git -C "$repo" reset -q --hard "$c4"
 export FIXTURE="$scratch" C0="$c0" C1="$c1" C2="$c2" C3="$c3" C4="$c4"
@@ -120,36 +132,54 @@ case "$*" in
 		case "$*" in *'states:[OPEN,FIXED]'*) ;; *) printf 'the alert query must list its states explicitly\n' >&2; exit 2 ;; esac
 		case "$*" in *'pageInfo{hasNextPage endCursor}'*) ;; *) printf 'the alert query must select pageInfo\n' >&2; exit 2 ;; esac
 		[ "${ALERTS:-}" != null ] || { echo '{"data":{"repository":{"vulnerabilityAlerts":null}}}'; exit 0; }
+		[ "${ALERTS:-}" != empty ] || { echo '{"data":{"repository":{"vulnerabilityAlerts":{"nodes":[]}}}}'; exit 0; }
 		bot=49699333
 		[ "${ALERTS:-}" != impostor ] || bot=1
 		oid=${SEC1:-$C3}
 		merged=true
 		[ "${ALERTS:-}" != unmerged ] || merged=false
 		jq -nc --arg oid "$oid" --argjson merged "$merged" --arg at "${MERGED_AT:-$NOW}" --argjson bot "$bot" --arg open "${OPEN_PRS:-}" \
-			--arg oid2 "${SEC2:-}" --arg pfix "${PR_FIXED_AT:-$NOW}" --arg at2 "${MERGED_AT2:-$NOW}" --arg nocommit "${NO_COMMIT:-}" --arg mode "${ALERTS:-}" --arg fixed "${FIXED_AT:-$NOW}" '
+			--arg oid2 "${SEC2:-}" --arg pfix "${PR_FIXED_AT:-$NOW}" --arg at2 "${MERGED_AT2:-$NOW}" --arg nocommit "${NO_COMMIT:-}" --arg mode "${ALERTS:-}" --arg fixed "${FIXED_AT:-$NOW}" --arg decoys "${DECOYS:-}" '
 			def pr($n; $m; $oid; $at; $ref): {state:(if $m then "FIXED" else "OPEN" end),fixedAt:(if $m then $pfix else null end),
 				dependabotUpdate:{pullRequest:{number:$n,title:"Bump x",state:(if $m then "MERGED" else "OPEN" end),merged:$m,mergedAt:(if $m then $at else null end),baseRefName:"main",headRefName:$ref,
 				author:{login:"dependabot",databaseId:$bot},mergeCommit:(if $m and $nocommit == "" then {oid:$oid} else null end)}}};
 			{data:{repository:{vulnerabilityAlerts:{nodes:([
 				pr(7; $merged; $oid; $at; "dependabot/npm_and_yarn/x"),
-				{state:"OPEN",fixedAt:null,dependabotUpdate:null},
+				{state:"OPEN",fixedAt:null,dependabotUpdate:null}
+			] + (if $decoys != "" then [
 				(pr(9; true; "9999999999999999999999999999999999999999"; $at; "dependabot/go/dev") | .dependabotUpdate.pullRequest.baseRefName = "dev"),
 				pr(13; true; "7777777777777777777777777777777777777777"; $at; "feature/z"),
 				(pr(10; true; "8888888888888888888888888888888888888888"; $at; "dependabot/go/other") | .dependabotUpdate.pullRequest.author.databaseId = 2)
-			] + (if $oid2 != "" then [pr(11; true; $oid2; $at2; "dependabot/go/second")] else [] end)
+			] else [] end) + (if $oid2 != "" then [pr(11; true; $oid2; $at2; "dependabot/go/second")] else [] end)
 			+ ($open | split(" ") | map(select(. != "") | tonumber | pr(.; false; null; $at; "dependabot/go/open")))
 			+ (if $mode == "unlinked" then [{state:"FIXED",fixedAt:$fixed,dependabotUpdate:null}] else [] end)
 			+ (if $mode == "unlinked-unmerged" then [{state:"FIXED",fixedAt:$fixed,dependabotUpdate:{pullRequest:pr(12; false; null; $at; "dependabot/go/u").dependabotUpdate.pullRequest}}] else [] end)
 			+ (if $mode == "unlinked-nofixedat" then [{state:"FIXED",fixedAt:null,dependabotUpdate:null}] else [] end)
 			+ (if $mode == "old-unlinked" then [{state:"FIXED",fixedAt:"2026-10-01T00:00:00Z",dependabotUpdate:null}] else [] end))}}}}' ;;
+	'api repos/o/r/dependabot/alerts?per_page=1')
+		case "${REST:-ok}" in
+			ok) echo '[]' ;;
+			forbidden) printf 'gh: Resource not accessible by integration (HTTP 403)\n' >&2; exit 1 ;;
+			*) echo '[{"number":1}]' ;;
+		esac ;;
+	'api repos/o/r/actions/workflows/release.yml/runs?event=push&branch=v'*'&per_page=20')
+		failing runs
+		tag=${args#*branch=}; tag=${tag%%&*}
+		case "${BUILD:-none}" in
+			failed) jq -nc --arg tag "$tag" '{workflow_runs:[{head_branch:$tag,event:"push",status:"completed",conclusion:"failure"}]}' ;;
+			running) jq -nc --arg tag "$tag" '{workflow_runs:[{head_branch:$tag,event:"push",status:"in_progress",conclusion:null}]}' ;;
+			success) jq -nc --arg tag "$tag" '{workflow_runs:[{head_branch:$tag,event:"push",status:"completed",conclusion:"success"}]}' ;;
+			rerun) jq -nc --arg tag "$tag" '{workflow_runs:[{head_branch:$tag,event:"push",status:"completed",conclusion:"failure"},{head_branch:$tag,event:"push",status:"completed",conclusion:"success"}]}' ;;
+			*) echo '{"workflow_runs":[]}' ;;
+		esac ;;
 	'api --paginate repos/o/r/git/matching-refs/tags/v')
 		failing matching-refs
 		jq -nc --arg extra "${TAGS_EXTRA:-}" '[{ref:"refs/tags/v1.1.0"},{ref:"refs/tags/v-ruleset-probe"},{ref:"refs/tags/v1.2.0-nightly.20261112.1.gabcdef12"}] +
 			(if $extra != "" then ($extra | split(" ") | map({ref: ("refs/tags/" + .)})) else [] end)' ;;
-	'api repos/o/r/releases/tags/v1.1.1')
+	'api repos/o/r/releases/tags/v1.1.1'|'api repos/o/r/releases/tags/v1.1.2')
 		failing release-lookup
 		if [ "${RELEASE_EXISTS:-}" = 1 ]; then echo '{"draft":false}'; else printf 'gh: Not Found (HTTP 404)\n' >&2; exit 1; fi ;;
-	'api repos/o/r/releases/tags/v1.2.0')
+	'api repos/o/r/releases/tags/v1.2.0'|'api repos/o/r/releases/tags/v1.3.0')
 		failing release-lookup
 		if [ "${MINOR_RELEASE_EXISTS:-}" = 1 ]; then echo '{"draft":false}'; else printf 'gh: Not Found (HTTP 404)\n' >&2; exit 1; fi ;;
 	'api --paginate --slurp repos/o/r/issues?state=open&creator=github-actions%5Bbot%5D&per_page=100')
@@ -167,8 +197,8 @@ case "$*" in
 		case " ${PR_INQUEUE:-} " in *" $n "*) queue=true ;; esac
 		case " ${PR_REMOVED:-} " in *" $n "*) events='[{"createdAt":"2026-11-12T10:00:00Z"}]' ;; esac
 		case " ${PR_REMOVED_BEFORE:-} " in *" $n "*) events='[{"createdAt":"2026-11-01T10:00:00Z"}]' ;; esac
-		jq -nc --argjson n "$n" --arg head "$head" --argjson bot "$bot" --argjson draft "$draft" --arg repo "$repo" --argjson queue "$queue" --argjson events "$events" '
-			{data:{repository:{pullRequest:{number:$n,title:("Bump `x` from 1 to 2 @someone\n<b>" + ($n | tostring)),state:"OPEN",isDraft:$draft,isInMergeQueue:$queue,baseRefName:"main",headRefOid:$head,
+		jq -nc --argjson n "$n" --arg head "$head" --argjson bot "$bot" --argjson draft "$draft" --arg repo "$repo" --argjson queue "$queue" --argjson events "$events" --arg url "${TITLE_URL:-}" '
+			{data:{repository:{pullRequest:{number:$n,title:("Bump `x` from 1 to 2 @someone\n<b>" + ($n | tostring) + (if $url != "" then " see https://evil.example/x ::////" else "" end)),state:"OPEN",isDraft:$draft,isInMergeQueue:$queue,baseRefName:"main",headRefOid:$head,
 			headRepository:{nameWithOwner:$repo},author:{login:"dependabot",databaseId:$bot},timelineItems:{nodes:$events}}}}}' ;;
 	'api --paginate --slurp repos/o/r/pulls/'*'/commits?per_page=100')
 		failing open-pr
@@ -226,11 +256,29 @@ SH
 cat >"$scratch/bin/compat" <<'SH'
 #!/bin/sh
 printf 'compat %s\n' "$*" >>"$FIXTURE/calls"
+if [ "${1:-}" = --edges-only ]; then
+	case "${EDGES:-ok}" in
+		ok) echo 'compatibility check: every engine carries its sound release-source edge from v1.1.0'; exit 0 ;;
+		missing) printf '%s\n' 'compatibility check: sqlite: no release-source edge from v1.1.0' 'compatibility check: postgres: no release-source edge from v1.1.0' 'compatibility check: the release-source edge from v1.1.0 is missing or does not match what v1.1.0 published; add the reviewed edge per engine' >&2; exit 1 ;;
+		unverified) echo 'compatibility check: v1.1.0 does not verify against the signed trust' >&2; exit 5 ;;
+		*) echo 'compatibility check: cannot download v1.1.0' >&2; exit 4 ;;
+	esac
+fi
 case "${COMPAT:-same}" in
 	same) echo 'compatibility check: compatibility is identical to v1.1.0' ;;
 	differs) echo 'compatibility check: the compatibility declaration differs from the one v1.1.0 published' >&2; exit 1 ;;
+	bigdiff) { i=1; while [ "$i" -le 300 ]; do echo "+line $i"; i=$((i + 1)); done; echo 'compatibility check: the compatibility declaration differs from the one v1.1.0 published'; } >&2; exit 1 ;;
 	unverified) echo 'compatibility check: v1.1.0 does not verify against the signed trust' >&2; exit 5 ;;
 	*) echo 'compatibility check: cannot download v1.1.0' >&2; exit 4 ;;
+esac
+SH
+cat >"$scratch/bin/fallback" <<'SH'
+#!/bin/sh
+printf 'fallback %s\n' "$*" >>"$FIXTURE/calls"
+case "${FALLBACK:-ok}" in
+	ok) echo 'fallback channel gate: recent end-to-end notification receipt passed' ;;
+	stale) echo 'fallback channel gate: notification test is older than one quarter' >&2; exit 1 ;;
+	*) echo 'sh: node: not found' >&2; exit 127 ;;
 esac
 SH
 cat >"$scratch/bin/postgres" <<'SH'
@@ -240,7 +288,7 @@ cat >"$scratch/bin/postgres" <<'SH'
 SH
 chmod +x "$scratch/bin/"*
 export GH_BIN="$scratch/bin/gh" GO_BIN="$scratch/bin/go" GREEN_BIN="$scratch/bin/green" SYNCED_BIN="$scratch/bin/synced" \
-	COMPAT_BIN="$scratch/bin/compat" POSTGRES_BIN="$scratch/bin/postgres" HIKYO_REPO_ROOT="$repo"
+	COMPAT_BIN="$scratch/bin/compat" POSTGRES_BIN="$scratch/bin/postgres" FALLBACK_BIN="$scratch/bin/fallback" HIKYO_REPO_ROOT="$repo"
 echo '[[]]' >"$scratch/issues.json"
 
 reset() { rm -f "$scratch/last-body" "$scratch/signature-calls" "$scratch/calls" "$scratch/postgres-started" "$scratch/created" "$scratch/edited" "$scratch/closed" "$scratch/plan.json"; : >"$scratch/calls"; }
@@ -269,7 +317,9 @@ has ready "Planned release:** \`v1.1.1\` at \`$c4\`"
 has ready "scripts/release/security-patch-plan.sh recheck patch 1.1.1 $c4 --tip &&"
 has ready 'scripts/release/ceremony.sh build 1.1.1'
 lacks ready 'git tag -s'
-has ready 'identical to v1.1.0'
+has ready "identical to v1.1.0's apart from that edge"
+has ready 'the release-source edge from v1.1.0 is sound'
+has ready 'the fallback channel gate passes'
 has ready 'Nothing has been tagged or published'
 [ -e "$scratch/postgres-started" ] || fail 'a ready plan runs the compatibility generator on scratch PostgreSQL'
 grep -F "compat o/r " "$scratch/calls" | grep -F ' 1.1.1 ' >/dev/null || fail 'the compatibility script must be told the version'
@@ -309,6 +359,8 @@ run_tag_block() { # name mode [status] (last-line: swap the final line for true;
 	body | awk '/^```sh/ { n++; on = (n == 1); next } /^```/ { on = 0; next } on' >"$scratch/block.sh"
 	clone="$scratch/clone-$1"
 	git clone -q "$repo" "$clone"
+	# The signature check reads the canonical remote's main; a maintainer's clone has it (CONTRIBUTING.md).
+	git -C "$clone" remote add hikyo-upstream "$repo"
 	git -C "$clone" config user.email test@example.com
 	git -C "$clone" config user.name test
 	# The block runs the tools its target commit carries, as it would for a maintainer: no overlay.
@@ -424,10 +476,15 @@ has minor 'A patch cannot ship it: the compatibility declaration differs from th
 has minor '### Prerequisites that block tagging (a minor release)'
 has minor '- [ ] Dispatch the `release-compatibility-check` workflow from main for `1.2.0`'
 has minor '- [ ] Review the edge modes'
-has minor 'sources.json'
-has minor 'docs/adr/signed-upgrade-compatibility.md'
+has minor 'carries a sound release-source edge from v1.1.0 for each engine'
+has minor 'https://github.com/o/r/blob/main/docs/adr/signed-upgrade-compatibility.md'
 has minor '- [ ] Decide that everything on'
-has minor '- [ ] Write the release notes'
+lacks minor '- [ ] Write the release notes'
+lacks minor 'normally needs no edit'
+lacks minor 'no earlier migration was edited'
+has minor 'A minor release needs real release notes'
+has minor '<summary>The compatibility difference the planning run saw (at most 200 lines)</summary>'
+has minor 'the compatibility declaration differs from the one v1.1.0 published'
 has minor "recheck minor 1.2.0 $c4 --tip &&"
 has minor 'scripts/release/ceremony.sh build 1.2.0'
 lacks minor 'recheck patch'
@@ -439,7 +496,11 @@ BLOCK_VERSION=1.2.0
 export BLOCK_VERSION
 run_tag_block minor last-line
 unset BLOCK_VERSION
+plan 'a long difference is cut in the issue' 0 COMPAT=bigdiff
+has 'big diff' '+line 200'
+lacks 'big diff' '+line 201'
 plan 'a minor below a red tip' 0 COMPAT=differs GREEN="$c0 $c1 $c2 $c3"
+has 'minor red tip' 'git fetch hikyo-upstream main &&'
 has 'minor red tip' "git tag -s v1.2.0 -m \"Hikyo 1.2.0\" $c3 &&"
 has 'minor red tip' "recheck minor 1.2.0 $c3 &&"
 plan 'a minor that would be refused is blocked' 0 COMPAT=differs MINOR_RELEASE_EXISTS=1
@@ -478,6 +539,65 @@ has 'trust behind' 'synchronize trust first'
 has 'trust behind' 'scripts/release/ceremony.sh sync-trust 1.2.0-rc.1'
 no_tag_commands 'trust behind'
 check_ceremony_lines 'trust behind'
+
+# --- the release-source edge: required for a patch and for a minor -----------------
+plan 'a patch whose sources.json lacks the edge is blocked' 0 EDGES=missing
+expect_action 'patch no edge' open
+has 'patch no edge' '### Prerequisite that blocks tagging: the release-source edge from v1.1.0'
+has 'patch no edge' 'sqlite: no release-source edge from v1.1.0'
+has 'patch no edge' 'no supported command writes a stable release edge'
+has 'patch no edge' 'scripts/release/nightly sources'
+has 'patch no edge' 'cannot be prepared'
+lacks 'patch no edge' 'is ready to tag'
+no_tag_commands 'patch no edge'
+grep -E '^compat --edges-only o/r .*/release/compatibility/sources.json$' "$scratch/calls" >/dev/null || { cat "$scratch/calls" >&2; fail 'the edge check reads sources.json'; }
+if grep -E '^compat o/r ' "$scratch/calls" >/dev/null; then fail 'a missing edge stops the plan before the declaration is compared'; fi
+[ ! -e "$scratch/postgres-started" ] || fail 'a missing edge is found before PostgreSQL starts'
+plan 'a minor whose sources.json lacks the edge is blocked' 0 COMPAT=differs EDGES=missing
+has 'minor no edge' '### Prerequisite that blocks tagging: the release-source edge from v1.1.0'
+lacks 'minor no edge' 'Security release v1.2.0'
+no_tag_commands 'minor no edge'
+plan 'an unverifiable baseline stops the edge check without a how-to' 0 EDGES=unverified
+has 'edge unverified' 'does not verify against the signed trust'
+lacks 'edge unverified' 'no supported command writes'
+no_tag_commands 'edge unverified'
+plan 'an edge lookup that fails stops the run' 1 EDGES=lookup
+# --- the fallback channel gate release.yml asserts before it builds ---------------
+plan 'a stale fallback record blocks the tag' 0 FALLBACK=stale
+has 'fallback stale' 'the fallback channel gate would fail the build'
+has 'fallback stale' 'older than one quarter'
+no_tag_commands 'fallback stale'
+grep -F 'fallback release/repository/fallback-channel-test.json security@hikyo.app' "$scratch/calls" >/dev/null || fail 'the gate runs on the record release.yml checks'
+plan 'a gate that cannot run stops the run' 1 FALLBACK=boom
+# --- a version a failed release-build burned is skipped ---------------------------
+plan 'a tag whose build failed is burned: the next patch is planned' 0 TAGS_EXTRA=v1.1.1 BUILD=failed
+expect_action 'burned' open
+has 'burned' '## Security patch v1.1.2 is ready to tag'
+has 'burned' 'v1.1.1 was tagged, but its release-build run failed and no release exists for it'
+has 'burned' "scripts/release/security-patch-plan.sh recheck patch 1.1.2 $c4 --tip &&"
+lacks 'burned' 'build 1.1.1'
+for build in running success rerun none; do
+	plan "a tag whose build is $build is not burned" 0 TAGS_EXTRA=v1.1.1 BUILD=$build
+	has "build $build" 'v1.1.1 is tagged but has no release'
+	no_tag_commands "build $build"
+done
+plan 'a burned tag with a staged draft is a staged release' 0 TAGS_EXTRA=v1.1.1 REL_DRAFT=v1.1.1 BUILD=failed
+has 'burned draft' 'v1.1.1 is tagged and its draft release is staged'
+plan 'a burned tag with nothing pending opens nothing' 0 SEC1="$c0" TAGS_EXTRA=v1.1.1 BUILD=failed
+expect_action 'burned idle' close
+plan 'an unreadable release-build run list stops the run' 1 TAGS_EXTRA=v1.1.1 FAIL=runs
+# --- an alert list with no alert at all must be real ------------------------------
+plan 'no alerts at all, and REST agrees' 0 ALERTS=empty
+expect_action 'empty alerts' close
+grep -F 'api repos/o/r/dependabot/alerts?per_page=1' "$scratch/calls" >/dev/null || fail 'an empty alert list is cross-checked over REST'
+plan 'no alerts over GraphQL, but REST lists some' 1 ALERTS=empty REST=nonempty
+plan 'no alerts over GraphQL, and REST is forbidden' 1 ALERTS=empty REST=forbidden
+plan 'a non-empty alert list needs no cross-check' 0
+if grep -F 'dependabot/alerts?per_page=1' "$scratch/calls" >/dev/null; then fail 'only an empty alert list is cross-checked'; fi
+# --- an untrusted title never carries a URL into the issue ------------------------
+plan 'a title with a link' 0 OPEN_PRS=21 TITLE_URL=1
+has 'title url' '- #21 Bump x from 1 to 2 someoneb21 see httpsevil.example/x'
+if body | grep '^- #21 ' | grep -F '://' >/dev/null; then body >&2; fail 'a title must never keep a URL scheme, even one that a removal would rebuild'; fi
 
 # --- step 0: open security updates are listed for a person to queue, never queued ---
 plan 'open security updates are listed, never queued' 0 OPEN_PRS="21 22"
@@ -551,8 +671,13 @@ lacks 'unmerged' 'is ready to tag'
 has 'unmerged' '### 0. Open security updates'
 has 'unmerged' '- #7 '
 no_tag_commands 'unmerged'
-plan 'an impostor author is not a security update' 0 ALERTS=impostor
-expect_action 'impostor' close
+plan 'an impostor author is not a security update, and its fix is unexplained' 0 ALERTS=impostor
+expect_action 'impostor' open
+has 'impostor' '1 Dependabot alert(s) were fixed'
+lacks 'impostor' 'is ready to tag'
+plan 'a base other than main, a feature branch and a foreign author explain nothing' 0 SEC1="$c0" DECOYS=1
+expect_action 'decoys' open
+has 'decoys' '3 Dependabot alert(s) were fixed'
 plan 'an alert fixed before the latest release is not an alarm' 0 SEC1="$c0" ALERTS=old-unlinked
 expect_action 'old alert' close
 # --- alarms: whatever else the plan says, an unexplained fix reaches the issue -
@@ -565,9 +690,15 @@ expect_action 'unlinked unmerged' open
 has 'unlinked unmerged' 'Dependabot alert(s) were fixed'
 plan 'a fixed alert without a time' 0 SEC1="$c0" ALERTS=unlinked-nofixedat
 expect_action 'no fixedAt' open
-plan 'an alarm beside a ready tag' 0 ALERTS=unlinked
-has 'alarm beside ready' 'Also needs a person'
-has 'alarm beside ready' 'Security patch v1.1.1 is ready'
+plan 'an unexplained fix blocks the tag' 0 ALERTS=unlinked
+has 'unlinked blocks' 'Also needs a person'
+has 'unlinked blocks' 'cannot be prepared'
+has 'unlinked blocks' 'are not traced to a merged security pull request'
+lacks 'unlinked blocks' 'is ready to tag'
+no_tag_commands 'unlinked blocks'
+plan 'decoy pull requests beside a ready tag block it too' 0 DECOYS=1
+has 'decoys block' '3 Dependabot alert(s) were fixed'
+no_tag_commands 'decoys block'
 plan 'a fixed alert with an unreadable time stops the run' 1 SEC1="$c0" ALERTS=unlinked FIXED_AT=garbage
 plan 'a merge commit that is not in history is raised, not skipped' 0 SEC1="ffffffffffffffffffffffffffffffffffffffff"
 expect_action 'missing commit' open
@@ -717,7 +848,9 @@ recheck 'passes at the tip' 0 "ok to tag v1.1.1 at $c4" 1.1.1 "$c4" --tip
 recheck 'a checkout at another commit' 3 'this checkout is not at' 1.1.1 "$c3" -
 git -C "$repo" checkout -q --detach "$c3"
 recheck 'passes at an older green commit' 0 "ok to tag v1.1.1 at $c3" 1.1.1 "$c3" -
-if grep -F 'compat' "$scratch/calls" >/dev/null; then fail 'the recheck does not rerun the compatibility generator'; fi
+if grep -E '^compat ' "$scratch/calls" | grep -v -F -- '--edges-only' >/dev/null || grep -E '^go .*compatibility' "$scratch/calls" >/dev/null; then fail 'the recheck does not rerun the compatibility generator'; fi
+grep -F 'compat --edges-only o/r ' "$scratch/calls" >/dev/null || fail 'the recheck enforces the release-source edge'
+grep -F 'fallback release/repository/fallback-channel-test.json' "$scratch/calls" >/dev/null || fail 'the recheck runs the fallback channel gate'
 recheck '--tip refuses an older commit' 3 'main moved' 1.1.1 "$c3" --tip
 recheck 'a newer security merge landed' 3 'does not contain every merged security update' 1.1.1 "$c3" - SEC2="$c4"
 recheck 'an unknown merge stops the tag' 3 'cannot be placed' 1.1.1 "$c3" - SEC2=ffffffffffffffffffffffffffffffffffffffff
@@ -748,9 +881,27 @@ recheck 'an unknown kind' 1 'patch or minor' 1.1.1 "$c3" -
 KIND='patch'
 # A patch must not carry a migration or a compatibility source change; a minor may.
 git -C "$repo" checkout -q --detach "$cmig"
-recheck 'a patch with a new migration' 3 'changes migrations or compatibility sources' 1.1.1 "$cmig" -
+recheck 'a patch with a new migration' 3 'changes migrations or compatibility files' 1.1.1 "$cmig" -
 git -C "$repo" checkout -q --detach "$ccomp"
-recheck 'a patch with a compatibility source change' 3 'changes migrations or compatibility sources' 1.1.1 "$ccomp" -
+recheck 'a patch with a compatibility source change' 3 'beyond adding release-source edges' 1.1.1 "$ccomp" -
+# Only the reviewed release edge may be added to sources.json; any other addition is a change.
+git -C "$repo" update-ref refs/remotes/origin/main "$cedge"
+git -C "$repo" checkout -q --detach "$cedge"
+recheck 'a patch that only adds the release edge' 0 'ok to tag v1.1.1' 1.1.1 "$cedge" --tip GREEN="$c3 $c4 $cedge"
+git -C "$repo" update-ref refs/remotes/origin/main "$cedgeplus"
+git -C "$repo" checkout -q --detach "$cedgeplus"
+recheck 'a patch that adds a genesis edge besides' 3 'beyond adding release-source edges' 1.1.1 "$cedgeplus" --tip GREEN="$c3 $c4 $cedge $cedgeplus"
+git -C "$repo" update-ref refs/remotes/origin/main "$c4"
+git -C "$repo" checkout -q --detach "$c3"
+recheck 'a recheck refuses when the edge is missing' 3 'lacks the reviewed release-source edge from v1.1.0' 1.1.1 "$c3" - EDGES=missing
+recheck 'a recheck refuses when the baseline does not verify' 3 'does not verify against the signed trust' 1.1.1 "$c3" - EDGES=unverified
+recheck 'a recheck refuses a stale fallback record' 3 'the fallback channel gate would fail the build' 1.1.1 "$c3" - FALLBACK=stale
+# A failed release-build burns its version: the successor is what the recheck accepts.
+recheck 'a burned patch version is skipped' 0 'ok to tag v1.1.2' 1.1.2 "$c3" - TAGS_EXTRA=v1.1.1 BUILD=failed
+recheck 'a burned patch version is not accepted' 3 'not the patch successor of v1.1.0 (v1.1.2)' 1.1.1 "$c3" - TAGS_EXTRA=v1.1.1 BUILD=failed
+# The commands run the release tools from the commit; below the tip they must match the tip's.
+git -C "$repo" checkout -q --detach "$ctool"
+recheck 'the release tools differ from the tip' 3 'release tools differ between' 1.1.1 "$ctool" -
 git -C "$repo" checkout -q --detach "$c3"
 # An alert fixed without a traceable merge is decided by hand.
 recheck 'an unlinked fixed alert' 3 'without a linked merged pull request' 1.1.1 "$c3" - ALERTS=unlinked
