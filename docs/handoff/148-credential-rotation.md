@@ -726,8 +726,9 @@ configurable grid.
 - The candidate reconciler owns `candidate_handle` of runs with `published_revision IS
   NULL`; the revoke-obligation loop owns `superseded_handle` of published runs. A
   takeover of an unconfirmed pre-publish run drops its candidate under a fenced claim.
-- `superseded_handle` is derived across rotations: the newest published, not-yet-revoked
-  run of the same rotation at the same generation.
+- `superseded_handle` is derived across rotations: it is the candidate of the newest run
+  that published into the key, across every rotation that ever drove the key (as its
+  password key or its username key), so a recreated rotation still revokes the live role.
 - Restore hazard (rule 7): before the superseded drop the executor asserts that the
   current entry ids of the delivered keys are still the ones it published; a mismatch
   holds the run in `revoke_refused` / `versions_changed` instead of dropping.
@@ -809,6 +810,14 @@ refused as `role_owns_objects` and dropped after the object moves).
 - User docs and parity rows (S3 flips them).
 
 ## S2 checklist (carried forward from review)
+
+Status after S2a: closed in S2a are the Gate, the provider-delete and environment-delete
+guards, retry with backoff, `extend` and `halted`, the two loops, quarantine exits, the
+rule 7 and rule 8 tests, the schedule bounds test, `superseded_handle` across rotations,
+the service side of `--abandon`, multi-node takeover and the `2BP01` refusal. Carried to
+S2b: the doctor warning and metric, incident containment, the `restore_hold` column,
+key-aware resume, pause and delete, the consumer-convergence report and run-now/runs.
+The list below is the original text and stays as the acceptance record.
 
 - Gate: `RecordedPrincipalHolds` only, with a key target per stored key (see The Gate);
   no rebuilt identity and no `az.Authorize`; the pre-publish list includes keys present and

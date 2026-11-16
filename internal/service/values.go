@@ -596,7 +596,7 @@ func (s *Values) stageWithin(ctx context.Context, r store.Repos, az *authz.TxAut
 		return stageWriteResult{}, err
 	}
 	// The per-project pending cap (ops-spec § 8: ≤ 100 pending versions per
-	// project, loud). Counted under the project lock, excluding this cell —
+	// project, loud). Counted under the project lock, excluding this cell:
 	// staging is delete-then-insert, so re-staging an existing draft never
 	// grows the count, and only a genuinely new cell can breach the cap.
 	pending, err := r.Pending().CountForProjectExcludingCell(ctx, p, key.ID, string(caller.Principal))
