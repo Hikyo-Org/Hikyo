@@ -157,7 +157,9 @@ type StartRun struct {
 // that minted it (see RotationRuntime.LoadSupersededRole).
 type SupersededRole struct {
 	// Material is that provider's connection material; its ciphertext is empty
-	// when the provider has since lost its credential or was deleted.
+	// when the provider has since lost its credential. A provider delete is
+	// refused while a run still owes this role, so only a cascade removal of its
+	// project can leave the role without a provider.
 	Material LeaseProviderMaterial
 	// ValidUntil is the minting run's recorded VALID UNTIL; zero when unrecorded.
 	ValidUntil time.Time
