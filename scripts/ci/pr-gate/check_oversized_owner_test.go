@@ -28,6 +28,9 @@ type oversizedHead struct {
 	reads []string
 	// listed, when set, replaces what a holding suite lists.
 	listed map[int64][]check
+	// foreign is what a listing by commit shows of other apps, whose suites the
+	// per-suite reads never open.
+	foreign []check
 }
 
 var (
@@ -82,6 +85,9 @@ func (a *oversizedHead) read(ctx context.Context, path string, result any) error
 		return queueHistoryJSON(a.suiteResponse(nil, false, ""), result)
 	case strings.Contains(path, "/commits/"+head+"/check-runs?"):
 		// REST lists the commit's newest 1000 suites only, which exclude the holders.
+		if a.foreign != nil {
+			return queueHistoryJSON(map[string]any{"total_count": len(a.foreign), "check_runs": a.foreign}, result)
+		}
 		return queueHistoryJSON(empty, result)
 	case suiteListing.MatchString(path):
 		id, _ := strconv.ParseInt(suiteListing.FindStringSubmatch(path)[1], 10, 64)
@@ -152,10 +158,11 @@ func TestOwnedChecksListBySuiteOnlyBeyondSuiteMargin(t *testing.T) {
 	}{
 		{suites: 1, byCommit: 1},
 		{suites: checksuites.Margin, byCommit: 1},
-		{suites: checksuites.Margin + 1},
-		{suites: 2005, holding: []int64{1856}, bySuite: 1},
+		// Past the margin one listing by commit remains, to see other apps' records.
+		{suites: checksuites.Margin + 1, byCommit: 1},
+		{suites: 2005, holding: []int64{1856}, byCommit: 1, bySuite: 1},
 		// The same record from two suites cannot be told apart from a replayed read.
-		{suites: 2005, holding: []int64{7, 1856}, bySuite: 2, wantErr: true},
+		{suites: 2005, holding: []int64{7, 1856}, byCommit: 1, bySuite: 2, wantErr: true},
 	} {
 		t.Run(fmt.Sprintf("%d suites holding %v", tc.suites, tc.holding), func(t *testing.T) {
 			f, _ := retirementFixture(t, queueCheckName)
@@ -221,6 +228,58 @@ func TestGroupChecksBoundsAndDeduplicatesAcrossSuites(t *testing.T) {
 			group, err := f.q.groupChecks(context.Background(), f.pr)
 			if (err != nil) != tc.wantErr || (err == nil && len(group) != tc.a+tc.b) {
 				t.Fatalf("group = %d checks, err=%v", len(group), err)
+			}
+		})
+	}
+}
+
+// Past the margin the owners open only github-actions suites, so a same-name
+// record of another app is seen through the listing by commit and refused, as
+// that listing alone did before.
+func TestOwnedChecksOfHeadBeyondRESTSuiteCapRefuseForeignAppRecords(t *testing.T) {
+	foreignOf := func(f *queueFixture, external string, appID int64, slug string) []check {
+		forged := f.api.checks[0]
+		forged.ID += 1000
+		forged.ExternalID = external
+		forged.App.ID, forged.App.Slug = appID, slug
+		return []check{forged}
+	}
+	for _, tc := range []struct {
+		name    string
+		prefix  bool
+		owners  string
+		appID   int64
+		slug    string
+		wantErr bool
+	}{
+		{name: "foreign record with a controller identity, owner listing", prefix: true, owners: "owned", wantErr: true},
+		{name: "foreign record with a controller identity, queue verdict", prefix: true, owners: "group", wantErr: true},
+		{name: "foreign record with any identity, queue verdict", owners: "group", wantErr: true},
+		{name: "another app id under the actions slug, queue verdict", owners: "group", appID: 99, slug: "github-actions", wantErr: true},
+		{name: "the actions app id under another slug, queue verdict", owners: "group", appID: actionsAppID, slug: "other-app", wantErr: true},
+		// Unchanged from a listing by commit: owners ignore it unless it claims to be theirs.
+		{name: "foreign record with another identity, owner listing", owners: "owned"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _ := retirementFixture(t, queueCheckName)
+			head := installOversizedHead(f, 2005, 1856)
+			external := "unrelated"
+			if tc.prefix {
+				external = f.api.checks[0].ExternalID
+			}
+			appID, slug := tc.appID, tc.slug
+			if slug == "" {
+				appID, slug = 99, "other-app"
+			}
+			head.foreign = foreignOf(f, external, appID, slug)
+			var err error
+			if tc.owners == "owned" {
+				_, err = f.c.listOwnedChecks(context.Background(), f.c.expectedHead)
+			} else {
+				_, err = f.q.groupChecks(context.Background(), f.pr)
+			}
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, want refusal=%v", err, tc.wantErr)
 			}
 		})
 	}

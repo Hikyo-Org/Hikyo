@@ -366,6 +366,19 @@ func (c client) existing(ctx context.Context, repoID int64, head, name, external
 			return nil, err
 		}
 	}
+	if len(listings) == 1 && strings.HasPrefix(listings[0], "commits/") {
+		return found, nil
+	}
+	// The suite reads open only github-actions suites. A listing by commit also
+	// shows what another app posted under this report's identity, which it
+	// refused before; anything it shows must be the record the suites found.
+	var recent *check
+	if err := c.existingAt(ctx, fmt.Sprintf("commits/%s/check-runs", head), head, name, external, details, map[int64]bool{}, &recent); err != nil {
+		return nil, err
+	}
+	if recent != nil && (found == nil || found.ID != recent.ID) {
+		return nil, errors.New("ambiguous or unauthenticated existing queue report")
+	}
 	return found, nil
 }
 

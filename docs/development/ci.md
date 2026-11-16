@@ -606,9 +606,13 @@ before every listing) they list a check's runs only in the `github-actions`
 suites that hold runs of its name, one REST listing per suite, so a context on an
 oversized commit is routed, retired and found by the reporter like any other.
 Queue admission lists a head's checks at least three times inside its 45-second
-read budget and each listing repeats the scan, so admission finishes reliably only
-up to about 1,000 suites (about 1.4 s per 100 suites for the owners' scan). Past
-that it fails closed and the PR needs a new head.
+read budget and each listing repeats the scan (about 1.4 s per 100 suites for the
+owners' scan). Past 900 suites admission may time out; at 1,000 the scans alone
+take about 42 s. It then fails closed and the PR needs a new head.
+Because those reads open only `github-actions` suites, the owners also list the
+name by commit and refuse another app's same-name record there, as a listing by
+commit alone did. They refuse when the `github-actions` suite total changes during a scan, so a
+head still gaining suites can refuse until a later attempt.
 Both use the shared `scripts/ci/checksuites` reader. A suite inventory that
 cannot be completed, a run reported by two suites, or a check in more than 100
 suites refuses instead of listing partially. Discovery refuses all targets on

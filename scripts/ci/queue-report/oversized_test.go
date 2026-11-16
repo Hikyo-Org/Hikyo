@@ -30,8 +30,8 @@ func TestExistingReportOnHeadBeyondRESTSuiteCapIsUpdatedNotDuplicated(t *testing
 	if len(f.writeMethods) != 1 || f.writeMethods[0] != "PATCH" || f.writePaths[0] != "check-runs/777" {
 		t.Fatalf("writes %v %v, want one PATCH of the existing report", f.writeMethods, f.writePaths)
 	}
-	if f.requested("check-suites/1856/check-runs") == 0 || f.requested("check-suites/") != f.requested("check-suites/1856/") || f.requested("commits/") != 0 {
-		t.Fatalf("requests %v, want only the holding suite listed", f.requests)
+	if f.requested("check-suites/1856/check-runs") == 0 || f.requested("check-suites/") != f.requested("check-suites/1856/") || f.requested("commits/") != 1 {
+		t.Fatalf("requests %v, want the holding suite and one listing by commit", f.requests)
 	}
 }
 
@@ -80,6 +80,29 @@ func TestReportInTwoSuitesBeyondRESTSuiteCapIsRefused(t *testing.T) {
 	f := newFixture(t)
 	f.existing("in_progress")
 	f.suites, f.holding = 2005, []int64{7, 1856}
+	if err := f.c.publish(context.Background(), f.e); err == nil || len(f.writes) != 0 {
+		t.Fatalf("error %v with %d writes, want a refusal", err, len(f.writes))
+	}
+}
+
+// Another app's record under the report's identity is invisible to the suite
+// reads. The listing by commit still shows it and refuses, as it always did.
+func TestForeignAppReportBeyondRESTSuiteCapIsRefused(t *testing.T) {
+	f := newFixture(t)
+	f.existing("in_progress")
+	f.suites = 2005
+	f.checks[0].App.ID++
+	if err := f.c.publish(context.Background(), f.e); err == nil || len(f.writes) != 0 {
+		t.Fatalf("error %v with %d writes, want a refusal", err, len(f.writes))
+	}
+}
+
+// A report the listing by commit shows but the suite scan did not find was
+// written between the two reads; creating another would duplicate it.
+func TestReportSeenOnlyByTheCommitListingBeyondRESTSuiteCapIsRefused(t *testing.T) {
+	f := newFixture(t)
+	f.existing("in_progress")
+	f.suites, f.recent = 2005, true
 	if err := f.c.publish(context.Background(), f.e); err == nil || len(f.writes) != 0 {
 		t.Fatalf("error %v with %d writes, want a refusal", err, len(f.writes))
 	}

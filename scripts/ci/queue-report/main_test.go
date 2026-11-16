@@ -41,6 +41,9 @@ type fixture struct {
 	holding []int64
 	// graphqlFault, when set, fails the suite queries with this GraphQL error.
 	graphqlFault string
+	// recent makes a listing by commit show this head's records from every app,
+	// as for a record newer than the suite scan.
+	recent bool
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -128,7 +131,7 @@ func newFixture(t *testing.T) *fixture {
 		case strings.HasPrefix(path, "commits/"), strings.HasPrefix(path, "check-suites/"):
 			checks := []check{}
 			for _, c := range f.checks {
-				if c.Name == req.URL.Query().Get("check_name") && f.listed(path) {
+				if c.Name == req.URL.Query().Get("check_name") && f.listed(path, c) {
 					checks = append(checks, c)
 				}
 			}
@@ -154,15 +157,16 @@ func newFixture(t *testing.T) *fixture {
 	return f
 }
 
-// listed reports whether the listing at path shows the fixture's checks. Past
-// REST's cap a listing by commit hides them; a suite shows them if it holds them.
-func (f *fixture) listed(path string) bool {
+// listed reports whether the listing at path shows c. Past REST's cap a listing
+// by commit hides the records of the suites it no longer reaches, but still shows
+// those of other apps, which sit in suites no github-actions read opens.
+func (f *fixture) listed(path string, c check) bool {
 	if strings.HasPrefix(path, "commits/") {
-		return f.suites <= 1000
+		return f.suites <= 1000 || f.recent || c.App.ID != actionsAppID
 	}
 	for _, id := range f.holding {
 		if strings.HasPrefix(path, fmt.Sprintf("check-suites/%d/check-runs", id)) {
-			return true
+			return c.App.ID == actionsAppID
 		}
 	}
 	return false

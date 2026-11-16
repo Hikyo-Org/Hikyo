@@ -1307,6 +1307,13 @@ func (q *queueController) groupChecks(ctx context.Context, p pull) ([]check, err
 	if err != nil {
 		return nil, err
 	}
+	foreign, err := q.foreignSameName(ctx, p.Head.SHA, listings)
+	if err != nil {
+		return nil, err
+	}
+	if len(foreign) != 0 {
+		return nil, errors.New("foreign merge-group required-check identity")
+	}
 	checks := []check{}
 	seen := make(map[int64]bool)
 	for _, listing := range listings {

@@ -279,8 +279,9 @@ Limits kept open:
   past 900 suites repeating the whole scan. The owners' scan reads one named
   count per suite and cost about 1.4 s per 100 suites live (27.6 s for 20 pages;
   discovery's scan reads two counts and costs about 2 s). Three scans of a head
-  with 1,000 suites take about 42 s, so admission reliably finishes only up to
-  about 1,000 suites. Past that the work clock ends the read, admission fails
+  with 1,000 suites take about 42 s of the 45, leaving about 3 s for every other
+  read, so admission may time out from 900 suites on. Past that the work clock
+  ends the read, admission fails
   closed and the run is retried up to `admissionMaxAttempts` against the same
   scan time; the failure path lists twice more inside the 15-second reserve and
   can fail to publish its own verdict, leaving the non-final record for
@@ -294,16 +295,24 @@ Limits kept open:
 - Each scan page spends one GraphQL point (counts only), so a listing on a
   2,000-suite head spends about 20 points against the hourly limit shared with
   every other CI client.
-- On a head past 900 suites the suite path lists only `github-actions` suites. A
-  record of another app that names the context and carries a controller
-  external ID is no longer seen there; the commit-wide listing refused such a
-  record as an untrusted controller identity. Another app's same-name record
-  without that prefix was already ignored, and nothing acts on a record the
-  owners do not list.
+- On a head past 900 suites the owners open only `github-actions` suites, so each
+  also lists the context's name by commit (one more REST read per listing) to see
+  other apps' records in REST's newest 1,000 suites. They refuse what a listing
+  by commit refused: the queue verdict refuses any same-name record of another
+  app, the retirement owner one that carries a controller external ID, and the
+  reporter one that carries its report's external ID. A forged record in an older
+  suite than REST's newest 1,000 is not seen on an oversized head. The main
+  ruleset's required `ci-queue-required` context is not bound to an
+  integration, unlike the dev ruleset's `ci-dev-required` (bound to 15368); the
+  owner may want to bind it, which this change does not touch.
+- An owner scan refuses when the head's `github-actions` suite total changes between pages, which
+  fails closed. `807d433` gained about one suite every 12 s while its queue
+  retried, and one scan took 47 s, so owner listings on a head that is still
+  gaining suites can refuse and succeed on a later try; discovery has the same
+  rule.
 - `scripts/release/nightly-promote.sh` lists `ci-queue-required` by commit for
   its stuck check, which has the same cap. A miss there reads as "no check yet"
   and never blocks a promotion, so it is tracked separately.
-
 - The release-admission policy (`scripts/ci/release-admission/spec/POLICY.md`)
   pins the `pr-gate/main.go` and `queue.go` blobs but not the new
   `scripts/ci/checksuites` reader they now call; the policy already states it is

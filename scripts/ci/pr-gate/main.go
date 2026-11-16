@@ -825,6 +825,15 @@ func (c *controller) listOwnedChecks(ctx context.Context, head string) ([]check,
 	if err != nil {
 		return nil, err
 	}
+	foreign, err := c.foreignSameName(ctx, head, listings)
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range foreign {
+		if strings.HasPrefix(v.ExternalID, externalPrefix) || strings.HasPrefix(v.ExternalID, legacyExternalPrefix) {
+			return nil, errors.New("untrusted controller check identity")
+		}
+	}
 	var own []check
 	seen := make(map[int64]bool)
 	for _, listing := range listings {
@@ -835,6 +844,44 @@ func (c *controller) listOwnedChecks(ctx context.Context, head string) ([]check,
 		own = append(own, part...)
 	}
 	return own, nil
+}
+
+// foreignSameName returns the records of this context's name that other apps show
+// on head. When owners read by suite, only github-actions suites are read, so
+// this lists by commit as well, which keeps the refusal a listing by commit gave.
+// It sees only REST's newest 1000 suites: a record another app adds to an older
+// suite of its own is not visible here, as it was not before.
+func (c *controller) foreignSameName(ctx context.Context, head string, listings []string) ([]check, error) {
+	if len(listings) == 1 && strings.HasPrefix(listings[0], "commits/") {
+		return nil, nil
+	}
+	var foreign []check
+	listed := 0
+	for page := 1; page <= 10; page++ {
+		var list struct {
+			Total  int     `json:"total_count"`
+			Checks []check `json:"check_runs"`
+		}
+		if err := c.api.read(ctx, c.endpoint(fmt.Sprintf("commits/%s/check-runs?check_name=%s&filter=all&per_page=100&page=%d", head, c.checkName, page)), &list); err != nil {
+			return nil, err
+		}
+		if list.Checks == nil || list.Total < 0 || list.Total > 1000 {
+			return nil, errors.New("invalid check list")
+		}
+		for _, v := range list.Checks {
+			listed++
+			if v.Name == c.checkName && (v.App.ID != actionsAppID || v.App.Slug != "github-actions") {
+				foreign = append(foreign, v)
+			}
+		}
+		if listed == list.Total {
+			return foreign, nil
+		}
+		if len(list.Checks) < 100 || listed > list.Total {
+			return nil, errors.New("incomplete current check listing")
+		}
+	}
+	return nil, errors.New("check pagination limit reached")
 }
 
 // listOwnedChecksAt pages through one check-runs listing. seen spans listings, so
