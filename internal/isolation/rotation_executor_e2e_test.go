@@ -233,16 +233,6 @@ func (x *rotExec) lastRun(rotationID, column string) string {
 	return queryString(x.t, x.db, "SELECT COALESCE(CAST("+column+" AS TEXT), '') FROM rotation_runs WHERE rotation_id='"+rotationID+"' ORDER BY started_at DESC, id DESC LIMIT 1")
 }
 
-// published reads the live (env) values of the two keys.
-func (x *rotExec) deliveredUser() string {
-	x.t.Helper()
-	return x.lastRun(x.rotationID(), "candidate_handle")
-}
-
-func (x *rotExec) rotationID() string {
-	return queryString(x.t, x.db, "SELECT id FROM rotations ORDER BY created_at DESC, id DESC LIMIT 1")
-}
-
 func TestRotationExecutorHappyPath(t *testing.T) { forEngines(t, runRotationExecutorHappyPath) }
 
 func runRotationExecutorHappyPath(t *testing.T, db *store.DB) {
@@ -707,10 +697,6 @@ func (x *rotExec) parkAuthority() func() {
 func (x *rotExec) revisions() *service.Revisions {
 	kr := probeKeyring(x.t, x.db)
 	return &service.Revisions{DB: x.db, Keyring: kr, Auth: authService(x.t, x.db)}
-}
-
-func (x *rotExec) runRevision(runID string) int64 {
-	return queryInt(x.t, x.db, "SELECT published_revision FROM rotation_runs WHERE id='"+runID+"'")
 }
 
 // Rule 7. A revision restore puts the superseded value back: the revoke must

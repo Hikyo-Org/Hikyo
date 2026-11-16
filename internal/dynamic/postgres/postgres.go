@@ -277,7 +277,7 @@ func classifyExec(err error) error {
 		// (dependent objects) is the named case of a drop of a role that owns
 		// objects, so a rotation can hold that run visibly instead of guessing.
 		if pg.Code == "2BP01" {
-			return fmt.Errorf("%w: %w: %v", dynamic.ErrRoleOwnsObjects, dynamic.ErrRefused, err)
+			return fmt.Errorf("%w: %w: %w", dynamic.ErrRoleOwnsObjects, dynamic.ErrRefused, err)
 		}
 		return fmt.Errorf("%w: %v", dynamic.ErrRefused, err)
 	}

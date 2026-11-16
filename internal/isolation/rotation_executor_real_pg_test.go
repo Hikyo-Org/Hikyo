@@ -101,7 +101,7 @@ func (r realPGTarget) admin(ctx context.Context, t *testing.T, sql string) {
 	if err != nil {
 		t.Fatalf("admin connect: %v", err)
 	}
-	defer conn.Close(ctx)
+	defer func() { _ = conn.Close(ctx) }()
 	if _, err := conn.Exec(ctx, sql); err != nil {
 		t.Fatalf("admin %q: %v", sql, err)
 	}
@@ -148,7 +148,7 @@ func runRotationRealPostgres(t *testing.T, db *store.DB, target realPGTarget, gr
 		defer cancel()
 		if conn, err := target.adminConn(cleanup); err == nil {
 			_, _ = conn.Exec(cleanup, "DROP TABLE IF EXISTS hikyo_rot_owned")
-			conn.Close(cleanup)
+			_ = conn.Close(cleanup)
 		}
 		for _, name := range roles {
 			if err := probe.DropRole(cleanup, name); err != nil {
