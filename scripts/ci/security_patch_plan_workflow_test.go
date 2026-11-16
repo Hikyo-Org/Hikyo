@@ -30,6 +30,7 @@ func TestSecurityPatchPlanWorkflowBoundaries(t *testing.T) {
 			Environment string            `yaml:"environment"`
 			Permissions map[string]string `yaml:"permissions"`
 			Steps       []struct {
+				If   string `yaml:"if"`
 				Uses string `yaml:"uses"`
 				Run  string `yaml:"run"`
 			} `yaml:"steps"`
@@ -60,8 +61,17 @@ func TestSecurityPatchPlanWorkflowBoundaries(t *testing.T) {
 	if plan.If != "github.ref == 'refs/heads/main'" || plan.Environment != "" || issue.Environment != "" {
 		t.Fatalf("the plan runs on main and neither job takes an environment: %q", plan.If)
 	}
-	if !reflect.DeepEqual(plan.Permissions, map[string]string{"actions": "read", "contents": "read", "vulnerability-alerts": "read"}) {
+	if !reflect.DeepEqual(plan.Permissions, map[string]string{"actions": "read", "checks": "read", "contents": "read", "pull-requests": "read", "vulnerability-alerts": "read"}) {
 		t.Fatalf("the plan job is read-only: %v", plan.Permissions)
+	}
+	for scope, level := range plan.Permissions {
+		if level != "read" {
+			t.Fatalf("the plan job holds %s: %s", scope, level)
+		}
+	}
+	// A failed, cancelled or timed-out plan must still reach the issue.
+	if issue.If != "${{ always() && github.ref == 'refs/heads/main' }}" {
+		t.Fatalf("the issue job must run after a failed plan, on main only: %q", issue.If)
 	}
 	if !reflect.DeepEqual(issue.Permissions, map[string]string{"contents": "read", "issues": "write"}) || issue.Needs != "plan" {
 		t.Fatalf("the issue job is the only writer and waits for the plan: %v %v", issue.Permissions, issue.Needs)
@@ -77,6 +87,28 @@ func TestSecurityPatchPlanWorkflowBoundaries(t *testing.T) {
 	}
 	if cosign < 0 || run < 0 || cosign > run {
 		t.Fatalf("pinned Cosign must be installed before the plan verifies the previous release: %d %d", cosign, run)
+	}
+	var reported, published int
+	for _, step := range issue.Steps {
+		switch {
+		case strings.Contains(step.Run, "security-patch-plan.sh issue --failed \"$RUN_URL\""):
+			reported++
+			if step.If != "${{ needs.plan.result != 'success' }}" {
+				t.Fatalf("a failed plan is reported only when the plan did not succeed: %q", step.If)
+			}
+		case strings.Contains(step.Run, "security-patch-plan.sh issue \"$PLAN_DIR/"):
+			published++
+			if step.If != "${{ needs.plan.result == 'success' }}" {
+				t.Fatalf("the plan is published only when it succeeded: %q", step.If)
+			}
+		case strings.Contains(step.Uses, "download-artifact"):
+			if step.If != "${{ needs.plan.result == 'success' }}" {
+				t.Fatalf("the plan artifact is downloaded only when it exists: %q", step.If)
+			}
+		}
+	}
+	if reported != 1 || published != 1 {
+		t.Fatalf("the issue job publishes a plan and reports a failed one: %d %d", published, reported)
 	}
 	for _, forbidden := range []string{"secrets.", "create-github-app-token", "git push", "git tag", "gh release", "gh pr ", "gh api -X", "gh api --method", "pull_request"} {
 		if strings.Contains(string(raw), forbidden) {

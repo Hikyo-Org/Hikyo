@@ -85,20 +85,60 @@ hand from the verified earlier release's files and have it reviewed.
 
 **Security patch prompt.** After a Dependabot security update merges to main,
 the `security-patch-plan` workflow opens one issue, "Security patch release:
-maintainer action needed", with the exact commands for the patch release: the
-signed tag, then review, publish, trust synchronization and the Homebrew
-update. Use the commands in the latest version of that issue. Its first
-command, `scripts/release/security-patch-plan.sh recheck`, repeats the checks at
-tag time with your own login and refuses (tagging nothing) when a newer security
-merge exists or anything else changed. When the tip of main is not green, the
-issue offers a signed tag of the newest green commit that holds every pending
-security merge instead of `ceremony.sh build`, because `build` can only tag the
-tip. The workflow itself tags and publishes nothing. The issue closes itself
-once the security merges are released; the Homebrew tap update stays a manual
-step (`ceremony.sh homebrew VERSION`), by owner decision of 2026-11-16, which replaces
-the earlier "Homebrew follows the latest release automatically" decision for now;
-no tap credential exists. The workflow reaches main by promotion from
-dev and runs from main only, so no issue appears before a promotion has landed it.
+maintainer action needed", with the exact commands for the release: the signed
+tag, then review, publish, trust synchronization and the Homebrew update. Use
+the commands in the latest version of that issue.
+
+- **Step 0: a person queues each security update.** GitHub's built-in token
+  cannot add a pull request to the merge queue, so nothing is merged
+  automatically. The issue lists every open Dependabot security pull request into
+  main that qualifies (alert-linked, opened by Dependabot, bound by numeric id,
+  verified Dependabot commits committed by GitHub, not a draft, admission check
+  not failed) with its head SHA; open each one and click **Merge when ready**.
+  One the merge queue removed after its newest commit is listed separately and
+  needs a person to find out why. The plan job needs only read permissions
+  (`pull-requests: read`, `checks: read`) for this.
+- **Patch or minor.** The plan first tries the next patch. When the generated
+  compatibility declaration differs from the latest stable release's (once a
+  promotion brings unreleased migrations, every patch is refused), the issue
+  proposes the next minor `X.(Y+1).0` instead and lists a checklist of
+  prerequisites that block tagging: read the declaration difference, review the
+  edge modes against the compatibility ADR, accept that everything on the commit
+  ships, write the release notes. A minor ships everything on its commit, not only
+  the security fix.
+- **The recheck.** The first command, `security-patch-plan.sh recheck KIND
+  VERSION COMMIT`, is run with your own login on a clean checkout. It refuses,
+  tagging nothing, when the checkout is dirty or not at the planned commit,
+  when `main` moved (green tip), when the version is not the kind's successor of
+  the latest stable release, when trust is not synchronized, when a newer
+  security merge exists, when a security merge cannot be placed in main's history
+  or a fixed alert has no linked merge, or when a patch would carry a migration or
+  compatibility-source change. It does not regenerate the compatibility
+  declaration (the plan did, for the planned commit; that needs scratch
+  PostgreSQL) and it cannot see what happens between the recheck and the tag push:
+  that window is seconds to minutes, and a merge that lands in it is caught only by
+  the ceremony's own build checks. It is a guard on stale instructions, not a lock.
+- **When the tip of main is not green**, the issue offers a signed tag of the
+  newest green commit that holds every pending security merge (after the signature
+  check) instead of `ceremony.sh build`, because `build` can only tag the tip.
+- **A burned tag.** A pushed tag is never moved or recreated. If `release-build`
+  fails before the draft is complete and the byte set cannot be completed safely,
+  the version is burned and you use a new version; the issue repeats this.
+- **An unlinked fixed alert.** A Dependabot alert fixed after the latest stable
+  release without a linked merged pull request on main (a promotion that bumped
+  the dependency, or a fix by hand) raises a standing alarm and `recheck` refuses.
+  Decide by hand whether the fix is released; to clear it, publish the fix in a
+  stable release through the ordinary ceremony (`ceremony.sh build VERSION`),
+  because the alarm counts only alerts fixed after the latest stable release was
+  published.
+- **After the release.** The issue closes itself once the security merges are
+  released and trust records the latest release. The Homebrew tap update stays a
+  manual step (`ceremony.sh homebrew VERSION`), by owner decision of 2026-11-16,
+  which replaces the earlier "Homebrew follows the latest release automatically"
+  decision for now; no tap credential exists.
+
+The workflow tags and publishes nothing. It reaches main by promotion from dev and
+runs from main only, so no issue appears before a promotion has landed it.
 
 1. **Build the draft:** from clean current main, run
    `scripts/release/ceremony.sh build VERSION`. The helper requires green CI

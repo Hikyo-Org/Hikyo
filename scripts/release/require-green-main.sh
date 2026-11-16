@@ -20,12 +20,22 @@ if ! printf '%s\n' "$commit" | grep -Eq '^[0-9a-f]{40}$'; then
 fi
 
 repo_root=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)
+# Exit 0: complete green source proof. Exit 1: no such proof. Exit 4: GitHub could
+# not be read. Exit 2: bad usage.
 # The verifier accepts complete exact landed merge-group proof as well as
 # manual/legacy full-main proof. It authenticates the producer, latest attempt,
 # approved execution definition and every native job; a same-name check or
 # candidate-authored artifact cannot replace source execution evidence.
+# "go run" hides the program's exit status, so the verifier reports a failed
+# GitHub read through a file: exit 4 means "could not look", never "not green".
+class=$(mktemp "${TMPDIR:-/tmp}/hikyo-green-class.XXXXXX")
+trap 'rm -f "$class"' EXIT HUP INT TERM
 if ! "$GO_BIN" -C "$repo_root" run -p 2 ./scripts/ci/source-proof \
-	--repository "$repository" --mode main --commit "$commit" --authority-commit "$commit" >/dev/null; then
+	--repository "$repository" --mode main --commit "$commit" --authority-commit "$commit" --failure-class "$class" >/dev/null; then
+	if [ "$(cat "$class")" = lookup ]; then
+		printf 'green main: could not read GitHub for exact commit %s; nothing is decided\n' "$commit" >&2
+		exit 4
+	fi
 	printf 'green main: exact commit %s needs complete authenticated source proof; run full ci-main.yml on the selected main commit when proof is unavailable\n' "$commit" >&2
 	exit 1
 fi

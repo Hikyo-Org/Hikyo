@@ -51,9 +51,19 @@ type proof struct {
 }
 
 type options struct {
-	Repository, Mode, Commit, Authority, Output, GitHubOutput string
-	Latest                                                    bool
+	Repository, Mode, Commit, Authority, Output, GitHubOutput, FailureClass string
+	Latest                                                                  bool
 }
+
+// readError marks a failed or unreadable GitHub answer, as opposed to a proof
+// that is missing or wrong: "could not look" is not "not green".
+type readError struct{ err error }
+
+func (e readError) Error() string { return e.err.Error() }
+func (e readError) Unwrap() error { return e.err }
+
+// lookupFailedClass is written to --failure-class when the failure was a read.
+const lookupFailedClass = "lookup"
 
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -64,7 +74,11 @@ func main() {
 	}
 }
 
-func execute(ctx context.Context, args []string, stdout io.Writer) error {
+// execute runs the proof. When --failure-class names a file and the failure was
+// a failed GitHub read, the file receives lookupFailedClass: a caller that runs
+// this through "go run" cannot see the exit status, so it reads the class here
+// instead of matching error text.
+func execute(ctx context.Context, args []string, stdout io.Writer) (err error) {
 	var opt options
 	flags := flag.NewFlagSet("source-proof", flag.ContinueOnError)
 	flags.StringVar(&opt.Repository, "repository", "", "canonical OWNER/REPO")
@@ -73,10 +87,17 @@ func execute(ctx context.Context, args []string, stdout io.Writer) error {
 	flags.StringVar(&opt.Authority, "authority-commit", "", "immutable approved main definition SHA")
 	flags.StringVar(&opt.Output, "output", "", "small verified JSON receipt")
 	flags.StringVar(&opt.GitHubOutput, "github-output", "", "append validated Actions outputs")
+	flags.StringVar(&opt.FailureClass, "failure-class", "", "file that receives \"lookup\" when the failure was a failed GitHub read")
 	flags.BoolVar(&opt.Latest, "latest", false, "select last fully validated dev ancestor")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
+	defer func() {
+		var read readError
+		if err != nil && opt.FailureClass != "" && errors.As(err, &read) {
+			_ = os.WriteFile(opt.FailureClass, []byte(lookupFailedClass+"\n"), 0o600)
+		}
+	}()
 	if flags.NArg() != 0 || !validRepository(opt.Repository) || (opt.Mode != "main" && opt.Mode != "dev") ||
 		(opt.Latest && (opt.Mode != "dev" || opt.Commit != "")) || (!opt.Latest && !shaPattern.MatchString(opt.Commit)) ||
 		(opt.Authority != "" && !shaPattern.MatchString(opt.Authority)) {
@@ -141,9 +162,12 @@ func (g githubCLI) read(ctx context.Context, endpoint string, target any) error 
 	if err := cmd.Run(); err != nil {
 		// Do not forward raw command output, which can contain credentials or
 		// provider-controlled terminal control sequences.
-		return fmt.Errorf("GitHub read failed for %s: %w", endpoint, err)
+		return readError{fmt.Errorf("GitHub read failed for %s: %w", endpoint, err)}
 	}
-	return decode(stdout.Bytes(), target)
+	if err := decode(stdout.Bytes(), target); err != nil {
+		return readError{err}
+	}
+	return nil
 }
 
 func decode(data []byte, target any) error {

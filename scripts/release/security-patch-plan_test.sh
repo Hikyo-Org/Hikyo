@@ -6,7 +6,7 @@
 # argument counts and the tag block is executed in a clone. Every lookup that
 # decides something also has a failing case, because a failed read must never
 # look like an empty answer.
-# shellcheck disable=SC2030,SC2031
+# shellcheck disable=SC2030,SC2031,SC2016
 set -eu
 script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 real_root=$(CDPATH='' cd -- "$script_dir/../.." && pwd)
@@ -28,6 +28,17 @@ trust_metadata() { jq -nc --arg highest "$1" --args '{highest_release:$highest, 
 # c4 an ordinary commit after it. A build at c0 or c1 would read stale trust.
 trust_metadata 1.0.0 1.0.0 >"$repo/release/trust/metadata.json"
 printf '{}\n' >"$repo/release/compatibility/sources.json"
+mkdir -p "$repo/internal/store/migrations/postgres" "$repo/scripts/release" "$repo/scripts/lib" "$repo/scripts/git" "$repo/scripts/ci"
+printf -- '-- 1\n' >"$repo/internal/store/migrations/postgres/00001_x.sql"
+# The tools the issue's commands run are the real ones, committed in the repository the way the
+# target commit would carry them; the hooks installer and the signature check are stand-ins
+# because the fixture's commits are neither signed nor in a real clone.
+for tool in security-patch-plan.sh require-green-main.sh require-synced-trust.sh; do cp "$real_root/scripts/release/$tool" "$repo/scripts/release/$tool"; done
+cp "$real_root/scripts/lib/release.sh" "$repo/scripts/lib/release.sh"
+printf '#!/bin/sh\nexit 0\n' >"$repo/scripts/git/install-hooks.sh"
+printf '#!/bin/sh\nprintf "signature check %%s\\n" "$*" >>"${FIXTURE:-/dev/null}/signature-calls"\nexit "${SIGNATURES:-0}"\n' >"$repo/scripts/ci/check-commit-signatures.sh"
+printf '#!/bin/sh\nexit 0\n' >"$repo/scripts/release/ceremony.sh"
+chmod +x "$repo"/scripts/release/*.sh "$repo/scripts/git/install-hooks.sh" "$repo/scripts/ci/check-commit-signatures.sh"
 git -C "$repo" add -A
 git -C "$repo" commit -q -m c0
 git -C "$repo" commit -q --allow-empty -m c1
@@ -60,6 +71,27 @@ git -C "$repo" switch -q --detach "$c4"
 printf 'not json\n' >"$repo/release/trust/metadata.json"
 git -C "$repo" commit -q -a -m cbad
 cbad=$(git -C "$repo" rev-parse HEAD)
+# ctool changes a release tool the issue's commands run, cother only an unrelated file, cmig adds a migration.
+git -C "$repo" switch -q --detach "$c4"
+printf '# changed\n' >>"$repo/scripts/release/require-green-main.sh"
+git -C "$repo" commit -q -a -m ctool
+ctool=$(git -C "$repo" rev-parse HEAD)
+git -C "$repo" switch -q --detach "$c4"
+printf 'x\n' >"$repo/unrelated.txt"
+git -C "$repo" add -A
+git -C "$repo" commit -q -m cother
+cother=$(git -C "$repo" rev-parse HEAD)
+git -C "$repo" switch -q --detach "$c4"
+printf -- '-- 2\n' >"$repo/internal/store/migrations/postgres/00002_y.sql"
+git -C "$repo" add -A
+git -C "$repo" commit -q -m cmig
+cmig=$(git -C "$repo" rev-parse HEAD)
+git -C "$repo" switch -q --detach "$c4"
+mkdir -p "$repo/release/compatibility"
+printf '{"changed":1}\n' >"$repo/release/compatibility/sources.json"
+git -C "$repo" add -A
+git -C "$repo" commit -q -m ccomp
+ccomp=$(git -C "$repo" rev-parse HEAD)
 git -C "$repo" switch -q main
 git -C "$repo" reset -q --hard "$c4"
 export FIXTURE="$scratch" C0="$c0" C1="$c1" C2="$c2" C3="$c3" C4="$c4"
@@ -70,6 +102,7 @@ cat >"$scratch/bin/gh" <<'SH'
 #!/bin/sh
 set -eu
 printf '%s\n' "$*" >>"$FIXTURE/calls"
+args="$*"
 boom() { printf 'gh: server error (HTTP 500)\n' >&2; exit 1; }
 failing() { case ",${FAIL:-}," in *",$1,"*) boom ;; esac; }
 hex() { printf "$1%.0s" $(seq 40); }
@@ -81,7 +114,7 @@ case "$*" in
 			map({tag_name: ., draft: false, published_at: "2026-11-08T23:26:41Z"}) +
 			[{tag_name: "v8.0.0", draft: true, published_at: null}] +
 			(if $draft != "" then ($draft | split(" ") | map({tag_name: ., draft: true, published_at: null})) else [] end) | [.]' ;;
-	'api repos/o/r/commits/v1.1.0') failing latest-commit; jq -nc --arg sha "$C0" '{sha:$sha}' ;;
+	'api repos/o/r/commits/v1.1.0'|'api repos/o/r/commits/v1.1.1') failing latest-commit; jq -nc --arg sha "$C0" '{sha:$sha}' ;;
 	'api graphql --paginate '*)
 		failing alerts
 		case "$*" in *'states:[OPEN,FIXED]'*) ;; *) printf 'the alert query must list its states explicitly\n' >&2; exit 2 ;; esac
@@ -92,10 +125,10 @@ case "$*" in
 		oid=${SEC1:-$C3}
 		merged=true
 		[ "${ALERTS:-}" != unmerged ] || merged=false
-		jq -nc --arg oid "$oid" --argjson merged "$merged" --arg at "${MERGED_AT:-$NOW}" --argjson bot "$bot" \
+		jq -nc --arg oid "$oid" --argjson merged "$merged" --arg at "${MERGED_AT:-$NOW}" --argjson bot "$bot" --arg open "${OPEN_PRS:-}" \
 			--arg oid2 "${SEC2:-}" --arg pfix "${PR_FIXED_AT:-$NOW}" --arg at2 "${MERGED_AT2:-$NOW}" --arg nocommit "${NO_COMMIT:-}" --arg mode "${ALERTS:-}" --arg fixed "${FIXED_AT:-$NOW}" '
 			def pr($n; $m; $oid; $at; $ref): {state:(if $m then "FIXED" else "OPEN" end),fixedAt:(if $m then $pfix else null end),
-				dependabotUpdate:{pullRequest:{number:$n,merged:$m,mergedAt:(if $m then $at else null end),baseRefName:"main",headRefName:$ref,
+				dependabotUpdate:{pullRequest:{number:$n,title:"Bump x",state:(if $m then "MERGED" else "OPEN" end),merged:$m,mergedAt:(if $m then $at else null end),baseRefName:"main",headRefName:$ref,
 				author:{login:"dependabot",databaseId:$bot},mergeCommit:(if $m and $nocommit == "" then {oid:$oid} else null end)}}};
 			{data:{repository:{vulnerabilityAlerts:{nodes:([
 				pr(7; $merged; $oid; $at; "dependabot/npm_and_yarn/x"),
@@ -104,6 +137,7 @@ case "$*" in
 				pr(13; true; "7777777777777777777777777777777777777777"; $at; "feature/z"),
 				(pr(10; true; "8888888888888888888888888888888888888888"; $at; "dependabot/go/other") | .dependabotUpdate.pullRequest.author.databaseId = 2)
 			] + (if $oid2 != "" then [pr(11; true; $oid2; $at2; "dependabot/go/second")] else [] end)
+			+ ($open | split(" ") | map(select(. != "") | tonumber | pr(.; false; null; $at; "dependabot/go/open")))
 			+ (if $mode == "unlinked" then [{state:"FIXED",fixedAt:$fixed,dependabotUpdate:null}] else [] end)
 			+ (if $mode == "unlinked-unmerged" then [{state:"FIXED",fixedAt:$fixed,dependabotUpdate:{pullRequest:pr(12; false; null; $at; "dependabot/go/u").dependabotUpdate.pullRequest}}] else [] end)
 			+ (if $mode == "unlinked-nofixedat" then [{state:"FIXED",fixedAt:null,dependabotUpdate:null}] else [] end)
@@ -115,12 +149,50 @@ case "$*" in
 	'api repos/o/r/releases/tags/v1.1.1')
 		failing release-lookup
 		if [ "${RELEASE_EXISTS:-}" = 1 ]; then echo '{"draft":false}'; else printf 'gh: Not Found (HTTP 404)\n' >&2; exit 1; fi ;;
-	'issue list '*)
+	'api repos/o/r/releases/tags/v1.2.0')
+		failing release-lookup
+		if [ "${MINOR_RELEASE_EXISTS:-}" = 1 ]; then echo '{"draft":false}'; else printf 'gh: Not Found (HTTP 404)\n' >&2; exit 1; fi ;;
+	'api --paginate --slurp repos/o/r/issues?state=open&creator=github-actions%5Bbot%5D&per_page=100')
 		failing issue-list
-		case "$*" in *'--json number,title,body,author'*) ;; *) printf 'the issue listing must include the author\n' >&2; exit 2 ;; esac
 		cat "$FIXTURE/issues.json" ;;
-	'issue create '*) : >"$FIXTURE/created" ;;
-	'issue edit '*) : >"$FIXTURE/edited" ;;
+	'api graphql -f query='*)
+		# One open security pull request, read by number.
+		failing open-pr
+		n=${args##*-F number=}
+		head=$(printf '%040x' "$n")
+		bot=49699333; draft=false; repo=o/r; queue=false; events='[]'
+		case " ${PR_BOT:-} " in *" $n "*) bot=7 ;; esac
+		case " ${PR_DRAFT:-} " in *" $n "*) draft=true ;; esac
+		case " ${PR_FOREIGN:-} " in *" $n "*) repo=fork/r ;; esac
+		case " ${PR_INQUEUE:-} " in *" $n "*) queue=true ;; esac
+		case " ${PR_REMOVED:-} " in *" $n "*) events='[{"createdAt":"2026-11-12T10:00:00Z"}]' ;; esac
+		case " ${PR_REMOVED_BEFORE:-} " in *" $n "*) events='[{"createdAt":"2026-11-01T10:00:00Z"}]' ;; esac
+		jq -nc --argjson n "$n" --arg head "$head" --argjson bot "$bot" --argjson draft "$draft" --arg repo "$repo" --argjson queue "$queue" --argjson events "$events" '
+			{data:{repository:{pullRequest:{number:$n,title:("Bump `x` from 1 to 2 @someone\n<b>" + ($n | tostring)),state:"OPEN",isDraft:$draft,isInMergeQueue:$queue,baseRefName:"main",headRefOid:$head,
+			headRepository:{nameWithOwner:$repo},author:{login:"dependabot",databaseId:$bot},timelineItems:{nodes:$events}}}}}' ;;
+	'api --paginate --slurp repos/o/r/pulls/'*'/commits?per_page=100')
+		failing open-pr
+		n=${args#*pulls/}; n=${n%%/*}
+		head=$(printf '%040x' "$n")
+		author=49699333; committer=19864447; verified=true
+		case " ${PR_COMMITS_UNVERIFIED:-} " in *" $n "*) verified=false ;; esac
+		case " ${PR_COMMITS_HUMAN:-} " in *" $n "*) author=5 ;; esac
+		case " ${PR_COMMITS_NOT_WEBFLOW:-} " in *" $n "*) committer=5 ;; esac
+		case " ${PR_COMMITS_STALE:-} " in *" $n "*) head=$(printf '%040x' 999) ;; esac
+		jq -nc --arg head "$head" --argjson author "$author" --argjson committer "$committer" --argjson verified "$verified" '
+			[[{sha:$head,author:{id:$author},committer:{id:$committer},commit:{committer:{date:"2026-11-10T10:00:00Z"},verification:{verified:$verified}}}]]' ;;
+	'api --paginate --slurp repos/o/r/commits/'*'/check-runs?check_name=ci-queue-required&app_id=15368&per_page=100')
+		failing open-pr
+		n=${args#*commits/}; n=${n%%/*}
+		n=$((0x$n))
+		runs='[]'
+		case " ${PR_ADMISSION_FAILED:-} " in *" $n "*) runs='[{"id":5,"status":"completed","conclusion":"failure"}]' ;; esac
+		case " ${PR_ADMISSION_QUEUED:-} " in *" $n "*) runs='[{"id":5,"status":"queued","conclusion":null}]' ;; esac
+		case " ${PR_ADMISSION_OLD_FAILED:-} " in *" $n "*) runs='[{"id":5,"status":"completed","conclusion":"failure"},{"id":9,"status":"completed","conclusion":"success"}]' ;; esac
+		case " ${PR_ADMISSION_NEW_FAILED:-} " in *" $n "*) runs='[{"id":5,"status":"completed","conclusion":"success"},{"id":9,"status":"completed","conclusion":"failure"}]' ;; esac
+		jq -nc --argjson runs "$runs" '[{total_count:($runs | length),check_runs:$runs}]' ;;
+	'issue create '*) : >"$FIXTURE/created"; cp "${args##*--body-file }" "$FIXTURE/last-body" ;;
+	'issue edit '*) : >"$FIXTURE/edited"; cp "${args##*--body-file }" "$FIXTURE/last-body" ;;
 	'issue close '*) : >"$FIXTURE/closed" ;;
 	*) printf 'unexpected gh call: %s\n' "$*" >&2; exit 2 ;;
 esac
@@ -142,7 +214,7 @@ SH
 cat >"$scratch/bin/green" <<'SH'
 #!/bin/sh
 printf 'green %s\n' "$*" >>"$FIXTURE/calls"
-[ "${GREEN_READ:-}" != fail ] || { echo 'green main: GitHub read failed'; exit 1; }
+[ "${GREEN_READ:-}" != fail ] || { echo 'green main: could not read GitHub'; exit 4; }
 case " ${GREEN:-$C0 $C1 $C2 $C3 $C4} " in *" $2 "*) exit 0 ;; esac
 echo 'green main: needs complete authenticated source proof'
 exit 1
@@ -157,6 +229,7 @@ printf 'compat %s\n' "$*" >>"$FIXTURE/calls"
 case "${COMPAT:-same}" in
 	same) echo 'compatibility check: compatibility is identical to v1.1.0' ;;
 	differs) echo 'compatibility check: the compatibility declaration differs from the one v1.1.0 published' >&2; exit 1 ;;
+	unverified) echo 'compatibility check: v1.1.0 does not verify against the signed trust' >&2; exit 5 ;;
 	*) echo 'compatibility check: cannot download v1.1.0' >&2; exit 4 ;;
 esac
 SH
@@ -168,9 +241,9 @@ SH
 chmod +x "$scratch/bin/"*
 export GH_BIN="$scratch/bin/gh" GO_BIN="$scratch/bin/go" GREEN_BIN="$scratch/bin/green" SYNCED_BIN="$scratch/bin/synced" \
 	COMPAT_BIN="$scratch/bin/compat" POSTGRES_BIN="$scratch/bin/postgres" HIKYO_REPO_ROOT="$repo"
-echo '[]' >"$scratch/issues.json"
+echo '[[]]' >"$scratch/issues.json"
 
-reset() { rm -f "$scratch/calls" "$scratch/postgres-started" "$scratch/created" "$scratch/edited" "$scratch/closed" "$scratch/plan.json"; : >"$scratch/calls"; }
+reset() { rm -f "$scratch/last-body" "$scratch/signature-calls" "$scratch/calls" "$scratch/postgres-started" "$scratch/created" "$scratch/edited" "$scratch/closed" "$scratch/plan.json"; : >"$scratch/calls"; }
 # plan NAME WANT_STATUS VAR=value...: run the plan against GITHUB_SHA (default c4).
 plan() {
 	name=$1 want=$2
@@ -193,7 +266,7 @@ expect_action ready open
 has ready '## Security patch v1.1.1 is ready to tag'
 has ready "merge commit \`$c3\`"
 has ready "Planned release:** \`v1.1.1\` at \`$c4\`"
-has ready "scripts/release/security-patch-plan.sh recheck 1.1.1 $c4 --tip &&"
+has ready "scripts/release/security-patch-plan.sh recheck patch 1.1.1 $c4 --tip &&"
 has ready 'scripts/release/ceremony.sh build 1.1.1'
 lacks ready 'git tag -s'
 has ready 'identical to v1.1.0'
@@ -206,6 +279,14 @@ has ready 'REVIEWED_MANIFEST_SHA256'
 check_ceremony_lines() { # name
 	body | sed -n 's/^.*scripts\/release\/ceremony.sh \([a-z-]*\)\(.*\)$/\1\2/p' | sed 's/ *&&$//' >"$scratch/ceremony-lines"
 	[ -s "$scratch/ceremony-lines" ] || fail "$1: no ceremony command found"
+	# Each follow-up command runs from a fresh origin/main: the one before it may have left another branch.
+	body | grep -E 'ceremony\.sh (review|publish|sync-trust|homebrew) ' >"$scratch/followup-lines" || true
+	while read -r line; do
+		case $line in
+		'git fetch origin main && git switch --detach origin/main && scripts/release/ceremony.sh '*) ;;
+		*) fail "$1: a follow-up ceremony command does not start from a fresh origin/main: $line" ;;
+		esac
+	done <"$scratch/followup-lines"
 	while read -r sub args; do
 		# shellcheck disable=SC2086
 		set -- $args
@@ -224,15 +305,13 @@ for sub in review publish sync-trust homebrew; do has ready "scripts/release/cer
 # Run the tag block for real in a clone, with the fake tools: its first lines
 # (fetch, switch, the recheck) are executed; only the final tag/ceremony line is
 # replaced because it needs a signing key or asks for confirmation.
-run_tag_block() { # name mode (last-line: swap the final line for true; sign: tag without a key)
+run_tag_block() { # name mode [status] (last-line: swap the final line for true; sign: tag without a key; status: fail when the block must stop)
 	body | awk '/^```sh/ { n++; on = (n == 1); next } /^```/ { on = 0; next } on' >"$scratch/block.sh"
 	clone="$scratch/clone-$1"
 	git clone -q "$repo" "$clone"
 	git -C "$clone" config user.email test@example.com
 	git -C "$clone" config user.name test
-	cp -R "$real_root/scripts" "$clone/scripts"
-	# The real installer needs this repository's hooks; the block names it and the fixture checks it exists.
-	printf '#!/bin/sh\nexit 0\n' >"$clone/scripts/git/install-hooks.sh"
+	# The block runs the tools its target commit carries, as it would for a maintainer: no overlay.
 	python3 -I - "$scratch/block.sh" "$2" <<'PY'
 import sys
 path, mode = sys.argv[1:3]
@@ -243,8 +322,14 @@ else:
     lines = [l.replace("git tag -s ", "git tag -a ") for l in lines]
 open(path, "w").write("\n".join(lines) + "\n")
 PY
-	(cd "$clone" && env HIKYO_REPO_ROOT="$clone" GH_REPO=o/r sh -e "$scratch/block.sh" >"$scratch/block.out" 2>&1) || { cat "$scratch/block.out" >&2; fail "$1: the tag block does not run"; }
-	grep -F "ok to tag v1.1.1 at" "$scratch/block.out" >/dev/null || { cat "$scratch/block.out" >&2; fail "$1: the recheck did not pass"; }
+	block_status=0
+	(cd "$clone" && env HIKYO_REPO_ROOT="$clone" GH_REPO=o/r sh -e "$scratch/block.sh" >"$scratch/block.out" 2>&1) || block_status=$?
+	if [ "${3:-}" = fail ]; then
+		[ "$block_status" != 0 ] || { cat "$scratch/block.out" >&2; fail "$1: the tag block must stop"; }
+	else
+		[ "$block_status" = 0 ] || { cat "$scratch/block.out" >&2; fail "$1: the tag block does not run"; }
+		grep -F "ok to tag v${BLOCK_VERSION:-1.1.1} at" "$scratch/block.out" >/dev/null || { cat "$scratch/block.out" >&2; fail "$1: the recheck did not pass"; }
+	fi
 	rm -rf "$clone"
 }
 run_tag_block tip last-line
@@ -254,7 +339,10 @@ plan 'ready below a red tip' 0 GREEN="$c0 $c1 $c2 $c3"
 expect_action 'red tip' open
 has 'red tip' "\`v1.1.1\` at \`$c3\`"
 has 'red tip' "git switch --detach $c3 &&"
-has 'red tip' "recheck 1.1.1 $c3 &&"
+has 'red tip' "recheck patch 1.1.1 $c3 &&"
+has 'red tip' 'scripts/ci/check-commit-signatures.sh origin/main HEAD &&'
+has 'red tip' 'is never moved or recreated'
+has 'red tip' 'use a new version'
 has 'red tip' "git tag -s v1.1.1 -m \"Hikyo 1.1.1\" $c3 &&"
 has 'red tip' 'git push origin refs/tags/v1.1.1'
 has 'red tip' 'scripts/git/install-hooks.sh &&'
@@ -262,9 +350,27 @@ has 'red tip' "the main tip $c4 is not green"
 lacks 'red tip' 'ceremony.sh build'
 lacks 'red tip' ' --tip'
 check_ceremony_lines 'red tip'
+# The commits being tagged are checked for signatures before the tag is pushed; a failure stops the push.
+SIGNATURES=1
+export SIGNATURES
+run_tag_block red-unsigned sign fail
+unset SIGNATURES
+if git -C "$repo" rev-parse -q --verify refs/tags/v1.1.1 >/dev/null; then fail 'a failed signature check must stop the tag push'; fi
+body | awk '/check-commit-signatures/ { sig = NR } /git push origin refs\/tags/ { push = NR } END { exit !(sig > 0 && push > sig) }' || fail 'the signature check must come before the tag push'
 run_tag_block red sign
+grep -F 'origin/main HEAD' "$scratch/signature-calls" >/dev/null || fail 'the red-tip block must check the signatures of what it pushes'
 [ "$(git -C "$repo" rev-parse 'v1.1.1^{commit}')" = "$c3" ] || fail 'the red-tip block must push the tag at the planned commit'
 git -C "$repo" tag -d v1.1.1 >/dev/null
+# Below the tip the commands run the release tools from the target's tree: when the tip changed one, no tag is offered.
+plan 'the release tools differ between the target and a red tip' 0 GITHUB_SHA="$ctool" GREEN="$c0 $c1 $c2 $c3 $c4"
+expect_action 'tools differ' open
+has 'tools differ' 'the release tools differ between it and the main tip'
+no_tag_commands 'tools differ'
+plan 'an unrelated change on a red tip leaves the tools alone' 0 GITHUB_SHA="$cother" GREEN="$c0 $c1 $c2 $c3 $c4"
+has 'unrelated tip change' "\`v1.1.1\` at \`$c4\`"
+has 'unrelated tip change' 'git tag -s'
+plan 'a green tip with changed tools is still tagged by the ceremony' 0 GITHUB_SHA="$ctool" GREEN="$c0 $c1 $c2 $c3 $c4 $ctool"
+has 'green tip' 'ceremony.sh build 1.1.1'
 
 # --- blocked states open the issue instead of staying silent -----------------
 plan 'no green commit at or after the merge' 0 GREEN="$c0 $c1 $c2"
@@ -309,10 +415,46 @@ plan 'untrusted stable trust' 0 STABLE=untrusted
 has 'untrusted' 'stable trust does not authenticate'
 plan 'candidate refused' 0 STABLE=badcandidate
 has 'candidate refused' 'not a valid successor'
-plan 'compatibility differs' 0 COMPAT=differs
-expect_action 'compat differs' open
-has 'compat differs' 'the compatibility declaration differs'
-no_tag_commands 'compat differs'
+# A compatibility difference: a patch cannot ship it, so the issue proposes the next minor with its prerequisites.
+plan 'compatibility differs: a minor is proposed' 0 COMPAT=differs
+expect_action 'minor' open
+has minor '## Security release v1.2.0 (minor) is ready to tag once you have confirmed its prerequisites'
+has minor "Planned release:** \`v1.2.0\` at \`$c4\`"
+has minor 'A patch cannot ship it: the compatibility declaration differs from the one v1.1.0 published'
+has minor '### Prerequisites that block tagging (a minor release)'
+has minor '- [ ] Dispatch the `release-compatibility-check` workflow from main for `1.2.0`'
+has minor '- [ ] Review the edge modes'
+has minor 'sources.json'
+has minor 'docs/adr/signed-upgrade-compatibility.md'
+has minor '- [ ] Decide that everything on'
+has minor '- [ ] Write the release notes'
+has minor "recheck minor 1.2.0 $c4 --tip &&"
+has minor 'scripts/release/ceremony.sh build 1.2.0'
+lacks minor 'recheck patch'
+lacks minor 'build 1.1.1'
+grep -F 'compat o/r ' "$scratch/calls" | grep -F ' 1.2.0 ' >/dev/null || fail 'the minor is compared as 1.2.0'
+check_ceremony_lines minor
+[ -e "$scratch/postgres-started" ] || fail 'the minor plan generates the declaration too'
+BLOCK_VERSION=1.2.0
+export BLOCK_VERSION
+run_tag_block minor last-line
+unset BLOCK_VERSION
+plan 'a minor below a red tip' 0 COMPAT=differs GREEN="$c0 $c1 $c2 $c3"
+has 'minor red tip' "git tag -s v1.2.0 -m \"Hikyo 1.2.0\" $c3 &&"
+has 'minor red tip' "recheck minor 1.2.0 $c3 &&"
+plan 'a minor that would be refused is blocked' 0 COMPAT=differs MINOR_RELEASE_EXISTS=1
+expect_action 'minor refused' open
+has 'minor refused' 'v1.2.0 already has a release'
+no_tag_commands 'minor refused'
+plan 'an unverifiable baseline is not a difference' 0 COMPAT=unverified
+expect_action 'unverified' open
+has 'unverified' 'does not verify against the signed trust'
+lacks 'unverified' 'Security release v1.2.0'
+no_tag_commands 'unverified'
+plan 'a staged minor' 0 TAGS_EXTRA=v1.2.0 REL_DRAFT=v1.2.0
+has 'staged minor' 'v1.2.0 is tagged and its draft release is staged'
+has 'staged minor' 'scripts/release/ceremony.sh review 1.2.0'
+no_tag_commands 'staged minor'
 plan 'a compatibility lookup failure stops the run' 1 COMPAT=lookup
 plan 'a generator failure stops the run' 1 STABLE=nodecl
 plan 'a scratch database that does not start stops the run' 1 POSTGRES=fail
@@ -337,11 +479,78 @@ has 'trust behind' 'scripts/release/ceremony.sh sync-trust 1.2.0-rc.1'
 no_tag_commands 'trust behind'
 check_ceremony_lines 'trust behind'
 
+# --- step 0: open security updates are listed for a person to queue, never queued ---
+plan 'open security updates are listed, never queued' 0 OPEN_PRS="21 22"
+expect_action 'step 0' open
+has 'step 0' '### 0. Open security updates: a person queues each one'
+has 'step 0' "- #21 Bump x from 1 to 2 someoneb21, head \`$(printf '%040x' 21)\`"
+has 'step 0' "- #22 "
+has 'step 0' 'click **Merge when ready**'
+has 'step 0' 'Qualifying (alert-linked, Dependabot-authored, verified, not draft, admission check not failed)'
+has 'step 0' 'is ready to tag'
+# A title is untrusted text: markup, mentions and newlines never reach the issue.
+lacks 'step 0' '@someone'
+lacks 'step 0' '<b>'
+# Read-only: nothing is merged, queued or written, and no pull request write is used.
+if grep -E ' -X | --method |pr merge|merge-queue|enqueue|issue (create|edit|close)' "$scratch/calls" >/dev/null; then cat "$scratch/calls" >&2; fail 'step 0 must only read'; fi
+check_ceremony_lines 'step 0'
+plan 'with nothing pending the open updates still open the issue' 0 SEC1="$c0" OPEN_PRS=21
+expect_action 'idle with open' open
+has 'idle with open' 'Dependabot security updates need a look'
+has 'idle with open' '- #21 '
+plan 'a draft is not queued by hand' 0 SEC1="$c0" OPEN_PRS=21 PR_DRAFT=21
+has 'draft' '- #21 Bump x from 1 to 2 someoneb21: it is a draft'
+lacks 'draft' 'Qualifying'
+plan 'a branch outside the repository' 0 SEC1="$c0" OPEN_PRS=21 PR_FOREIGN=21
+has 'foreign' 'its branch is not in this repository'
+plan 'an author that is not Dependabot' 0 SEC1="$c0" OPEN_PRS=21 PR_BOT=21
+has 'not dependabot' 'not opened by Dependabot'
+plan 'an unverified commit' 0 SEC1="$c0" OPEN_PRS=21 PR_COMMITS_UNVERIFIED=21
+has 'unverified commit' 'its commits are not all Dependabot-authored, GitHub-committed and verified'
+plan 'a commit authored by a person' 0 SEC1="$c0" OPEN_PRS=21 PR_COMMITS_HUMAN=21
+has 'human commit' 'its commits are not all Dependabot-authored'
+plan 'a head newer than the commits that were read' 0 SEC1="$c0" OPEN_PRS=21 PR_COMMITS_STALE=21
+has 'stale commits' 'its commits are not all Dependabot-authored, GitHub-committed and verified'
+plan 'a commit not committed by GitHub' 0 SEC1="$c0" OPEN_PRS=21 PR_COMMITS_NOT_WEBFLOW=21
+has 'not web-flow' 'its commits are not all Dependabot-authored'
+plan 'a failed admission check' 0 SEC1="$c0" OPEN_PRS=21 PR_ADMISSION_FAILED=21
+has 'admission failed' 'the admission check failed'
+plan 'a queued admission check has not failed' 0 SEC1="$c0" OPEN_PRS=21 PR_ADMISSION_QUEUED=21
+has 'admission queued' 'Qualifying'
+plan 'only the newest admission run counts: an old failure' 0 SEC1="$c0" OPEN_PRS=21 PR_ADMISSION_OLD_FAILED=21
+has 'old failure' 'Qualifying'
+plan 'only the newest admission run counts: a new failure' 0 SEC1="$c0" OPEN_PRS=21 PR_ADMISSION_NEW_FAILED=21
+has 'new failure' 'the admission check failed'
+plan 'removed from the merge queue after the newest commit' 0 SEC1="$c0" OPEN_PRS=21 PR_REMOVED=21
+has 'removed' 'Removed from the merge queue after their newest commit'
+has 'removed' '- #21 '
+lacks 'removed' 'Qualifying'
+plan 'removed before the newest commit is no longer a reason' 0 SEC1="$c0" OPEN_PRS=21 PR_REMOVED_BEFORE=21
+has 'removed before' 'Qualifying'
+lacks 'removed before' 'Removed from the merge queue'
+plan 'a pull request already in the merge queue is not listed' 0 SEC1="$c0" OPEN_PRS=21 PR_INQUEUE=21
+expect_action 'queued' close
+plan 'an unreadable open pull request stops the run' 1 SEC1="$c0" OPEN_PRS=21 FAIL=open-pr
 # --- nothing pending --------------------------------------------------------
 plan 'a merge the latest release already holds' 0 SEC1="$c0"
 expect_action 'released' close
+# A published release that trust does not record keeps the issue open even with nothing pending.
+plan 'a release is published but trust is behind' 0 SEC1="$c0" REL_EXTRA=v1.1.1
+expect_action 'trust behind idle' open
+has 'trust behind idle' 'v1.1.1 is published but main'"'"'s trust ends at v1.1.0'
+has 'trust behind idle' 'scripts/release/ceremony.sh sync-trust 1.1.1'
+has 'trust behind idle' 'scripts/release/ceremony.sh homebrew 1.1.1'
+lacks 'trust behind idle' 'Merged Dependabot security updates waiting'
+check_ceremony_lines 'trust behind idle'
+plan 'a published prerelease has no Homebrew step' 0 SEC1="$c0" REL_EXTRA=v1.2.0-rc.1
+lacks 'prerelease trust' 'ceremony.sh homebrew'
+has 'prerelease trust' 'sync-trust 1.2.0-rc.1'
 plan 'an unmerged security update is not pending' 0 ALERTS=unmerged
-expect_action 'unmerged' close
+expect_action 'unmerged' open
+lacks 'unmerged' 'is ready to tag'
+has 'unmerged' '### 0. Open security updates'
+has 'unmerged' '- #7 '
+no_tag_commands 'unmerged'
 plan 'an impostor author is not a security update' 0 ALERTS=impostor
 expect_action 'impostor' close
 plan 'an alert fixed before the latest release is not an alarm' 0 SEC1="$c0" ALERTS=old-unlinked
@@ -350,6 +559,7 @@ expect_action 'old alert' close
 plan 'a fixed alert without a pull request' 0 SEC1="$c0" ALERTS=unlinked
 expect_action 'unlinked' open
 has 'unlinked' 'Dependabot alert(s) were fixed'
+has 'unlinked' 'The alarm clears once a stable release is published after the fix'
 plan 'a fixed alert whose pull request is not merged' 0 SEC1="$c0" ALERTS=unlinked-unmerged
 expect_action 'unlinked unmerged' open
 has 'unlinked unmerged' 'Dependabot alert(s) were fixed'
@@ -362,10 +572,15 @@ plan 'a fixed alert with an unreadable time stops the run' 1 SEC1="$c0" ALERTS=u
 plan 'a merge commit that is not in history is raised, not skipped' 0 SEC1="ffffffffffffffffffffffffffffffffffffffff"
 expect_action 'missing commit' open
 has 'missing commit' 'is not in main'
+# A merge that cannot be placed blocks any tag, even when everything else is ready.
+has 'missing commit' 'cannot be prepared'
+lacks 'missing commit' 'is ready to tag'
 # A merge time is validated for every state, even those that never use it for a decision.
 plan 'a merge without a merge commit is raised, not skipped' 0 NO_COMMIT=1
 expect_action 'no merge commit' open
 has 'no merge commit' 'GitHub reports no merge commit'
+has 'no merge commit' 'cannot be prepared'
+lacks 'no merge commit' 'is ready to tag'
 plan 'a merge outside the history of the tip is raised, not skipped' 0 SEC1="$side"
 expect_action 'side merge' open
 has 'side merge' "not in main's history"
@@ -381,6 +596,8 @@ no_tag_commands 'stale trust commit'
 plan 'a merge time that is not a timestamp stops the run' 1 MERGED_AT=garbage
 plan 'a merge time that is not a timestamp stops a staged release too' 1 MERGED_AT=garbage TAGS_EXTRA=v1.1.1 REL_DRAFT=v1.1.1
 plan 'a merge time that date would read as a word stops the run' 1 MERGED_AT=tomorrow
+# An impossible date is refused by GNU date and normalized by BSD date; either way it must stop the run.
+plan 'a merge time that is not a real date stops the run' 1 MERGED_AT=2026-02-30T00:00:00Z
 # A date that reads leniently (GNU date accepts words) must not slip past the strict format.
 mkdir "$scratch/gnudate"
 cat >"$scratch/gnudate/date" <<'SH'
@@ -412,9 +629,10 @@ apply() { # plan-file name
 	: >"$scratch/calls"
 	env GH_REPO=o/r GH_TOKEN=t "$@" >"$scratch/out" 2>"$scratch/err"
 }
-issue_json() { jq -nc --arg title "$1" --arg body "$2" --arg author "${3:-app/github-actions}" '[{number:5,title:$title,body:$body,author:{login:$author}}]'; }
+# issue_json TITLE BODY [USER_ID [TYPE [PULL_REQUEST]]]: the REST listing, one page.
+issue_json() { jq -nc --arg title "$1" --arg body "$2" --argjson id "${3:-41898282}" --arg type "${4:-Bot}" --arg pr "${5:-}" '[[{number:5,title:$title,body:$body,user:{id:$id,type:$type,login:"github-actions[bot]"},pull_request:(if $pr == "" then null else {url:"x"} end)}]]'; }
 title='Security patch release: maintainer action needed'
-echo '[]' >"$scratch/issues.json"
+echo '[[]]' >"$scratch/issues.json"
 apply "$script" issue "$scratch/ready-plan.json"
 [ -e "$scratch/created" ] || fail 'a plan to open creates the issue when none exists'
 grep -F -- "--title $title" "$scratch/calls" >/dev/null || fail 'the issue has its fixed title'
@@ -435,26 +653,48 @@ issue_json "$title" 'a stranger wrote this without the marker' >"$scratch/issues
 apply "$script" issue "$scratch/ready-plan.json"
 [ -e "$scratch/created" ] || fail 'an issue without our marker is not ours'
 # Anyone can open an issue with the title and the marker; only the workflow's own bot owns the issue.
-issue_json "$title" "$(jq -r .body "$scratch/ready-plan.json")" someone >"$scratch/issues.json"
+issue_json "$title" "$(jq -r .body "$scratch/ready-plan.json")" 5 User >"$scratch/issues.json"
 apply "$script" issue "$scratch/ready-plan.json"
 { [ -e "$scratch/created" ] && [ ! -e "$scratch/edited" ]; } || fail 'an issue with our marker from another author is not ours'
-issue_json "$title" "$(jq -r .body "$scratch/ready-plan.json")" fake-github-actions >"$scratch/issues.json"
+# The workflow's bot is bound by its numeric id and its type, never by a login spelling.
+issue_json "$title" "$(jq -r .body "$scratch/ready-plan.json")" 41898282 User >"$scratch/issues.json"
 apply "$script" issue "$scratch/ready-plan.json"
-[ -e "$scratch/created" ] || fail 'the author name is matched exactly'
-issue_json "$title" "$(printf '<!-- security-patch-plan -->\nold')" 'github-actions[bot]' >"$scratch/issues.json"
+[ -e "$scratch/created" ] || fail 'a user with the bot id is not the bot'
+issue_json "$title" "$(jq -r .body "$scratch/ready-plan.json")" 12345 Bot >"$scratch/issues.json"
 apply "$script" issue "$scratch/ready-plan.json"
-{ [ -e "$scratch/edited" ] && [ ! -e "$scratch/created" ]; } || fail 'the REST spelling of the bot is ours'
+[ -e "$scratch/created" ] || fail 'another app with the same title is not ours'
+issue_json "$title" "$(jq -r .body "$scratch/ready-plan.json")" 41898282 Bot yes >"$scratch/issues.json"
+apply "$script" issue "$scratch/ready-plan.json"
+[ -e "$scratch/created" ] || fail 'a pull request is never our issue'
+issue_json "$title" "$(printf '<!-- security-patch-plan -->\nold')" >"$scratch/issues.json"
+apply "$script" issue "$scratch/ready-plan.json"
+{ [ -e "$scratch/edited" ] && [ ! -e "$scratch/created" ]; } || fail 'the workflow bot by id and type is ours'
 plan 'released' 0 SEC1="$c0"
 issue_json "$title" "$(printf '<!-- security-patch-plan -->\nold')" >"$scratch/issues.json"
 cp "$scratch/plan.json" "$scratch/close-plan.json"
 apply "$script" issue "$scratch/close-plan.json"
 [ -e "$scratch/closed" ] || fail 'a plan to close closes our open issue'
-echo '[]' >"$scratch/issues.json"
+echo '[[]]' >"$scratch/issues.json"
 apply "$script" issue "$scratch/close-plan.json"
 [ ! -e "$scratch/closed" ] || fail 'closing with no open issue does nothing'
-issue_json "$title" "$(printf '<!-- security-patch-plan -->\nold')" someone >"$scratch/issues.json"
+issue_json "$title" "$(printf '<!-- security-patch-plan -->\nold')" 5 User >"$scratch/issues.json"
 apply "$script" issue "$scratch/close-plan.json"
 [ ! -e "$scratch/closed" ] || fail 'another author is not closed'
+# A failed or timed-out planning run is reported in the same issue, never left stale or silent.
+run_url=https://github.com/o/r/actions/runs/123456789
+echo '[[]]' >"$scratch/issues.json"
+apply "$script" issue --failed "$run_url"
+[ -e "$scratch/created" ] || fail 'a failed run opens the issue when none exists'
+grep -F 'Security patch planning failed' "$scratch/last-body" >/dev/null || fail 'the failure issue says what happened'
+grep -F "$run_url" "$scratch/last-body" >/dev/null || fail 'the failure issue links the run'
+grep -F 'git tag' "$scratch/last-body" >/dev/null && fail 'the failure issue offers no tag command'
+issue_json "$title" "$(printf '<!-- security-patch-plan -->\nold')" >"$scratch/issues.json"
+apply "$script" issue --failed "$run_url"
+{ [ -e "$scratch/edited" ] && [ ! -e "$scratch/created" ]; } || fail 'a failed run rewrites our open issue'
+for bad in 'http://github.com/o/r/actions/runs/1' 'https://evil.example/o/r/actions/runs/1' 'https://github.com/o/r/actions/runs/1 x' 'https://github.com/o/r/actions/runs/1?x=1' ''; do
+	if env GH_REPO=o/r GH_TOKEN=t "$script" issue --failed "$bad" >/dev/null 2>&1; then fail "issue --failed must refuse the URL: $bad"; fi
+done
+if env GH_REPO=o/r GH_TOKEN=t "$script" issue --failed >/dev/null 2>&1; then fail 'issue --failed needs a run URL'; fi
 if env FAIL=issue-list GH_REPO=o/r GH_TOKEN=t "$script" issue "$scratch/ready-plan.json" >/dev/null 2>&1; then fail 'an unreadable issue list must stop the run'; fi
 printf '{"action":"delete","body":"x"}\n' >"$scratch/bad-plan.json"
 if env GH_REPO=o/r GH_TOKEN=t "$script" issue "$scratch/bad-plan.json" >/dev/null 2>&1; then fail 'an unknown action is refused'; fi
@@ -468,7 +708,7 @@ recheck() { # name want-status expected-fragment version commit option ('-' for 
 	[ "$opt" != - ] || opt=
 	: >"$scratch/calls"
 	status=0
-	env GH_REPO=o/r "$@" "$script" recheck "$version" "$commit" ${opt:+"$opt"} >"$scratch/out" 2>&1 || status=$?
+	env GH_REPO=o/r "$@" "$script" recheck "${KIND:-patch}" "$version" "$commit" ${opt:+"$opt"} >"$scratch/out" 2>&1 || status=$?
 	[ "$status" = "$want" ] || { cat "$scratch/out" >&2; fail "recheck $name: exit $status, want $want"; }
 	grep -F -- "$fragment" "$scratch/out" >/dev/null || { cat "$scratch/out" >&2; fail "recheck $name: expected: $fragment"; }
 }
@@ -496,6 +736,33 @@ git -C "$repo" checkout -q --detach "$c3"
 recheck 'a bad option' 1 'only option is --tip' 1.1.1 "$c3" --bogus
 git -C "$repo" checkout -q --detach "$c1"
 recheck 'trust that does not record the latest release' 3 'trust ends at v1.0.0' 1.1.1 "$c1" - SEC1="$c1"
+# The kind the issue planned is checked against the current state.
+git -C "$repo" checkout -q --detach "$c3"
+KIND='minor'
+recheck 'a minor passes with its own version' 0 "ok to tag v1.2.0 at $c3 (minor release)" 1.2.0 "$c3" -
+recheck 'a minor request with the patch version' 3 'not the minor successor' 1.1.1 "$c3" -
+KIND='patch'
+recheck 'a patch request with the minor version' 3 'not the patch successor' 1.2.0 "$c3" -
+KIND='major'
+recheck 'an unknown kind' 1 'patch or minor' 1.1.1 "$c3" -
+KIND='patch'
+# A patch must not carry a migration or a compatibility source change; a minor may.
+git -C "$repo" checkout -q --detach "$cmig"
+recheck 'a patch with a new migration' 3 'changes migrations or compatibility sources' 1.1.1 "$cmig" -
+git -C "$repo" checkout -q --detach "$ccomp"
+recheck 'a patch with a compatibility source change' 3 'changes migrations or compatibility sources' 1.1.1 "$ccomp" -
+git -C "$repo" checkout -q --detach "$c3"
+# An alert fixed without a traceable merge is decided by hand.
+recheck 'an unlinked fixed alert' 3 'without a linked merged pull request' 1.1.1 "$c3" - ALERTS=unlinked
+recheck 'an old unlinked alert is not counted' 0 'ok to tag' 1.1.1 "$c3" - ALERTS=old-unlinked
+# The ceremony and a signed tag start from a clean checkout.
+printf 'x\n' >"$repo/untracked.txt"
+recheck 'an untracked file' 3 'uncommitted or untracked' 1.1.1 "$c3" -
+rm "$repo/untracked.txt"
+printf '# edit\n' >>"$repo/README.md" 2>/dev/null || printf 'x\n' >"$repo/README.md"
+recheck 'an edited file' 3 'uncommitted or untracked' 1.1.1 "$c3" -
+git -C "$repo" checkout -q -- . 2>/dev/null || true
+git -C "$repo" clean -fdq
 git -C "$repo" checkout -q --detach "$c4"
 if "$script" recheck 1.1.1 >/dev/null 2>&1; then fail 'recheck needs a version and a commit'; fi
 

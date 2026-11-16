@@ -620,6 +620,34 @@ func TestCommandRejectsInvalidSelectorsBeforeProviderAccess(t *testing.T) {
 	}
 }
 
+// A caller that runs the proof through "go run" cannot see its exit status, so a
+// failed GitHub read is reported through the --failure-class file instead of text.
+func TestFailedReadIsClassifiedForTheCaller(t *testing.T) {
+	dir := t.TempDir()
+	stub := filepath.Join(dir, "gh")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\nexit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GH_BIN", stub)
+	class := filepath.Join(dir, "class")
+	args := []string{"--repository", "example/hikyo", "--mode", "main", "--commit", testSource, "--failure-class", class}
+	if err := execute(context.Background(), args, os.Stdout); err == nil {
+		t.Fatal("an unreadable GitHub answer was accepted")
+	}
+	if got, err := os.ReadFile(class); err != nil || string(got) != "lookup\n" {
+		t.Fatalf("a failed read must be classified as a lookup failure: %q %v", got, err)
+	}
+	// A rule that says no (here: invalid selectors) is not a lookup failure.
+	other := filepath.Join(dir, "other")
+	bad := []string{"--repository", "example/hikyo", "--mode", "main", "--commit", "main", "--failure-class", other}
+	if err := execute(context.Background(), bad, os.Stdout); err == nil {
+		t.Fatal("invalid selectors were accepted")
+	}
+	if _, err := os.Stat(other); err == nil {
+		t.Fatal("a refusal that never read GitHub must not be classified as a failed read")
+	}
+}
+
 func TestReceiptContainsOnlyStableExactIdentity(t *testing.T) {
 	f := newFixture(t, "dev", devProducer)
 	a, err := resolveFixture(f, options{Mode: "dev", Commit: testSource, Authority: testMain})

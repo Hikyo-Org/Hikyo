@@ -6,10 +6,17 @@
 #
 #   plan            read-only: decide the issue (open, close or leave) into $PLAN_OUT
 #   issue FILE      apply a plan file to the single issue (the only write)
-#   recheck VERSION COMMIT [--tip]
+#   issue --failed RUN_URL
+#                   the same single issue, when the planning run failed or timed out
+#   recheck patch|minor VERSION COMMIT [--tip]
 #                   the first link of the issue's command, run by the maintainer
 #                   with their own gh login: refuse when anything changed since
 #                   the plan, above all when a security merge is not in COMMIT
+#
+# A patch is planned first. When the compatibility declaration at the commit that
+# would be tagged differs from the last stable release's, a patch cannot carry the
+# change (compatibility must stay unchanged for a patch): the issue then proposes the
+# next minor, with the prerequisites a person must confirm before tagging.
 #
 # Environment: GH_REPO, GH_TOKEN; plan also GITHUB_SHA (main's tip, from a
 # checkout with full history). The scripts never read a private key.
@@ -17,7 +24,8 @@
 # Every read that decides something goes through api(), which stops the run when
 # GitHub cannot answer. A failed lookup must never look like an empty answer.
 # A rule that says no (refuse, exit 3) is reported in the issue; a failed read
-# or an unreadable value (die) fails the run instead.
+# or an unreadable value (die) fails the run instead. Compatibility that differs
+# is its own answer (differs, exit 5): it turns a patch into a minor proposal.
 set -eu
 
 script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
@@ -31,6 +39,10 @@ repo_root=${HIKYO_REPO_ROOT:-$(CDPATH='' cd -- "$script_dir/../.." && pwd)}
 : "${POSTGRES_BIN:=$script_dir/../ci/start-ci-postgres.sh}"
 # Numeric ids, never logins: Dependabot's bot user.
 dependabot_user_id=49699333
+web_flow_user_id=19864447
+github_actions_user_id=41898282
+# GitHub Actions' app id: the only author of the admission check that counts.
+actions_app_id=15368
 issue_title='Security patch release: maintainer action needed'
 issue_marker='<!-- security-patch-plan -->'
 # At most this many first-parent commits are examined for a target.
@@ -42,6 +54,9 @@ scratch_postgres_dsn='postgres://hikyo:release-schema-fixture@127.0.0.1:5432/hik
 work=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-security-patch.XXXXXX")
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 trust="$repo_root/release/trust"
+# What the issue's commands run from the target commit's own tree: the recheck and
+# its helpers, the hooks, the signature check and the verifiers.
+tool_paths='scripts/release/security-patch-plan.sh scripts/release/require-green-main.sh scripts/release/require-synced-trust.sh scripts/lib/release.sh scripts/git .githooks scripts/ci/check-commit-signatures.sh scripts/ci/source-proof scripts/release/stable'
 
 die() {
 	printf 'security-patch-plan: %s\n' "$*" >&2
@@ -50,6 +65,10 @@ die() {
 refuse() {
 	printf 'security-patch-plan: %s\n' "$*" >&2
 	exit 3
+}
+differs() {
+	printf 'security-patch-plan: %s\n' "$*" >&2
+	exit 5
 }
 note() {
 	printf '%s\n' "$*"
@@ -66,10 +85,11 @@ printf '%s\n' "$GH_REPO" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' || die '
 api() {
 	api_file=$1
 	shift
-	gh api "$@" >"$api_file" 2>"$work/err" || { cat "$work/err" >&2; die "cannot read: gh api $*"; }
+	gh api "$@" >"$api_file" 2>"$work/err" </dev/null || { cat "$work/err" >&2; die "cannot read: gh api $*"; }
 }
 need_sha() { printf '%s\n' "${1:-}" | grep -Eq '^[0-9a-f]{40}$' || die "a full commit SHA is required: ${1:-empty}"; }
 patch_successor() { printf '%s\n' "$1" | awk -F. '{printf "%d.%d.%d\n", $1, $2, $3 + 1}'; }
+minor_successor() { printf '%s\n' "$1" | awk -F. '{printf "%d.%d.0\n", $1, $2 + 1}'; }
 # SemVer precedence key: a release outranks its own prerelease; numeric
 # prerelease identifiers sort below alphanumeric ones.
 semver_key_jq='def key: capture("^(?<core>[0-9]+\\.[0-9]+\\.[0-9]+)(?:-(?<pre>[0-9A-Za-z.-]+))?(?:\\+.*)?$") |
@@ -85,14 +105,23 @@ epoch() {
 	printf '%s\n' "$1" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' || die "unparseable timestamp: $1"
 	epoch_value=$(date -u -d "$1" +%s 2>/dev/null || date -u -j -f %Y-%m-%dT%H:%M:%SZ "$1" +%s 2>/dev/null) || die "unparseable timestamp: $1"
 	printf '%s\n' "$epoch_value" | grep -Eq '^[0-9]+$' || die "unparseable timestamp: $1"
+	# BSD date normalizes an impossible date (February 30) instead of refusing it; the value
+	# must format back to exactly what was read.
+	epoch_back=$(date -u -d "@$epoch_value" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$epoch_value" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || die "unparseable timestamp: $1"
+	[ "$epoch_back" = "$1" ] || die "unparseable timestamp: $1"
 	printf '%s\n' "$epoch_value"
 }
-# is_green COMMIT: 0 = complete green source proof, 1 = not proven green. A failed
-# GitHub read stops the run: "could not look" is never the same as "not green".
+# is_green COMMIT: 0 = complete green source proof, 1 = not proven green. The
+# verifier exits 1 for "no such proof" and 4 for a failed GitHub read (any other
+# status is a failure too): "could not look" is never the same as "not green".
 is_green() {
-	if "$GREEN_BIN" "$GH_REPO" "$1" </dev/null >"$work/green.out" 2>&1; then return 0; fi
-	if grep -F 'GitHub read failed' "$work/green.out" >/dev/null; then cat "$work/green.out" >&2; die "cannot read the source proof of $1"; fi
-	return 1
+	green_rc=0
+	"$GREEN_BIN" "$GH_REPO" "$1" </dev/null >"$work/green.out" 2>&1 || green_rc=$?
+	case $green_rc in
+	0) return 0 ;;
+	1) return 1 ;;
+	*) cat "$work/green.out" >&2; die "cannot read the source proof of $1" ;;
+	esac
 }
 # is_ancestor A B: 0 yes, 1 no; any other result stops the run.
 is_ancestor() {
@@ -110,7 +139,7 @@ is_ancestor() {
 # itself linked to an alert. The author is bound by its numeric id.
 security_prs() {
 	# shellcheck disable=SC2016
-	query='query($owner:String!,$name:String!,$endCursor:String){repository(owner:$owner,name:$name){vulnerabilityAlerts(first:100,after:$endCursor,states:[OPEN,FIXED]){pageInfo{hasNextPage endCursor}nodes{state fixedAt dependabotUpdate{pullRequest{number merged mergedAt baseRefName headRefName author{login ... on Bot{databaseId}} mergeCommit{oid}}}}}}}'
+	query='query($owner:String!,$name:String!,$endCursor:String){repository(owner:$owner,name:$name){vulnerabilityAlerts(first:100,after:$endCursor,states:[OPEN,FIXED]){pageInfo{hasNextPage endCursor}nodes{state fixedAt dependabotUpdate{pullRequest{number title state merged mergedAt baseRefName headRefName author{login ... on Bot{databaseId}} mergeCommit{oid}}}}}}}'
 	gh api graphql --paginate -f query="$query" -f owner="${GH_REPO%/*}" -f name="${GH_REPO#*/}" >"$work/alerts" ||
 		die 'cannot read Dependabot alerts'
 	jq -es 'all(.[]; .data.repository.vulnerabilityAlerts.nodes | type == "array")' "$work/alerts" >/dev/null ||
@@ -119,11 +148,80 @@ security_prs() {
 		select(.author.databaseId == $bot and .baseRefName == "main" and (.headRefName | startswith("dependabot/")))] | unique_by(.number)' "$work/alerts"
 }
 
+# Step 0, read only: the open Dependabot security pull requests into main. GitHub's
+# built-in token cannot add a pull request to the merge queue, so nothing here
+# queues anything: a person clicks "Merge when ready" on each one that qualifies.
+# A pull request qualifies when an OPEN Dependabot alert links it, Dependabot (by
+# numeric id) opened it from a branch of this repository, it is not a draft, every
+# commit is authored by Dependabot, committed by GitHub's web-flow and verified,
+# and the admission check (ci-queue-required, GitHub Actions' app, newest run only)
+# has not failed. One that the merge queue removed after its newest commit needs a
+# person to look at why before it is queued again. Sets open_block (markdown, empty
+# when there is nothing to say) and leaves one JSON line per pull request in
+# $work/open.json.
+read_open_security() {
+	open_block=
+	: >"$work/open.json"
+	# shellcheck disable=SC2016
+	open_query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){number title state isDraft isInMergeQueue baseRefName headRefOid headRepository{nameWithOwner} author{login ... on Bot{databaseId}} timelineItems(itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT],last:20){nodes{... on RemovedFromMergeQueueEvent{createdAt}}}}}}'
+	jq -s -r '[.[].data.repository.vulnerabilityAlerts.nodes[] | select(.state == "OPEN") | .dependabotUpdate.pullRequest |
+		select(. != null and .state == "OPEN" and .baseRefName == "main")] | unique_by(.number) | .[].number' "$work/alerts" >"$work/open-numbers" ||
+		die 'cannot read the open Dependabot alerts'
+	while read -r number; do
+		[ -n "$number" ] || continue
+		printf '%s\n' "$number" | grep -Eq '^[0-9]+$' || die "unreadable pull request number: $number"
+		api "$work/open-$number.graphql" graphql -f query="$open_query" -f owner="${GH_REPO%/*}" -f name="${GH_REPO#*/}" -F number="$number"
+		jq -e '.data.repository.pullRequest.number != null' "$work/open-$number.graphql" >/dev/null || die "cannot read pull request #$number"
+		head=$(jq -er '.data.repository.pullRequest.headRefOid' "$work/open-$number.graphql") || die "pull request #$number has no head commit"
+		need_sha "$head"
+		api "$work/open-$number.commits" --paginate --slurp "repos/$GH_REPO/pulls/$number/commits?per_page=100"
+		api "$work/open-$number.checks" --paginate --slurp "repos/$GH_REPO/commits/$head/check-runs?check_name=ci-queue-required&app_id=$actions_app_id&per_page=100"
+		jq -nc --slurpfile pr "$work/open-$number.graphql" --slurpfile commits "$work/open-$number.commits" --slurpfile checks "$work/open-$number.checks" \
+			--arg repo "$GH_REPO" --argjson bot "$dependabot_user_id" --argjson flow "$web_flow_user_id" '
+			($pr[0].data.repository.pullRequest) as $p | ([$commits[0][][]]) as $c | ([$checks[0][].check_runs[]?] | max_by(.id)) as $run |
+			($c | length > 0 and all(.[]; .author.id == $bot and .committer.id == $flow and .commit.verification.verified == true) and (.[-1].sha == $p.headRefOid)) as $signed |
+			(($run == null) or ($run.status != "completed") or ($run.conclusion == "success")) as $admitted |
+			($c | if length > 0 then .[-1].commit.committer.date else "" end) as $pushed |
+			[$p.timelineItems.nodes[]?.createdAt | select(. > $pushed)] as $removed |
+			{number: $p.number, title: ($p.title | gsub("[^A-Za-z0-9 ._:/+(),-]"; "") | .[0:100]), head: $p.headRefOid,
+			 queued: ($p.isInMergeQueue == true), removed: ($removed | length > 0),
+			 reason: (if $p.author.databaseId != $bot then "not opened by Dependabot"
+				elif ($p.headRepository.nameWithOwner // "") != $repo then "its branch is not in this repository"
+				elif $p.isDraft then "it is a draft"
+				elif $signed | not then "its commits are not all Dependabot-authored, GitHub-committed and verified"
+				elif $admitted | not then "the admission check failed"
+				else null end)}' >>"$work/open.json" || die "cannot classify pull request #$number"
+	done <"$work/open-numbers"
+	jq -r 'select(.queued | not) | select(.reason == null and (.removed | not)) | "- #\(.number) \(.title), head `\(.head)`"' "$work/open.json" >"$work/open-ready"
+	jq -r 'select(.queued | not) | select(.reason == null and .removed) | "- #\(.number) \(.title), head `\(.head)`"' "$work/open.json" >"$work/open-removed"
+	jq -r 'select(.queued | not) | select(.reason != null) | "- #\(.number) \(.title): \(.reason)"' "$work/open.json" >"$work/open-other"
+	if [ -s "$work/open-ready" ] || [ -s "$work/open-removed" ] || [ -s "$work/open-other" ]; then
+		open_block="### 0. Open security updates: a person queues each one
+
+GitHub's built-in token cannot add a pull request to the merge queue, so the automation does not. Open each pull request below and click **Merge when ready**."
+		if [ -s "$work/open-ready" ]; then open_block="$open_block
+
+Qualifying (alert-linked, Dependabot-authored, verified, not draft, admission check not failed):
+
+$(cat "$work/open-ready")"; fi
+		if [ -s "$work/open-removed" ]; then open_block="$open_block
+
+Removed from the merge queue after their newest commit. Find out why before queueing them again; they need a person:
+
+$(cat "$work/open-removed")"; fi
+		if [ -s "$work/open-other" ]; then open_block="$open_block
+
+Open and alert-linked, but not qualifying (review by hand):
+
+$(cat "$work/open-other")"; fi
+	fi
+}
+
 # What is published decides, never GitHub's "latest" flag: the highest published
 # release of any channel (what trust must record) and the highest stable one
 # (what a patch builds on). Drafts and nightlies never count as published. Sets
 # published_highest, latest, latest_tag, latest_commit, latest_published_at, next
-# and next_tag, and leaves every release including drafts in $work/releases.json.
+# and minor (the successors of the latest stable), and leaves every release including drafts in $work/releases.json.
 read_published() {
 	api "$work/releases.json" --paginate --slurp "repos/$GH_REPO/releases?per_page=100"
 	jq -c "$semver_key_jq"'
@@ -141,7 +239,7 @@ read_published() {
 	latest_commit=$(jq -er '.sha' "$work/latest-commit.json") || die "cannot resolve $latest_tag"
 	need_sha "$latest_commit"
 	next=$(patch_successor "$latest")
-	next_tag="v$next"
+	minor=$(minor_successor "$latest")
 	trust_highest=$(jq -r '.highest_release // empty' "$trust/metadata.json")
 }
 
@@ -150,16 +248,19 @@ read_published() {
 # history is raised, never skipped: skipping it would look like "nothing to release".
 read_pending() {
 	: >"$work/pending"
+	placement_blocked=
 	jq -r '.[] | select(.merged == true) | "\(.number) \(.mergeCommit.oid // "none") \(.mergedAt // "none")"' "$work/security.json" >"$work/merged"
 	while read -r number oid merged_at; do
 		[ -n "$number" ] || continue
 		if [ "$oid" = none ] || [ "$merged_at" = none ]; then
 			raise "security pull request #$number is merged but GitHub reports no merge commit or merge time for it"
+			placement_blocked=1
 			continue
 		fi
 		need_sha "$oid"
 		if ! git_ cat-file -e "$oid^{commit}" 2>/dev/null || ! is_ancestor "$oid" "$GITHUB_SHA"; then
 			raise "the merge commit $oid of security pull request #$number is not in main's history"
+			placement_blocked=1
 			continue
 		fi
 		if ! is_ancestor "$oid" "$latest_commit"; then
@@ -180,8 +281,11 @@ contains_all() {
 }
 
 # Everything the build and the ceremony would refuse, so the issue never offers a
-# tag that would die. Exit 3 (refuse) = a rule says no. Any other failure = a
-# read failed; the run fails instead of pretending the answer was no.
+# tag that would die. Exit 3 (refuse) = a rule says no; exit 5 = the compatibility
+# declaration differs from the last stable release's. Any other failure = a read
+# failed; the run fails instead of pretending the answer was no. The third
+# argument runs the compatibility step: patch (it must be identical) or minor (the
+# declaration must generate; a difference is expected and left to a person).
 tag_checks() {
 	checks_version=$1
 	checks_commit=$2
@@ -206,7 +310,7 @@ tag_checks() {
 	' "$work/matching-tags.json" >/dev/null || refuse "a stable tag at or above v$checks_version already exists"
 	if gh api "repos/$GH_REPO/releases/tags/v$checks_version" >/dev/null 2>"$work/err"; then refuse "v$checks_version already has a release"; fi
 	grep -F '(HTTP 404)' "$work/err" >/dev/null || { cat "$work/err" >&2; die 'cannot prove the version is unused'; }
-	[ -z "$checks_compat" ] || compat_checks "$checks_version" "$checks_commit"
+	[ -z "$checks_compat" ] || compat_checks "$checks_version" "$checks_commit" "$checks_compat"
 }
 
 # The candidate's compatibility declaration is generated at the commit that would
@@ -216,6 +320,7 @@ tag_checks() {
 compat_checks() {
 	cc_version=$1
 	cc_commit=$2
+	cc_kind=$3
 	cc_tree="$work/target-tree"
 	mkdir "$cc_tree"
 	git_ archive "$cc_commit" | tar -x -C "$cc_tree" || die "cannot export $cc_commit"
@@ -227,10 +332,23 @@ compat_checks() {
 	rc=0
 	"$COMPAT_BIN" "$GH_REPO" "$cc_tree/release/trust" "$cc_version" "$work/declaration.json" >"$work/compat.out" 2>&1 || rc=$?
 	case $rc in
-	0) ;;
-	1) refuse "$(tail -n 1 "$work/compat.out")" ;;
+	0) [ "$cc_kind" = patch ] || refuse "the compatibility declaration is identical to $latest_tag's, so a patch release is enough" ;;
+	1) if [ "$cc_kind" = patch ]; then differs "$(tail -n 1 "$work/compat.out")"; fi ;;
+	5) refuse "$(tail -n 1 "$work/compat.out")" ;;
 	*) cat "$work/compat.out" >&2; die 'cannot compare the compatibility declaration with the previous release' ;;
 	esac
+}
+
+# unlinked_count: Dependabot alerts fixed after the latest stable release that no
+# merged Dependabot pull request on main explains (a promotion that bumped the
+# dependency, or a fix by hand, leaves one until the next stable release is
+# published). A fixed alert without a time counts too. An unreadable time fails
+# the run. Needs read_published and security_prs to have run.
+unlinked_count() {
+	jq -s --argjson since "$(epoch "$latest_published_at")" '[.[].data.repository.vulnerabilityAlerts.nodes[] |
+		select(.state == "FIXED" and (((.fixedAt // "") == "") or ((.fixedAt | fromdateiso8601) > $since)) and
+			(.dependabotUpdate.pullRequest == null or .dependabotUpdate.pullRequest.merged != true))] | length' "$work/alerts" ||
+		die 'cannot read the fixed Dependabot alerts'
 }
 
 # raise TEXT: a condition that must reach the issue whatever else the plan decides.
@@ -240,29 +358,36 @@ raise() { alarms="${alarms:+$alarms
 # --- plan -------------------------------------------------------------------
 
 # Sets state (idle, blocked, ready, tagged, drafted, trust) and the fields the
-# issue renders: why, next, target.
+# issue renders: why, version, kind (patch or minor), target.
 plan_inner() {
 	read_published
 	security_prs >"$work/security.json"
 	# A Dependabot alert that was fixed after the latest release but whose pull
 	# request is missing or not merged would leave "no pending merge" looking like
 	# "nothing to release". An unreadable time fails the run.
-	unlinked=$(jq -s --argjson since "$(epoch "$latest_published_at")" '[.[].data.repository.vulnerabilityAlerts.nodes[] |
-		select(.state == "FIXED" and (((.fixedAt // "") == "") or ((.fixedAt | fromdateiso8601) > $since)) and
-			(.dependabotUpdate.pullRequest == null or .dependabotUpdate.pullRequest.merged != true))] | length' "$work/alerts") ||
-		die 'cannot read the fixed Dependabot alerts'
+	unlinked=$(unlinked_count)
 	if [ "$unlinked" -gt 0 ]; then
-		raise "$unlinked Dependabot alert(s) were fixed after $latest_tag but none is linked to a merged Dependabot pull request on main, so their fix cannot be traced to a commit; check the alerts and decide by hand"
+		raise "$unlinked Dependabot alert(s) were fixed after $latest_tag but none is linked to a merged Dependabot pull request on main, so their fix cannot be traced to a commit; check the alerts and decide by hand. The alarm clears once a stable release is published after the fix; publish the fix through the ordinary ceremony (ceremony.sh build VERSION), which \`recheck\` does not offer while this holds"
 	fi
 	read_pending
-	if [ ! -s "$work/pending" ]; then
-		state=idle
-		why="no merged Dependabot security update is missing from $latest_tag"
+	read_open_security
+	version=$next kind=patch
+	if [ -n "$placement_blocked" ]; then
+		state=blocked
+		why="a merged security update cannot be placed in main's history (see below), so no release commit can be chosen"
 		return 0
 	fi
+	# A published release that trust does not record yet keeps the issue open, whether
+	# or not a security merge is still pending: the next release refuses to start
+	# until trust is synchronized, and the issue must not close before that.
 	if [ -z "$trust_highest" ] || semver_gt "$published_highest" "$trust_highest"; then
 		state=trust
 		why="v$published_highest is published but main's trust ends at ${trust_highest:+v}${trust_highest:-nothing}; trust must be synchronized before another release"
+		return 0
+	fi
+	if [ ! -s "$work/pending" ]; then
+		state=idle
+		why="no merged Dependabot security update is missing from $latest_tag"
 		return 0
 	fi
 	if semver_gt "$trust_highest" "$published_highest"; then
@@ -275,18 +400,22 @@ plan_inner() {
 		why="the signed latest v$trust_highest is a prerelease; a patch needs a stable signed latest"
 		return 0
 	fi
-	# The version may already be tagged or staged: say so, never offer a second tag.
+	# The version may already be tagged or staged (as a patch or as the minor): say so,
+	# never offer a second tag.
 	api "$work/matching-tags.json" --paginate "repos/$GH_REPO/git/matching-refs/tags/v"
-	if jq -s -e --arg ref "refs/tags/$next_tag" 'any(.[][]; .ref == $ref)' "$work/matching-tags.json" >/dev/null; then
-		if jq -e --arg tag "$next_tag" 'any(.[][]; .tag_name == $tag and .draft == true)' "$work/releases.json" >/dev/null; then
-			state=drafted
-			why="$next_tag is tagged and its draft release is staged"
-		else
-			state=tagged
-			why="$next_tag is tagged but has no release; its release-build run is still going or failed"
+	for candidate_version in "$next" "$minor"; do
+		if jq -s -e --arg ref "refs/tags/v$candidate_version" 'any(.[][]; .ref == $ref)' "$work/matching-tags.json" >/dev/null; then
+			version=$candidate_version
+			if jq -e --arg tag "v$version" 'any(.[][]; .tag_name == $tag and .draft == true)' "$work/releases.json" >/dev/null; then
+				state=drafted
+				why="v$version is tagged and its draft release is staged"
+			else
+				state=tagged
+				why="v$version is tagged but has no release; its release-build run is still going or failed"
+			fi
+			return 0
 		fi
-		return 0
-	fi
+	done
 	# Newest first-parent commit since the latest tag that holds a pending merge.
 	git_ rev-list --first-parent "$latest_commit..$GITHUB_SHA" >"$work/chain"
 	floor=
@@ -321,9 +450,34 @@ plan_inner() {
 		why="no main commit among the newest $max_walk at or after the newest security merge both records $latest_tag in trust and has complete green source proof; run the full ci-main workflow on the main tip"
 		return 0
 	fi
+	# The issue's commands run the recheck, its hooks and helpers from the target's own tree.
+	# Below the tip, that tree is only as trustworthy as the tip's: accept it when none of
+	# those tools differs.
+	if [ "$target" != "$GITHUB_SHA" ]; then
+		tools_rc=0
+		# shellcheck disable=SC2086
+		git_ diff --quiet "$target" "$GITHUB_SHA" -- $tool_paths || tools_rc=$?
+		case $tools_rc in
+		0) ;;
+		1)
+			state=blocked
+			why="$target is the newest green commit that holds every pending security merge, but the release tools differ between it and the main tip $GITHUB_SHA, and the issue's commands would run them from $target; wait for the tip to become green"
+			return 0
+			;;
+		*) die "cannot compare the release tools of $target with the main tip" ;;
+		esac
+	fi
 	rc=0
 	main_tip=$GITHUB_SHA
-	(tag_checks "$next" "$target" compat) >"$work/refusal" 2>&1 || rc=$?
+	(tag_checks "$next" "$target" patch) >"$work/refusal" 2>&1 || rc=$?
+	if [ "$rc" = 5 ]; then
+		# A patch cannot carry a compatibility change. Plan the next minor instead, if it
+		# passes every other check.
+		compat_note=$(tail -n 1 "$work/refusal" | sed -e 's/^security-patch-plan: //' -e 's/^compatibility check: //' -e 's/ *$//' | tr '\n' ' ' | sed 's/ *$//')
+		version=$minor kind=minor
+		rc=0
+		(tag_checks "$minor" "$target" minor) >"$work/refusal" 2>&1 || rc=$?
+	fi
 	case $rc in
 	0) ;;
 	3)
@@ -337,7 +491,11 @@ plan_inner() {
 		;;
 	esac
 	state=ready
-	why="$target is the newest green commit that holds every pending security merge"
+	if [ "$kind" = minor ]; then
+		why="$target is the newest green commit that holds every pending security merge. A patch cannot ship it: $compat_note"
+	else
+		why="$target is the newest green commit that holds every pending security merge"
+	fi
 	[ "$target" = "$GITHUB_SHA" ] || why="$why (the main tip $GITHUB_SHA is not green)"
 }
 
@@ -360,35 +518,76 @@ overdue_note() {
 	fi
 }
 
+# The four ceremony commands after the tag, each from a fresh checkout of main: a
+# command that ran before it (sync-trust opens a branch) must not leave the next one elsewhere.
+ceremony_block() {
+	printf '%s\n' \
+		"git fetch origin main && git switch --detach origin/main && scripts/release/ceremony.sh review $1" \
+		"git fetch origin main && git switch --detach origin/main && scripts/release/ceremony.sh publish $1 REVIEWED_MANIFEST_SHA256" \
+		"git fetch origin main && git switch --detach origin/main && scripts/release/ceremony.sh sync-trust $1" \
+		"git fetch origin main && git switch --detach origin/main && scripts/release/ceremony.sh homebrew $1"
+}
+
+burned_tag_hint="A pushed tag is never moved or recreated. If \`release-build\` fails before the draft is complete, inspect the original run; if the byte set cannot be completed safely, the version is burned and you use a new version (the ceremony's own rule)."
+
+# What a person must confirm before a minor release: not mechanically satisfiable, so
+# these block tagging.
+minor_prerequisites() {
+	cat <<EOF
+### Prerequisites that block tagging (a minor release)
+
+The planning run checked, for \`$target\`: trust is synchronized and authenticated, \`v$version\` is a valid successor of $latest_tag, the commit has complete green source proof, no tag or release at or above \`v$version\` exists, and the real compatibility generator produced a declaration (so no earlier migration was edited and the legacy and fresh source edges still match). The declaration **differs** from $latest_tag's, which is why a patch cannot ship this commit. A minor release ships everything on that commit, not only the security fix. Confirm each of these yourself before the commands below:
+
+- [ ] Dispatch the \`release-compatibility-check\` workflow from main for \`$version\` (\`gh workflow run release-compatibility-check.yml --ref main -f version=$version\`) and read the diff in its log. Expect "differs"; confirm that the differences are the unreleased migrations and nothing else (no changed earlier migration, no unexpected source edge or schema change).
+- [ ] Review the edge modes (\`restart\` or \`maintenance\`) in the declaration of the new release against [signed upgrade compatibility](docs/adr/signed-upgrade-compatibility.md). \`release/compatibility/sources.json\` holds only the fresh and legacy genesis edges, and v1.1.0 shipped migrations with it unchanged, so it normally needs no edit; if you do change it, it needs the same review.
+- [ ] Decide that everything on \`$target\` since $latest_tag, not only the security fix, may ship: \`git log $latest_tag..$target\`.
+- [ ] Write the release notes: \`publish\` refuses the placeholder.
+
+EOF
+}
+
 render_ready() {
+	if [ "$kind" = minor ]; then
+		heading="Security release v$version (minor) is ready to tag once you have confirmed its prerequisites"
+		checked="trust synchronized and authenticated; \`v$version\` is the next minor of $latest_tag; green source proof; the commit holds every merge above; no tag or release for \`v$version\` exists; the compatibility generator produced a declaration, which differs from $latest_tag's."
+	else
+		heading="Security patch v$version is ready to tag"
+		checked="trust synchronized and authenticated; \`v$version\` is the patch successor of $latest_tag; green source proof; the commit holds every merge above; no tag or release for \`v$version\` exists; the compatibility declaration is identical to $latest_tag's."
+	fi
 	if [ "$target" = "$GITHUB_SHA" ]; then
 		tag_block=$(printf '%s\n' \
 			'git fetch origin main &&' \
 			'  git switch --detach origin/main &&' \
-			"  scripts/release/security-patch-plan.sh recheck $next $target --tip &&" \
-			"  scripts/release/ceremony.sh build $next")
-		tag_expect="\`recheck\` prints \`ok to tag v$next\`, then the ceremony asks you to confirm \`build v$next at $target\`. If \`recheck\` refuses, nothing was tagged: read its message and wait for this issue to refresh."
+			"  scripts/release/security-patch-plan.sh recheck $kind $version $target --tip &&" \
+			"  scripts/release/ceremony.sh build $version")
+		tag_expect="\`recheck\` prints \`ok to tag v$version\`, then the ceremony asks you to confirm \`build v$version at $target\`. If \`recheck\` refuses, nothing was tagged: read its message and wait for this issue to refresh."
 	else
 		tag_block=$(printf '%s\n' \
 			'git fetch origin main &&' \
 			"  git switch --detach $target &&" \
-			"  scripts/release/security-patch-plan.sh recheck $next $target &&" \
+			"  scripts/release/security-patch-plan.sh recheck $kind $version $target &&" \
 			'  scripts/git/install-hooks.sh &&' \
-			"  git tag -s v$next -m \"Hikyo $next\" $target &&" \
-			"  git push origin refs/tags/v$next")
-		tag_expect="\`recheck\` prints \`ok to tag v$next\`, then your signed tag \`v$next\` is pushed at $target. The main tip is not green, so the ceremony's \`build\` (which tags the tip) cannot be used; this tags the same commit with the same signature. If \`recheck\` refuses, nothing was tagged."
+			"  git tag -s v$version -m \"Hikyo $version\" $target &&" \
+			'  scripts/ci/check-commit-signatures.sh origin/main HEAD &&' \
+			"  git push origin refs/tags/v$version")
+		tag_expect="\`recheck\` prints \`ok to tag v$version\`, then your signed tag \`v$version\` is pushed at $target after the signature check passes. The main tip is not green, so the ceremony's \`build\` (which tags the tip) cannot be used; this tags the same commit with the same signature. If \`recheck\` refuses, nothing was tagged."
 	fi
+	prerequisites=
+	[ "$kind" != minor ] || prerequisites=$(minor_prerequisites)
 	cat <<EOF
 $issue_marker
-## Security patch v$next is ready to tag
+## $heading
 
 Merged Dependabot security updates that $latest_tag does not contain:
 
 $(pending_list)
 $(overdue_note)
-**Planned release:** \`v$next\` at \`$target\`. $why.
+**Planned release:** \`v$version\` at \`$target\`. $why.
 
-Checked by the planning run for exactly this commit: trust synchronized and authenticated; \`v$next\` is the patch successor of $latest_tag; green source proof; the commit holds every merge above; no tag or release for \`v$next\` exists; the compatibility declaration is identical to $latest_tag's. Nothing has been tagged or published.
+Checked by the planning run for exactly this commit: $checked Nothing has been tagged or published.
+
+$step0_block
+$prerequisites
 
 ### 1. Tag (a maintainer with the admin role and a signing key, in a clean checkout of this repository)
 
@@ -398,20 +597,17 @@ $tag_block
 
 Expected: $tag_expect
 
+$burned_tag_hint
+
 ### 2. Review, publish and finish (once \`release-build\` has staged the draft)
 
 \`\`\`sh
-git fetch origin main &&
-  git switch --detach origin/main &&
-  scripts/release/ceremony.sh review $next
-scripts/release/ceremony.sh publish $next REVIEWED_MANIFEST_SHA256
-scripts/release/ceremony.sh sync-trust $next
-scripts/release/ceremony.sh homebrew $next
+$(ceremony_block "$version")
 \`\`\`
 
-Expected: \`review\` prints a manifest SHA-256; paste it in place of \`REVIEWED_MANIFEST_SHA256\`. Each later command asks for its own confirmation. Merge the trust PR and the Homebrew tap PR after review.
+Expected: \`review\` prints a manifest SHA-256; paste it in place of \`REVIEWED_MANIFEST_SHA256\`. Each later command asks for its own confirmation. Merge the trust PR and the Homebrew tap PR after review. Homebrew stays a manual step (owner decision, 2026-11-16); this issue closes once trust records the release, so run \`homebrew\` right after the trust PR has merged.
 
-This issue is rewritten when the state changes. Use the commands in its latest version, and close nothing by hand: it closes itself once the security merges are released.
+This issue is rewritten when the state changes. Use the commands in its latest version, and close nothing by hand: it closes itself once the security merges are released and trust records the release.
 EOF
 	printf '%s\n' "$alarms_block"
 }
@@ -419,11 +615,19 @@ EOF
 render() {
 	alarms_block=
 	[ -z "$alarms" ] || alarms_block=$(printf '\n### Also needs a person\n\n%s\n' "$alarms")
+	trust_commands="git fetch origin main && git switch --detach origin/main && scripts/release/ceremony.sh sync-trust $published_highest"
+	case $published_highest in
+	*-*) ;;
+	*) trust_commands="$trust_commands
+git fetch origin main && git switch --detach origin/main && scripts/release/ceremony.sh homebrew $published_highest" ;;
+	esac
+	step0_block=
+	[ -z "$open_block" ] || step0_block=$(printf '%s\n' "$open_block")
 	case $state in
 	idle)
-		if [ -z "$alarms" ]; then action=close; printf '%s\nnothing is waiting\n' "$issue_marker"; return 0; fi
+		if [ -z "$alarms" ] && [ -z "$open_block" ]; then action=close; printf '%s\nnothing is waiting\n' "$issue_marker"; return 0; fi
 		action=open
-		printf '%s\n## Dependabot security updates need a look\n\n%s\n%s\n' "$issue_marker" "$why." "$alarms_block"
+		printf '%s\n## Dependabot security updates need a look\n\n%s\n\n%s\n%s\n' "$issue_marker" "$why." "$step0_block" "$alarms_block"
 		;;
 	ready)
 		action=open
@@ -433,22 +637,21 @@ render() {
 		action=open
 		cat <<EOF
 $issue_marker
-## Security patch $next_tag is staged: finish the ceremony
+## Security release v$version is staged: finish the ceremony
 
 $why. Merged Dependabot security updates that $latest_tag does not contain:
 
 $(pending_list)
 
+$step0_block
+
 \`\`\`sh
-git fetch origin main &&
-  git switch --detach origin/main &&
-  scripts/release/ceremony.sh review $next
-scripts/release/ceremony.sh publish $next REVIEWED_MANIFEST_SHA256
-scripts/release/ceremony.sh sync-trust $next
-scripts/release/ceremony.sh homebrew $next
+$(ceremony_block "$version")
 \`\`\`
 
-Expected: \`review\` prints a manifest SHA-256; paste it in place of \`REVIEWED_MANIFEST_SHA256\`.
+Expected: \`review\` prints a manifest SHA-256; paste it in place of \`REVIEWED_MANIFEST_SHA256\`. Homebrew stays manual; this issue closes once trust records the release.
+
+$burned_tag_hint
 $alarms_block
 EOF
 		;;
@@ -458,19 +661,18 @@ EOF
 $issue_marker
 ## Security patch blocked: synchronize trust first
 
-$why. Merged Dependabot security updates waiting for a release:
+$why.
+$(if [ -s "$work/pending" ]; then printf '\nMerged Dependabot security updates waiting for a release:\n\n%s\n' "$(pending_list)"; fi)
 
-$(pending_list)
+$step0_block
 
-If the public release is verified, record it:
+If the public release is verified, record it, then update the Homebrew tap once the trust PR has merged:
 
 \`\`\`sh
-git fetch origin main &&
-  git switch --detach origin/main &&
-  scripts/release/ceremony.sh sync-trust $published_highest
+$trust_commands
 \`\`\`
 
-Expected: a trust PR opens. Merge it after review and green CI; this issue then offers the tag.
+Expected: a trust PR opens. Merge it after review and green CI; this issue then offers the tag or closes. Homebrew stays manual (owner decision, 2026-11-16): run \`homebrew\` after the trust PR has merged.
 $alarms_block
 EOF
 		;;
@@ -481,11 +683,10 @@ $issue_marker
 ## Security patch release cannot be prepared
 
 $why.
-
-Merged Dependabot security updates waiting for a release:
-
-$(pending_list)
+$(if [ -s "$work/pending" ]; then printf '\nMerged Dependabot security updates waiting for a release:\n\n%s\n' "$(pending_list)"; fi)
 $(overdue_note)
+$step0_block
+
 No tag command is offered while this holds. This issue is rewritten when the state changes.
 $alarms_block
 EOF
@@ -498,7 +699,7 @@ plan() {
 	need_sha "$GITHUB_SHA"
 	main_tip=$GITHUB_SHA
 	: "${PLAN_OUT:=$work/plan.json}"
-	state=idle why='' target='' alarms='' alarms_block='' action=none
+	state=idle why='' target='' alarms='' alarms_block='' action=none version='' kind=patch open_block='' step0_block='' placement_blocked=''
 	plan_inner
 	render >"$work/body.md" || die 'cannot render the issue'
 	jq -n --arg action "$action" --rawfile body "$work/body.md" '{action:$action, body:$body}' >"$PLAN_OUT" || die 'cannot write the plan'
@@ -508,22 +709,38 @@ plan() {
 
 # --- issue ------------------------------------------------------------------
 
+# find_issue: sets number to our single open issue, or empty. The workflow's own bot
+# is bound by its numeric user id, never by a login spelling (gh and REST disagree on
+# it), and a pull request is never an issue. A listing that fails is never "no issue".
+find_issue() {
+	api "$work/issues.json" --paginate --slurp "repos/$GH_REPO/issues?state=open&creator=github-actions%5Bbot%5D&per_page=100"
+	number=$(jq -r --arg title "$issue_title" --arg marker "$issue_marker" --argjson bot "$github_actions_user_id" '
+		[.[][] | select(.pull_request == null and .user.type == "Bot" and .user.id == $bot and .title == $title and ((.body // "") | startswith($marker)))][0].number // empty' "$work/issues.json") ||
+		die 'cannot read the open issues'
+}
+
 issue() {
-	[ "$#" -eq 1 ] && [ -f "$1" ] || die 'usage: security-patch-plan.sh issue PLAN_FILE'
-	action=$(jq -er '.action | select(. == "open" or . == "close" or . == "none")' "$1") || die 'the plan has no valid action'
-	jq -er '.body | select(type == "string" and length > 0 and length < 60000)' "$1" >"$work/new-body" || die 'the plan has no usable body'
-	gh issue list --repo "$GH_REPO" --state open --limit 1000 --json number,title,body,author >"$work/issues.json" 2>"$work/err" ||
-		{ cat "$work/err" >&2; die 'cannot list open issues'; }
-	# Title, our marker and the workflow's own bot as author identify the issue: anyone can
-	# open an issue with the marker, and its author could later edit commands people copy.
-	# A listing that fails is never "no issue".
-	number=$(jq -r --arg title "$issue_title" --arg marker "$issue_marker" '[.[] | select(.title == $title and (.body | startswith($marker)) and ((.author.login // "") | test("^(app/)?github-actions(\\[bot\\])?$")))][0].number // empty' "$work/issues.json")
+	if [ "${1:-}" = --failed ]; then
+		if [ "$#" -ne 2 ] || ! printf '%s\n' "$2" | grep -Eq '^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/actions/runs/[0-9]+$'; then die 'usage: security-patch-plan.sh issue --failed RUN_URL'; fi
+		# The planning run failed or timed out, so nothing was decided: say so in the same
+		# issue instead of leaving a stale one (or none) looking healthy.
+		# The backticks are markdown.
+		# shellcheck disable=SC2016
+		printf '%s\n## Security patch planning failed\n\nThe planning run did not finish: %s\n\nNothing was decided, so the commands in any earlier version of this issue are stale. They stay guarded by `recheck`, which refuses when anything changed. This issue is rewritten by the next run that succeeds.\n' "$issue_marker" "$2" >"$work/new-body"
+		action=open
+		new=$(cat "$work/new-body")
+	else
+		[ "$#" -eq 1 ] && [ -f "$1" ] || die 'usage: security-patch-plan.sh issue PLAN_FILE | --failed RUN_URL'
+		action=$(jq -er '.action | select(. == "open" or . == "close" or . == "none")' "$1") || die 'the plan has no valid action'
+		jq -er '.body | select(type == "string" and length > 0 and length < 60000)' "$1" >"$work/new-body" || die 'the plan has no usable body'
+		new=$(jq -r '.body | gsub("\r"; "")' "$1")
+	fi
+	find_issue
 	case "$action" in
 	open)
-		new=$(jq -r '.body | gsub("\r"; "")' "$1")
 		if [ -n "$number" ]; then
 			# Rewrite only on a change, so the issue is not edited every hour.
-			if [ "$(jq -r --argjson n "$number" '.[] | select(.number == $n) | .body | gsub("\r"; "")' "$work/issues.json")" = "$new" ]; then
+			if [ "$(jq -r --argjson n "$number" '[.[][] | select(.number == $n)][0].body // "" | gsub("\r"; "")' "$work/issues.json")" = "$new" ]; then
 				note "security-patch-plan: issue #$number is current"
 			else
 				gh issue edit "$number" --repo "$GH_REPO" --body-file "$work/new-body"
@@ -533,7 +750,7 @@ issue() {
 		fi
 		;;
 	close)
-		[ -z "$number" ] || gh issue close "$number" --repo "$GH_REPO" --comment 'The merged security updates are released; nothing is waiting.'
+		[ -z "$number" ] || gh issue close "$number" --repo "$GH_REPO" --comment 'The merged security updates are released and trust records the release; nothing is waiting.'
 		;;
 	none) ;;
 	esac
@@ -544,28 +761,43 @@ issue() {
 # The first link of the maintainer's command. It repeats, at tag time and with
 # the maintainer's own login, what the issue claimed when it was written. A
 # security merge that landed after the issue was written must stop the tag:
-# a person tags, so there is no grace period.
+# a person tags, so there is no grace period. KIND is the kind of release the
+# issue planned: the version must be that kind's successor of the latest stable
+# release. A patch also must not carry a change to the migrations or the
+# compatibility sources since that release (the planning run proved the exact
+# declaration; this is the cheap guard at tag time). A minor is a person's
+# decision, confirmed against the prerequisites the issue lists.
 recheck() {
-	[ "$#" -ge 2 ] && [ "$#" -le 3 ] || die 'usage: security-patch-plan.sh recheck VERSION COMMIT [--tip]'
-	version=$1 commit=$2 tip_only=${3:-}
+	[ "$#" -ge 3 ] && [ "$#" -le 4 ] || die 'usage: security-patch-plan.sh recheck patch|minor VERSION COMMIT [--tip]'
+	kind=$1 version=$2 commit=$3 tip_only=${4:-}
+	case $kind in patch | minor) ;; *) die 'the release kind must be patch or minor' ;; esac
 	printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || die 'a plain stable version X.Y.Z is required'
 	need_sha "$commit"
 	[ -z "$tip_only" ] || [ "$tip_only" = --tip ] || die 'the only option is --tip'
 	[ "$(git_ rev-parse HEAD)" = "$commit" ] || refuse "this checkout is not at $commit; run the issue's commands from their first line"
+	# The ceremony's build and a signed tag both start from a clean checkout.
+	[ -z "$(git_ status --porcelain)" ] || refuse 'this checkout has uncommitted or untracked changes; use a clean checkout'
 	main_tip=$(git_ rev-parse origin/main) || die 'cannot resolve origin/main; run git fetch origin main'
 	GITHUB_SHA=$main_tip
 	[ "$tip_only" != --tip ] || [ "$commit" = "$main_tip" ] || refuse "main moved to $main_tip since the issue was written; wait for it to refresh"
 	read_published
-	[ "$version" = "$next" ] || refuse "v$version is not the patch successor of $latest_tag (v$next); the issue is out of date"
+	if [ "$kind" = minor ]; then expected=$minor; else expected=$next; fi
+	[ "$version" = "$expected" ] || refuse "v$version is not the $kind successor of $latest_tag (v$expected); the issue is out of date"
 	security_prs >"$work/security.json"
+	# An alert fixed without a traceable merge is decided by hand, not tagged over.
+	[ "$(unlinked_count)" -eq 0 ] || refuse "Dependabot alerts were fixed after $latest_tag without a linked merged pull request on main; decide by hand (see the issue's note on clearing this)"
 	alarms=
 	read_pending
 	[ -z "$alarms" ] || refuse "a security merge cannot be placed in main's history: $alarms"
 	[ -s "$work/pending" ] || refuse "no merged Dependabot security update is missing from $latest_tag any more; nothing to release"
 	contains_all "$commit" || refuse "$commit does not contain every merged security update; a newer one landed since the issue was written, so wait for it to refresh"
 	[ "$trust_highest" = "$latest" ] || refuse "main's trust ends at v$trust_highest, not $latest_tag; synchronize trust first"
+	if [ "$kind" = patch ]; then
+		changed=$(git_ diff --name-only "$latest_commit" "$commit" -- internal/store/migrations release/compatibility) || die "cannot compare $commit with $latest_tag"
+		[ -z "$changed" ] || refuse "$commit changes migrations or compatibility sources since $latest_tag, which a patch must not carry; the issue will propose a minor release"
+	fi
 	tag_checks "$version" "$commit"
-	printf 'security-patch-plan: ok to tag v%s at %s\n' "$version" "$commit"
+	printf 'security-patch-plan: ok to tag v%s at %s (%s release)\n' "$version" "$commit" "$kind"
 }
 
 [ "$#" -ge 1 ] || die 'usage: security-patch-plan.sh plan|issue|recheck'
