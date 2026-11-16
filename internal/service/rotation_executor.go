@@ -389,7 +389,7 @@ func (e *RotationExecutor) startRun(ctx context.Context, worker string, d store.
 	interval := time.Duration(d.IntervalSeconds) * time.Second
 	delay := time.Duration(d.RevocationDelaySeconds) * time.Second
 	started, ok, err := e.Runtime.StartRun(ctx, d, store.StartRun{
-		RunID: runID, Worker: worker, Now: now, LeaseUntil: now.Add(rotationLeaseTerm), Trigger: "scheduled",
+		RunID: runID, Worker: worker, Now: now, LeaseUntil: now.Add(rotationLeaseTerm), Trigger: "schedule",
 		CandidateHandle: run.CandidateHandle,
 		// VALID UNTIL = mint + publish_budget + interval + delay + slack, so a
 		// publish anywhere inside the budget leaves at least interval + delay +
