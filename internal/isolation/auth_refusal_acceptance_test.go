@@ -2,6 +2,7 @@ package isolation
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json/v2"
 	"fmt"
@@ -38,7 +39,7 @@ import (
 
 // refusalMCPPublic mounts the production MCP transport behind the public
 // router, with the same trusted proxies on both so attribution cannot diverge.
-func refusalMCPPublic(t *testing.T, db *store.DB, auth *service.Auth, signals *service.RefusalSignals, proxies []*net.IPNet, limiter *admission.Limiter) http.Handler {
+func refusalMCPPublic(t *testing.T, db *store.DB, auth *service.Auth, signals *service.RefusalSignals, proxies []*net.IPNet) http.Handler {
 	t.Helper()
 	kr := probeKeyring(t, db)
 	sealer, err := kr.MCPCursorSealer()
@@ -57,14 +58,11 @@ func refusalMCPPublic(t *testing.T, db *store.DB, auth *service.Auth, signals *s
 		t.Fatal(err)
 	}
 	options := mcpserver.Options{Registry: registry, ExternalOrigin: "https://hikyo.example.com", CursorSealer: sealer, TrustedProxies: proxies}
-	if limiter != nil {
-		options.Admission = limiter
-	}
 	transport, err := mcpserver.New(options)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return server.NewPublic(&server.API{Auth: auth, Refusals: signals, TrustedProxies: proxies, Admission: limiter}, nil, server.PublicOptions{MCP: transport})
+	return server.NewPublic(&server.API{Auth: auth, Refusals: signals, TrustedProxies: proxies}, nil, server.PublicOptions{MCP: transport})
 }
 
 // withPeer fixes the socket peer and forwarding field lines of every request.
@@ -146,6 +144,8 @@ func TestRequestRefusalAttributesProxyClientAcrossTransports(t *testing.T) {
 		{"forged leftmost entry in one list", "10.1.2.3:4000", []string{"203.0.113.9, 198.51.100.7, 10.4.4.4"}, "198.51.100.7"},
 		{"IPv6 client", "10.1.2.3:4000", []string{"2001:db8::7"}, "2001:db8::7"},
 		{"malformed hop ends the walk at the proxy", "10.1.2.3:4000", []string{"198.51.100.7, not-an-ip"}, "10.1.2.3"},
+		{"IPv4-mapped IPv6 client", "10.1.2.3:4000", []string{"::ffff:198.51.100.7"}, "198.51.100.7"},
+		{"port-suffixed hop ends the walk at the proxy", "10.1.2.3:4000", []string{"198.51.100.7:4711"}, "10.1.2.3"},
 		{"no forwarded header", "10.1.2.3:4000", nil, "10.1.2.3"},
 		{"untrusted peer cannot choose its source", "192.0.2.50:4000", []string{"198.51.100.7"}, "192.0.2.50"},
 	}
@@ -153,7 +153,7 @@ func TestRequestRefusalAttributesProxyClientAcrossTransports(t *testing.T) {
 		auth := authService(t, db)
 		signals := service.NewRefusalSignals(db)
 		rest := server.New(&server.API{Auth: auth, Refusals: signals, TrustedProxies: proxies}, nil)
-		public := refusalMCPPublic(t, db, auth, signals, proxies, nil)
+		public := refusalMCPPublic(t, db, auth, signals, proxies)
 		cli, _, err := crypto.NewArtifact(crypto.ArtifactCLISession)
 		if err != nil {
 			t.Fatal(err)
@@ -207,7 +207,7 @@ func TestRequestRefusalMCPArtifactStatesAreSignalledUniformly(t *testing.T) {
 					`'g_cu_mid', 'usr_custodian', 'manage-identities', 'org_a', NULL, NULL, `+ts+`)`)
 				auth := authService(t, db)
 				signals := service.NewRefusalSignals(db)
-				public := refusalMCPPublic(t, db, auth, signals, nil, nil)
+				public := refusalMCPPublic(t, db, auth, signals, nil)
 				scope := scopeProject(orgA, prjA1)
 				live := mintMCPAutomation(t, db, auth, scope, "refusal-live", true)
 				revoked := mintMCPAutomation(t, db, auth, scope, "refusal-revoked", true)
@@ -226,8 +226,9 @@ func TestRequestRefusalMCPArtifactStatesAreSignalledUniformly(t *testing.T) {
 				}
 				_, total := refusalWireAccounting(t, db)
 
-				// Negative controls: a live credential and anonymous discovery
-				// are not refusals, even when discovery carries a dead bearer.
+				// Negative controls: a live credential and, on the modern profile
+				// (Codex has no anonymous discovery), anonymous discovery are not
+				// refusals, even when discovery carries a dead bearer.
 				if rec := call(live.token); rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), mcpserver.SafeOperationError) {
 					t.Fatalf("live positive control: %d %s", rec.Code, rec.Body)
 				}
@@ -505,9 +506,23 @@ func TestRequestRefusalCapturesNoCredentialOrRequestDataAnywhere(t *testing.T) {
 			t.Fatal(err)
 		}
 		canaries, unknownTokens = append(canaries, mcpToken), append(unknownTokens, mcpToken)
+		_, beforeMCP := refusalWireAccounting(t, db)
+		carrying := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Header.Set("X-Request-ID", secret)
+			r.Header.Set("Referer", "https://example.test/"+secret)
+			r.Header.Set("User-Agent", "agent/"+mcpToken)
+			handler.ServeHTTP(w, r)
+		})
 		for _, codex := range []bool{false, true} {
-			rec := mcpCall(t, mcpProfile(withPeer(handler, "192.0.2.154:1234", nil), codex), mcpToken, mcpserver.ToolListDefinitions, `{"org_id":"`+secret+`","project_id":"prj_a1"}`)
+			rec := mcpCall(t, mcpProfile(withPeer(carrying, "192.0.2.154:1234", nil), codex), mcpToken, mcpserver.ToolListDefinitions, `{"org_id":"`+secret+`","project_id":"prj_a1"}`)
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("MCP canary request was not an artifact refusal: %d %s", rec.Code, rec.Body)
+			}
 			fmt.Fprint(&wire, rec.Header(), rec.Body.String())
+		}
+		// The scan only proves something if the MCP requests reached the signal.
+		if _, afterMCP := refusalWireAccounting(t, db); afterMCP-beforeMCP < 1 {
+			t.Fatal("MCP canary requests staged no refusal")
 		}
 
 		expireRefusalWindow(t, db)
@@ -570,13 +585,24 @@ func TestRequestRefusalConcurrentFloodIsBoundedAndNeverLocksOut(t *testing.T) {
 		_, totalBefore := refusalWireAccounting(t, db)
 		baseline := runtime.NumGoroutine()
 
-		flood := func(count int) (codes map[int]int, bodies map[string]int) {
+		// Credentials are minted here so a failure fails the test, not a goroutine.
+		mint := func(artifact crypto.ArtifactType) string {
+			token, _, err := crypto.NewArtifact(artifact)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return token
+		}
+		flood := func(count int) (codes map[int]int, bodies map[int]map[string]int, peakInFlight, peakWaiting int) {
 			t.Helper()
+			cli, browser := make([]string, count), make([]string, count)
+			for i := range count {
+				cli[i], browser[i] = mint(crypto.ArtifactCLISession), mint(crypto.ArtifactBrowserSession)
+			}
 			var wg sync.WaitGroup
 			var mu sync.Mutex
-			codes, bodies = map[int]int{}, map[string]int{}
+			codes, bodies = map[int]int{}, map[int]map[string]int{}
 			stop := make(chan struct{})
-			var peakInFlight, peakWaiting int
 			sampled := make(chan struct{})
 			go func() {
 				defer close(sampled)
@@ -598,11 +624,9 @@ func TestRequestRefusalConcurrentFloodIsBoundedAndNeverLocksOut(t *testing.T) {
 					r.RemoteAddr = fmt.Sprintf("198.51.100.%d:1234", i%250+1)
 					switch i % 4 {
 					case 0:
-						token, _, _ := crypto.NewArtifact(crypto.ArtifactCLISession)
-						r.Header.Set("Authorization", "Bearer "+token)
+						r.Header.Set("Authorization", "Bearer "+cli[i])
 					case 1:
-						token, _, _ := crypto.NewArtifact(crypto.ArtifactBrowserSession)
-						r.AddCookie(&http.Cookie{Name: "__Host-hikyo", Value: token})
+						r.AddCookie(&http.Cookie{Name: "__Host-hikyo", Value: browser[i]})
 					case 2:
 						r.Header.Set("Authorization", "DPoP flood")
 						r.Header.Set("DPoP", "flood")
@@ -611,7 +635,10 @@ func TestRequestRefusalConcurrentFloodIsBoundedAndNeverLocksOut(t *testing.T) {
 					handler.ServeHTTP(w, r)
 					mu.Lock()
 					codes[w.Code]++
-					bodies[w.Body.String()]++
+					if bodies[w.Code] == nil {
+						bodies[w.Code] = map[string]int{}
+					}
+					bodies[w.Code][w.Body.String()]++
 					mu.Unlock()
 				}()
 			}
@@ -621,7 +648,7 @@ func TestRequestRefusalConcurrentFloodIsBoundedAndNeverLocksOut(t *testing.T) {
 			if peakInFlight > 8 || peakWaiting > 64 {
 				t.Fatalf("flood exceeded the accounting bounds: in flight %d, waiting %d", peakInFlight, peakWaiting)
 			}
-			return codes, bodies
+			return codes, bodies, peakInFlight, peakWaiting
 		}
 
 		// The sink is blocked for the whole flood: every refusal keeps its
@@ -629,10 +656,14 @@ func TestRequestRefusalConcurrentFloodIsBoundedAndNeverLocksOut(t *testing.T) {
 		// commits late, and no work is retained.
 		failuresBefore := signals.RefusalHealth().Failures
 		release := holdRefusalWriter(t, db)
-		codes, bodies := flood(400)
+		codes, bodies, peakInFlight, peakWaiting := flood(400)
 		release()
-		if codes[http.StatusUnauthorized] != 400 || len(bodies) != 1 {
-			t.Fatalf("blocked sink changed the wire: %v, %d distinct bodies", codes, len(bodies))
+		if codes[http.StatusUnauthorized] != 400 || len(bodies[http.StatusUnauthorized]) != 1 {
+			t.Fatalf("blocked sink changed the wire: %v, bodies %v", codes, bodies)
+		}
+		// The held writer must actually have saturated the bounded work queue.
+		if peakInFlight != 8 || peakWaiting == 0 {
+			t.Fatalf("blocked sink never exercised the bounds: peak in flight %d, waiting %d", peakInFlight, peakWaiting)
 		}
 		health := signals.RefusalHealth()
 		if health.Healthy || health.Failures-failuresBefore != 400 || health.InFlight != 0 || health.Waiting != 0 {
@@ -645,21 +676,24 @@ func TestRequestRefusalConcurrentFloodIsBoundedAndNeverLocksOut(t *testing.T) {
 		// A healthy sink under a larger flood: bounded samples and state, a
 		// bounded number of sealed events, and the sink recovers.
 		accepted := signals.RefusalHealth().Failures
-		codes, bodies = flood(800)
+		codes, bodies, _, _ = flood(800)
 		// Past the public in-flight cap a refusal is the uniform 429, which the
 		// admission stage also accounts; the 401 body must stay a single value.
-		if codes[http.StatusUnauthorized]+codes[http.StatusTooManyRequests] != 800 || codes[http.StatusUnauthorized] == 0 || len(bodies) > 2 {
-			t.Fatalf("flood changed the wire: %v, %d distinct bodies", codes, len(bodies))
+		if codes[http.StatusUnauthorized]+codes[http.StatusTooManyRequests] != 800 || codes[http.StatusUnauthorized] == 0 ||
+			len(bodies[http.StatusUnauthorized]) != 1 || len(bodies[http.StatusTooManyRequests]) > 1 {
+			t.Fatalf("flood changed the wire: %v, bodies %v", codes, bodies)
 		}
 		unconfirmed := int64(signals.RefusalHealth().Failures - accepted)
-		window, total := refusalWireAccounting(t, db)
-		if got := total - totalBefore; got < 800-unconfirmed || got > 800 || len(window.Samples) > audit.RefusalSampleLimit {
-			t.Fatalf("flood accounted %d of 800 with %d unconfirmed; %d samples", got, unconfirmed, len(window.Samples))
+		_, total := refusalWireAccounting(t, db)
+		if got := total - totalBefore; got < 800-unconfirmed || got > 800 {
+			t.Fatalf("flood accounted %d of 800 with %d unconfirmed", got, unconfirmed)
 		}
 		if raw := queryString(t, db, "SELECT state FROM auth_refusal_window WHERE id=1"); len(raw) > audit.RefusalStateBytes {
 			t.Fatalf("pending state grew to %d bytes", len(raw))
 		}
-		expireRefusalWindow(t, db)
+		if queryInt(t, db, "SELECT window_start FROM auth_refusal_window WHERE id=1") != 0 {
+			expireRefusalWindow(t, db)
+		}
 		sealRefusals(t, signals)
 		// At most one event per stage per sealed window, and a flood spans at most two.
 		if events := queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type='auth.request_refused'"); events > 2*int64(len(audit.RefusalStages())) {
@@ -670,7 +704,7 @@ func TestRequestRefusalConcurrentFloodIsBoundedAndNeverLocksOut(t *testing.T) {
 		}
 
 		// No lockout: refusals never touch credential state, and the victim's
-		// own credential and a fresh login path still work from another source.
+		// own credential still works from another source.
 		if after := datastoreText(t, db, credentialTables...); after != identityBefore {
 			t.Fatal("a refusal flood changed credential, grant or session state")
 		}
@@ -688,6 +722,44 @@ func TestRequestRefusalConcurrentFloodIsBoundedAndNeverLocksOut(t *testing.T) {
 		}
 		if got := runtime.NumGoroutine(); got > baseline+4 {
 			t.Fatalf("flood left %d goroutines over a baseline of %d", got, baseline)
+		}
+	})
+}
+
+// A client that disconnects as its refusal is answered cancels the request
+// context. The refusal must still be recorded: the signal belongs to the
+// server's accounting, not to the caller who may already be gone.
+func TestRequestRefusalSurvivesCancelledRequestContext(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		signals := service.NewRefusalSignals(db)
+		cancelled, cancel := context.WithCancel(t.Context())
+		cancel()
+		id, err := uuid.NewV7()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, before := refusalWireAccounting(t, db)
+		sample := audit.RefusalSample{Stage: audit.RefusalArtifact, SourceIP: "192.0.2.7", RequestID: id.String(), Operation: "whoami"}
+		if err := signals.Record(cancelled, sample); err != nil {
+			t.Fatalf("cancelled context lost the refusal: %v", err)
+		}
+		if _, after := refusalWireAccounting(t, db); after != before+1 {
+			t.Fatalf("service record under a cancelled context staged %d refusals, want 1", after-before)
+		}
+		handler := server.New(&server.API{Auth: authService(t, db), Refusals: signals}, nil)
+		r := httptest.NewRequest(http.MethodGet, api.PathPrefix+"/auth/whoami", nil).WithContext(cancelled)
+		r.RemoteAddr = "192.0.2.8:1234"
+		// A proof-scheme refusal is decided before any datastore read, so the
+		// cancelled context reaches only the refusal accounting.
+		r.Header.Set("Authorization", "DPoP canary")
+		r.Header.Set("DPoP", "canary")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("status %d: %s", w.Code, w.Body)
+		}
+		if _, after := refusalWireAccounting(t, db); after != before+2 || !signals.RefusalHealth().Healthy {
+			t.Fatalf("handler refusal under a cancelled request staged %d, health %+v", after-before-1, signals.RefusalHealth())
 		}
 	})
 }

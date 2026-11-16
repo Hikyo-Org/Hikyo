@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strconv"
 	"strings"
@@ -43,11 +44,32 @@ func assertChargedBeforeWork(t *testing.T, db *store.DB, token string, kind cryp
 			t.Fatal(err)
 		}
 	}
-	handler := server.New(&server.API{Auth: &service.Auth{DB: db}, Orgs: &service.Orgs{DB: db}, Workspace: &service.Workspace{DB: db}, Admission: limiter}, nil)
+	signals := service.NewRefusalSignals(db)
+	handler := server.New(&server.API{Auth: &service.Auth{DB: db}, Orgs: &service.Orgs{DB: db}, Workspace: &service.Workspace{DB: db}, Admission: limiter, Refusals: signals}, nil)
 	var queries atomic.Int64
-	restore := authn.SetQueryObserver(func(string) { queries.Add(1) })
+	// The refusal signal's own window write is not a credential read.
+	restore := authn.SetQueryObserver(func(q string) {
+		if !strings.Contains(q, "auth_refusal_window") {
+			queries.Add(1)
+		}
+	})
 	defer restore()
-	rec := preauthRequest(handler, token, kind, "192.0.2.83", http.MethodGet, path)
+	// Each refusal must also produce its signal: the dead artifact an artifact
+	// refusal and the overflow an admission refusal. A commit that missed its
+	// accounting budget is visible in health and is not asserted as staged.
+	signalled := func(label string, serve func() *httptest.ResponseRecorder) *httptest.ResponseRecorder {
+		t.Helper()
+		_, before := refusalWireAccounting(t, db)
+		failures := signals.RefusalHealth().Failures
+		rec := serve()
+		if _, after := refusalWireAccounting(t, db); signals.RefusalHealth().Failures == failures && after <= before {
+			t.Fatalf("%s: confirmed refusal staged no signal", label)
+		}
+		return rec
+	}
+	rec := signalled("last allowance", func() *httptest.ResponseRecorder {
+		return preauthRequest(handler, token, kind, "192.0.2.83", http.MethodGet, path)
+	})
 	if rec.Code != http.StatusUnauthorized || queries.Load() != reads+outside {
 		t.Fatalf("last allowance = %d %s, %d queries, want uniform 401 and %d reads", rec.Code, rec.Body.String(), queries.Load(), reads+outside)
 	}
@@ -58,7 +80,9 @@ func assertChargedBeforeWork(t *testing.T, db *store.DB, token string, kind cryp
 		t.Fatal("credential state changed the unauthenticated body")
 	}
 	queries.Store(0)
-	rec = preauthRequest(handler, token, kind, "192.0.2.83", http.MethodGet, path)
+	rec = signalled("overflow", func() *httptest.ResponseRecorder {
+		return preauthRequest(handler, token, kind, "192.0.2.83", http.MethodGet, path)
+	})
 	if rec.Code != http.StatusTooManyRequests || queries.Load() != outside || rec.Header().Get("Retry-After") == "" {
 		t.Fatalf("overflow = %d %s, %d queries, want 429 without resolution", rec.Code, rec.Body.String(), queries.Load())
 	}
