@@ -203,7 +203,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	}
 	rotationExecutor := &service.RotationExecutor{
 		DB: db, Runtime: store.NewRotationRuntime(db), Keyring: kr,
-		ProviderFactory: newDynamicFactory(cfg.DynamicEgressPolicy), ProviderDeadline: dynamicProviderDeadline,
+		ProviderFactory: newDynamicFactory(cfg.DynamicEgressPolicy), ProviderDeadline: dynamicProviderDeadline, Log: log,
 	}
 	sshService := &service.SSH{DB: db, Auth: authSvc, Keyring: kr, Budget: budget, Runtime: store.NewSSHRuntime(db)}
 

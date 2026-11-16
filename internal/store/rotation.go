@@ -162,8 +162,9 @@ type RotationRepo interface {
 	// deadline, the publish effect closes, and the rotation's next run is anchored
 	// at the commit time.
 	RecordRunPublish(ctx context.Context, p authz.Proof, rec RotationPublishRecord) error
-	// AbandonOpenRuns closes every unsettled run of the rotation as quarantine and
-	// returns what each owed, so the service can audit them.
+	// AbandonOpenRuns closes every unsettled run of the rotation (quarantine, or
+	// done for a published run that owes no revoke) and returns exactly the runs
+	// that statement changed, so the service's audit rows match them one to one.
 	AbandonOpenRuns(ctx context.Context, p authz.Proof, rotationID string, at time.Time) ([]AbandonedRun, error)
 	// ProviderLiveRuns counts runs on a provider that may still hold a live role
 	// or owe a revoke, so a provider delete can refuse.
@@ -182,13 +183,14 @@ type RotationPublishRecord struct {
 	Outcome     RotationEffectOutcome
 }
 
-// AbandonedRun is one run an abandon closed.
+// AbandonedRun is one run an abandon closed, as the statement that closed it
+// returned it. Phase is the phase it was closed into: quarantine, or done for a
+// published run that owes no revoke.
 type AbandonedRun struct {
 	ID               string
 	Phase            string
 	CandidateHandle  string
 	SupersededHandle string
-	Published        bool
 }
 
 type rotationStoreQueries interface {
@@ -214,8 +216,7 @@ type rotationStoreQueries interface {
 	activeInEnvironment(ctx context.Context, chain domain.Scope, environmentID string) ([]RotationRecord, error)
 	activeInProject(ctx context.Context, chain domain.Scope) ([]RotationRecord, error)
 	pauseActive(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) (int64, error)
-	openRuns(ctx context.Context, chain domain.Scope, rotationID string) ([]AbandonedRun, error)
-	abandonRuns(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) (int64, error)
+	abandonRuns(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) ([]AbandonedRun, error)
 	providerLiveRuns(ctx context.Context, chain domain.Scope, providerID string) (int64, error)
 	runtime() rotationRuntimeQueries
 }
@@ -875,17 +876,11 @@ func (r rotationQueries) RecordRunPublish(ctx context.Context, p authz.Proof, re
 	if err := rt.closeEffect(ctx, chain, run.ID, rec.Outcome, rec.Now); err != nil {
 		return err
 	}
-	rows, err = rt.setNextRun(ctx, chain, run.RotationID, rec.NextRunAt, rec.Now)
-	if err != nil {
-		return err
-	}
-	if rows != 1 {
-		// The rotation was paused or deleted while the run was in flight. The
-		// publish still stands, so the run still revokes; only the schedule is
-		// not re-armed.
-		return nil
-	}
-	return nil
+	// Zero rows is correct: the rotation was paused or deleted while the run was
+	// in flight. The publish still stands, so the run still revokes; only the
+	// schedule is not re-armed.
+	_, err = rt.setNextRun(ctx, chain, run.RotationID, rec.NextRunAt, rec.Now)
+	return err
 }
 
 func (r rotationQueries) AbandonOpenRuns(ctx context.Context, p authz.Proof, rotationID string, at time.Time) ([]AbandonedRun, error) {
@@ -893,17 +888,7 @@ func (r rotationQueries) AbandonOpenRuns(ctx context.Context, p authz.Proof, rot
 	if err != nil {
 		return nil, err
 	}
-	runs, err := r.queries.openRuns(ctx, chain, rotationID)
-	if err != nil {
-		return nil, err
-	}
-	if len(runs) == 0 {
-		return nil, nil
-	}
-	if _, err := r.queries.abandonRuns(ctx, chain, rotationID, at); err != nil {
-		return nil, err
-	}
-	return runs, nil
+	return r.queries.abandonRuns(ctx, chain, rotationID, at)
 }
 
 func (r rotationQueries) ProviderLiveRuns(ctx context.Context, p authz.Proof, providerID string) (int64, error) {
@@ -914,36 +899,24 @@ func (r rotationQueries) ProviderLiveRuns(ctx context.Context, p authz.Proof, pr
 	return r.queries.providerLiveRuns(ctx, chain, providerID)
 }
 
-func (q sqliteRotationQueries) openRuns(ctx context.Context, chain domain.Scope, rotationID string) ([]AbandonedRun, error) {
-	rows, err := q.q.RotationOpenRuns(ctx, sqlitegen.RotationOpenRunsParams{RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+func (q sqliteRotationQueries) abandonRuns(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) ([]AbandonedRun, error) {
+	rows, err := q.q.RotationAbandonOpenRuns(ctx, sqlitegen.RotationAbandonOpenRunsParams{At: fixedStamp(at), RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]AbandonedRun, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, AbandonedRun{ID: row.ID, Phase: row.Phase, CandidateHandle: row.CandidateHandle, SupersededHandle: row.SupersededHandle.String, Published: row.PublishedRevision.Valid})
-	}
-	return out, nil
+	return mapRows(rows, func(row sqlitegen.RotationAbandonOpenRunsRow) (AbandonedRun, error) {
+		return AbandonedRun{ID: row.ID, Phase: row.Phase, CandidateHandle: row.CandidateHandle, SupersededHandle: row.SupersededHandle.String}, nil
+	})
 }
 
-func (q pgRotationQueries) openRuns(ctx context.Context, chain domain.Scope, rotationID string) ([]AbandonedRun, error) {
-	rows, err := q.q.RotationOpenRuns(ctx, pggen.RotationOpenRunsParams{RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+func (q pgRotationQueries) abandonRuns(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) ([]AbandonedRun, error) {
+	rows, err := q.q.RotationAbandonOpenRuns(ctx, pggen.RotationAbandonOpenRunsParams{At: pgRequiredTime(at), RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]AbandonedRun, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, AbandonedRun{ID: row.ID, Phase: row.Phase, CandidateHandle: row.CandidateHandle, SupersededHandle: row.SupersededHandle.String, Published: row.PublishedRevision.Valid})
-	}
-	return out, nil
-}
-
-func (q sqliteRotationQueries) abandonRuns(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) (int64, error) {
-	return q.q.RotationAbandonOpenRuns(ctx, sqlitegen.RotationAbandonOpenRunsParams{At: fixedStamp(at), RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
-}
-
-func (q pgRotationQueries) abandonRuns(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) (int64, error) {
-	return q.q.RotationAbandonOpenRuns(ctx, pggen.RotationAbandonOpenRunsParams{At: pgRequiredTime(at), RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	return mapRows(rows, func(row pggen.RotationAbandonOpenRunsRow) (AbandonedRun, error) {
+		return AbandonedRun{ID: row.ID, Phase: row.Phase, CandidateHandle: row.CandidateHandle, SupersededHandle: row.SupersededHandle.String}, nil
+	})
 }
 
 func (q sqliteRotationQueries) providerLiveRuns(ctx context.Context, chain domain.Scope, providerID string) (int64, error) {

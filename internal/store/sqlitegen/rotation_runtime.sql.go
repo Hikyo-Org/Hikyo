@@ -44,7 +44,7 @@ const rotationRtClaimDueRun = `-- name: RotationRtClaimDueRun :one
 SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.generation AS rotation_generation
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
  WHERE ru.next_attempt_at<=?1
- AND (ru.lease_owner IS NULL OR ru.lease_expires_at IS NULL OR ru.lease_expires_at<=?1)
+ AND (ru.lease_owner IS NULL OR ru.lease_expires_at IS NULL OR ru.lease_expires_at<=CAST(?2 AS TEXT))
  AND (ru.phase IN ('minting','minted','published','overlap','revoking','revoke_refused')
   OR (ru.phase IN ('failed','quarantine') AND ru.published_revision IS NULL AND NOT EXISTS (SELECT 1 FROM rotation_effects ef WHERE ef.run_id=ru.id AND ef.kind='drop_candidate' AND ef.outcome='success'))
   OR (ru.phase IN ('failed','quarantine') AND ru.published_revision IS NOT NULL AND ru.superseded_handle IS NOT NULL AND NOT EXISTS (SELECT 1 FROM rotation_effects ef WHERE ef.run_id=ru.id AND ef.kind='revoke' AND ef.outcome='success'))
@@ -52,6 +52,11 @@ SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generat
  AND (SELECT COUNT(*) FROM rotation_runs x WHERE x.org_id=ru.org_id AND x.lease_owner IS NOT NULL AND x.lease_expires_at>?1) < 4
  ORDER BY ru.next_attempt_at,ru.id LIMIT 1
 `
+
+type RotationRtClaimDueRunParams struct {
+	Now      string
+	LeaseCut string
+}
 
 type RotationRtClaimDueRunRow struct {
 	ID                     string
@@ -82,10 +87,13 @@ type RotationRtClaimDueRunRow struct {
 	RotationGeneration     int64
 }
 
+// The lease cut is now minus one provider deadline: a run is taken over only that
+// long after its lease expired, so a provider call the old worker started inside
+// its lease has finished or timed out before the takeover's rollback drops.
 // hikyo:reason RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension.
 // hikyo:instance-scoped
-func (q *Queries) RotationRtClaimDueRun(ctx context.Context, now string) (RotationRtClaimDueRunRow, error) {
-	row := q.db.QueryRowContext(ctx, rotationRtClaimDueRun, now)
+func (q *Queries) RotationRtClaimDueRun(ctx context.Context, arg RotationRtClaimDueRunParams) (RotationRtClaimDueRunRow, error) {
+	row := q.db.QueryRowContext(ctx, rotationRtClaimDueRun, arg.Now, arg.LeaseCut)
 	var i RotationRtClaimDueRunRow
 	err := row.Scan(
 		&i.ID,
@@ -279,35 +287,8 @@ func (q *Queries) RotationRtDueRotation(ctx context.Context, now sql.NullString)
 	return i, err
 }
 
-const rotationRtEffectCount = `-- name: RotationRtEffectCount :one
-SELECT COUNT(*) FROM rotation_effects WHERE run_id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND kind=?5 AND outcome=?6
-`
-
-type RotationRtEffectCountParams struct {
-	RunID        string
-	ChainOrg     string
-	ChainProject string
-	ChainEnv     string
-	Kind         string
-	Outcome      sql.NullString
-}
-
-func (q *Queries) RotationRtEffectCount(ctx context.Context, arg RotationRtEffectCountParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, rotationRtEffectCount,
-		arg.RunID,
-		arg.ChainOrg,
-		arg.ChainProject,
-		arg.ChainEnv,
-		arg.Kind,
-		arg.Outcome,
-	)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const rotationRtFailedAttempts = `-- name: RotationRtFailedAttempts :one
-SELECT COUNT(*) FROM rotation_runs WHERE rotation_id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND generation=?5 AND phase IN ('failed','quarantine') AND published_revision IS NULL AND started_at>?6
+SELECT COUNT(*) FROM rotation_runs WHERE rotation_id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND generation=?5 AND phase IN ('failed','quarantine') AND published_revision IS NULL AND (last_error IS NULL OR last_error<>'infrastructure_unavailable') AND started_at>?6
 `
 
 type RotationRtFailedAttemptsParams struct {
@@ -320,7 +301,9 @@ type RotationRtFailedAttemptsParams struct {
 }
 
 // Failed runs of one rotation that never published, started after a cut: the
-// attempts a cycle has spent. A zero cut counts the rotation's whole history.
+// attempts a cycle has spent. A run that failed only because the executor's own
+// datastore, keyring or decryption faulted (infrastructure_unavailable) is not an
+// attempt: the provider was never tried, so it must not exhaust the retries. A zero cut counts the rotation's whole history.
 func (q *Queries) RotationRtFailedAttempts(ctx context.Context, arg RotationRtFailedAttemptsParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, rotationRtFailedAttempts,
 		arg.RotationID,
@@ -583,7 +566,7 @@ func (q *Queries) RotationRtInsertRun(ctx context.Context, arg RotationRtInsertR
 }
 
 const rotationRtLaterPublished = `-- name: RotationRtLaterPublished :one
-SELECT COUNT(*) FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id WHERE ru.org_id=?1 AND ru.project_id=?2 AND ru.environment_id=?3 AND ro.key_id=?4 AND ru.published_revision IS NOT NULL AND ru.published_revision>?5
+SELECT COUNT(*) FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id WHERE ru.org_id=?1 AND ru.project_id=?2 AND ru.environment_id=?3 AND (ro.key_id=?4 OR ro.username_key_id=?4) AND ru.published_revision IS NOT NULL AND ru.published_revision>?5
 `
 
 type RotationRtLaterPublishedParams struct {
@@ -610,7 +593,7 @@ func (q *Queries) RotationRtLaterPublished(ctx context.Context, arg RotationRtLa
 }
 
 const rotationRtLatestPublished = `-- name: RotationRtLatestPublished :one
-SELECT ru.candidate_handle FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id WHERE ru.org_id=?1 AND ru.project_id=?2 AND ru.environment_id=?3 AND ro.key_id=?4 AND ru.published_revision IS NOT NULL ORDER BY ru.started_at DESC,ru.id DESC LIMIT 1
+SELECT ru.candidate_handle,ru.candidate_valid_until AS valid_until_at FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id WHERE ru.org_id=?1 AND ru.project_id=?2 AND ru.environment_id=?3 AND (ro.key_id=?4 OR ro.username_key_id=?4) AND ru.published_revision IS NOT NULL ORDER BY ru.published_revision DESC,ru.id DESC LIMIT 1
 `
 
 type RotationRtLatestPublishedParams struct {
@@ -620,19 +603,27 @@ type RotationRtLatestPublishedParams struct {
 	KeyID        string
 }
 
-// The role currently delivered into a key: the candidate of the newest run that
-// published, across every rotation that ever drove the key (as its password key or
-// its username key), so a recreated rotation still revokes the live role.
-func (q *Queries) RotationRtLatestPublished(ctx context.Context, arg RotationRtLatestPublishedParams) (string, error) {
+type RotationRtLatestPublishedRow struct {
+	CandidateHandle string
+	ValidUntilAt    sql.NullString
+}
+
+// The role currently delivered into a key: the candidate of the run that published
+// the newest revision, across every rotation that ever drove the key (as its
+// password key or its username key), so a recreated rotation still revokes the
+// live role. Ordered by the published revision, which is the order the snapshots
+// were served in, not by when the run started. valid_until_at is that role's
+// recorded VALID UNTIL.
+func (q *Queries) RotationRtLatestPublished(ctx context.Context, arg RotationRtLatestPublishedParams) (RotationRtLatestPublishedRow, error) {
 	row := q.db.QueryRowContext(ctx, rotationRtLatestPublished,
 		arg.ChainOrg,
 		arg.ChainProject,
 		arg.ChainEnv,
 		arg.KeyID,
 	)
-	var candidate_handle string
-	err := row.Scan(&candidate_handle)
-	return candidate_handle, err
+	var i RotationRtLatestPublishedRow
+	err := row.Scan(&i.CandidateHandle, &i.ValidUntilAt)
+	return i, err
 }
 
 const rotationRtLoadProviderMaterial = `-- name: RotationRtLoadProviderMaterial :one
@@ -676,6 +667,70 @@ func (q *Queries) RotationRtLoadProviderMaterial(ctx context.Context, arg Rotati
 		&i.GrantRole,
 		&i.ID,
 		&i.AdminCredentialCiphertext,
+	)
+	return i, err
+}
+
+const rotationRtLoadSupersededRole = `-- name: RotationRtLoadSupersededRole :one
+SELECT p.kind,p.origin,p.tls_mode,p.grant_role,p.id,p.admin_credential_ciphertext,sup.candidate_valid_until AS valid_until_at,
+ (SELECT COUNT(*) FROM rotation_effects ef WHERE ef.run_id=sup.id AND ef.org_id=sup.org_id AND ef.project_id=sup.project_id AND ef.environment_id=sup.environment_id AND ef.kind='extend' AND (ef.outcome IS NULL OR ef.outcome='unknown')) AS extend_uncertain
+ FROM rotation_runs ru
+ JOIN rotation_runs sup ON sup.org_id=ru.org_id AND sup.project_id=ru.project_id AND sup.environment_id=ru.environment_id AND sup.candidate_handle=ru.superseded_handle
+ JOIN rotations ro ON ro.org_id=sup.org_id AND ro.project_id=sup.project_id AND ro.environment_id=sup.environment_id AND ro.id=sup.rotation_id
+ JOIN dynamic_providers p ON p.org_id=ro.org_id AND p.project_id=ro.project_id AND p.id=ro.provider_id
+ WHERE ru.id=?1 AND ru.org_id=?2 AND ru.project_id=?3 AND ru.environment_id=?4 AND ru.lease_owner=?5 AND ru.lease_expires_at>?6 AND ru.lease_claim_token=?7
+`
+
+type RotationRtLoadSupersededRoleParams struct {
+	RunID        string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	Worker       sql.NullString
+	Now          sql.NullString
+	ClaimToken   int64
+}
+
+type RotationRtLoadSupersededRoleRow struct {
+	Kind                      string
+	Origin                    string
+	TlsMode                   string
+	GrantRole                 string
+	ID                        string
+	AdminCredentialCiphertext []byte
+	ValidUntilAt              sql.NullString
+	ExtendUncertain           int64
+}
+
+// The role a published run replaces, bound to the provider that MINTED it: the run
+// whose candidate_handle is this run's superseded_handle, and that run's rotation's
+// provider. It is not this run's own provider, which a recreated rotation may have
+// moved to another server; dropping or probing a handle on the wrong server would
+// read "absent" as "dead". valid_until_at is the minting run's recorded VALID UNTIL
+// and extend_uncertain counts its extends whose outcome is open or unknown (the
+// recorded VALID UNTIL is then a lower bound, not a fact).
+// hikyo:reason The superseded role is minted by another run of the same org, project and environment chain (joined on every chain column), under a rotation of possibly another provider; the read is fenced on the claimed run's lease and chain, and the extend-uncertainty count is a chain-bound subquery.
+// hikyo:instance-scoped
+func (q *Queries) RotationRtLoadSupersededRole(ctx context.Context, arg RotationRtLoadSupersededRoleParams) (RotationRtLoadSupersededRoleRow, error) {
+	row := q.db.QueryRowContext(ctx, rotationRtLoadSupersededRole,
+		arg.RunID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.Worker,
+		arg.Now,
+		arg.ClaimToken,
+	)
+	var i RotationRtLoadSupersededRoleRow
+	err := row.Scan(
+		&i.Kind,
+		&i.Origin,
+		&i.TlsMode,
+		&i.GrantRole,
+		&i.ID,
+		&i.AdminCredentialCiphertext,
+		&i.ValidUntilAt,
+		&i.ExtendUncertain,
 	)
 	return i, err
 }

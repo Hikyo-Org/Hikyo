@@ -22,11 +22,14 @@ SELECT ro.id,ro.org_id,ro.project_id,ro.environment_id,ro.provider_id,ro.key_id,
 -- name: RotationRtLockDueRotation :one
 SELECT id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,generation FROM rotations WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active' AND generation=sqlc.arg(expected_generation) AND next_run_at<=sqlc.arg(now) FOR UPDATE SKIP LOCKED;
 
--- The role currently delivered into a key: the candidate of the newest run that
--- published, across every rotation that ever drove the key (as its password key or
--- its username key), so a recreated rotation still revokes the live role.
+-- The role currently delivered into a key: the candidate of the run that published
+-- the newest revision, across every rotation that ever drove the key (as its
+-- password key or its username key), so a recreated rotation still revokes the
+-- live role. Ordered by the published revision, which is the order the snapshots
+-- were served in, not by when the run started. valid_until_at is that role's
+-- recorded VALID UNTIL.
 -- name: RotationRtLatestPublished :one
-SELECT ru.candidate_handle FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env) AND ro.key_id=sqlc.arg(key_id) AND ru.published_revision IS NOT NULL ORDER BY ru.started_at DESC,ru.id DESC LIMIT 1;
+SELECT ru.candidate_handle,ru.candidate_valid_until AS valid_until_at FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env) AND (ro.key_id=sqlc.arg(key_id) OR ro.username_key_id=sqlc.arg(key_id)) AND ru.published_revision IS NOT NULL ORDER BY ru.published_revision DESC,ru.id DESC LIMIT 1;
 
 -- name: RotationRtInsertRun :exec
 INSERT INTO rotation_runs (id,org_id,project_id,environment_id,rotation_id,generation,run_trigger,phase,candidate_handle,superseded_handle,candidate_valid_until,revocation_delay_seconds,started_at,phase_at,lease_owner,lease_expires_at,lease_claim_token,attempt_count,next_attempt_at) VALUES (sqlc.arg(id),sqlc.arg(chain_org),sqlc.arg(chain_project),sqlc.arg(chain_env),sqlc.arg(rotation_id),sqlc.arg(generation),sqlc.arg(run_trigger),'minting',sqlc.arg(candidate_handle),sqlc.narg(superseded_handle),sqlc.arg(candidate_valid_until_at),sqlc.arg(revocation_delay_seconds),sqlc.arg(at),sqlc.arg(at),sqlc.arg(worker),sqlc.arg(lease_until_at),1,1,sqlc.arg(at));
@@ -51,13 +54,16 @@ UPDATE rotation_effects SET outcome=sqlc.arg(outcome),outcome_audit_id=sqlc.arg(
 -- name: RotationRtInsertAudit :exec
 INSERT INTO audit_tenant_events (id,type,schema_version,occurred_at,occurred_asserted,recorded_at,actor_id,actor_class,authority_id,scope_class,org_id,project_id,env_id,object_type,object_id,outcome,correlation_id,origin,payload) VALUES (sqlc.arg(id),sqlc.arg(type),1,sqlc.arg(at),false,sqlc.arg(at),NULL,'system',sqlc.arg(authority_id),'env',sqlc.arg(chain_org),sqlc.arg(chain_project),sqlc.arg(chain_env),'rotation',sqlc.arg(rotation_id),sqlc.arg(outcome),sqlc.arg(run_id),'system',sqlc.arg(payload));
 
+-- The lease cut is now minus one provider deadline: a run is taken over only that
+-- long after its lease expired, so a provider call the old worker started inside
+-- its lease has finished or timed out before the takeover's rollback drops.
 -- hikyo:reason RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension.
 -- hikyo:instance-scoped
 -- name: RotationRtClaimDueRun :one
 SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.generation AS rotation_generation
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
  WHERE ru.next_attempt_at<=sqlc.arg(now)
- AND (ru.lease_owner IS NULL OR ru.lease_expires_at IS NULL OR ru.lease_expires_at<=sqlc.arg(now))
+ AND (ru.lease_owner IS NULL OR ru.lease_expires_at IS NULL OR ru.lease_expires_at<=sqlc.arg(lease_cut))
  AND (ru.phase IN ('minting','minted','published','overlap','revoking','revoke_refused')
   OR (ru.phase IN ('failed','quarantine') AND ru.published_revision IS NULL AND NOT EXISTS (SELECT 1 FROM rotation_effects ef WHERE ef.run_id=ru.id AND ef.kind='drop_candidate' AND ef.outcome='success'))
   OR (ru.phase IN ('failed','quarantine') AND ru.published_revision IS NOT NULL AND ru.superseded_handle IS NOT NULL AND NOT EXISTS (SELECT 1 FROM rotation_effects ef WHERE ef.run_id=ru.id AND ef.kind='revoke' AND ef.outcome='success'))
@@ -83,13 +89,12 @@ SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generat
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
  WHERE ru.id=sqlc.arg(run_id) AND ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env);
 
--- name: RotationRtEffectCount :one
-SELECT COUNT(*) FROM rotation_effects WHERE run_id=sqlc.arg(run_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND kind=sqlc.arg(kind) AND outcome=sqlc.arg(outcome);
-
 -- Failed runs of one rotation that never published, started after a cut: the
--- attempts a cycle has spent. A zero cut counts the rotation's whole history.
+-- attempts a cycle has spent. A run that failed only because the executor's own
+-- datastore, keyring or decryption faulted (infrastructure_unavailable) is not an
+-- attempt: the provider was never tried, so it must not exhaust the retries. A zero cut counts the rotation's whole history.
 -- name: RotationRtFailedAttempts :one
-SELECT COUNT(*) FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(generation) AND phase IN ('failed','quarantine') AND published_revision IS NULL AND started_at>sqlc.arg(since_at);
+SELECT COUNT(*) FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(generation) AND phase IN ('failed','quarantine') AND published_revision IS NULL AND (last_error IS NULL OR last_error<>'infrastructure_unavailable') AND started_at>sqlc.arg(since_at);
 
 -- The commit time of the snapshot a run published: the single anchor P of the
 -- failure schedule. It is the publish transaction's own timestamp.
@@ -108,10 +113,28 @@ SELECT DISTINCT se.value_entry_id FROM rotation_runs ru JOIN rotations ro ON ro.
 -- Whether a later run published for the key: the delivered credential of this run
 -- is superseded and must not be extended.
 -- name: RotationRtLaterPublished :one
-SELECT COUNT(*) FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env) AND ro.key_id=sqlc.arg(key_id) AND ru.published_revision IS NOT NULL AND ru.published_revision>sqlc.arg(revision);
+SELECT COUNT(*) FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env) AND (ro.key_id=sqlc.arg(key_id) OR ro.username_key_id=sqlc.arg(key_id)) AND ru.published_revision IS NOT NULL AND ru.published_revision>sqlc.arg(revision);
 
 -- name: RotationRtLoadProviderMaterial :one
 SELECT p.kind,p.origin,p.tls_mode,p.grant_role,p.id,p.admin_credential_ciphertext FROM dynamic_providers p JOIN rotation_runs ru ON ru.org_id=p.org_id AND ru.project_id=p.project_id JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id AND ro.provider_id=p.id WHERE ru.id=sqlc.arg(run_id) AND ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env) AND ru.lease_owner=sqlc.arg(worker) AND ru.lease_expires_at>sqlc.arg(now) AND ru.lease_claim_token=sqlc.arg(claim_token);
+
+-- The role a published run replaces, bound to the provider that MINTED it: the run
+-- whose candidate_handle is this run's superseded_handle, and that run's rotation's
+-- provider. It is not this run's own provider, which a recreated rotation may have
+-- moved to another server; dropping or probing a handle on the wrong server would
+-- read "absent" as "dead". valid_until_at is the minting run's recorded VALID UNTIL
+-- and extend_uncertain counts its extends whose outcome is open or unknown (the
+-- recorded VALID UNTIL is then a lower bound, not a fact).
+-- hikyo:reason The superseded role is minted by another run of the same org, project and environment chain (joined on every chain column), under a rotation of possibly another provider; the read is fenced on the claimed run's lease and chain, and the extend-uncertainty count is a chain-bound subquery.
+-- hikyo:instance-scoped
+-- name: RotationRtLoadSupersededRole :one
+SELECT p.kind,p.origin,p.tls_mode,p.grant_role,p.id,p.admin_credential_ciphertext,sup.candidate_valid_until AS valid_until_at,
+ (SELECT COUNT(*) FROM rotation_effects ef WHERE ef.run_id=sup.id AND ef.org_id=sup.org_id AND ef.project_id=sup.project_id AND ef.environment_id=sup.environment_id AND ef.kind='extend' AND (ef.outcome IS NULL OR ef.outcome='unknown')) AS extend_uncertain
+ FROM rotation_runs ru
+ JOIN rotation_runs sup ON sup.org_id=ru.org_id AND sup.project_id=ru.project_id AND sup.environment_id=ru.environment_id AND sup.candidate_handle=ru.superseded_handle
+ JOIN rotations ro ON ro.org_id=sup.org_id AND ro.project_id=sup.project_id AND ro.environment_id=sup.environment_id AND ro.id=sup.rotation_id
+ JOIN dynamic_providers p ON p.org_id=ro.org_id AND p.project_id=ro.project_id AND p.id=ro.provider_id
+ WHERE ru.id=sqlc.arg(run_id) AND ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env) AND ru.lease_owner=sqlc.arg(worker) AND ru.lease_expires_at>sqlc.arg(now) AND ru.lease_claim_token=sqlc.arg(claim_token);
 
 -- name: RotationRtOpenRunCount :one
 SELECT COUNT(*) FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND phase NOT IN ('done','quarantine','failed');

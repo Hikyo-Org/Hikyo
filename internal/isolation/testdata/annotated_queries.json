@@ -3360,6 +3360,13 @@
   },
   {
     "engine": "postgres",
+    "name": "RotationAbandonOpenRuns",
+    "annotation": "instance-scoped",
+    "hash": "b1e2bc72c69581a6659fcd2ad012d2f6c39ccd38ad26f5da32eb621d865bfc89",
+    "reason": "The statement binds the full owning chain and the rotation id as top-level conjuncts; the predicate analyzer cannot parse the RETURNING clause that reports the changed rows."
+  },
+  {
+    "engine": "postgres",
     "name": "RotationProviderLiveRuns",
     "annotation": "instance-scoped",
     "hash": "7ee122d4767b2734b91445443b3fa596505e99c03d8cbcbc4421097804d2e16f",
@@ -3369,7 +3376,7 @@
     "engine": "postgres",
     "name": "RotationRtClaimDueRun",
     "annotation": "instance-scoped",
-    "hash": "8d4f73ce18598f7a4a3a8d8712f85adeee57a06eaeb42b8e884364752a5000c3",
+    "hash": "490e955225d6a4388e3bbce0492ccb0d569ba42cc840ea86527072606ef4f6b0",
     "reason": "RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension."
   },
   {
@@ -3378,6 +3385,13 @@
     "annotation": "instance-scoped",
     "hash": "302c8d242bd3ab59515e5754da14efb583c8af7241e15ed8d2422f73167874e9",
     "reason": "RotationRuntime closed scheduler picks one due rotation across tenants under the per-org concurrency cap; the run is then created under the recorded authority's proof and binds the selected immutable chain."
+  },
+  {
+    "engine": "postgres",
+    "name": "RotationRtLoadSupersededRole",
+    "annotation": "instance-scoped",
+    "hash": "049d94355f99b958334a09e0bdc0b8ef22d51a10a8dfe0270b5b6815a96db31f",
+    "reason": "The superseded role is minted by another run of the same org, project and environment chain (joined on every chain column), under a rotation of possibly another provider; the read is fenced on the claimed run's lease and chain, and the extend-uncertainty count is a chain-bound subquery."
   },
   {
     "engine": "postgres",
@@ -7122,6 +7136,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "RotationAbandonOpenRuns",
+    "annotation": "instance-scoped",
+    "hash": "b1e2bc72c69581a6659fcd2ad012d2f6c39ccd38ad26f5da32eb621d865bfc89",
+    "reason": "The statement binds the full owning chain and the rotation id as top-level conjuncts; the predicate analyzer cannot parse the RETURNING clause that reports the changed rows."
+  },
+  {
+    "engine": "sqlite",
     "name": "RotationProviderLiveRuns",
     "annotation": "instance-scoped",
     "hash": "7ee122d4767b2734b91445443b3fa596505e99c03d8cbcbc4421097804d2e16f",
@@ -7131,7 +7152,7 @@
     "engine": "sqlite",
     "name": "RotationRtClaimDueRun",
     "annotation": "instance-scoped",
-    "hash": "7399f78de50f116972c51363affa25b7abe2451bfee0787fd2d6928e3a01618e",
+    "hash": "21b1ae5feb00a5f9ef6a26831664fafd01622f350aff6462125e0f92761d55af",
     "reason": "RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension."
   },
   {
@@ -7140,6 +7161,13 @@
     "annotation": "instance-scoped",
     "hash": "302c8d242bd3ab59515e5754da14efb583c8af7241e15ed8d2422f73167874e9",
     "reason": "RotationRuntime closed scheduler picks one due rotation across tenants under the per-org concurrency cap; the run is then created under the recorded authority's proof and binds the selected immutable chain."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RotationRtLoadSupersededRole",
+    "annotation": "instance-scoped",
+    "hash": "049d94355f99b958334a09e0bdc0b8ef22d51a10a8dfe0270b5b6815a96db31f",
+    "reason": "The superseded role is minted by another run of the same org, project and environment chain (joined on every chain column), under a rotation of possibly another provider; the read is fenced on the claimed run's lease and chain, and the extend-uncertainty count is a chain-bound subquery."
   },
   {
     "engine": "sqlite",

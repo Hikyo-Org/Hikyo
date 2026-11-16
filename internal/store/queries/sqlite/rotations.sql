@@ -26,14 +26,14 @@ DELETE FROM rotation_key_claims WHERE rotation_id=sqlc.arg(rotation_id) AND org_
 -- for this key across rotations, so a delete and recreate on the same keys still
 -- reports the role that is live in them.
 -- name: RotationCredentialExpiry :one
-SELECT ru.id AS run_id, ru.candidate_valid_until AS expires_at FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env) AND ro.key_id=sqlc.arg(key_id) AND ru.published_revision IS NOT NULL ORDER BY ru.started_at DESC, ru.id DESC LIMIT 1;
+SELECT ru.id AS run_id, ru.candidate_valid_until AS expires_at FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env) AND (ro.key_id=sqlc.arg(key_id) OR ro.username_key_id=sqlc.arg(key_id)) AND ru.published_revision IS NOT NULL ORDER BY ru.published_revision DESC, ru.id DESC LIMIT 1;
 
 -- The delivered-credential expiry for a page of keys: the newest published run per
 -- key, ranked in SQL so the result holds one row per requested key whatever the run
 -- history, and a list never queries per row.
 -- name: RotationCredentialExpiries :many
 SELECT key_id AS key_id,run_id AS run_id,expires_at AS expires_at FROM (
- SELECT ro.key_id,ru.id AS run_id,ru.candidate_valid_until AS expires_at,ROW_NUMBER() OVER (PARTITION BY ro.key_id ORDER BY ru.started_at DESC,ru.id DESC) AS ordinal
+ SELECT ro.key_id,ru.id AS run_id,ru.candidate_valid_until AS expires_at,ROW_NUMBER() OVER (PARTITION BY ro.key_id ORDER BY ru.published_revision DESC,ru.id DESC) AS ordinal
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
  WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env) AND ro.key_id IN (sqlc.slice('key_ids')) AND ru.published_revision IS NOT NULL
  ) ranked WHERE ordinal=1 ORDER BY key_id;
@@ -74,16 +74,19 @@ SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,rev
 -- name: RotationListActiveInProject :many
 SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state='active' ORDER BY id;
 
--- The runs a delete with --abandon closes: everything that has not settled.
--- name: RotationOpenRuns :many
-SELECT id,phase,candidate_handle,superseded_handle,published_revision FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND phase NOT IN ('done','quarantine','failed') ORDER BY id;
-
--- Abandon closes every unsettled run as quarantine and bumps the claim token, so a
--- worker still holding the run loses its fence. A pre-publish run is due now (the
--- candidate reconciler confirms its candidate gone); a published run keeps its
--- overlap deadline (the revoke-obligation loop drops the superseded role after it).
--- name: RotationAbandonOpenRuns :execrows
-UPDATE rotation_runs SET phase='quarantine',phase_at=sqlc.arg(at),last_error='abandoned',next_attempt_at=CASE WHEN published_revision IS NULL THEN sqlc.arg(at) ELSE next_attempt_at END,lease_owner=NULL,lease_expires_at=NULL,lease_claim_token=lease_claim_token+1 WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND phase NOT IN ('done','quarantine','failed');
+-- Abandon closes every unsettled run and bumps the claim token, so a worker still
+-- holding the run loses its fence. A pre-publish run becomes quarantine and is due
+-- now (the candidate reconciler confirms its candidate gone). A published run that
+-- owes a revoke becomes quarantine and keeps its overlap deadline (the
+-- revoke-obligation loop drops the superseded role after it). A published run with
+-- no superseded role owes nothing, so it settles straight to done; left in
+-- quarantine it would hold its provider and environment forever. RETURNING is the
+-- list of the rows this statement actually changed, so the audit rows the caller
+-- writes match them one to one.
+-- hikyo:reason The statement binds the full owning chain and the rotation id as top-level conjuncts; the predicate analyzer cannot parse the RETURNING clause that reports the changed rows.
+-- hikyo:instance-scoped
+-- name: RotationAbandonOpenRuns :many
+UPDATE rotation_runs SET phase=CASE WHEN published_revision IS NOT NULL AND superseded_handle IS NULL THEN 'done' ELSE 'quarantine' END,phase_at=sqlc.arg(at),last_error='abandoned',next_attempt_at=CASE WHEN published_revision IS NULL THEN sqlc.arg(at) ELSE next_attempt_at END,lease_owner=NULL,lease_expires_at=NULL,lease_claim_token=lease_claim_token+1 WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND phase NOT IN ('done','quarantine','failed') RETURNING id,phase,candidate_handle,superseded_handle;
 
 -- A failed run that never published only stops holding a live role once its
 -- candidate drop is recorded: the fenced claim write fails the run before the drop.

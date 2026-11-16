@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -130,7 +131,11 @@ type RotationSettle struct {
 	// NextRunAt, when non-zero, moves the rotation's schedule (no generation bump).
 	NextRunAt time.Time
 	// HaltReason, when set, halts the rotation (state halted, generation bump).
+	// HaltAudit is written only when the halt changed a row: a rotation paused or
+	// deleted while the run was in flight is no longer active, so nothing halted
+	// and no halt is recorded.
 	HaltReason string
+	HaltAudit  *RotationAudit
 }
 
 // StartRun is one run creation from a due rotation.
@@ -148,36 +153,41 @@ type StartRun struct {
 	Intent      RotationEffectIntent
 }
 
-// RotationRestore is the restore assertion's observation: for each of the two
-// keys, whether the entry currently served is one this run, or a later run of the
-// key, published. No secret is read.
-type RotationRestore struct {
-	Holds         bool
-	MismatchedKey string
+// SupersededRole is the role a published run replaces, bound to the provider
+// that minted it (see RotationRuntime.LoadSupersededRole).
+type SupersededRole struct {
+	// Material is that provider's connection material; its ciphertext is empty
+	// when the provider has since lost its credential or was deleted.
+	Material LeaseProviderMaterial
+	// ValidUntil is the minting run's recorded VALID UNTIL; zero when unrecorded.
+	ValidUntil time.Time
+	// ExtendUncertain is whether an extend of that role ended unknown or never
+	// recorded an outcome, so the recorded ValidUntil is only a lower bound.
+	ExtendUncertain bool
 }
 
 type rotationRuntimeQueries interface {
 	dueRotation(ctx context.Context, now time.Time) (DueRotation, error)
 	lockDueRotation(ctx context.Context, d DueRotation, now time.Time) (DueRotation, error)
-	latestPublished(ctx context.Context, chain domain.Scope, keyID string) (handle string, err error)
+	latestPublished(ctx context.Context, chain domain.Scope, keyID string) (handle string, validUntil time.Time, err error)
 	insertRun(ctx context.Context, d DueRotation, s StartRun, superseded string) error
 	setNextRun(ctx context.Context, chain domain.Scope, rotationID string, next, now time.Time) (int64, error)
 	haltRotation(ctx context.Context, chain domain.Scope, rotationID, reason string, now time.Time) (int64, error)
 	insertEffect(ctx context.Context, chain domain.Scope, runID string, e RotationEffectIntent, at time.Time) error
 	closeEffect(ctx context.Context, chain domain.Scope, runID string, o RotationEffectOutcome, at time.Time) error
 	insertAudit(ctx context.Context, chain domain.Scope, authority, rotationID, runID string, a RotationAudit, at time.Time) error
-	claimDueRun(ctx context.Context, now time.Time) (RotationRun, error)
+	claimDueRun(ctx context.Context, now, leaseCut time.Time) (RotationRun, error)
 	claimRun(ctx context.Context, run RotationRun, until time.Time) error
 	assertRun(ctx context.Context, run RotationRun, now time.Time) (int64, error)
 	settleRun(ctx context.Context, run RotationRun, s RotationSettle) (int64, error)
 	getRun(ctx context.Context, chain domain.Scope, runID string) (RotationRun, error)
-	effectCount(ctx context.Context, chain domain.Scope, runID, kind, outcome string) (int64, error)
 	failedAttempts(ctx context.Context, chain domain.Scope, rotationID string, generation int64, since time.Time) (int64, error)
 	publishedAt(ctx context.Context, chain domain.Scope, revision int64) (time.Time, error)
 	currentEntry(ctx context.Context, chain domain.Scope, keyID string) (string, error)
 	publishedEntries(ctx context.Context, chain domain.Scope, keyID string, fromRevision int64) ([]string, error)
 	laterPublished(ctx context.Context, chain domain.Scope, keyID string, revision int64) (int64, error)
 	providerMaterial(ctx context.Context, run RotationRun, now time.Time) (LeaseProviderMaterial, error)
+	supersededRole(ctx context.Context, run RotationRun, now time.Time) (SupersededRole, error)
 	openRunCount(ctx context.Context, chain domain.Scope, rotationID string) (int64, error)
 	openEffect(ctx context.Context, chain domain.Scope, runID string) (id, kind string, err error)
 	ownPublished(ctx context.Context, chain domain.Scope, rotationID string, generation int64) (int64, error)
@@ -238,7 +248,7 @@ func (r *RotationRuntime) StartRun(ctx context.Context, d DueRotation, s StartRu
 		if open != 0 {
 			return nil
 		}
-		superseded, err := q.latestPublished(ctx, chain, locked.KeyID)
+		superseded, _, err := q.latestPublished(ctx, chain, locked.KeyID)
 		if err != nil {
 			return err
 		}
@@ -269,14 +279,17 @@ func (r *RotationRuntime) StartRun(ctx context.Context, d DueRotation, s StartRu
 	return out, started && err == nil, err
 }
 
-// ClaimDueRun leases one due run for a term. Selections (see the claim query):
+// ClaimDueRun leases one due run for a term. leaseCut is when an expired lease
+// counts as free: the caller passes now minus one provider deadline, so a takeover
+// never overlaps a provider call the previous holder started inside its lease.
+// Selections (see the claim query):
 // an in-flight run, the candidate reconciler's pre-publish failed or quarantined
 // run, the revoke-obligation loop's post-publish run, and a settled run due an
 // extension. The service decides which action the run's phase calls for.
-func (r *RotationRuntime) ClaimDueRun(ctx context.Context, worker string, now, until time.Time) (RotationRun, bool, error) {
+func (r *RotationRuntime) ClaimDueRun(ctx context.Context, worker string, now, until, leaseCut time.Time) (RotationRun, bool, error) {
 	var out RotationRun
 	err := r.transaction(ctx, func(q rotationRuntimeQueries) error {
-		run, err := q.claimDueRun(ctx, now)
+		run, err := q.claimDueRun(ctx, now, leaseCut)
 		if err != nil {
 			return mapNoRows(err)
 		}
@@ -316,6 +329,20 @@ func (r *RotationRuntime) LoadProviderMaterial(ctx context.Context, run Rotation
 			return LeaseProviderMaterial{}, ErrNoProviderCredential
 		}
 		return out, nil
+	})
+}
+
+// LoadSupersededRole reads the role a published run replaces together with the
+// provider that MINTED it, under the run's lease fence. That provider is the one
+// of the run that created the role, not the claimed run's own: a rotation
+// recreated on another provider still has the old role to revoke, and the old
+// role lives on the old server. A provider that has lost its credential reads as
+// a role with empty Material.CredentialCiphertext, never as an error, so the
+// caller can still take the expiry exit.
+func (r *RotationRuntime) LoadSupersededRole(ctx context.Context, run RotationRun, now time.Time) (SupersededRole, error) {
+	return rotationRead(ctx, r, func(q rotationRuntimeQueries) (SupersededRole, error) {
+		out, err := q.supersededRole(ctx, run, now)
+		return out, mapNoRows(err)
 	})
 }
 
@@ -382,13 +409,19 @@ func (r *RotationRuntime) Settle(ctx context.Context, run RotationRun, s Rotatio
 			}
 		}
 		if !s.NextRunAt.IsZero() {
+			// Zero rows (the rotation was paused or deleted while the run was in
+			// flight) is correct: the schedule is then not this run's to move.
 			if _, err := q.setNextRun(ctx, chain, run.RotationID, s.NextRunAt, s.Now); err != nil {
 				return err
 			}
 		}
 		if s.HaltReason != "" {
-			if _, err := q.haltRotation(ctx, chain, run.RotationID, s.HaltReason, s.Now); err != nil {
+			halted, err := q.haltRotation(ctx, chain, run.RotationID, s.HaltReason, s.Now)
+			if err != nil {
 				return err
+			}
+			if halted == 1 && s.HaltAudit != nil {
+				return q.insertAudit(ctx, chain, run.AuthorityPrincipalID, run.RotationID, run.ID, *s.HaltAudit, s.Now)
 			}
 		}
 		return nil
@@ -396,21 +429,30 @@ func (r *RotationRuntime) Settle(ctx context.Context, run RotationRun, s Rotatio
 }
 
 // HaltRotation halts a rotation whose pre-publish gate failed before any run
-// existed (the scheduler's own check), writing the audit row beside it. It
-// returns false when the rotation was no longer active (nothing to halt).
-func (r *RotationRuntime) HaltRotation(ctx context.Context, d DueRotation, reason string, now time.Time, audit RotationAudit) (bool, error) {
-	halted := false
-	err := r.transaction(ctx, func(q rotationRuntimeQueries) error {
-		halted = false
+// existed (the scheduler's own check), writing the audit row beside it, and only
+// when the halt changed a row: a rotation that is no longer active has nothing to
+// halt and records nothing.
+func (r *RotationRuntime) HaltRotation(ctx context.Context, d DueRotation, reason string, now time.Time, audit RotationAudit) error {
+	return r.transaction(ctx, func(q rotationRuntimeQueries) error {
 		chain := d.Chain()
 		rows, err := q.haltRotation(ctx, chain, d.ID, reason, now)
 		if err != nil || rows != 1 {
 			return err
 		}
-		halted = true
 		return q.insertAudit(ctx, chain, d.AuthorityPrincipalID, d.ID, "", audit, now)
 	})
-	return halted && err == nil, err
+}
+
+// DeferRotation moves an active rotation's next run out, so a rotation whose
+// pre-start checks keep failing for a reason that is not its own refusal (a
+// datastore fault) cannot stay the oldest due row and starve every other tenant's
+// rotations behind it. It writes nothing else; zero rows (the rotation is no
+// longer active) is correct.
+func (r *RotationRuntime) DeferRotation(ctx context.Context, d DueRotation, next, now time.Time) error {
+	return r.transaction(ctx, func(q rotationRuntimeQueries) error {
+		_, err := q.setNextRun(ctx, d.Chain(), d.ID, next, now)
+		return err
+	})
 }
 
 // Chain is the due rotation's tenant chain.
@@ -429,6 +471,10 @@ type RotationCycle struct {
 	// KeyEverPublished is whether any run of any rotation ever published the key,
 	// that is, whether a superseded credential exists.
 	KeyEverPublished bool
+	// DeliveredValidUntil is the recorded VALID UNTIL of that delivered
+	// credential, the anchor a cycle that began over it (a resumed or recreated
+	// rotation) derives its window from; zero when none.
+	DeliveredValidUntil time.Time
 }
 
 // Cycle reads the schedule anchors for a due rotation.
@@ -446,11 +492,12 @@ func (r *RotationRuntime) Cycle(ctx context.Context, d DueRotation) (RotationCyc
 			return out, err
 		}
 		out.FirstRunAt = first
-		handle, err := q.latestPublished(ctx, chain, d.KeyID)
+		handle, validUntil, err := q.latestPublished(ctx, chain, d.KeyID)
 		if err != nil {
 			return out, err
 		}
 		out.KeyEverPublished = handle != ""
+		out.DeliveredValidUntil = validUntil
 		return out, nil
 	})
 }
@@ -463,14 +510,6 @@ func (r *RotationRuntime) OpenEffect(ctx context.Context, run RotationRun) (id, 
 		return mapNoRows(qerr)
 	})
 	return id, kind, err
-}
-
-// EffectSucceeded reports whether the run recorded a successful effect of kind.
-func (r *RotationRuntime) EffectSucceeded(ctx context.Context, run RotationRun, kind string) (bool, error) {
-	n, err := rotationRead(ctx, r, func(q rotationRuntimeQueries) (int64, error) {
-		return q.effectCount(ctx, run.Chain(), run.ID, kind, "success")
-	})
-	return n > 0, err
 }
 
 // FailedAttempts counts the rotation's runs of one generation since `since` that never published
@@ -501,33 +540,30 @@ func (r *RotationRuntime) LaterPublished(ctx context.Context, run RotationRun) (
 
 // RestoreAssertion is crash-safety rule 7. For both keys the value entry
 // currently served must be one a run of the key published at or after this run's
-// revision, compared by entry id with no secret read.
-func (r *RotationRuntime) RestoreAssertion(ctx context.Context, run RotationRun) (RotationRestore, error) {
-	return rotationRead(ctx, r, func(q rotationRuntimeQueries) (RotationRestore, error) {
+// revision, compared by entry id with no secret read. A key with no served entry
+// at all (deleted, or its value unset after the publish) passes: nothing serves
+// the superseded role through it, so the revoke cannot cause an outage. The
+// observation and the drop that follows are not one transaction; a restore that
+// lands between them is the documented window in the crash table.
+func (r *RotationRuntime) RestoreAssertion(ctx context.Context, run RotationRun) (bool, error) {
+	return rotationRead(ctx, r, func(q rotationRuntimeQueries) (bool, error) {
 		chain := run.Chain()
 		for _, keyID := range []string{run.KeyID, run.UsernameKeyID} {
 			current, err := q.currentEntry(ctx, chain, keyID)
 			if isNoRows(err) {
-				return RotationRestore{MismatchedKey: keyID}, nil
+				continue
 			}
 			if err != nil {
-				return RotationRestore{}, err
+				return false, err
 			}
 			published, err := q.publishedEntries(ctx, chain, keyID, run.PublishedRevision)
 			if err != nil {
-				return RotationRestore{}, err
+				return false, err
 			}
-			ok := false
-			for _, id := range published {
-				if id == current {
-					ok = true
-					break
-				}
-			}
-			if !ok {
-				return RotationRestore{MismatchedKey: keyID}, nil
+			if !slices.Contains(published, current) {
+				return false, nil
 			}
 		}
-		return RotationRestore{Holds: true}, nil
+		return true, nil
 	})
 }

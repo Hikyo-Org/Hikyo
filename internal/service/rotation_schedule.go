@@ -49,10 +49,52 @@ func rotationCycleWindow(published time.Time, interval time.Duration) rotationWi
 }
 
 // rotationInheritedWindow is the window of a cycle that began over a credential
-// it did not publish itself (a resumed or recreated rotation): it is anchored at
-// the cycle's own first attempt.
-func rotationInheritedWindow(first time.Time) rotationWindow {
-	return rotationWindow{HasD: true, D: first.Add(rotationSlack - rotationPublishBudget)}
+// it did not publish itself (a resumed or recreated rotation). D is derived from
+// that delivered credential, exactly as a published cycle derives it: the last
+// instant a run may start while the credential still has publish_budget + delay of
+// validity left. A credential already past its VALID UNTIL has nothing left to
+// protect, so the cycle has no D. The cycle's very first run (firstRun) is always
+// allowed: refusing the only chance to restore a nearly lapsed credential would
+// guarantee the outage the window exists to prevent; its retries are bound by D.
+func rotationInheritedWindow(now, delivered time.Time, delay time.Duration, firstRun bool) rotationWindow {
+	if !now.Before(delivered) {
+		return rotationWindow{}
+	}
+	d := delivered.Add(-(rotationPublishBudget + delay))
+	if firstRun && !now.Before(d) {
+		return rotationWindow{}
+	}
+	return rotationWindow{HasD: true, D: d}
+}
+
+// rotationCandidateValidUntil is the VALID UNTIL a candidate is minted with:
+// mint + publish_budget + interval + delay + slack, so a publish anywhere inside
+// the budget leaves at least interval + delay + slack of validity.
+func rotationCandidateValidUntil(mintedAt time.Time, interval, delay time.Duration) time.Time {
+	return mintedAt.Add(rotationPublishBudget + interval + delay + rotationSlack)
+}
+
+// rotationResumeNext is when a resumed rotation's first run is due: a full
+// interval away, unless the delivered credential cannot wait that long. It is
+// then due at the earlier of its last permitted start (publish_budget + delay of
+// validity left) and its extension margin, and immediately when that has passed
+// (a lapsed credential is restored now, not an interval from now).
+func rotationResumeNext(now time.Time, interval, delay time.Duration, delivered time.Time) time.Time {
+	next := now.Add(interval)
+	if delivered.IsZero() {
+		return next
+	}
+	deadline := delivered.Add(-(rotationPublishBudget + delay))
+	if due := rotationExtendDue(delivered); due.Before(deadline) {
+		deadline = due
+	}
+	if deadline.Before(next) {
+		next = deadline
+	}
+	if next.Before(now) {
+		next = now
+	}
+	return next
 }
 
 // rotationBackoff is the delay after the nth failed attempt of a cycle (n >= 1):

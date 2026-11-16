@@ -3804,6 +3804,8 @@ var registry = map[EventType]TypeSpec{
 			"phase":      {Kind: KindString, Required: true, Enum: rotationRunPhases},
 			"handle":     {Kind: KindString, Required: true},
 			"error_code": {Kind: KindString},
+			// revision is the catalogue revision a publish outcome produced.
+			"revision": {Kind: KindInt},
 			// not_converged_consumers is reserved for the consumer-convergence
 			// report (S2b); the executor does not emit it yet.
 			"not_converged_consumers": {Kind: KindInt},

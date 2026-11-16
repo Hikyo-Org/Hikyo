@@ -35,10 +35,14 @@ func newAuditEvent(ctx context.Context, typ audit.EventType, principal domain.Pr
 		return audit.Event{}, err
 	}
 	wire := audit.FromContext(ctx)
+	if correlationID == "" {
+		correlationID = wire.CorrelationID
+	}
 	return audit.Event{
 		ID: id, Type: typ, SchemaVersion: 1,
 		OccurredAt:    time.Now().UTC(),
 		Actor:         audit.Actor{ID: string(principal)},
+		AuthorityID:   wire.AuthorityID,
 		Object:        obj,
 		Outcome:       outcome,
 		CorrelationID: correlationID,

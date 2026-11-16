@@ -11,8 +11,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const rotationAbandonOpenRuns = `-- name: RotationAbandonOpenRuns :execrows
-UPDATE rotation_runs SET phase='quarantine',phase_at=$1,last_error='abandoned',next_attempt_at=CASE WHEN published_revision IS NULL THEN $1 ELSE next_attempt_at END,lease_owner=NULL,lease_expires_at=NULL,lease_claim_token=lease_claim_token+1 WHERE rotation_id=$2 AND org_id=$3 AND project_id=$4 AND environment_id=$5 AND phase NOT IN ('done','quarantine','failed')
+const rotationAbandonOpenRuns = `-- name: RotationAbandonOpenRuns :many
+UPDATE rotation_runs SET phase=CASE WHEN published_revision IS NOT NULL AND superseded_handle IS NULL THEN 'done' ELSE 'quarantine' END,phase_at=$1,last_error='abandoned',next_attempt_at=CASE WHEN published_revision IS NULL THEN $1 ELSE next_attempt_at END,lease_owner=NULL,lease_expires_at=NULL,lease_claim_token=lease_claim_token+1 WHERE rotation_id=$2 AND org_id=$3 AND project_id=$4 AND environment_id=$5 AND phase NOT IN ('done','quarantine','failed') RETURNING id,phase,candidate_handle,superseded_handle
 `
 
 type RotationAbandonOpenRunsParams struct {
@@ -23,12 +23,26 @@ type RotationAbandonOpenRunsParams struct {
 	ChainEnv     string
 }
 
-// Abandon closes every unsettled run as quarantine and bumps the claim token, so a
-// worker still holding the run loses its fence. A pre-publish run is due now (the
-// candidate reconciler confirms its candidate gone); a published run keeps its
-// overlap deadline (the revoke-obligation loop drops the superseded role after it).
-func (q *Queries) RotationAbandonOpenRuns(ctx context.Context, arg RotationAbandonOpenRunsParams) (int64, error) {
-	result, err := q.db.Exec(ctx, rotationAbandonOpenRuns,
+type RotationAbandonOpenRunsRow struct {
+	ID               string
+	Phase            string
+	CandidateHandle  string
+	SupersededHandle pgtype.Text
+}
+
+// Abandon closes every unsettled run and bumps the claim token, so a worker still
+// holding the run loses its fence. A pre-publish run becomes quarantine and is due
+// now (the candidate reconciler confirms its candidate gone). A published run that
+// owes a revoke becomes quarantine and keeps its overlap deadline (the
+// revoke-obligation loop drops the superseded role after it). A published run with
+// no superseded role owes nothing, so it settles straight to done; left in
+// quarantine it would hold its provider and environment forever. RETURNING is the
+// list of the rows this statement actually changed, so the audit rows the caller
+// writes match them one to one.
+// hikyo:reason The statement binds the full owning chain and the rotation id as top-level conjuncts; the predicate analyzer cannot parse the RETURNING clause that reports the changed rows.
+// hikyo:instance-scoped
+func (q *Queries) RotationAbandonOpenRuns(ctx context.Context, arg RotationAbandonOpenRunsParams) ([]RotationAbandonOpenRunsRow, error) {
+	rows, err := q.db.Query(ctx, rotationAbandonOpenRuns,
 		arg.At,
 		arg.RotationID,
 		arg.ChainOrg,
@@ -36,9 +50,26 @@ func (q *Queries) RotationAbandonOpenRuns(ctx context.Context, arg RotationAband
 		arg.ChainEnv,
 	)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return result.RowsAffected(), nil
+	defer rows.Close()
+	var items []RotationAbandonOpenRunsRow
+	for rows.Next() {
+		var i RotationAbandonOpenRunsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Phase,
+			&i.CandidateHandle,
+			&i.SupersededHandle,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const rotationBlockingRunRotations = `-- name: RotationBlockingRunRotations :many
@@ -192,7 +223,7 @@ func (q *Queries) RotationCreate(ctx context.Context, arg RotationCreateParams) 
 
 const rotationCredentialExpiries = `-- name: RotationCredentialExpiries :many
 SELECT key_id AS key_id,run_id AS run_id,expires_at AS expires_at FROM (
- SELECT ro.key_id,ru.id AS run_id,ru.candidate_valid_until AS expires_at,ROW_NUMBER() OVER (PARTITION BY ro.key_id ORDER BY ru.started_at DESC,ru.id DESC) AS ordinal
+ SELECT ro.key_id,ru.id AS run_id,ru.candidate_valid_until AS expires_at,ROW_NUMBER() OVER (PARTITION BY ro.key_id ORDER BY ru.published_revision DESC,ru.id DESC) AS ordinal
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
  WHERE ru.org_id=$1 AND ru.project_id=$2 AND ru.environment_id=$3 AND ro.key_id = ANY($4::text[]) AND ru.published_revision IS NOT NULL
  ) ranked WHERE ordinal=1 ORDER BY key_id
@@ -240,7 +271,7 @@ func (q *Queries) RotationCredentialExpiries(ctx context.Context, arg RotationCr
 }
 
 const rotationCredentialExpiry = `-- name: RotationCredentialExpiry :one
-SELECT ru.id AS run_id, ru.candidate_valid_until AS expires_at FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id WHERE ru.org_id=$1 AND ru.project_id=$2 AND ru.environment_id=$3 AND ro.key_id=$4 AND ru.published_revision IS NOT NULL ORDER BY ru.started_at DESC, ru.id DESC LIMIT 1
+SELECT ru.id AS run_id, ru.candidate_valid_until AS expires_at FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id WHERE ru.org_id=$1 AND ru.project_id=$2 AND ru.environment_id=$3 AND (ro.key_id=$4 OR ro.username_key_id=$4) AND ru.published_revision IS NOT NULL ORDER BY ru.published_revision DESC, ru.id DESC LIMIT 1
 `
 
 type RotationCredentialExpiryParams struct {
@@ -639,57 +670,6 @@ func (q *Queries) RotationListAll(ctx context.Context, arg RotationListAllParams
 			&i.Generation,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const rotationOpenRuns = `-- name: RotationOpenRuns :many
-SELECT id,phase,candidate_handle,superseded_handle,published_revision FROM rotation_runs WHERE rotation_id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4 AND phase NOT IN ('done','quarantine','failed') ORDER BY id
-`
-
-type RotationOpenRunsParams struct {
-	RotationID   string
-	ChainOrg     string
-	ChainProject string
-	ChainEnv     string
-}
-
-type RotationOpenRunsRow struct {
-	ID                string
-	Phase             string
-	CandidateHandle   string
-	SupersededHandle  pgtype.Text
-	PublishedRevision pgtype.Int8
-}
-
-// The runs a delete with --abandon closes: everything that has not settled.
-func (q *Queries) RotationOpenRuns(ctx context.Context, arg RotationOpenRunsParams) ([]RotationOpenRunsRow, error) {
-	rows, err := q.db.Query(ctx, rotationOpenRuns,
-		arg.RotationID,
-		arg.ChainOrg,
-		arg.ChainProject,
-		arg.ChainEnv,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []RotationOpenRunsRow
-	for rows.Next() {
-		var i RotationOpenRunsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Phase,
-			&i.CandidateHandle,
-			&i.SupersededHandle,
-			&i.PublishedRevision,
 		); err != nil {
 			return nil, err
 		}

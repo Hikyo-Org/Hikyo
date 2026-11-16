@@ -670,8 +670,10 @@ func TestRotationExecutorCrashDuringRevoke(t *testing.T) {
 	}
 }
 
-// rotationLeaseTermForTest mirrors the executor's two-minute claim lease.
-const rotationLeaseTermForTest = 2 * time.Minute
+// rotationLeaseTermForTest is how long a dead worker's claim holds: the
+// executor's two-minute lease plus the provider-deadline margin a takeover waits
+// after it (the harness deadline is five seconds).
+const rotationLeaseTermForTest = 2*time.Minute + 5*time.Second
 
 // ------------------------------------------------------------ restore hazard
 

@@ -41,8 +41,8 @@ var (
 	ErrAmbiguous = errors.New("dynamic: provider outcome ambiguous")
 	// ErrRefused is a DEFINITE failure the engine reported: a statement reached
 	// the server and it answered with an error (a missing grant role, a
-	// privilege refusal, a syntax error). The role state is known — the DDL did
-	// not take effect — so the lease settles to a terminal failure, not unknown.
+	// privilege refusal, a syntax error). The role state is known: the DDL did
+	// not take effect, so the lease settles to a terminal failure, not unknown.
 	ErrRefused = errors.New("dynamic: provider refused the request")
 	// ErrRoleOwnsObjects is the refusal of a DROP of a role that still owns
 	// objects or holds privileges (PostgreSQL SQLSTATE 2BP01). It is an

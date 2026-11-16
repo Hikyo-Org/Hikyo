@@ -5532,7 +5532,7 @@ var operationTable = map[Operation]opSpec{
 	OpRotationRun: {
 		class: ClassTenant, level: domain.LevelEnv,
 		formula:  Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
-		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsBeginRunPublish: true, StoreRotationsRecordRunPublish: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsBeginRunPublish: true, StoreRotationsRecordRunPublish: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StorePendingListForOwnerInEnvironment: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventRotationRunIntent, audit.EventRotationRunOutcome, audit.EventRotationQuarantined},
 	},
 

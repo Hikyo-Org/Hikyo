@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -74,6 +75,13 @@ var (
 	ErrRotationProviderInactive = &rotationRefusal{"the rotation's dynamic provider does not exist, was deleted, or has no admin credential set, so it cannot mint; set the credential or create the rotation again", domain.ErrConflict}
 	// ErrRotationKeyMissing refuses a resume while one of the rotation's keys is
 	// gone or no longer fit to receive a generated password.
+	ErrRotationKeyGrouped = &rotationRefusal{"a scheduled rotation publishes exactly its two keys, unattended, and a key group publishes together, so neither key may belong to a key group; take the keys out of their group first", domain.ErrConflict}
+
+	// ErrRotationDraftPending is the refusal for a rotation authority that holds a
+	// pending draft on one of the rotation's keys: the scheduled publish stages its
+	// own value into the same cell, which would replace that draft.
+	ErrRotationDraftPending = &rotationRefusal{"the rotation's authority principal has a pending draft on one of the rotation's keys, and the scheduled publish would overwrite it; publish or discard that draft first", domain.ErrConflict}
+
 	ErrRotationKeyMissing = &rotationRefusal{"one of the rotation's keys no longer exists or is no longer secret-classified; create the rotation again", domain.ErrConflict}
 	// ErrEnvironmentHasLiveRotation refuses an environment delete while a rotation
 	// in it is not deleted or has a run that may hold a live role (any phase but
@@ -267,11 +275,35 @@ func requireRotationKeys(ctx context.Context, r store.Repos, proof authz.Proof, 
 	if key.Classification != string(schema.Secret) {
 		return missing(fmt.Errorf("%w: key_id must name a secret-classified key", domain.ErrInvalid))
 	}
-	if _, err := r.Catalogue().Get(ctx, proof, usernameKeyID); err != nil {
+	usernameKey, err := r.Catalogue().Get(ctx, proof, usernameKeyID)
+	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return missing(err)
 		}
 		return err
+	}
+	// A grouped key publishes with its whole group, so an unattended publish of
+	// either rotated key would carry other keys with it.
+	if key.GroupID != "" || usernameKey.GroupID != "" {
+		return ErrRotationKeyGrouped
+	}
+	return nil
+}
+
+// requireNoAuthorityDraft refuses when the rotation's authority principal has a
+// pending draft (a staged value or a restore) on either rotated key. The
+// executor stages its candidate into the authority's own cell, and staging is
+// delete-then-insert, so an existing draft would be silently replaced. Another
+// principal's draft is theirs alone and never in the way.
+func requireNoAuthorityDraft(ctx context.Context, r store.Repos, proof authz.Proof, authority string, keyIDs ...string) error {
+	drafts, err := r.Pending().ListForOwnerInEnvironment(ctx, proof, authority)
+	if err != nil {
+		return err
+	}
+	for _, draft := range drafts {
+		if slices.Contains(keyIDs, draft.KeyID) {
+			return ErrRotationDraftPending
+		}
 	}
 	return nil
 }
@@ -570,7 +602,16 @@ func (s *CredentialRotations) transition(ctx context.Context, actor Actor, scope
 				return err
 			}
 			next.State = store.RotationStateActive
-			next.NextRunAt = now.Add(time.Duration(cur.IntervalSeconds) * time.Second)
+			// The delivered credential keeps lapsing while the rotation is
+			// stopped, so the first run is not a whole interval away when the
+			// credential cannot wait that long.
+			var delivered time.Time
+			if cur.CredentialExpiresAt != "" {
+				if delivered, err = time.Parse(time.RFC3339Nano, cur.CredentialExpiresAt); err != nil {
+					return fmt.Errorf("service: rotation %s credential expiry %q: %w", cur.ID, cur.CredentialExpiresAt, err)
+				}
+			}
+			next.NextRunAt = rotationResumeNext(now, time.Duration(cur.IntervalSeconds)*time.Second, time.Duration(cur.RevocationDelaySeconds)*time.Second, delivered)
 		case rotationActionDeleted:
 			if cur.State == store.RotationStateDisabled {
 				return fmt.Errorf("%w: the rotation is already deleted", domain.ErrConflict)
@@ -583,17 +624,22 @@ func (s *CredentialRotations) transition(ctx context.Context, actor Actor, scope
 				if !req.Abandon {
 					return fmt.Errorf("%w: the rotation has a run in flight; let it finish or abandon it", domain.ErrConflict)
 				}
-				// Abandon closes every unsettled run as quarantine, loudly. A run
-				// before its publish keeps its candidate for the reconciler to
-				// confirm gone; a run past it keeps its delivered credential live
-				// and still owes the superseded role's revoke, which the
-				// revoke-obligation loop settles. Nothing here revokes a delivered
-				// credential.
+				// Abandon closes every unsettled run, loudly. A run before its
+				// publish becomes quarantine and keeps its candidate for the
+				// reconciler to confirm gone; a run past it keeps its delivered
+				// credential live and, when it still owes the superseded role's
+				// revoke, becomes quarantine for the revoke-obligation loop to
+				// settle; a published run that owes no revoke settles to done.
+				// Nothing here revokes a delivered credential. The audit rows are
+				// written for exactly the runs the abandon statement changed.
 				abandoned, err := r.Rotations().AbandonOpenRuns(ctx, proof, cur.ID, now)
 				if err != nil {
 					return err
 				}
 				for _, run := range abandoned {
+					if run.Phase != "quarantine" {
+						continue
+					}
 					payload := audit.Payload{"run_id": run.ID, "candidate_handle": run.CandidateHandle}
 					if run.SupersededHandle != "" {
 						payload["superseded_handle"] = run.SupersededHandle
