@@ -141,6 +141,9 @@ grep -F "$baseline_identity" "$scratch/out" >/dev/null || { printf 'compatibilit
 with_edge "$baseline_identity" . 0 >"$scratch/changed.json"
 edge_fault "$scratch/changed.json" 'postgres: no release-source edge from v1.1.0'
 if grep -F 'sqlite: no release-source edge' "$scratch/out" >/dev/null; then printf 'compatibility fixture: an engine that has its edge was named\n' >&2; exit 1; fi
+# A source that names the baseline and also a genesis is not a release-source edge (Source.Validate refuses it).
+with_edge "$baseline_identity" '.source.genesis = "fresh/v1"' >"$scratch/changed.json"
+edge_fault "$scratch/changed.json" 'sqlite: no release-source edge from v1.1.0 (an edge names v1.1.0 with a different release identity or another source field)'
 # An edge with other migrations or another schema digest than the baseline published.
 with_edge "$baseline_identity" '.migrations.entries |= .[:-1]' >"$scratch/changed.json"
 edge_fault "$scratch/changed.json" 'sqlite: the edge from v1.1.0 lists migrations other than'
@@ -151,7 +154,7 @@ edge_fault "$scratch/changed.json" 'sqlite: the edge from v1.1.0 names a schema 
 # An edge from the wrong release: another commit, sequence, manifest digest, compatibility digest or version.
 for field in '.commit = ("9" * 40)' '.sequence = 3' '.manifest_sha256 = ("f" * 64)' '.compatibility_sha256 = ("f" * 64)'; do
 	with_edge "$(printf '%s' "$baseline_identity" | jq -c "$field")" >"$scratch/changed.json"
-	edge_fault "$scratch/changed.json" 'sqlite: no release-source edge from v1.1.0 (an edge names v1.1.0 with a different release identity)'
+	edge_fault "$scratch/changed.json" 'sqlite: no release-source edge from v1.1.0 (an edge names v1.1.0 with a different release identity or another source field)'
 done
 with_edge "$(printf '%s' "$baseline_identity" | jq -c '.version = "1.0.0"')" >"$scratch/changed.json"
 edge_fault "$scratch/changed.json" 'sqlite: no release-source edge from v1.1.0'
@@ -260,7 +263,7 @@ refused other-commit "$scratch/candidate.json" 'printed no release identity' 5
 refused other-profile "$scratch/candidate.json" 'printed no release identity' 5
 # The identity is the verifier's, not the files': when it says sequence 3, the edge that names sequence 2 (what the
 # files say) is no longer the edge from the baseline, and the required identity printed is the verifier's.
-refused other-identity "$scratch/candidate.json" 'compatibility check: sqlite: no release-source edge from v1.1.0 (an edge names v1.1.0 with a different release identity)' 1
+refused other-identity "$scratch/candidate.json" 'compatibility check: sqlite: no release-source edge from v1.1.0 (an edge names v1.1.0 with a different release identity or another source field)' 1
 grep -F '"sequence":3' "$scratch/out" >/dev/null || { cat "$scratch/out" >&2; printf 'compatibility fixture: the required identity is not the verifier'"'"'s\n' >&2; exit 1; }
 # A baseline signed under another trust policy cannot be routed by any edge (plan.go skips edges across a policy change).
 jq '.signing_key_id = "recovery-bridge"' "$scratch/manifest.bak" >"$scratch/published/release-manifest.json"

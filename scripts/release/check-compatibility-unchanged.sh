@@ -122,7 +122,7 @@ verify_release_compatibility_artifact "$download/release-manifest.json" "$downlo
 # The candidate is compared without the edge from the baseline release itself.
 normalize() { # file out [release-identity-to-drop]
 	jq -S --argjson id "${3:-null}" 'del(.version, .sequence, .commit) |
-		if $id == null then . else .engines |= map(.sources |= map(select(.source.release? != $id))) end' "$1" >"$2" || refuse "cannot normalize $1"
+		if $id == null then . else .engines |= map(.sources |= map(select(.source != {release: $id}))) end' "$1" >"$2" || refuse "cannot normalize $1"
 }
 if [ -n "$edges_only" ]; then
 	jq '.engines' "$declaration" >"$work/edges.json"

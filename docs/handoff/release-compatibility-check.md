@@ -87,7 +87,10 @@ is advisory for the maintainer: nothing requires it.
   generator's declaration for `main`'s commit at that time, checked as `1.1.1`,
   printed `compatibility is identical to v1.1.0` (exit 0). The same run against
   Postgres 14 printed "differs", because the schema digest depends on the
-  Postgres major version; CI pins 18. This is my own local run, not a workflow run.
+  Postgres major version; CI pins 18. This is my own local run, not a workflow run,
+  and it predates the release-source edge rule: it shows the normalized
+  declarations matched, not that the current check passes. The current check
+  refuses that same input, because no edge from v1.1.0 exists yet.
 
 ## Not verified, and the risk
 
@@ -98,7 +101,9 @@ is advisory for the maintainer: nothing requires it.
   declaration differs, because the promotion that lands this workflow also
   carries the migrations that sit on `dev`, so main's tip no longer matches the
   last stable release. The summary ends on the edge line; the diff above it shows the difference.
-  The "unchanged" verdict is evidenced separately by a local run (see Evidence).
+  No run of the current check has reached the "unchanged" verdict: that needs a
+  reviewed edge from v1.1.0 in `release/compatibility/sources.json`. The local run
+  in Evidence predates the edge rule.
 - The 30-minute job timeout is an estimate, not a measurement.
 - The check compares main's tip. If main moves before tagging, run it again.
 - It does not check CI status, trust synchronization or that the version is the

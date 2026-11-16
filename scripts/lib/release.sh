@@ -40,10 +40,11 @@ release_source_edge_problems() {
 	jq -r --argjson id "$1" --slurpfile baseline "$2" '
 		. as $edges | ("v" + $id.version) as $from | ["sqlite", "postgres"][] | . as $engine |
 		($baseline[0].engines[] | select(.migrations.engine == $engine)) as $published |
-		[($edges[$engine] // [])[] | select(.source.release? == $id)] as $own |
-		[($edges[$engine] // [])[] | select(.source.release? != null and .source.release.version? == $id.version and .source.release != $id)] as $lookalike |
+		# The source must be that release and nothing else: Source.Validate refuses a source that also names a genesis.
+		[($edges[$engine] // [])[] | select(.source == {release: $id})] as $own |
+		[($edges[$engine] // [])[] | select(.source.release? != null and .source.release.version? == $id.version and .source != {release: $id})] as $lookalike |
 		if ($own | length) == 0 then
-			"\($engine): no release-source edge from \($from)" + (if ($lookalike | length) > 0 then " (an edge names \($from) with a different release identity)" else "" end)
+			"\($engine): no release-source edge from \($from)" + (if ($lookalike | length) > 0 then " (an edge names \($from) with a different release identity or another source field)" else "" end)
 		elif ($own | length) > 1 then "\($engine): more than one release-source edge from \($from)"
 		elif $own[0].migrations != $published.migrations then "\($engine): the edge from \($from) lists migrations other than the ones \($from) published"
 		elif $own[0].schema_sha256 != $published.schema_sha256 then "\($engine): the edge from \($from) names a schema digest other than the one \($from) published"
