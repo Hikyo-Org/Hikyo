@@ -275,14 +275,22 @@ Limits kept open:
   residual race is a commit counted at 900 or fewer suites that passes 1,000
   before the REST listing finishes.
 - Queue admission has a 60-second budget with a 15-second reserve, so 45 seconds
-  of reads. A suite scan costs about 1.4 s per 100 suites measured live (27.6 s
-  for 20 pages), so one listing on a head with 1,000 suites takes about 14 s,
-  and a head with about 3,000 suites cannot finish its scan inside one
-  admission. The work clock then ends the read, admission fails closed and the
-  failed run is retried up to `admissionMaxAttempts`; the retries meet the same
-  scan time. A PR whose head stays that large remains stuck until a new head is
-  pushed. Admission repeats the scan for every owner listing, which a shared
-  per-invocation cache could cut and which this change does not add.
+  of reads, and it lists the owned checks at least three times on one head, each
+  past 900 suites repeating the whole scan. The owners' scan reads one named
+  count per suite and cost about 1.4 s per 100 suites live (27.6 s for 20 pages;
+  discovery's scan reads two counts and costs about 2 s). Three scans of a head
+  with 1,000 suites take about 42 s, so admission reliably finishes only up to
+  about 1,000 suites. Past that the work clock ends the read, admission fails
+  closed and the run is retried up to `admissionMaxAttempts` against the same
+  scan time; the failure path lists twice more inside the 15-second reserve and
+  can fail to publish its own verdict, leaving the non-final record for
+  retirement to clean. A PR whose head stays that large remains stuck until a new
+  head is pushed. All four oversized commits seen on 2026-11-15 (1,039 to 2,005
+  suites) are past that point. Reusing one scan across the listings of an
+  admission would cut the cost to one scan, but a suite created or joined by the
+  controller's own write between listings would then be missed, so it is not done
+  here. Admission before this change did not time out on these heads; it listed
+  only the newest 1,000 suites and could report success while missing a check.
 - Each scan page spends one GraphQL point (counts only), so a listing on a
   2,000-suite head spends about 20 points against the hourly limit shared with
   every other CI client.
@@ -295,6 +303,11 @@ Limits kept open:
 - `scripts/release/nightly-promote.sh` lists `ci-queue-required` by commit for
   its stuck check, which has the same cap. A miss there reads as "no check yet"
   and never blocks a promotion, so it is tracked separately.
+
+- The release-admission policy (`scripts/ci/release-admission/spec/POLICY.md`)
+  pins the `pr-gate/main.go` and `queue.go` blobs but not the new
+  `scripts/ci/checksuites` reader they now call; the policy already states it is
+  not a complete transitive attestation.
 
 Not verified: the suite query from hosted runner IPs against any organisation IP
 allow list; it filters by app ID and reads only counts, so it traverses no

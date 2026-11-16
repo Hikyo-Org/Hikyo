@@ -26,6 +26,8 @@ type oversizedHead struct {
 	// skew answers suite queries for another repository.
 	skew  int64
 	reads []string
+	// listed, when set, replaces what a holding suite lists.
+	listed map[int64][]check
 }
 
 var (
@@ -85,6 +87,9 @@ func (a *oversizedHead) read(ctx context.Context, path string, result any) error
 		id, _ := strconv.ParseInt(suiteListing.FindStringSubmatch(path)[1], 10, 64)
 		if !slices.Contains(a.holding, id) {
 			return queueHistoryJSON(empty, result)
+		}
+		if runs, ok := a.listed[id]; ok {
+			return queueHistoryJSON(map[string]any{"total_count": len(runs), "check_runs": runs}, result)
 		}
 		return a.api.read(ctx, suiteListing.ReplaceAllString(path, "/commits/"+head+"/check-runs?"), result)
 	}
@@ -179,6 +184,43 @@ func TestOwnedChecksOfHeadBeyondRESTSuiteCapFailClosed(t *testing.T) {
 			}
 			if err := f.c.retireChecks(context.Background(), f.c.expectedHead); err == nil || len(f.api.writes) != 0 {
 				t.Fatalf("%s: err=%v writes=%d, want a refusal without mutation", fault, err, len(f.api.writes))
+			}
+		})
+	}
+}
+
+// The queue verdict reads at most 100 members across every suite, and one run
+// listed by two suites is refused, as a listing by commit would have.
+func TestGroupChecksBoundsAndDeduplicatesAcrossSuites(t *testing.T) {
+	runs := func(f *queueFixture, first int64, n int) []check {
+		out := make([]check, n)
+		for i := range out {
+			out[i] = f.api.checks[0]
+			out[i].ID = first + int64(i)
+		}
+		return out
+	}
+	for _, tc := range []struct {
+		name    string
+		a, b    int
+		overlap bool
+		wantErr bool
+	}{
+		{name: "at the cap", a: 50, b: 50},
+		{name: "over the cap across suites", a: 60, b: 60, wantErr: true},
+		{name: "same run in two suites", a: 1, b: 1, overlap: true, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _ := retirementFixture(t, queueCheckName)
+			head := installOversizedHead(f, 2005, 7, 1856)
+			second := int64(2000)
+			if tc.overlap {
+				second = 1000
+			}
+			head.listed = map[int64][]check{7: runs(f, 1000, tc.a), 1856: runs(f, second, tc.b)}
+			group, err := f.q.groupChecks(context.Background(), f.pr)
+			if (err != nil) != tc.wantErr || (err == nil && len(group) != tc.a+tc.b) {
+				t.Fatalf("group = %d checks, err=%v", len(group), err)
 			}
 		})
 	}

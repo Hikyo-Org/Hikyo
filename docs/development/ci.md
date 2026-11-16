@@ -605,6 +605,10 @@ The retire and reporter owners read the same way: past 900 suites (a count read
 before every listing) they list a check's runs only in the `github-actions`
 suites that hold runs of its name, one REST listing per suite, so a context on an
 oversized commit is routed, retired and found by the reporter like any other.
+Queue admission lists a head's checks at least three times inside its 45-second
+read budget and each listing repeats the scan, so admission finishes reliably only
+up to about 1,000 suites (about 1.4 s per 100 suites for the owners' scan). Past
+that it fails closed and the PR needs a new head.
 Both use the shared `scripts/ci/checksuites` reader. A suite inventory that
 cannot be completed, a run reported by two suites, or a check in more than 100
 suites refuses instead of listing partially. Discovery refuses all targets on

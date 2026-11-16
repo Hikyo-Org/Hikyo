@@ -680,6 +680,7 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 		{fault: "missing history suite count", wantErr: "incomplete retirement history check suite count"},
 		{fault: "GraphQL error with data", wantErr: "incomplete server result"},
 		{fault: "suite page unavailable", wantErr: "check suites for"},
+		{fault: "suite page cut by the deadline", wantErr: "ran out of time after 1 check suite pages"},
 		{fault: "foreign repository", wantErr: "foreign check suite snapshot"},
 		{fault: "foreign object", wantErr: "foreign check suite snapshot"},
 		{fault: "null suites", wantErr: "foreign check suite snapshot"},
@@ -850,6 +851,9 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 			}
 			if tc.fault == "suite page unavailable" {
 				f.api.responses["graphql:"+retirementSuitesQuery(f, head, "c1")] = errors.New("suite page unavailable")
+			}
+			if tc.fault == "suite page cut by the deadline" {
+				f.api.responses["graphql:"+retirementSuitesQuery(f, head, "c1")] = context.DeadlineExceeded
 			}
 			for id, runs := range suiteRuns {
 				response := map[string]any{"total_count": len(runs), "check_runs": runs}

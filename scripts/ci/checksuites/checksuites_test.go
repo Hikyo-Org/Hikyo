@@ -134,3 +134,22 @@ func TestFindRefusesMoreSelectedSuitesThanMaxSelected(t *testing.T) {
 		}
 	}
 }
+
+// The default diagnosis quotes server text so it cannot add log lines, bounds it
+// and redacts the token.
+func TestDefaultDiagnoseQuotesBoundsAndRedacts(t *testing.T) {
+	t.Setenv("GH_TOKEN", "secret-token")
+	message := "line\n::error::forged secret-token " + strings.Repeat("x", 300)
+	raw, err := json.Marshal([]map[string]string{{"message": message}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var errs []json.RawMessage
+	if err := json.Unmarshal(raw, &errs); err != nil {
+		t.Fatal(err)
+	}
+	got := Source{}.diagnose(errs).Error()
+	if strings.ContainsAny(got, "\n") || strings.Contains(got, "secret-token") || !strings.Contains(got, "[REDACTED]") || !strings.Contains(got, "...[truncated]") || len(got) > 300 {
+		t.Fatalf("diagnosis = %q", got)
+	}
+}

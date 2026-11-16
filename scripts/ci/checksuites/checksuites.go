@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 )
@@ -68,7 +69,17 @@ func (s Source) diagnose(errs []json.RawMessage) error {
 	if len(errs) == 0 || json.Unmarshal(errs[0], &first) != nil || strings.TrimSpace(first.Message) == "" {
 		return errors.New("GraphQL errors: missing or malformed server error detail")
 	}
-	return fmt.Errorf("GraphQL error: %.200s", first.Message)
+	message := first.Message
+	for _, key := range []string{"GH_TOKEN", "GITHUB_TOKEN"} {
+		if token := os.Getenv(key); token != "" {
+			message = strings.ReplaceAll(message, token, "[REDACTED]")
+		}
+	}
+	if runes := []rune(message); len(runes) > 200 {
+		message = string(runes[:200]) + "...[truncated]"
+	}
+	// %q keeps server text from writing extra log lines or workflow commands.
+	return fmt.Errorf("GraphQL error: %q", message)
 }
 
 func (s Source) object(head, fields string) string {
