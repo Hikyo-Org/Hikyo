@@ -432,6 +432,20 @@ left on a stacked head stays until the next push, because retirement skips
 completed records. A stack's later retarget to main reruns `ci-feedback`, whose callback
 admits the PR afresh.
 
+The `gate-queue` publisher answers only callbacks whose run path is
+`.github/workflows/ci-feedback.yml`. `ci-feedback-retarget.yml` shares the name
+`ci-feedback` so that `gate-dev` selects it, but a run of it is not feedback: the
+publisher's job condition skips it, where its controller would refuse it as a foreign
+callback and leave a red run on the default branch's tip. A test keeps that list
+equal to the paths the Go check accepts, so a backmerge that teaches the check a new
+path fails until the condition follows. A retarget to main still
+reaches `gate-queue` through its `edited` pull request event. `gate-dev` has no
+`edited` trigger, so its discovery and publisher accept a callback from either
+`ci-feedback.yml` or `ci-feedback-retarget.yml` (event `pull_request`, an exact open
+dev PR head); any other path is refused. Such a callback run belongs to the default
+branch commit, not the PR head, so it cannot supersede the suite hosting
+`ci-dev-required`.
+
 Discovery on a push to `dev` selects no PR. A green `ci-dev-required` stays valid
 when `dev` moves: the check is not strict about the base, and GitHub itself refuses
 a merge that now conflicts. It reassesses every open PR only when the push changed
@@ -482,7 +496,11 @@ Queue publishers retry GitHub reads that fail with HTTP 429, 500, 502, 503 or
 504, or with a `gh` failure that reports no status (except authentication and
 cancellation): three attempts with 1 and 3 second backoff, never past the
 invocation deadline. Writes are never retried. Discovery dispatch, retirement
-discovery keep single-attempt reads.
+discovery keep single-attempt reads. After its own check-run write, any publisher
+invocation may re-list or re-read while GitHub still trails that write (0.5, 1
+and 1.5 s). The barrier and failure confirmations of one pass share one 3 s
+budget, and each retirement readback has its own. A different record or a spent
+budget refuses as before.
 
 The full-group callback and the group worker are the only invocations that
 wait.
@@ -596,9 +614,31 @@ Discovery reads the newest 1,000 main commits without holding a writer lease,
 then routes effective pending contexts to the existing context-specific leases.
 The logged `history_scope` distinguishes complete ancestry from a limited recent
 window, including its immutable snapshot, scanned count and continuation cursor.
-Older history uses exact-head backfill. API failures, incomplete pages, more
-than 1,000 effective contexts per commit or more than 100 target heads refuse
-all targets. Window completion is not evidence that all history was cleaned.
+Older history uses exact-head backfill. REST lists a commit's runs from only
+its newest 1,000 check suites, so a candidate with more than 1,000 latest check
+records or more than 900 suites (counted in the history query, with a margin for
+suites added before REST reads it) is read differently: a GraphQL scan of its
+`github-actions` suites compares each suite's latest and finished run counts,
+and REST reads only the suites where they differ. Suite status is not used;
+GitHub reports a suite completed while a synthetic run in it is still queued.
+The retire and reporter owners list checks by commit under the same REST cap,
+so an unfinished synthetic context on a commit with more than 900 suites refuses
+all targets instead of being routed to an owner that may not see it. No operator
+tool clears that refusal: it lasts until the context completes, the commit's
+rollup turns `SUCCESS` or the commit leaves the window. Targeted dispatch on a
+head with more than 1,000 suites can likewise miss such a context and report
+success. API failures, incomplete pages, more
+than 5,000 `github-actions` suites or 100 unfinished suites on such a commit,
+more than 1,000 records in one suite's listing or more than 100 target heads
+refuse all targets. A suite-count refusal persists until the commit's rollup
+turns `SUCCESS` or it leaves the 1,000-commit window, about three weeks at the
+current merge rate. A commit still
+gaining checks, such as a busy main head, can change its totals mid-scan and
+refuse until the next run. A full window takes about three to four minutes, so
+discovery has a five-minute deadline. Each 100 suites scanned adds about 2 s and
+history pages run one after another, so the deadline, not the suite cap, bounds
+oversized commits: about 40 more suite pages per window than today's 36. Window completion is not
+evidence that all history was cleaned.
 Legacy observer heads run in batches of at most ten unique heads concurrently
 under their one global lease and compiled executable. Every child is awaited,
 then failures are reported together. This bounds batch duration by the slowest
