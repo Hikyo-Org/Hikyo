@@ -715,6 +715,18 @@ const (
 	OpLeaseRevoke                     Operation = "lease.revoke"
 	OpLeaseSettle                     Operation = "lease.settle"
 
+	// Scheduled credential rotation (#148, S1: configuration only). Create
+	// records the creating human as the rotation's authority principal, so it
+	// needs the full chain the S2 run will later re-check: edit and publish to
+	// stage and publish the new value, reveal to read the key. Pause, resume
+	// and delete change the schedule of an existing rotation and need
+	// publish@env; inspect (list and show) is a bare read.
+	OpRotationCreate  Operation = "rotation.create"
+	OpRotationInspect Operation = "rotation.inspect"
+	OpRotationPause   Operation = "rotation.pause"
+	OpRotationResume  Operation = "rotation.resume"
+	OpRotationDelete  Operation = "rotation.delete"
+
 	// SSH user certificates (#155). Everything is environment-scoped. CA and
 	// profile management is manage-identities@project; reads of public trust
 	// material and metadata are read@environment (machine-holdable, so a host
@@ -976,6 +988,14 @@ const (
 	StoreDynamicLeasesList                    StoreOp = "dynamic.ListLeasesForEnvironment"
 	StoreDynamicLeasesFinishMint              StoreOp = "dynamic.FinishMint"
 	StoreDynamicLeasesEnqueueTransition       StoreOp = "dynamic.EnqueueTransition"
+
+	// Scheduled credential rotation configuration (#148, S1). Proof-carrying,
+	// environment-bound; the run state machine (S2) adds its own ops.
+	StoreRotationsCreate        StoreOp = "rotations.Create"
+	StoreRotationsGet           StoreOp = "rotations.Get"
+	StoreRotationsList          StoreOp = "rotations.List"
+	StoreRotationsSetState      StoreOp = "rotations.SetState"
+	StoreRotationsCountOpenRuns StoreOp = "rotations.CountOpenRuns"
 
 	// SSH user certificates (#155). Proof-carrying, environment-bound; the
 	// sweeper's revocation SQL runs through the proof-free SSHRuntime.
@@ -1492,6 +1512,10 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	// read-only for the auditedNone check (#147).
 	StoreDynamicLeasesGet:  true,
 	StoreDynamicLeasesList: true,
+	// Rotation inspect is a bare-read (`read@env`) (#148).
+	StoreRotationsGet:           true,
+	StoreRotationsList:          true,
+	StoreRotationsCountOpenRuns: true,
 	// SSH reads of public trust material and certificate metadata (#155).
 	StoreSSHGetCA:            true,
 	StoreSSHListCAs:          true,
@@ -5422,6 +5446,42 @@ var operationTable = map[Operation]opSpec{
 		formula:  Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{StoreDynamicLeasesGet: true, StoreDynamicLeasesEnqueueTransition: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventDynamicLeaseSettleRequested},
+	},
+
+	// --- Scheduled credential rotation (#148, S1) -----------------------------
+	OpRotationCreate: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula: Formula{
+			{Cap: domain.CapEdit, At: domain.LevelEnv},
+			{Cap: domain.CapPublish, At: domain.LevelEnv},
+			{Cap: domain.CapReveal, At: domain.LevelEnv},
+		},
+		storeOps: map[StoreOp]bool{StoreRotationsCreate: true, StoreRotationsGet: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventRotationConfigured},
+	},
+	OpRotationInspect: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:     Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps:    map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsList: true},
+		auditedNone: true,
+	},
+	OpRotationPause: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSetState: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventRotationConfigured},
+	},
+	OpRotationResume: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSetState: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventRotationConfigured},
+	},
+	OpRotationDelete: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSetState: true, StoreRotationsCountOpenRuns: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventRotationConfigured},
 	},
 
 	// --- SSH user certificates (#155) -----------------------------------------

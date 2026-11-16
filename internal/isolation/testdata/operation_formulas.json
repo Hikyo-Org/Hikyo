@@ -1955,6 +1955,48 @@
     ]
   },
   {
+    "operation": "rotation.create",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "edit@environment",
+      "publish@environment",
+      "reveal@environment"
+    ]
+  },
+  {
+    "operation": "rotation.delete",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "publish@environment"
+    ]
+  },
+  {
+    "operation": "rotation.inspect",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ]
+  },
+  {
+    "operation": "rotation.pause",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "publish@environment"
+    ]
+  },
+  {
+    "operation": "rotation.resume",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "publish@environment"
+    ]
+  },
+  {
     "operation": "rule.create",
     "class": "tenant",
     "level": "project",

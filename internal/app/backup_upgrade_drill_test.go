@@ -316,7 +316,7 @@ func TestLegacyDrillFixtureRefusesProjectCapacityEvidence(t *testing.T) {
 	}
 }
 
-// The runtime-created fixture includes migrations 45 through 87 (88 on PostgreSQL), then 89 and 90, while the
+// The runtime-created fixture includes migrations 45 through 87 (88 on PostgreSQL), then 89, 90 and 91, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -341,10 +341,11 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if engine == releaseidentity.Postgres {
 		versions = append(versions, 88)
 	}
-	// 00089 (principal containment) and 00090 (incident ledger) are on both engines.
-	versions = append(versions, 89, 90)
+	// 00089 (principal containment), 00090 (incident ledger) and 00091
+	// (credential rotation) are on both engines.
+	versions = append(versions, 89, 90, 91)
 	if len(current.Entries) != len(legacy.Entries)+len(versions) || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 87 (88 on PostgreSQL), then 89 and 90 only")
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 87 (88 on PostgreSQL), then 89, 90 and 91 only")
 	}
 	for i, version := range versions {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
@@ -404,6 +405,11 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// 00085: a customised hue, mark or uploaded image is operator evidence.
 		"SELECT COUNT(*) FROM orgs WHERE identity_hue <> 195 OR identity_mark IS NOT NULL OR identity_image IS NOT NULL OR identity_image_type IS NOT NULL OR identity_image_version IS NOT NULL",
 		"SELECT COUNT(*) FROM projects WHERE identity_hue <> 195 OR identity_mark IS NOT NULL OR identity_image IS NOT NULL OR identity_image_type IS NOT NULL OR identity_image_version IS NOT NULL",
+		// 00091 (credential rotation): a configured rotation or recorded run is
+		// operator evidence.
+		"SELECT COUNT(*) FROM rotations",
+		"SELECT COUNT(*) FROM rotation_runs",
+		"SELECT COUNT(*) FROM rotation_effects",
 		// 00090 (incident ledger): a recorded incident is incident evidence.
 		"SELECT COUNT(*) FROM incidents",
 		"SELECT COUNT(*) FROM incident_items",
@@ -466,6 +472,11 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate, PKI, temporary-access, file-target, member-access-rule or manual-pairing evidence", query, err)
 		}
 	}
+	// Reverse 00091 only after proving no rotation is configured. Effects and
+	// runs reference rotations, so they go first.
+	drillExec(t, db, "DROP TABLE rotation_effects")
+	drillExec(t, db, "DROP TABLE rotation_runs")
+	drillExec(t, db, "DROP TABLE rotations")
 	// Reverse 00090 only after proving no incident is recorded.
 	drillExec(t, db, "DROP TABLE incident_items")
 	drillExec(t, db, "DROP TABLE incidents")
@@ -726,7 +737,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		}
 		drillExec(t, db, "DELETE FROM goose_db_version WHERE version_id = 88")
 	}
-	drillExec(t, db, "DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,89,90)")
+	drillExec(t, db, "DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,89,90,91)")
 }
 
 // reverseAWSAdapter undoes 00067 on a pristine fixture. On PostgreSQL only
