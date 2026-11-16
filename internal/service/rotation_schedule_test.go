@@ -23,9 +23,11 @@ func TestRotationScheduleGrid(t *testing.T) {
 			if w.D.Sub(s) < 2*rotationRetryWindow {
 				t.Errorf("interval %s delay %s: D-S = %s, want >= 2*retry_window", interval, delay, w.D.Sub(s))
 			}
-			// The superseded credential, minted at its own publish, is valid until
-			// published + budget + interval + delay + slack at least.
-			validUntil := published.Add(rotationPublishBudget + interval + delay + rotationSlack)
+			// The superseded credential, minted at the executor's own formula, is valid
+			// at least until published + interval + delay + slack even when its mint
+			// was a whole publish budget before the publish. Dropping the budget term
+			// from the formula makes this fail.
+			validUntil := rotationCandidateValidUntil(published.Add(-rotationPublishBudget), interval, delay)
 			if validUntil.Sub(w.D.Add(rotationPublishBudget+delay)) < 0 {
 				t.Errorf("interval %s delay %s: superseded expires before D + budget + delay", interval, delay)
 			}
@@ -76,5 +78,46 @@ func TestRotationExtendDue(t *testing.T) {
 	}
 	if got := rotationExtendDue(time.Time{}); !got.Equal(rotationNever) {
 		t.Errorf("zero valid until must park at never, got %s", got)
+	}
+}
+
+// A resumed or recreated rotation derives its window from the delivered
+// credential, exactly as a published cycle does.
+func TestRotationInheritedWindow(t *testing.T) {
+	now := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	delay := time.Hour
+	delivered := now.Add(30 * time.Hour)
+	w := rotationInheritedWindow(now, delivered, delay, false)
+	if !w.HasD || !w.D.Equal(delivered.Add(-(rotationPublishBudget+delay))) {
+		t.Fatalf("window = %+v, want D = delivered - (budget + delay)", w)
+	}
+	if got := rotationInheritedWindow(delivered, delivered, delay, true); got.HasD {
+		t.Error("a credential already past its VALID UNTIL has nothing to protect")
+	}
+	late := delivered.Add(-time.Hour)
+	if got := rotationInheritedWindow(late, delivered, delay, true); got.HasD {
+		t.Error("the cycle's first run is always allowed, even past D")
+	}
+	if got := rotationInheritedWindow(late, delivered, delay, false); !got.HasD || rotationMayStart(late, 0, got) {
+		t.Error("a retry past D must be refused")
+	}
+}
+
+// Resume schedules the first run so the delivered credential cannot lapse first.
+func TestRotationResumeNext(t *testing.T) {
+	now := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	interval, delay := 24*time.Hour, time.Hour
+	if got := rotationResumeNext(now, interval, delay, time.Time{}); !got.Equal(now.Add(interval)) {
+		t.Errorf("no delivered credential: next = %s, want one interval away", got)
+	}
+	if got := rotationResumeNext(now, interval, delay, now.Add(10*24*time.Hour)); !got.Equal(now.Add(interval)) {
+		t.Errorf("a long-lived credential: next = %s, want one interval away", got)
+	}
+	delivered := now.Add(26 * time.Hour)
+	if got := rotationResumeNext(now, interval, delay, delivered); !got.Equal(rotationExtendDue(delivered)) {
+		t.Errorf("a credential due before the interval: next = %s, want its extension margin %s", got, rotationExtendDue(delivered))
+	}
+	if got := rotationResumeNext(now, interval, delay, now.Add(-time.Hour)); !got.Equal(now) {
+		t.Errorf("a lapsed credential is restored now, got %s", got)
 	}
 }

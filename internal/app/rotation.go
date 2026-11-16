@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -19,6 +20,9 @@ type rotationWorker struct {
 	poll       time.Duration
 	log        *slog.Logger
 	selfConfig *service.SelfConfig
+	// sweeps counts completed executor sweeps; the wiring test reads it to prove
+	// the loop was started by the owning generation.
+	sweeps atomic.Int64
 }
 
 func (w *rotationWorker) Run(ctx context.Context) {
@@ -34,6 +38,7 @@ func (w *rotationWorker) Run(ctx context.Context) {
 		}
 		if err == nil {
 			worked, err = w.svc.RunRotationSweep(ctx, w.id)
+			w.sweeps.Add(1)
 		}
 		if err != nil && !errors.Is(err, context.Canceled) {
 			w.log.Error("credential rotation worker failed", "err", err)
