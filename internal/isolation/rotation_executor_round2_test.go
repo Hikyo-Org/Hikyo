@@ -90,6 +90,81 @@ func TestRotationProviderDeleteGuardCountsSupersededRole(t *testing.T) {
 	})
 }
 
+// A failed run that never published will never revoke the superseded role it
+// names, so it does not hold the minting provider's delete.
+func TestRotationProviderDeleteGuardIgnoresUnpublishedFailedRun(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := newRotationFixture(t, db)
+		second, err := f.dyn.Configure(tctx(t), service.LocalPrincipal(alice), prjScope(), service.CreateDynamicProviderRequest{
+			Kind: string(dynamic.KindPostgres), Origin: "postgres://admin@db.second.example:5432/app",
+			GrantRole: "app_rw", Credential: []byte(rotAdminSecret),
+		})
+		if err != nil {
+			t.Fatalf("configure second provider: %v", err)
+		}
+		rawRotation(t, db, f, "rot_guard_old", "rk_guard_old")
+		rawRun(t, db, f, "run_old", "rot_guard_old", "done", "2", "", "2026-01-01T00:00:00.000000Z")
+		rawRotation(t, db, f, "rot_guard_new", "rk_guard_new")
+		execRaw(t, db, `UPDATE rotations SET provider_id='`+second.ID+`' WHERE id='rot_guard_new'`)
+		rawRun(t, db, f, "run_new", "rot_guard_new", "failed", "NULL", "", "2026-01-02T00:00:00.000000Z")
+		execRaw(t, db, `UPDATE rotation_runs SET superseded_handle='role_run_old' WHERE id='run_new'`)
+		if _, err := f.dyn.Delete(tctx(t), service.LocalPrincipal(alice), prjScope(), f.provider, false); err != nil {
+			t.Fatalf("first provider delete over a failed run that never published: %v", err)
+		}
+	})
+}
+
+// A role minted on a provider that was deleted since (a tombstone, which keeps its
+// sealed material) is still revoked through it when a later rotation on another
+// provider supersedes it.
+func TestRotationSupersededRoleRevokedThroughTombstonedProvider(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		second := &rotProviderCtl{roles: map[string]rotRole{}}
+		const secondOrigin = "postgres://admin@db2.rotation.example:5432/app"
+		x.exec.ProviderFactory = func(_ dynamic.Kind, origin, _, _ string) (dynamic.Provider, error) {
+			if origin == secondOrigin {
+				return rotProvider{ctl: second}, nil
+			}
+			return rotProvider{ctl: x.ctl}, nil
+		}
+		rot := x.create(rotPasswordKey, rotUsernameKey)
+		x.cycle(rot.ID)
+		role1 := x.lastRun(rot.ID, "candidate_handle")
+		if _, err := x.transition(x.actor, "delete", rot.ID); err != nil {
+			t.Fatal(err)
+		}
+		me := service.LocalPrincipal(alice)
+		// No run owes role1 yet, so the guard lets the minting provider go.
+		if _, err := x.dyn.Delete(tctx(t), me, prjScope(), x.provider, false); err != nil {
+			t.Fatalf("delete the minting provider: %v", err)
+		}
+		p2, err := x.dyn.Configure(tctx(t), me, prjScope(), service.CreateDynamicProviderRequest{
+			Kind: string(dynamic.KindPostgres), Origin: secondOrigin, GrantRole: "app_rw", Credential: []byte("second-admin-credential"),
+		})
+		if err != nil {
+			t.Fatalf("configure the second provider: %v", err)
+		}
+		req := x.request(rotPasswordKey, rotUsernameKey)
+		req.ProviderID = p2.ID
+		again, err := x.svc.Create(tctx(t), x.actor, x.scope, req)
+		if err != nil {
+			t.Fatalf("recreate on the second provider: %v", err)
+		}
+		x.advance(25 * time.Hour)
+		x.drain()
+		run := x.openRunID(again.ID)
+		x.advance(time.Hour + time.Minute)
+		x.drain()
+		if got := x.phase(run); got != "done" {
+			t.Fatalf("run = %s, want done", got)
+		}
+		if x.ctl.has(role1) || x.ctl.count("drop:"+role1) != 1 {
+			t.Fatalf("role1 was not dropped through the tombstoned provider (live %v, drops %d)", x.ctl.has(role1), x.ctl.count("drop:"+role1))
+		}
+	})
+}
+
 // An abandon that settles a published run with nothing to revoke to done writes
 // that run's own audit row naming the abandon.
 func TestRotationAbandonWritesRunOutcomeForDoneRun(t *testing.T) {

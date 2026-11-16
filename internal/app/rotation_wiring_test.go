@@ -1,9 +1,17 @@
 package app
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/dynamic"
+	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
 // A booted application starts the scheduled-rotation worker with a fully wired
@@ -67,5 +75,70 @@ func TestRotationWorkerStopsWithItsContext(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	if after := worker.sweeps.Load(); after != settled {
 		t.Fatalf("the loop swept %d more times after it stopped", after-settled)
+	}
+}
+
+// Every failed iteration logs the stage it failed in, in a fixed word. The
+// stages that name no run log a fixed-word class instead of the driver's text, and
+// no tenant, provider or credential string reaches the log.
+func TestRotationWorkerLogsStageAndNoSecrets(t *testing.T) {
+	const secret = "hunter2-provider-credential"
+	cases := []struct {
+		name  string
+		stage string
+		err   error
+		want  []string
+		deny  []string
+	}{
+		{"self config", stageSelfConfig, errors.New("capture failed"), []string{"stage=self_config", "capture failed"}, nil},
+		{"misconfigured", service.SweepStageMisconfigured, &service.SweepError{Stage: service.SweepStageMisconfigured, Err: errors.New("executor misconfigured")}, []string{"stage=misconfigured", "executor misconfigured"}, nil},
+		{"claim", service.SweepStageClaim, &service.SweepError{Stage: service.SweepStageClaim, Err: errors.New("driver: password=" + secret)}, []string{"stage=claim", "class=datastore"}, []string{secret, "driver"}},
+		{"select", service.SweepStageSelect, &service.SweepError{Stage: service.SweepStageSelect, Err: errors.New("driver: password=" + secret)}, []string{"stage=select", "class=datastore"}, []string{secret, "driver"}},
+		{"run", service.SweepStageRun, &service.SweepError{Stage: service.SweepStageRun, Err: errors.New("provider said token=" + secret)}, []string{"stage=run", "class=internal"}, []string{secret, "provider said"}},
+		{"classified run", service.SweepStageRun, &service.SweepError{Stage: service.SweepStageRun, Err: fmt.Errorf("%w: %s", dynamic.ErrUnreachable, secret)}, []string{"stage=run", "class=provider_unreachable"}, []string{secret}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			w := &rotationWorker{log: slog.New(slog.NewTextHandler(&buf, nil))}
+			w.logFailure(c.stage, c.err)
+			out := buf.String()
+			for _, want := range c.want {
+				if !strings.Contains(out, want) {
+					t.Fatalf("log %q lacks %q", out, want)
+				}
+			}
+			for _, deny := range c.deny {
+				if strings.Contains(out, deny) {
+					t.Fatalf("log %q leaks %q", out, deny)
+				}
+			}
+		})
+	}
+}
+
+// The executor tags its own failures with the stage they came from: a
+// misconfigured executor and a claim against a closed datastore.
+func TestRotationSweepErrorsCarryTheirStage(t *testing.T) {
+	if _, err := (&service.RotationExecutor{}).RunRotationSweep(t.Context(), "w"); service.RotationSweepStage(err) != service.SweepStageMisconfigured {
+		t.Fatalf("a misconfigured executor failed at stage %q (%v)", service.RotationSweepStage(err), err)
+	}
+	srv, err := Boot(t.Context(), devConfig(t), testLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	wired := srv.owner.current.graph.rotationWorker
+	if err := srv.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, err = wired.svc.RunRotationSweep(t.Context(), "w")
+	if err == nil {
+		t.Skip("the closed datastore still served the sweep")
+	}
+	if stage := service.RotationSweepStage(err); stage != service.SweepStageClaim {
+		t.Fatalf("a claim against a closed datastore failed at stage %q (%v)", stage, err)
+	}
+	if class := service.RotationErrorClass(err); class != "datastore" {
+		t.Fatalf("class = %q, want datastore", class)
 	}
 }

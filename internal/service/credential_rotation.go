@@ -686,9 +686,10 @@ func (s *CredentialRotations) transition(ctx context.Context, actor Actor, scope
 // resumes; the environment still runs unattended; the provider can still mint;
 // the keys still exist and are fit to receive the credential (a missing key is
 // its own refusal, because per-key authorization of a missing key reads as
-// not-found) and the authority holds no draft on either; the CALLER holds the resume formula (edit, publish and
-// reveal at the environment) on both keys; the recorded authority principal still
-// holds it too; and the publish ceremony is consumed.
+// not-found); the CALLER holds the resume formula (edit, publish and reveal at
+// the environment) on both keys; the recorded authority principal still holds it
+// too; the authority holds no draft on either key; and the publish ceremony is
+// consumed.
 func (s *CredentialRotations) authorizeResume(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, proof authz.Proof, caller authz.Identity, scope domain.Scope, rec store.RotationRecord) error {
 	if err := requireRotationHuman(caller); err != nil {
 		return err

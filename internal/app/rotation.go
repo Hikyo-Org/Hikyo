@@ -25,6 +25,23 @@ type rotationWorker struct {
 	sweeps atomic.Int64
 }
 
+const stageSelfConfig = "self_config"
+
+// logFailure logs a failed loop iteration with the stage it failed in. The
+// self-config capture and a misconfigured executor hold no tenant or provider
+// data, so their error is logged as is, like the sibling workers do. Every other
+// stage may carry tenant, provider or driver detail (a claim or select error is a
+// driver error, a run's error can quote a provider), so only a fixed-word class is
+// logged, and the executor already logs the run an error belongs to.
+func (w *rotationWorker) logFailure(stage string, err error) {
+	switch stage {
+	case stageSelfConfig, service.SweepStageMisconfigured:
+		w.log.Error("credential rotation worker failed", "stage", stage, "error", err)
+	default:
+		w.log.Error("credential rotation worker failed", "stage", stage, "class", service.RotationErrorClass(err))
+	}
+}
+
 func (w *rotationWorker) Run(ctx context.Context) {
 	poll := w.poll
 	if poll <= 0 {
@@ -33,17 +50,21 @@ func (w *rotationWorker) Run(ctx context.Context) {
 	for {
 		var worked bool
 		var err error
+		stage := ""
 		if w.selfConfig != nil {
-			_, err = w.selfConfig.Capture(ctx)
+			if _, err = w.selfConfig.Capture(ctx); err != nil {
+				stage = stageSelfConfig
+			}
 		}
 		if err == nil {
 			worked, err = w.svc.RunRotationSweep(ctx, w.id)
 			w.sweeps.Add(1)
+			if err != nil {
+				stage = service.RotationSweepStage(err)
+			}
 		}
 		if err != nil && !errors.Is(err, context.Canceled) {
-			// The error can carry provider, tenant or driver detail; only its class
-			// is logged, and the executor already logs the run it belongs to.
-			w.log.Error("credential rotation worker failed", "class", service.RotationErrorClass(err))
+			w.logFailure(stage, err)
 		}
 		if worked && err == nil && ctx.Err() == nil {
 			continue

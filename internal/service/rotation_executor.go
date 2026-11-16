@@ -99,7 +99,15 @@ func providerInfraFault(err error) bool {
 
 // RotationErrorClass is rotationErrClass for the worker loop outside this
 // package: a class in fixed words, never the error's own text.
-func RotationErrorClass(err error) string { return rotationErrClass(err) }
+func RotationErrorClass(err error) string {
+	class := rotationErrClass(err)
+	// A claim or select error is the executor's own datastore failing; it names no
+	// run, so an unclassified one is a datastore fault.
+	if stage := RotationSweepStage(err); class == "internal" && (stage == SweepStageClaim || stage == SweepStageSelect) {
+		return "datastore"
+	}
+	return class
+}
 
 // rotationErrClass names an error's class in fixed words for logs.
 func rotationErrClass(err error) string {
@@ -185,22 +193,59 @@ var (
 // claimed under a run's own lease.
 func (e *RotationExecutor) RunRotationSweep(ctx context.Context, workerID string) (bool, error) {
 	if e.DB == nil || e.Runtime == nil || e.Values == nil || e.Revisions == nil || e.Keyring == nil || e.ProviderFactory == nil {
-		return false, errors.New("service: rotation executor requires its datastore, runtime, value and revision services, keyring and provider factory")
+		return false, &SweepError{Stage: SweepStageMisconfigured, Err: errors.New("service: rotation executor requires its datastore, runtime, value and revision services, keyring and provider factory")}
 	}
 	now := e.now()
 	run, claimed, err := e.Runtime.ClaimDueRun(ctx, workerID, now, now.Add(rotationLeaseTerm), now.Add(-e.providerDeadline()))
 	if err != nil {
-		return false, err
+		return false, &SweepError{Stage: SweepStageClaim, Err: err}
 	}
 	if claimed {
-		return true, e.processClaimed(ctx, run)
+		if err := e.processClaimed(ctx, run); err != nil {
+			return true, &SweepError{Stage: SweepStageRun, Err: err}
+		}
+		return true, nil
 	}
 	due, ok, err := e.Runtime.DueRotation(ctx, now)
-	if err != nil || !ok {
-		return false, err
+	if err != nil {
+		return false, &SweepError{Stage: SweepStageSelect, Err: err}
+	}
+	if !ok {
+		return false, nil
 	}
 	started, err := e.startRun(ctx, workerID, due)
-	return started, err
+	if err != nil {
+		return started, &SweepError{Stage: SweepStageRun, Err: err}
+	}
+	return started, nil
+}
+
+// The stages a sweep error can come from, in fixed words for logs.
+const (
+	SweepStageMisconfigured = "misconfigured"
+	SweepStageClaim         = "claim"
+	SweepStageSelect        = "select"
+	SweepStageRun           = "run"
+)
+
+// SweepError names the stage of a sweep that failed. Only the claim and select
+// stages hold no run, so only they (and a misconfiguration) are loggable by their
+// own text; a run's error can carry tenant, provider or driver detail.
+type SweepError struct {
+	Stage string
+	Err   error
+}
+
+func (e *SweepError) Error() string { return "rotation sweep " + e.Stage + ": " + e.Err.Error() }
+func (e *SweepError) Unwrap() error { return e.Err }
+
+// RotationSweepStage is the stage of a sweep error, "run" for any other error.
+func RotationSweepStage(err error) string {
+	var sweep *SweepError
+	if errors.As(err, &sweep) {
+		return sweep.Stage
+	}
+	return SweepStageRun
 }
 
 func (e *RotationExecutor) processClaimed(ctx context.Context, run store.RotationRun) error {
@@ -452,12 +497,9 @@ func dueOfRun(run store.RotationRun) store.DueRotation {
 	}
 }
 
-// retryPlan decides what follows a failed pre-publish run: the rotation's next
-// attempt time, or the halt that replaces it. The run being failed counts as an
-// attempt.
 // infraNext is the next start after an infrastructure fault of the run being
-// settled: the streak of infrastructure runs this cycle has already had (the run
-// being settled is still in flight and not counted) sizes the backoff.
+// settled: the infrastructure faults this cycle has already had (the run being
+// settled is still in flight and not counted) size the backoff.
 func (e *RotationExecutor) infraNext(ctx context.Context, run store.RotationRun, now time.Time) (time.Time, error) {
 	w, err := e.window(ctx, dueOfRun(run), now)
 	if err != nil {
@@ -470,6 +512,9 @@ func (e *RotationExecutor) infraNext(ctx context.Context, run store.RotationRun,
 	return rotationInfraNext(now, prior, w), nil
 }
 
+// retryPlan decides what follows a failed pre-publish run: the rotation's next
+// attempt time, or the halt that replaces it. The run being failed counts as an
+// attempt.
 func (e *RotationExecutor) retryPlan(ctx context.Context, run store.RotationRun, now time.Time) (next time.Time, halt string, err error) {
 	d := dueOfRun(run)
 	w, err := e.window(ctx, d, now)
@@ -745,8 +790,8 @@ func (e *RotationExecutor) failureSettle(ctx context.Context, run store.Rotation
 	if code == rotCodeInfra {
 		// Not an attempt: the executor's own infrastructure faulted before the
 		// provider was touched, so it never counts toward the attempt cap. It backs
-		// off like any retry (5 minutes doubling to the 6 hour cap) on the streak of
-		// infrastructure runs of this cycle. A window that closes meanwhile is
+		// off like any retry (5 minutes doubling to the 6 hour cap) on the infrastructure
+		// faults of this cycle. A window that closes meanwhile is
 		// still caught by the start check, which halts retries_exhausted.
 		next, err := e.infraNext(ctx, run, now)
 		if err != nil {

@@ -134,10 +134,10 @@ func TestRotationInfraBackoffGrowsAndCaps(t *testing.T) {
 	for prior := int64(0); prior < 40; prior++ {
 		got := rotationInfraNext(now, prior, rotationWindow{}).Sub(now)
 		if got < last {
-			t.Fatalf("backoff shrank at streak %d: %s after %s", prior, got, last)
+			t.Fatalf("backoff shrank after %d prior faults: %s after %s", prior, got, last)
 		}
 		if got > rotationRetryWindow {
-			t.Fatalf("backoff %s at streak %d exceeds the %s cap", got, prior, rotationRetryWindow)
+			t.Fatalf("backoff %s after %d prior faults exceeds the %s cap", got, prior, rotationRetryWindow)
 		}
 		last = got
 	}
@@ -148,7 +148,7 @@ func TestRotationInfraBackoffGrowsAndCaps(t *testing.T) {
 		t.Fatalf("second infrastructure fault backs off %s, want %s", got, 2*rotationBackoffFloor)
 	}
 	if last != rotationRetryWindow {
-		t.Fatalf("a long streak settles at %s, want the %s cap", last, rotationRetryWindow)
+		t.Fatalf("a long outage settles at %s, want the %s cap", last, rotationRetryWindow)
 	}
 	w := rotationCycleWindow(now, 24*time.Hour)
 	near := w.D.Add(-time.Minute)
