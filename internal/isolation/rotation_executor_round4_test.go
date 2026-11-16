@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/dynamic"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
@@ -305,6 +306,41 @@ func TestRotationConcurrentStartsRespectTheOrgLeaseCap(t *testing.T) {
 		leased := queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM rotation_runs WHERE org_id='org_a' AND lease_owner IS NOT NULL AND lease_expires_at>'%s'`, stamp(x.now())))
 		if leased > store.RotationOrgLeaseCap {
 			t.Fatalf("%d leases live in the org, cap %d (started: %v)", leased, store.RotationOrgLeaseCap, started)
+		}
+	})
+}
+
+// The extend INTENT is durable before the executor looks at supersession, the
+// gate or the provider: a later publish's revoke read must see the extend as
+// uncertain from the first of those checks on. The provider is opened after the
+// supersession check and the gate, so an open extend effect at that moment proves
+// the intent was recorded ahead of them.
+func TestRotationExtendIntentIsDurableBeforeTheProviderOpens(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		rot := x.create(rotPasswordKey, rotUsernameKey)
+		x.cycle(rot.ID)
+		openAtFactory := int64(-1)
+		inner := x.exec.ProviderFactory
+		x.exec.ProviderFactory = func(kind dynamic.Kind, origin, mode, secret string) (dynamic.Provider, error) {
+			open := queryInt(t, db, "SELECT COUNT(*) FROM rotation_effects WHERE kind='extend' AND outcome IS NULL")
+			if open > openAtFactory {
+				openAtFactory = open
+			}
+			return inner(kind, origin, mode, secret)
+		}
+		// Failing mints keep run 1 the newest published run until its credential is
+		// due for an extension.
+		x.ctl.set(func() { x.ctl.createErr = dynamic.ErrUnreachable })
+		for i := 0; i < 90 && x.ctl.count("extend:") == 0; i++ {
+			x.advance(30 * time.Minute)
+			x.drain()
+		}
+		if x.ctl.count("extend:") == 0 {
+			t.Fatal("the delivered role was never extended")
+		}
+		if openAtFactory < 1 {
+			t.Fatalf("no extend intent was open when the provider opened (max %d)", openAtFactory)
 		}
 	})
 }

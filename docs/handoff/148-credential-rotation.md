@@ -911,9 +911,15 @@ Round 4 review additions (CodeRabbit threads on PR #1426):
     open intent that the next claimant closes `unknown` (`staleEffect`); that role stays
     uncertain, which is the safe side (the revoke asks the provider). The close-write
     failing after a read error has the same outcome. The race window itself is not
-    inducible in the harness (no hook between the intent commit and the supersession
-    read); the superseded exit is covered by
-    `TestRotationExtendSkippedBySupersessionClosesItsIntent`.
+    forced in the harness (no hook between the intent commit and the supersession read),
+    but the ordering is pinned: the provider is opened after the supersession check and
+    the gate, and `TestRotationExtendIntentIsDurableBeforeTheProviderOpens` observes an
+    open extend effect at that moment (it fails with the intent moved back after them).
+    The superseded exit is covered by
+    `TestRotationExtendSkippedBySupersessionClosesItsIntent`. A held run revisited past
+    extend-due with a provider-open or non-definite gate failure now writes an intent
+    and an `extend_skipped` outcome on each revisit (bounded by the backoff and by D);
+    it wrote nothing before.
 
 35. `RotationAbandonOpenRuns` keeps a pre-publish run's lease owner and ends its lease at
     the abandon time (a run nobody held keeps no lease). The token bump stops the worker's
