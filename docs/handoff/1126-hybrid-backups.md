@@ -129,7 +129,7 @@ Acceptance criteria, in the issue's order:
 | 4 | Zero-recipient, exclusivity, scrypt bound, header and stanza counts, final-chunk authentication, safe file creation | PASS (existing tests unchanged and passing, plus new ones) |
 | 5 | About 2000-character recipients, real header size at the supported count, deterministic refusal | PASS: 1959 characters, 49,846-byte header at 32, 33 refused before output |
 | 6 | Readers open frozen legacy and hybrid archives; old readers fail clearly; migration docs and preflight set the minimum reader | PARTIAL: frozen fixtures, clear old-reader errors (run against the pre-change code) and docs are done; no preflight enforcement of a reader floor |
-| 7 | Round trip, wrong key, corruption, truncation, unknown algorithm or schema, mixed, bounds, interrupted export, restart, custody mismatch | PASS: interrupted publication and retry are tested, and the debris a killed export leaves (a chunk-aligned `.partial` prefix and a work directory) is shown not to be listed as a backup, to refuse restore with `ErrTruncated` and not to block the next export (`TestExportAfterInterruptedExport*`). A real SIGKILL of a running process is not driven; the gate's process-level crash routes (`TestGatePopulatedProcessCrashRoutes`) cover the upgrade path |
+| 7 | Round trip, wrong key, corruption, truncation, unknown algorithm or schema, mixed, bounds, interrupted export, restart, custody mismatch | PASS: interrupted publication and retry are tested, and the debris a killed export leaves (a chunk-aligned `.partial` prefix and a work directory) is shown to refuse restore with `ErrTruncated` and not to block the next export (`TestExportAfterInterruptedExport*`). That debris is not swept, and the work directory holds an unencrypted datastore copy: pre-existing, filed as #1412. A real SIGKILL of a running process is not driven; the gate's process-level crash routes (`TestGatePopulatedProcessCrashRoutes`) kill the gate process at the sql-complete, healthy and schema-applied boundaries, not during an archive write |
 | 8 | Complete backup/restore and upgrade-custody drills on SQLite and PostgreSQL | PASS for the ordinary drill, the manual-route upgrade drill and the gate with a hybrid identity on both engines. PARTIAL for automatic upgrade custody: it stays X25519 and a hybrid policy refuses it, so no hybrid vault drill exists |
 | 9 | Document wrapper scope, passphrase entropy, rewrap limits | PASS |
 | 10 | Non-destructive migration, fresh hybrid receipts, rollback demonstration, docs, exact-revision evidence | PARTIAL: the procedure is documented. Receipts are written only for upgrade exports (`internal/service/backup.go:249`); `hikyo backup export` and scheduled exports write none (E-19, below). The rollback is demonstrated at restore level on both engines (`TestRollbackToX25519KeepsHybridArchivesRestorable*`): after the policy returns to an X25519 recipient the hybrid archive still restores with the retained hybrid identity and not with the X25519 one, and the new X25519 archive the reverse. Not run: the packaged `sudo hikyo upgrade` rollback |
@@ -146,7 +146,7 @@ Acceptance criteria, in the issue's order:
   hybrid identity gives `backup identity is not a valid age X25519 identity`, an
   X25519 identity against a hybrid archive gives `identity did not match any of
   the recipients`, and a hybrid recipient is refused at upgrade export. A v2
-  receipt is `invalid backup receipt` to a v1-only parser (by source reading).
+  receipt is `invalid closed upgrade artifact` to a v1-only parser (run in the downgrade drill below).
 * Downgrade drill (2026-11-16): the reader built from `b1274dc96`, the parent of
   the #1158 merge, was given objects written by current code (a throwaway test
   in a detached worktree, since removed). Every case refused loudly and none
@@ -156,7 +156,7 @@ Acceptance criteria, in the issue's order:
   | --- | --- |
   | hybrid identity on a hybrid archive | `backup identity is not a valid age X25519 identity` |
   | X25519 identity on a hybrid archive | `identity did not match any of the recipients` |
-  | hybrid recipient to the old writer | `Validate` refuses the recipient before any output |
+  | hybrid recipient to the old writer | `Validate` refuses it (`invalid type "age1pq"`) before any output |
   | `backup-receipt/v2` JSON to `ParseReceipt` | `invalid closed upgrade artifact` |
   | X25519 archive written by current code, X25519 identity | opens (the classical format is unchanged) |
 

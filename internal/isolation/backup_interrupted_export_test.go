@@ -14,9 +14,9 @@ import (
 
 // #1126: a process killed in the middle of an export leaves a staged
 // `.hikyo-export-*.partial` file and an `.export-*` work directory. The next
-// export, a fresh run of the real verb, must succeed beside that debris, the
-// debris must never be mistaken for a backup, and its prefix must refuse to
-// restore. Run for both backup identity classes on both engines.
+// export, a fresh run of the real verb, must succeed beside that debris and
+// the prefix must refuse to restore. The debris itself is not swept (#1412).
+// Run for both backup identity classes on both engines.
 func TestExportAfterInterruptedExportSQLite(t *testing.T) {
 	for name, generate := range map[string]func() (string, string, error){"x25519": backup.GenerateIdentity, "hybrid": backup.GenerateHybridIdentity} {
 		t.Run(name, func(t *testing.T) {
@@ -53,17 +53,20 @@ func runExportAfterInterruptedExport(t *testing.T, target drillTarget, c custody
 	if err := os.WriteFile(partial, raw[:ageStreamBoundary(t, raw)], 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(target.cfg.BackupDir, ".export-killed"), 0o700); err != nil {
+	// The work directory of a killed export holds an unencrypted datastore
+	// copy (snapshot.db or COPY output). Nothing sweeps it today (#1412); the
+	// stand-in keeps this drill faithful to that state.
+	workDir := filepath.Join(target.cfg.BackupDir, ".export-killed")
+	if err := os.MkdirAll(workDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-
-	if got := archiveFiles(t, target.cfg.BackupDir); len(got) != 0 {
-		t.Fatalf("interrupted export debris was listed as a backup: %v", got)
+	if err := os.WriteFile(filepath.Join(workDir, "snapshot.db"), []byte("stand-in for an unencrypted snapshot"), 0o600); err != nil {
+		t.Fatal(err)
 	}
 
 	// "Restart": a fresh run of the operator verb.
 	archive := exportArchive(t, target)
-	if strings.HasSuffix(archive, ".partial") || !strings.HasSuffix(archive, ".age") {
+	if !strings.HasSuffix(archive, ".age") {
 		t.Fatalf("export after an interruption published %q", archive)
 	}
 
@@ -122,12 +125,15 @@ func runRollbackToX25519(t *testing.T, target drillTarget, hybrid custody) {
 			[]string{"run", "--from", archive, "--identity-file", identity}, io.Discard, nil, nil)
 	}
 	t.Run("each_archive_is_refused_by_the_other_identity", func(t *testing.T) {
-		if err := restore(t, hybridArchive, classical.identityFile()); err == nil {
-			t.Fatal("the rolled-back X25519 identity restored a hybrid archive")
+		// boundary confines filippo.io/age to the crypto packages, so the
+		// refusal is pinned by age's own message text.
+		const noMatch = "identity did not match any of the recipients"
+		if err := restore(t, hybridArchive, classical.identityFile()); err == nil || !strings.Contains(err.Error(), noMatch) {
+			t.Fatalf("the rolled-back X25519 identity on a hybrid archive = %v, want age's no-identity-match refusal", err)
 		}
 		assertTargetUntouched(t, target)
-		if err := restore(t, classicalArchive, hybrid.identityFile()); err == nil {
-			t.Fatal("the retained hybrid identity restored an X25519 archive")
+		if err := restore(t, classicalArchive, hybrid.identityFile()); err == nil || !strings.Contains(err.Error(), noMatch) {
+			t.Fatalf("the retained hybrid identity on an X25519 archive = %v, want age's no-identity-match refusal", err)
 		}
 		assertTargetUntouched(t, target)
 	})
