@@ -24,8 +24,10 @@
 #   --edges-only judge only the release-source edge from the baseline, and read
 #                DECLARATION as release/compatibility/sources.json (the reviewed
 #                edges the generator copies into the declaration): exit 0 when each
-#                engine has its sound edge, 1 when one is missing or wrong, with the
-#                same exit codes 2, 4 and 5 for the baseline as below. The release
+#                engine has its sound edge, 1 when one is missing or wrong or when the
+#                baseline was not signed under github-actions-stable (it needs a
+#                recovery bridge, not an edge), with the same exit codes 2, 4 and 5
+#                for the baseline as below. The release
 #                planner uses it to say what is missing before anything is generated.
 #
 # The baseline is the highest plain stable version in the authenticated trust
@@ -39,8 +41,9 @@
 # (baseline first) on stderr, then the refusal line.
 #
 # Exit 0: identical apart from the required edge. Exit 1: different, the edge is
-# missing or does not match what the previous release published (or the
-# candidate's own declaration is not a complete two-engine one). Exit 5: the baseline cannot be established or
+# missing or does not match what the previous release published, the baseline was
+# not signed under github-actions-stable (a recovery bridge is needed), or the
+# candidate's own declaration is not a complete two-engine one. Exit 5: the baseline cannot be established or
 # verified (trust does not authenticate, no earlier stable release, no downloadable
 # or verifiable release, no declaration bound to its signed manifest): nothing is
 # decided about compatibility. Exit 2: bad usage. Exit 4: a lookup failed; nothing
@@ -105,7 +108,9 @@ commit=$(jq -er '.source_commit' "$download/release-manifest.json") || no_baseli
 "$GO_BIN" -C "$repo_root" run ./scripts/release/stable verify --trust "$trust" --directory "$download" \
 	--version "$baseline" --commit "$commit" --state "$state" --historical --published >"$work/verified.json" ||
 	no_baseline "v$baseline does not verify against the signed trust"
-identity=$(jq -ce '.identity | select(type == "object")' "$work/verified.json") ||
+# Exactly one document, naming the stable profile, the baseline's version and its source commit.
+identity=$(jq -sce --arg v "$baseline" --arg c "$commit" 'select(length == 1) | .[0].identity |
+	select(type == "object" and .profile == "stable/v1" and .version == $v and .commit == $c)' "$work/verified.json") ||
 	no_baseline "the verification of v$baseline printed no release identity"
 verify_release_compatibility_artifact "$download/release-manifest.json" "$download" ||
 	no_baseline "v$baseline carries no declaration bound to its signed manifest"

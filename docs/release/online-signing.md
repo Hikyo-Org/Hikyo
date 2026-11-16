@@ -61,8 +61,10 @@ It compares the compatibility declaration generated from main's tip with the one
 the highest earlier stable release published, verified through the signed trust.
 It must equal that declaration plus exactly one reviewed release-source edge per
 engine from that release (see below). Green means that; red means a difference, a
-missing or wrong edge, an unverifiable earlier release or a failed lookup, and the
-log says which. Once a promotion has brought unreleased migrations to main, expect
+missing or wrong edge, an earlier release that was not signed under the
+`github-actions-stable` policy (it needs a recovery bridge, not an edge, and the
+check refuses it with exit 1), an unverifiable earlier release or a failed lookup,
+and the log says which. Once a promotion has brought unreleased migrations to main, expect
 "differs" until a release carries them. It is read-only and tags nothing. Run it
 again if main moves before you tag. The workflow reaches main by promotion from
 dev, so it exists to dispatch only after a promotion has landed it.

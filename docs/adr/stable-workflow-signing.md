@@ -127,7 +127,9 @@ genesis edges never do, so without it an installed release has no route to the n
 No supported command authors a stable edge; it is written by hand and reviewed. That baseline is
 fetched and verified through `stable verify --historical --published` (as the public verifier
 does: an older release embeds older trust) and its declaration is bound to the signed
-manifest; neither GitHub's "latest" flag nor a prerelease decides. A difference, a missing or
+manifest; neither GitHub's "latest" flag nor a prerelease decides. A baseline not signed under the
+`github-actions-stable` policy is refused outright: the planner skips an edge across a trust-policy
+change, so only a recovery bridge can route an upgrade from it. A difference, a missing or
 unverifiable baseline, or a malformed declaration is reported and left to a maintainer. The check
 creates no tag, release or trust change and is not part of the build; `release-build` and the
 signing and publication path are unchanged. Fully unattended tagging stays deferred to a later App phase.

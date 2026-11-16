@@ -63,11 +63,20 @@ case "$*" in
 		case "$*" in *' --latest'*) exit 3 ;; esac
 		case "$*" in *' --version 1.1.0 '*) ;; *) exit 3 ;; esac
 		# What the real verifier prints on success (scripts/release/stable/verify.go): the verified release identity.
-		[ "$FIXTURE_MODE" != no-identity ] || { printf '{"published_oci_verified":true}\n'; exit 0; }
+		case "$FIXTURE_MODE" in
+		no-identity) printf '{"published_oci_verified":true}\n'; exit 0 ;;
+		empty-identity) printf '{"identity":{},"published_oci_verified":true}\n'; exit 0 ;;
+		esac
 		dir=
 		while [ $# -gt 0 ]; do [ "$1" != --directory ] || dir=$2; shift; done
-		jq -nc --arg c "$FIXTURE_COMMIT" --arg decl "$(shasum -a 256 "$dir/upgrade-compatibility.json" | cut -d' ' -f1)" --arg man "$(shasum -a 256 "$dir/release-manifest.json" | cut -d' ' -f1)" \
-			'{identity: {profile: "stable/v1", version: "1.1.0", sequence: 2, commit: $c, compatibility_sha256: $decl, manifest_sha256: $man}, published_oci_verified: true}' ;;
+		# The verifier alone decides the identity: the fixture's own files say sequence 2, the other-identity
+		# verifier says 3, and the check must follow the verifier. A wrong version or commit is refused.
+		sequence=2 version=1.1.0 commit=$FIXTURE_COMMIT
+		case "$FIXTURE_MODE" in other-identity) sequence=3 ;; other-version) version=1.0.0 ;; other-commit) commit=$(printf '9%.0s' $(seq 40)) ;; esac
+		identity=$(jq -nc --arg c "$commit" --arg v "$version" --argjson s "$sequence" --arg decl "$(shasum -a 256 "$dir/upgrade-compatibility.json" | cut -d' ' -f1)" --arg man "$(shasum -a 256 "$dir/release-manifest.json" | cut -d' ' -f1)" \
+			'{identity: {profile: "stable/v1", version: $v, sequence: $s, commit: $c, compatibility_sha256: $decl, manifest_sha256: $man}, published_oci_verified: true}')
+		printf '%s\n' "$identity"
+		[ "$FIXTURE_MODE" != two-documents ] || printf '%s\n' "$identity" ;;
 	*) exit 2 ;;
 esac
 SH
@@ -244,6 +253,14 @@ cp "$scratch/manifest.bak" "$scratch/published/release-manifest.json"
 
 # A verifier that prints no release identity decides nothing: exit 5, and no identity is rebuilt from the files.
 refused no-identity "$scratch/candidate.json" 'printed no release identity' 5
+refused empty-identity "$scratch/candidate.json" 'printed no release identity' 5
+refused two-documents "$scratch/candidate.json" 'printed no release identity' 5
+refused other-version "$scratch/candidate.json" 'printed no release identity' 5
+refused other-commit "$scratch/candidate.json" 'printed no release identity' 5
+# The identity is the verifier's, not the files': when it says sequence 3, the edge that names sequence 2 (what the
+# files say) is no longer the edge from the baseline, and the required identity printed is the verifier's.
+refused other-identity "$scratch/candidate.json" 'compatibility check: sqlite: no release-source edge from v1.1.0 (an edge names v1.1.0 with a different release identity)' 1
+grep -F '"sequence":3' "$scratch/out" >/dev/null || { cat "$scratch/out" >&2; printf 'compatibility fixture: the required identity is not the verifier'"'"'s\n' >&2; exit 1; }
 # A baseline signed under another trust policy cannot be routed by any edge (plan.go skips edges across a policy change).
 jq '.signing_key_id = "recovery-bridge"' "$scratch/manifest.bak" >"$scratch/published/release-manifest.json"
 refused same "$scratch/candidate.json" 'needs a recovery bridge' 1

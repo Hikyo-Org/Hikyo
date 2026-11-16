@@ -16,11 +16,11 @@ import (
 
 // A release-source edge names its source by the exact release identity the planner
 // records after an upgrade. The compatibility check takes that identity from the
-// verifier's own output (`stable verify` prints {"identity": ...}, see
-// scripts/release/stable/verify.go) and never rebuilds it. This test binds the shell
-// side to that output: an edge encoded the way the generator and the planner encode a
-// release source is judged sound against the identity taken from a verify-shaped
-// output, and an edge that differs in any one field is not.
+// verifier's own output and never rebuilds it (scripts/release/stable/historical_test.go
+// pins what `stable verify` prints). This test binds the edge rule to the way a release
+// source is encoded: an edge encoded the way the generator and the planner encode a
+// release source is judged sound against the identity taken from the output, and an
+// edge that differs in any one of the six identity fields is not.
 func TestVerifierIdentityIsWhatTheEdgeCheckExpects(t *testing.T) {
 	f := testfixture.New(t)
 	signed := f.AddStable(t, "1.1.0", 2, "0123456789abcdef0123456789abcdef01234567", []byte(`{"schema":"hikyo.dev/upgrade-compatibility/v1","probe":"identity binding"}`))
@@ -34,11 +34,7 @@ func TestVerifierIdentityIsWhatTheEdgeCheckExpects(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// The same shape `stable verify` prints on success.
-	write("verify.json", struct {
-		Identity           releaseidentity.Identity `json:"identity"`
-		PublishedInventory bool                     `json:"published_oci_verified"`
-	}{verified.Identity(), true})
+	write("verify.json", map[string]any{"identity": verified.Identity(), "published_oci_verified": true})
 	digest := strings.Repeat("a", 64)
 	migrations := func(engine string) map[string]any {
 		return map[string]any{"engine": engine, "entries": []any{}}
@@ -61,12 +57,16 @@ func TestVerifierIdentityIsWhatTheEdgeCheckExpects(t *testing.T) {
 		return map[string]any{"sqlite": edge("sqlite"), "postgres": edge("postgres")}
 	}
 	write("edges-ok.json", edges(source))
-	other := map[string]any{"release": map[string]any{}}
-	for key, value := range source["release"].(map[string]any) {
-		other["release"].(map[string]any)[key] = value
+	changes := map[string]any{"profile": "stable/v2", "version": "1.1.1", "sequence": float64(3), "commit": strings.Repeat("9", 40),
+		"compatibility_sha256": strings.Repeat("f", 64), "manifest_sha256": strings.Repeat("e", 64)}
+	for field, value := range changes {
+		other := map[string]any{"release": map[string]any{}}
+		for key, kept := range source["release"].(map[string]any) {
+			other["release"].(map[string]any)[key] = kept
+		}
+		other["release"].(map[string]any)[field] = value
+		write("edges-"+field+".json", edges(other))
 	}
-	other["release"].(map[string]any)["sequence"] = float64(3)
-	write("edges-other.json", edges(other))
 
 	problems := func(edgesFile string) string {
 		command := exec.CommandContext(context.Background(), "sh", "-c", `set -eu
@@ -82,7 +82,9 @@ release_source_edge_problems "$identity" "$2/baseline.json" "$2/$3"`, "sh", repo
 	if got := problems("edges-ok.json"); got != "" {
 		t.Fatalf("an edge that names the verified identity was refused:\n%s", got)
 	}
-	if got := problems("edges-other.json"); !strings.Contains(got, "sqlite: no release-source edge from v1.1.0") {
-		t.Fatalf("an edge that names another identity was accepted:\n%s", got)
+	for field := range changes {
+		if got := problems("edges-" + field + ".json"); !strings.Contains(got, "sqlite: no release-source edge from v1.1.0") {
+			t.Fatalf("an edge that differs in %s was accepted:\n%s", field, got)
+		}
 	}
 }
