@@ -571,6 +571,7 @@ no_tag_commands 'staged minor'
 plan 'a patch the check refuses for another reason is blocked, not turned into a minor' 0 COMPAT=incomplete
 expect_action 'incomplete patch' open
 has 'incomplete patch' 'the tag would be refused: the compatibility check refused the declaration of'
+body | grep -F 'the tag would be refused:' | grep -F ' .' >/dev/null && fail 'the refusal reason has no stray space before its full stop'
 has 'incomplete patch' 'not a complete two-engine declaration'
 lacks 'incomplete patch' 'Security release v1.2.0'
 no_tag_commands 'incomplete patch'
@@ -663,6 +664,7 @@ has 'burned' 'delete that draft first'
 has 'burned' 'Then re-run the failed jobs of the run'
 has 'burned' '**Skipped versions:** the release-build run of v1.1.1 (https://github.com/o/r/actions/runs/4242) failed'
 body | awk '/Skipped versions/ { skipped = NR } /### 1. Tag/ { step1 = NR } END { exit !(skipped > 0 && step1 > skipped) }' || fail 'the skipped version is said above step 1'
+has 'burned' 'then run `gh release delete vVERSION --repo o/r --yes`; never pass `--cleanup-tag`'
 has 'burned' 'almost always rerunnable'
 has 'burned' 'Only if the byte set cannot be completed safely, use the next version this issue plans'
 lacks 'burned' 'so that version is burned'
@@ -991,6 +993,11 @@ issue_json "$title" "$(printf '<!-- security-patch-plan -->\nold')" >"$scratch/i
 apply "$script" issue --failed "$run_url"
 { [ -e "$scratch/edited" ] && [ ! -e "$scratch/created" ]; } || fail 'a failed run rewrites our open issue'
 for bad in 'http://github.com/o/r/actions/runs/1' 'https://evil.example/o/r/actions/runs/1' 'https://github.com/o/r/actions/runs/1 x' 'https://github.com/o/r/actions/runs/1?x=1' '' "$(printf 'https://github.com/o/r/actions/runs/1\nx')"; do
+	if env GH_REPO=o/r GH_TOKEN=t "$script" issue --failed "$bad" >/dev/null 2>&1; then fail "issue --failed must refuse the URL: $bad"; fi
+done
+# A trailing newline must not pass the anchored match (jq's $ would accept it), nor another repository's run.
+nl_url=$(printf 'https://github.com/o/r/actions/runs/1\n.')
+for bad in "${nl_url%.}" 'https://github.com/x/y/actions/runs/1'; do
 	if env GH_REPO=o/r GH_TOKEN=t "$script" issue --failed "$bad" >/dev/null 2>&1; then fail "issue --failed must refuse the URL: $bad"; fi
 done
 if env GH_REPO=o/r GH_TOKEN=t "$script" issue --failed >/dev/null 2>&1; then fail 'issue --failed needs a run URL'; fi

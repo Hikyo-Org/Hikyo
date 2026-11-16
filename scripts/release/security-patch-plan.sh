@@ -85,6 +85,7 @@ gh() { "$GH_BIN" "$@"; }
 go_stable() { "$GO_BIN" -C "$repo_root" run ./scripts/release/stable "$@"; }
 git_() { "$GIT_BIN" -C "$repo_root" "$@"; }
 # The maintainer's recheck reads the repository the ceremony uses; CI always passes GH_REPO.
+# shortcut: run addresses are compared case-sensitively, so GH_REPO must use GitHub's own spelling of owner/name.
 case "${1:-}" in recheck) : "${GH_REPO:=${HIKYO_REPOSITORY:-Hikyo-Org/Hikyo}}" ;; esac
 [ -n "${GH_REPO:-}" ] || die 'GH_REPO is required'
 # matches REGEX VALUE: the whole value matches, anchored at both ends. grep reads line by
@@ -673,7 +674,7 @@ plan_inner() {
 			why="the release-source edge from $latest_tag is missing or wrong in release/compatibility/sources.json at $target, so an installed $latest_tag would have no upgrade route to v$version; a person must add it (below)"
 			edge_block=$(edge_prerequisite)
 		else
-			why="the tag would be refused: $(tail -n 1 "$work/refusal" | sed 's/^security-patch-plan: //' | tr '\n' ' ')"
+			why="the tag would be refused: $(tail -n 1 "$work/refusal" | sed 's/^security-patch-plan: //' | tr '\n' ' ' | sed 's/ *$//')"
 		fi
 		return 0
 		;;
@@ -720,7 +721,7 @@ ceremony_block() {
 		"git fetch origin main && git switch --detach origin/main && scripts/release/ceremony.sh homebrew $1"
 }
 
-burned_tag_hint="A pushed tag is never moved or recreated. If \`release-build\` fails, inspect the run first. If it already created the draft release, delete that draft before anything else: re-running the failed jobs cannot create the release while it exists, and an outstanding stable draft stops the trust synchronization check. Then re-run its failed jobs: a failure before the build (validation, docs, floor-bench, everything \`build-artifacts\` needs) is almost always rerunnable. Only if the byte set cannot be completed safely is the version burned, and you then use a new version (the ceremony's own rule)."
+burned_tag_hint="A pushed tag is never moved or recreated. If \`release-build\` fails, inspect the run first. If it already created the draft release, delete that draft before anything else: re-running the failed jobs cannot create the release while it exists, and an outstanding stable draft stops the trust synchronization check. Then re-run its failed jobs: a failure before the build (validation, docs, floor-bench, everything \`build-artifacts\` needs) is almost always rerunnable. Only if the byte set cannot be completed safely is the version burned, and you then use a new version (the ceremony's own rule). To delete it, check that \`gh release view vVERSION --repo $GH_REPO --json isDraft -q .isDraft\` prints \`true\`, then run \`gh release delete vVERSION --repo $GH_REPO --yes\`; never pass \`--cleanup-tag\`, which would delete the tag."
 
 # What a person needs when a tag exists without a staged release: the run, what to try and
 # the way out the planner cannot take for them.
@@ -828,7 +829,7 @@ render_ready() {
 	# A skipped version changes what step 1 tags, so it is said where the commands are, not only
 	# under "Also needs a person".
 	if [ -n "$burned_note" ]; then
-		burned_block="**Skipped versions:** the release-build run of $burned_runs failed and no published release exists for it, so this plan does not offer that version. If the failed run left a draft release, delete it before step 1 (the plan cannot see drafts, and an outstanding stable draft stops the trust synchronization check)."
+		burned_block="**Skipped versions:** the release-build run of $burned_runs failed and no published release exists for it, so this plan does not offer that version. If the failed run left a draft release, delete it before step 1 (the plan cannot see drafts, and an outstanding stable draft stops the trust synchronization check). To delete it, check that \`gh release view vVERSION --repo $GH_REPO --json isDraft -q .isDraft\` prints \`true\`, then run \`gh release delete vVERSION --repo $GH_REPO --yes\`; never pass \`--cleanup-tag\`, which would delete the tag."
 	fi
 	if [ "$kind" = minor ]; then
 		prerequisites=$(minor_prerequisites)
@@ -993,7 +994,7 @@ find_issue() {
 
 issue() {
 	if [ "${1:-}" = --failed ]; then
-		if [ "$#" -ne 2 ] || ! matches 'https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/actions/runs/[0-9]+' "$2"; then die 'usage: security-patch-plan.sh issue --failed RUN_URL'; fi
+		if [ "$#" -ne 2 ] || ! matches "$run_url_pattern" "$2"; then die 'usage: security-patch-plan.sh issue --failed RUN_URL'; fi
 		# The planning run failed or timed out, so nothing was decided: say so in the same
 		# issue instead of leaving a stale one (or none) looking healthy.
 		# The backticks are markdown.
