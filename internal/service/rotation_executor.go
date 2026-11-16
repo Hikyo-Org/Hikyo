@@ -1031,6 +1031,12 @@ func (e *RotationExecutor) publish(ctx context.Context, provider dynamic.Provide
 			return r.Rotations().BeginRunPublish(ctx, proof, run, now)
 		},
 		stage: func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity, now time.Time) ([]string, error) {
+			// `now` is read after the project lock was won: the begin check above ran
+			// before a lock wait that can outlast the budget, so an over-budget run
+			// rolls back here, before anything is staged.
+			if store.CanonTime(now).After(run.StartedAt.Add(rotationPublishBudget)) {
+				return nil, errRotationBudget
+			}
 			proof, err := az.Authorize(ctx, caller, authz.OpRotationRun, scope)
 			if err != nil {
 				return nil, err
@@ -1060,7 +1066,13 @@ func (e *RotationExecutor) publish(ctx context.Context, provider dynamic.Provide
 			return ids, nil
 		},
 		commit: func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity, now time.Time, out PublishResult) error {
+			// The one publication time: read after the project lock, it stamps the
+			// snapshot, the publish record and the overlap deadline, so a long lock
+			// wait cannot leave the deadline before the commit.
 			now = store.CanonTime(now)
+			if now.After(run.StartedAt.Add(rotationPublishBudget)) {
+				return errRotationBudget
+			}
 			proof, err := az.Authorize(ctx, caller, authz.OpRotationRun, scope)
 			if err != nil {
 				return err

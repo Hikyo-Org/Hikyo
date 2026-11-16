@@ -363,6 +363,14 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 		if err := r.Projects().Lock(ctx, p); err != nil {
 			return err
 		}
+		if request.rotation != nil {
+			// The project lock can take a long time. A scheduled rotation's publish
+			// time anchors its overlap deadline and its budget check, so it is the
+			// time the lock was won, not the time the transaction began. The
+			// authorization above keeps the earlier read: that is the
+			// authentication this publish rides.
+			now = s.now()
+		}
 		if request.rotation != nil && request.rotation.stage != nil {
 			staged, err := request.rotation.stage(ctx, r, az, caller, now)
 			if err != nil {
