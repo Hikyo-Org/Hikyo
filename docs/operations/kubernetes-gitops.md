@@ -358,5 +358,7 @@ source `c56b8b44`), each at zero replicas:
   retained the workload and the external PVC.
 
 This is controller-mechanics evidence from one workstation. It does not exercise the
-application, a database, CSI/CNI, migration or recovery. Repeat it for each artifact you
-intend to install, using the generator's output for that exact digest.
+application, a database, CSI/CNI, migration or recovery. No script for it ships. To
+repeat it for an artifact you intend to install, apply the generator's output for that
+exact digest to a disposable cluster with the pinned controllers, then follow the
+Flux and Argo CD activation sections of this runbook.
