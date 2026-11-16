@@ -157,9 +157,12 @@ type StartRun struct {
 // that minted it (see RotationRuntime.LoadSupersededRole).
 type SupersededRole struct {
 	// Material is that provider's connection material; its ciphertext is empty
-	// when the provider has since lost its credential. A provider delete is
-	// refused while a run still owes this role, so only a cascade removal of its
-	// project can leave the role without a provider.
+	// when the provider has since lost its credential. The provider may have been
+	// deleted since it minted the role: the delete guard only counts runs that
+	// already owe the role, so a provider whose last run settled can be deleted
+	// before a later rotation supersedes its role. The revoke still works because
+	// a provider delete is a tombstone (state='tombstoned') that keeps the sealed
+	// credential, and the load has no state filter. Adding one would break it.
 	Material LeaseProviderMaterial
 	// ValidUntil is the minting run's recorded VALID UNTIL; zero when unrecorded.
 	ValidUntil time.Time
@@ -525,7 +528,7 @@ func (r *RotationRuntime) FailedAttempts(ctx context.Context, chain domain.Scope
 
 // InfraFaults counts the rotation's runs of one generation since `since` that never
 // published and failed only on the executor's own infrastructure: not attempts, but
-// the streak that sizes the infrastructure backoff.
+// the infrastructure faults of the cycle, which size the infrastructure backoff.
 func (r *RotationRuntime) InfraFaults(ctx context.Context, chain domain.Scope, rotationID string, generation int64, since time.Time) (int64, error) {
 	return rotationRead(ctx, r, func(q rotationRuntimeQueries) (int64, error) {
 		return q.infraFaults(ctx, chain, rotationID, generation, since)

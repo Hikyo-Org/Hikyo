@@ -765,7 +765,7 @@ func (q *Queries) RotationPauseActive(ctx context.Context, arg RotationPauseActi
 }
 
 const rotationProviderLiveRuns = `-- name: RotationProviderLiveRuns :one
-SELECT COUNT(*) FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id LEFT JOIN rotation_effects ef ON ef.run_id=ru.id AND ef.org_id=ru.org_id AND ef.project_id=ru.project_id AND ef.environment_id=ru.environment_id AND ef.kind='drop_candidate' AND ef.outcome='success' WHERE ru.org_id=$1 AND ru.project_id=$2 AND ru.phase<>'done' AND NOT (ru.phase='failed' AND ru.published_revision IS NULL AND ef.id IS NOT NULL) AND (ro.provider_id=$3 OR EXISTS (SELECT 1 FROM rotation_runs sup JOIN rotations so ON so.org_id=sup.org_id AND so.project_id=sup.project_id AND so.environment_id=sup.environment_id AND so.id=sup.rotation_id WHERE sup.org_id=ru.org_id AND sup.project_id=ru.project_id AND sup.environment_id=ru.environment_id AND sup.candidate_handle=ru.superseded_handle AND so.provider_id=$3))
+SELECT COUNT(*) FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id LEFT JOIN rotation_effects ef ON ef.run_id=ru.id AND ef.org_id=ru.org_id AND ef.project_id=ru.project_id AND ef.environment_id=ru.environment_id AND ef.kind='drop_candidate' AND ef.outcome='success' WHERE ru.org_id=$1 AND ru.project_id=$2 AND ru.phase<>'done' AND NOT (ru.phase='failed' AND ru.published_revision IS NULL AND ef.id IS NOT NULL) AND (ro.provider_id=$3 OR ((ru.published_revision IS NOT NULL OR ru.phase IN ('minting','minted','staged','published')) AND EXISTS (SELECT 1 FROM rotation_runs sup JOIN rotations so ON so.org_id=sup.org_id AND so.project_id=sup.project_id AND so.environment_id=sup.environment_id AND so.id=sup.rotation_id WHERE sup.org_id=ru.org_id AND sup.project_id=ru.project_id AND sup.environment_id=ru.environment_id AND sup.candidate_handle=ru.superseded_handle AND so.provider_id=$3)))
 `
 
 type RotationProviderLiveRunsParams struct {
@@ -778,7 +778,9 @@ type RotationProviderLiveRunsParams struct {
 // hold a live role (every phase but done, and a failed run that never published
 // without a confirmed drop), and a run of ANY rotation that still owes the revoke
 // of a superseded role this provider minted (a recreated rotation may have moved
-// to another provider, but the old role is only droppable where it was minted).
+// to another provider, but the old role is only droppable where it was minted). A
+// run that never published and has settled (failed, quarantine) never revokes that
+// role, so it does not count.
 // hikyo:reason The provider delete guard counts runs across the provider's rotations, and runs of other rotations that owe a role this provider minted, under the org and project chain; the effect join and the minting-run subquery are pinned to the run's own chain.
 // hikyo:instance-scoped
 func (q *Queries) RotationProviderLiveRuns(ctx context.Context, arg RotationProviderLiveRunsParams) (int64, error) {

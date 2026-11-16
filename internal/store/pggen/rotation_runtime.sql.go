@@ -441,8 +441,8 @@ type RotationRtInfraFaultsParams struct {
 }
 
 // Failed runs of one rotation that never published and failed only because the
-// executor's own datastore or keyring faulted, started after a cut: the streak
-// that sizes the infrastructure backoff. They are not attempts, so they never
+// executor's own datastore or keyring faulted, started after a cut: the
+// infrastructure faults this cycle, which size the infrastructure backoff. They are not attempts, so they never
 // exhaust the retries, but they must still back off instead of retrying at the floor.
 func (q *Queries) RotationRtInfraFaults(ctx context.Context, arg RotationRtInfraFaultsParams) (int64, error) {
 	row := q.db.QueryRow(ctx, rotationRtInfraFaults,

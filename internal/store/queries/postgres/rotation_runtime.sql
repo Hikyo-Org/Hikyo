@@ -97,8 +97,8 @@ SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generat
 SELECT COUNT(*) FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(generation) AND phase IN ('failed','quarantine') AND published_revision IS NULL AND (last_error IS NULL OR last_error<>'infrastructure_unavailable') AND started_at>sqlc.arg(since_at);
 
 -- Failed runs of one rotation that never published and failed only because the
--- executor's own datastore or keyring faulted, started after a cut: the streak
--- that sizes the infrastructure backoff. They are not attempts, so they never
+-- executor's own datastore or keyring faulted, started after a cut: the
+-- infrastructure faults this cycle, which size the infrastructure backoff. They are not attempts, so they never
 -- exhaust the retries, but they must still back off instead of retrying at the floor.
 -- name: RotationRtInfraFaults :one
 SELECT COUNT(*) FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(generation) AND phase IN ('failed','quarantine') AND published_revision IS NULL AND last_error='infrastructure_unavailable' AND started_at>sqlc.arg(since_at);

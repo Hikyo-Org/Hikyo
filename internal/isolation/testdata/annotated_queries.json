@@ -3362,7 +3362,7 @@
     "engine": "postgres",
     "name": "RotationProviderLiveRuns",
     "annotation": "instance-scoped",
-    "hash": "62de651e1b34c6a683e4ace892bf07e43d391d6541c1e6df42d1f65a648f9042",
+    "hash": "7090b5799fb0d6fe925a3287c8fed95516753f96d52a1c324ab9f8646b39ac27",
     "reason": "The provider delete guard counts runs across the provider's rotations, and runs of other rotations that owe a role this provider minted, under the org and project chain; the effect join and the minting-run subquery are pinned to the run's own chain."
   },
   {
@@ -7131,7 +7131,7 @@
     "engine": "sqlite",
     "name": "RotationProviderLiveRuns",
     "annotation": "instance-scoped",
-    "hash": "62de651e1b34c6a683e4ace892bf07e43d391d6541c1e6df42d1f65a648f9042",
+    "hash": "7090b5799fb0d6fe925a3287c8fed95516753f96d52a1c324ab9f8646b39ac27",
     "reason": "The provider delete guard counts runs across the provider's rotations, and runs of other rotations that owe a role this provider minted, under the org and project chain; the effect join and the minting-run subquery are pinned to the run's own chain."
   },
   {
