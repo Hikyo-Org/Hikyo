@@ -47,7 +47,8 @@ func (s *RefusalSignals) update(ctx context.Context, sample *audit.RefusalSample
 	// The refusal is already decided and its response is written regardless, so
 	// the caller hanging up must not cancel its accounting: a client that
 	// half-closes after sending would otherwise hide its own refusals. The
-	// deadline alone bounds the work.
+	// deadline alone bounds the work. Seal shares this path, so a shutdown waits
+	// at most that deadline for a seal already in progress.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), RefusalDeadline)
 	defer cancel()
 	defer func() {

@@ -29,6 +29,31 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
+// countCredentialReads counts the datastore queries a request issues, except
+// those issued while its refusal is being recorded: the window write, and the
+// event writes of a seal at a minute boundary, are not credential reads.
+// Requests are served one at a time, so the recording flag cannot misattribute.
+func countCredentialReads(sink *service.RefusalSignals, queries *atomic.Int64) (server.RefusalRecorder, func()) {
+	var recording atomic.Bool
+	restore := authn.SetQueryObserver(func(string) {
+		if !recording.Load() {
+			queries.Add(1)
+		}
+	})
+	return recordingRefusals{sink: sink, recording: &recording}, restore
+}
+
+type recordingRefusals struct {
+	sink      *service.RefusalSignals
+	recording *atomic.Bool
+}
+
+func (r recordingRefusals) Record(ctx context.Context, sample audit.RefusalSample) error {
+	r.recording.Store(true)
+	defer r.recording.Store(false)
+	return r.sink.Record(ctx, sample)
+}
+
 // assertChargedBeforeWork proves one dead artifact at the last slot of its
 // source allowance: the request is still resolved with the unchanged uniform
 // refusal and read count, and the next presentation from the same source is a
@@ -45,15 +70,10 @@ func assertChargedBeforeWork(t *testing.T, db *store.DB, token string, kind cryp
 		}
 	}
 	signals := service.NewRefusalSignals(db)
-	handler := server.New(&server.API{Auth: &service.Auth{DB: db}, Orgs: &service.Orgs{DB: db}, Workspace: &service.Workspace{DB: db}, Admission: limiter, Refusals: signals}, nil)
 	var queries atomic.Int64
-	// The refusal signal's own window write is not a credential read.
-	restore := authn.SetQueryObserver(func(q string) {
-		if !strings.Contains(q, "auth_refusal_window") {
-			queries.Add(1)
-		}
-	})
+	sink, restore := countCredentialReads(signals, &queries)
 	defer restore()
+	handler := server.New(&server.API{Auth: &service.Auth{DB: db}, Orgs: &service.Orgs{DB: db}, Workspace: &service.Workspace{DB: db}, Admission: limiter, Refusals: sink}, nil)
 	// Each refusal must also produce its signal: the dead artifact an artifact
 	// refusal and the overflow an admission refusal. A commit that missed its
 	// accounting budget is visible in health and is not asserted as staged.
@@ -287,19 +307,15 @@ func TestPreauthenticationRefusalsAreBoundedAndSecretFree(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				handler := server.New(&server.API{Auth: authService(t, db), Orgs: &service.Orgs{DB: db}, Admission: limiter, Refusals: service.NewRefusalSignals(db)}, nil)
+				var queries atomic.Int64
+				sink, restore := countCredentialReads(service.NewRefusalSignals(db), &queries)
+				defer restore()
+				handler := server.New(&server.API{Auth: authService(t, db), Orgs: &service.Orgs{DB: db}, Admission: limiter, Refusals: sink}, nil)
 				token, _, err := crypto.NewArtifact(kind)
 				if err != nil {
 					t.Fatal(err)
 				}
 				events := queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events")
-				var queries atomic.Int64
-				restore := authn.SetQueryObserver(func(q string) {
-					if !strings.Contains(q, "auth_refusal_window") {
-						queries.Add(1)
-					}
-				})
-				defer restore()
 				for i := range refused {
 					rec := preauthRequest(handler, token, kind, source, http.MethodGet, "/me/orgs")
 					if rec.Code != http.StatusTooManyRequests {
