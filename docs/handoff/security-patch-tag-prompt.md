@@ -7,8 +7,14 @@ token or secret. Unattended tagging is deferred to a later App phase.
 
 Stacked on part 2 (`feat/compat-check-last-stable`, #1406): the issue's
 compatibility statement uses `check-compatibility-unchanged.sh`. Merge #1406
-first; this PR then retargets to main. `.github/actionlint.yaml` also gains an
-entry in part 1 (#1404); the two textual conflicts are trivial (both entries stay).
+first; this PR then retargets to `dev`. The actionlint ignore for the
+`vulnerability-alerts` scope is the separate prerequisite #1413, which must be on
+`dev` first (ci-feedback runs actionlint from the trusted base checkout).
+
+**Delivery.** Feature pull requests land on `dev` and reach `main` by the normal
+promotion. The workflow's push-to-main, schedule and manual triggers, and its
+`github.ref == refs/heads/main` guard, mean **nothing runs until a promotion
+lands it on `main`**. `recheck` and the fixture work from `dev` today.
 
 ## Result
 
@@ -69,7 +75,7 @@ entry in part 1 (#1404); the two textual conflicts are trivial (both entries sta
 
 ## Next steps
 
-1. Merge part 2, retarget this PR to main, merge it.
-2. After merge, dispatch the workflow once on main and record the run and issue.
-3. Live checks that remain after merge: the first sweep, `gh issue` writes with
+1. Merge #1413 and part 2 (#1406) to `dev`, retarget this PR to `dev`, merge it.
+2. After the promotion to `main`, dispatch the workflow once and record the run and issue.
+3. Live checks that remain after promotion: the first sweep, `gh issue` writes with
    the real token, and one real `recheck` run by a maintainer.

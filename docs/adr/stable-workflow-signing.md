@@ -148,7 +148,8 @@ nothing and holds no tag or release authority: its token is read-only apart from
 second job writes the one issue, which it recognizes by title, marker and its own bot as author. The issue's command starts with `security-patch-plan.sh recheck`, run
 by the maintainer with their own login, which refuses when a newer pending security merge exists or
 anything else changed since the issue was written. Fully unattended tagging stays deferred to a later
-App phase.
+App phase. The workflow lands on `dev` and reaches `main` by promotion; its triggers run only from
+`main`, so it goes live then.
 
 Operational entry point: [online signing](../release/online-signing.md).
 Primary-source evidence: [release ceremony research](../research/release-signing-ceremonies.md).
