@@ -372,6 +372,8 @@ var reviewedWireExtras = wireExtras{
 		// `key` reaches the catalogue and the group routes, all tenant-class.
 		"cli:key":   {Class: "ClassTenant"},
 		"cli:lease": {Class: "ClassTenant"},
+		// `rotation` (#148) reaches only the environment-scoped rotation routes.
+		"cli:rotation": {Class: "ClassTenant"},
 		// Client verbs that reach the server. Their probe contract is the HTTP
 		// route they call, classified above; the verb itself carries the class of
 		// what it reaches, so a verb whose class is still ClassStub cannot

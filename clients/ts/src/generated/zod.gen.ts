@@ -729,6 +729,45 @@ export const zDynamicLeaseList = z.object({
     items: z.array(zDynamicLease)
 });
 
+export const zCredentialRotationState = z.enum([
+    'active',
+    'paused',
+    'disabled'
+]);
+
+export const zCredentialRotation = z.object({
+    id: zId,
+    environment_id: zId,
+    provider_id: zId,
+    key_id: zId,
+    username_key_id: z.string().nullish(),
+    interval_seconds: z.coerce.bigint().gte(BigInt(3600)).lte(BigInt(7776000)),
+    revocation_delay_seconds: z.coerce.bigint().gte(BigInt(300)).lte(BigInt(604800)),
+    authority_principal_id: zId,
+    created_by: zId,
+    state: zCredentialRotationState,
+    next_run_at: z.iso.datetime().nullish(),
+    generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    created_at: zTimestamp,
+    updated_at: zTimestamp
+});
+
+export const zCredentialRotationList = z.object({
+    items: z.array(zCredentialRotation)
+});
+
+export const zCreateRotationRequest = z.object({
+    provider_id: zId,
+    key_id: zId,
+    username_key_id: zId,
+    interval_seconds: z.coerce.bigint().gte(BigInt(3600)).lte(BigInt(7776000)),
+    revocation_delay_seconds: z.coerce.bigint().gte(BigInt(300)).lte(BigInt(604800))
+});
+
+export const zRotationStateRequest = z.object({
+    expected_generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullish()
+});
+
 export const zMintLeaseRequest = z.object({
     provider_id: zId,
     max_ttl_seconds: z.coerce.bigint().gte(BigInt(1)).lte(BigInt(9223372036))
@@ -5265,6 +5304,13 @@ export const zDynamicProviderId = zId;
 
 export const zLeaseId = zId;
 
+export const zRotationId = zId;
+
+/**
+ * The generation the caller last read. A different current generation is a conflict.
+ */
+export const zExpectedGeneration = z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' });
+
 export const zSshcaid = zId;
 
 export const zSshcaKeyId = zId;
@@ -9529,6 +9575,86 @@ export const zSettleLeasePath = z.object({
  * Lease after settlement.
  */
 export const zSettleLeaseResponse = zDynamicLease;
+
+export const zListRotationsPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * Rotation list.
+ */
+export const zListRotationsResponse = zCredentialRotationList;
+
+export const zCreateRotationBody = zCreateRotationRequest;
+
+export const zCreateRotationPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * Rotation configured.
+ */
+export const zCreateRotationResponse = zCredentialRotation;
+
+export const zDeleteRotationPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    rotation: zId
+});
+
+export const zDeleteRotationQuery = z.object({
+    expected_generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional()
+});
+
+/**
+ * Rotation after it was disabled.
+ */
+export const zDeleteRotationResponse = zCredentialRotation;
+
+export const zShowRotationPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    rotation: zId
+});
+
+/**
+ * Rotation.
+ */
+export const zShowRotationResponse = zCredentialRotation;
+
+export const zPauseRotationBody = zRotationStateRequest;
+
+export const zPauseRotationPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    rotation: zId
+});
+
+/**
+ * Rotation after the change.
+ */
+export const zPauseRotationResponse = zCredentialRotation;
+
+export const zResumeRotationBody = zRotationStateRequest;
+
+export const zResumeRotationPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    rotation: zId
+});
+
+/**
+ * Rotation after the change.
+ */
+export const zResumeRotationResponse = zCredentialRotation;
 
 export const zListSshCasPath = z.object({
     org: zId,

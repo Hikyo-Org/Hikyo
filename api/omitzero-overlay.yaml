@@ -60,7 +60,7 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
-  - target: $['components']['parameters']['IdentityImageVersion','DeliveryCursor','DeliveryProjection','DefinitionsAcknowledgements','DeliveryFileTarget','DeliveryAcknowledgedKeys','ScimCount','ScimFilter','ScimSortBy','ScimSortOrder','ScimStartIndex','AuditFrom','AuditTo','AuditAfterSeq','AuditToSeq','AuditLimit','RevisionBefore','RevisionLimit','AuditActor','AuditActorName','AuditOperation','AuditOutcome','AuditOutcomes','AuditObjectType','AuditObjectID','AuditCorrelationID','AuditReceipt']
+  - target: $['components']['parameters']['IdentityImageVersion','ExpectedGeneration','DeliveryCursor','DeliveryProjection','DefinitionsAcknowledgements','DeliveryFileTarget','DeliveryAcknowledgedKeys','ScimCount','ScimFilter','ScimSortBy','ScimSortOrder','ScimStartIndex','AuditFrom','AuditTo','AuditAfterSeq','AuditToSeq','AuditLimit','RevisionBefore','RevisionLimit','AuditActor','AuditActorName','AuditOperation','AuditOutcome','AuditOutcomes','AuditObjectType','AuditObjectID','AuditCorrelationID','AuditReceipt']
     update:
       x-omitempty: false
       x-omitzero: true
@@ -177,6 +177,14 @@ actions:
       x-omitempty: false
       x-omitzero: true
   - target: $['components']['schemas']['DynamicLease']['properties']['issued_at','expires_at']
+    update:
+      x-omitempty: false
+      x-omitzero: true
+  - target: $['components']['schemas']['CredentialRotation']['properties']['username_key_id','next_run_at']
+    update:
+      x-omitempty: false
+      x-omitzero: true
+  - target: $['components']['schemas']['RotationStateRequest']['properties']['expected_generation']
     update:
       x-omitempty: false
       x-omitzero: true

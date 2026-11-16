@@ -479,6 +479,15 @@ operations:
   updateFileTarget:            {webui: adapters}
   deleteFileTarget:            {webui: adapters}
 
+  # scheduled credential rotation configuration (#148 S1 ships API+CLI; the
+  # run timeline and the SPA surface land with the later slices)
+  listRotations:               {issue: 148}
+  createRotation:              {issue: 148}
+  showRotation:                {issue: 148}
+  deleteRotation:              {issue: 148}
+  pauseRotation:               {issue: 148}
+  resumeRotation:              {issue: 148}
+
   # dynamic secrets (#147 shipped API+CLI+read-only status; management WebUI #595)
   listLeases:                  {webui: machine-access}
   showLease:                   {webui: machine-access, via: [listLeases]}

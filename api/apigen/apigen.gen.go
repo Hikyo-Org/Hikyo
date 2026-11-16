@@ -1421,6 +1421,27 @@ func (e CredentialLifetime) Valid() bool {
 	}
 }
 
+// Defines values for CredentialRotationState.
+const (
+	CredentialRotationStateActive   CredentialRotationState = "active"
+	CredentialRotationStateDisabled CredentialRotationState = "disabled"
+	CredentialRotationStatePaused   CredentialRotationState = "paused"
+)
+
+// Valid indicates whether the value is a known member of the CredentialRotationState enum.
+func (e CredentialRotationState) Valid() bool {
+	switch e {
+	case CredentialRotationStateActive:
+		return true
+	case CredentialRotationStateDisabled:
+		return true
+	case CredentialRotationStatePaused:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DEKRotationScope.
 const (
 	DEKRotationScopeInstance DEKRotationScope = "instance"
@@ -6635,6 +6656,24 @@ type CreateRemotePairingInviteRequest struct {
 	Phrase                    string `json:"phrase"`
 }
 
+// CreateRotationRequest defines model for CreateRotationRequest.
+type CreateRotationRequest struct {
+	// IntervalSeconds Seconds between rotations, from 1 hour to 90 days.
+	IntervalSeconds int64 `json:"interval_seconds"`
+
+	// KeyId A prefixed UUIDv7, e.g. `org_0198…`.
+	KeyId ID `json:"key_id"`
+
+	// ProviderId A prefixed UUIDv7, e.g. `org_0198…`.
+	ProviderId ID `json:"provider_id"`
+
+	// RevocationDelaySeconds Seconds the superseded credential stays valid after the new one is published, from 5 minutes to 7 days. Must be shorter than the interval.
+	RevocationDelaySeconds int64 `json:"revocation_delay_seconds"`
+
+	// UsernameKeyId A prefixed UUIDv7, e.g. `org_0198…`.
+	UsernameKeyId ID `json:"username_key_id"`
+}
+
 // CreateRuleRequest defines model for CreateRuleRequest.
 type CreateRuleRequest struct {
 	// Capability The capabilities a member access rule may carry (member-access-rules
@@ -6774,6 +6813,51 @@ type CredentialResetResult struct {
 	// ExpiresAt RFC 3339 UTC, microsecond precision.
 	ExpiresAt Timestamp `json:"expires_at"`
 }
+
+// CredentialRotation defines model for CredentialRotation.
+type CredentialRotation struct {
+	// AuthorityPrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
+	AuthorityPrincipalId ID `json:"authority_principal_id"`
+
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt Timestamp `json:"created_at"`
+
+	// CreatedBy A prefixed UUIDv7, e.g. `org_0198…`.
+	CreatedBy ID `json:"created_by"`
+
+	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
+	EnvironmentId ID    `json:"environment_id"`
+	Generation    int64 `json:"generation"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id              ID    `json:"id"`
+	IntervalSeconds int64 `json:"interval_seconds"`
+
+	// KeyId A prefixed UUIDv7, e.g. `org_0198…`.
+	KeyId ID `json:"key_id"`
+
+	// NextRunAt Set only while the rotation is active.
+	NextRunAt *time.Time `json:"next_run_at,omitzero"`
+
+	// ProviderId A prefixed UUIDv7, e.g. `org_0198…`.
+	ProviderId             ID                      `json:"provider_id"`
+	RevocationDelaySeconds int64                   `json:"revocation_delay_seconds"`
+	State                  CredentialRotationState `json:"state"`
+
+	// UpdatedAt RFC 3339 UTC, microsecond precision.
+	UpdatedAt Timestamp `json:"updated_at"`
+
+	// UsernameKeyId The key that receives the generated role name.
+	UsernameKeyId *string `json:"username_key_id,omitzero"`
+}
+
+// CredentialRotationList defines model for CredentialRotationList.
+type CredentialRotationList struct {
+	Items []CredentialRotation `json:"items"`
+}
+
+// CredentialRotationState defines model for CredentialRotationState.
+type CredentialRotationState string
 
 // DEKRotation defines model for DEKRotation.
 type DEKRotation struct {
@@ -10730,6 +10814,12 @@ type RotateSSHCARequest struct {
 	PrivateKey *string `json:"private_key,omitzero"`
 }
 
+// RotationStateRequest defines model for RotationStateRequest.
+type RotationStateRequest struct {
+	// ExpectedGeneration The generation the caller last read. Omitted or null means the current generation.
+	ExpectedGeneration *int64 `json:"expected_generation,omitzero"`
+}
+
 // Rule defines model for Rule.
 type Rule struct {
 	// Capability The capabilities a member access rule may carry (member-access-rules
@@ -12872,6 +12962,9 @@ type EmailInvitationID = ID
 // EnvironmentID A prefixed UUIDv7, e.g. `org_0198…`.
 type EnvironmentID = ID
 
+// ExpectedGeneration defines model for ExpectedGeneration.
+type ExpectedGeneration = int64
+
 // FederationIssuerID A prefixed UUIDv7, e.g. `org_0198…`.
 type FederationIssuerID = ID
 
@@ -12956,6 +13049,9 @@ type RevisionBefore = int64
 
 // RevisionLimit defines model for RevisionLimit.
 type RevisionLimit = int
+
+// RotationID A prefixed UUIDv7, e.g. `org_0198…`.
+type RotationID = ID
 
 // RuleID A prefixed UUIDv7, e.g. `org_0198…`.
 type RuleID = ID
@@ -13699,6 +13795,12 @@ type ListRevisionsParams struct {
 	Limit *RevisionLimit `form:"limit" json:"limit,omitzero"`
 }
 
+// DeleteRotationParams defines parameters for DeleteRotation.
+type DeleteRotationParams struct {
+	// ExpectedGeneration The generation the caller last read. A different current generation is a conflict.
+	ExpectedGeneration *ExpectedGeneration `form:"expected_generation" json:"expected_generation,omitzero"`
+}
+
 // DeleteSshProfileParams defines parameters for DeleteSshProfile.
 type DeleteSshProfileParams struct {
 	// RevokeIssued Also revoke every live certificate issued through this profile.
@@ -14215,6 +14317,15 @@ type RevealRevisionDiffJSONRequestBody = RevealRevisionDiffRequest
 
 // RollbackRevisionJSONRequestBody defines body for RollbackRevision for application/json ContentType.
 type RollbackRevisionJSONRequestBody = RollbackRequest
+
+// CreateRotationJSONRequestBody defines body for CreateRotation for application/json ContentType.
+type CreateRotationJSONRequestBody = CreateRotationRequest
+
+// PauseRotationJSONRequestBody defines body for PauseRotation for application/json ContentType.
+type PauseRotationJSONRequestBody = RotationStateRequest
+
+// ResumeRotationJSONRequestBody defines body for ResumeRotation for application/json ContentType.
+type ResumeRotationJSONRequestBody = RotationStateRequest
 
 // SetEnvironmentSettingsJSONRequestBody defines body for SetEnvironmentSettings for application/json ContentType.
 type SetEnvironmentSettingsJSONRequestBody = EnvironmentSettings
@@ -16265,6 +16376,24 @@ type ServerInterface interface {
 	// RollbackRevision Stage an environment or key restore from one revision.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/{revision}/rollback)
 	RollbackRevision(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, revision int64)
+	// ListRotations List an environment's scheduled credential rotations, disabled history included.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations)
+	ListRotations(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// CreateRotation Configure scheduled rotation of one PostgreSQL credential pair.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations)
+	CreateRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// DeleteRotation Disable a rotation; the row stays as history.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation})
+	DeleteRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID, params DeleteRotationParams)
+	// ShowRotation Show one scheduled credential rotation.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation})
+	ShowRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID)
+	// PauseRotation Pause a rotation so it stops being scheduled.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/pause)
+	PauseRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID)
+	// ResumeRotation Resume a paused rotation and recompute its next run.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume)
+	ResumeRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID)
 	// GetEnvironmentSettings Read an environment's protection state and reauthentication window.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/settings)
 	GetEnvironmentSettings(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
@@ -18419,6 +18548,42 @@ func (_ Unimplemented) GetRevision(w http.ResponseWriter, r *http.Request, org O
 // RollbackRevision Stage an environment or key restore from one revision.
 // (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/{revision}/rollback)
 func (_ Unimplemented) RollbackRevision(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, revision int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListRotations List an environment's scheduled credential rotations, disabled history included.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations)
+func (_ Unimplemented) ListRotations(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateRotation Configure scheduled rotation of one PostgreSQL credential pair.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations)
+func (_ Unimplemented) CreateRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteRotation Disable a rotation; the row stays as history.
+// (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation})
+func (_ Unimplemented) DeleteRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID, params DeleteRotationParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ShowRotation Show one scheduled credential rotation.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation})
+func (_ Unimplemented) ShowRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PauseRotation Pause a rotation so it stops being scheduled.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/pause)
+func (_ Unimplemented) PauseRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ResumeRotation Resume a paused rotation and recompute its next run.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume)
+func (_ Unimplemented) ResumeRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -29296,6 +29461,322 @@ func (siw *ServerInterfaceWrapper) RollbackRevision(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ListRotations operation middleware
+func (siw *ServerInterfaceWrapper) ListRotations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRotations(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateRotation operation middleware
+func (siw *ServerInterfaceWrapper) CreateRotation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateRotation(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteRotation operation middleware
+func (siw *ServerInterfaceWrapper) DeleteRotation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "rotation" -------------
+	var rotation RotationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rotation", chi.URLParam(r, "rotation"), &rotation, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rotation", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteRotationParams
+
+	// ------------- Optional query parameter "expected_generation" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "expected_generation", r.URL.Query(), &params.ExpectedGeneration, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "expected_generation"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "expected_generation", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteRotation(w, r, org, project, environment, rotation, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ShowRotation operation middleware
+func (siw *ServerInterfaceWrapper) ShowRotation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "rotation" -------------
+	var rotation RotationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rotation", chi.URLParam(r, "rotation"), &rotation, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rotation", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ShowRotation(w, r, org, project, environment, rotation)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PauseRotation operation middleware
+func (siw *ServerInterfaceWrapper) PauseRotation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "rotation" -------------
+	var rotation RotationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rotation", chi.URLParam(r, "rotation"), &rotation, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rotation", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PauseRotation(w, r, org, project, environment, rotation)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResumeRotation operation middleware
+func (siw *ServerInterfaceWrapper) ResumeRotation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "rotation" -------------
+	var rotation RotationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rotation", chi.URLParam(r, "rotation"), &rotation, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rotation", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResumeRotation(w, r, org, project, environment, rotation)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetEnvironmentSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetEnvironmentSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -36263,6 +36744,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff/reveal", wrapper.RevealRevisionDiff)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations", wrapper.ListRotations)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations", wrapper.CreateRotation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}", wrapper.DeleteRotation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}", wrapper.ShowRotation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/pause", wrapper.PauseRotation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume", wrapper.ResumeRotation)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/settings", wrapper.GetEnvironmentSettings)
@@ -69814,6 +70313,612 @@ func (response RollbackRevision503JSONResponse) VisitRollbackRevisionResponse(w 
 	return err
 }
 
+type ListRotationsRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+}
+
+type ListRotationsResponseObject interface {
+	VisitListRotationsResponse(w http.ResponseWriter) error
+}
+
+type ListRotations200JSONResponse CredentialRotationList
+
+func (response ListRotations200JSONResponse) VisitListRotationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRotations401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListRotations401JSONResponse) VisitListRotationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRotations404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListRotations404JSONResponse) VisitListRotationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRotations500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListRotations500JSONResponse) VisitListRotationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRotations503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListRotations503JSONResponse) VisitListRotationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRotationRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Body        *CreateRotationJSONRequestBody
+}
+
+type CreateRotationResponseObject interface {
+	VisitCreateRotationResponse(w http.ResponseWriter) error
+}
+
+type CreateRotation201JSONResponse CredentialRotation
+
+func (response CreateRotation201JSONResponse) VisitCreateRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRotation400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateRotation400JSONResponse) VisitCreateRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRotation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateRotation401JSONResponse) VisitCreateRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRotation403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateRotation403JSONResponse) VisitCreateRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRotation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateRotation404JSONResponse) VisitCreateRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRotation409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateRotation409JSONResponse) VisitCreateRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRotation500JSONResponse struct{ InternalJSONResponse }
+
+func (response CreateRotation500JSONResponse) VisitCreateRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRotation503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateRotation503JSONResponse) VisitCreateRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRotationRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Rotation    RotationID    `json:"rotation"`
+	Params      DeleteRotationParams
+}
+
+type DeleteRotationResponseObject interface {
+	VisitDeleteRotationResponse(w http.ResponseWriter) error
+}
+
+type DeleteRotation200JSONResponse CredentialRotation
+
+func (response DeleteRotation200JSONResponse) VisitDeleteRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRotation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteRotation401JSONResponse) VisitDeleteRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRotation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteRotation404JSONResponse) VisitDeleteRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRotation409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteRotation409JSONResponse) VisitDeleteRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRotation500JSONResponse struct{ InternalJSONResponse }
+
+func (response DeleteRotation500JSONResponse) VisitDeleteRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRotation503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteRotation503JSONResponse) VisitDeleteRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowRotationRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Rotation    RotationID    `json:"rotation"`
+}
+
+type ShowRotationResponseObject interface {
+	VisitShowRotationResponse(w http.ResponseWriter) error
+}
+
+type ShowRotation200JSONResponse CredentialRotation
+
+func (response ShowRotation200JSONResponse) VisitShowRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowRotation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ShowRotation401JSONResponse) VisitShowRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowRotation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ShowRotation404JSONResponse) VisitShowRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowRotation500JSONResponse struct{ InternalJSONResponse }
+
+func (response ShowRotation500JSONResponse) VisitShowRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowRotation503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ShowRotation503JSONResponse) VisitShowRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseRotationRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Rotation    RotationID    `json:"rotation"`
+	Body        *PauseRotationJSONRequestBody
+}
+
+type PauseRotationResponseObject interface {
+	VisitPauseRotationResponse(w http.ResponseWriter) error
+}
+
+type PauseRotation200JSONResponse CredentialRotation
+
+func (response PauseRotation200JSONResponse) VisitPauseRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseRotation400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PauseRotation400JSONResponse) VisitPauseRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseRotation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response PauseRotation401JSONResponse) VisitPauseRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseRotation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PauseRotation404JSONResponse) VisitPauseRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseRotation409JSONResponse struct{ ConflictJSONResponse }
+
+func (response PauseRotation409JSONResponse) VisitPauseRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseRotation500JSONResponse struct{ InternalJSONResponse }
+
+func (response PauseRotation500JSONResponse) VisitPauseRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseRotation503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PauseRotation503JSONResponse) VisitPauseRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeRotationRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Rotation    RotationID    `json:"rotation"`
+	Body        *ResumeRotationJSONRequestBody
+}
+
+type ResumeRotationResponseObject interface {
+	VisitResumeRotationResponse(w http.ResponseWriter) error
+}
+
+type ResumeRotation200JSONResponse CredentialRotation
+
+func (response ResumeRotation200JSONResponse) VisitResumeRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeRotation400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ResumeRotation400JSONResponse) VisitResumeRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeRotation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ResumeRotation401JSONResponse) VisitResumeRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeRotation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ResumeRotation404JSONResponse) VisitResumeRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeRotation409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ResumeRotation409JSONResponse) VisitResumeRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeRotation500JSONResponse struct{ InternalJSONResponse }
+
+func (response ResumeRotation500JSONResponse) VisitResumeRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeRotation503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ResumeRotation503JSONResponse) VisitResumeRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetEnvironmentSettingsRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -86122,6 +87227,24 @@ type StrictServerInterface interface {
 	// RollbackRevision Stage an environment or key restore from one revision.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/{revision}/rollback)
 	RollbackRevision(ctx context.Context, request RollbackRevisionRequestObject) (RollbackRevisionResponseObject, error)
+	// ListRotations List an environment's scheduled credential rotations, disabled history included.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations)
+	ListRotations(ctx context.Context, request ListRotationsRequestObject) (ListRotationsResponseObject, error)
+	// CreateRotation Configure scheduled rotation of one PostgreSQL credential pair.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations)
+	CreateRotation(ctx context.Context, request CreateRotationRequestObject) (CreateRotationResponseObject, error)
+	// DeleteRotation Disable a rotation; the row stays as history.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation})
+	DeleteRotation(ctx context.Context, request DeleteRotationRequestObject) (DeleteRotationResponseObject, error)
+	// ShowRotation Show one scheduled credential rotation.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation})
+	ShowRotation(ctx context.Context, request ShowRotationRequestObject) (ShowRotationResponseObject, error)
+	// PauseRotation Pause a rotation so it stops being scheduled.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/pause)
+	PauseRotation(ctx context.Context, request PauseRotationRequestObject) (PauseRotationResponseObject, error)
+	// ResumeRotation Resume a paused rotation and recompute its next run.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume)
+	ResumeRotation(ctx context.Context, request ResumeRotationRequestObject) (ResumeRotationResponseObject, error)
 	// GetEnvironmentSettings Read an environment's protection state and reauthentication window.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/settings)
 	GetEnvironmentSettings(ctx context.Context, request GetEnvironmentSettingsRequestObject) (GetEnvironmentSettingsResponseObject, error)
@@ -95075,6 +96198,206 @@ func (sh *strictHandler) RollbackRevision(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RollbackRevisionResponseObject); ok {
 		if err := validResponse.VisitRollbackRevisionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListRotations operation middleware
+func (sh *strictHandler) ListRotations(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request ListRotationsRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRotations(ctx, request.(ListRotationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRotations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRotationsResponseObject); ok {
+		if err := validResponse.VisitListRotationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateRotation operation middleware
+func (sh *strictHandler) CreateRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request CreateRotationRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	var body CreateRotationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateRotation(ctx, request.(CreateRotationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateRotation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateRotationResponseObject); ok {
+		if err := validResponse.VisitCreateRotationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteRotation operation middleware
+func (sh *strictHandler) DeleteRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID, params DeleteRotationParams) {
+	var request DeleteRotationRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Rotation = rotation
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteRotation(ctx, request.(DeleteRotationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteRotation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteRotationResponseObject); ok {
+		if err := validResponse.VisitDeleteRotationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ShowRotation operation middleware
+func (sh *strictHandler) ShowRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
+	var request ShowRotationRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Rotation = rotation
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ShowRotation(ctx, request.(ShowRotationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ShowRotation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ShowRotationResponseObject); ok {
+		if err := validResponse.VisitShowRotationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PauseRotation operation middleware
+func (sh *strictHandler) PauseRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
+	var request PauseRotationRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Rotation = rotation
+
+	var body PauseRotationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PauseRotation(ctx, request.(PauseRotationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PauseRotation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PauseRotationResponseObject); ok {
+		if err := validResponse.VisitPauseRotationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResumeRotation operation middleware
+func (sh *strictHandler) ResumeRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
+	var request ResumeRotationRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Rotation = rotation
+
+	var body ResumeRotationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResumeRotation(ctx, request.(ResumeRotationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResumeRotation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResumeRotationResponseObject); ok {
+		if err := validResponse.VisitResumeRotationResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
