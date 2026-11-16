@@ -291,10 +291,12 @@ func TestPreauthenticationRefusalsAreBoundedAndSecretFree(t *testing.T) {
 		admissionStage := slices.Index(audit.RefusalStages(), audit.RefusalAdmission)
 		for _, kind := range []crypto.ArtifactType{crypto.ArtifactCLISession, crypto.ArtifactBrowserSession, crypto.ArtifactWorkload, crypto.ArtifactAutomation, crypto.ArtifactInstanceConn} {
 			t.Run(string(kind), func(t *testing.T) {
-				// The window seals into a durable audit event when it rolls over a minute,
-				// so start only with room left in the current one.
-				if left := 60 - time.Now().Second(); left < 10 {
-					time.Sleep(time.Duration(left) * time.Second)
+				// A window seals into durable events 60 s after its first refusal. The
+				// subtests share one window, so seal one that is about to expire
+				// before taking the baseline, not after the first refusal below.
+				if start := queryInt(t, db, "SELECT window_start FROM auth_refusal_window WHERE id = 1"); start != 0 && time.Now().Unix()-start > 45 {
+					expireRefusalWindow(t, db)
+					sealRefusals(t, service.NewRefusalSignals(db))
 				}
 				var before audit.RefusalWindow
 				if err := json.Unmarshal([]byte(queryString(t, db, "SELECT state FROM auth_refusal_window WHERE id = 1")), &before); err != nil {
