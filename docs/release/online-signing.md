@@ -83,6 +83,94 @@ target keeps the same migrations and schema). No command authors a stable edge:
 `scripts/release/nightly sources` verifies nightly directories only. Write it by
 hand from the verified earlier release's files and have it reviewed.
 
+**Security patch prompt.** After a Dependabot security update merges to main,
+the `security-patch-plan` workflow opens one issue, "Security patch release:
+maintainer action needed", with the exact commands for the release: the signed
+tag, then review, publish, trust synchronization and the Homebrew update. Use
+the commands in the latest version of that issue.
+
+- **Step 0: a person queues each security update.** GitHub's built-in token
+  cannot add a pull request to the merge queue, so nothing is merged
+  automatically. The issue lists every open Dependabot security pull request into
+  main that qualifies (alert-linked, opened by Dependabot, bound by numeric id,
+  verified Dependabot commits committed by GitHub, not a draft, admission check
+  not failed) with its head SHA; open each one and click **Merge when ready**.
+  One the merge queue removed after its newest commit is listed separately and
+  needs a person to find out why. The plan job needs only read permissions
+  (`pull-requests: read`, `checks: read`) for this.
+- **Patch or minor.** The plan first tries the next patch. When the generated
+  compatibility declaration differs from the latest stable release's (once a
+  promotion brings unreleased migrations, every patch is refused), the issue
+  proposes the next minor `X.(Y+1).0` instead and lists a checklist of
+  prerequisites that block tagging: read the declaration difference (the issue
+  embeds it, cut at 200 lines), review the edge modes against the compatibility
+  ADR, accept that everything on the commit ships. The release notes are step 2:
+  `publish` refuses the placeholder. A minor ships everything on its commit, not
+  only the security fix.
+- **The release-source edge.** For a patch as well as a minor, the plan checks
+  (before generating anything) that the target's `release/compatibility/sources.json`
+  carries a sound edge from the latest stable release per engine. When it does not,
+  the state is `blocked` and the issue names the missing edge and how to write it.
+  No supported command authors a stable edge today (`scripts/release/nightly
+  sources` reads verified nightly directories only); this is a known gap. The
+  recheck enforces the same check against the commit you tag, and it also runs the
+  fallback-channel gate that `release.yml` asserts.
+- **The recheck.** The first command, `security-patch-plan.sh recheck KIND
+  VERSION COMMIT`, is run with your own login on a clean checkout. It refuses,
+  tagging nothing, when the checkout is dirty or not at the planned commit,
+  when `main` moved (green tip), when the version is not the kind's successor of
+  the latest stable release, when trust is not synchronized, when a newer
+  security merge exists, when a security merge cannot be placed in main's history
+  or a fixed alert has no linked merge, when the release tools its commands run
+  differ between the commit and the main tip, when the release-source edge or the
+  fallback-channel record fails, or when a patch would carry a migration or a
+  compatibility change other than the release-source edge. It does not regenerate the compatibility
+  declaration (the plan did, for the planned commit; that needs scratch
+  PostgreSQL) and it cannot see what happens between the recheck and the tag push:
+  that window is seconds to minutes, and a merge that lands in it is caught only by
+  the ceremony's own build checks. It is a guard on stale instructions, not a lock.
+- **When the tip of main is not green**, the issue offers a signed tag of the
+  newest green commit that holds every pending security merge (after the signature
+  check) instead of `ceremony.sh build`, because `build` can only tag the tip.
+- **A failed tag build.** A pushed tag is never moved or recreated. If
+  `release-build` fails, inspect the run first. If it already created the draft
+  release, delete that draft before anything else: re-running the failed jobs
+  cannot create the release while it exists, and an outstanding stable draft stops
+  the trust synchronization check. Delete it with
+  `gh release delete vX.Y.Z --repo Hikyo-Org/Hikyo --yes` only after
+  `gh release view vX.Y.Z --repo Hikyo-Org/Hikyo --json isDraft -q .isDraft`
+  prints `true` (the issue prints both for the exact version), and never
+  pass `--cleanup-tag`, which deletes the tag. Then re-run its failed jobs: a failure before
+  the build (validation, docs, floor-bench, everything `build-artifacts` needs) is
+  almost always rerunnable. Only if the byte set cannot be completed safely is the
+  version burned, and you then use a new version; the issue repeats this and names
+  the failed run. When every `release-build` run of a tag has failed and no
+  published release exists for it (a draft does not count: the plan cannot list
+  drafts, `recheck` can, and both must pick the same version), the plan skips that
+  version (a patch or a minor, each noted on its own) and plans the next one. A
+  burned minor tag does not force a minor release: the patch is still planned
+  unless the compatibility declaration differs. If a re-run then succeeds, the skip
+  clears. A tag whose run succeeded is shown as staged, and a tag with an
+  unfinished run, or none, is shown with the run link and the way out.
+- **An unlinked fixed alert.** A Dependabot alert fixed after the latest stable
+  release without a linked merged pull request on main (a promotion that bumped
+  the dependency, or a fix by hand) raises a standing alarm, the plan offers no tag
+  command and `recheck` refuses. A linked pull request counts only when it passes
+  the same filter as the listing (Dependabot's numeric id, base `main`, a
+  `dependabot/` branch). Decide by hand whether the fix is released; to clear it,
+  publish the fix in a stable release through the ordinary ceremony (`ceremony.sh
+  build VERSION`),
+  because the alarm counts only alerts fixed after the latest stable release was
+  published.
+- **After the release.** The issue closes itself once the security merges are
+  released and trust records the latest release. The Homebrew tap update stays a
+  manual step (`ceremony.sh homebrew VERSION`), by owner decision of 2026-11-16,
+  which replaces the earlier "Homebrew follows the latest release automatically"
+  decision for now; no tap credential exists.
+
+The workflow tags and publishes nothing. It reaches main by promotion from dev and
+runs from main only, so no issue appears before a promotion has landed it.
+
 1. **Build the draft:** from clean current main, run
    `scripts/release/ceremony.sh build VERSION`. The helper requires green CI
    for the exact commit and synchronized published trust. Review the commit

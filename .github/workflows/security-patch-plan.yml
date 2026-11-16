@@ -1,0 +1,102 @@
+name: security-patch-plan
+
+# After a Dependabot security update reaches main, prepare the maintainer's tag:
+# decide the patch version and commit, run the floor, trust and compatibility
+# checks, and keep ONE issue with exact commands for the signed tag and the
+# existing release ceremony. It tags and publishes nothing, holds no App, token
+# or secret beyond the workflow token, and the issue job is the only writer.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "37 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: security-patch-plan
+  cancel-in-progress: false
+
+env:
+  GOFLAGS: -mod=readonly
+
+jobs:
+  plan:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # An estimate, not a measurement: a ready run downloads and verifies the
+    # previous release, starts scratch PostgreSQL and builds the compatibility
+    # generator uncached, and a red tip walks up to 60 commits for source proof.
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+      pull-requests: read
+      vulnerability-alerts: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      # The verifier of the previous release needs Cosign, as in the release build.
+      - name: Install pinned Cosign
+        run: |
+          mkdir -p "$HOME/.cosign"
+          ./scripts/ci/fetch-pinned-tool.sh cosign-linux-amd64 "$HOME/.cosign/cosign"
+          chmod +x "$HOME/.cosign/cosign"
+          echo "$HOME/.cosign" >>"$GITHUB_PATH"
+          "$HOME/.cosign/cosign" version
+      - name: Plan the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PLAN_OUT: ${{ runner.temp }}/security-patch-plan.json
+        run: ./scripts/release/security-patch-plan.sh plan
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: security-patch-plan
+          path: ${{ runner.temp }}/security-patch-plan.json
+          retention-days: 1
+
+  # Runs after a failed, cancelled or timed-out plan too, so the issue says that nothing
+  # was decided. A workflow GitHub rejects at parse time runs no job at all; the next
+  # successful run is the only repair for that.
+  issue:
+    needs: plan
+    if: ${{ always() && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: ${{ needs.plan.result == 'success' }}
+        with:
+          name: security-patch-plan
+          path: ${{ runner.temp }}/plan
+      - name: Open, update or close the single issue
+        if: ${{ needs.plan.result == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PLAN_DIR: ${{ runner.temp }}/plan
+        run: ./scripts/release/security-patch-plan.sh issue "$PLAN_DIR/security-patch-plan.json"
+      - name: Report a planning run that did not finish
+        if: ${{ needs.plan.result != 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: ./scripts/release/security-patch-plan.sh issue --failed "$RUN_URL"
