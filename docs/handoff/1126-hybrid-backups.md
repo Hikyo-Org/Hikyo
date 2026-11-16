@@ -147,6 +147,24 @@ Acceptance criteria, in the issue's order:
   X25519 identity against a hybrid archive gives `identity did not match any of
   the recipients`, and a hybrid recipient is refused at upgrade export. A v2
   receipt is `invalid backup receipt` to a v1-only parser (by source reading).
+* Downgrade drill (2026-11-16): the reader built from `b1274dc96`, the parent of
+  the #1158 merge, was given objects written by current code (a throwaway test
+  in a detached worktree, since removed). Every case refused loudly and none
+  decrypted or parsed silently:
+
+  | Old reader input | Result |
+  | --- | --- |
+  | hybrid identity on a hybrid archive | `backup identity is not a valid age X25519 identity` |
+  | X25519 identity on a hybrid archive | `identity did not match any of the recipients` |
+  | hybrid recipient to the old writer | `Validate` refuses the recipient before any output |
+  | `backup-receipt/v2` JSON to `ParseReceipt` | `invalid closed upgrade artifact` |
+  | X25519 archive written by current code, X25519 identity | opens (the classical format is unchanged) |
+
+  The reverse direction (current reader, frozen pre-change archives and the v1
+  receipt) is pinned in the tree by `internal/crypto/backup/testdata/legacy` and
+  `artifacts_test.go`. The drill ran at library level; a scheduled export under
+  an old binary with a stored hybrid policy was not run through the packaged CLI
+  (NOTRUN).
 * **Minimum capable reader**: the release containing this change, for every host
   that may restore a hybrid archive or verify a v2 receipt. No preflight
   mechanism enforces that floor; it is documented only (remaining work).
