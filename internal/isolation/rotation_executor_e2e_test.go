@@ -1279,3 +1279,69 @@ func TestRotationExecutorUnconfirmedDropBlocksEnvironmentDelete(t *testing.T) {
 		}
 	})
 }
+
+// ------------------------------------------------------------ delivery path
+
+// The rotation's publish is an ordinary revision: the delivery fetch cursor
+// moves exactly once per publish, the username key delivers the candidate role
+// name, and the revealed password is the one the provider was given. Nothing of
+// the password reaches an audit row, a run row or an effect row.
+func TestRotationExecutorDeliveryPath(t *testing.T) { forEngines(t, runRotationDeliveryPath) }
+
+func runRotationDeliveryPath(t *testing.T, db *store.DB) {
+	x := newRotExec(t, db)
+	rot := x.create(rotPasswordKey, rotUsernameKey)
+	del := deliverySvc(t, db)
+	reader := service.LocalPrincipal(alice)
+
+	before, err := del.FetchAs(tctx(t), reader, x.scope, "", service.FetchOptions{})
+	if err != nil {
+		t.Fatalf("fetch before: %v", err)
+	}
+	x.advance(24*time.Hour + time.Minute)
+	x.drain()
+	candidate := x.lastRun(rot.ID, "candidate_handle")
+	after, err := del.FetchAs(tctx(t), reader, x.scope, before.Cursor, service.FetchOptions{})
+	if err != nil {
+		t.Fatalf("fetch after: %v", err)
+	}
+	if after.Current || after.Cursor == before.Cursor {
+		t.Fatal("the publish did not move the delivery cursor")
+	}
+	again, err := del.FetchAs(tctx(t), reader, x.scope, after.Cursor, service.FetchOptions{})
+	if err != nil || !again.Current {
+		t.Fatalf("the cursor moved without a publish: current=%v err=%v", again.Current, err)
+	}
+	var delivered string
+	for _, k := range after.Keys {
+		if k.Name == "ROT_DB_USER" && k.Value != nil {
+			delivered = *k.Value
+		}
+	}
+	if delivered != candidate {
+		t.Fatalf("delivered username %q, want the candidate role %q", delivered, candidate)
+	}
+	auth := authService(t, db)
+	auth.ReauthWindow = 15 * time.Minute
+	values := &service.Values{DB: db, Keyring: probeKeyring(t, db), Auth: auth}
+	cell, err := values.Get(tctx(t), x.actor, x.scope, "ROT_DB_PASSWORD", true)
+	if err != nil {
+		t.Fatalf("reveal the delivered password: %v", err)
+	}
+	password := x.ctl.roles[candidate].password
+	if password == "" || cell.Value != password {
+		t.Fatal("the delivered password is not the one the provider holds for the candidate")
+	}
+
+	// The password lives in the key's value and nowhere else Hikyo wrote.
+	x.advance(time.Hour + time.Minute)
+	x.drain()
+	for _, q := range []string{
+		"SELECT payload FROM audit_tenant_events",
+		"SELECT candidate_handle || COALESCE(superseded_handle,'') || COALESCE(last_error,'') FROM rotation_runs",
+	} {
+		if strings.Contains(queryStrings(t, db, q), password) {
+			t.Fatalf("the delivered password appears in %q", q)
+		}
+	}
+}

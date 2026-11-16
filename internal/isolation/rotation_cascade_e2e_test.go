@@ -164,6 +164,13 @@ func runRotationEnvironmentDeleteBlockedByRuns(t *testing.T, db *store.DB) {
 	}
 	execRaw(t, db, `UPDATE rotation_runs SET phase='failed' WHERE id='run_blk_quarantine'`)
 
+	// A failed run that never published still blocks until its candidate drop is
+	// recorded as confirmed.
+	if err := envs.Delete(ctx, service.LocalPrincipal(alice), f.scope); !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
+		t.Fatalf("delete with an unconfirmed pre-publish failure = %v", err)
+	}
+	execRaw(t, db, `INSERT INTO rotation_effects (id, org_id, project_id, environment_id, run_id, kind, intent_audit_id, outcome_audit_id, outcome, created_at, finished_at) VALUES ('rfx_blk_drop','org_a','prj_a1','`+string(f.env)+`','run_blk_quarantine','drop_candidate','aud_blk_i','aud_blk_o','success',`+ts+`,`+ts+`)`)
+
 	// A failed run that had published may hold the live role.
 	blocked("failed", "5", "failed_published")
 	if err := envs.Delete(ctx, service.LocalPrincipal(alice), f.scope); !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
@@ -235,6 +242,7 @@ func runRotationDefinitionsApplyEnvironmentDelete(t *testing.T, db *store.DB) {
 
 	// Done history with run and effect rows is purged with the environment.
 	execRaw(t, db, `UPDATE rotation_runs SET phase='failed' WHERE id='run_rotenv_q'`)
+	execRaw(t, db, `INSERT INTO rotation_effects (id, org_id, project_id, environment_id, run_id, kind, intent_audit_id, outcome_audit_id, outcome, created_at, finished_at) VALUES ('rfx_rotenv_drop','org_a','`+project+`','`+f.env+`','run_rotenv_q','drop_candidate','aud_rotenv_di','aud_rotenv_do','success',`+ts+`,`+ts+`)`)
 	insertRun("run_rotenv_done", "done", "9")
 	execRaw(t, db, `INSERT INTO rotation_effects (id, org_id, project_id, environment_id, run_id, kind, intent_audit_id, created_at) VALUES ('rfx_rotenv','org_a','`+project+`','`+f.env+`','run_rotenv_done','mint','aud_rotenv',`+ts+`)`)
 	plan = planDefinitions(t, svc, f, raw)
