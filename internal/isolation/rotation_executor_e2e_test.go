@@ -682,3 +682,307 @@ func TestRotationExecutorCrashDuringRevoke(t *testing.T) {
 
 // rotationLeaseTermForTest mirrors the executor's two-minute claim lease.
 const rotationLeaseTermForTest = 2 * time.Minute
+
+// ------------------------------------------------------------ restore hazard
+
+// parkAuthority downgrades every non-read grant of the rotation's authority and
+// returns the function that puts them back.
+func (x *rotExec) parkAuthority() func() {
+	x.t.Helper()
+	rows := queryStrings(x.t, x.db, `SELECT id || '=' || capability || ';' FROM grants WHERE principal_id='usr_alice' AND capability <> 'read' ORDER BY id`)
+	var saved [][2]string
+	for _, pair := range strings.Split(strings.TrimSuffix(rows, ";"), ";") {
+		if id, capability, ok := strings.Cut(pair, "="); ok {
+			saved = append(saved, [2]string{id, capability})
+		}
+	}
+	execRaw(x.t, x.db, `UPDATE grants SET capability='read' WHERE principal_id='usr_alice' AND capability <> 'read'`)
+	return func() {
+		for _, g := range saved {
+			execRaw(x.t, x.db, `UPDATE grants SET capability='`+g[1]+`' WHERE id='`+g[0]+`'`)
+		}
+	}
+}
+
+func (x *rotExec) revisions() *service.Revisions {
+	kr := probeKeyring(x.t, x.db)
+	return &service.Revisions{DB: x.db, Keyring: kr, Auth: authService(x.t, x.db)}
+}
+
+func (x *rotExec) runRevision(runID string) int64 {
+	return queryInt(x.t, x.db, "SELECT published_revision FROM rotation_runs WHERE id='"+runID+"'")
+}
+
+// Rule 7. A revision restore puts the superseded value back: the revoke must
+// refuse loudly, drop nothing, and clear itself once the keys serve a version the
+// run published again.
+func TestRotationExecutorRestoreHazard(t *testing.T) { forEngines(t, runRotationRestoreHazard) }
+
+func runRotationRestoreHazard(t *testing.T, db *store.DB) {
+	x := newRotExec(t, db)
+	rot := x.create(rotPasswordKey, rotUsernameKey)
+	x.cycle(rot.ID)
+	role1 := x.lastRun(rot.ID, "candidate_handle")
+
+	x.advance(24 * time.Hour)
+	x.drain()
+	run2 := x.openRunID(rot.ID)
+	if got := x.phase(run2); got != "overlap" {
+		t.Fatalf("run 2 is %s, want overlap", got)
+	}
+	// A person publishes their own values over both keys: the delivered versions
+	// are no longer ones the run published (a restore or manual publish alike).
+	alice := service.LocalPrincipal(alice)
+	values := &service.Values{DB: db, Keyring: probeKeyring(t, db)}
+	var staged []string
+	for name, value := range map[string]string{"ROT_DB_USER": "manual_user", "ROT_DB_PASSWORD": "manual-pw-value"} {
+		change, err := values.Set(tctx(t), alice, x.scope, name, value, nil)
+		if err != nil {
+			t.Fatalf("stage %s: %v", name, err)
+		}
+		staged = append(staged, change.VersionID)
+	}
+	if _, err := x.revisions().PublishPlanned(tctx(t), alice, x.scope, service.PublishRequest{VersionIDs: staged}); err != nil {
+		t.Fatalf("manual publish: %v", err)
+	}
+
+	x.advance(time.Hour + time.Minute)
+	x.drain()
+	if got := x.phase(run2); got != "revoke_refused" {
+		t.Fatalf("phase with another value serving = %s, want revoke_refused", got)
+	}
+	if got := x.lastRun(rot.ID, "last_error"); got != "published_versions_changed" {
+		t.Fatalf("last_error = %q", got)
+	}
+	if !x.ctl.has(role1) || x.ctl.count("drop:"+role1) != 0 {
+		t.Fatal("the superseded role was dropped while it could be serving")
+	}
+	if x.effects("revoke", "success") != 0 {
+		t.Fatal("a refused revoke recorded a success")
+	}
+	// The hold keeps the rotation from starting another run over it.
+	x.advance(10 * time.Hour)
+	x.drain()
+	if got := x.phase(run2); got != "revoke_refused" || x.openRunID(rot.ID) != run2 {
+		t.Fatalf("hold released early: %s", got)
+	}
+
+	// Once the superseded role itself has expired, serving it again is no outage:
+	// the drop is harmless and the hold lets go.
+	x.advance(60 * time.Hour)
+	x.drain()
+	if got := x.phase(run2); got != "done" {
+		t.Fatalf("phase after the superseded role expired = %s, want done", got)
+	}
+	if x.ctl.has(role1) {
+		t.Fatal("the expired superseded role survived")
+	}
+}
+
+// ------------------------------------------------------------ abandon past publish
+
+// A run abandoned past its publish keeps its delivered credential live and still
+// owes the superseded role's revoke. The obligation loop settles it after the
+// delay, the candidate reconciler never touches the delivered role, and the
+// environment cannot be deleted until it is settled.
+func TestRotationExecutorAbandonPastPublish(t *testing.T) {
+	forEngines(t, runRotationAbandonPastPublish)
+}
+
+func runRotationAbandonPastPublish(t *testing.T, db *store.DB) {
+	x := newRotExec(t, db)
+	envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
+	rot := x.create(rotPasswordKey, rotUsernameKey)
+	x.cycle(rot.ID)
+	role1 := x.lastRun(rot.ID, "candidate_handle")
+	x.advance(24 * time.Hour)
+	x.drain()
+	run2 := x.openRunID(rot.ID)
+	role2 := x.lastRun(rot.ID, "candidate_handle")
+
+	if _, err := x.svc.Delete(tctx(t), x.actor, x.scope, service.RotationStateRequest{RotationID: rot.ID}); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("delete over a run in flight = %v", err)
+	}
+	if _, err := x.svc.Delete(tctx(t), x.actor, x.scope, service.RotationStateRequest{RotationID: rot.ID, Abandon: true}); err != nil {
+		t.Fatalf("delete --abandon: %v", err)
+	}
+	if got := x.phase(run2); got != "quarantine" {
+		t.Fatalf("abandoned run is %s, want quarantine", got)
+	}
+	if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type='rotation.quarantined' AND correlation_id='"+run2+"'"); n != 1 {
+		t.Fatalf("%d quarantine audits for the abandoned run", n)
+	}
+	if err := envs.Delete(tctx(t), service.LocalPrincipal(alice), x.scope); !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
+		t.Fatalf("environment delete with an owed revoke = %v", err)
+	}
+
+	// Before the delay nothing happens; after it the obligation loop drops the
+	// superseded role and only that role.
+	x.drain()
+	if !x.ctl.has(role1) {
+		t.Fatal("the superseded role was dropped before the overlap ended")
+	}
+	x.advance(time.Hour + time.Minute)
+	x.drain()
+	if got := x.phase(run2); got != "done" {
+		t.Fatalf("abandoned run after the delay = %s, want done", got)
+	}
+	if x.ctl.has(role1) {
+		t.Fatal("the superseded role survived the revoke obligation")
+	}
+	if !x.ctl.has(role2) || x.ctl.count("drop:"+role2) != 0 {
+		t.Fatal("the delivered candidate must survive both loops")
+	}
+	if err := envs.Delete(tctx(t), service.LocalPrincipal(alice), x.scope); err != nil {
+		t.Fatalf("environment delete after the obligation settled: %v", err)
+	}
+}
+
+// ------------------------------------------------------------ quarantine exits
+
+// A candidate drop with an unknown outcome quarantines the run loudly. It leaves
+// quarantine as `failed` once the provider reports the role absent, or once the
+// role's VALID UNTIL has passed and it can no longer authenticate.
+func TestRotationExecutorQuarantineExits(t *testing.T) {
+	for _, expiry := range []bool{false, true} {
+		name := "role absent"
+		if expiry {
+			name = "role expired"
+		}
+		t.Run(name, func(t *testing.T) {
+			forEngines(t, func(t *testing.T, db *store.DB) { runRotationQuarantineExit(t, db, expiry) })
+		})
+	}
+}
+
+func runRotationQuarantineExit(t *testing.T, db *store.DB, expiry bool) {
+	x := newRotExec(t, db)
+	rot := x.create(rotPasswordKey, rotUsernameKey)
+	x.advance(24*time.Hour + time.Minute)
+	x.crashOnce("create:after")
+	if !x.crashSweep("wrk_a") {
+		t.Fatal("no crash")
+	}
+	run := x.openRunID(rot.ID)
+	// The rotation must not start a fresh run underneath the test.
+	if _, err := x.transition(x.actor, "pause", rot.ID); err != nil {
+		t.Fatal(err)
+	}
+	x.ctl.set(func() { x.ctl.dropErr = dynamic.ErrAmbiguous })
+	x.advance(rotationLeaseTermForTest + time.Second)
+	x.requireSweep("wrk_b", true)
+	if got := x.phase(run); got != "quarantine" {
+		t.Fatalf("an unknown candidate drop left the run %s, want quarantine", got)
+	}
+	if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type='rotation.quarantined' AND correlation_id='"+run+"'"); n != 1 {
+		t.Fatalf("%d quarantine audits", n)
+	}
+	if x.effects("drop_candidate", "unknown") != 1 {
+		t.Fatal("the unknown drop is not recorded")
+	}
+
+	if expiry {
+		// The provider stays unreachable; only the role's expiry can settle it.
+		x.ctl.set(func() {
+			x.ctl.dropErr, x.ctl.statusErr = dynamic.ErrUnreachable, dynamic.ErrUnreachable
+			x.ctl.roles[x.lastRun(rot.ID, "candidate_handle")] = rotRole{}
+		})
+		x.advance(7 * time.Hour)
+		x.drain()
+		if got := x.phase(run); got != "quarantine" {
+			t.Fatalf("an unreachable provider moved the run to %s", got)
+		}
+		x.advance(60 * time.Hour)
+		x.drain()
+		if got := x.phase(run); got != "failed" {
+			t.Fatalf("an expired candidate left the run %s, want failed", got)
+		}
+		if got := x.lastRun(rot.ID, "last_error"); got != "expired" {
+			t.Fatalf("last_error = %q", got)
+		}
+		return
+	}
+	x.ctl.set(func() { x.ctl.dropErr = nil })
+	x.advance(7 * time.Hour)
+	x.drain()
+	if got := x.phase(run); got != "failed" {
+		t.Fatalf("a run whose candidate is absent = %s, want failed", got)
+	}
+	if x.effects("drop_candidate", "success") != 1 || x.effects("drop_candidate", "open") != 0 {
+		t.Fatal("the reconciler did not record a confirmed drop")
+	}
+}
+
+// ------------------------------------------------------------ multi-node takeover
+
+// A worker whose lease lapsed mid-CreateRole loses its fence when it settles. It
+// never publishes, drops its candidate only after seeing the run rolled back, and
+// the candidate reconciler removes a role neither of them could drop.
+func TestRotationExecutorOrphanedCandidate(t *testing.T) {
+	for _, dropFails := range []bool{false, true} {
+		name := "takeover drops"
+		if dropFails {
+			name = "reconciler drops"
+		}
+		t.Run(name, func(t *testing.T) {
+			forEngines(t, func(t *testing.T, db *store.DB) { runRotationOrphan(t, db, dropFails) })
+		})
+	}
+}
+
+func runRotationOrphan(t *testing.T, db *store.DB, dropFails bool) {
+	x := newRotExec(t, db)
+	rot := x.create(rotPasswordKey, rotUsernameKey)
+	x.advance(24*time.Hour + time.Minute)
+	if _, err := x.transition(x.actor, "pause", rot.ID); err != nil {
+		t.Fatal(err)
+	}
+	// Pausing before the run starts would stop it; resume at the same instant and
+	// use the hook to run the takeover while worker A is inside CreateRole.
+	if _, err := x.transition(x.actor, "resume", rot.ID); err != nil {
+		t.Fatal(err)
+	}
+	x.advance(24*time.Hour + time.Minute)
+	x.ctl.set(func() {
+		x.ctl.at = func(p, _ string) {
+			if p != "create:after" {
+				return
+			}
+			x.ctl.set(func() {
+				x.ctl.at = nil
+				if dropFails {
+					x.ctl.dropErr = dynamic.ErrUnreachable
+				}
+			})
+			x.advance(rotationLeaseTermForTest + time.Second)
+			if _, err := x.sweep("wrk_b"); err != nil {
+				t.Errorf("takeover sweep: %v", err)
+			}
+		}
+	})
+	if _, err := x.sweep("wrk_a"); err != nil {
+		t.Fatalf("the fence-losing worker: %v", err)
+	}
+	run := x.openRunID(rot.ID)
+	if got := x.phase(run); got != "failed" {
+		t.Fatalf("phase = %s, want failed", got)
+	}
+	if x.snapshots() != 0 {
+		t.Fatal("a fence-losing worker published")
+	}
+	if dropFails {
+		if len(x.ctl.names()) != 1 {
+			t.Fatalf("expected the undroppable candidate to remain, roles %v", x.ctl.names())
+		}
+		x.ctl.set(func() { x.ctl.dropErr = nil })
+		x.advance(7 * time.Hour)
+		x.worker = "wrk_b"
+		x.requireSweep("wrk_b", true)
+	}
+	if names := x.ctl.names(); len(names) != 0 {
+		t.Fatalf("candidate roles left behind: %v", names)
+	}
+	if x.effects("drop_candidate", "success") == 0 || x.effects("drop_candidate", "open") != 0 {
+		t.Fatal("no confirmed candidate drop")
+	}
+}

@@ -994,7 +994,7 @@ func (e *RotationExecutor) revoke(ctx context.Context, run store.RotationRun) er
 	if err != nil {
 		return err
 	}
-	if !restore.Holds {
+	if !restore.Holds && !e.supersededDead(ctx, provider, run.SupersededHandle, now) {
 		return hold(refusedPhase, rotCodeVersionsChanged)
 	}
 	intent, err := e.intent(run, "revoke", now)
@@ -1043,6 +1043,20 @@ func (e *RotationExecutor) revoke(ctx context.Context, run store.RotationRun) er
 	default:
 		return finish(audit.OutcomeFailure, rotCodeRevokeFailed, revokingPhase, backoff)
 	}
+}
+
+// supersededDead reports whether the superseded role can no longer authenticate:
+// it is gone, or its VALID UNTIL has passed. Only then can a value that serves it
+// again (the restore hold) no longer be an outage, so dropping it is harmless and
+// the hold stops blocking the rotation. A probe that fails leaves the hold.
+func (e *RotationExecutor) supersededDead(ctx context.Context, provider dynamic.Provider, handle string, now time.Time) bool {
+	opCtx, cancel := context.WithTimeout(ctx, e.providerDeadline())
+	defer cancel()
+	status, err := provider.RoleStatus(opCtx, handle)
+	if err != nil {
+		return false
+	}
+	return !status.Exists || (!status.ValidUntil.IsZero() && status.ValidUntil.Before(now))
 }
 
 // ---------------------------------------------------------------- extend
