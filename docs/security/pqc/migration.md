@@ -48,7 +48,7 @@ secret derived from the root key; the code accepts any nonempty secret up to
 1024 bytes, so a human passphrase has unverifiable entropy. The only rewrap
 caller migrates a legacy passphrase vault (`automatic_upgrade.go:372`) and
 preserves the record (`vault.go:155-157`). Drills use the vault's escrowed root
-(`automatic_upgrade.go:420`). `rotate-root-key` does not re-seal the vault.
+(`automatic_upgrade.go:420`). `rotate-root-key` re-seals the runtime-owned vault (#1154); the root-only host vault stays unreachable from the server and is not re-sealed.
 A root-sealed record cannot recover the root it is sealed with; a passphrase-sealed
 record can yield a lost root, which is another reason its entropy matters. The record is bounded by age's 16-byte
 file key. Consequences, stated for the owning child (#1126), not designed here:
@@ -61,11 +61,13 @@ file key. Consequences, stated for the owning child (#1126), not designed here:
 * Option (b), seal with the existing 256-bit envelope keyed from the root: lifts
   the record off the category-1 floor; new file format and reader-first
   migration.
-* Under either option `rotate-root-key` does not re-seal, so after it the new
-  root's secret fails with `ErrUnlock`, which is then read as a passphrase vault
-  (`automatic_upgrade.go:357-364`); the vault-generated identity and attestation
-  key are stranded. Requirement on #1126: re-seal during root rotation before any
-  flow here relies on rotating the root.
+* Before #1154 `rotate-root-key` did not re-seal, so after it the new root's
+  secret failed with `ErrUnlock`, which is then read as a passphrase vault
+  (`automatic_upgrade.go:357-364`), stranding the vault-generated identity and
+  attestation key. The runtime-owned vault is now re-sealed during rotation
+  (stage at prepare, commit at finalize), a hybrid identity included; the
+  root-only host vault of `sudo hikyo upgrade` is not reachable by the server
+  and is not re-sealed.
 * Either way a vault holding root escrow must not be used where identity and
   root must stay in separate domains.
 
