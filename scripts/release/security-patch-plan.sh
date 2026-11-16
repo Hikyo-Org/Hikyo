@@ -55,14 +55,19 @@ scratch_postgres_dsn='postgres://hikyo:release-schema-fixture@127.0.0.1:5432/hik
 work=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-security-patch.XXXXXX")
 # The scratch PostgreSQL container this run started, if any (start-ci-postgres.sh refuses to
 # replace an existing one, so a container that this run's start succeeded for is its own).
-# POSTGRES_STOP_BIN overrides the removal in the fixture.
+# POSTGRES_STOP_BIN overrides the removal in the fixture; override it together with
+# POSTGRES_BIN, or the removal targets hikyo-ci-postgres by name.
 : "${POSTGRES_STOP_BIN:=}"
 stop_postgres() {
 	[ -e "$work/postgres-owned" ] || return 0
 	rm -f "$work/postgres-owned"
 	if [ -n "$POSTGRES_STOP_BIN" ]; then "$POSTGRES_STOP_BIN" >/dev/null 2>&1 || true; else docker container rm --force hikyo-ci-postgres >/dev/null 2>&1 || true; fi
 }
-trap 'stop_postgres; rm -rf "$work"' EXIT HUP INT TERM
+trap 'stop_postgres; rm -rf "$work"' EXIT
+# A signal ends the run (through the EXIT cleanup) instead of continuing without $work.
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 trust="$repo_root/release/trust"
 # What the issue's commands run from the target commit's own tree: the recheck and
 # its helpers, the hooks, the signature check, the verifiers, and the Go packages
@@ -419,7 +424,7 @@ tag_checks() {
 	# Every attempt writes into its own directory: the candidate and the declaration are
 	# created with O_EXCL, and the patch attempt and the minor attempt run in one workspace.
 	attempt_dir="$work/attempt-$checks_version"
-	mkdir -p "$attempt_dir"
+	mkdir -p "$attempt_dir" || die "cannot create $attempt_dir"
 	go_stable candidate --trust "$trust" --version "$checks_version" --commit "$checks_commit" \
 		--out "$attempt_dir/candidate.json" || refuse "v$checks_version is not a valid successor of the signed latest stable release"
 	git_ cat-file -e "$checks_commit^{commit}" 2>/dev/null || refuse 'the commit is not on main history'
@@ -502,7 +507,7 @@ compat_checks() {
 	[ -f "$cc_tree/release/compatibility/sources.json" ] || die "$cc_commit carries no release/compatibility/sources.json"
 	POSTGRES_PASSWORD=release-schema-fixture POSTGRES_DB=hikyo_release_schema POSTGRES_HEALTH_RETRIES=12 \
 		"$POSTGRES_BIN" >/dev/null || die 'cannot start scratch PostgreSQL for the compatibility declaration'
-	: >"$work/postgres-owned"
+	: >"$work/postgres-owned" || die 'cannot record the scratch PostgreSQL this run started'
 	# The generator needs an empty scratch database, and the starter refuses to replace its
 	# container: each attempt starts one and removes it again before the next can start.
 	gen_rc=0

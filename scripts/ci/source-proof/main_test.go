@@ -493,8 +493,14 @@ func TestFinalReadbackRefusesChangedProofAndAuthority(t *testing.T) {
 				}
 				return nil, false
 			}
-			if _, err := resolveFixture(f, options{Mode: "dev", Commit: testSource}); err == nil {
+			_, err := resolveFixture(f, options{Mode: "dev", Commit: testSource})
+			if err == nil {
 				t.Fatal("accepted changed final proof")
+			}
+			// Moved authority is "could not look"; a changed proof is a definite "not green".
+			var read readError
+			if moved := scenario == "main" || scenario == "repository"; errors.As(err, &read) != moved {
+				t.Fatalf("%s: lookup class = %v, want %v (%v)", scenario, !moved, moved, err)
 			}
 		})
 	}

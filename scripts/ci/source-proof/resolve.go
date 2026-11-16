@@ -149,14 +149,15 @@ func (r *resolver) resolve(ctx context.Context, opt options) (proof, error) {
 		return empty, err
 	}
 	if err != nil || finalMain != r.mainHead {
-		return empty, errors.New("main authority moved during source verification; retry with a fresh snapshot")
+		// A moving main says nothing about the commit: "could not look", retried by the next run.
+		return empty, readError{errors.New("main authority moved during source verification; retry with a fresh snapshot")}
 	}
 	var finalRepo repository
 	if err := r.api.read(ctx, "repos/"+r.repo.FullName, &finalRepo); err != nil {
 		return empty, err
 	}
 	if finalRepo != r.repo {
-		return empty, errors.New("repository authority changed during source verification")
+		return empty, readError{errors.New("repository authority changed during source verification")}
 	}
 	return proof{
 		Schema: proofSchema, Repository: r.repo.FullName, RepositoryID: r.repo.ID,

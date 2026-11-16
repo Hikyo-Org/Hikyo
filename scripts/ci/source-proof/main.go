@@ -55,8 +55,9 @@ type options struct {
 	Latest                                                                  bool
 }
 
-// readError marks a failed or unreadable GitHub answer, as opposed to a proof
-// that is missing or wrong: "could not look" is not "not green".
+// readError marks a failed or unreadable GitHub answer, or authority that moved
+// mid-check, as opposed to a proof that is missing or wrong: "could not look" is
+// not "not green".
 type readError struct{ err error }
 
 func (e readError) Error() string { return e.err.Error() }
