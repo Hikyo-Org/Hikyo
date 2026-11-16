@@ -172,7 +172,7 @@ func TestRootRotationKeepsAHybridBackupIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer dir.Close()
+	defer func() { _ = dir.Close() }()
 	if err := publish(dir, fileName, ciphertext, true); err != nil {
 		t.Fatal(err)
 	}
