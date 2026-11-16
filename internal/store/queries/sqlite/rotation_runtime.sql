@@ -19,6 +19,14 @@ SELECT ro.id,ro.org_id,ro.project_id,ro.environment_id,ro.provider_id,ro.key_id,
  AND (SELECT COUNT(*) FROM rotation_runs x WHERE x.org_id=ro.org_id AND x.lease_owner IS NOT NULL AND x.lease_expires_at>sqlc.arg(now)) < 4
  ORDER BY ro.next_run_at,ro.id LIMIT 1;
 
+-- The live leases of an org, the number the per-org cap bounds. StartRun re-reads it
+-- inside the creation transaction (the due-rotation selection read it earlier, in
+-- another transaction).
+-- hikyo:reason RotationRuntime closed scheduler bounds concurrent runs per org: the count spans every project and environment of the one org the due rotation belongs to and carries no tenant data out.
+-- hikyo:instance-scoped
+-- name: RotationRtOrgLeaseCount :one
+SELECT COUNT(*) FROM rotation_runs WHERE org_id=sqlc.arg(chain_org) AND lease_owner IS NOT NULL AND lease_expires_at>sqlc.arg(now);
+
 -- name: RotationRtLockDueRotation :one
 SELECT id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,generation FROM rotations WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active' AND generation=sqlc.arg(expected_generation) AND next_run_at<=sqlc.arg(now);
 

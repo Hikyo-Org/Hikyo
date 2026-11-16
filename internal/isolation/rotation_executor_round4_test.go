@@ -1,11 +1,12 @@
 package isolation
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/service"
-
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
@@ -208,6 +209,102 @@ func TestRotationAbandonDelaysTheCandidateReconcileByAProviderDeadline(t *testin
 		x.drain()
 		if got := x.phase(run); got != "failed" {
 			t.Fatalf("run = %s after the provider deadline, want failed", got)
+		}
+	})
+}
+
+// The org lease cap is re-read inside the creation transaction: a start whose
+// selection saw room is refused once the org's leases filled in the meantime, and
+// succeeds again once they lapse.
+func TestRotationStartRunRechecksTheOrgLeaseCap(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		rot := x.create(rotPasswordKey, rotUsernameKey)
+		x.advance(24*time.Hour + time.Minute)
+		rt := store.NewRotationRuntime(db)
+		due, ok, err := rt.DueRotation(tctx(t), x.now())
+		if err != nil || !ok || due.ID != rot.ID {
+			t.Fatalf("due rotation = %+v, %v, %v", due, ok, err)
+		}
+		// Four other runs of the org take their leases after the selection.
+		stamp := func(at time.Time) string { return at.UTC().Format("2006-01-02T15:04:05.000000Z") }
+		for i := 0; i < store.RotationOrgLeaseCap; i++ {
+			rotID, runID := fmt.Sprintf("rot_cap_%d", i), fmt.Sprintf("run_cap_%d", i)
+			rawRotation(t, db, x.rotationFixture, rotID, fmt.Sprintf("rk_cap_%d", i))
+			rawRun(t, db, x.rotationFixture, runID, rotID, "overlap", "2", "", "2026-01-02T00:00:00.000000Z")
+			execRaw(t, db, fmt.Sprintf(`UPDATE rotation_runs SET lease_owner='wrk_other', lease_expires_at='%s' WHERE id='%s'`, stamp(x.now().Add(time.Minute)), runID))
+		}
+		start := func(runID string) bool {
+			t.Helper()
+			now := x.now()
+			_, started, err := rt.StartRun(tctx(t), due, store.StartRun{
+				RunID: runID, Worker: x.worker, Now: now, LeaseUntil: now.Add(2 * time.Minute), Trigger: "schedule",
+				CandidateHandle: "role_" + runID, CandidateValidUntil: now.Add(48 * time.Hour), ParkedUntil: now.Add(time.Hour),
+				Intent: store.RotationEffectIntent{EffectID: "ref_" + runID, Kind: "mint", Audit: store.RotationAudit{ID: "evt_" + runID, Type: "rotation.run_intent", Outcome: "intent", Payload: []byte("{}")}},
+			})
+			if err != nil {
+				t.Fatalf("StartRun: %v", err)
+			}
+			return started
+		}
+		if start("run_capped") {
+			t.Fatal("a run started past the org lease cap")
+		}
+		if got := queryInt(t, db, "SELECT COUNT(*) FROM rotation_runs WHERE id='run_capped'"); got != 0 {
+			t.Fatal("the refused start left a run row")
+		}
+		x.advance(2 * time.Minute) // the other leases lapse
+		if !start("run_allowed") {
+			t.Fatal("a start with room under the cap was refused")
+		}
+	})
+}
+
+// Two starts racing for the last slot under the org lease cap never both commit:
+// whichever loses is refused or fails its transaction, and the org ends at the cap.
+func TestRotationConcurrentStartsRespectTheOrgLeaseCap(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		x.advance(time.Hour)
+		rt := store.NewRotationRuntime(db)
+		stamp := func(at time.Time) string { return at.UTC().Format("2006-01-02T15:04:05.000000Z") }
+		for i := 0; i < store.RotationOrgLeaseCap-1; i++ {
+			rotID, runID := fmt.Sprintf("rot_held_%d", i), fmt.Sprintf("run_held_%d", i)
+			rawRotation(t, db, x.rotationFixture, rotID, fmt.Sprintf("rk_held_%d", i))
+			rawRun(t, db, x.rotationFixture, runID, rotID, "overlap", "2", "", "2026-01-02T00:00:00.000000Z")
+			execRaw(t, db, fmt.Sprintf(`UPDATE rotation_runs SET lease_owner='wrk_other', lease_expires_at='%s' WHERE id='%s'`, stamp(x.now().Add(time.Minute)), runID))
+		}
+		var dues []store.DueRotation
+		for _, id := range []string{"rot_race_a", "rot_race_b"} {
+			rawRotation(t, db, x.rotationFixture, id, "rk_"+id)
+			execRaw(t, db, fmt.Sprintf(`UPDATE rotations SET state='active', next_run_at='%s' WHERE id='%s'`, stamp(x.now().Add(-time.Minute)), id))
+			dues = append(dues, store.DueRotation{ID: id, OrgID: "org_a", ProjectID: "prj_a1", EnvironmentID: string(x.env), ProviderID: x.provider,
+				KeyID: "rk_" + id, UsernameKeyID: "rk_" + id + "_user", IntervalSeconds: 86400, RevocationDelaySeconds: 3600, AuthorityPrincipalID: "usr_alice", Generation: 1})
+		}
+		var wg sync.WaitGroup
+		gate := make(chan struct{})
+		started := make([]bool, len(dues))
+		for i, d := range dues {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-gate
+				now := x.now()
+				runID := fmt.Sprintf("run_race_%d", i)
+				_, ok, err := rt.StartRun(tctx(t), d, store.StartRun{
+					RunID: runID, Worker: fmt.Sprintf("wrk_%d", i), Now: now, LeaseUntil: now.Add(2 * time.Minute), Trigger: "schedule",
+					CandidateHandle: "role_" + runID, CandidateValidUntil: now.Add(48 * time.Hour), ParkedUntil: now.Add(time.Hour),
+					Intent: store.RotationEffectIntent{EffectID: "ref_" + runID, Kind: "mint", Audit: store.RotationAudit{ID: "evt_" + runID, Type: "rotation.run_intent", Outcome: "intent", Payload: []byte("{}")}},
+				})
+				// A serialization failure is the losing start's refusal; the cap is what is under test.
+				started[i] = ok && err == nil
+			}()
+		}
+		close(gate)
+		wg.Wait()
+		leased := queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM rotation_runs WHERE org_id='org_a' AND lease_owner IS NOT NULL AND lease_expires_at>'%s'`, stamp(x.now())))
+		if leased > store.RotationOrgLeaseCap {
+			t.Fatalf("%d leases live in the org, cap %d (started: %v)", leased, store.RotationOrgLeaseCap, started)
 		}
 	})
 }

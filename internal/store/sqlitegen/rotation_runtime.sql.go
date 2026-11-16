@@ -866,6 +866,27 @@ func (q *Queries) RotationRtOpenRunCount(ctx context.Context, arg RotationRtOpen
 	return count, err
 }
 
+const rotationRtOrgLeaseCount = `-- name: RotationRtOrgLeaseCount :one
+SELECT COUNT(*) FROM rotation_runs WHERE org_id=?1 AND lease_owner IS NOT NULL AND lease_expires_at>?2
+`
+
+type RotationRtOrgLeaseCountParams struct {
+	ChainOrg string
+	Now      sql.NullString
+}
+
+// The live leases of an org, the number the per-org cap bounds. StartRun re-reads it
+// inside the creation transaction (the due-rotation selection read it earlier, in
+// another transaction).
+// hikyo:reason RotationRuntime closed scheduler bounds concurrent runs per org: the count spans every project and environment of the one org the due rotation belongs to and carries no tenant data out.
+// hikyo:instance-scoped
+func (q *Queries) RotationRtOrgLeaseCount(ctx context.Context, arg RotationRtOrgLeaseCountParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, rotationRtOrgLeaseCount, arg.ChainOrg, arg.Now)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const rotationRtOwnPublished = `-- name: RotationRtOwnPublished :one
 SELECT published_revision FROM rotation_runs WHERE rotation_id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND generation=?5 AND published_revision IS NOT NULL ORDER BY published_revision DESC LIMIT 1
 `

@@ -3388,6 +3388,13 @@
   },
   {
     "engine": "postgres",
+    "name": "RotationRtOrgLeaseCount",
+    "annotation": "instance-scoped",
+    "hash": "30b602cf10495555be085d1652700de5cb40516491700a1d99059127827e8fd9",
+    "reason": "RotationRuntime closed scheduler bounds concurrent runs per org: the count spans every project and environment of the one org the due rotation belongs to and carries no tenant data out."
+  },
+  {
+    "engine": "postgres",
     "name": "RotationUnconfirmedFailedRunRotations",
     "annotation": "instance-scoped",
     "hash": "0d929ed2569aa903ae06286d3bbc85d3cb5dc2a62c5f66106725d3799a78629b",
@@ -7154,6 +7161,13 @@
     "annotation": "instance-scoped",
     "hash": "049d94355f99b958334a09e0bdc0b8ef22d51a10a8dfe0270b5b6815a96db31f",
     "reason": "The superseded role is minted by another run of the same org, project and environment chain (joined on every chain column), under a rotation of possibly another provider; the read is fenced on the claimed run's lease and chain, and the extend-uncertainty count is a chain-bound subquery."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RotationRtOrgLeaseCount",
+    "annotation": "instance-scoped",
+    "hash": "30b602cf10495555be085d1652700de5cb40516491700a1d99059127827e8fd9",
+    "reason": "RotationRuntime closed scheduler bounds concurrent runs per org: the count spans every project and environment of the one org the due rotation belongs to and carries no tenant data out."
   },
   {
     "engine": "sqlite",

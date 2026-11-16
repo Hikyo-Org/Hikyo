@@ -195,6 +195,7 @@ type rotationRuntimeQueries interface {
 	providerMaterial(ctx context.Context, run RotationRun, now time.Time) (LeaseProviderMaterial, error)
 	supersededRole(ctx context.Context, run RotationRun, now time.Time) (SupersededRole, error)
 	openRunCount(ctx context.Context, chain domain.Scope, rotationID string) (int64, error)
+	orgLeaseCount(ctx context.Context, org domain.OrgID, now time.Time) (int64, error)
 	openEffect(ctx context.Context, chain domain.Scope, runID string) (id, kind string, err error)
 	ownPublished(ctx context.Context, chain domain.Scope, rotationID string, generation int64) (int64, error)
 	cycleStart(ctx context.Context, chain domain.Scope, rotationID string, generation int64) (time.Time, error)
@@ -226,6 +227,10 @@ func (r *RotationRuntime) DueRotation(ctx context.Context, now time.Time) (DueRo
 	return d, err == nil, err
 }
 
+// RotationOrgLeaseCap is the most runs of one org that may hold a live lease at
+// once. The due-rotation and claim queries carry the same number as a literal.
+const RotationOrgLeaseCap = 4
+
 // StartRun creates the run in `minting` for a due rotation in ONE transaction:
 // it locks the rotation row (SKIP LOCKED, so a second worker moves on), asserts
 // the rotation is still active at the generation the scheduler saw and holds no
@@ -252,6 +257,18 @@ func (r *RotationRuntime) StartRun(ctx context.Context, d DueRotation, s StartRu
 			return err
 		}
 		if open != 0 {
+			return nil
+		}
+		// The org's lease cap, re-read here: the selection read it in another
+		// transaction, so concurrent starts could each have seen room. SQLite runs
+		// one writer at a time and PostgreSQL runs this transaction SERIALIZABLE, so
+		// two starts that both count below the cap cannot both commit (the loser fails
+		// with a serialization error and the rotation is deferred and retried).
+		leased, err := q.orgLeaseCount(ctx, chain.Org, s.Now)
+		if err != nil {
+			return err
+		}
+		if leased >= RotationOrgLeaseCap {
 			return nil
 		}
 		superseded, _, err := q.latestPublished(ctx, chain, locked.KeyID)

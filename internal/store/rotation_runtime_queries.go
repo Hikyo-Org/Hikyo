@@ -159,6 +159,10 @@ func (q pgRotationRuntimeQueries) openRunCount(ctx context.Context, c domain.Sco
 	return q.q.RotationRtOpenRunCount(ctx, pggen.RotationRtOpenRunCountParams{RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env)})
 }
 
+func (q pgRotationRuntimeQueries) orgLeaseCount(ctx context.Context, org domain.OrgID, now time.Time) (int64, error) {
+	return q.q.RotationRtOrgLeaseCount(ctx, pggen.RotationRtOrgLeaseCountParams{ChainOrg: string(org), Now: pgRequiredTime(now)})
+}
+
 func (q pgRotationRuntimeQueries) openEffect(ctx context.Context, c domain.Scope, runID string) (string, string, error) {
 	r, err := q.q.RotationRtOpenEffect(ctx, pggen.RotationRtOpenEffectParams{RunID: runID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env)})
 	return r.ID, r.Kind, err
@@ -275,6 +279,10 @@ func (q sqliteRotationRuntimeQueries) supersededRole(ctx context.Context, run Ro
 
 func (q sqliteRotationRuntimeQueries) openRunCount(ctx context.Context, c domain.Scope, rotationID string) (int64, error) {
 	return q.q.RotationRtOpenRunCount(ctx, sqlitegen.RotationRtOpenRunCountParams{RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env)})
+}
+
+func (q sqliteRotationRuntimeQueries) orgLeaseCount(ctx context.Context, org domain.OrgID, now time.Time) (int64, error) {
+	return q.q.RotationRtOrgLeaseCount(ctx, sqlitegen.RotationRtOrgLeaseCountParams{ChainOrg: string(org), Now: sql.NullString{String: fixedStamp(now), Valid: true}})
 }
 
 func (q sqliteRotationRuntimeQueries) openEffect(ctx context.Context, c domain.Scope, runID string) (string, string, error) {

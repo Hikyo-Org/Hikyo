@@ -923,6 +923,18 @@ Round 4 review additions (CodeRabbit threads on PR #1426):
     done settle make no provider call a late candidate could orphan.
     `TestRotationAbandonDelaysTheCandidateReconcileByAProviderDeadline` pins it.
 
+36. `StartRun` re-reads the org's live-lease count (`RotationRtOrgLeaseCount`, cap
+    `RotationOrgLeaseCap` = 4) inside the creation transaction and starts nothing at the
+    cap; the rotation stays due and is selected again. The selection read stays as the
+    cheap pre-check. Race safety: SQLite runs one writer at a time; the PostgreSQL
+    transaction is SERIALIZABLE (`dbTransaction`), so two starts that both counted below
+    the cap form a read-write cycle and the second to commit fails with a serialization
+    error, which `startRun` already treats as a start failure and defers
+    (`deferDue`). `TestRotationStartRunRechecksTheOrgLeaseCap` fails before the fix;
+    `TestRotationConcurrentStartsRespectTheOrgLeaseCap` pins the invariant (at most 4
+    live leases) but cannot force the interleaving, so it also passes when the starts
+    happen to serialize.
+
 ### Owner decisions on the S2a review (resolved)
 
 - A. A restore never clears the restore-hazard hold except through expiry or absence of
