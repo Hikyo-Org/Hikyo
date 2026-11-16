@@ -118,7 +118,7 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 			return err
 		}
 		if out.NextAfter != nil {
-			fmt.Fprintf(ios.Stderr, "more rotations follow; continue with --after %s\n", *out.NextAfter)
+			_, _ = fmt.Fprintf(ios.Stderr, "more rotations follow; continue with --after %s\n", *out.NextAfter)
 		}
 		return nil
 	case "show":
@@ -223,6 +223,6 @@ func noteCredentialExpiry(ios IO, r apigen.CredentialRotation, verb string) {
 	if r.CredentialExpiresAt == nil {
 		return
 	}
-	fmt.Fprintf(ios.Stderr, "rotation %s %s; the credential already delivered stays valid until %s\n",
+	_, _ = fmt.Fprintf(ios.Stderr, "rotation %s %s; the credential already delivered stays valid until %s\n",
 		r.Id, verb, r.CredentialExpiresAt.UTC().Format(time.RFC3339))
 }

@@ -477,9 +477,13 @@ func (q sqliteRotationQueries) list(ctx context.Context, chain domain.Scope, lq 
 }
 
 func (q pgRotationQueries) list(ctx context.Context, chain domain.Scope, lq RotationListQuery) ([]RotationRecord, error) {
+	pageLimit, err := checkedPGInt32(int64(lq.Limit))
+	if err != nil {
+		return nil, err
+	}
 	var rows []pggen.RotationGetRow
 	if lq.IncludeDisabled {
-		all, err := q.q.RotationListAll(ctx, pggen.RotationListAllParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), AfterID: lq.After, PageLimit: int32(lq.Limit)})
+		all, err := q.q.RotationListAll(ctx, pggen.RotationListAllParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), AfterID: lq.After, PageLimit: pageLimit})
 		if err != nil {
 			return nil, err
 		}
@@ -487,7 +491,7 @@ func (q pgRotationQueries) list(ctx context.Context, chain domain.Scope, lq Rota
 			rows = append(rows, pggen.RotationGetRow(c))
 		}
 	} else {
-		live, err := q.q.RotationList(ctx, pggen.RotationListParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), AfterID: lq.After, PageLimit: int32(lq.Limit)})
+		live, err := q.q.RotationList(ctx, pggen.RotationListParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), AfterID: lq.After, PageLimit: pageLimit})
 		if err != nil {
 			return nil, err
 		}
@@ -621,11 +625,15 @@ func (q sqliteRotationQueries) blockingRunRotations(ctx context.Context, chain d
 }
 
 func (q pgRotationQueries) blockingRunRotations(ctx context.Context, chain domain.Scope, limit int) ([]string, error) {
-	open, err := q.q.RotationBlockingRunRotations(ctx, pggen.RotationBlockingRunRotationsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), PageLimit: int32(limit)})
+	pageLimit, err := checkedPGInt32(int64(limit))
 	if err != nil {
 		return nil, err
 	}
-	failed, err := q.q.RotationPublishedFailedRunRotations(ctx, pggen.RotationPublishedFailedRunRotationsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), PageLimit: int32(limit)})
+	open, err := q.q.RotationBlockingRunRotations(ctx, pggen.RotationBlockingRunRotationsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), PageLimit: pageLimit})
+	if err != nil {
+		return nil, err
+	}
+	failed, err := q.q.RotationPublishedFailedRunRotations(ctx, pggen.RotationPublishedFailedRunRotationsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), PageLimit: pageLimit})
 	if err != nil {
 		return nil, err
 	}
