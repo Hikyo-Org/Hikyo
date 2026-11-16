@@ -74,7 +74,7 @@ const (
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	if err := execute(ctx, os.Args[1:], os.Stdout); err != nil {
+	if err := execute(ctx, os.Args[1:], os.Stdout, nil); err != nil {
 		fmt.Fprintln(os.Stderr, "source proof:", err)
 		os.Exit(1)
 	}
@@ -82,8 +82,11 @@ func main() {
 
 // execute runs the proof. When --failure-class names a file, a failed GitHub read
 // writes lookupFailedClass to it and a definite verdict (the proof is missing or
-// wrong) writes notGreenClass; a refusal of the arguments writes nothing.
-func execute(ctx context.Context, args []string, stdout io.Writer) (err error) {
+// wrong) writes notGreenClass; a refusal of the arguments writes nothing. Once the
+// proof has passed, a failure to write the receipt or the outputs is not a verdict
+// about the commit and is classified as a lookup failure. A nil api reads GitHub
+// through the gh CLI; tests pass their own.
+func execute(ctx context.Context, args []string, stdout io.Writer, api reader) (err error) {
 	var opt options
 	flags := flag.NewFlagSet("source-proof", flag.ContinueOnError)
 	flags.StringVar(&opt.Repository, "repository", "", "canonical OWNER/REPO")
@@ -97,12 +100,12 @@ func execute(ctx context.Context, args []string, stdout io.Writer) (err error) {
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	decided := false
+	decided, passed := false, false
 	defer func() {
 		var read readError
 		switch {
 		case err == nil || opt.FailureClass == "":
-		case errors.As(err, &read):
+		case errors.As(err, &read), passed:
 			_ = os.WriteFile(opt.FailureClass, []byte(lookupFailedClass+"\n"), 0o600)
 		case decided:
 			_ = os.WriteFile(opt.FailureClass, []byte(notGreenClass+"\n"), 0o600)
@@ -113,16 +116,20 @@ func execute(ctx context.Context, args []string, stdout io.Writer) (err error) {
 		(opt.Authority != "" && !shaPattern.MatchString(opt.Authority)) {
 		return errors.New("require --repository OWNER/REPO --mode main|dev and either --commit SHA or --mode dev --latest")
 	}
-	gh := os.Getenv("GH_BIN")
-	if gh == "" {
-		gh = "gh"
+	if api == nil {
+		gh := os.Getenv("GH_BIN")
+		if gh == "" {
+			gh = "gh"
+		}
+		api = githubCLI{binary: gh}
 	}
-	r := resolver{api: githubCLI{binary: gh}, requested: opt.Repository}
+	r := resolver{api: api, requested: opt.Repository}
 	decided = true
 	verified, err := r.resolve(ctx, opt)
 	if err != nil {
 		return err
 	}
+	passed = true
 	data, err := json.Marshal(verified, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		return err

@@ -260,8 +260,9 @@ prev=
 for arg; do [ "$prev" != --out ] || out=$arg; prev=$arg; done
 case "$*" in
 	*'stable preflight '*) [ "${STABLE:-}" != untrusted ] || exit 1 ;;
-	*'stable candidate '*) [ "${STABLE:-}" != badcandidate ] || exit 1; printf '{}\n' >"$out" ;;
-	*'release/compatibility '*) [ "${STABLE:-}" != nodecl ] || exit 1; printf '{}\n' >"$out" ;;
+	# Like the real writers (O_EXCL): an output file that exists is an error.
+	*'stable candidate '*) [ "${STABLE:-}" != badcandidate ] || exit 1; [ ! -e "$out" ] || { printf 'open %s: file exists\n' "$out" >&2; exit 1; }; printf '{}\n' >"$out" ;;
+	*'release/compatibility '*) [ "${STABLE:-}" != nodecl ] || exit 1; [ ! -e "$out" ] || { printf 'open %s: file exists\n' "$out" >&2; exit 1; }; printf '{}\n' >"$out" ;;
 	*) printf 'unexpected go call: %s\n' "$*" >&2; exit 2 ;;
 esac
 SH
@@ -326,17 +327,26 @@ case "${FALLBACK:-ok}" in
 	*) echo 'sh: node: not found' >&2; exit 127 ;;
 esac
 SH
+# Like start-ci-postgres.sh: it refuses to replace an existing container and leaves its own running.
 cat >"$scratch/bin/postgres" <<'SH'
 #!/bin/sh
+[ ! -e "$FIXTURE/pg-container" ] || { echo 'CI PostgreSQL refuses to replace an existing container' >&2; exit 1; }
 : >"$FIXTURE/postgres-started"
 [ "${POSTGRES:-}" != fail ] || exit 1
+: >"$FIXTURE/pg-container"
+echo start >>"$FIXTURE/pg-log"
+SH
+cat >"$scratch/bin/postgres-stop" <<'SH'
+#!/bin/sh
+rm -f "$FIXTURE/pg-container"
+echo stop >>"$FIXTURE/pg-log"
 SH
 chmod +x "$scratch/bin/"*
 export GH_BIN="$scratch/bin/gh" GO_BIN="$scratch/bin/go" GREEN_BIN="$scratch/bin/green" SYNCED_BIN="$scratch/bin/synced" \
-	COMPAT_BIN="$scratch/bin/compat" POSTGRES_BIN="$scratch/bin/postgres" FALLBACK_BIN="$scratch/bin/fallback" HIKYO_REPO_ROOT="$repo"
+	COMPAT_BIN="$scratch/bin/compat" POSTGRES_BIN="$scratch/bin/postgres" FALLBACK_BIN="$scratch/bin/fallback" POSTGRES_STOP_BIN="$scratch/bin/postgres-stop" HIKYO_REPO_ROOT="$repo"
 echo '[[]]' >"$scratch/issues.json"
 
-reset() { rm -f "$scratch/last-body" "$scratch/signature-calls" "$scratch/calls" "$scratch/postgres-started" "$scratch/created" "$scratch/edited" "$scratch/closed" "$scratch/plan.json"; : >"$scratch/calls"; }
+reset() { rm -f "$scratch/last-body" "$scratch/signature-calls" "$scratch/calls" "$scratch/postgres-started" "$scratch/pg-container" "$scratch/pg-log" "$scratch/created" "$scratch/edited" "$scratch/closed" "$scratch/plan.json"; : >"$scratch/calls"; }
 # plan NAME WANT_STATUS VAR=value...: run the plan against GITHUB_SHA (default c4).
 plan() {
 	name=$1 want=$2
@@ -512,6 +522,10 @@ plan 'a trust helper whose release read fails stops the run, it is not a refusal
 if [ -s "$scratch/plan.json" ]; then fail 'a failed release read must not write a plan'; fi
 plan 'the real trust helper refuses an outstanding draft as a blocked plan' 0 SYNCED_BIN="$scratch/bin/synced-real" REAL_ROOT="$real_root"
 has 'real helper' 'trust is not synchronized'
+# A helper that cannot even create its scratch file did not look: exit 2, never the refusal's exit 1.
+helper_status=0
+TMPDIR="$scratch/no-such-directory" GH_BIN="$scratch/bin/gh" "$real_root/scripts/release/require-synced-trust.sh" o/r "$repo/release/trust/metadata.json" >/dev/null 2>&1 || helper_status=$?
+[ "$helper_status" = 2 ] || fail "the trust helper must exit 2 when it cannot create its scratch file (got $helper_status)"
 plan 'untrusted stable trust' 0 STABLE=untrusted
 has 'untrusted' 'stable trust does not authenticate'
 plan 'candidate refused' 0 STABLE=badcandidate
@@ -522,6 +536,10 @@ expect_action 'minor' open
 has minor '## Security release v1.2.0 (minor) is ready to tag once you have confirmed its prerequisites'
 has minor "Planned release:** \`v1.2.0\` at \`$c4\`"
 has minor 'A patch cannot ship it: the compatibility declaration differs from the one v1.1.0 published'
+# Two attempts (the patch, then the minor) run in one workspace: each gets its own output files and its own scratch
+# database, and the run leaves no container behind. The fake writers and the fake starter refuse what the real ones refuse.
+[ "$(grep -c '^start$' "$scratch/pg-log")" = 2 ] && [ "$(grep -c '^stop$' "$scratch/pg-log")" = 2 ] || { cat "$scratch/pg-log" >&2; fail 'each attempt starts and removes its own scratch PostgreSQL'; }
+[ ! -e "$scratch/pg-container" ] || fail 'the plan leaves its scratch PostgreSQL container running'
 has minor '### Prerequisites that block tagging (a minor release)'
 lacks minor 'Dispatch the `release-compatibility-check` workflow'
 has minor '- [ ] Read the difference below, which the planning run generated for'
@@ -586,6 +604,7 @@ lacks 'incomplete minor' '(minor) is ready'
 no_tag_commands 'incomplete minor'
 plan 'a compatibility lookup failure stops the run' 1 COMPAT=lookup
 plan 'a generator failure stops the run' 1 STABLE=nodecl
+[ ! -e "$scratch/pg-container" ] || fail 'a failed generator still removes the scratch PostgreSQL container'
 plan 'a scratch database that does not start stops the run' 1 POSTGRES=fail
 plan 'a stray higher stable tag' 0 TAGS_EXTRA=v1.1.2
 has 'stray tag' 'a stable tag at or above v1.1.1 already exists'

@@ -8,6 +8,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -614,7 +615,7 @@ func TestCommandRejectsInvalidSelectorsBeforeProviderAccess(t *testing.T) {
 		{"--repository", "example/hikyo", "--mode", "dev", "--commit", "dev"},
 		{"--repository", "example/hikyo", "--mode", "dev", "--latest", "--authority-commit", "main"},
 	} {
-		if err := execute(context.Background(), args, os.Stdout); err == nil {
+		if err := execute(context.Background(), args, os.Stdout, nil); err == nil {
 			t.Fatalf("accepted invalid selectors %v", args)
 		}
 	}
@@ -631,7 +632,7 @@ func TestFailedReadIsClassifiedForTheCaller(t *testing.T) {
 	t.Setenv("GH_BIN", stub)
 	class := filepath.Join(dir, "class")
 	args := []string{"--repository", "example/hikyo", "--mode", "main", "--commit", testSource, "--failure-class", class}
-	if err := execute(context.Background(), args, os.Stdout); err == nil {
+	if err := execute(context.Background(), args, os.Stdout, nil); err == nil {
 		t.Fatal("an unreadable GitHub answer was accepted")
 	}
 	if got, err := os.ReadFile(class); err != nil || string(got) != "lookup\n" {
@@ -645,7 +646,7 @@ func TestFailedReadIsClassifiedForTheCaller(t *testing.T) {
 	t.Setenv("GH_BIN", empty)
 	verdict := filepath.Join(dir, "verdict")
 	args = []string{"--repository", "example/hikyo", "--mode", "main", "--commit", testSource, "--failure-class", verdict}
-	if err := execute(context.Background(), args, os.Stdout); err == nil {
+	if err := execute(context.Background(), args, os.Stdout, nil); err == nil {
 		t.Fatal("an answer without a proof was accepted")
 	}
 	if got, err := os.ReadFile(verdict); err != nil || string(got) != "not-green\n" {
@@ -654,11 +655,90 @@ func TestFailedReadIsClassifiedForTheCaller(t *testing.T) {
 	// A rule that says no (here: invalid selectors) is not a lookup failure.
 	other := filepath.Join(dir, "other")
 	bad := []string{"--repository", "example/hikyo", "--mode", "main", "--commit", "main", "--failure-class", other}
-	if err := execute(context.Background(), bad, os.Stdout); err == nil {
+	if err := execute(context.Background(), bad, os.Stdout, nil); err == nil {
 		t.Fatal("invalid selectors were accepted")
 	}
 	if _, err := os.Stat(other); err == nil {
 		t.Fatal("a refusal that never read GitHub must not be classified as a failed read")
+	}
+}
+
+// failingRead fails one chosen read of a fixture with a read error, as a flaky GitHub would.
+type failingRead struct {
+	inner    reader
+	endpoint string
+	nth      int
+	seen     int
+}
+
+func (f *failingRead) read(ctx context.Context, endpoint string, target any) error {
+	if strings.HasSuffix(endpoint, f.endpoint) {
+		f.seen++
+		if f.seen == f.nth {
+			return readError{errors.New("flaky GitHub")}
+		}
+	}
+	return f.inner.read(ctx, endpoint, target)
+}
+
+// A read that fails while the proof is re-checked is "could not look", never "not green".
+func TestFailedRereadsAreLookupFailures(t *testing.T) {
+	producer := mainProducers[0]
+	for _, endpoint := range []string{"actions/workflows/" + producer.File, "git/ref/heads/main"} {
+		counter := &failingRead{inner: newFixture(t, "main", producer), endpoint: endpoint}
+		if _, err := (&resolver{api: counter, requested: "example/hikyo"}).resolve(context.Background(), options{Mode: "main", Commit: testSource, Authority: testMain, Repository: "example/hikyo"}); err != nil {
+			t.Fatal(err)
+		}
+		// The last read of that endpoint is the final re-selection or the final main-head check.
+		last := counter.seen
+		if last < 2 {
+			t.Fatalf("%s is read %d times; the final re-check is not exercised", endpoint, last)
+		}
+		failing := &failingRead{inner: newFixture(t, "main", producer), endpoint: endpoint, nth: last}
+		class := filepath.Join(t.TempDir(), "class")
+		args := []string{"--repository", "example/hikyo", "--mode", "main", "--commit", testSource, "--authority-commit", testMain, "--failure-class", class}
+		if err := execute(context.Background(), args, os.Stdout, failing); err == nil {
+			t.Fatalf("%s: a failed final read was accepted", endpoint)
+		}
+		if got, err := os.ReadFile(class); err != nil || string(got) != "lookup\n" {
+			t.Fatalf("%s: a failed final read must be classified as a lookup failure: %q %v", endpoint, got, err)
+		}
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("disk full") }
+
+// Once the proof has passed, a failure to write its receipt or outputs says nothing about the commit.
+func TestOutputFailuresAfterAPassingProofAreLookupFailures(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "no-such-directory", "out")
+	for name, extra := range map[string][]string{
+		"receipt":       {"--output", missing},
+		"github output": {"--github-output", missing},
+		"stdout":        nil,
+	} {
+		class := filepath.Join(t.TempDir(), "class")
+		args := append([]string{"--repository", "example/hikyo", "--mode", "main", "--commit", testSource, "--authority-commit", testMain, "--failure-class", class}, extra...)
+		var stdout io.Writer = io.Discard
+		if name == "stdout" {
+			stdout = failingWriter{}
+		}
+		if err := execute(context.Background(), args, stdout, newFixture(t, "main", mainProducers[0])); err == nil {
+			t.Fatalf("%s: a failed write was accepted", name)
+		}
+		if got, err := os.ReadFile(class); err != nil || string(got) != "lookup\n" {
+			t.Fatalf("%s: a failed write after a passing proof must be classified as a lookup failure: %q %v", name, got, err)
+		}
+	}
+	// The same arguments with working outputs pass and classify nothing.
+	class := filepath.Join(t.TempDir(), "class")
+	args := []string{"--repository", "example/hikyo", "--mode", "main", "--commit", testSource, "--authority-commit", testMain, "--failure-class", class}
+	if err := execute(context.Background(), args, io.Discard, newFixture(t, "main", mainProducers[0])); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(class); err == nil {
+		t.Fatal("a passing proof must classify nothing")
 	}
 }
 

@@ -9,7 +9,7 @@ script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 printf '%s\n' "$repository" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' || exit 2
 # Include published prereleases because stable trust sequences cover both.
 # Authenticate metadata with stable preflight before invoking this helper.
-scratch=$(mktemp "${TMPDIR:-/tmp}/hikyo-published-stable.XXXXXX")
+scratch=$(mktemp "${TMPDIR:-/tmp}/hikyo-published-stable.XXXXXX") || { printf 'release: cannot create a scratch file\n' >&2; exit 2; }
 trap 'rm -f "$scratch"' EXIT HUP INT TERM
 # Exit 1 means "not synchronized" and nothing else: a read that fails, or a list that cannot
 # be read, exits 2, so a caller never mistakes "could not look" for a refusal.

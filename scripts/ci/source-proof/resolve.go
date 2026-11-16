@@ -129,6 +129,11 @@ func (r *resolver) resolve(ctx context.Context, opt options) (proof, error) {
 	} else {
 		final, err = r.selectMain(ctx, selected.run.HeadSHA)
 	}
+	// A failed read is not a verdict: it keeps its class. Only a definite change is "not green".
+	var read readError
+	if errors.As(err, &read) {
+		return empty, err
+	}
 	if err != nil || !reflect.DeepEqual(selected, final) {
 		return empty, errors.New("selected full-validation run or attempt changed during verification")
 	}
@@ -140,6 +145,9 @@ func (r *resolver) resolve(ctx context.Context, opt options) (proof, error) {
 		return empty, err
 	}
 	finalMain, err := r.branch(ctx, "main")
+	if errors.As(err, &read) {
+		return empty, err
+	}
 	if err != nil || finalMain != r.mainHead {
 		return empty, errors.New("main authority moved during source verification; retry with a fresh snapshot")
 	}

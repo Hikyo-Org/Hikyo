@@ -60,7 +60,7 @@ func TestSecurityPatchPlanToolPathsCoverWhatTheIssueRuns(t *testing.T) {
 		t.Fatalf("go list: %v", err)
 	}
 	checked := 0
-	for _, dir := range strings.Fields(string(output)) {
+	for _, dir := range outputLines(string(output)) {
 		rel, err := filepath.Rel(root, dir)
 		if err != nil || strings.HasPrefix(rel, "..") {
 			continue // a dependency outside this module is pinned by go.sum
@@ -115,5 +115,23 @@ func TestSecurityPatchPlanRunsTheFallbackGateReleaseRuns(t *testing.T) {
 	}
 	if record[1] != gate[1] || address[1] != gate[2] {
 		t.Fatalf("the planner checks %s for %s, release.yml checks %s for %s", record[1], address[1], gate[1], gate[2])
+	}
+}
+
+// outputLines splits command output on newlines only: a checkout path may contain spaces.
+func outputLines(output string) []string {
+	var lines []string
+	for _, line := range strings.Split(output, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+func TestOutputLinesKeepPathsWithSpaces(t *testing.T) {
+	got := outputLines("/work/my checkout/internal/a\n\n/work/my checkout/internal/b\n")
+	if len(got) != 2 || got[0] != "/work/my checkout/internal/a" || got[1] != "/work/my checkout/internal/b" {
+		t.Fatalf("paths were split on spaces: %q", got)
 	}
 }
