@@ -5436,14 +5436,14 @@ var operationTable = map[Operation]opSpec{
 	OpDynamicProviderCredentialRevoke: {
 		class: ClassTenant, level: domain.LevelProject,
 		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
-		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersRevokeCredential: true, StoreRotationsPauseForProvider: true, StoreRotationsProviderLiveRuns: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersRevokeCredential: true, StoreRotationsPauseForProvider: true, StoreAuditTenantInsert: true},
 		// A rotation minting from the provider is paused with it (#148).
 		events: []audit.EventType{audit.EventDynamicProviderCredentialRevoke, audit.EventRotationConfigured},
 	},
 	OpDynamicProviderDelete: {
 		class: ClassTenant, level: domain.LevelProject,
 		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
-		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersDelete: true, StoreDynamicLeasesActiveIDsForProvider: true, StoreDynamicLeasesGet: true, StoreDynamicLeasesEnqueueTransition: true, StoreRotationsPauseForProvider: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersDelete: true, StoreDynamicLeasesActiveIDsForProvider: true, StoreDynamicLeasesGet: true, StoreDynamicLeasesEnqueueTransition: true, StoreRotationsPauseForProvider: true, StoreRotationsProviderLiveRuns: true, StoreAuditTenantInsert: true},
 		// A rotation minting from the provider is paused with it (#148).
 		events: []audit.EventType{audit.EventDynamicProviderDeleted, audit.EventDynamicLeaseTransitionIntent, audit.EventRotationConfigured},
 	},

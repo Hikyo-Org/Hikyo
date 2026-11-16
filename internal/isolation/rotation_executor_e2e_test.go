@@ -986,3 +986,296 @@ func runRotationOrphan(t *testing.T, db *store.DB, dropFails bool) {
 		t.Fatal("no confirmed candidate drop")
 	}
 }
+
+// ------------------------------------------------------------ pause and authority
+
+// Pausing stops new runs but never strands a delivered credential's old role: a
+// run past its publish still revokes, and a run caught before its publish is
+// rolled back without the paused rotation being rescheduled.
+func TestRotationExecutorPause(t *testing.T) { forEngines(t, runRotationPause) }
+
+func TestRotationExecutorPauseBeforePublish(t *testing.T) {
+	forEngines(t, runRotationPauseBeforePublish)
+}
+
+func runRotationPause(t *testing.T, db *store.DB) {
+	x := newRotExec(t, db)
+	rot := x.create(rotPasswordKey, rotUsernameKey)
+	x.cycle(rot.ID)
+	role1 := x.lastRun(rot.ID, "candidate_handle")
+	x.advance(24 * time.Hour)
+	x.drain()
+	run2 := x.openRunID(rot.ID)
+	if _, err := x.transition(x.actor, "pause", rot.ID); err != nil {
+		t.Fatal(err)
+	}
+	x.advance(time.Hour + time.Minute)
+	x.drain()
+	if got := x.phase(run2); got != "done" || x.ctl.has(role1) {
+		t.Fatalf("a paused rotation left its overlap unrevoked: %s, role1 live %v", got, x.ctl.has(role1))
+	}
+	x.advance(72 * time.Hour)
+	x.drain()
+	if got := x.runPhases(rot.ID); got != "done,done," {
+		t.Fatalf("a paused rotation started a run: %q", got)
+	}
+
+}
+
+// A pause that lands on a run before its publish rolls it back and leaves the
+// rotation paused, with no schedule.
+func runRotationPauseBeforePublish(t *testing.T, db *store.DB) {
+	y := newRotExec(t, db)
+	rot2 := y.create(rotPasswordKey, rotUsernameKey)
+	y.advance(24*time.Hour + time.Minute)
+	y.crashOnce("create:after")
+	if !y.crashSweep("wrk_a") {
+		t.Fatal("no crash")
+	}
+	if _, err := y.transition(y.actor, "pause", rot2.ID); err != nil {
+		t.Fatal(err)
+	}
+	y.advance(rotationLeaseTermForTest + time.Second)
+	y.drain()
+	if got := y.runPhases(rot2.ID); got != "failed," {
+		t.Fatalf("phases = %q", got)
+	}
+	if state := y.state(rot2.ID); state.State != store.RotationStatePaused || state.NextRunAt != "" {
+		t.Fatalf("a rolled-back run rescheduled a paused rotation: %+v", state)
+	}
+	if len(y.ctl.names()) != 0 {
+		t.Fatalf("candidate left behind: %v", y.ctl.names())
+	}
+}
+
+// The gate runs before publish and fails safe after. A rotation whose authority
+// lost its formula never mints; one that loses it between mint and publish rolls
+// the candidate back and halts; one that loses it after publish still revokes.
+func TestRotationExecutorAuthorityLoss(t *testing.T) { forEngines(t, runRotationAuthorityLoss) }
+
+func TestRotationExecutorAuthorityLossBeforePublish(t *testing.T) {
+	forEngines(t, runRotationAuthorityLossBeforePublish)
+}
+
+func runRotationAuthorityLoss(t *testing.T, db *store.DB) {
+	x := newRotExec(t, db)
+	rot := x.create(rotPasswordKey, rotUsernameKey)
+	x.cycle(rot.ID)
+	role1 := x.lastRun(rot.ID, "candidate_handle")
+
+	// After publish: authority gone, the revoke still happens.
+	x.advance(24 * time.Hour)
+	x.drain()
+	run2 := x.openRunID(rot.ID)
+	restore := x.parkAuthority()
+	x.advance(time.Hour + time.Minute)
+	x.drain()
+	if got := x.phase(run2); got != "done" || x.ctl.has(role1) {
+		t.Fatalf("a post-publish run without authority did not revoke: %s", got)
+	}
+	// Before mint: the next due cycle halts without minting.
+	before := x.ctl.count("create:")
+	x.advance(24 * time.Hour)
+	x.drain()
+	if x.ctl.count("create:") != before {
+		t.Fatal("a rotation without authority minted a candidate")
+	}
+	state := x.state(rot.ID)
+	if state.State != store.RotationStateHalted {
+		t.Fatalf("state = %s, want halted", state.State)
+	}
+	if n := queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE type='rotation.configured' AND payload LIKE '%"action":"halted"%' AND payload LIKE '%"reason":"authority_lost"%'`); n != 1 {
+		t.Fatalf("%d halted audits naming authority_lost", n)
+	}
+	restore()
+}
+
+// Between mint and publish: roll the candidate back and halt.
+func runRotationAuthorityLossBeforePublish(t *testing.T, db *store.DB) {
+	z := newRotExec(t, db)
+	rot3 := z.create(rotPasswordKey, rotUsernameKey)
+	z.advance(24*time.Hour + time.Minute)
+	var restoreZ func()
+	z.ctl.set(func() {
+		z.ctl.at = func(p, _ string) {
+			if p == "create:after" {
+				z.ctl.set(func() { z.ctl.at = nil })
+				restoreZ = z.parkAuthority()
+			}
+		}
+	})
+	z.requireSweep("wrk_a", true)
+	defer func() {
+		if restoreZ != nil {
+			restoreZ()
+		}
+	}()
+	if got := z.runPhases(rot3.ID); got != "failed," {
+		t.Fatalf("phases = %q, want failed", got)
+	}
+	if got := z.state(rot3.ID).State; got != store.RotationStateHalted {
+		t.Fatalf("state = %s, want halted", got)
+	}
+	if len(z.ctl.names()) != 0 || z.snapshots() != 0 {
+		t.Fatalf("a gate failure between mint and publish left roles %v / %d revisions", z.ctl.names(), z.snapshots())
+	}
+}
+
+// ------------------------------------------------------------ retries and slack
+
+// A key never published has no retry window, only the attempt cap: twelve failed
+// attempts halt the rotation with a named reason.
+func TestRotationExecutorRetriesExhaustedFirstCycle(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		rot := x.create(rotPasswordKey, rotUsernameKey)
+		x.ctl.set(func() { x.ctl.createErr = dynamic.ErrUnreachable })
+		for i := 0; i < 20 && x.state(rot.ID).State == store.RotationStateActive; i++ {
+			x.advance(mustParseStamp(t, x.state(rot.ID).NextRunAt).Sub(x.now()) + time.Second)
+			x.requireSweep(x.worker, true)
+		}
+		state := x.state(rot.ID)
+		if state.State != store.RotationStateHalted {
+			t.Fatalf("state = %s, want halted", state.State)
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM rotation_runs WHERE rotation_id='"+rot.ID+"' AND phase='failed'"); n != 12 {
+			t.Fatalf("%d failed attempts, want the cap of 12", n)
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE type='rotation.configured' AND payload LIKE '%"reason":"retries_exhausted"%'`); n != 1 {
+			t.Fatalf("%d halted audits naming retries_exhausted", n)
+		}
+	})
+}
+
+// With a delivered credential the window closes at D = S + slack - publish_budget:
+// no run starts after it, the delivered role is extended once as it nears expiry
+// (leaving the attempt count and schedule alone), and the rotation halts.
+func TestRotationExecutorSlackWindowAndExtend(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		rot := x.create(rotPasswordKey, rotUsernameKey)
+		first := x.cycle(rot.ID)
+		role1 := x.lastRun(rot.ID, "candidate_handle")
+		validUntil := x.ctl.roles[role1].validUntil
+		// S is the scheduled next run, D the last instant a retry may start.
+		deadline := mustParseStamp(t, x.state(rot.ID).NextRunAt).Add(23 * time.Hour)
+
+		x.ctl.set(func() { x.ctl.createErr = dynamic.ErrUnreachable })
+		extended := time.Time{}
+		for x.now().Before(deadline.Add(3 * time.Hour)) {
+			x.advance(30 * time.Minute)
+			x.drain()
+			if extended.IsZero() && x.ctl.count("extend:") > 0 {
+				extended = x.now()
+			}
+		}
+		if extended.IsZero() {
+			t.Fatal("the delivered role was never extended")
+		}
+		if extended.Before(validUntil.Add(-13*time.Hour)) || extended.After(validUntil) {
+			t.Fatalf("extended at %s, outside the margin before %s", extended, validUntil)
+		}
+		if got := x.ctl.roles[role1].validUntil; !got.Equal(validUntil.Add(24 * time.Hour)) {
+			t.Fatalf("VALID UNTIL = %s, want %s", got, validUntil.Add(24*time.Hour))
+		}
+		if x.effects("extend", "success") != 1 || x.effects("extend", "open") != 0 {
+			t.Fatal("the extend effect is not recorded exactly once")
+		}
+		if got := x.state(rot.ID).State; got != store.RotationStateHalted {
+			t.Fatalf("state = %s, want halted after the window", got)
+		}
+		// No run started after D.
+		late := queryInt(t, db, "SELECT COUNT(*) FROM rotation_runs WHERE rotation_id='"+rot.ID+"' AND id<>'"+first+"'")
+		if late == 0 {
+			t.Fatal("no retries ran inside the window")
+		}
+		if !x.ctl.has(role1) {
+			t.Fatal("the delivered role was dropped while the rotation failed")
+		}
+	})
+}
+
+// ------------------------------------------------------------ across rotations
+
+// A recreated rotation still revokes the role live in the keys: superseded_handle
+// is derived across rotations, and the very first run of a key has none.
+func TestRotationExecutorSupersededAcrossRotations(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		rot := x.create(rotPasswordKey, rotUsernameKey)
+		run1 := x.cycle(rot.ID)
+		role1 := x.lastRun(rot.ID, "candidate_handle")
+		if got := queryString(t, db, "SELECT COALESCE(superseded_handle,'') FROM rotation_runs WHERE id='"+run1+"'"); got != "" {
+			t.Fatalf("the first run of a key superseded %q", got)
+		}
+		if _, err := x.transition(x.actor, "delete", rot.ID); err != nil {
+			t.Fatal(err)
+		}
+		again := x.create(rotPasswordKey, rotUsernameKey)
+		x.advance(25 * time.Hour)
+		x.drain()
+		run := x.openRunID(again.ID)
+		if got := queryString(t, db, "SELECT COALESCE(superseded_handle,'') FROM rotation_runs WHERE id='"+run+"'"); got != role1 {
+			t.Fatalf("superseded_handle = %q, want %q", got, role1)
+		}
+		x.advance(time.Hour + time.Minute)
+		x.drain()
+		if x.ctl.has(role1) || x.phase(run) != "done" {
+			t.Fatalf("the recreated rotation did not revoke the live role: %s", x.phase(run))
+		}
+	})
+}
+
+// ------------------------------------------------------------ provider delete guard
+
+func TestRotationExecutorProviderDeleteGuard(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		rot := x.create(rotPasswordKey, rotUsernameKey)
+		x.advance(24*time.Hour + time.Minute)
+		x.drain() // overlap: a candidate is live
+		provider := service.LocalPrincipal(alice)
+		if _, err := x.dyn.Delete(tctx(t), provider, domain.Scope{Org: orgA, Project: prjA1}, x.provider, false); !errors.Is(err, service.ErrProviderHasLiveRotationRuns) {
+			t.Fatalf("provider delete with a live run = %v", err)
+		}
+		x.advance(time.Hour + time.Minute)
+		x.drain()
+		if _, err := x.transition(x.actor, "delete", rot.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := x.dyn.Delete(tctx(t), provider, domain.Scope{Org: orgA, Project: prjA1}, x.provider, false); err != nil {
+			t.Fatalf("provider delete once the runs settled: %v", err)
+		}
+	})
+}
+
+// A failed run whose candidate drop is unconfirmed blocks an environment delete
+// until the reconciler confirms the role gone.
+func TestRotationExecutorUnconfirmedDropBlocksEnvironmentDelete(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
+		rot := x.create(rotPasswordKey, rotUsernameKey)
+		x.advance(24*time.Hour + time.Minute)
+		x.ctl.set(func() { x.ctl.dropErr = dynamic.ErrUnreachable })
+		x.crashOnce("create:after")
+		if !x.crashSweep("wrk_a") {
+			t.Fatal("no crash")
+		}
+		if _, err := x.transition(x.actor, "delete", rot.ID); err == nil {
+			t.Fatal("delete over an open run must be refused without --abandon")
+		}
+		if _, err := x.svc.Delete(tctx(t), x.actor, x.scope, service.RotationStateRequest{RotationID: rot.ID, Abandon: true}); err != nil {
+			t.Fatal(err)
+		}
+		if err := envs.Delete(tctx(t), service.LocalPrincipal(alice), x.scope); !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
+			t.Fatalf("environment delete with an unconfirmed candidate = %v", err)
+		}
+		x.ctl.set(func() { x.ctl.dropErr = nil })
+		x.advance(rotationLeaseTermForTest + time.Second)
+		x.drain()
+		if err := envs.Delete(tctx(t), service.LocalPrincipal(alice), x.scope); err != nil {
+			t.Fatalf("environment delete after the reconciler confirmed the drop: %v", err)
+		}
+	})
+}
