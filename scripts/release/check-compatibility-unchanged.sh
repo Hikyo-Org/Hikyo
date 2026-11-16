@@ -14,11 +14,20 @@
 #
 # The baseline is the highest plain stable version in the authenticated trust
 # metadata below VERSION: no prerelease, and not whatever GitHub flags "latest".
-# It is fetched through the signature-verified release path (stable verify) and
-# its declaration is bound to the signed manifest, never read as a loose asset.
+# It is fetched through the signature-verified release path (stable verify
+# --historical --published, as scripts/security/verify-release.sh does: an older
+# release embeds older trust, which a plain verify refuses as a rollback) and its
+# declaration is bound to the signed manifest, never read as a loose asset.
 #
-# Exit 0: identical. Exit 1: different, or the baseline is missing or does not
-# verify. Exit 2: bad usage. Exit 4: a lookup failed; nothing is decided.
+# A difference prints a bounded unified diff of the two normalized declarations
+# (baseline first) on stderr, then the refusal line.
+#
+# Exit 0: identical. Exit 1: different (or the candidate's own declaration is not
+# a complete two-engine one). Exit 5: the baseline cannot be established or
+# verified (trust does not authenticate, no earlier stable release, no downloadable
+# or verifiable release, no declaration bound to its signed manifest): nothing is
+# decided about compatibility. Exit 2: bad usage. Exit 4: a lookup failed; nothing
+# is decided.
 set -eu
 : "${GH_BIN:=gh}" "${GO_BIN:=go}"
 [ "$#" -eq 4 ] || { printf 'usage: %s REPOSITORY TRUST_DIR VERSION DECLARATION\n' "$0" >&2; exit 2; }
@@ -36,6 +45,10 @@ refuse() {
 	printf 'compatibility check: %s\n' "$*" >&2
 	exit 1
 }
+no_baseline() {
+	printf 'compatibility check: %s\n' "$*" >&2
+	exit 5
+}
 lookup_failed() {
 	printf 'compatibility check: %s\n' "$*" >&2
 	exit 4
@@ -47,35 +60,34 @@ validate_compatibility_shape "$declaration" || refuse 'the candidate declaration
 # Authenticate the trust before reading which release is the baseline.
 state="$work/release-trust-state.json"
 "$GO_BIN" -C "$repo_root" run ./scripts/release/stable verify --trust "$trust" --trust-only --state "$state" >/dev/null ||
-	refuse 'stable trust does not authenticate'
+	no_baseline 'stable trust does not authenticate'
 baseline=$(jq -er --arg version "$version" '
 	def triple: split(".") | map(tonumber);
 	[.releases[].version | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) | select(triple < ($version | triple))] |
 	sort_by(triple) | last | select(. != null)
-' "$trust/metadata.json") || refuse "authenticated trust lists no stable release below $version to compare with"
-highest=$(jq -r '.highest_release // empty' "$trust/metadata.json")
-latest_flag=
-[ "$baseline" != "$highest" ] || latest_flag=--latest
+' "$trust/metadata.json") || no_baseline "authenticated trust lists no stable release below $version to compare with"
 
 download="$work/baseline"
 mkdir "$download"
 if ! "$GH_BIN" release download "v$baseline" --repo "$repository" --dir "$download" >/dev/null 2>"$work/err"; then
 	grep -Eq 'release not found|HTTP 404' "$work/err" || { cat "$work/err" >&2; lookup_failed "cannot download v$baseline"; }
-	refuse "v$baseline has no downloadable release to compare with"
+	no_baseline "v$baseline has no downloadable release to compare with"
 fi
-commit=$(jq -er '.source_commit' "$download/release-manifest.json") || refuse "v$baseline has no readable manifest"
-# shellcheck disable=SC2086
+commit=$(jq -er '.source_commit' "$download/release-manifest.json") || no_baseline "v$baseline has no readable manifest"
 "$GO_BIN" -C "$repo_root" run ./scripts/release/stable verify --trust "$trust" --directory "$download" \
-	--version "$baseline" --commit "$commit" --state "$state" --published $latest_flag >/dev/null ||
-	refuse "v$baseline does not verify against the signed trust"
+	--version "$baseline" --commit "$commit" --state "$state" --historical --published >/dev/null ||
+	no_baseline "v$baseline does not verify against the signed trust"
 verify_release_compatibility_artifact "$download/release-manifest.json" "$download" ||
-	refuse "v$baseline carries no declaration bound to its signed manifest"
+	no_baseline "v$baseline carries no declaration bound to its signed manifest"
 
 normalize() {
 	jq -S 'del(.version, .sequence, .commit)' "$1" >"$2" || refuse "cannot normalize $1"
 }
 normalize "$declaration" "$work/candidate.json"
 normalize "$download/upgrade-compatibility.json" "$work/baseline.json"
-cmp -s "$work/candidate.json" "$work/baseline.json" ||
+if ! cmp -s "$work/candidate.json" "$work/baseline.json"; then
+	# What differs is what a maintainer reviews before deciding about a minor release; bounded, on stderr.
+	diff -u "$work/baseline.json" "$work/candidate.json" | head -n 200 >&2 || true
 	refuse "the compatibility declaration differs from the one v$baseline published (migrations, schema or source edges changed)"
+fi
 printf 'compatibility check: compatibility is identical to v%s\n' "$baseline"

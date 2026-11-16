@@ -43,12 +43,22 @@ func TestReleaseCompatibilityCheckWorkflowBoundaries(t *testing.T) {
 		t.Fatalf("the pre-tag check token is read-only: %v", workflow.Permissions)
 	}
 	job := workflow.Jobs["check"]
-	if len(workflow.Jobs) != 1 || job.If != "github.ref == 'refs/heads/main'" || job.Environment != "" || len(job.Permissions) != 0 {
-		t.Fatalf("the pre-tag check is one main-only job with no environment or extra permission: %+v", job)
+	if len(workflow.Jobs) != 1 || job.If != "" || job.Environment != "" || len(job.Permissions) != 0 {
+		t.Fatalf("the pre-tag check is one job with no condition, environment or extra permission: %+v", job)
+	}
+	// A dispatch from another branch must fail with exit 2, not be skipped: the first step guards the ref.
+	if len(job.Steps) == 0 || !strings.Contains(job.Steps[0].Run, "refs/heads/main") || !strings.Contains(job.Steps[0].Run, "exit 2") {
+		t.Fatalf("the first step must fail a non-main dispatch with exit 2: %+v", job.Steps)
 	}
 	for _, forbidden := range []string{"secrets.", "create-github-app-token", "git push", "git tag", "gh release", "gh api -X", "gh api --method"} {
 		if strings.Contains(string(raw), forbidden) {
 			t.Fatalf("the pre-tag check must not use %q: it only reads", forbidden)
+		}
+	}
+	// The verdict tells a difference (1) from a baseline that cannot be verified (5) and from a failed run.
+	for _, verdict := range []string{"0) verdict=", "1) verdict=", "5) verdict=", "*) verdict="} {
+		if !strings.Contains(string(raw), verdict) {
+			t.Fatalf("the verdict must classify every exit status of the comparison: %s missing", verdict)
 		}
 	}
 	// The verifier of the previous release needs the pinned Cosign before the comparison runs.

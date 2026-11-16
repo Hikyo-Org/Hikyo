@@ -55,11 +55,13 @@ Do not run `build 1.0.0` until designs and final-candidate acceptance are done.
 
 Optional pre-check: to learn before tagging whether `VERSION` changes upgrade
 compatibility, run the `release-compatibility-check` workflow from main with
-that version (`gh workflow run release-compatibility-check.yml --ref main -f version=VERSION`).
+that version (`gh workflow run release-compatibility-check.yml --ref main -f version=VERSION`),
+after the sync-trust change that records the latest release has merged.
 It compares the compatibility declaration generated from main's tip with the one
 the highest earlier stable release published, verified through the signed trust.
 Green means identical; red means a difference, an unverifiable earlier release or
-a failed lookup, and the log says which. It is read-only and tags nothing. Run it
+a failed lookup, and the log says which. Once a promotion has brought unreleased
+migrations to main, expect "differs" until a release carries them. It is read-only and tags nothing. Run it
 again if main moves before you tag. The workflow reaches main by promotion from
 dev, so it exists to dispatch only after a promotion has landed it.
 

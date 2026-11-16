@@ -58,7 +58,9 @@ case "$*" in
 	*'stable verify '*'--trust-only '*) [ "$FIXTURE_MODE" != untrusted ] || exit 1; exit 0 ;;
 	*'stable verify '*)
 		[ "$FIXTURE_MODE" != unverifiable ] || exit 1
+		case "$*" in *' --historical'*) ;; *) printf 'trust rollback refused\n' >&2; exit 3 ;; esac
 		case "$*" in *' --published'*) ;; *) exit 3 ;; esac
+		case "$*" in *' --latest'*) exit 3 ;; esac
 		case "$*" in *' --version 1.1.0 '*) ;; *) exit 3 ;; esac ;;
 	*) exit 2 ;;
 esac
@@ -88,8 +90,8 @@ refused() { # mode candidate-file want-fragment want-exit
 # An unchanged-schema patch, with a different version, sequence and commit, passes.
 accepted same
 grep -q 'release download v1.1.0 --repo o/r --dir ' "$scratch/calls" || { printf 'the baseline was not fetched\n' >&2; exit 1; }
-# The baseline is verified as a published release and is the latest, so --latest is asked for.
-grep -q 'stable verify .*--version 1.1.0 .*--published --latest' "$scratch/calls" || { cat "$scratch/calls" >&2; printf 'the baseline was not verified as the published latest\n' >&2; exit 1; }
+# The baseline is verified as a historical, published release: its embedded trust is older.
+grep -q 'stable verify .*--version 1.1.0 .*--historical --published' "$scratch/calls" || { cat "$scratch/calls" >&2; printf 'the baseline was not verified as a historical published release\n' >&2; exit 1; }
 
 # Every difference refuses, including any field that does not exist today.
 mutate() { jq -S "$1" "$scratch/candidate.json" >"$scratch/changed.json"; }
@@ -105,6 +107,9 @@ for expr in \
 	'.engines |= reverse'; do
 	mutate "$expr"
 	refused same "$scratch/changed.json" 'differs from the one v1.1.0 published' 1
+	# The reviewer sees what changed: a unified diff precedes the refusal line, which stays last.
+	grep -q '^@@ ' "$scratch/out" || { cat "$scratch/out" >&2; printf 'compatibility fixture: a difference prints no diff: %s\n' "$expr" >&2; exit 1; }
+	[ "$(tail -n 1 "$scratch/out" | cut -c1-20)" = 'compatibility check:' ] || { printf 'compatibility fixture: the refusal line is not last\n' >&2; exit 1; }
 done
 # A shape that is not a two-engine declaration never compares equal to anything.
 jq -S '.engines |= .[:1]' "$scratch/candidate.json" >"$scratch/changed.json"
@@ -122,8 +127,8 @@ jq -S '.engines[0].schema_sha256 = "not-a-digest"' "$scratch/candidate.json" >"$
 refused same "$scratch/changed.json" 'not a complete two-engine declaration'
 
 # Unauthenticated trust decides nothing, and a baseline release that is gone is a refusal, not a lookup failure.
-refused untrusted "$scratch/candidate.json" 'stable trust does not authenticate'
-refused missing-release "$scratch/candidate.json" 'v1.1.0 has no downloadable release'
+refused untrusted "$scratch/candidate.json" 'stable trust does not authenticate' 5
+refused missing-release "$scratch/candidate.json" 'v1.1.0 has no downloadable release' 5
 
 # The shared binding check: shape first, then the candidate's version, sequence and commit.
 jq -n --arg c "$c0" '{version:"1.1.0",sequence:2,commit:$c}' >"$scratch/bind.json"
@@ -138,26 +143,26 @@ if validate_release_compatibility "$scratch/changed.json" "$scratch/bind.json"; 
 # A baseline whose declaration is not the file the signed manifest names is refused.
 cp "$scratch/baseline-decl.json" "$scratch/baseline-decl.bak"
 jq -S '.engines[0].schema_sha256 = ("b" * 64)' "$scratch/baseline-decl.json" >"$scratch/published/upgrade-compatibility.json"
-refused same "$scratch/candidate.json" 'carries no declaration bound to its signed manifest'
+refused same "$scratch/candidate.json" 'carries no declaration bound to its signed manifest' 5
 cp "$scratch/baseline-decl.bak" "$scratch/published/upgrade-compatibility.json"
 # A missing or empty baseline declaration never compares equal to a missing or empty candidate.
 rm "$scratch/published/upgrade-compatibility.json"
-refused same "$scratch/candidate.json" 'carries no declaration bound to its signed manifest'
+refused same "$scratch/candidate.json" 'carries no declaration bound to its signed manifest' 5
 : >"$scratch/published/upgrade-compatibility.json"
-refused same "$scratch/candidate.json" 'carries no declaration bound to its signed manifest'
+refused same "$scratch/candidate.json" 'carries no declaration bound to its signed manifest' 5
 cp "$scratch/baseline-decl.bak" "$scratch/published/upgrade-compatibility.json"
 
 # The signature verifier is the authority: an unverifiable baseline refuses.
-refused unverifiable "$scratch/candidate.json" 'does not verify against the signed trust'
+refused unverifiable "$scratch/candidate.json" 'does not verify against the signed trust' 5
 # A read failure is not a verdict; it exits 4 so the caller fails instead of deciding.
 refused download-error "$scratch/candidate.json" 'cannot download v1.1.0' 4
 # A trust with no earlier stable release has nothing to compare with.
 trust_metadata 1.2.0 1.2.0 >"$scratch/trust/metadata.json"
-refused same "$scratch/candidate.json" 'lists no stable release below 1.1.1'
+refused same "$scratch/candidate.json" 'lists no stable release below 1.1.1' 5
 # Prereleases are never the baseline, and the highest stable below the candidate wins.
 trust_metadata 1.2.0-rc.1 1.0.0 1.1.0 1.1.1-rc.1 1.2.0-rc.1 >"$scratch/trust/metadata.json"
 accepted same
-if grep -q 'stable verify .*--latest' "$scratch/calls"; then printf 'a baseline below the trust highest was verified as latest\n' >&2; exit 1; fi
+if grep -q 'stable verify .*--latest' "$scratch/calls"; then printf 'a baseline was verified as the latest release\n' >&2; exit 1; fi
 grep -q 'release download v1.1.0 ' "$scratch/calls" || { printf 'a prerelease became the baseline\n' >&2; exit 1; }
 # Versions at or above the candidate are never the baseline.
 trust_metadata 1.2.0 1.0.0 1.1.0 1.1.1 1.2.0 >"$scratch/trust/metadata.json"

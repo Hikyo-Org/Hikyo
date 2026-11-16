@@ -24,12 +24,17 @@ env:
 
 jobs:
   check:
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     # An estimate, not a measurement: Postgres pull and start, Go builds, one
     # release download and one signature verification.
     timeout-minutes: 30
     steps:
+      # A dispatch from another branch fails loudly: a skipped job would look like a pass.
+      - name: Require main
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          [ "$REF" = refs/heads/main ] || { echo "::error::run this check from main, not $REF"; exit 2; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
@@ -65,14 +70,21 @@ jobs:
           candidate="$RUNNER_TEMP/release-candidate.json"
           declaration="$RUNNER_TEMP/upgrade-compatibility.json"
           go run ./scripts/release/stable candidate --trust release/trust \
-            --version "$VERSION" --commit "$COMMIT" --out "$candidate"
+            --version "$VERSION" --commit "$COMMIT" --out "$candidate" || {
+            rc=$?
+            printf '%s\n' "stable candidate refused v$VERSION (exit $rc; typically a version that is not above the last stable release): nothing is decided, see the log." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit "$rc"
+          }
           go run ./scripts/release/compatibility --candidate "$candidate" --out "$declaration"
           rc=0
-          ./scripts/release/check-compatibility-unchanged.sh "$REPOSITORY" release/trust "$VERSION" "$declaration" || rc=$?
+          reason="$RUNNER_TEMP/compatibility-check.err"
+          ./scripts/release/check-compatibility-unchanged.sh "$REPOSITORY" release/trust "$VERSION" "$declaration" 2>"$reason" || rc=$?
+          cat "$reason" >&2
           case "$rc" in
             0) verdict="Compatibility is unchanged: v$VERSION at $COMMIT can be tagged as a routine release." ;;
-            1) verdict="Compatibility differs or the last stable release cannot be verified: v$VERSION at $COMMIT needs a maintainer decision (see the log)." ;;
-            *) verdict="The check could not run (exit $rc): nothing is decided." ;;
+            1) verdict="Compatibility differs: v$VERSION at $COMMIT is not a routine release and needs a maintainer decision (the log shows the diff). $(grep '^compatibility check:' "$reason" | tail -n 1)" ;;
+            5) verdict="The last stable release cannot be established or verified (exit 5): nothing is decided about compatibility. $(grep '^compatibility check:' "$reason" | tail -n 1)" ;;
+            *) verdict="The check could not run (exit $rc): nothing is decided. $(grep '^compatibility check:' "$reason" | tail -n 1)" ;;
           esac
           printf '%s\n' "$verdict" | tee -a "$GITHUB_STEP_SUMMARY"
           exit "$rc"

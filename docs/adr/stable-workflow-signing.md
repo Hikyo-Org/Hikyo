@@ -119,7 +119,8 @@ a maintainer can ask whether a release of a given `X.Y.Z` built from main's tip 
 compatibility unchanged. It generates the candidate's `upgrade-compatibility.json` with the release
 generator on scratch PostgreSQL and compares it, minus version, sequence and commit, byte for byte with
 the declaration of the highest plain stable version below it in authenticated trust. That baseline is
-fetched and verified through `stable verify --published` and its declaration is bound to the signed
+fetched and verified through `stable verify --historical --published` (as the public verifier
+does: an older release embeds older trust) and its declaration is bound to the signed
 manifest; neither GitHub's "latest" flag nor a prerelease decides. A difference, a missing or
 unverifiable baseline, or a malformed declaration is reported and left to a maintainer. The check
 creates no tag, release or trust change and is not part of the build; `release-build` and the
