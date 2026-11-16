@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
@@ -17,9 +18,11 @@ import (
 // CredentialRotations owns scheduled credential rotation configuration (#148,
 // slice S1). It records WHAT rotates and WHO is the rotation's authority; it
 // executes nothing and holds no secret. The run state machine arrives with S2,
-// which acts as the recorded authority principal and re-authorizes it on every
-// transition, never as a system proof. (The name avoids the existing Rotation
-// service, which rotates Hikyo's own key hierarchy.)
+// which acts as the recorded authority principal, never as a system proof, and
+// re-authorizes it in full before every transition that can still be rolled
+// back; after the publish only fail-safe checks apply, so losing authority can
+// never strand a live superseded credential. (The name avoids the existing
+// Rotation service, which rotates Hikyo's own key hierarchy.)
 //
 // A rotation's publish is unattended, so it can never satisfy a per-publish
 // ceremony. Creating or resuming one is therefore itself the human act that
@@ -72,20 +75,41 @@ var (
 	// ErrRotationKeyMissing refuses a resume while one of the rotation's keys is
 	// gone or no longer fit to receive a generated password.
 	ErrRotationKeyMissing = &rotationRefusal{"one of the rotation's keys no longer exists or is no longer secret-classified; create the rotation again", domain.ErrConflict}
-	// ErrEnvironmentHasLiveRotation refuses an environment delete while a
-	// rotation in it is not deleted or has a run in flight: deleting the
-	// environment would orphan a live superseded role nothing would revoke.
-	ErrEnvironmentHasLiveRotation = &rotationRefusal{"the environment still has a live credential rotation; delete the rotation first", domain.ErrConflict}
+	// ErrEnvironmentHasLiveRotation refuses an environment delete while a rotation
+	// in it is not deleted or has a run that may hold a live role (any phase but
+	// done, and a failed run that had already published): deleting the environment
+	// would orphan a role nothing would revoke. The refusal names the rotations.
+	ErrEnvironmentHasLiveRotation = &rotationRefusal{"the environment still has a live credential rotation or a run that may hold a live role; delete the rotation and let its runs finish first", domain.ErrConflict}
 )
 
+// environmentLiveRotationError is ErrEnvironmentHasLiveRotation naming the
+// rotations that block the delete. Ids are not secret.
+type environmentLiveRotationError struct{ detail string }
+
+func (e *environmentLiveRotationError) Error() string      { return "service: " + e.detail }
+func (e *environmentLiveRotationError) SafeDetail() string { return e.detail }
+func (e *environmentLiveRotationError) Unwrap() error      { return ErrEnvironmentHasLiveRotation }
+
 // purgeEnvironmentRotations removes a deleted environment's rotation rows in the
-// delete's own transaction, refusing by name while a rotation is live.
+// delete's own transaction, refusing by name while a rotation is live or a run
+// may hold a live role. The refusal carries the blocking rotation ids.
 func purgeEnvironmentRotations(ctx context.Context, r store.Repos, proof authz.Proof) error {
 	err := r.Rotations().PurgeEnvironment(ctx, proof)
-	if errors.Is(err, store.ErrRotationLiveInEnvironment) {
-		return ErrEnvironmentHasLiveRotation
+	var live *store.RotationLiveError
+	if !errors.As(err, &live) {
+		return err
 	}
-	return err
+	detail := "the environment still has a live credential rotation or a run that may hold a live role"
+	if len(live.LiveRotationIDs) > 0 {
+		detail += "; rotations not yet deleted: " + strings.Join(live.LiveRotationIDs, ", ")
+	}
+	if len(live.BlockingRunOwners) > 0 {
+		detail += "; rotations whose runs may hold a live role: " + strings.Join(live.BlockingRunOwners, ", ")
+	}
+	if len(live.LiveRotationIDs) == store.RotationBlockingIDsLimit || len(live.BlockingRunOwners) == store.RotationBlockingIDsLimit {
+		detail += " (first " + fmt.Sprint(store.RotationBlockingIDsLimit) + " shown)"
+	}
+	return &environmentLiveRotationError{detail: detail + "; delete each rotation and let its runs finish first"}
 }
 
 // RotationView is the metadata surface of one rotation. It carries no secret.
@@ -357,6 +381,31 @@ func pauseRotationsForProvider(ctx context.Context, r store.Repos, proof authz.P
 	if err != nil {
 		return err
 	}
+	return auditRotationPauses(ctx, r, proof, principal, reason, paused)
+}
+
+// Reasons recorded when a rotation is paused by a cascade rather than by a person.
+const (
+	rotationPauseEnvironmentProtected = "environment_protected"
+	rotationPauseApprovalPolicy       = "approval_policy_enabled"
+)
+
+// pauseRotationsForEnvironment pauses the active rotations of one environment, or
+// of every environment of the project when environmentID is empty (a project-wide
+// approval policy), in the caller's transaction, and audits each pause with the
+// reason and the caller as actor. A rotation publishes unattended, so it must not
+// stay active in an environment that now needs a per-publish ceremony or an
+// approval request: create and resume refuse such an environment, and this closes
+// the same gap for a rotation that already exists.
+func pauseRotationsForEnvironment(ctx context.Context, r store.Repos, proof authz.Proof, principal domain.PrincipalID, environmentID, reason string, at time.Time) error {
+	paused, err := r.Rotations().PauseForEnvironment(ctx, proof, environmentID, at)
+	if err != nil {
+		return err
+	}
+	return auditRotationPauses(ctx, r, proof, principal, reason, paused)
+}
+
+func auditRotationPauses(ctx context.Context, r store.Repos, proof authz.Proof, principal domain.PrincipalID, reason string, paused []store.RotationRecord) error {
 	for _, rec := range paused {
 		if err := insertRotationConfigured(ctx, r, proof, principal, rotationActionPaused, reason, rec); err != nil {
 			return err
@@ -365,25 +414,57 @@ func pauseRotationsForProvider(ctx context.Context, r store.Repos, proof authz.P
 	return nil
 }
 
-// List returns the environment's rotations. Deleted (disabled) history is shown
-// only when asked for.
-func (s *CredentialRotations) List(ctx context.Context, actor Actor, scope domain.Scope, includeDisabled bool) ([]RotationView, error) {
+// Rotation list paging: a page is RotationListDefaultLimit rows unless the caller
+// asks for fewer or up to RotationListMaxLimit, and NextAfter continues it.
+const (
+	RotationListDefaultLimit = 100
+	RotationListMaxLimit     = store.RotationListMaxLimit
+)
+
+// RotationListRequest is one page of a rotation list. Deleted (disabled) history
+// is shown only when asked for. After is the last id of the previous page.
+type RotationListRequest struct {
+	IncludeDisabled bool
+	After           string
+	Limit           int
+}
+
+// RotationPage is one page of rotations; NextAfter is empty on the last page.
+type RotationPage struct {
+	Items     []RotationView
+	NextAfter string
+}
+
+// List returns one page of the environment's rotations in id order.
+func (s *CredentialRotations) List(ctx context.Context, actor Actor, scope domain.Scope, req RotationListRequest) (RotationPage, error) {
 	if err := requireRotationEnv(scope, "list"); err != nil {
-		return nil, err
+		return RotationPage{}, err
 	}
-	var out []RotationView
+	limit := req.Limit
+	if limit == 0 {
+		limit = RotationListDefaultLimit
+	}
+	if limit < 0 || limit > RotationListMaxLimit {
+		return RotationPage{}, fmt.Errorf("%w: limit must be between 1 and %d", domain.ErrInvalid, RotationListMaxLimit)
+	}
+	var out RotationPage
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
 		_, proof, err := authorize(ctx, az, actor, authz.OpRotationInspect, scope, s.now())
 		if err != nil {
 			return err
 		}
-		rows, err := r.Rotations().List(ctx, proof, includeDisabled)
+		// One extra row tells whether another page follows.
+		rows, err := r.Rotations().List(ctx, proof, store.RotationListQuery{IncludeDisabled: req.IncludeDisabled, After: req.After, Limit: limit + 1})
 		if err != nil {
 			return err
 		}
-		out = make([]RotationView, 0, len(rows))
+		if len(rows) > limit {
+			rows = rows[:limit]
+			out.NextAfter = rows[limit-1].ID
+		}
+		out.Items = make([]RotationView, 0, len(rows))
 		for _, row := range rows {
-			out = append(out, RotationView{RotationRecord: row})
+			out.Items = append(out.Items, RotationView{RotationRecord: row})
 		}
 		return nil
 	})
@@ -417,12 +498,12 @@ func (s *CredentialRotations) Pause(ctx context.Context, actor Actor, scope doma
 	return s.transition(ctx, actor, scope, req, rotationActionPaused)
 }
 
-// Resume re-arms a paused rotation and recomputes its next run from now. It is
-// a human act like create: the caller must hold the create formula on both
-// keys and consume the publish ceremony, and the recorded authority principal
-// must still hold that formula too, so a rotation never resumes into a
-// guaranteed halt and never lets a publish-only caller launder another
-// person's authority.
+// Resume re-arms a paused or halted rotation and recomputes its next run from
+// now. It is a human act like create: the caller must hold the create formula on
+// both keys and consume the publish ceremony, and the recorded authority principal
+// must still hold that formula too, so a rotation never resumes into a guaranteed
+// halt and never lets a publish-only caller launder another person's authority.
+// Every check runs under the resume operation, so a denial is recorded as one.
 func (s *CredentialRotations) Resume(ctx context.Context, actor Actor, scope domain.Scope, req RotationStateRequest) (RotationView, error) {
 	return s.transition(ctx, actor, scope, req, rotationActionResumed)
 }
@@ -477,8 +558,10 @@ func (s *CredentialRotations) transition(ctx context.Context, actor Actor, scope
 			}
 			next.State = store.RotationStatePaused
 		case rotationActionResumed:
-			if cur.State != store.RotationStatePaused {
-				return fmt.Errorf("%w: only a paused rotation can be resumed (state is %s)", domain.ErrConflict, cur.State)
+			// A halted rotation (the executor's named stop after a failed gate) is
+			// resumed exactly like a paused one: the full resume authorization below.
+			if cur.State != store.RotationStatePaused && cur.State != store.RotationStateHalted {
+				return fmt.Errorf("%w: only a paused or halted rotation can be resumed (state is %s)", domain.ErrConflict, cur.State)
 			}
 			if err := s.authorizeResume(ctx, r, az, proof, caller, scope, cur); err != nil {
 				return err
@@ -535,13 +618,13 @@ func (s *CredentialRotations) authorizeResume(ctx context.Context, r store.Repos
 	}
 	authority := domain.PrincipalID(rec.AuthorityPrincipalID)
 	for _, id := range []string{rec.KeyID, rec.UsernameKeyID} {
-		if _, err := az.AuthorizeKey(ctx, caller, authz.OpRotationCreate, scope, authz.KeyByID(id)); err != nil {
+		if _, err := az.AuthorizeKey(ctx, caller, authz.OpRotationResume, scope, authz.KeyByID(id)); err != nil {
 			return err
 		}
 		// The caller stays the actor of a denial here; AuthorityID names the
 		// recorded principal. No identity is synthesized for the authority.
 		key := authz.KeyByID(id)
-		holds, err := az.RecordedPrincipalHolds(ctx, caller, authority, authz.OpRotationCreate, scope, &key)
+		holds, err := az.RecordedPrincipalHolds(ctx, caller, authority, authz.OpRotationResume, scope, &key)
 		if err != nil {
 			return err
 		}

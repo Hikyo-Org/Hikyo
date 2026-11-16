@@ -169,6 +169,13 @@ func (f *rotationFixture) state(id string) service.RotationView {
 	return v
 }
 
+// list returns the first page of rotations (every test fixture fits in one).
+func (f *rotationFixture) list(actor service.Actor, scope domain.Scope, includeDisabled bool) ([]service.RotationView, error) {
+	f.t.Helper()
+	page, err := f.svc.List(tctx(f.t), actor, scope, service.RotationListRequest{IncludeDisabled: includeDisabled})
+	return page.Items, err
+}
+
 func (f *rotationFixture) transition(actor service.Actor, name, id string) (service.RotationView, error) {
 	f.t.Helper()
 	req := service.RotationStateRequest{RotationID: id}
@@ -224,7 +231,7 @@ func runRotationLifecycle(t *testing.T, db *store.DB) {
 		t.Fatalf("duplicate username key = %v", err)
 	}
 
-	listed, err := f.svc.List(ctx, f.actor, f.scope, false)
+	listed, err := f.list(f.actor, f.scope, false)
 	if err != nil || len(listed) != 1 || listed[0].ID != created.ID {
 		t.Fatalf("list = %+v, %v", listed, err)
 	}
@@ -267,10 +274,10 @@ func runRotationLifecycle(t *testing.T, db *store.DB) {
 		t.Fatalf("resume of a deleted rotation = %v", err)
 	}
 	// The default list hides deleted history; asking for it shows it.
-	if rows, err := f.svc.List(ctx, f.actor, f.scope, false); err != nil || len(rows) != 0 {
+	if rows, err := f.list(f.actor, f.scope, false); err != nil || len(rows) != 0 {
 		t.Fatalf("default list after delete = %+v, %v", rows, err)
 	}
-	if rows, err := f.svc.List(ctx, f.actor, f.scope, true); err != nil || len(rows) != 1 || rows[0].State != store.RotationStateDisabled {
+	if rows, err := f.list(f.actor, f.scope, true); err != nil || len(rows) != 1 || rows[0].State != store.RotationStateDisabled {
 		t.Fatalf("list with disabled = %+v, %v", rows, err)
 	}
 	if again, err := f.svc.Create(ctx, f.actor, f.scope, f.request(rotPasswordKey, rotUsernameKey)); err != nil || again.ID == created.ID {
@@ -452,7 +459,7 @@ func runRotationTenantIsolation(t *testing.T, db *store.DB) {
 	// Bob holds the same grants in org B. Every address into org A answers with
 	// the uniform not-found, for reads, writes and a rotation that exists.
 	bobActor := f.session(bob, true)
-	if _, err := f.svc.List(ctx, bobActor, f.scope, false); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := f.list(bobActor, f.scope, false); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("cross-org list = %v", err)
 	}
 	if _, err := f.svc.Get(ctx, bobActor, f.scope, created.ID); !errors.Is(err, domain.ErrNotFound) {
@@ -477,7 +484,7 @@ func runRotationTenantIsolation(t *testing.T, db *store.DB) {
 	if _, err := f.svc.Get(ctx, f.actor, sibling, created.ID); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("sibling environment get = %v", err)
 	}
-	if rows, err := f.svc.List(ctx, f.actor, sibling, true); err != nil || len(rows) != 0 {
+	if rows, err := f.list(f.actor, sibling, true); err != nil || len(rows) != 0 {
 		t.Errorf("sibling environment list = %+v, %v", rows, err)
 	}
 	if got, err := f.svc.Get(ctx, f.actor, f.scope, created.ID); err != nil || got.State != store.RotationStateActive || got.Generation != 1 {

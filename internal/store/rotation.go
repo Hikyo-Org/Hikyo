@@ -19,10 +19,14 @@ import (
 // its proof against its registered store operation and binds the tenant chain
 // from the verified proof. No row holds a secret.
 
-// Rotation states.
+// Rotation states. paused is an operator or cascade pause, halted is the
+// executor's named stop after a failed authority gate (S2 writes it), disabled is
+// the soft delete. Resume leaves paused or halted only through the full resume
+// authorization.
 const (
 	RotationStateActive   = "active"
 	RotationStatePaused   = "paused"
+	RotationStateHalted   = "halted"
 	RotationStateDisabled = "disabled"
 )
 
@@ -32,10 +36,27 @@ var (
 	// there.
 	ErrRotationKeyInUse = fmt.Errorf("%w: a key is already driven by another live rotation", ErrConflict)
 	// ErrRotationLiveInEnvironment refuses an environment delete while a rotation
-	// in it is not disabled or has a run in flight: deleting the environment
-	// would orphan a live superseded role that nothing would ever revoke.
-	ErrRotationLiveInEnvironment = fmt.Errorf("%w: the environment still has a live credential rotation; delete the rotation first", ErrConflict)
+	// in it is not disabled or has a run that may hold a live role: deleting the
+	// environment would orphan a role that nothing would ever revoke.
+	ErrRotationLiveInEnvironment = fmt.Errorf("%w: the environment still has a live credential rotation or a run that may hold a live role", ErrConflict)
 )
+
+// RotationLiveError is ErrRotationLiveInEnvironment naming what blocks the
+// delete: the ids of rotations that are not disabled, and of rotations whose
+// runs may still hold a live role. Ids are non-secret.
+type RotationLiveError struct {
+	LiveRotationIDs   []string
+	BlockingRunOwners []string
+}
+
+func (e *RotationLiveError) Error() string { return ErrRotationLiveInEnvironment.Error() }
+func (e *RotationLiveError) Unwrap() error { return ErrRotationLiveInEnvironment }
+
+// RotationBlockingIDsLimit bounds how many blocking rotation ids a refusal names.
+const RotationBlockingIDsLimit = 10
+
+// RotationListMaxLimit bounds one page of a rotation list.
+const RotationListMaxLimit = 500
 
 // RotationRecord is one rotation's metadata surface. CredentialExpiresAt is the
 // VALID UNTIL of the credential currently delivered into its keys (the latest
@@ -83,12 +104,20 @@ type RotationSetState struct {
 	At                 time.Time
 }
 
+// RotationListQuery is one page of a rotation list.
+type RotationListQuery struct {
+	IncludeDisabled bool
+	After           string
+	Limit           int
+}
+
 // RotationReader is the read side.
 type RotationReader interface {
 	Get(ctx context.Context, p authz.Proof, rotationID string) (RotationRecord, error)
-	// List returns the environment's rotations; disabled history only with
-	// includeDisabled.
-	List(ctx context.Context, p authz.Proof, includeDisabled bool) ([]RotationRecord, error)
+	// List returns up to Limit of the environment's rotations whose id sorts after
+	// After, in id order; disabled history only with IncludeDisabled. Each carries
+	// its delivered-credential expiry, read for the whole page in one query.
+	List(ctx context.Context, p authz.Proof, q RotationListQuery) ([]RotationRecord, error)
 	// CountOpenRuns counts the rotation's non-terminal runs.
 	CountOpenRuns(ctx context.Context, p authz.Proof, rotationID string) (int64, error)
 }
@@ -106,26 +135,41 @@ type RotationRepo interface {
 	// delete and credential revoke cascade: a rotation never stays active against
 	// a provider that can no longer mint.
 	PauseForProvider(ctx context.Context, p authz.Proof, providerID string, at time.Time) ([]RotationRecord, error)
+	// PauseForEnvironment pauses every active rotation of one environment of the
+	// proof's project, or of every environment of the project when environmentID is
+	// empty, and returns them as paused. It is the protect and approval-policy
+	// cascade: a rotation publishes unattended, so it never stays active in an
+	// environment whose publishes now need a ceremony or an approval.
+	PauseForEnvironment(ctx context.Context, p authz.Proof, environmentID string, at time.Time) ([]RotationRecord, error)
 	// PurgeEnvironment removes every rotation row of the proof's environment as
-	// part of the environment delete, once nothing in it is live. It is
-	// ErrRotationLiveInEnvironment otherwise.
+	// part of the environment delete, once nothing in it is live. It is a
+	// *RotationLiveError (ErrRotationLiveInEnvironment) otherwise: a rotation not
+	// yet disabled, or a run that may hold a live role (every phase but done, and a
+	// failed run that had already published).
 	PurgeEnvironment(ctx context.Context, p authz.Proof) error
 }
 
 type rotationStoreQueries interface {
 	create(ctx context.Context, chain domain.Scope, m RotationCreate) (int64, error)
 	get(ctx context.Context, chain domain.Scope, rotationID string) (RotationRecord, error)
-	list(ctx context.Context, chain domain.Scope, includeDisabled bool) ([]RotationRecord, error)
+	list(ctx context.Context, chain domain.Scope, q RotationListQuery) ([]RotationRecord, error)
 	setState(ctx context.Context, chain domain.Scope, m RotationSetState) (int64, error)
 	countOpenRuns(ctx context.Context, chain domain.Scope, rotationID string) (int64, error)
 	credentialExpiry(ctx context.Context, chain domain.Scope, keyID string) (string, error)
+	// credentialExpiries returns the delivered-credential expiry per key, from the
+	// latest published run of each key, in one read.
+	credentialExpiries(ctx context.Context, chain domain.Scope) (map[string]string, error)
 	// claim takes one key for a rotation; a taken key is reported by
 	// uniqueViolation, never by constraint text.
 	claim(ctx context.Context, chain domain.Scope, keyID, rotationID string) (uniqueViolation bool, err error)
 	releaseClaims(ctx context.Context, chain domain.Scope, rotationID string) error
-	liveCounts(ctx context.Context, chain domain.Scope) (rotations, openRuns int64, err error)
+	// blockingRunRotations names, up to limit, the rotations that have a run that
+	// may hold a live role: any phase but done and failed, or failed after publish.
+	blockingRunRotations(ctx context.Context, chain domain.Scope, limit int) ([]string, error)
 	purge(ctx context.Context, chain domain.Scope) error
 	activeByProvider(ctx context.Context, chain domain.Scope, providerID string) ([]RotationRecord, error)
+	activeInEnvironment(ctx context.Context, chain domain.Scope, environmentID string) ([]RotationRecord, error)
+	activeInProject(ctx context.Context, chain domain.Scope) ([]RotationRecord, error)
 	pauseActive(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) (int64, error)
 }
 
@@ -201,19 +245,27 @@ func (r rotationQueries) Get(ctx context.Context, p authz.Proof, rotationID stri
 	return r.get(ctx, chain, rotationID)
 }
 
-func (r rotationQueries) List(ctx context.Context, p authz.Proof, includeDisabled bool) ([]RotationRecord, error) {
+func (r rotationQueries) List(ctx context.Context, p authz.Proof, q RotationListQuery) ([]RotationRecord, error) {
 	chain, err := r.envChain(p, authz.StoreRotationsList)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.queries.list(ctx, chain, includeDisabled)
+	if q.Limit <= 0 || q.Limit > RotationListMaxLimit+1 {
+		return nil, fmt.Errorf("%w: rotation list limit out of range", domain.ErrInvalid)
+	}
+	rows, err := r.queries.list(ctx, chain, q)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return rows, nil
+	}
+	expiries, err := r.queries.credentialExpiries(ctx, chain)
 	if err != nil {
 		return nil, err
 	}
 	for i := range rows {
-		if rows[i], err = r.withExpiry(ctx, chain, rows[i]); err != nil {
-			return nil, err
-		}
+		rows[i].CredentialExpiresAt = expiries[rows[i].KeyID]
 	}
 	return rows, nil
 }
@@ -256,6 +308,32 @@ func (r rotationQueries) PauseForProvider(ctx context.Context, p authz.Proof, pr
 	if err != nil {
 		return nil, err
 	}
+	return r.pauseAll(ctx, chain, active, at)
+}
+
+func (r rotationQueries) PauseForEnvironment(ctx context.Context, p authz.Proof, environmentID string, at time.Time) ([]RotationRecord, error) {
+	chain, err := authz.Verify(p, authz.StoreRotationsPauseForEnvironment, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	if chain.Project == "" || (chain.Env != "" && environmentID != string(chain.Env)) {
+		return nil, ErrNotFound
+	}
+	var active []RotationRecord
+	if environmentID == "" {
+		active, err = r.queries.activeInProject(ctx, chain)
+	} else {
+		active, err = r.queries.activeInEnvironment(ctx, chain, environmentID)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return r.pauseAll(ctx, chain, active, at)
+}
+
+// pauseAll pauses each still-active rotation of the list in the verified
+// project; a rotation another writer already moved is skipped.
+func (r rotationQueries) pauseAll(ctx context.Context, chain domain.Scope, active []RotationRecord, at time.Time) ([]RotationRecord, error) {
 	paused := make([]RotationRecord, 0, len(active))
 	for _, rec := range active {
 		rows, err := r.queries.pauseActive(ctx, chain, rec.ID, at)
@@ -279,14 +357,22 @@ func (r rotationQueries) PurgeEnvironment(ctx context.Context, p authz.Proof) er
 	if err != nil {
 		return err
 	}
-	live, open, err := r.queries.liveCounts(ctx, chain)
+	live, err := r.queries.list(ctx, chain, RotationListQuery{Limit: RotationBlockingIDsLimit})
 	if err != nil {
 		return err
 	}
-	if live > 0 || open > 0 {
-		return ErrRotationLiveInEnvironment
+	blocking, err := r.queries.blockingRunRotations(ctx, chain, RotationBlockingIDsLimit)
+	if err != nil {
+		return err
 	}
-	return r.queries.purge(ctx, chain)
+	if len(live) == 0 && len(blocking) == 0 {
+		return r.queries.purge(ctx, chain)
+	}
+	out := &RotationLiveError{BlockingRunOwners: blocking}
+	for _, rec := range live {
+		out.LiveRotationIDs = append(out.LiveRotationIDs, rec.ID)
+	}
+	return out
 }
 
 func (r rotationQueries) CountOpenRuns(ctx context.Context, p authz.Proof, rotationID string) (int64, error) {
@@ -356,10 +442,10 @@ func (q pgRotationQueries) get(ctx context.Context, chain domain.Scope, rotation
 	return pgRotation(c)
 }
 
-func (q sqliteRotationQueries) list(ctx context.Context, chain domain.Scope, includeDisabled bool) ([]RotationRecord, error) {
+func (q sqliteRotationQueries) list(ctx context.Context, chain domain.Scope, lq RotationListQuery) ([]RotationRecord, error) {
 	var rows []sqlitegen.RotationGetRow
-	if includeDisabled {
-		all, err := q.q.RotationListAll(ctx, sqlitegen.RotationListAllParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	if lq.IncludeDisabled {
+		all, err := q.q.RotationListAll(ctx, sqlitegen.RotationListAllParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), AfterID: lq.After, PageLimit: int64(lq.Limit)})
 		if err != nil {
 			return nil, err
 		}
@@ -367,7 +453,7 @@ func (q sqliteRotationQueries) list(ctx context.Context, chain domain.Scope, inc
 			rows = append(rows, sqlitegen.RotationGetRow(c))
 		}
 	} else {
-		live, err := q.q.RotationList(ctx, sqlitegen.RotationListParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+		live, err := q.q.RotationList(ctx, sqlitegen.RotationListParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), AfterID: lq.After, PageLimit: int64(lq.Limit)})
 		if err != nil {
 			return nil, err
 		}
@@ -378,10 +464,10 @@ func (q sqliteRotationQueries) list(ctx context.Context, chain domain.Scope, inc
 	return mapRows(rows, sqliteRotation)
 }
 
-func (q pgRotationQueries) list(ctx context.Context, chain domain.Scope, includeDisabled bool) ([]RotationRecord, error) {
+func (q pgRotationQueries) list(ctx context.Context, chain domain.Scope, lq RotationListQuery) ([]RotationRecord, error) {
 	var rows []pggen.RotationGetRow
-	if includeDisabled {
-		all, err := q.q.RotationListAll(ctx, pggen.RotationListAllParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	if lq.IncludeDisabled {
+		all, err := q.q.RotationListAll(ctx, pggen.RotationListAllParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), AfterID: lq.After, PageLimit: int32(lq.Limit)})
 		if err != nil {
 			return nil, err
 		}
@@ -389,7 +475,7 @@ func (q pgRotationQueries) list(ctx context.Context, chain domain.Scope, include
 			rows = append(rows, pggen.RotationGetRow(c))
 		}
 	} else {
-		live, err := q.q.RotationList(ctx, pggen.RotationListParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+		live, err := q.q.RotationList(ctx, pggen.RotationListParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), AfterID: lq.After, PageLimit: int32(lq.Limit)})
 		if err != nil {
 			return nil, err
 		}
@@ -454,6 +540,44 @@ func (q pgRotationQueries) credentialExpiry(ctx context.Context, chain domain.Sc
 	return out, nil
 }
 
+func (q sqliteRotationQueries) credentialExpiries(ctx context.Context, chain domain.Scope) (map[string]string, error) {
+	rows, err := q.q.RotationCredentialExpiries(ctx, sqlitegen.RotationCredentialExpiriesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	for _, row := range rows {
+		if _, seen := out[row.KeyID]; seen {
+			continue
+		}
+		stamp := row.ExpiresAt.String
+		if err := normalizeStoredTimes(&stamp); err != nil {
+			return nil, err
+		}
+		out[row.KeyID] = stamp
+	}
+	return out, nil
+}
+
+func (q pgRotationQueries) credentialExpiries(ctx context.Context, chain domain.Scope) (map[string]string, error) {
+	rows, err := q.q.RotationCredentialExpiries(ctx, pggen.RotationCredentialExpiriesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	for _, row := range rows {
+		if _, seen := out[row.KeyID]; seen {
+			continue
+		}
+		stamp := pgStoredStamp(row.ExpiresAt)
+		if err := normalizeStoredTimes(&stamp); err != nil {
+			return nil, err
+		}
+		out[row.KeyID] = stamp
+	}
+	return out, nil
+}
+
 func (q sqliteRotationQueries) claim(ctx context.Context, chain domain.Scope, keyID, rotationID string) (bool, error) {
 	err := q.q.RotationClaimInsert(ctx, sqlitegen.RotationClaimInsertParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), KeyID: keyID, RotationID: rotationID})
 	if sqliteUniqueViolation(err) {
@@ -478,22 +602,42 @@ func (q pgRotationQueries) releaseClaims(ctx context.Context, chain domain.Scope
 	return q.q.RotationClaimsRelease(ctx, pggen.RotationClaimsReleaseParams{RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
 }
 
-func (q sqliteRotationQueries) liveCounts(ctx context.Context, chain domain.Scope) (int64, int64, error) {
-	live, err := q.q.RotationCountLiveInEnvironment(ctx, sqlitegen.RotationCountLiveInEnvironmentParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+func (q sqliteRotationQueries) blockingRunRotations(ctx context.Context, chain domain.Scope, limit int) ([]string, error) {
+	open, err := q.q.RotationBlockingRunRotations(ctx, sqlitegen.RotationBlockingRunRotationsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), PageLimit: int64(limit)})
 	if err != nil {
-		return 0, 0, err
+		return nil, err
 	}
-	open, err := q.q.RotationCountOpenRunsInEnvironment(ctx, sqlitegen.RotationCountOpenRunsInEnvironmentParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
-	return live, open, err
+	failed, err := q.q.RotationPublishedFailedRunRotations(ctx, sqlitegen.RotationPublishedFailedRunRotationsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), PageLimit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return uniqueFirst(append(open, failed...), limit), nil
 }
 
-func (q pgRotationQueries) liveCounts(ctx context.Context, chain domain.Scope) (int64, int64, error) {
-	live, err := q.q.RotationCountLiveInEnvironment(ctx, pggen.RotationCountLiveInEnvironmentParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+func (q pgRotationQueries) blockingRunRotations(ctx context.Context, chain domain.Scope, limit int) ([]string, error) {
+	open, err := q.q.RotationBlockingRunRotations(ctx, pggen.RotationBlockingRunRotationsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), PageLimit: int32(limit)})
 	if err != nil {
-		return 0, 0, err
+		return nil, err
 	}
-	open, err := q.q.RotationCountOpenRunsInEnvironment(ctx, pggen.RotationCountOpenRunsInEnvironmentParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
-	return live, open, err
+	failed, err := q.q.RotationPublishedFailedRunRotations(ctx, pggen.RotationPublishedFailedRunRotationsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), PageLimit: int32(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return uniqueFirst(append(open, failed...), limit), nil
+}
+
+// uniqueFirst keeps the first limit distinct ids in order.
+func uniqueFirst(ids []string, limit int) []string {
+	seen := make(map[string]bool, len(ids))
+	out := make([]string, 0, min(len(ids), limit))
+	for _, id := range ids {
+		if seen[id] || len(out) == limit {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out
 }
 
 // purge deletes children before parents, the order the foreign keys require.
@@ -539,6 +683,46 @@ func (q pgRotationQueries) activeByProvider(ctx context.Context, chain domain.Sc
 		return nil, err
 	}
 	return mapRows(rows, func(c pggen.RotationListActiveByProviderRow) (RotationRecord, error) {
+		return pgRotation(pggen.RotationGetRow(c))
+	})
+}
+
+func (q sqliteRotationQueries) activeInEnvironment(ctx context.Context, chain domain.Scope, environmentID string) ([]RotationRecord, error) {
+	rows, err := q.q.RotationListActiveInEnvironment(ctx, sqlitegen.RotationListActiveInEnvironmentParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: environmentID})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(c sqlitegen.RotationListActiveInEnvironmentRow) (RotationRecord, error) {
+		return sqliteRotation(sqlitegen.RotationGetRow(c))
+	})
+}
+
+func (q pgRotationQueries) activeInEnvironment(ctx context.Context, chain domain.Scope, environmentID string) ([]RotationRecord, error) {
+	rows, err := q.q.RotationListActiveInEnvironment(ctx, pggen.RotationListActiveInEnvironmentParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: environmentID})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(c pggen.RotationListActiveInEnvironmentRow) (RotationRecord, error) {
+		return pgRotation(pggen.RotationGetRow(c))
+	})
+}
+
+func (q sqliteRotationQueries) activeInProject(ctx context.Context, chain domain.Scope) ([]RotationRecord, error) {
+	rows, err := q.q.RotationListActiveInProject(ctx, sqlitegen.RotationListActiveInProjectParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(c sqlitegen.RotationListActiveInProjectRow) (RotationRecord, error) {
+		return sqliteRotation(sqlitegen.RotationGetRow(c))
+	})
+}
+
+func (q pgRotationQueries) activeInProject(ctx context.Context, chain domain.Scope) ([]RotationRecord, error) {
+	rows, err := q.q.RotationListActiveInProject(ctx, pggen.RotationListActiveInProjectParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(c pggen.RotationListActiveInProjectRow) (RotationRecord, error) {
 		return pgRotation(pggen.RotationGetRow(c))
 	})
 }

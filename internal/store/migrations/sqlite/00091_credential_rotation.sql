@@ -13,6 +13,12 @@
 -- nothing writes rotation_runs or rotation_effects until it ships.
 
 -- hikyo:table rotations class=environment chain=org_id,project_id
+-- state: 'paused' is an operator or cascade pause (provider deleted, environment
+-- protected, approval policy added); 'halted' is the executor's named stop after a
+-- failed authority gate, with the short non-secret halt_reason the doctor shows;
+-- 'disabled' is the soft delete. Only a full resume authorization leaves paused or
+-- halted. S1 writes active, paused and disabled; halted and halt_reason are settled
+-- now so the executor slice needs no table rebuild.
 -- key_id and username_key_id carry no foreign key on purpose: a disabled rotation
 -- is history and must outlive a deleted key, and the executor's gate re-checks
 -- that both keys still exist and are secret-classified before every transition.
@@ -30,13 +36,15 @@ CREATE TABLE rotations (
     revocation_delay_seconds INTEGER NOT NULL CHECK (revocation_delay_seconds > 0),
     authority_principal_id TEXT NOT NULL,
     created_by TEXT NOT NULL,
-    state TEXT NOT NULL CHECK (state IN ('active', 'paused', 'disabled')),
+    state TEXT NOT NULL CHECK (state IN ('active', 'paused', 'halted', 'disabled')),
+    halt_reason TEXT CHECK (halt_reason IS NULL OR length(halt_reason) <= 200),
     next_run_at TEXT,
     generation INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     UNIQUE (org_id, project_id, environment_id, id),
     CHECK ((state = 'active') = (next_run_at IS NOT NULL)),
+    CHECK (halt_reason IS NULL OR state = 'halted'),
     CHECK (username_key_id <> key_id),
     FOREIGN KEY (org_id, project_id, environment_id) REFERENCES environments (org_id, project_id, id),
     FOREIGN KEY (org_id, project_id, provider_id) REFERENCES dynamic_providers (org_id, project_id, id),
@@ -66,7 +74,10 @@ CREATE INDEX rotation_key_claims_rotation ON rotation_key_claims (rotation_id);
 -- hikyo:table rotation_runs class=environment chain=org_id,project_id
 -- phase 'staged' is reserved: the chosen design stages and publishes in one
 -- transaction, so it is never entered, but a SQLite CHECK enum cannot be
--- altered without a table rebuild. published_revision is required from the
+-- altered without a table rebuild. 'revoke_refused' is the named, retried
+-- state of a revoke the provider refused (a role that owns objects); it is
+-- non-terminal, so it keeps the one-open-run slot and blocks an environment
+-- delete. published_revision is required from the
 -- publish onward, so revoking the superseded credential is unreachable without
 -- a recorded publish (crash-safety rule 2).
 CREATE TABLE rotation_runs (
@@ -77,7 +88,7 @@ CREATE TABLE rotation_runs (
     rotation_id TEXT NOT NULL,
     generation INTEGER NOT NULL,
     run_trigger TEXT NOT NULL CHECK (run_trigger IN ('schedule', 'manual')),
-    phase TEXT NOT NULL CHECK (phase IN ('minting', 'minted', 'staged', 'published', 'overlap', 'revoking', 'done', 'quarantine', 'failed')),
+    phase TEXT NOT NULL CHECK (phase IN ('minting', 'minted', 'staged', 'published', 'overlap', 'revoking', 'revoke_refused', 'done', 'quarantine', 'failed')),
     candidate_handle TEXT NOT NULL,
     superseded_handle TEXT,
     candidate_valid_until TEXT,
@@ -95,7 +106,9 @@ CREATE TABLE rotation_runs (
     CHECK (phase NOT IN ('published', 'overlap', 'revoking', 'done') OR published_revision IS NOT NULL),
     FOREIGN KEY (org_id, project_id, environment_id, rotation_id) REFERENCES rotations (org_id, project_id, environment_id, id)
 );
--- At most one non-terminal run per rotation.
+-- At most one non-terminal run per rotation. quarantine and failed are terminal
+-- for scheduling, but an environment delete still refuses while a quarantined or
+-- post-publish failed run may hold a live role (see RotationCountBlockingRuns).
 CREATE UNIQUE INDEX rotation_runs_open ON rotation_runs (rotation_id) WHERE phase NOT IN ('done', 'quarantine', 'failed');
 CREATE INDEX rotation_runs_due ON rotation_runs (phase, next_attempt_at);
 CREATE INDEX rotation_runs_rotation ON rotation_runs (rotation_id, started_at);

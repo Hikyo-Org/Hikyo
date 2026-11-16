@@ -6060,7 +6060,8 @@ export const settleLease = <ThrowOnError extends boolean = false>(options: Optio
  *
  * Metadata only: no credential, candidate handle or password is stored or
  * returned. Deleted (disabled) rotations are history and are listed only
- * with `include_disabled`. `credential_expires_at` is when the credential
+ * with `include_disabled`. The list is paged in id order (`limit`, default
+ * 100, at most 500; `after` continues from `next_after`). `credential_expires_at` is when the credential
  * currently delivered into the rotation's keys lapses, once a run has
  * published one. Slice one of scheduled rotation records the
  * configuration; runs arrive with the executor.
@@ -6146,15 +6147,16 @@ export const pauseRotation = <ThrowOnError extends boolean = false>(options: Opt
 });
 
 /**
- * Resume a paused rotation and recompute its next run.
+ * Resume a paused or halted rotation and recompute its next run.
  *
  * `expected_generation`, when given, must equal the rotation's current
  * generation, so a stale client cannot overwrite a newer change. Resume is
- * a human act like create: the caller must hold edit, publish and reveal on
- * both keys and consume the publish reauthentication window over them, the
- * recorded authority principal must still hold the same access, the
- * provider must still be able to mint, and both keys must still exist.
- * Each refusal is named.
+ * a human act like create, and it re-runs the whole authorization whether the
+ * rotation was paused or halted: the caller must hold edit, publish and
+ * reveal on both keys and consume the publish reauthentication window over
+ * them, the recorded authority principal must still hold the same access, the
+ * environment must still run unattended, the provider must still be able to
+ * mint, and both keys must still exist. Each refusal is named.
  *
  */
 export const resumeRotation = <ThrowOnError extends boolean = false>(options: Options<ResumeRotationData, ThrowOnError>): RequestResult<ResumeRotationResponses, ResumeRotationErrors, ThrowOnError> => (options.client ?? client).post<ResumeRotationResponses, ResumeRotationErrors, ThrowOnError>({

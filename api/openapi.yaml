@@ -14454,7 +14454,8 @@ paths:
       description: |
         Metadata only: no credential, candidate handle or password is stored or
         returned. Deleted (disabled) rotations are history and are listed only
-        with `include_disabled`. `credential_expires_at` is when the credential
+        with `include_disabled`. The list is paged in id order (`limit`, default
+        100, at most 500; `after` continues from `next_after`). `credential_expires_at` is when the credential
         currently delivered into the rotation's keys lapses, once a run has
         published one. Slice one of scheduled rotation records the
         configuration; runs arrive with the executor.
@@ -14469,6 +14470,16 @@ paths:
           required: false
           description: List deleted (disabled) rotations as well. Off by default.
           schema: {type: boolean, default: false}
+        - name: limit
+          in: query
+          required: false
+          description: Maximum rotations on this page, in id order.
+          schema: {type: integer, minimum: 1, maximum: 500, default: 100}
+        - name: after
+          in: query
+          required: false
+          description: The `next_after` a previous page returned. Absent reads the first page.
+          schema: {type: string, maxLength: 128}
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -14601,18 +14612,19 @@ paths:
     post:
       operationId: resumeRotation
       tags: [rotation]
-      summary: Resume a paused rotation and recompute its next run.
+      summary: Resume a paused or halted rotation and recompute its next run.
       description: |
         `expected_generation`, when given, must equal the rotation's current
         generation, so a stale client cannot overwrite a newer change. Resume is
-        a human act like create: the caller must hold edit, publish and reveal on
-        both keys and consume the publish reauthentication window over them, the
-        recorded authority principal must still hold the same access, the
-        provider must still be able to mint, and both keys must still exist.
-        Each refusal is named.
+        a human act like create, and it re-runs the whole authorization whether the
+        rotation was paused or halted: the caller must hold edit, publish and
+        reveal on both keys and consume the publish reauthentication window over
+        them, the recorded authority principal must still hold the same access, the
+        environment must still run unattended, the provider must still be able to
+        mint, and both keys must still exist. Each refusal is named.
       x-hikyo-class: tenant
       x-hikyo-operation: rotation.resume
-      x-hikyo-formula: [publish@environment]
+      x-hikyo-formula: [edit@environment, publish@environment, reveal@environment]
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 17
       requestBody: {required: false, content: {application/json: {schema: {$ref: "#/components/schemas/RotationStateRequest"}}}}
@@ -18247,7 +18259,12 @@ components:
 
     CredentialRotationState:
       type: string
-      enum: [active, paused, disabled]
+      description: |
+        `paused` is an operator or cascade pause (a deleted provider, a protected
+        environment or an approval policy pauses the rotations it would break);
+        `halted` is the executor's named stop after a failed authority gate. Only a
+        full resume authorization leaves either. `disabled` is the soft delete.
+      enum: [active, paused, halted, disabled]
 
     CredentialRotation:
       type: object
@@ -18276,6 +18293,7 @@ components:
       required: [items]
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/CredentialRotation"}}
+        next_after: {type: string, maxLength: 128, description: "Pass as `after` to read the next page. Absent on the last page."}
 
     CreateRotationRequest:
       type: object

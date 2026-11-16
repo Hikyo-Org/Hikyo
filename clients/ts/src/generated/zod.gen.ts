@@ -729,9 +729,17 @@ export const zDynamicLeaseList = z.object({
     items: z.array(zDynamicLease)
 });
 
+/**
+ * `paused` is an operator or cascade pause (a deleted provider, a protected
+ * environment or an approval policy pauses the rotations it would break);
+ * `halted` is the executor's named stop after a failed authority gate. Only a
+ * full resume authorization leaves either. `disabled` is the soft delete.
+ *
+ */
 export const zCredentialRotationState = z.enum([
     'active',
     'paused',
+    'halted',
     'disabled'
 ]);
 
@@ -754,7 +762,8 @@ export const zCredentialRotation = z.object({
 });
 
 export const zCredentialRotationList = z.object({
-    items: z.array(zCredentialRotation)
+    items: z.array(zCredentialRotation),
+    next_after: z.string().max(128).optional()
 });
 
 export const zCreateRotationRequest = z.object({
@@ -9584,7 +9593,9 @@ export const zListRotationsPath = z.object({
 });
 
 export const zListRotationsQuery = z.object({
-    include_disabled: z.boolean().optional().default(false)
+    include_disabled: z.boolean().optional().default(false),
+    limit: z.int().gte(1).lte(500).optional().default(100),
+    after: z.string().max(128).optional()
 });
 
 /**

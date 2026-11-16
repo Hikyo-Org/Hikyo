@@ -56,7 +56,7 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
-  - target: $['paths']['/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations']['get']['parameters'][0]
+  - target: $['paths']['/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations']['get']['parameters'][0,1,2]
     update:
       x-omitempty: false
       x-omitzero: true
@@ -185,6 +185,10 @@ actions:
       x-omitempty: false
       x-omitzero: true
   - target: $['components']['schemas']['CredentialRotation']['properties']['next_run_at','credential_expires_at']
+    update:
+      x-omitempty: false
+      x-omitzero: true
+  - target: $['components']['schemas']['CredentialRotationList']['properties']['next_after']
     update:
       x-omitempty: false
       x-omitzero: true

@@ -1411,6 +1411,7 @@ type Rotation struct {
 	AuthorityPrincipalID   string
 	CreatedBy              string
 	State                  string
+	HaltReason             pgtype.Text
 	NextRunAt              pgtype.Timestamptz
 	Generation             int64
 	CreatedAt              pgtype.Timestamptz

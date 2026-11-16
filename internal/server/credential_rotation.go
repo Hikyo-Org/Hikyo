@@ -49,18 +49,27 @@ func credentialRotationResponse(v service.RotationView) (apigen.CredentialRotati
 }
 
 func (a *API) ListRotations(ctx context.Context, req apigen.ListRotationsRequestObject) (apigen.ListRotationsResponseObject, error) {
-	includeDisabled := req.Params.IncludeDisabled != nil && *req.Params.IncludeDisabled
-	rows, err := a.CredentialRotations.List(ctx, service.Bearer(bearer(ctx)), dynamicEnvScope(req.Org, req.Project, req.Environment), includeDisabled)
+	page := service.RotationListRequest{IncludeDisabled: req.Params.IncludeDisabled != nil && *req.Params.IncludeDisabled}
+	if req.Params.Limit != nil {
+		page.Limit = *req.Params.Limit
+	}
+	if req.Params.After != nil {
+		page.After = *req.Params.After
+	}
+	got, err := a.CredentialRotations.List(ctx, service.Bearer(bearer(ctx)), dynamicEnvScope(req.Org, req.Project, req.Environment), page)
 	if err != nil {
 		return nil, err
 	}
 	out := apigen.CredentialRotationList{Items: []apigen.CredentialRotation{}}
-	for _, row := range rows {
+	for _, row := range got.Items {
 		resp, err := credentialRotationResponse(row)
 		if err != nil {
 			return nil, err
 		}
 		out.Items = append(out.Items, resp)
+	}
+	if got.NextAfter != "" {
+		out.NextAfter = &got.NextAfter
 	}
 	return apigen.ListRotations200JSONResponse(out), nil
 }

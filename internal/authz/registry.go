@@ -1001,6 +1001,10 @@ const (
 	// that mint from a provider being deleted or losing its credential.
 	StoreRotationsPurgeEnvironment StoreOp = "rotations.PurgeEnvironment"
 	StoreRotationsPauseForProvider StoreOp = "rotations.PauseForProvider"
+	// StoreRotationsPauseForEnvironment pauses the active rotations of an
+	// environment, or of the whole project, that became protected or gained an
+	// approval policy.
+	StoreRotationsPauseForEnvironment StoreOp = "rotations.PauseForEnvironment"
 
 	// SSH user certificates (#155). Proof-carrying, environment-bound; the
 	// sweeper's revocation SQL runs through the proof-free SSHRuntime.
@@ -3459,7 +3463,10 @@ var operationTable = map[Operation]opSpec{
 			StoreApprovalApproverClear:  true,
 			StoreApprovalBypasserInsert: true, StoreApprovalBypasserList: true,
 			StoreApprovalBypasserClear: true,
-			StoreAuditTenantInsert:     true,
+			// An enabled policy pauses the covered environments' active rotations
+			// (#148): an unattended publish would become an approval request.
+			StoreRotationsPauseForEnvironment: true,
+			StoreAuditTenantInsert:            true,
 		},
 		// A policy change bumps its version; every active request pinned to the
 		// old version fails closed and is invalidated the next time it is voted
@@ -3467,7 +3474,7 @@ var operationTable = map[Operation]opSpec{
 		// env-scoped proof those paths carry). The project-scoped policy proof
 		// deliberately does not reach into env-scoped request rows.
 		events: []audit.EventType{
-			audit.EventApprovalPolicyChanged,
+			audit.EventApprovalPolicyChanged, audit.EventRotationConfigured,
 		},
 	},
 	OpApprovalPolicyRead: {
@@ -4511,14 +4518,17 @@ var operationTable = map[Operation]opSpec{
 		formula: Formula{{Cap: domain.CapProjectSettings, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{
 			StoreEnvironmentsGetSettings: true, StoreEnvironmentsSetSettings: true,
-			StoreAuditTenantInsert: true,
+			StoreRotationsPauseForEnvironment: true,
+			StoreAuditTenantInsert:            true,
 		},
 		// auth.effective_window_lowered is emitted by the LowerEffectiveWindow
 		// library this knob calls (#54 B6) — declared here because #55 is the
 		// caller the completeness invariant was waiting for.
+		// Protecting an environment pauses its active rotations (#148): their
+		// publishes would need a per-publish ceremony an unattended run cannot give.
 		events: []audit.EventType{
 			audit.EventReauthWindowChanged, audit.EventProtectedFlagChange,
-			audit.EventAuthEffectiveWindowLowered,
+			audit.EventAuthEffectiveWindowLowered, audit.EventRotationConfigured,
 		},
 	},
 	OpOrgRetentionRead: {
@@ -5484,7 +5494,15 @@ var operationTable = map[Operation]opSpec{
 	},
 	OpRotationResume: {
 		class: ClassTenant, level: domain.LevelEnv,
-		formula: Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
+		// Resume is the human act that re-arms a standing delegation, so it needs
+		// the create formula: the per-key checks (the caller's, and the recorded
+		// authority's) run under this operation, so a denial is recorded as a
+		// rotation.resume denial.
+		formula: Formula{
+			{Cap: domain.CapEdit, At: domain.LevelEnv},
+			{Cap: domain.CapPublish, At: domain.LevelEnv},
+			{Cap: domain.CapReveal, At: domain.LevelEnv},
+		},
 		// Resume consumes the publish reauthentication window over the keys after
 		// the grant passes; its refusal is a reachable 403.
 		postGrantForbidden: true,

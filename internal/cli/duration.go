@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"errors"
+	"math"
 	"regexp"
 	"strconv"
 	"time"
@@ -20,6 +22,9 @@ func durationSeconds(flagName, raw string, allowZero bool) (int64, error) {
 	}
 	d, err := parseDuration(raw)
 	if err != nil || d < time.Second {
+		if allowZero {
+			return 0, failf(ExitUsage, "%s must be 0 or a duration of at least one second, such as 30m, 720h or 90d", flagName)
+		}
 		return 0, failf(ExitUsage, "%s must be a duration of at least one second, such as 30m, 720h or 90d", flagName)
 	}
 	return int64(d / time.Second), nil
@@ -30,6 +35,11 @@ func parseDuration(raw string) (time.Duration, error) {
 		days, err := strconv.Atoi(m[1])
 		if err != nil {
 			return 0, err
+		}
+		// A time.Duration holds 106751 whole days; more would wrap silently into a
+		// short or negative duration the server would then accept.
+		if int64(days) > math.MaxInt64/int64(24*time.Hour) {
+			return 0, errors.New("duration overflows")
 		}
 		return time.Duration(days) * 24 * time.Hour, nil
 	}

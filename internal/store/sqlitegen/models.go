@@ -1409,6 +1409,7 @@ type Rotation struct {
 	AuthorityPrincipalID   string
 	CreatedBy              string
 	State                  string
+	HaltReason             sql.NullString
 	NextRunAt              sql.NullString
 	Generation             int64
 	CreatedAt              string

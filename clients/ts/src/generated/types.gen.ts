@@ -876,7 +876,14 @@ export type DynamicLeaseList = {
     items: Array<DynamicLease>;
 };
 
-export type CredentialRotationState = 'active' | 'paused' | 'disabled';
+/**
+ * `paused` is an operator or cascade pause (a deleted provider, a protected
+ * environment or an approval policy pauses the rotations it would break);
+ * `halted` is the executor's named stop after a failed authority gate. Only a
+ * full resume authorization leaves either. `disabled` is the soft delete.
+ *
+ */
+export type CredentialRotationState = 'active' | 'paused' | 'halted' | 'disabled';
 
 export type CredentialRotation = {
     id: Id;
@@ -904,6 +911,10 @@ export type CredentialRotation = {
 
 export type CredentialRotationList = {
     items: Array<CredentialRotation>;
+    /**
+     * Pass as `after` to read the next page. Absent on the last page.
+     */
+    next_after?: string;
 };
 
 export type CreateRotationRequest = {
@@ -33595,6 +33606,14 @@ export type ListRotationsData = {
          * List deleted (disabled) rotations as well. Off by default.
          */
         include_disabled?: boolean;
+        /**
+         * Maximum rotations on this page, in id order.
+         */
+        limit?: number;
+        /**
+         * The `next_after` a previous page returned. Absent reads the first page.
+         */
+        after?: string;
     };
     url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations';
 };

@@ -1425,6 +1425,7 @@ func (e CredentialLifetime) Valid() bool {
 const (
 	CredentialRotationStateActive   CredentialRotationState = "active"
 	CredentialRotationStateDisabled CredentialRotationState = "disabled"
+	CredentialRotationStateHalted   CredentialRotationState = "halted"
 	CredentialRotationStatePaused   CredentialRotationState = "paused"
 )
 
@@ -1434,6 +1435,8 @@ func (e CredentialRotationState) Valid() bool {
 	case CredentialRotationStateActive:
 		return true
 	case CredentialRotationStateDisabled:
+		return true
+	case CredentialRotationStateHalted:
 		return true
 	case CredentialRotationStatePaused:
 		return true
@@ -6843,9 +6846,14 @@ type CredentialRotation struct {
 	NextRunAt *time.Time `json:"next_run_at,omitzero"`
 
 	// ProviderId A prefixed UUIDv7, e.g. `org_0198…`.
-	ProviderId             ID                      `json:"provider_id"`
-	RevocationDelaySeconds int64                   `json:"revocation_delay_seconds"`
-	State                  CredentialRotationState `json:"state"`
+	ProviderId             ID    `json:"provider_id"`
+	RevocationDelaySeconds int64 `json:"revocation_delay_seconds"`
+
+	// State `paused` is an operator or cascade pause (a deleted provider, a protected
+	// environment or an approval policy pauses the rotations it would break);
+	// `halted` is the executor's named stop after a failed authority gate. Only a
+	// full resume authorization leaves either. `disabled` is the soft delete.
+	State CredentialRotationState `json:"state"`
 
 	// UpdatedAt RFC 3339 UTC, microsecond precision.
 	UpdatedAt Timestamp `json:"updated_at"`
@@ -6857,9 +6865,15 @@ type CredentialRotation struct {
 // CredentialRotationList defines model for CredentialRotationList.
 type CredentialRotationList struct {
 	Items []CredentialRotation `json:"items"`
+
+	// NextAfter Pass as `after` to read the next page. Absent on the last page.
+	NextAfter *string `json:"next_after,omitzero"`
 }
 
-// CredentialRotationState defines model for CredentialRotationState.
+// CredentialRotationState `paused` is an operator or cascade pause (a deleted provider, a protected
+// environment or an approval policy pauses the rotations it would break);
+// `halted` is the executor's named stop after a failed authority gate. Only a
+// full resume authorization leaves either. `disabled` is the soft delete.
 type CredentialRotationState string
 
 // DEKRotation defines model for DEKRotation.
@@ -13802,6 +13816,12 @@ type ListRevisionsParams struct {
 type ListRotationsParams struct {
 	// IncludeDisabled List deleted (disabled) rotations as well. Off by default.
 	IncludeDisabled *bool `form:"include_disabled" json:"include_disabled,omitzero"`
+
+	// Limit Maximum rotations on this page, in id order.
+	Limit *int `form:"limit" json:"limit,omitzero"`
+
+	// After The `next_after` a previous page returned. Absent reads the first page.
+	After *string `form:"after" json:"after,omitzero"`
 }
 
 // DeleteRotationParams defines parameters for DeleteRotation.
@@ -16400,7 +16420,7 @@ type ServerInterface interface {
 	// PauseRotation Pause a rotation so it stops being scheduled.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/pause)
 	PauseRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID)
-	// ResumeRotation Resume a paused rotation and recompute its next run.
+	// ResumeRotation Resume a paused or halted rotation and recompute its next run.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume)
 	ResumeRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID)
 	// GetEnvironmentSettings Read an environment's protection state and reauthentication window.
@@ -18590,7 +18610,7 @@ func (_ Unimplemented) PauseRotation(w http.ResponseWriter, r *http.Request, org
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// ResumeRotation Resume a paused rotation and recompute its next run.
+// ResumeRotation Resume a paused or halted rotation and recompute its next run.
 // (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume)
 func (_ Unimplemented) ResumeRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -29515,6 +29535,32 @@ func (siw *ServerInterfaceWrapper) ListRotations(w http.ResponseWriter, r *http.
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "include_disabled"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "include_disabled", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "after" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "after", r.URL.Query(), &params.After, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "after"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "after", Err: err})
 		}
 		return
 	}
@@ -87296,7 +87342,7 @@ type StrictServerInterface interface {
 	// PauseRotation Pause a rotation so it stops being scheduled.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/pause)
 	PauseRotation(ctx context.Context, request PauseRotationRequestObject) (PauseRotationResponseObject, error)
-	// ResumeRotation Resume a paused rotation and recompute its next run.
+	// ResumeRotation Resume a paused or halted rotation and recompute its next run.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume)
 	ResumeRotation(ctx context.Context, request ResumeRotationRequestObject) (ResumeRotationResponseObject, error)
 	// GetEnvironmentSettings Read an environment's protection state and reauthentication window.

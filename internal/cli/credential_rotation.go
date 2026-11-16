@@ -47,10 +47,14 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 	var format, provider, key, usernameKey, interval, delay string
 	var expectedGeneration int64
 	var includeDisabled bool
+	var limit int
+	var after string
 	st, flags, err := parseCommon("rotation "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
 		if sub == "list" {
 			fs.BoolVar(&includeDisabled, "include-disabled", false, "also list deleted rotations (history)")
+			fs.IntVar(&limit, "limit", 0, "rotations per page, 1 to 500 (0 = the server default of 100)")
+			fs.StringVar(&after, "after", "", "continue after this rotation id, as a previous page printed it")
 		}
 		if sub == "create" {
 			fs.StringVar(&provider, "provider", "", "the dynamic provider that mints the credential")
@@ -92,15 +96,31 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 		if err := flags.checkNoPositionals("rotation list"); err != nil {
 			return err
 		}
-		target := base
+		query := url.Values{}
 		if includeDisabled {
-			target += "?include_disabled=true"
+			query.Set("include_disabled", "true")
+		}
+		if limit != 0 {
+			query.Set("limit", strconv.Itoa(limit))
+		}
+		if after != "" {
+			query.Set("after", after)
+		}
+		target := base
+		if len(query) > 0 {
+			target += "?" + query.Encode()
 		}
 		var out apigen.CredentialRotationList
 		if err := client.Do(ctx, http.MethodGet, target, nil, &out); err != nil {
 			return err
 		}
-		return Render(ios.Stdout, f, credentialRotationTable(out))
+		if err := Render(ios.Stdout, f, credentialRotationTable(out)); err != nil {
+			return err
+		}
+		if out.NextAfter != nil {
+			fmt.Fprintf(ios.Stderr, "more rotations follow; continue with --after %s\n", *out.NextAfter)
+		}
+		return nil
 	case "show":
 		id := flags.positional()
 		if id == "" {

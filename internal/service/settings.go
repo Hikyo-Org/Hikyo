@@ -165,6 +165,16 @@ func (s *ProjectSettings) SetEnvironment(ctx context.Context, actor Actor, scope
 			}
 		}
 
+		// A scheduled rotation publishes unattended and can never satisfy the
+		// per-publish ceremony a protected environment needs, so its active
+		// rotations are paused in this transaction (create and resume refuse a
+		// protected environment for the same reason).
+		if want.Protected && !before.Protected {
+			if err := pauseRotationsForEnvironment(ctx, r, p, caller.Principal, string(scope.Env), rotationPauseEnvironmentProtected, s.now()); err != nil {
+				return err
+			}
+		}
+
 		// Lowering the effective window is the #54 library's job: it
 		// invalidates the environment's open windows, RETAINS grants, and
 		// enumerates and audits the principals the transition strands.
