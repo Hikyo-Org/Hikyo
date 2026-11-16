@@ -1138,6 +1138,11 @@ func (s *Environments) Delete(ctx context.Context, actor Actor, scope domain.Sco
 		if err := r.Snapshots().DeleteEnvironment(ctx, p); err != nil {
 			return err
 		}
+		// A live rotation refuses the delete by name (its superseded role would
+		// be orphaned); a deleted one is history that goes with the environment.
+		if err := purgeEnvironmentRotations(ctx, r, p); err != nil {
+			return err
+		}
 		if err := r.SSH().PurgeEnvironment(ctx, p); err != nil {
 			return err
 		}

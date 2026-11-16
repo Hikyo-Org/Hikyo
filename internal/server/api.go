@@ -214,6 +214,9 @@ type API struct {
 	// Dynamic is the dynamic-secret provider + lease surface (#147). Concrete
 	// like Adapters: it resolves the session and mints/settles leases itself.
 	Dynamic *service.Dynamic
+	// CredentialRotations is scheduled credential rotation configuration
+	// (#148, slice S1). It executes nothing; the executor arrives later.
+	CredentialRotations *service.CredentialRotations
 	// SSH is the SSH user-certificate surface (#155).
 	SSH *service.SSH
 	// Transit is the managed-key surface (#156). Concrete like Dynamic: it

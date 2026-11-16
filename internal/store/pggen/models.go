@@ -1398,6 +1398,72 @@ type RevisionPin struct {
 	SchemaOverride       bool
 }
 
+type Rotation struct {
+	ID                     string
+	OrgID                  string
+	ProjectID              string
+	EnvironmentID          string
+	ProviderID             string
+	KeyID                  string
+	UsernameKeyID          string
+	IntervalSeconds        int64
+	RevocationDelaySeconds int64
+	AuthorityPrincipalID   string
+	CreatedBy              string
+	State                  string
+	HaltReason             pgtype.Text
+	NextRunAt              pgtype.Timestamptz
+	Generation             int64
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+}
+
+type RotationEffect struct {
+	ID             string
+	OrgID          string
+	ProjectID      string
+	EnvironmentID  string
+	RunID          string
+	Kind           string
+	IntentAuditID  string
+	OutcomeAuditID pgtype.Text
+	Outcome        pgtype.Text
+	CreatedAt      pgtype.Timestamptz
+	FinishedAt     pgtype.Timestamptz
+}
+
+type RotationKeyClaim struct {
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	KeyID         string
+	RotationID    string
+}
+
+type RotationRun struct {
+	ID                     string
+	OrgID                  string
+	ProjectID              string
+	EnvironmentID          string
+	RotationID             string
+	Generation             int64
+	RunTrigger             string
+	Phase                  string
+	CandidateHandle        string
+	SupersededHandle       pgtype.Text
+	CandidateValidUntil    pgtype.Timestamptz
+	PublishedRevision      pgtype.Int8
+	RevocationDelaySeconds int64
+	StartedAt              pgtype.Timestamptz
+	PhaseAt                pgtype.Timestamptz
+	LeaseOwner             pgtype.Text
+	LeaseExpiresAt         pgtype.Timestamptz
+	LeaseClaimToken        int64
+	AttemptCount           int64
+	NextAttemptAt          pgtype.Timestamptz
+	LastError              pgtype.Text
+}
+
 type Rule struct {
 	ID          string
 	PrincipalID string

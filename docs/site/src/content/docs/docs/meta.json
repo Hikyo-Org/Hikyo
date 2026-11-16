@@ -35,6 +35,7 @@
     "environment-parameters",
     "deployment-adapters",
     "dynamic-secrets",
+    "rotation",
     "ssh-certificates",
     "transit",
     "private-pki",

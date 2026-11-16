@@ -886,6 +886,10 @@ const (
 	EventDynamicLeaseTransitionOutcome    EventType = "dynamic.lease_transition_outcome"
 	EventDynamicLeaseDisclosed            EventType = "dynamic.lease_disclosed"
 	EventDynamicLeaseSettleRequested      EventType = "dynamic.lease_settle_requested"
+	// Scheduled credential rotation configuration (#148, S1). One event covers
+	// create, pause, resume and delete; action says which. Run events arrive
+	// with the run state machine (S2).
+	EventRotationConfigured EventType = "rotation.configured"
 	// SSH user certificates (#155).
 	EventSSHCAConfigured       EventType = "ssh.ca_configured"
 	EventSSHCARotated          EventType = "ssh.ca_rotated"
@@ -3744,6 +3748,30 @@ var registry = map[EventType]TypeSpec{
 	}),
 	EventDynamicProviderDeleted: adapterLifecycleEvent(Schema{
 		"revoked_lease_count": {Kind: KindInt, Required: true},
+	}),
+	// A rotation's configuration lifecycle. The payload names the rotation, its
+	// key ids and bounds and the recorded authority principal; no credential,
+	// candidate handle or password is ever in it (none exists in S1). A pause the
+	// system causes rather than a person (provider delete or credential revoke,
+	// environment protected, approval policy enabled) records each rotation it
+	// pauses with reason set (#148).
+	EventRotationConfigured: adapterLifecycleEvent(Schema{
+		"action":                   {Kind: KindString, Required: true, Enum: []string{"created", "paused", "resumed", "deleted"}},
+		"rotation_id":              {Kind: KindString, Required: true},
+		"provider_id":              {Kind: KindString, Required: true},
+		"key_id":                   {Kind: KindString, Required: true},
+		"username_key_id":          {Kind: KindString, Required: true},
+		"interval_seconds":         {Kind: KindInt, Required: true},
+		"revocation_delay_seconds": {Kind: KindInt, Required: true},
+		"authority_principal_id":   {Kind: KindString, Required: true},
+		"generation":               {Kind: KindInt, Required: true},
+		// environment_id names the rotation's environment and is set on every
+		// action; reason is set only on a cascade pause.
+		"environment_id": {Kind: KindString},
+		"reason":         {Kind: KindString, Enum: []string{"provider_deleted", "provider_credential_revoked", "environment_protected", "approval_policy_enabled"}},
+		// credential_expires_at is the delivered role's VALID UNTIL when one is
+		// known, so a pause or delete says when the live credential lapses.
+		"credential_expires_at": {Kind: KindString},
 	}),
 	EventDynamicProviderInspected: {
 		SchemaVersion: 1, Retention: RetentionAccess,

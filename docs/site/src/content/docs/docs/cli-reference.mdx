@@ -103,6 +103,7 @@ stored locally and are never printed as a login receipt.
 | `access`, `project-settings` | Manage grants, members, temporary-access policies and requests, and protected environments. |
 | `adapter` | Configure Forgejo, GitHub Actions, GitLab, Vault KV, AWS Secrets Manager, Cloudflare, and sealed-webhook deployment adapters, targets, plans, adoption, and converge jobs. |
 | `dynamic-provider`, `lease` | Register dynamic-secret providers and mint, renew, revoke, and settle short-lived leases. |
+| `rotation` | Configure scheduled PostgreSQL credential rotation: create and resume consume a publish ceremony; list (`--include-disabled`, `--limit`, `--after`), show, pause and delete name the delivered credential's expiry. See [Scheduled credential rotation](/docs/rotation/). |
 | `ssh-ca`, `ssh-profile`, `ssh-cert` | Run SSH user CAs, define signing profiles, and issue and revoke short-lived SSH certificates. See [SSH certificates](/docs/ssh-certificates/). |
 | `transit` | Create, rotate, retire and delete managed keys, and encrypt, decrypt, rewrap, sign, verify and MAC with them. See [Transit](/docs/transit/). |
 | `pki` | Operate the private PKI: create, import, install, rotate, retire and revoke CA issuers, release restore holds, read CRLs, and manage narrowing-only certificate profiles and their bindings. |
@@ -112,6 +113,14 @@ stored locally and are never printed as a login receipt.
 | `scan` | Scan files, staged changes, and Git history for credentials, locally, with the server's ruleset. See [Scan repositories and CI](/docs/repository-scanning/). |
 | `remote`, `remote-credential` | Peer instances and the credentials they present. |
 | `rotate-*`, `reencrypt` | Key rotation ceremonies and the re-encryption that completes a project or instance rotation. |
+
+The lease, certificate and rotation duration flags (`--ttl`, `--default-ttl`, `--max-ttl`, `--interval`,
+`--revocation-delay` and the transit and PKI lifetimes) accept a Go duration such
+as `90m` or `720h`, or a whole number of days with a `d` suffix such as `30d`.
+Refusals for an out-of-range `--interval` or `--revocation-delay` come from the server,
+which names the flag and renders the value and the bound in the largest whole unit
+(`d`, `h`, `m`), not necessarily the unit you typed; the other flags report their own
+bounds.
 
 ### DEK rotation and re-encryption
 

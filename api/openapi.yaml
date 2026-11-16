@@ -14442,6 +14442,203 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/Internal"}
 
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    get:
+      operationId: listRotations
+      tags: [rotation]
+      summary: List an environment's scheduled credential rotations.
+      description: |
+        Metadata only: no credential, candidate handle or password is stored or
+        returned. Deleted (disabled) rotations are history and are listed only
+        with `include_disabled`. The list is paged in id order (`limit`, default
+        100, at most 500; `after` continues from `next_after`). `credential_expires_at` is when the credential
+        currently delivered into the rotation's keys lapses, once a run has
+        published one. Slice one of scheduled rotation records the
+        configuration; runs arrive with the executor.
+      x-hikyo-class: tenant
+      x-hikyo-operation: rotation.inspect
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 17
+      parameters:
+        - name: include_disabled
+          in: query
+          required: false
+          description: List deleted (disabled) rotations as well. Off by default.
+          schema: {type: boolean, default: false}
+        - name: limit
+          in: query
+          required: false
+          description: Maximum rotations on this page, in id order.
+          schema: {type: integer, minimum: 1, maximum: 500, default: 100}
+        - name: after
+          in: query
+          required: false
+          description: The `next_after` a previous page returned. Absent reads the first page.
+          schema: {type: string, maxLength: 128}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: Rotation list., content: {application/json: {schema: {$ref: "#/components/schemas/CredentialRotationList"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+    post:
+      operationId: createRotation
+      tags: [rotation]
+      summary: Configure scheduled rotation of one PostgreSQL credential pair.
+      description: |
+        The caller must be a signed-in person who currently holds edit, publish
+        and reveal on both keys. They are recorded as the rotation's authority
+        principal, which the executor re-authorizes before every transition. A
+        machine principal is refused. Because an unattended publish can never
+        satisfy a per-publish ceremony, creating a rotation consumes a publish
+        reauthentication window over the environment and both keys, exactly as
+        a values publish of those keys would; the CLI runs that ceremony. The
+        dynamic provider must exist with its admin credential set, the password
+        key must be secret-classified, and a key may be driven by one live
+        rotation at a time, whichever role it plays. A protected environment, or
+        one covered by a secret-change approval policy, is refused by name:
+        its publishes cannot run unattended. Interval and revocation delay are
+        bounded; each bound hit is a named invalid refusal.
+      x-hikyo-class: tenant
+      x-hikyo-operation: rotation.create
+      x-hikyo-formula: [edit@environment, publish@environment, reveal@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 17
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CreateRotationRequest"}}}}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "201": {description: Rotation configured., content: {application/json: {schema: {$ref: "#/components/schemas/CredentialRotation"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/RotationID"
+    get:
+      operationId: showRotation
+      tags: [rotation]
+      summary: Show one scheduled credential rotation.
+      x-hikyo-class: tenant
+      x-hikyo-operation: rotation.inspect
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 17
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: Rotation., content: {application/json: {schema: {$ref: "#/components/schemas/CredentialRotation"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+    delete:
+      operationId: deleteRotation
+      tags: [rotation]
+      summary: Disable a rotation; the row stays as history.
+      description: |
+        Soft delete: the rotation moves to `disabled` and frees its keys. A
+        rotation with a run in flight is refused. `expected_generation`, when
+        given, must equal the rotation's current generation. The credential
+        already delivered into the keys stays valid until
+        `credential_expires_at`; deleting does not revoke it.
+      x-hikyo-class: tenant
+      x-hikyo-operation: rotation.delete
+      x-hikyo-formula: [publish@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 17
+      parameters:
+        - $ref: "#/components/parameters/ExpectedGeneration"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: Rotation after it was disabled., content: {application/json: {schema: {$ref: "#/components/schemas/CredentialRotation"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/pause:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/RotationID"
+    post:
+      operationId: pauseRotation
+      tags: [rotation]
+      summary: Pause a rotation so it stops being scheduled.
+      description: |
+        `expected_generation`, when given, must equal the rotation's current
+        generation, so a stale client cannot overwrite a newer change. The
+        credential already delivered into the keys stays valid until
+        `credential_expires_at`; pausing does not revoke it. Pause needs
+        publish on the environment, not per-key access.
+      x-hikyo-class: tenant
+      x-hikyo-operation: rotation.pause
+      x-hikyo-formula: [publish@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 17
+      requestBody: {required: false, content: {application/json: {schema: {$ref: "#/components/schemas/RotationStateRequest"}}}}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: Rotation after the change., content: {application/json: {schema: {$ref: "#/components/schemas/CredentialRotation"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/RotationID"
+    post:
+      operationId: resumeRotation
+      tags: [rotation]
+      summary: Resume a paused or halted rotation and recompute its next run.
+      description: |
+        `expected_generation`, when given, must equal the rotation's current
+        generation, so a stale client cannot overwrite a newer change. Resume is
+        a human act like create, and it re-runs the whole authorization whether the
+        rotation was paused or halted: the caller must hold edit, publish and
+        reveal on both keys and consume the publish reauthentication window over
+        them, the recorded authority principal must still hold the same access, the
+        environment must still run unattended, the provider must still be able to
+        mint, and both keys must still exist. Each refusal is named.
+      x-hikyo-class: tenant
+      x-hikyo-operation: rotation.resume
+      x-hikyo-formula: [edit@environment, publish@environment, reveal@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 17
+      requestBody: {required: false, content: {application/json: {schema: {$ref: "#/components/schemas/RotationStateRequest"}}}}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: Rotation after the change., content: {application/json: {schema: {$ref: "#/components/schemas/CredentialRotation"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
   /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -16180,6 +16377,17 @@ components:
       in: path
       required: true
       schema: {$ref: "#/components/schemas/ID"}
+    RotationID:
+      name: rotation
+      in: path
+      required: true
+      schema: {$ref: "#/components/schemas/ID"}
+    ExpectedGeneration:
+      name: expected_generation
+      in: query
+      required: false
+      description: The generation the caller last read. A different current generation is a conflict.
+      schema: {type: integer, format: int64, minimum: 1}
     SSHCAID:
       name: sshCA
       in: path
@@ -18048,6 +18256,61 @@ components:
       required: [items]
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/DynamicLease"}}
+
+    CredentialRotationState:
+      type: string
+      description: |
+        `paused` is an operator or cascade pause (a deleted provider, a protected
+        environment or an approval policy pauses the rotations it would break);
+        `halted` is the executor's named stop after a failed authority gate. Only a
+        full resume authorization leaves either. `disabled` is the soft delete.
+      enum: [active, paused, halted, disabled]
+
+    CredentialRotation:
+      type: object
+      additionalProperties: false
+      required: [id, environment_id, provider_id, key_id, username_key_id, interval_seconds, revocation_delay_seconds, authority_principal_id, created_by, state, generation, created_at, updated_at]
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        environment_id: {$ref: "#/components/schemas/ID"}
+        provider_id: {$ref: "#/components/schemas/ID"}
+        key_id: {$ref: "#/components/schemas/ID"}
+        username_key_id: {$ref: "#/components/schemas/ID"}
+        interval_seconds: {type: integer, format: int64, minimum: 3600, maximum: 7776000}
+        revocation_delay_seconds: {type: integer, format: int64, minimum: 300, maximum: 604800}
+        authority_principal_id: {$ref: "#/components/schemas/ID"}
+        created_by: {$ref: "#/components/schemas/ID"}
+        state: {$ref: "#/components/schemas/CredentialRotationState"}
+        next_run_at: {type: [string, "null"], format: date-time, description: Set only while the rotation is active.}
+        credential_expires_at: {type: [string, "null"], format: date-time, description: "When the credential currently delivered into the keys lapses (the delivered role's VALID UNTIL, from the latest published run). Null until a run has published, or when the role never expires. Pausing or deleting the rotation does not revoke it."}
+        generation: {type: integer, format: int64, minimum: 1}
+        created_at: {$ref: "#/components/schemas/Timestamp"}
+        updated_at: {$ref: "#/components/schemas/Timestamp"}
+
+    CredentialRotationList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/CredentialRotation"}}
+        next_after: {type: string, maxLength: 128, description: "Pass as `after` to read the next page. Absent on the last page."}
+
+    CreateRotationRequest:
+      type: object
+      additionalProperties: false
+      required: [provider_id, key_id, username_key_id, interval_seconds, revocation_delay_seconds]
+      properties:
+        provider_id: {$ref: "#/components/schemas/ID"}
+        key_id: {$ref: "#/components/schemas/ID"}
+        username_key_id: {$ref: "#/components/schemas/ID"}
+        interval_seconds: {type: integer, format: int64, minimum: 3600, maximum: 7776000, description: "Seconds between rotations, from 1 hour to 90 days."}
+        revocation_delay_seconds: {type: integer, format: int64, minimum: 300, maximum: 604800, description: "Seconds the superseded credential stays valid after the new one is published, from 5 minutes to 7 days. Must be shorter than the interval."}
+
+    RotationStateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        expected_generation: {type: [integer, "null"], format: int64, minimum: 1, description: The generation the caller last read. Omitted or null means the current generation.}
 
     MintLeaseRequest:
       type: object

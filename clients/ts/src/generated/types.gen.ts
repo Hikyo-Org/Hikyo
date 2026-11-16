@@ -876,6 +876,68 @@ export type DynamicLeaseList = {
     items: Array<DynamicLease>;
 };
 
+/**
+ * `paused` is an operator or cascade pause (a deleted provider, a protected
+ * environment or an approval policy pauses the rotations it would break);
+ * `halted` is the executor's named stop after a failed authority gate. Only a
+ * full resume authorization leaves either. `disabled` is the soft delete.
+ *
+ */
+export type CredentialRotationState = 'active' | 'paused' | 'halted' | 'disabled';
+
+export type CredentialRotation = {
+    id: Id;
+    environment_id: Id;
+    provider_id: Id;
+    key_id: Id;
+    username_key_id: Id;
+    interval_seconds: number;
+    revocation_delay_seconds: number;
+    authority_principal_id: Id;
+    created_by: Id;
+    state: CredentialRotationState;
+    /**
+     * Set only while the rotation is active.
+     */
+    next_run_at?: string | null;
+    /**
+     * When the credential currently delivered into the keys lapses (the delivered role's VALID UNTIL, from the latest published run). Null until a run has published, or when the role never expires. Pausing or deleting the rotation does not revoke it.
+     */
+    credential_expires_at?: string | null;
+    generation: number;
+    created_at: Timestamp;
+    updated_at: Timestamp;
+};
+
+export type CredentialRotationList = {
+    items: Array<CredentialRotation>;
+    /**
+     * Pass as `after` to read the next page. Absent on the last page.
+     */
+    next_after?: string;
+};
+
+export type CreateRotationRequest = {
+    provider_id: Id;
+    key_id: Id;
+    username_key_id: Id;
+    /**
+     * Seconds between rotations, from 1 hour to 90 days.
+     */
+    interval_seconds: number;
+    /**
+     * Seconds the superseded credential stays valid after the new one is published, from 5 minutes to 7 days. Must be shorter than the interval.
+     */
+    revocation_delay_seconds: number;
+};
+
+export type RotationStateRequest = {
+    /**
+     * The generation the caller last read. Omitted or null means the current generation.
+     */
+    expected_generation?: number | null;
+};
+
 export type MintLeaseRequest = {
     provider_id: Id;
     /**
@@ -6948,6 +7010,13 @@ export type AdapterTargetId = Id;
 export type DynamicProviderId = Id;
 
 export type LeaseId = Id;
+
+export type RotationId = Id;
+
+/**
+ * The generation the caller last read. A different current generation is a conflict.
+ */
+export type ExpectedGeneration = number;
 
 export type Sshcaid = Id;
 
@@ -33515,6 +33584,456 @@ export type SettleLeaseResponses = {
 };
 
 export type SettleLeaseResponse = SettleLeaseResponses[keyof SettleLeaseResponses];
+
+export type ListRotationsData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: {
+        /**
+         * List deleted (disabled) rotations as well. Off by default.
+         */
+        include_disabled?: boolean;
+        /**
+         * Maximum rotations on this page, in id order.
+         */
+        limit?: number;
+        /**
+         * The `next_after` a previous page returned. Absent reads the first page.
+         */
+        after?: string;
+    };
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations';
+};
+
+export type ListRotationsErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListRotationsError = ListRotationsErrors[keyof ListRotationsErrors];
+
+export type ListRotationsResponses = {
+    /**
+     * Rotation list.
+     */
+    200: CredentialRotationList;
+};
+
+export type ListRotationsResponse = ListRotationsResponses[keyof ListRotationsResponses];
+
+export type CreateRotationData = {
+    body: CreateRotationRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations';
+};
+
+export type CreateRotationErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type CreateRotationError = CreateRotationErrors[keyof CreateRotationErrors];
+
+export type CreateRotationResponses = {
+    /**
+     * Rotation configured.
+     */
+    201: CredentialRotation;
+};
+
+export type CreateRotationResponse = CreateRotationResponses[keyof CreateRotationResponses];
+
+export type DeleteRotationData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        rotation: Id;
+    };
+    query?: {
+        /**
+         * The generation the caller last read. A different current generation is a conflict.
+         */
+        expected_generation?: number;
+    };
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}';
+};
+
+export type DeleteRotationErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type DeleteRotationError = DeleteRotationErrors[keyof DeleteRotationErrors];
+
+export type DeleteRotationResponses = {
+    /**
+     * Rotation after it was disabled.
+     */
+    200: CredentialRotation;
+};
+
+export type DeleteRotationResponse = DeleteRotationResponses[keyof DeleteRotationResponses];
+
+export type ShowRotationData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        rotation: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}';
+};
+
+export type ShowRotationErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ShowRotationError = ShowRotationErrors[keyof ShowRotationErrors];
+
+export type ShowRotationResponses = {
+    /**
+     * Rotation.
+     */
+    200: CredentialRotation;
+};
+
+export type ShowRotationResponse = ShowRotationResponses[keyof ShowRotationResponses];
+
+export type PauseRotationData = {
+    body?: RotationStateRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        rotation: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/pause';
+};
+
+export type PauseRotationErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type PauseRotationError = PauseRotationErrors[keyof PauseRotationErrors];
+
+export type PauseRotationResponses = {
+    /**
+     * Rotation after the change.
+     */
+    200: CredentialRotation;
+};
+
+export type PauseRotationResponse = PauseRotationResponses[keyof PauseRotationResponses];
+
+export type ResumeRotationData = {
+    body?: RotationStateRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        rotation: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume';
+};
+
+export type ResumeRotationErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ResumeRotationError = ResumeRotationErrors[keyof ResumeRotationErrors];
+
+export type ResumeRotationResponses = {
+    /**
+     * Rotation after the change.
+     */
+    200: CredentialRotation;
+};
+
+export type ResumeRotationResponse = ResumeRotationResponses[keyof ResumeRotationResponses];
 
 export type ListSshCasData = {
     body?: never;

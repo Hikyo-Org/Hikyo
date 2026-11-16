@@ -498,6 +498,9 @@ type Repos interface {
 	Adapters() AdapterRepo
 	// Dynamic is the dynamic-secret provider + lease surface (#147).
 	Dynamic() DynamicRepo
+	// Rotations is the scheduled credential rotation configuration surface
+	// (#148).
+	Rotations() RotationRepo
 	// SSH is the SSH user-certificate surface (#155).
 	SSH() SSHRepo
 	// PKI is the private-PKI issuer, profile and certificate surface (#154).
@@ -581,6 +584,7 @@ type ReadRepos interface {
 	Remotes() RemoteReader
 	Adapters() AdapterReader
 	Dynamic() DynamicReader
+	Rotations() RotationReader
 	SSH() SSHReader
 	// Transit is the managed-key metadata read side (#156).
 	Transit() TransitReader

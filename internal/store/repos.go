@@ -63,6 +63,7 @@ func (s sqliteReadRepos) Audit() AuditReader              { return s.r.Audit() }
 func (s sqliteReadRepos) Remotes() RemoteReader           { return s.r.Remotes() }
 func (s sqliteReadRepos) Adapters() AdapterReader         { return s.r.Adapters() }
 func (s sqliteReadRepos) Dynamic() DynamicReader          { return s.r.Dynamic() }
+func (s sqliteReadRepos) Rotations() RotationReader       { return s.r.Rotations() }
 func (s sqliteReadRepos) SSH() SSHReader                  { return s.r.SSH() }
 func (s sqliteReadRepos) Definitions() DefinitionsReader  { return s.r.Definitions() }
 
@@ -84,6 +85,7 @@ func (p pgReadRepos) Audit() AuditReader              { return p.r.Audit() }
 func (p pgReadRepos) Remotes() RemoteReader           { return p.r.Remotes() }
 func (p pgReadRepos) Adapters() AdapterReader         { return p.r.Adapters() }
 func (p pgReadRepos) Dynamic() DynamicReader          { return p.r.Dynamic() }
+func (p pgReadRepos) Rotations() RotationReader       { return p.r.Rotations() }
 func (p pgReadRepos) SSH() SSHReader                  { return p.r.SSH() }
 func (p pgReadRepos) Definitions() DefinitionsReader  { return p.r.Definitions() }
 

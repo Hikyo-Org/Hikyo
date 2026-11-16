@@ -85,7 +85,9 @@ var SpecYAML []byte
 // overlay fields and developer-credential personal consent.
 // Revision 16 adds the email invitation of an existing account: send, list,
 // revoke, preview and accept (#1207).
-const Revision = 16
+// Revision 17 adds scheduled credential rotation configuration (#148): create,
+// list, show, pause, resume and delete. Execution arrives in a later slice.
+const Revision = 17
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
 // explicitly does not plan one.

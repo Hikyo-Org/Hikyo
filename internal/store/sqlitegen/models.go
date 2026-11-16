@@ -1396,6 +1396,72 @@ type RevisionPin struct {
 	SchemaOverride       int64
 }
 
+type Rotation struct {
+	ID                     string
+	OrgID                  string
+	ProjectID              string
+	EnvironmentID          string
+	ProviderID             string
+	KeyID                  string
+	UsernameKeyID          string
+	IntervalSeconds        int64
+	RevocationDelaySeconds int64
+	AuthorityPrincipalID   string
+	CreatedBy              string
+	State                  string
+	HaltReason             sql.NullString
+	NextRunAt              sql.NullString
+	Generation             int64
+	CreatedAt              string
+	UpdatedAt              string
+}
+
+type RotationEffect struct {
+	ID             string
+	OrgID          string
+	ProjectID      string
+	EnvironmentID  string
+	RunID          string
+	Kind           string
+	IntentAuditID  string
+	OutcomeAuditID sql.NullString
+	Outcome        sql.NullString
+	CreatedAt      string
+	FinishedAt     sql.NullString
+}
+
+type RotationKeyClaim struct {
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	KeyID         string
+	RotationID    string
+}
+
+type RotationRun struct {
+	ID                     string
+	OrgID                  string
+	ProjectID              string
+	EnvironmentID          string
+	RotationID             string
+	Generation             int64
+	RunTrigger             string
+	Phase                  string
+	CandidateHandle        string
+	SupersededHandle       sql.NullString
+	CandidateValidUntil    sql.NullString
+	PublishedRevision      sql.NullInt64
+	RevocationDelaySeconds int64
+	StartedAt              string
+	PhaseAt                string
+	LeaseOwner             sql.NullString
+	LeaseExpiresAt         sql.NullString
+	LeaseClaimToken        int64
+	AttemptCount           int64
+	NextAttemptAt          string
+	LastError              sql.NullString
+}
+
 type Rule struct {
 	ID          string
 	PrincipalID string

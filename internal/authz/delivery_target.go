@@ -44,6 +44,6 @@ func (a *TxAuthorizer) DeliveryReporterLive(ctx context.Context, principal domai
 // a principal the environment never granted never appears there. Like
 // DeliveryReporterLive it records no denial: the principal is not the caller.
 func (a *TxAuthorizer) DeliveryReporterHolds(ctx context.Context, principal domain.PrincipalID, scope domain.Scope) (bool, error) {
-	_, _, holds, err := a.principalFormulaEvaluation(ctx, principal, OpDeliveryTargetReport, scope)
+	_, _, holds, err := a.principalFormulaEvaluation(ctx, principal, OpDeliveryTargetReport, scope, nil)
 	return holds, err
 }

@@ -266,6 +266,10 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		// concurrency cap; the request itself only writes a row)
 		authz.OpDynamicProviderInspect, authz.OpDynamicProviderCredentialRevoke, authz.OpDynamicProviderDelete,
 		authz.OpLeaseInspect, authz.OpLeaseRenew, authz.OpLeaseRevoke, authz.OpLeaseSettle,
+		// scheduled credential rotation configuration (#148): single-row
+		// lifecycle writes and reads with no external call or fan-out
+		authz.OpRotationCreate, authz.OpRotationInspect, authz.OpRotationPause,
+		authz.OpRotationResume, authz.OpRotationDelete,
 		// ssh certificates (#155): bounded reads of one environment's CAs,
 		// profiles and certificates (the KRL read is capped at its serial
 		// bound), and single-row lifecycle writes with no external call

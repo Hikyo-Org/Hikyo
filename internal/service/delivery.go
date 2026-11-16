@@ -357,7 +357,7 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 			return pinErr
 		default:
 			authority := domain.PrincipalID(pin.AuthorityPrincipalID)
-			holds, err := az.RecordedPrincipalHolds(ctx, caller, authority, authz.OpPinSet, scope)
+			holds, err := az.RecordedPrincipalHolds(ctx, caller, authority, authz.OpPinSet, scope, nil)
 			if err != nil {
 				return err
 			}
@@ -374,7 +374,7 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 			}
 			if snapshot.Revision != latest.Revision {
 				pinnedNonCurrent = true
-				holds, err := az.RecordedPrincipalHolds(ctx, caller, authority, authz.OpPinSetHistory, scope)
+				holds, err := az.RecordedPrincipalHolds(ctx, caller, authority, authz.OpPinSetHistory, scope, nil)
 				if err != nil {
 					return err
 				}

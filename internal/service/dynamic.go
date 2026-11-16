@@ -327,6 +327,11 @@ func (s *Dynamic) RevokeCredential(ctx context.Context, actor Actor, scope domai
 		if err := r.Dynamic().RevokeProviderCredential(ctx, proof, providerID, now); err != nil {
 			return err
 		}
+		// A rotation that mints from this provider can no longer mint: pause it
+		// in the same transaction rather than let it fail every cycle (#148).
+		if err := pauseRotationsForProvider(ctx, r, proof, caller.Principal, providerID, "provider_credential_revoked", now); err != nil {
+			return err
+		}
 		ev, err := domainEvent(ctx, audit.EventDynamicProviderCredentialRevoke, caller.Principal,
 			audit.Object{Type: "dynamic-provider", ID: providerID}, audit.Payload{"credential_present": false})
 		if err != nil {
@@ -388,6 +393,12 @@ func (s *Dynamic) Delete(ctx context.Context, actor Actor, scope domain.Scope, p
 			}
 		}
 		if err := r.Dynamic().DeleteProvider(ctx, proof, providerID, now); err != nil {
+			return err
+		}
+		// A deleted provider is a soft tombstone, not a foreign-key failure, so a
+		// rotation would stay active against it: pause the dependants with the
+		// delete (#148).
+		if err := pauseRotationsForProvider(ctx, r, proof, caller.Principal, providerID, "provider_deleted", now); err != nil {
 			return err
 		}
 		ev, err := domainEvent(ctx, audit.EventDynamicProviderDeleted, caller.Principal,
