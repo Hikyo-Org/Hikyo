@@ -1098,9 +1098,9 @@ recheck() {
 		git_ show "$latest_commit:release/compatibility/sources.json" >"$work/sources-old.json" || die "cannot read $latest_tag's release/compatibility/sources.json"
 		git_ show "$commit:release/compatibility/sources.json" >"$work/sources-new.json" || die "cannot read release/compatibility/sources.json at $commit"
 		# An edge is the latest release's only when its source.release is an object naming it;
-		# anything else (a string, a list, a missing source) is not one and stays in the comparison.
+		# anything else (a string, a list, a missing source, a source that also names a genesis) is not one and stays in the comparison.
 		jq -n -e --arg latest "$latest" --slurpfile old "$work/sources-old.json" --slurpfile new "$work/sources-new.json" '
-			def is_latest_edge: type == "object" and (.source | type) == "object" and (.source.release | type) == "object" and .source.release.version == $latest;
+			def is_latest_edge: type == "object" and (.source | type) == "object" and (.source | keys) == ["release"] and (.source.release | type) == "object" and .source.release.version == $latest;
 			def shaped: (.engines | type) == "object" and ([.engines[] | type == "array"] | all);
 			def plain: .engines |= with_entries(.value |= map(select(is_latest_edge | not)));
 			def lookalikes: [.engines[] | map(select(is_latest_edge)) | length] | max // 0;

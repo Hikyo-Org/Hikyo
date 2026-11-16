@@ -108,12 +108,13 @@ cedgeplus=$(git -C "$repo" rev-parse HEAD)
 # A patch may add the one edge from the latest release and nothing else: an older edge that is removed
 # or changed, or a second edge naming the latest release, is a change a minor must carry.
 new_edge='{source:{release:{profile:"stable/v1",version:"1.1.0"}},mode:"maintenance"}'
-for variant in removed swapped double stringrel; do
+for variant in removed swapped double stringrel mixed; do
 	git -C "$repo" switch -q --detach "$c4"
 	case $variant in
 	removed) jq -c ".engines |= map_values(map(select(.source.release.version? != \"1.0.0\")) + [$new_edge])" "$repo/release/compatibility/sources.json" >"$scratch/sources.tmp" ;;
 	swapped) jq -c ".engines |= map_values(map(if .source.release.version? == \"1.0.0\" then .mode = \"restart\" else . end) + [$new_edge])" "$repo/release/compatibility/sources.json" >"$scratch/sources.tmp" ;;
 	stringrel) jq -c '.engines |= map_values(. + [{source:{release:"1.1.0"},mode:"maintenance"}])' "$repo/release/compatibility/sources.json" >"$scratch/sources.tmp" ;;
+	mixed) jq -c '.engines |= map_values(. + [{source:{release:{profile:"stable/v1",version:"1.1.0"},genesis:"fresh/v1"},mode:"maintenance"}])' "$repo/release/compatibility/sources.json" >"$scratch/sources.tmp" ;;
 	double) jq -c ".engines |= map_values(. + [$new_edge]) | .engines.sqlite += [{source:{release:{profile:\"stable/v1\",version:\"1.1.0\",sequence:9}},mode:\"maintenance\"}]" "$repo/release/compatibility/sources.json" >"$scratch/sources.tmp" ;;
 	esac
 	cp "$scratch/sources.tmp" "$repo/release/compatibility/sources.json"
@@ -1070,7 +1071,7 @@ recheck 'a patch that only adds the release edge' 0 'ok to tag v1.1.1' 1.1.1 "$c
 git -C "$repo" update-ref refs/remotes/origin/main "$cedgeplus"
 git -C "$repo" checkout -q --detach "$cedgeplus"
 recheck 'a patch that adds a genesis edge besides' 3 'beyond adding the release-source edge from v1.1.0' 1.1.1 "$cedgeplus" --tip GREEN="$c3 $c4 $cedge $cedgeplus"
-for variant in removed swapped double stringrel; do
+for variant in removed swapped double stringrel mixed; do
 	eval "cv=\$c$variant"
 	git -C "$repo" update-ref refs/remotes/origin/main "$cv"
 	git -C "$repo" checkout -q --detach "$cv"
