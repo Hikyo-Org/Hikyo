@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/dynamic"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -24,6 +25,10 @@ type rotRole struct {
 	validUntil time.Time
 }
 
+// rotCrash is the panic a test uses to model a process dying at a hook point: the
+// deferred cleanups run, but no further write the worker would have made does.
+type rotCrash struct{ at string }
+
 // rotProviderCtl is the shared state behind every provider the executor opens.
 // Failures are sticky until a test clears them.
 type rotProviderCtl struct {
@@ -31,13 +36,23 @@ type rotProviderCtl struct {
 	roles map[string]rotRole
 	calls []string
 
-	createErr   error
-	extendErr   error
-	dropErr     error
-	statusErr   error
-	afterCreate func(name string)
-	// beforeDrop runs ahead of a DropRole and may veto it with an error.
-	beforeDrop func(name string) error
+	createErr error
+	extendErr error
+	dropErr   error
+	statusErr error
+	// at is called at "create:before", "create:after", "drop:before", "drop:after",
+	// "extend:before" and "status:before", outside the provider lock, and may panic
+	// with rotCrash or run another sweep.
+	at func(point, name string)
+}
+
+func (c *rotProviderCtl) point(p, name string) {
+	c.mu.Lock()
+	hook := c.at
+	c.mu.Unlock()
+	if hook != nil {
+		hook(p, name)
+	}
 }
 
 func (c *rotProviderCtl) record(call string) { c.calls = append(c.calls, call) }
@@ -71,25 +86,32 @@ func (c *rotProviderCtl) names() []string {
 	return out
 }
 
+func (c *rotProviderCtl) set(f func()) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	f()
+}
+
 type rotProvider struct{ ctl *rotProviderCtl }
 
 func (p rotProvider) CreateRole(_ context.Context, r dynamic.CreateRoleRequest) error {
+	p.ctl.point("create:before", r.Name)
 	p.ctl.mu.Lock()
 	p.ctl.record("create:" + r.Name)
 	err := p.ctl.createErr
-	hook := p.ctl.afterCreate
 	if err == nil || errors.Is(err, dynamic.ErrAmbiguous) {
 		// An ambiguous create may well have happened; the double lets it.
 		p.ctl.roles[r.Name] = rotRole{password: r.Password, validUntil: r.ValidUntil}
 	}
 	p.ctl.mu.Unlock()
-	if err == nil && hook != nil {
-		hook(r.Name)
+	if err == nil {
+		p.ctl.point("create:after", r.Name)
 	}
 	return err
 }
 
 func (p rotProvider) ExtendRole(_ context.Context, name string, until time.Time) error {
+	p.ctl.point("extend:before", name)
 	p.ctl.mu.Lock()
 	defer p.ctl.mu.Unlock()
 	p.ctl.record("extend:" + name)
@@ -106,28 +128,22 @@ func (p rotProvider) ExtendRole(_ context.Context, name string, until time.Time)
 }
 
 func (p rotProvider) DropRole(_ context.Context, name string) error {
+	p.ctl.point("drop:before", name)
 	p.ctl.mu.Lock()
-	veto := p.ctl.beforeDrop
-	p.ctl.mu.Unlock()
-	if veto != nil {
-		if err := veto(name); err != nil {
-			return err
-		}
-	}
-	p.ctl.mu.Lock()
-	defer p.ctl.mu.Unlock()
 	p.ctl.record("drop:" + name)
-	if p.ctl.dropErr != nil {
-		if errors.Is(p.ctl.dropErr, dynamic.ErrAmbiguous) {
-			delete(p.ctl.roles, name)
-		}
-		return p.ctl.dropErr
+	err := p.ctl.dropErr
+	if err == nil || errors.Is(err, dynamic.ErrAmbiguous) {
+		delete(p.ctl.roles, name)
 	}
-	delete(p.ctl.roles, name)
-	return nil
+	p.ctl.mu.Unlock()
+	if err == nil {
+		p.ctl.point("drop:after", name)
+	}
+	return err
 }
 
 func (p rotProvider) RoleStatus(_ context.Context, name string) (dynamic.RoleStatus, error) {
+	p.ctl.point("status:before", name)
 	p.ctl.mu.Lock()
 	defer p.ctl.mu.Unlock()
 	p.ctl.record("status:" + name)
@@ -145,8 +161,12 @@ type rotExec struct {
 	*rotationFixture
 	ctl    *rotProviderCtl
 	exec   *service.RotationExecutor
-	clock  time.Time
 	worker string
+
+	clockMu sync.Mutex
+	clock   time.Time
+	// baseSnapshots is the revision count the environment started with.
+	baseSnapshots int64
 }
 
 func newRotExec(t *testing.T, db *store.DB) *rotExec {
@@ -155,7 +175,7 @@ func newRotExec(t *testing.T, db *store.DB) *rotExec {
 	x := &rotExec{rotationFixture: f, ctl: &rotProviderCtl{roles: map[string]rotRole{}}, clock: f.now, worker: "wrk_a"}
 	kr := probeKeyring(t, db)
 	auth := authService(t, db)
-	now := func() time.Time { return x.clock }
+	now := x.now
 	x.exec = &service.RotationExecutor{
 		DB: db, Runtime: store.NewRotationRuntime(db), Keyring: kr, Now: now,
 		Values:    &service.Values{DB: db, Keyring: kr, Auth: auth},
@@ -165,11 +185,22 @@ func newRotExec(t *testing.T, db *store.DB) *rotExec {
 		},
 		ProviderDeadline: 5 * time.Second,
 	}
+	x.baseSnapshots = queryInt(t, db, "SELECT COUNT(*) FROM snapshots WHERE environment_id='"+string(f.env)+"'")
 	return x
 }
 
+func (x *rotExec) now() time.Time {
+	x.clockMu.Lock()
+	defer x.clockMu.Unlock()
+	return x.clock
+}
+
 // advance moves the fake clock.
-func (x *rotExec) advance(d time.Duration) { x.clock = x.clock.Add(d) }
+func (x *rotExec) advance(d time.Duration) {
+	x.clockMu.Lock()
+	defer x.clockMu.Unlock()
+	x.clock = x.clock.Add(d)
+}
 
 // sweep runs one executor unit as the given worker.
 func (x *rotExec) sweep(worker string) (bool, error) {
@@ -239,8 +270,8 @@ func runRotationExecutorHappyPath(t *testing.T, db *store.DB) {
 		t.Fatalf("published_revision = %q", got)
 	}
 	// The rotation scheduled its next run one interval after the publish.
-	next := mustParseStamp(t, queryString(t, db, "SELECT next_run_at FROM rotations WHERE id='"+rot.ID+"'"))
-	if want := x.clock.Add(24 * time.Hour); next.Sub(want) > time.Second || want.Sub(next) > time.Second {
+	next := mustParseStamp(t, x.state(rot.ID).NextRunAt)
+	if want := x.now().Add(24 * time.Hour); next.Sub(want) > time.Second || want.Sub(next) > time.Second {
 		t.Fatalf("next_run_at = %s, want about %s", next, want)
 	}
 
@@ -292,3 +323,362 @@ func runRotationExecutorHappyPath(t *testing.T, db *store.DB) {
 		}
 	}
 }
+
+// ------------------------------------------------------------------ helpers
+
+// crashSweep runs one sweep and reports whether a rotCrash ended it.
+func (x *rotExec) crashSweep(worker string) (crashed bool) {
+	x.t.Helper()
+	defer func() {
+		if r := recover(); r != nil {
+			if _, ok := r.(rotCrash); !ok {
+				panic(r)
+			}
+			crashed = true
+		}
+	}()
+	if _, err := x.sweep(worker); err != nil {
+		x.t.Fatalf("sweep: %v", err)
+	}
+	return false
+}
+
+// crashOnce arms the provider to die the first time it reaches point.
+func (x *rotExec) crashOnce(point string) {
+	x.ctl.set(func() {
+		x.ctl.at = func(p, _ string) {
+			if p != point {
+				return
+			}
+			x.ctl.set(func() { x.ctl.at = nil })
+			panic(rotCrash{at: p})
+		}
+	})
+}
+
+// crashAfterBaseline models a worker dying inside the publish transaction.
+type rotPublishProbe struct {
+	onBefore   func()
+	onBaseline func()
+}
+
+func (p *rotPublishProbe) BeforeProjectLock([]string) {
+	if p.onBefore != nil {
+		p.onBefore()
+	}
+}
+
+func (p *rotPublishProbe) AfterBaselineRead([]string) {
+	if p.onBaseline != nil {
+		p.onBaseline()
+	}
+}
+
+func (x *rotExec) effects(kind, outcome string) int64 {
+	x.t.Helper()
+	cond := "outcome='" + outcome + "'"
+	if outcome == "open" {
+		cond = "outcome IS NULL"
+	}
+	return queryInt(x.t, x.db, "SELECT COUNT(*) FROM rotation_effects WHERE environment_id='"+string(x.env)+"' AND kind='"+kind+"' AND "+cond)
+}
+
+func (x *rotExec) snapshots() int64 {
+	x.t.Helper()
+	return queryInt(x.t, x.db, "SELECT COUNT(*) FROM snapshots WHERE environment_id='"+string(x.env)+"'") - x.baseSnapshots
+}
+
+func (x *rotExec) phase(runID string) string {
+	x.t.Helper()
+	return queryString(x.t, x.db, "SELECT phase FROM rotation_runs WHERE id='"+runID+"'")
+}
+
+func (x *rotExec) openRunID(rotationID string) string {
+	x.t.Helper()
+	return queryString(x.t, x.db, "SELECT id FROM rotation_runs WHERE rotation_id='"+rotationID+"' ORDER BY started_at DESC, id DESC LIMIT 1")
+}
+
+func (x *rotExec) requireSweep(worker string, want bool) {
+	x.t.Helper()
+	did, err := x.sweep(worker)
+	if err != nil {
+		x.t.Fatalf("sweep as %s: %v", worker, err)
+	}
+	if did != want {
+		x.t.Fatalf("sweep as %s did work = %v, want %v", worker, did, want)
+	}
+}
+
+// cycle drives one full scheduled cycle: due, publish, wait out the overlap and
+// settle. It returns the run id.
+func (x *rotExec) cycle(rotationID string) string {
+	x.t.Helper()
+	next := mustParseStamp(x.t, x.state(rotationID).NextRunAt)
+	if d := next.Sub(x.now()); d > 0 {
+		x.advance(d + time.Minute)
+	}
+	x.drain()
+	run := x.openRunID(rotationID)
+	if got := x.phase(run); got != "overlap" {
+		x.t.Fatalf("cycle run %s is %s, want overlap", run, got)
+	}
+	x.advance(time.Hour + time.Minute)
+	x.drain()
+	if got := x.phase(run); got != "done" {
+		x.t.Fatalf("cycle run %s is %s, want done", run, got)
+	}
+	return run
+}
+
+// ------------------------------------------------------------ crash before publish
+
+// Every crash point at or before the publish transaction rolls the candidate back
+// under the fenced claim write, never publishes, and leaves the delivered value
+// alone. A takeover cannot start before the dead worker's lease expires.
+func TestRotationExecutorCrashBeforePublish(t *testing.T) {
+	cases := []struct {
+		name      string
+		arm       func(x *rotExec)
+		wantPhase string
+		wantRole  bool
+	}{
+		{"before CreateRole", func(x *rotExec) { x.crashOnce("create:before") }, "minting", false},
+		{"during CreateRole, before the outcome", func(x *rotExec) { x.crashOnce("create:after") }, "minting", true},
+		{"inside the publish transaction", func(x *rotExec) {
+			x.exec.Revisions.PublishProbe = &rotPublishProbe{onBefore: func() {
+				x.exec.Revisions.PublishProbe = nil
+				panic(rotCrash{at: "publish"})
+			}}
+		}, "minted", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			forEngines(t, func(t *testing.T, db *store.DB) {
+				x := newRotExec(t, db)
+				rot := x.create(rotPasswordKey, rotUsernameKey)
+				x.advance(24*time.Hour + time.Minute)
+				tc.arm(x)
+				if !x.crashSweep("wrk_a") {
+					t.Fatal("the worker did not reach the crash point")
+				}
+				run := x.openRunID(rot.ID)
+				if got := x.phase(run); got != tc.wantPhase {
+					t.Fatalf("phase after the crash = %s, want %s", got, tc.wantPhase)
+				}
+				if got := len(x.ctl.names()) > 0; got != tc.wantRole {
+					t.Fatalf("candidate role present = %v, want %v", got, tc.wantRole)
+				}
+				// The dead worker's lease still holds the run.
+				x.requireSweep("wrk_b", false)
+
+				x.advance(rotationLeaseTermForTest + time.Second)
+				x.requireSweep("wrk_b", true)
+				if got := x.phase(run); got != "failed" {
+					t.Fatalf("phase after the takeover = %s, want failed", got)
+				}
+				if names := x.ctl.names(); len(names) != 0 {
+					t.Fatalf("candidate roles left behind: %v", names)
+				}
+				if x.snapshots() != 0 {
+					t.Fatal("a rolled-back run published a revision")
+				}
+				if n := queryInt(t, db, "SELECT COUNT(*) FROM value_entries WHERE environment_id='"+string(x.env)+"'"); n != 0 {
+					t.Fatalf("a rolled-back run left %d delivered values", n)
+				}
+				if x.effects("drop_candidate", "success") != 1 {
+					t.Fatal("the candidate drop was not recorded as a success")
+				}
+				for _, kind := range []string{"mint", "publish", "drop_candidate", "revoke", "extend"} {
+					if n := x.effects(kind, "open"); n != 0 {
+						t.Fatalf("%d %s effects left without an outcome", n, kind)
+					}
+				}
+				// The rotation retries after a backoff and then succeeds.
+				state := x.state(rot.ID)
+				if state.State != store.RotationStateActive {
+					t.Fatalf("rotation state = %s", state.State)
+				}
+				if got := mustParseStamp(t, state.NextRunAt).Sub(x.now()); got < 4*time.Minute || got > 6*time.Minute {
+					t.Fatalf("retry scheduled %s ahead, want about 5m", got)
+				}
+				x.advance(6 * time.Minute)
+				x.drain()
+				if got := x.runPhases(rot.ID); got != "failed,overlap," {
+					t.Fatalf("phases after the retry = %q", got)
+				}
+			})
+		})
+	}
+}
+
+// ------------------------------------------------------------ delayed commit
+
+// Rule 8. A publish transaction still in flight when a takeover looks at the run:
+// the takeover's claim write blocks on the run row, and drops nothing until the
+// transaction settles. A commit means the run carries on as published and the
+// candidate is never dropped; a rollback means the run fails BEFORE the single
+// candidate drop.
+func TestRotationExecutorDelayedCommit(t *testing.T) {
+	for _, commit := range []bool{true, false} {
+		name := "rollback"
+		if commit {
+			name = "commit"
+		}
+		t.Run(name, func(t *testing.T) {
+			forEngines(t, func(t *testing.T, db *store.DB) { runRotationDelayedCommit(t, db, commit) })
+		})
+	}
+}
+
+func runRotationDelayedCommit(t *testing.T, db *store.DB, commit bool) {
+	x := newRotExec(t, db)
+	rot := x.create(rotPasswordKey, rotUsernameKey)
+	x.advance(24*time.Hour + time.Minute)
+
+	reached, release := make(chan struct{}), make(chan struct{})
+	x.exec.Revisions.PublishProbe = &rotPublishProbe{onBaseline: func() {
+		x.exec.Revisions.PublishProbe = nil
+		close(reached)
+		<-release
+	}}
+	ctxA, cancelA := context.WithCancel(tctx(t))
+	defer cancelA()
+	doneA := make(chan error, 1)
+	go func() {
+		_, err := x.exec.RunRotationSweep(ctxA, "wrk_a")
+		doneA <- err
+	}()
+	select {
+	case <-reached:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the publish never reached its baseline read")
+	}
+
+	// A's lease lapses while its publish transaction is open.
+	x.advance(rotationLeaseTermForTest + time.Second)
+	// On SQLite the takeover blocks behind the open write transaction; on PostgreSQL
+	// the claim skips the locked row. Either way it must drop nothing while the
+	// publish is open, and it must never fail the run out from under it.
+	doneB := make(chan error, 1)
+	go func() {
+		_, err := x.exec.RunRotationSweep(tctx(t), "wrk_b")
+		doneB <- err
+	}()
+	select {
+	case err := <-doneB:
+		doneB <- err
+	case <-time.After(750 * time.Millisecond):
+	}
+	if n := x.ctl.count("drop:"); n != 0 {
+		t.Fatalf("the takeover dropped a role while the publish was open (%d drops)", n)
+	}
+
+	if !commit {
+		cancelA()
+	}
+	close(release)
+	if err := <-doneA; commit && err != nil {
+		t.Fatalf("the publishing worker: %v", err)
+	}
+	if err := <-doneB; err != nil {
+		t.Fatalf("the takeover worker: %v", err)
+	}
+	if commit {
+		// The fenced claim write names the phases it may leave. A worker holding a
+		// stale read of `minted` (and a live claim) matches zero rows once the run
+		// published, so it can never roll back or drop a published candidate.
+		cur, err := x.exec.Runtime.GetRun(tctx(t), domain.Scope{Org: orgA, Project: prjA1, Env: x.env}, x.openRunID(rot.ID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		cur.Phase, cur.LeaseOwner = "minted", "wrk_a"
+		err = x.exec.Runtime.Settle(tctx(t), cur, store.RotationSettle{
+			Now: x.now().Add(-rotationLeaseTermForTest), FromPhases: []string{"minting", "minted"}, Phase: "failed", NextAttempt: x.now(),
+		})
+		if !errors.Is(err, store.ErrRotationFenceLost) {
+			t.Fatalf("a stale claim write over a published run = %v, want a fence loss", err)
+		}
+	}
+	// Whatever the takeover skipped, the next sweeps settle.
+	x.worker = "wrk_b"
+	x.drain()
+	run := x.openRunID(rot.ID)
+	if commit {
+		if x.ctl.count("drop:") != 0 {
+			t.Fatal("a published candidate was dropped")
+		}
+		// The dead lease cannot settle the overlap wait; `published` is the same
+		// wait, claimed again when the revocation delay is up.
+		if got := x.phase(run); got != "published" && got != "overlap" {
+			t.Fatalf("phase after the delayed commit = %s, want published or overlap", got)
+		}
+		if x.snapshots() != 1 || !x.ctl.has(x.lastRun(rot.ID, "candidate_handle")) {
+			t.Fatal("the published candidate must be live")
+		}
+		x.advance(time.Hour + time.Minute)
+		x.drain()
+		if got := x.phase(run); got != "done" {
+			t.Fatalf("phase after the overlap = %s, want done", got)
+		}
+		return
+	}
+	if got := x.phase(run); got != "failed" {
+		t.Fatalf("phase after the rolled-back publish = %s, want failed", got)
+	}
+	if x.ctl.count("drop:") != 1 || len(x.ctl.names()) != 0 {
+		t.Fatalf("calls %v roles %v", x.ctl.calls, x.ctl.names())
+	}
+	if x.snapshots() != 0 {
+		t.Fatal("a rolled-back publish left a revision")
+	}
+}
+
+// ------------------------------------------------------------ crash after publish
+
+// A crash while the superseded role is being dropped resumes under the same
+// claim path: the stale INTENT closes unknown, a fresh INTENT drops the role (an
+// idempotent call) and the run ends done with every effect settled.
+func TestRotationExecutorCrashDuringRevoke(t *testing.T) {
+	for _, point := range []string{"drop:before", "drop:after"} {
+		t.Run(point, func(t *testing.T) {
+			forEngines(t, func(t *testing.T, db *store.DB) {
+				x := newRotExec(t, db)
+				rot := x.create(rotPasswordKey, rotUsernameKey)
+				x.advance(24*time.Hour + time.Minute)
+				x.drain()
+				x.advance(time.Hour + time.Minute)
+				x.drain() // run 1 done
+				run1Role := x.lastRun(rot.ID, "candidate_handle")
+
+				x.advance(24 * time.Hour)
+				x.drain() // run 2 minted and published, parked in overlap
+				x.advance(time.Hour + time.Minute)
+				x.crashOnce(point)
+				if !x.crashSweep("wrk_a") {
+					t.Fatal("the revoke never reached the drop")
+				}
+				run2 := x.openRunID(rot.ID)
+				if got := x.phase(run2); got != "revoking" {
+					t.Fatalf("phase after the crash = %s, want revoking", got)
+				}
+				if x.effects("revoke", "open") != 1 {
+					t.Fatal("the dropped INTENT is not open")
+				}
+				x.advance(rotationLeaseTermForTest + time.Second)
+				x.drain()
+				if got := x.phase(run2); got != "done" {
+					t.Fatalf("phase after the takeover = %s, want done", got)
+				}
+				if x.ctl.has(run1Role) {
+					t.Fatal("the superseded role survived")
+				}
+				if x.effects("revoke", "success") != 1 || x.effects("revoke", "unknown") != 1 || x.effects("revoke", "open") != 0 {
+					t.Fatalf("revoke effects: success %d unknown %d open %d", x.effects("revoke", "success"), x.effects("revoke", "unknown"), x.effects("revoke", "open"))
+				}
+			})
+		})
+	}
+}
+
+// rotationLeaseTermForTest mirrors the executor's two-minute claim lease.
+const rotationLeaseTermForTest = 2 * time.Minute

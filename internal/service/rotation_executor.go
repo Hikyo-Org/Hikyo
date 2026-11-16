@@ -878,6 +878,20 @@ func (e *RotationExecutor) rollbackAfterPublishError(ctx context.Context, provid
 	return e.rollback(ctx, provider, run, code, halt, closed)
 }
 
+// staleEffect closes, as unknown, an effect a crashed worker left open on the
+// run. The recovering step re-issues its idempotent provider call under a fresh
+// INTENT, so exactly one effect is ever open and every INTENT gets an OUTCOME.
+func (e *RotationExecutor) staleEffect(ctx context.Context, run store.RotationRun, now time.Time) (*store.RotationEffectOutcome, error) {
+	id, kind, err := e.Runtime.OpenEffect(ctx, run)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return e.outcome(run, id, kind, audit.OutcomeUnknown, rotCodeInterrupted, now)
+}
+
 // ---------------------------------------------------------------- reconcile
 
 // reconcileCandidate settles a pre-publish run (failed or quarantine) whose
@@ -899,7 +913,13 @@ func (e *RotationExecutor) reconcileCandidate(ctx context.Context, run store.Rot
 	if err != nil {
 		return err
 	}
-	if err := e.Runtime.RecordIntent(ctx, run, now, intent); err != nil {
+	stale, err := e.staleEffect(ctx, run, now)
+	if err != nil {
+		return err
+	}
+	if err := e.Runtime.Settle(ctx, run, store.RotationSettle{
+		Now: now, FromPhases: []string{run.Phase}, Phase: run.Phase, LastError: run.LastError, NextAttempt: now, KeepLease: true, Open: &intent, Close: stale,
+	}); err != nil {
 		if errors.Is(err, store.ErrRotationFenceLost) {
 			return nil
 		}
@@ -985,8 +1005,12 @@ func (e *RotationExecutor) revoke(ctx context.Context, run store.RotationRun) er
 	if executorPhase {
 		revokingPhase = "revoking"
 	}
+	stale, err := e.staleEffect(ctx, run, now)
+	if err != nil {
+		return err
+	}
 	if err := e.Runtime.Settle(ctx, run, store.RotationSettle{
-		Now: now, FromPhases: from, Phase: revokingPhase, LastError: "", NextAttempt: now, KeepLease: true, Open: &intent,
+		Now: now, FromPhases: from, Phase: revokingPhase, LastError: "", NextAttempt: now, KeepLease: true, Open: &intent, Close: stale,
 	}); err != nil {
 		if errors.Is(err, store.ErrRotationFenceLost) {
 			return nil
@@ -1061,7 +1085,13 @@ func (e *RotationExecutor) extend(ctx context.Context, run store.RotationRun) er
 	if err != nil {
 		return err
 	}
-	if err := e.Runtime.RecordIntent(ctx, run, now, intent); err != nil {
+	stale, err := e.staleEffect(ctx, run, now)
+	if err != nil {
+		return err
+	}
+	if err := e.Runtime.Settle(ctx, run, store.RotationSettle{
+		Now: now, FromPhases: []string{"done"}, Phase: "done", NextAttempt: now, KeepLease: true, Open: &intent, Close: stale,
+	}); err != nil {
 		if errors.Is(err, store.ErrRotationFenceLost) {
 			return nil
 		}
