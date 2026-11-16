@@ -380,7 +380,7 @@ live-provider, collector or deployed-instance acceptance receipt.
 ## Acceptance close-out on `dev` (#1034)
 
 Every box of the issue's acceptance list was rechecked against `dev` at
-`67a4e12ff` through the real router, MCP transports, services and both
+`91c4296ef` through the real router, MCP transports, services and both
 datastores. The new owner file is
 `internal/isolation/auth_refusal_acceptance_test.go`; the rest is existing
 coverage. A deliberate break of the source resolver (reading the leftmost
