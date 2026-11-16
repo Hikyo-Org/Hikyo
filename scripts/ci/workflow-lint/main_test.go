@@ -3,6 +3,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestConcurrencyQueueValidation(t *testing.T) {
@@ -111,5 +113,41 @@ func TestNormalizeAppliesBothExtensions(t *testing.T) {
 	}
 	if _, err := normalize([]byte("on: push\nconcurrency:\n  group: g\n  queue: all\njobs: {}\n")); err == nil {
 		t.Fatal("a bad queue must still be refused")
+	}
+}
+
+// A permissions block whose only key is the scope must not become empty: actionlint
+// rejects an empty value, so the line becomes an empty flow mapping.
+func TestSoleAlertsPermissionBecomesAnEmptyMapping(t *testing.T) {
+	for _, test := range []struct{ name, doc string }{
+		{"workflow", "on: push\npermissions:\n  vulnerability-alerts: read\njobs: {}\n"},
+		{"job", "on: push\njobs:\n  a:\n    permissions:\n      vulnerability-alerts: none\n    runs-on: ubuntu-latest\n"},
+		{"anchored", "on: push\npermissions: &p\n  vulnerability-alerts: read\njobs: {}\n"},
+		{"with a comment", "on: push\npermissions:\n  vulnerability-alerts: read # alerts\njobs: {}\n"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			normalized, err := validateAlertsPermission([]byte(test.doc))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Count(string(normalized), "\n") != strings.Count(test.doc, "\n") {
+				t.Fatal("line numbers must be preserved")
+			}
+			var parsed struct {
+				Permissions map[string]string `yaml:"permissions"`
+				Jobs        map[string]struct {
+					Permissions map[string]string `yaml:"permissions"`
+				} `yaml:"jobs"`
+			}
+			if err := yaml.Unmarshal(normalized, &parsed); err != nil {
+				t.Fatalf("the normalized workflow must still parse: %v\n%s", err, normalized)
+			}
+			if strings.Contains(string(normalized), "vulnerability-alerts") {
+				t.Fatalf("the scope must be gone: %q", normalized)
+			}
+			if !strings.Contains(string(normalized), "{}") {
+				t.Fatalf("a sole key must become an empty mapping, not an empty value: %q", normalized)
+			}
+		})
 	}
 }

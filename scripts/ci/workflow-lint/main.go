@@ -138,9 +138,15 @@ func validateAlertsPermission(raw []byte) ([]byte, error) {
 		}
 		line := value.Line - 1
 		if line < 0 || line >= len(lines) || !alertsLine.MatchString(lines[line]) {
-			return nil, fmt.Errorf("line %d: write %s as a standalone unquoted key", value.Line, alertsPermission)
+			return nil, fmt.Errorf("line %d: declare %s as a standalone unquoted key", value.Line, alertsPermission)
 		}
-		lines[line] = ""
+		// A block whose only key is this scope would become empty, which actionlint
+		// rejects; an empty flow mapping keeps the line count and parses.
+		if len(block.Content) == 2 {
+			lines[line] = lines[line][:len(lines[line])-len(strings.TrimLeft(lines[line], " \t"))] + "{}"
+		} else {
+			lines[line] = ""
+		}
 	}
 	return []byte(strings.Join(lines, "\n")), nil
 }
