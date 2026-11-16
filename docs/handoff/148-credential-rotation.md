@@ -848,7 +848,9 @@ Round 1 review additions:
 19. `AbandonOpenRuns` audits only the rows it changed (RETURNING): a run left owing a
     role gets `rotation.quarantined`, and an abandoned-past-publish run with no
     superseded handle settles straight to `done` and gets a `rotation.run_outcome` row
-    with phase `abandon` and error code `abandoned`.
+    with phase `abandon` and error code `abandoned`. These rows are authored by the
+    deleting operator (the caller), not by the rotation authority or the `system` origin
+    the executor's own rows use.
 20. No migration was needed: `rotation_runs` joins `rotations` for `provider_id`.
 21. No Compose render test was added; `TestRotationExecutorDeliveryPath` covers delivery.
 22. The "key deleted after publish" case is covered by unset-after-publish.
@@ -871,7 +873,24 @@ Round 2 review additions:
     cannot take a single `UNION` or `sqlc.slice` twice) merged in Go by `published_revision`.
 28. `startRun` defers the rotation on any error (id, intent, `StartRun`), as its other
     errors do, so one failing rotation cannot sit at the head of the due queue.
-29. The worker logs only `service.RotationErrorClass(err)`, never the raw error.
+29. The worker logs a fixed `stage` word for every failed iteration (`self_config`,
+    `misconfigured`, `claim`, `select`, `run`, from `service.SweepError`). Self-config and
+    misconfiguration log their error as is (no tenant or provider data); every other stage
+    logs only `service.RotationErrorClass(err)` (an unclassified claim or select error is
+    `datastore`), never the raw error.
+
+Round 3 review additions:
+
+30. The superseded-role branch of the provider delete guard counts only runs that
+    published or may still publish (`published_revision IS NOT NULL` or phase `minting`,
+    `minted`, `staged`, `published`): a failed or quarantined run that never published never revokes
+    the role, so it does not hold the minting provider's delete.
+31. A provider can be deleted before a later rotation supersedes its role (the guard only
+    counts runs that already owe it). The revoke still works because a provider delete is a
+    tombstone that keeps the sealed credential and `RotationRtLoadSupersededRole` has no
+    state filter; `TestRotationSupersededRoleRevokedThroughTombstonedProvider` pins this.
+32. `RotationRtInfraFaults` counts all infrastructure faults of the cycle since its
+    start, not a consecutive streak: a definite failure in between does not reset it.
 
 ### Owner decisions on the S2a review (resolved)
 

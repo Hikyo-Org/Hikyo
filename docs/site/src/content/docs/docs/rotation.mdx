@@ -201,8 +201,10 @@ They require a human session. See the [HTTP API](/docs/http-api/).
 Every provider call is bracketed by an intent and an outcome event, a halt is
 audited as `rotation.configured`, and an abandon writes one event per run it
 closed (`rotation.quarantined` for a run that still owes a role, otherwise a
-`rotation.run_outcome` of phase `abandon`). Run events use the rotation's
-authority and the run id as the correlation id; the origin is `system`. `rotation.configured` records each create, pause, resume and delete with its
+`rotation.run_outcome` of phase `abandon`). The executor's run events use the
+rotation's authority and the run id as the correlation id, with origin `system`;
+the abandon events are authored by the operator who deleted the rotation, with
+the run id as the correlation id. `rotation.configured` records each create, pause, resume and delete with its
 `action` and the environment, and a pause the system caused (provider deleted or
 credential revoked, environment protected, approval policy enabled) with its
 `reason`. Reads are not audited events. Audit payloads carry identifiers and
