@@ -27,20 +27,9 @@ validate_release_compatibility() {
 	' "$compatibility_file" >/dev/null
 }
 
-# release_identity_json MANIFEST COMPATIBILITY_FILE
-# The release identity an installed release is recorded under and a release-source
-# edge must name (internal/releaseidentity.Identity): the signed manifest's version,
-# sequence and commit, and the SHA-256 of the exact bytes of the published manifest
-# and compatibility declaration. Callers pass the files of a release that
-# `stable verify` accepted, so the digests are the verified ones.
-release_identity_json() {
-	jq -ce --arg compatibility "$(sha256_file "$2")" --arg manifest "$(sha256_file "$1")" '
-		{profile: "stable/v1", version: .version, sequence: .release_sequence, commit: .source_commit,
-		 compatibility_sha256: $compatibility, manifest_sha256: $manifest} |
-		select(all(.[]; . != null))' "$1"
-}
-
 # release_source_edge_problems IDENTITY_JSON BASELINE_DECLARATION EDGES_JSON
+# IDENTITY_JSON is the release identity `stable verify` printed for the baseline (its
+# .identity object): the one an installed release is recorded under and an edge must name.
 # EDGES_JSON is {"sqlite": [edge...], "postgres": [edge...]}, the source edges a
 # candidate declares (or a sources.json carries) per engine. An installed
 # baseline release is only routed to the next release by an edge whose source is

@@ -86,7 +86,7 @@ jobs:
           cat "$reason" >&2
           case "$rc" in
             0) verdict="Compatibility is unchanged: v$VERSION at $COMMIT can be tagged as a routine release (its declaration is the last stable release's plus the reviewed release-source edge from it)." ;;
-            1) verdict="Compatibility differs, or the release-source edge from the last stable release is missing or wrong: v$VERSION at $COMMIT is not a routine release and needs a maintainer decision (see the log). $(grep '^compatibility check:' "$reason" | tail -n 1)" ;;
+            1) verdict="Compatibility differs, the release-source edge from the last stable release is missing or wrong, or that release needs a recovery bridge: v$VERSION at $COMMIT is not a routine release and needs a maintainer decision (see the log). $(grep '^compatibility check:' "$reason" | tail -n 1)" ;;
             5) verdict="The last stable release cannot be established or verified (exit 5): nothing is decided about compatibility. $(grep '^compatibility check:' "$reason" | tail -n 1)" ;;
             *) verdict="The check could not run (exit $rc): nothing is decided. $(grep '^compatibility check:' "$reason" | tail -n 1)" ;;
           esac

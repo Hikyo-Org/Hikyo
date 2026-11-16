@@ -12,8 +12,9 @@
 # release identity and is only routed to the next release by an edge whose source
 # is that exact release, while genesis edges never match it. Each edge must carry
 # the migrations and schema digest the previous release published, and name its
-# identity (version, sequence, commit, and the digests of its published manifest
-# and declaration).
+# identity, exactly as `stable verify` prints it for that release. A baseline not
+# signed under the github-actions-stable policy is refused (exit 1): the planner
+# skips an edge across a trust-policy change, which needs a recovery bridge.
 #
 # usage: check-compatibility-unchanged.sh [--edges-only] REPOSITORY TRUST_DIR VERSION DECLARATION
 #   REPOSITORY   OWNER/REPO that published the previous release
@@ -100,19 +101,24 @@ if ! "$GH_BIN" release download "v$baseline" --repo "$repository" --dir "$downlo
 	no_baseline "v$baseline has no downloadable release to compare with"
 fi
 commit=$(jq -er '.source_commit' "$download/release-manifest.json") || no_baseline "v$baseline has no readable manifest"
+# What the verifier prints is the verified release identity: take it from there, never rebuild it.
 "$GO_BIN" -C "$repo_root" run ./scripts/release/stable verify --trust "$trust" --directory "$download" \
-	--version "$baseline" --commit "$commit" --state "$state" --historical --published >/dev/null ||
+	--version "$baseline" --commit "$commit" --state "$state" --historical --published >"$work/verified.json" ||
 	no_baseline "v$baseline does not verify against the signed trust"
+identity=$(jq -ce '.identity | select(type == "object")' "$work/verified.json") ||
+	no_baseline "the verification of v$baseline printed no release identity"
 verify_release_compatibility_artifact "$download/release-manifest.json" "$download" ||
 	no_baseline "v$baseline carries no declaration bound to its signed manifest"
+# The planner skips an edge across a trust-policy change (internal/upgradecompat/plan.go), so
+# no edge can route an installed release signed under another policy: that needs a recovery bridge.
+[ "$(jq -r '.signing_key_id // empty' "$download/release-manifest.json")" = github-actions-stable ] ||
+	refuse "v$baseline was not signed under the github-actions-stable policy, and the planner does not follow an edge across a trust-policy change: an upgrade from it needs a recovery bridge, not a release-source edge"
 
 # The candidate is compared without the edge from the baseline release itself.
 normalize() { # file out [release-identity-to-drop]
 	jq -S --argjson id "${3:-null}" 'del(.version, .sequence, .commit) |
 		if $id == null then . else .engines |= map(.sources |= map(select(.source.release? != $id))) end' "$1" >"$2" || refuse "cannot normalize $1"
 }
-identity=$(release_identity_json "$download/release-manifest.json" "$download/upgrade-compatibility.json") ||
-	no_baseline "v$baseline's manifest does not name its release identity"
 if [ -n "$edges_only" ]; then
 	jq '.engines' "$declaration" >"$work/edges.json"
 else
@@ -133,7 +139,10 @@ if ! cmp -s "$work/candidate.json" "$work/baseline.json"; then
 	diff -u "$work/baseline.json" "$work/candidate.json" >"$work/difference" || true
 	head -n 200 "$work/difference" >&2
 	[ "$(wc -l <"$work/difference" | tr -d ' ')" -le 200 ] || printf 'compatibility check: the diff above is cut at 200 lines; compare the two declarations in full before deciding\n' >&2
-	refuse "the compatibility declaration differs from the one v$baseline published (migrations, schema or source edges changed)"
+	printf 'compatibility check: the compatibility declaration differs from the one v%s published (migrations, schema or source edges changed)\n' "$baseline" >&2
+	# A missing or wrong edge is the last word, so a summary that quotes the last line never hides it.
+	[ -z "$problems" ] || refuse "the release-source edge from v$baseline is missing or does not match what v$baseline published, and the declaration also differs (see the diff above); add the reviewed edge per engine"
+	exit 1
 fi
 [ -z "$problems" ] || refuse "the release-source edge from v$baseline is missing or does not match what v$baseline published; add the reviewed edge per engine"
 printf 'compatibility check: compatibility is identical to v%s apart from the release-source edge from it\n' "$baseline"

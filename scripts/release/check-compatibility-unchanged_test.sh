@@ -12,8 +12,8 @@ repo_root=$(CDPATH='' cd -- "$script_dir/../.." && pwd)
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-compat-unchanged-test.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT HUP INT TERM
 mkdir "$scratch/bin" "$scratch/trust"
-export FIXTURE_SCRATCH="$scratch"
 c0=0000000000000000000000000000000000000001
+export FIXTURE_SCRATCH="$scratch" FIXTURE_COMMIT="$c0"
 real_declaration() { # version sequence commit
 	jq -S --slurpfile sources "$repo_root/release/compatibility/sources.json" --arg v "$1" --argjson s "$2" --arg c "$3" '
 		.version = $v | .sequence = $s | .commit = $c |
@@ -34,7 +34,7 @@ write_baseline() { # directory declaration-file
 	cp "$2" "$1/upgrade-compatibility.json"
 	jq -nc --arg c "$c0" '{version:"1.1.0",sequence:2,commit:$c,key_id:"k",public_key:"k.pub"}' >"$1/release-candidate.json"
 	jq -nc --arg c "$c0" --arg sha "$(sha256_file "$2")" \
-		'{version:"1.1.0",release_sequence:2,source_commit:$c,artifacts:[{name:"upgrade-compatibility.json",kind:"upgrade-compatibility",sha256:$sha}]}' >"$1/release-manifest.json"
+		'{version:"1.1.0",release_sequence:2,source_commit:$c,signing_key_id:"github-actions-stable",artifacts:[{name:"upgrade-compatibility.json",kind:"upgrade-compatibility",sha256:$sha}]}' >"$1/release-manifest.json"
 }
 cat >"$scratch/bin/gh" <<'SH'
 #!/bin/sh
@@ -61,7 +61,13 @@ case "$*" in
 		case "$*" in *' --historical'*) ;; *) printf 'trust rollback refused\n' >&2; exit 3 ;; esac
 		case "$*" in *' --published'*) ;; *) exit 3 ;; esac
 		case "$*" in *' --latest'*) exit 3 ;; esac
-		case "$*" in *' --version 1.1.0 '*) ;; *) exit 3 ;; esac ;;
+		case "$*" in *' --version 1.1.0 '*) ;; *) exit 3 ;; esac
+		# What the real verifier prints on success (scripts/release/stable/verify.go): the verified release identity.
+		[ "$FIXTURE_MODE" != no-identity ] || { printf '{"published_oci_verified":true}\n'; exit 0; }
+		dir=
+		while [ $# -gt 0 ]; do [ "$1" != --directory ] || dir=$2; shift; done
+		jq -nc --arg c "$FIXTURE_COMMIT" --arg decl "$(shasum -a 256 "$dir/upgrade-compatibility.json" | cut -d' ' -f1)" --arg man "$(shasum -a 256 "$dir/release-manifest.json" | cut -d' ' -f1)" \
+			'{identity: {profile: "stable/v1", version: "1.1.0", sequence: 2, commit: $c, compatibility_sha256: $decl, manifest_sha256: $man}, published_oci_verified: true}' ;;
 	*) exit 2 ;;
 esac
 SH
@@ -71,8 +77,8 @@ export GH_BIN="$scratch/bin/gh" GO_BIN="$scratch/bin/go"
 real_declaration 1.1.0 2 "$c0" >"$scratch/baseline-decl.json"
 write_baseline "$scratch/published" "$scratch/baseline-decl.json"
 trust_metadata 1.1.0 1.0.0 1.1.0 >"$scratch/trust/metadata.json"
-# The identity v1.1.0 is installed under, built here from the published files (the encoding is
-# cross-checked against internal/releaseidentity in scripts/ci/release_identity_binding_test.go).
+# The identity v1.1.0 is installed under, as the fake verifier prints it (the real one is
+# bound to the edge encoding in scripts/ci/release_identity_binding_test.go).
 baseline_identity="$(jq -nc --arg c "$c0" --arg decl "$(sha256_file "$scratch/published/upgrade-compatibility.json")" --arg man "$(sha256_file "$scratch/published/release-manifest.json")" \
 	'{profile: "stable/v1", version: "1.1.0", sequence: 2, commit: $c, compatibility_sha256: $decl, manifest_sha256: $man}')"
 # The reviewed release-source edge from the baseline: per engine, the edge names the baseline's identity
@@ -149,6 +155,9 @@ edge_fault "$scratch/changed.json" 'sqlite: the edge from v1.1.0 has no valid mo
 jq -S '.new_top_level_field = true' "$scratch/candidate-no-edge.json" >"$scratch/changed.json"
 edge_fault "$scratch/changed.json" 'sqlite: no release-source edge from v1.1.0'
 grep -q '^@@ ' "$scratch/out" || { printf 'compatibility fixture: a difference beside a missing edge printed no diff\n' >&2; exit 1; }
+# The missing edge is the last word even then, so a summary that quotes the last line never hides it.
+[ "$(tail -n 1 "$scratch/out")" = 'compatibility check: the release-source edge from v1.1.0 is missing or does not match what v1.1.0 published, and the declaration also differs (see the diff above); add the reviewed edge per engine' ] || { cat "$scratch/out" >&2; printf 'compatibility fixture: a missing edge beside another difference did not end on the edge refusal\n' >&2; exit 1; }
+grep -F 'the compatibility declaration differs from the one v1.1.0 published' "$scratch/out" >/dev/null || { printf 'compatibility fixture: the difference was not reported beside the missing edge\n' >&2; exit 1; }
 
 # --edges-only judges release/compatibility/sources.json alone, before anything is generated.
 sources_with() { # identity-json [jq filter applied to each edge]
@@ -231,6 +240,15 @@ refused same "$scratch/changed.json" 'not a complete two-engine declaration'
 cp "$scratch/published/release-manifest.json" "$scratch/manifest.bak"
 jq 'del(.source_commit)' "$scratch/manifest.bak" >"$scratch/published/release-manifest.json"
 refused same "$scratch/candidate.json" 'v1.1.0 has no readable manifest' 5
+cp "$scratch/manifest.bak" "$scratch/published/release-manifest.json"
+
+# A verifier that prints no release identity decides nothing: exit 5, and no identity is rebuilt from the files.
+refused no-identity "$scratch/candidate.json" 'printed no release identity' 5
+# A baseline signed under another trust policy cannot be routed by any edge (plan.go skips edges across a policy change).
+jq '.signing_key_id = "recovery-bridge"' "$scratch/manifest.bak" >"$scratch/published/release-manifest.json"
+refused same "$scratch/candidate.json" 'needs a recovery bridge' 1
+jq 'del(.signing_key_id)' "$scratch/manifest.bak" >"$scratch/published/release-manifest.json"
+refused same "$scratch/candidate.json" 'needs a recovery bridge' 1
 cp "$scratch/manifest.bak" "$scratch/published/release-manifest.json"
 
 # Unauthenticated trust decides nothing, and a baseline release that is gone is a refusal, not a lookup failure.

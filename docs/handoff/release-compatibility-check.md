@@ -21,10 +21,12 @@ run from any other ref, so **it is unusable until the promotion lands it on
   release's identity, with the migrations and schema digest the baseline
   published (owner decision 2026-11-16: an installed release is routed only
   through an edge from that exact release; genesis edges never match it).
-  Exit 0 identical plus the edge, 1 different or the edge is missing or wrong, 5 the baseline cannot be established or
+  Exit 0 identical plus the edge, 1 different, the edge missing or wrong, or a baseline not signed under `github-actions-stable`, 5 the baseline cannot be established or
   verified (nothing decided about compatibility), 2 bad usage, 4 a lookup failed
   (nothing decided). A difference prints a bounded unified diff before its
-  refusal line.
+  refusal line. When the declaration differs and the edge is also missing or
+  wrong, the edge refusal is the last line (after the diff and the difference
+  line), so the workflow summary, which quotes the last line, never hides it.
 - The baseline is the highest plain `X.Y.Z` in the authenticated trust metadata
   below `VERSION`. No prerelease and not GitHub's "latest" flag. It is
   downloaded and verified with `stable verify --historical --published`, as
@@ -46,10 +48,14 @@ run from any other ref, so **it is unusable until the promotion lands it on
   judges only the edge, reading `release/compatibility/sources.json` (the reviewed
   edges the generator copies into the declaration). The release planner (part 4)
   uses it to name what is missing before it generates anything.
-- `release_identity_json` and `release_source_edge_problems` in
-  `scripts/lib/release.sh` build the baseline's identity from its verified
-  files and judge the edges; `TestReleaseIdentityFromPublishedFilesMatchesTheVerifier`
-  proves the identity equals what `releasetrust.VerifyStable` derives.
+- `release_source_edge_problems` in `scripts/lib/release.sh` judges the edges
+  against the release identity that `stable verify` prints for the baseline
+  (the check takes it from that output and never rebuilds it);
+  `TestVerifierIdentityIsWhatTheEdgeCheckExpects` binds the shell side to the
+  verify output shape and the way a release source is encoded.
+  A baseline whose manifest `signing_key_id` is not `github-actions-stable` is
+  refused (exit 1, "needs a recovery bridge"): the planner skips an edge across
+  a trust-policy change (`internal/upgradecompat/plan.go`).
   No command authors the edge (`scripts/release/nightly sources` handles nightly
   directories only); it is hand-written in `release/compatibility/sources.json`.
 - `scripts/lib/release.sh` gains `validate_compatibility_shape`;
@@ -69,7 +75,7 @@ is advisory for the maintainer: nothing requires it.
 - Mutations of the script, the shared library and the workflow: each fails the
   fixture, `TestReleaseCompatibilityCheckWorkflowBoundaries`,
   `TestPostgresFixturesStartAfterCheckout` or
-  `TestReleaseIdentityFromPublishedFilesMatchesTheVerifier`. Round 3 added the
+  `TestVerifierIdentityIsWhatTheEdgeCheckExpects`. Round 3 added the
   edge rule (missing edge, mismatched migrations or schema, wrong release, a
   duplicate, a bad mode, the edge not stripped before the comparison, the
   identity digests swapped), the Postgres guard, the synced-trust step and the
@@ -87,10 +93,11 @@ is advisory for the maintainer: nothing requires it.
 
 - **The workflow has not run on GitHub.** A workflow that exists only on a
   branch cannot be dispatched. After promotion to `main`, run it once for the next patch
-  version and read the step summary. **Expect "edge missing" on the first dispatch**
-  (no release carries the edge from v1.1.0 yet) **and "differs"**:
-  the promotion that lands this workflow also carries the migrations that sit on
-  `dev`, so main's tip no longer matches the last stable release.
+  version and read the step summary. **Expect both on the first dispatch**:
+  the edge from v1.1.0 is missing (no release carries it yet), and the
+  declaration differs, because the promotion that lands this workflow also
+  carries the migrations that sit on `dev`, so main's tip no longer matches the
+  last stable release. The summary ends on the edge line; the diff above it shows the difference.
   The "unchanged" verdict is evidenced separately by a local run (see Evidence).
 - The 30-minute job timeout is an estimate, not a measurement.
 - The check compares main's tip. If main moves before tagging, run it again.
