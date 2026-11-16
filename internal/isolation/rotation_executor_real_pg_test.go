@@ -2,11 +2,15 @@ package isolation
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/x509"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/netip"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -122,6 +126,54 @@ func (r realPGTarget) adminConn(ctx context.Context) (*pgx.Conn, error) {
 	return pgx.Connect(ctx, u.String())
 }
 
+// persistedCandidates lists the candidate role of every run the rotation ever
+// persisted. It reads through the store handle with its own context, because the
+// test context is already canceled when cleanups run; a failed read is reported,
+// since it could hide a role left on the target.
+func persistedCandidates(ctx context.Context, t *testing.T, db *store.DB, rotationID string) []string {
+	t.Helper()
+	const q = "SELECT candidate_handle FROM rotation_runs WHERE rotation_id=%s AND candidate_handle<>''"
+	var out []string
+	if db.Engine() == store.EnginePostgres {
+		rows, err := db.PG().Query(ctx, fmt.Sprintf(q, "$1"), rotationID)
+		if err != nil {
+			t.Errorf("list candidate roles: %v", err)
+			return out
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var h string
+			if err := rows.Scan(&h); err != nil {
+				t.Errorf("list candidate roles: %v", err)
+				return out
+			}
+			out = append(out, h)
+		}
+		if err := rows.Err(); err != nil {
+			t.Errorf("list candidate roles: %v", err)
+		}
+		return out
+	}
+	rows, err := db.SQLiteRead().QueryContext(ctx, fmt.Sprintf(q, "?"), rotationID)
+	if err != nil {
+		t.Errorf("list candidate roles: %v", err)
+		return out
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var h string
+		if err := rows.Scan(&h); err != nil {
+			t.Errorf("list candidate roles: %v", err)
+			return out
+		}
+		out = append(out, h)
+	}
+	if err := rows.Err(); err != nil {
+		t.Errorf("list candidate roles: %v", err)
+	}
+	return out
+}
+
 func runRotationRealPostgres(t *testing.T, db *store.DB, target realPGTarget, grantRole string) {
 	ctx := tctx(t)
 	x := newRotExec(t, db)
@@ -142,13 +194,31 @@ func runRotationRealPostgres(t *testing.T, db *store.DB, target realPGTarget, gr
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The owned-object table is named per invocation and dropped only when this
+	// invocation created it, so two runs against one target never delete each
+	// other's fixture.
+	suffix := make([]byte, 6)
+	if _, err := rand.Read(suffix); err != nil {
+		t.Fatal(err)
+	}
+	ownedTable := pgx.Identifier{"hikyo_rot_owned_" + hex.EncodeToString(suffix)}.Sanitize()
+	ownedCreated := false
 	var roles []string
 	t.Cleanup(func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		if conn, err := target.adminConn(cleanup); err == nil {
-			_, _ = conn.Exec(cleanup, "DROP TABLE IF EXISTS hikyo_rot_owned")
-			_ = conn.Close(cleanup)
+		if ownedCreated {
+			if conn, err := target.adminConn(cleanup); err == nil {
+				_, _ = conn.Exec(cleanup, "DROP TABLE IF EXISTS "+ownedTable)
+				_ = conn.Close(cleanup)
+			}
+		}
+		// Every candidate this test's runs ever named, published or not: a run that
+		// created its role and then failed to settle never reaches `delivered`.
+		for _, name := range persistedCandidates(cleanup, t, db, rot.ID) {
+			if !slices.Contains(roles, name) {
+				roles = append(roles, name)
+			}
 		}
 		for _, name := range roles {
 			if err := probe.DropRole(cleanup, name); err != nil {
@@ -208,8 +278,9 @@ func runRotationRealPostgres(t *testing.T, db *store.DB, target realPGTarget, gr
 		t.Fatalf("the superseded credential must keep working through the overlap: %v", err)
 	}
 	// The superseded role owns an object: the drop is refused and named, not lost.
-	target.admin(ctx, t, "CREATE TABLE hikyo_rot_owned (id int)")
-	target.admin(ctx, t, "ALTER TABLE hikyo_rot_owned OWNER TO "+pgx.Identifier{user1}.Sanitize())
+	target.admin(ctx, t, "CREATE TABLE "+ownedTable+" (id int)")
+	ownedCreated = true
+	target.admin(ctx, t, "ALTER TABLE "+ownedTable+" OWNER TO "+pgx.Identifier{user1}.Sanitize())
 	x.advance(time.Hour + time.Minute)
 	x.drain()
 	run2 := x.openRunID(rot.ID)
@@ -223,7 +294,7 @@ func runRotationRealPostgres(t *testing.T, db *store.DB, target realPGTarget, gr
 		t.Fatalf("the refused revoke lost the role: %+v, %v", st, err)
 	}
 	// Move the object away; the next retry drops the role.
-	target.admin(ctx, t, "ALTER TABLE hikyo_rot_owned OWNER TO "+pgx.Identifier{adminUser}.Sanitize())
+	target.admin(ctx, t, "ALTER TABLE "+ownedTable+" OWNER TO "+pgx.Identifier{adminUser}.Sanitize())
 	x.advance(24 * time.Hour)
 	x.drain()
 	if got := x.phase(run2); got != "done" {
