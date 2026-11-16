@@ -159,7 +159,37 @@ type PublishRequest struct {
 	ApprovalRequestID string
 	Bypass            *ApprovalBypass
 	Purpose           string
+
+	// rotation, when set, makes this publish a scheduled rotation's own
+	// transaction (#148, S2): the executor stages the candidate credential, the
+	// publish materializes it and the run row records it in ONE transaction, so a
+	// candidate is never a durable draft and a crash leaves no half-published
+	// state. Unexported: no transport can set it.
+	rotation *rotationPublish
 }
+
+// rotationPublish carries the executor's three in-transaction steps. Each runs
+// inside the publish transaction and so must be safe to re-run when the
+// transaction retries on a serialization failure.
+type rotationPublish struct {
+	// key is the first rotated key, used for the sealer preflight and the first
+	// per-key authorization.
+	key authz.KeyTarget
+	// begin runs after authorization and BEFORE the project lock: the run row's
+	// fenced touch, so a takeover's fenced claim write waits for this commit.
+	begin func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity, now time.Time) error
+	// stage stages the candidate values (under the project lock) and returns the
+	// pending version ids this publish commits.
+	stage func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity, now time.Time) ([]string, error)
+	// commit records the publish on the run row once every environment has
+	// published, in the same transaction.
+	commit func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity, now time.Time, out PublishResult) error
+}
+
+// errRotationNotPublished reports a rotation publish that would have created an
+// approval request or been refused by the approval gate: it publishes nothing and
+// rolls the staged candidate back.
+var errRotationNotPublished = fmt.Errorf("%w: a scheduled rotation cannot publish into an environment with an approval policy", domain.ErrConflict)
 
 // ApprovalBypass carries an emergency bypasser's mandatory reason (#151).
 type ApprovalBypass struct {
@@ -257,7 +287,7 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 	}
 	// A merge or bypass names an approval request, not a selection: the reviewed
 	// version ids are loaded from the request inside the transaction (#151).
-	if len(versionIDs) == 0 && request.ApprovalRequestID == "" {
+	if len(versionIDs) == 0 && request.ApprovalRequestID == "" && request.rotation == nil {
 		return PublishResult{}, fmt.Errorf("%w: a publish names the pending changes it commits", domain.ErrInvalid)
 	}
 	if dup, ok := firstDuplicate(versionIDs); ok {
@@ -275,7 +305,10 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 	// The complete change set, including approval-pinned selections, is proved
 	// inside the transaction before any detail or material is returned.
 	var publishKey *authz.KeyTarget
-	if request.ApprovalRequestID != "" {
+	if request.rotation != nil {
+		key := request.rotation.key
+		publishKey = &key
+	} else if request.ApprovalRequestID != "" {
 		key := authz.KeyApprovalRequest(request.ApprovalRequestID)
 		publishKey = &key
 	} else if len(versionIDs) > 0 {
@@ -317,6 +350,11 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 		if err := s.Budget.chargeOnce(&rateCharged, budgetPublishRate, budgetKeys{Principal: caller.Principal}); err != nil {
 			return err
 		}
+		if request.rotation != nil && request.rotation.begin != nil {
+			if err := request.rotation.begin(ctx, r, az, caller, now); err != nil {
+				return err
+			}
+		}
 		if s.PublishProbe != nil {
 			s.PublishProbe.BeforeProjectLock(slices.Clone(versionIDs))
 		}
@@ -324,6 +362,13 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 		// and authorization re-checks (schema-model ADR).
 		if err := r.Projects().Lock(ctx, p); err != nil {
 			return err
+		}
+		if request.rotation != nil && request.rotation.stage != nil {
+			staged, err := request.rotation.stage(ctx, r, az, caller, now)
+			if err != nil {
+				return err
+			}
+			versionIDs = staged
 		}
 
 		// Secret-change approvals (#151): a merge or bypass names an existing
@@ -451,6 +496,9 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 		approval, err := approvalGate(ctx, r, az, s.Auth, s.Keyring, caller, scope, request, loadedApproval, selection, closed, proofs, now)
 		if err != nil {
 			return err
+		}
+		if request.rotation != nil && (approval.refusal != nil || approval.created != nil) {
+			return errRotationNotPublished
 		}
 		if approval.refusal != nil {
 			// The gate committed an invalidation; commit the transaction so it
@@ -580,6 +628,9 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 
 		out.ClosedIn = closed
 		slices.Sort(out.Published)
+		if request.rotation != nil && request.rotation.commit != nil {
+			return request.rotation.commit(ctx, r, az, caller, now, out)
+		}
 		return nil
 	})
 	if err != nil {

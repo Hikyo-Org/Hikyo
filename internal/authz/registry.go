@@ -5436,7 +5436,7 @@ var operationTable = map[Operation]opSpec{
 	OpDynamicProviderCredentialRevoke: {
 		class: ClassTenant, level: domain.LevelProject,
 		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
-		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersRevokeCredential: true, StoreRotationsPauseForProvider: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersRevokeCredential: true, StoreRotationsPauseForProvider: true, StoreRotationsProviderLiveRuns: true, StoreAuditTenantInsert: true},
 		// A rotation minting from the provider is paused with it (#148).
 		events: []audit.EventType{audit.EventDynamicProviderCredentialRevoke, audit.EventRotationConfigured},
 	},
@@ -5531,7 +5531,7 @@ var operationTable = map[Operation]opSpec{
 	OpRotationRun: {
 		class: ClassTenant, level: domain.LevelEnv,
 		formula:  Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
-		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsRunPublish: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsRunPublish: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventRotationRunOutcome},
 	},
 

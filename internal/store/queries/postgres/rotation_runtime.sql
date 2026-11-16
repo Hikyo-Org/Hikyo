@@ -120,3 +120,13 @@ SELECT COUNT(*) FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND o
 -- not, so the resumed run re-probes the provider instead of repeating the effect.
 -- name: RotationRtOpenEffect :one
 SELECT id,kind FROM rotation_effects WHERE run_id=sqlc.arg(run_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND outcome IS NULL ORDER BY created_at DESC,id DESC LIMIT 1;
+
+-- The schedule's anchors for one rotation cycle: the newest revision this
+-- rotation published at its current generation (P is that snapshot's commit
+-- time) and the first run it started at this generation (a cycle with no publish
+-- of its own is anchored at its first attempt).
+-- name: RotationRtOwnPublished :one
+SELECT published_revision FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(generation) AND published_revision IS NOT NULL ORDER BY published_revision DESC LIMIT 1;
+
+-- name: RotationRtCycleStart :one
+SELECT started_at FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(generation) ORDER BY started_at,id LIMIT 1;

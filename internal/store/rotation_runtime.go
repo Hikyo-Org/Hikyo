@@ -180,6 +180,8 @@ type rotationRuntimeQueries interface {
 	providerMaterial(ctx context.Context, run RotationRun, now time.Time) (LeaseProviderMaterial, error)
 	openRunCount(ctx context.Context, chain domain.Scope, rotationID string) (int64, error)
 	openEffect(ctx context.Context, chain domain.Scope, runID string) (id, kind string, err error)
+	ownPublished(ctx context.Context, chain domain.Scope, rotationID string, generation int64) (int64, error)
+	cycleStart(ctx context.Context, chain domain.Scope, rotationID string, generation int64) (time.Time, error)
 }
 
 func (r *RotationRuntime) transaction(ctx context.Context, fn func(rotationRuntimeQueries) error) error {
@@ -394,12 +396,62 @@ func (r *RotationRuntime) Settle(ctx context.Context, run RotationRun, s Rotatio
 }
 
 // HaltRotation halts a rotation whose pre-publish gate failed before any run
-// existed (the scheduler's own check), writing the audit row beside it.
-func (r *RotationRuntime) HaltRotation(ctx context.Context, d DueRotation, reason string, now time.Time) error {
-	return r.transaction(ctx, func(q rotationRuntimeQueries) error {
-		chain := domain.Scope{Org: domain.OrgID(d.OrgID), Project: domain.ProjectID(d.ProjectID), Env: domain.EnvID(d.EnvironmentID)}
-		_, err := q.haltRotation(ctx, chain, d.ID, reason, now)
-		return err
+// existed (the scheduler's own check), writing the audit row beside it. It
+// returns false when the rotation was no longer active (nothing to halt).
+func (r *RotationRuntime) HaltRotation(ctx context.Context, d DueRotation, reason string, now time.Time, audit RotationAudit) (bool, error) {
+	halted := false
+	err := r.transaction(ctx, func(q rotationRuntimeQueries) error {
+		halted = false
+		chain := d.Chain()
+		rows, err := q.haltRotation(ctx, chain, d.ID, reason, now)
+		if err != nil || rows != 1 {
+			return err
+		}
+		halted = true
+		return q.insertAudit(ctx, chain, d.AuthorityPrincipalID, d.ID, "", audit, now)
+	})
+	return halted && err == nil, err
+}
+
+// Chain is the due rotation's tenant chain.
+func (d DueRotation) Chain() domain.Scope {
+	return domain.Scope{Org: domain.OrgID(d.OrgID), Project: domain.ProjectID(d.ProjectID), Env: domain.EnvID(d.EnvironmentID)}
+}
+
+// RotationCycle is what the failure schedule needs to know about the rotation's
+// current cycle (the runs since its last pause, resume or halt).
+type RotationCycle struct {
+	// OwnPublishedRevision is the newest revision this rotation published at its
+	// current generation; zero when it has not published since the cycle began.
+	OwnPublishedRevision int64
+	// FirstRunAt is the start of the cycle's first run; zero before any run.
+	FirstRunAt time.Time
+	// KeyEverPublished is whether any run of any rotation ever published the key,
+	// that is, whether a superseded credential exists.
+	KeyEverPublished bool
+}
+
+// Cycle reads the schedule anchors for a due rotation.
+func (r *RotationRuntime) Cycle(ctx context.Context, d DueRotation) (RotationCycle, error) {
+	return rotationRead(ctx, r, func(q rotationRuntimeQueries) (RotationCycle, error) {
+		var out RotationCycle
+		chain := d.Chain()
+		rev, err := q.ownPublished(ctx, chain, d.ID, d.Generation)
+		if err != nil && !isNoRows(err) {
+			return out, err
+		}
+		out.OwnPublishedRevision = rev
+		first, err := q.cycleStart(ctx, chain, d.ID, d.Generation)
+		if err != nil && !isNoRows(err) {
+			return out, err
+		}
+		out.FirstRunAt = first
+		handle, err := q.latestPublished(ctx, chain, d.KeyID)
+		if err != nil {
+			return out, err
+		}
+		out.KeyEverPublished = handle != ""
+		return out, nil
 	})
 }
 

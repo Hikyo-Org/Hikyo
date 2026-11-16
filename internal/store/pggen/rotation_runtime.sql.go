@@ -199,6 +199,31 @@ func (q *Queries) RotationRtCurrentEntry(ctx context.Context, arg RotationRtCurr
 	return id, err
 }
 
+const rotationRtCycleStart = `-- name: RotationRtCycleStart :one
+SELECT started_at FROM rotation_runs WHERE rotation_id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4 AND generation=$5 ORDER BY started_at,id LIMIT 1
+`
+
+type RotationRtCycleStartParams struct {
+	RotationID   string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	Generation   int64
+}
+
+func (q *Queries) RotationRtCycleStart(ctx context.Context, arg RotationRtCycleStartParams) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, rotationRtCycleStart,
+		arg.RotationID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.Generation,
+	)
+	var started_at pgtype.Timestamptz
+	err := row.Scan(&started_at)
+	return started_at, err
+}
+
 const rotationRtDueRotation = `-- name: RotationRtDueRotation :one
 
 SELECT ro.id,ro.org_id,ro.project_id,ro.environment_id,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds,ro.authority_principal_id,ro.generation
@@ -753,6 +778,35 @@ func (q *Queries) RotationRtOpenRunCount(ctx context.Context, arg RotationRtOpen
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const rotationRtOwnPublished = `-- name: RotationRtOwnPublished :one
+SELECT published_revision FROM rotation_runs WHERE rotation_id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4 AND generation=$5 AND published_revision IS NOT NULL ORDER BY published_revision DESC LIMIT 1
+`
+
+type RotationRtOwnPublishedParams struct {
+	RotationID   string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	Generation   int64
+}
+
+// The schedule's anchors for one rotation cycle: the newest revision this
+// rotation published at its current generation (P is that snapshot's commit
+// time) and the first run it started at this generation (a cycle with no publish
+// of its own is anchored at its first attempt).
+func (q *Queries) RotationRtOwnPublished(ctx context.Context, arg RotationRtOwnPublishedParams) (pgtype.Int8, error) {
+	row := q.db.QueryRow(ctx, rotationRtOwnPublished,
+		arg.RotationID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.Generation,
+	)
+	var published_revision pgtype.Int8
+	err := row.Scan(&published_revision)
+	return published_revision, err
 }
 
 const rotationRtPublishedEntries = `-- name: RotationRtPublishedEntries :many

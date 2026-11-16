@@ -135,6 +135,9 @@ type CreateRotationRequest struct {
 type RotationStateRequest struct {
 	RotationID         string
 	ExpectedGeneration int64
+	// Abandon, on a delete only, closes the rotation's unsettled runs as
+	// quarantine instead of refusing (#148, S2). The wire flag is S2b.
+	Abandon bool
 }
 
 // rotationAction is the closed set of state changes a rotation accepts.
@@ -577,7 +580,32 @@ func (s *CredentialRotations) transition(ctx context.Context, actor Actor, scope
 				return err
 			}
 			if open > 0 {
-				return fmt.Errorf("%w: the rotation has a run in flight; let it finish or quarantine it first", domain.ErrConflict)
+				if !req.Abandon {
+					return fmt.Errorf("%w: the rotation has a run in flight; let it finish or abandon it", domain.ErrConflict)
+				}
+				// Abandon closes every unsettled run as quarantine, loudly. A run
+				// before its publish keeps its candidate for the reconciler to
+				// confirm gone; a run past it keeps its delivered credential live
+				// and still owes the superseded role's revoke, which the
+				// revoke-obligation loop settles. Nothing here revokes a delivered
+				// credential.
+				abandoned, err := r.Rotations().AbandonOpenRuns(ctx, proof, cur.ID, now)
+				if err != nil {
+					return err
+				}
+				for _, run := range abandoned {
+					payload := audit.Payload{"run_id": run.ID, "candidate_handle": run.CandidateHandle}
+					if run.SupersededHandle != "" {
+						payload["superseded_handle"] = run.SupersededHandle
+					}
+					ev, err := newAuditEvent(ctx, audit.EventRotationQuarantined, caller.Principal, audit.Object{Type: "rotation", ID: cur.ID}, audit.OutcomeSuccess, run.ID, payload)
+					if err != nil {
+						return err
+					}
+					if err := r.Audit().InsertTenant(ctx, proof, ev); err != nil {
+						return err
+					}
+				}
 			}
 			next.State = store.RotationStateDisabled
 		default:

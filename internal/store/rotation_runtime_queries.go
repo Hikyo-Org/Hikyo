@@ -265,3 +265,23 @@ func (q sqliteRotationRuntimeQueries) openEffect(ctx context.Context, c domain.S
 	r, err := q.q.RotationRtOpenEffect(ctx, sqlitegen.RotationRtOpenEffectParams{RunID: runID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env)})
 	return r.ID, r.Kind, err
 }
+
+func (q pgRotationRuntimeQueries) ownPublished(ctx context.Context, c domain.Scope, rotationID string, generation int64) (int64, error) {
+	v, err := q.q.RotationRtOwnPublished(ctx, pggen.RotationRtOwnPublishedParams{RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env), Generation: generation})
+	return v.Int64, err
+}
+
+func (q pgRotationRuntimeQueries) cycleStart(ctx context.Context, c domain.Scope, rotationID string, generation int64) (time.Time, error) {
+	v, err := q.q.RotationRtCycleStart(ctx, pggen.RotationRtCycleStartParams{RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env), Generation: generation})
+	return pgTime(v), err
+}
+
+func (q sqliteRotationRuntimeQueries) ownPublished(ctx context.Context, c domain.Scope, rotationID string, generation int64) (int64, error) {
+	v, err := q.q.RotationRtOwnPublished(ctx, sqlitegen.RotationRtOwnPublishedParams{RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env), Generation: generation})
+	return v.Int64, err
+}
+
+func (q sqliteRotationRuntimeQueries) cycleStart(ctx context.Context, c domain.Scope, rotationID string, generation int64) (time.Time, error) {
+	v, err := q.q.RotationRtCycleStart(ctx, sqlitegen.RotationRtCycleStartParams{RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env), Generation: generation})
+	return sqlTimeReq(v), err
+}
