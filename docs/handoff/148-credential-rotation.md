@@ -359,9 +359,12 @@ transaction. It is never stored, not even sealed. Order:
    its role then is an outage. On mismatch the run moves to `revoke_refused` with
    `last_error = 'published_versions_changed'`, the revoke is NOT performed, and the hold
    is visible in `rotation show`, `rotation runs` and `hikyo doctor` (the last two are S2b).
-   The hold is re-evaluated on each backoff retry, but per owner decision A only the
-   expiry or absence of the superseded role ends it: a restore or republish stages a new
-   version id, and no later run can start while this one is held.
+   The hold is re-evaluated on each backoff retry and ends in exactly two ways: the
+   assertion passes again (each key has no served entry, or its served entry was published
+   by a run of that key at or after this run's revision), or the superseded role is dead
+   (absent, or its `VALID UNTIL` past the skew margin). A restore or manual republish
+   stages a new version id that no run published, so it never passes the assertion, and no
+   later run of this rotation can start while this one is held (owner decision A).
 8. **Delayed-commit hazard.** A publish transaction can commit after another worker has
    already looked at the run (a stalled COMMIT, a partition healing). Every place that
    resolves an ambiguous run state (`minting` or `minted` after a crash or takeover, an
@@ -793,8 +796,11 @@ refused as `role_owns_objects` and dropped after the object moves).
    revoke proceeds with next attempt = now.
 5. A new generation's cycle `D` is anchored at its first run.
 6. The publish rate budget applies to the authority principal.
-7. A superseded role that the provider reports absent or expired no longer needs the
-   restore assertion: `supersededDead` self-heals a `published_versions_changed` hold, and an
+7. The restore hold (`published_versions_changed`) releases on either exit: the restore
+   assertion passes (each key has no served entry, or its served entry was published by a
+   run of that key at or after this run's revision), or the superseded role is dead. A
+   superseded role that the provider reports absent or expired no longer needs the
+   restore assertion: `supersededDead` self-heals the hold, and an
    expired role (`VALID UNTIL` passed by more than the 5-minute skew margin, no uncertain
    extend) skips the assertion; the drop is still attempted when the provider opens, and
    the run settles by expiry when it cannot. A restore stages new versions, so it
@@ -894,9 +900,12 @@ Round 3 review additions:
 
 Round 4 review additions (CodeRabbit threads on PR #1426):
 
-33. The superseded-role restore hold lets go only when the provider reports the role
-    absent or its `VALID UNTIL` more than the 5-minute skew margin past (`supersededDead`
-    applies `rotationExpirySkew` like `roleExpired`).
+33. The superseded-role restore hold lets go when either the restore assertion passes or
+    the provider reports the role absent or its `VALID UNTIL` more than the 5-minute skew
+    margin past (`supersededDead` applies `rotationExpirySkew` like `roleExpired`). The
+    assertion passes when each key has no served entry, or when its served entry was
+    published by a run of that key at or after this run's revision. `revoke` checks the
+    assertion first and consults `supersededDead` only when it fails.
 34. `extendDelivered` records its extend INTENT before the `LaterPublished` check, and
     every exit that makes no provider call (superseded, window spent, inactive, gate or
     provider-open failure, a failed read) closes that intent as a `failure` with code
@@ -951,8 +960,9 @@ Round 4 review additions (CodeRabbit threads on PR #1426):
 
 ### Owner decisions on the S2a review (resolved)
 
-- A. A restore never clears the restore-hazard hold except through expiry or absence of
-  the superseded role (fail-safe). S2b adds a loud status showing the deadline plus an
+- A. A restore never clears the restore-hazard hold by itself: the hold ends only when the
+  assertion passes again (see note 33) or the superseded role is absent or expired
+  (fail-safe). S2b adds a loud status showing the deadline plus an
   operator action to release it.
 - B. `extend` gets the pre-publish Gate minus the generation check. A failed gate halts
   with a named reason instead of extending.
