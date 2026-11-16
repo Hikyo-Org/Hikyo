@@ -137,8 +137,9 @@ the commands in the latest version of that issue.
   release, delete that draft before anything else: re-running the failed jobs
   cannot create the release while it exists, and an outstanding stable draft stops
   the trust synchronization check. Delete it with
-  `gh release delete vX.Y.Z --yes` only after
-  `gh release view vX.Y.Z --json isDraft -q .isDraft` prints `true`, and never
+  `gh release delete vX.Y.Z --repo Hikyo-Org/Hikyo --yes` only after
+  `gh release view vX.Y.Z --repo Hikyo-Org/Hikyo --json isDraft -q .isDraft`
+  prints `true` (the issue prints both for the exact version), and never
   pass `--cleanup-tag`, which deletes the tag. Then re-run its failed jobs: a failure before
   the build (validation, docs, floor-bench, everything `build-artifacts` needs) is
   almost always rerunnable. Only if the byte set cannot be completed safely is the

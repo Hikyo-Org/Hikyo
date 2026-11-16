@@ -307,6 +307,17 @@ is_burned() {
 	[ "$run_state" = failed ]
 }
 
+# The exact, checked deletion of the draft a failed run may have left, per burned tag. The
+# tags passed the stable tag pattern, so they are safe in markdown and in a command line.
+# The backticks are markdown.
+# shellcheck disable=SC2016
+draft_delete_commands() {
+	for tag in $burned_tags; do
+		printf 'For %s: check that `gh release view %s --repo %s --json isDraft -q .isDraft` prints `true`, then run `gh release delete %s --repo %s --yes`. ' "$tag" "$tag" "$GH_REPO" "$tag" "$GH_REPO"
+	done
+	printf 'Never pass `--cleanup-tag`, which would delete the tag.'
+}
+
 # burn KIND VERSION: record a burned version (KIND is patch or minor) and the failed
 # run's page for the alarm. burned_tags lists every burned tag for the tag-order rule.
 burn() {
@@ -540,7 +551,7 @@ plan_inner() {
 	read_open_security
 	skip_burned
 	if [ -n "$burned_note" ] && [ -s "$work/pending" ]; then
-		raise "the release-build run of $burned_runs failed and no published release exists for it, so this plan skips that version. If the failed run already created a draft release for the tag, delete that draft first (it stops the trust synchronization check, and re-running the failed jobs cannot create the release again while it exists; this plan cannot see drafts). Then re-run the failed jobs of the run: a failure before the build (validation, docs, floor-bench, everything build-artifacts needs) is almost always rerunnable, and the skip clears once a re-run succeeds. Only if the byte set cannot be completed safely, use the next version this issue plans (a pushed tag is never moved or recreated)"
+		raise "the release-build run of $burned_runs failed and no published release exists for it, so this plan skips that version. If the failed run already created a draft release for the tag, delete that draft first (it stops the trust synchronization check, and re-running the failed jobs cannot create the release again while it exists; this plan cannot see drafts). Then re-run the failed jobs of the run: a failure before the build (validation, docs, floor-bench, everything build-artifacts needs) is almost always rerunnable, and the skip clears once a re-run succeeds. Only if the byte set cannot be completed safely, use the next version this issue plans (a pushed tag is never moved or recreated). $(draft_delete_commands)"
 	fi
 	version=$next kind=patch
 	if [ -n "$placement_blocked" ]; then
@@ -829,7 +840,7 @@ render_ready() {
 	# A skipped version changes what step 1 tags, so it is said where the commands are, not only
 	# under "Also needs a person".
 	if [ -n "$burned_note" ]; then
-		burned_block="**Skipped versions:** the release-build run of $burned_runs failed and no published release exists for it, so this plan does not offer that version. If the failed run left a draft release, delete it before step 1 (the plan cannot see drafts, and an outstanding stable draft stops the trust synchronization check). To delete it, check that \`gh release view vVERSION --repo $GH_REPO --json isDraft -q .isDraft\` prints \`true\`, then run \`gh release delete vVERSION --repo $GH_REPO --yes\`; never pass \`--cleanup-tag\`, which would delete the tag."
+		burned_block="**Skipped versions:** the release-build run of $burned_runs failed and no published release exists for it, so this plan does not offer that version. If the failed run left a draft release, delete it before step 1 (the plan cannot see drafts, and an outstanding stable draft stops the trust synchronization check). $(draft_delete_commands)"
 	fi
 	if [ "$kind" = minor ]; then
 		prerequisites=$(minor_prerequisites)
