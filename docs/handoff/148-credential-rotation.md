@@ -752,14 +752,17 @@ configurable grid.
 
 ### Audit
 
-`rotation.run_intent`, `rotation.run_outcome`, `rotation.quarantined` are registered.
+`rotation.run_intent`, `rotation.run_outcome`, `rotation.quarantined` are registered
+(plus `rotation.configured` from S1). Abandon writes one row per run it closed.
 Payloads carry ids, phase, effect kind, outcome and error codes; no credential material.
 `rotation.run_now` is not registered (S2b). `not_converged_consumers` is declared but
 not emitted yet (see S2b).
 
 ### Test map
 
-`internal/isolation/rotation_executor_round1_test.go` (round 1: grouped keys, drafts,
+`internal/isolation/rotation_executor_round2_test.go` (round 2: create and resume draft
+refusal, provider delete guard over a superseded role, abandon outcome row, infra-fault
+counter) and `internal/isolation/rotation_executor_round1_test.go` (round 1: grouped keys, drafts,
 restore assertion, resume scheduling, held-run extend, expiry exits, superseded-provider
 binding, audit attribution, abandon, races, per-org cap) and
 `internal/app/rotation_wiring_test.go` (worker wiring and shutdown) were added in round 1.
@@ -792,16 +795,19 @@ refused as `role_owns_objects` and dropped after the object moves).
 6. The publish rate budget applies to the authority principal.
 7. A superseded role that the provider reports absent or expired no longer needs the
    restore assertion: `supersededDead` self-heals a `published_versions_changed` hold, and an
-   expired role (`VALID UNTIL` passed, no uncertain extend) settles by expiry without
-   opening the provider or running the assertion. A restore stages new versions, so it
+   expired role (`VALID UNTIL` passed by more than the 5-minute skew margin, no uncertain
+   extend) skips the assertion; the drop is still attempted when the provider opens, and
+   the run settles by expiry when it cannot. A restore stages new versions, so it
    can never clear the assertion (owner decision A).
 8. A crashed worker's open effect is closed `unknown` by the next claimant.
 9. New provider error `ErrRoleOwnsObjects`.
-10. Not covered by a test: a later run's versions passing the restore assertion;
-    blocking claim write on PostgreSQL (SKIP LOCKED never blocks, so the stale-fence
-    assertion covers it). The head-of-line deferral is tested at the store level
-    (`DeferRotation` then `DueRotation`), because a non-definite gate error cannot be
-    induced in the harness.
+10. Not covered by a test: blocking claim write on PostgreSQL (SKIP LOCKED never blocks,
+    so the stale-fence assertion covers it); a `startRun` id, intent or `StartRun` error
+    deferring the rotation (code-reviewed only, the harness cannot induce it); an
+    end-to-end infrastructure fault (the executor's keyring is concrete, so only the
+    classification, the backoff curve and the store counters are tested). The
+    head-of-line deferral is tested at the store level (`DeferRotation` then
+    `DueRotation`), because a non-definite gate error cannot be induced in the harness.
 
 Round 1 review additions:
 
@@ -809,7 +815,8 @@ Round 1 review additions:
     each run `gateWithin` in their own write transaction as the recorded authority
     (`Authorize(OpRotationRun)` first, then `RecordedPrincipalHolds` per key). The publish
     runs `gateWithin` again inside the publish transaction's `begin` hook, with the
-    run's generation. The draft check is part of the pre-start gate only.
+    run's generation. The draft check runs at the pre-start gate and at stage; the extend gate does not
+    repeat it.
     Grouped keys are refused at create and resume (`ErrRotationKeyGrouped`); an authority
     draft on either key is refused at create and resume (`ErrRotationDraftPending`). A
     draft appearing on a rotated key halts the rotation `gate_failed` at the pre-start
@@ -823,10 +830,14 @@ Round 1 review additions:
     proof. Runtime-written rows use `RotationRtInsertAudit` with actor class `system`.
 14. The superseded role is dropped on the provider that minted it
     (`RotationRtLoadSupersededRole`), not the rotation's current provider.
-15. Infrastructure faults (datastore, keyring, decrypt) record `last_error`
-    `infrastructure_unavailable`, are excluded from `RotationRtFailedAttempts` and get
-    plain backoff with no halt. Caveat: a long outage churns attempts indefinitely and
-    never halts, by design (a halt would strand nothing but would hide a platform fault).
+15. Infrastructure faults (datastore, keyring) record `last_error`
+    `infrastructure_unavailable`, are excluded from `RotationRtFailedAttempts` and never
+    spend the attempt cap. They get the same capped exponential backoff as other
+    failures, driven by `RotationRtInfraFaults` (5m doubling to the 6h cap, clamped to
+    `D`). A decryption failure is a definite fault (the sealed material is unreadable),
+    not infrastructure, and spends an attempt. A cycle with a `D` still halts at the
+    window: a start past `D` halts `retries_exhausted` even when every earlier failure
+    was infrastructure. Without a `D` an outage only backs off.
 16. The per-organisation cap (fewer than four live leases) gates `ClaimDueRun` and
     `DueRotation`, but it is soft: the count and the claim are separate statements, so a
     burst can exceed it by the number of concurrent claimants.
@@ -834,11 +845,33 @@ Round 1 review additions:
     authority can exhaust a rotation's window.
 18. A failed orphan-candidate drop (`drop_orphan`) is logged and left: the role is inert
     and expires on its own `VALID UNTIL`.
-19. `AbandonOpenRuns` audits only the rows it changed (RETURNING) and settles an
-    abandoned-past-publish run with no superseded handle straight to `done`.
+19. `AbandonOpenRuns` audits only the rows it changed (RETURNING): a run left owing a
+    role gets `rotation.quarantined`, and an abandoned-past-publish run with no
+    superseded handle settles straight to `done` and gets a `rotation.run_outcome` row
+    with phase `abandon` and error code `abandoned`.
 20. No migration was needed: `rotation_runs` joins `rotations` for `provider_id`.
 21. No Compose render test was added; `TestRotationExecutorDeliveryPath` covers delivery.
 22. The "key deleted after publish" case is covered by unset-after-publish.
+
+Round 2 review additions:
+
+23. The authority-draft refusal now also runs at create and at resume (before the
+    ceremony), as `ErrRotationDraftPending`; the executor's gate and stage checks stay.
+    `OpRotationCreate` and `OpRotationResume` declare the pending-list store op.
+24. Expiry exits need a 5-minute skew margin: the role's expiry is judged on the database
+    server's clock, so Hikyo requires `now > VALID UNTIL + 5m` before it settles a run by
+    expiry (`rotationExpirySkew`). The boundary is a unit test.
+25. The provider delete guard (`RotationProviderLiveRuns`) also counts a run of any
+    rotation whose superseded handle was minted on that provider and is still owed.
+26. `RotationAbandonOpenRuns` lost its `hikyo:instance-scoped` exemption: the SQL
+    predicate analyzer now cuts a statement's WHERE at `RETURNING` (`predicateTails`), so
+    the chain columns in the WHERE satisfy it.
+27. `RotationCredentialExpiries` matches a key in either role, per role as two queries
+    (`RotationCredentialExpiries` and `RotationCredentialExpiriesByUsernameKey`, sqlc-sqlite
+    cannot take a single `UNION` or `sqlc.slice` twice) merged in Go by `published_revision`.
+28. `startRun` defers the rotation on any error (id, intent, `StartRun`), as its other
+    errors do, so one failing rotation cannot sit at the head of the due queue.
+29. The worker logs only `service.RotationErrorClass(err)`, never the raw error.
 
 ### Owner decisions on the S2a review (resolved)
 

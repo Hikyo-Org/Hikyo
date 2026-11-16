@@ -121,7 +121,9 @@ cleanly:
 A failed step before the publish drops the new role and leaves the keys
 unchanged. A failure after the publish never fails the run: it keeps retrying
 the drop with backoff and stays visible until it settles. A superseded role that
-has already expired on its own settles without opening the provider.
+has already expired on its own (five minutes past its `VALID UNTIL`, to allow for
+clock skew against the database) skips the restore check and settles by expiry
+when the provider cannot be reached.
 
 Failed runs retry with a bounded exponential backoff (5 minutes doubling to 6
 hours, at most 12 attempts) inside a window that always leaves the superseded role
@@ -141,8 +143,10 @@ never releases it. The server never drops a role that a key may be using.
 Pausing a rotation does not touch a run in flight: a run that has published
 continues to its end, and a run that has not published is rolled back by the next
 gate check, so a paused rotation never leaves an unpublished credential behind.
-Infrastructure faults (database, keyring or decryption) back off without
-counting toward `retries_exhausted`.
+Infrastructure faults (database or keyring) back off with the same capped
+exponential schedule and do not spend the attempt cap; a rotation whose window has
+closed is still halted. A decryption failure is a definite fault and counts as an
+attempt.
 
 ## When the delivered credential expires
 
@@ -194,9 +198,11 @@ They require a human session. See the [HTTP API](/docs/http-api/).
 
 ## Audit
 
-Every provider call is bracketed by an intent and an outcome event, and every
-publish, drop, halt and abandon is audited with the rotation's authority and the
-run id as the correlation id; the origin is `system`. `rotation.configured` records each create, pause, resume and delete with its
+Every provider call is bracketed by an intent and an outcome event, a halt is
+audited as `rotation.configured`, and an abandon writes one event per run it
+closed (`rotation.quarantined` for a run that still owes a role, otherwise a
+`rotation.run_outcome` of phase `abandon`). Run events use the rotation's
+authority and the run id as the correlation id; the origin is `system`. `rotation.configured` records each create, pause, resume and delete with its
 `action` and the environment, and a pause the system caused (provider deleted or
 credential revoked, environment protected, approval policy enabled) with its
 `reason`. Reads are not audited events. Audit payloads carry identifiers and
