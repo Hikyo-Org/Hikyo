@@ -60,7 +60,8 @@ It compares the compatibility declaration generated from main's tip with the one
 the highest earlier stable release published, verified through the signed trust.
 Green means identical; red means a difference, an unverifiable earlier release or
 a failed lookup, and the log says which. It is read-only and tags nothing. Run it
-again if main moves before you tag.
+again if main moves before you tag. The workflow reaches main by promotion from
+dev, so it exists to dispatch only after a promotion has landed it.
 
 1. **Build the draft:** from clean current main, run
    `scripts/release/ceremony.sh build VERSION`. The helper requires green CI

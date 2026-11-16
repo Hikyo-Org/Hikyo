@@ -124,6 +124,8 @@ manifest; neither GitHub's "latest" flag nor a prerelease decides. A difference,
 unverifiable baseline, or a malformed declaration is reported and left to a maintainer. The check
 creates no tag, release or trust change and is not part of the build; `release-build` and the
 signing and publication path are unchanged. Fully unattended tagging stays deferred to a later App phase.
+The workflow lands on `dev` and reaches `main` by promotion; a dispatch-only workflow runs only from the
+default branch, so it goes live then.
 
 Operational entry point: [online signing](../release/online-signing.md).
 Primary-source evidence: [release ceremony research](../research/release-signing-ceremonies.md).

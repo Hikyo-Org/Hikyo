@@ -5,6 +5,12 @@ decision, 2026-11-15, option B). The human tag ceremony stays. This change
 tags nothing, publishes nothing, changes `release-build` not at all and adds no
 App, token or secret.
 
+**Delivery.** This is a feature pull request into `dev`; it reaches `main` by the
+normal promotion. A dispatch-only workflow can be started (and its input form
+appears) only once its file is on the default branch, and this one refuses to
+run from any other ref, so **it is unusable until the promotion lands it on
+`main`**. The shell check and its fixture work from `dev` today.
+
 ## Result
 
 - `scripts/release/check-compatibility-unchanged.sh REPOSITORY TRUST_DIR VERSION DECLARATION`
@@ -46,7 +52,7 @@ is advisory for the maintainer: nothing requires it.
 ## Not verified, and the risk
 
 - **The workflow has not run on GitHub.** A workflow that exists only on a
-  branch cannot be dispatched. After merge, run it once for the next patch
+  branch cannot be dispatched. After promotion to `main`, run it once for the next patch
   version and read the step summary. Expected today: a patch that touches no
   migration reports "unchanged"; anything else reports a difference.
 - The 30-minute job timeout is an estimate, not a measurement.
@@ -56,6 +62,6 @@ is advisory for the maintainer: nothing requires it.
 
 ## Next steps
 
-1. After merge, dispatch the workflow once and record the run.
+1. After the promotion to `main`, dispatch the workflow once and record the run.
 2. Part 3 (Homebrew follows the latest release) and part 4 (the reconciler that
    prepares the tag command) build on this script.
