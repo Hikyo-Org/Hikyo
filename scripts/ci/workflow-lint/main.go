@@ -133,6 +133,10 @@ func validateAlertsPermission(raw []byte) ([]byte, error) {
 		if value == nil {
 			continue
 		}
+		// The rewrite below edits the anchored text, which would also change every alias of it.
+		if block.Anchor != "" {
+			return nil, fmt.Errorf("line %d: do not anchor a permissions block that declares %s", block.Line, alertsPermission)
+		}
 		if value.Kind != yaml.ScalarNode || value.Tag != "!!str" || (value.Value != "read" && value.Value != "none") {
 			return nil, fmt.Errorf("line %d: %s must be read or none", value.Line, alertsPermission)
 		}

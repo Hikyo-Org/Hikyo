@@ -65,6 +65,8 @@ func TestAlertsPermissionValidation(t *testing.T) {
 		{"an empty value is refused", "on: push\npermissions:\n  vulnerability-alerts:\njobs: {}\n", true},
 		{"duplicate is refused", "on: push\npermissions:\n  vulnerability-alerts: read\n  vulnerability-alerts: write\njobs: {}\n", true},
 		{"flow cannot hide another scope", "on: push\npermissions: {contents: write, vulnerability-alerts: read}\njobs: {}\n", true},
+		{"an anchored block is refused", "on: push\npermissions: &p\n  vulnerability-alerts: read\njobs:\n  a:\n    outputs: *p\n", true},
+		{"an anchored job block is refused", "on: push\njobs:\n  a:\n    permissions: &p\n      contents: read\n      vulnerability-alerts: read\n", true},
 		{"other places are not permissions", "on: push\nenv:\n  vulnerability-alerts: write\njobs: {}\n", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -133,7 +135,6 @@ func TestSoleAlertsPermissionBecomesAnEmptyMapping(t *testing.T) {
 	for _, test := range []struct{ name, doc string }{
 		{"workflow", "on: push\npermissions:\n  vulnerability-alerts: read\njobs: {}\n"},
 		{"job", "on: push\njobs:\n  a:\n    permissions:\n      vulnerability-alerts: none\n    runs-on: ubuntu-latest\n"},
-		{"anchored", "on: push\npermissions: &p\n  vulnerability-alerts: read\njobs: {}\n"},
 		{"with a comment", "on: push\npermissions:\n  vulnerability-alerts: read # alerts\njobs: {}\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
