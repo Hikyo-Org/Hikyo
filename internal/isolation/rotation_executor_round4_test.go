@@ -1,10 +1,15 @@
 package isolation
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
+	sqlite "modernc.org/sqlite"
+	sqlitelib "modernc.org/sqlite/lib"
 
 	"github.com/Hikyo-Org/hikyo/internal/dynamic"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -285,6 +290,7 @@ func TestRotationConcurrentStartsRespectTheOrgLeaseCap(t *testing.T) {
 		var wg sync.WaitGroup
 		gate := make(chan struct{})
 		started := make([]bool, len(dues))
+		errs := make([]error, len(dues))
 		for i, d := range dues {
 			wg.Add(1)
 			go func() {
@@ -297,12 +303,25 @@ func TestRotationConcurrentStartsRespectTheOrgLeaseCap(t *testing.T) {
 					CandidateHandle: "role_" + runID, CandidateValidUntil: now.Add(48 * time.Hour), ParkedUntil: now.Add(time.Hour),
 					Intent: store.RotationEffectIntent{EffectID: "ref_" + runID, Kind: "mint", Audit: store.RotationAudit{ID: "evt_" + runID, Type: "rotation.run_intent", Outcome: "intent", Payload: []byte("{}")}},
 				})
-				// A serialization failure is the losing start's refusal; the cap is what is under test.
-				started[i] = ok && err == nil
+				started[i], errs[i] = ok && err == nil, err
 			}()
 		}
 		close(gate)
 		wg.Wait()
+		winners := 0
+		for i, ok := range started {
+			if ok {
+				winners++
+			}
+			// The losing start may be refused or lose a transaction conflict; any
+			// other error is a real failure.
+			if errs[i] != nil && !rotationTxConflict(errs[i]) {
+				t.Fatalf("start %d failed with a non-conflict error: %v", i, errs[i])
+			}
+		}
+		if winners == 0 {
+			t.Fatalf("no concurrent start succeeded while one lease slot was free (errors: %v)", errs)
+		}
 		leased := queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM rotation_runs WHERE org_id='org_a' AND lease_owner IS NOT NULL AND lease_expires_at>'%s'`, stamp(x.now())))
 		if leased > store.RotationOrgLeaseCap {
 			t.Fatalf("%d leases live in the org, cap %d (started: %v)", leased, store.RotationOrgLeaseCap, started)
@@ -343,4 +362,20 @@ func TestRotationExtendIntentIsDurableBeforeTheProviderOpens(t *testing.T) {
 			t.Fatalf("no extend intent was open when the provider opened (max %d)", openAtFactory)
 		}
 	})
+}
+
+// rotationTxConflict reports a transient serialization failure, classified as the
+// store's transaction retry does (internal/store/tx): PostgreSQL SQLSTATE 40001 or
+// 40P01, SQLite BUSY or LOCKED including the extended codes.
+func rotationTxConflict(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "40001" || pgErr.Code == "40P01"
+	}
+	var se *sqlite.Error
+	if errors.As(err, &se) {
+		primary := se.Code() & 0xff
+		return primary == sqlitelib.SQLITE_BUSY || primary == sqlitelib.SQLITE_LOCKED
+	}
+	return false
 }

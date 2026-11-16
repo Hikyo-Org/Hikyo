@@ -958,8 +958,9 @@ Round 4 review additions (CodeRabbit threads on PR #1426):
     error, which `startRun` already treats as a start failure and defers
     (`deferDue`). `TestRotationStartRunRechecksTheOrgLeaseCap` fails before the fix;
     `TestRotationConcurrentStartsRespectTheOrgLeaseCap` pins the invariant (at most 4
-    live leases) but cannot force the interleaving, so it also passes when the starts
-    happen to serialize.
+    live leases, at least one start wins the free slot, and a losing start fails only
+    with a transaction conflict: PostgreSQL 40001 or 40P01, SQLite BUSY or LOCKED) but
+    cannot force the interleaving, so it also passes when the starts happen to serialize.
 
 37. The user docs now state three limits: rollback and pause ATTEMPT to delete an
     unpublished role and a failed or unknown drop stays tracked for retry
