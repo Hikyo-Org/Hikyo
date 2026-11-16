@@ -377,6 +377,33 @@ builds the stamped UI fixture and runs the full native campaign on both engines.
 Its receipt is source/local or hosted fixture proof, not a published release,
 live-provider, collector or deployed-instance acceptance receipt.
 
+## Acceptance close-out on `dev` (#1034)
+
+Every box of the issue's acceptance list was rechecked against `dev` at
+`67a4e12ff` through the real router, MCP transports, services and both
+datastores. The new owner file is
+`internal/isolation/auth_refusal_acceptance_test.go`; the rest is existing
+coverage. A deliberate break of the source resolver (reading the leftmost
+`X-Forwarded-For` entry) fails the proxy test, and a free-text canary in a
+dedicated event's user agent fails the canary scan, so both can fail.
+
+| Box | Evidence |
+| --- | --- |
+| Route/artifact matrix | [Real route and artifact matrix](#real-route-and-artifact-matrix) above; owners unchanged. |
+| States through real entry points, with source and correlation | `TestAuthenticationRefusalWireCompatibility` (browser/CLI/machine: missing, malformed, unknown, expired, revoked, generation and epoch stale); `TestRequestRefusalMCPArtifactStatesAreSignalledUniformly` (MCP, both profiles: missing, malformed, unknown, expired, revoked, epoch stale, plus live and anonymous-discovery negative controls); `TestRequestRefusalAttributesProxyClientAcrossTransports` (REST, MCP and Codex behind a trusted proxy: forged first line, forged leftmost entry, IPv6, malformed hop, absent header, untrusted peer; the sealed sample carries the right stage and source). |
+| No credential or secret material | `TestRequestRefusalCapturesNoCredentialOrRequestDataAnywhere` scans wire, debug logs, metrics, both audit exports and every table of the datastore for bearer, cookie, DPoP, CSRF, login body, path, query, header and tool-argument canaries, including a token pasted into the user agent, and checks that an unknown artifact's verifier is never stored. It also proves the scan sees stored verifiers and sealed summaries. Existing wire canaries remain. |
+| Non-enumerating responses; no loss or double count | The wire compatibility test compares every refusal body with the missing-artifact body and counts `grant.denied` and dedicated events; the MCP test compares status, body and `WWW-Authenticate` with an unknown bearer. |
+| Flood bounds, sink failure, no lockout | `TestRequestRefusalConcurrentFloodIsBoundedAndNeverLocksOut`: 400 concurrent refusals against a held writer and 800 against a healthy one stay within 8 in-flight and 64 waiting accounting slots, keep one 401 body (plus the uniform 429 past the public in-flight cap), commit nothing late, retain at most 32 samples and 16 KiB of state, seal at most two windows of five events, recover health and leave no goroutines. Credential, session and grant tables are byte-identical afterward and the victim's session still works from another source. Existing sink-failure, blocked-datastore, shared-node and startup-recovery tests remain. |
+| Operator interface correlation | `TestRequestRefusalSupportedInstanceConsumers` and `TestRequestRefusalRevokedReplayIsRetainedAndCorrelated` correlate a revoked-token replay to the retained record through the cookie reader and the real CLI `audit query` and `audit export`. |
+| ADRs, registry, migrations, contracts, guidance | [auth-refusal-signals.md](../adr/auth-refusal-signals.md), the registry entry in `internal/audit/registry.go`, migration 80 on both engines, generated outputs checked by the existing generators, and [the operator guide](../operations/authentication-refusal-signals.md). No change was needed. |
+
+No product defect was found, so this change adds tests and this record only.
+
+Remaining dependencies, not built here: [#1037](https://github.com/Hikyo-Org/Hikyo/issues/1037)
+(off-host evidence and independent retention) and
+[#1038](https://github.com/Hikyo-Org/Hikyo/issues/1038) (alert delivery). The
+five health series and sealed events are the inputs they consume.
+
 ## Executable handoff
 
 Run commands from the repository root with pinned prerequisites and an
