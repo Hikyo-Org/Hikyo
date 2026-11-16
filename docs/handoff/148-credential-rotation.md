@@ -68,8 +68,13 @@ decision 13). Never a `SystemProof`, never a scheduler site.
   history); environment-delete refusals name distinct rotations and the truncation marker
   is exact; `rotationDuration` no longer overflows; S2 design closes the delayed-commit
   hazard, the restore hazard, the post-publish revoke obligation and the slack proof
-- [ ] S2 state machine, worker, run-now, runs, metrics, doctor, audit run events (see the S2 checklist at the end)
-- [ ] S2 dual-engine restart/failure/multi-node takeover e2e, Compose pickup e2e
+- [x] S2a executor: durable state machine, worker wiring, fenced claims, schedule, retries,
+  extend, reconcilers, quarantine exits, `rotation.run_intent|run_outcome|quarantined`
+  audit events, provider-delete and environment-delete guards (see "S2a as built")
+- [x] S2a dual-engine crash, takeover and scenario e2e, delivery-path e2e, real PostgreSQL
+  provider e2e (skips without `HIKYO_TEST_DYNAMIC_PG_*`)
+- [ ] S2b run-now, runs inspection (API and CLI), `--abandon` on the wire, metrics, `hikyo
+  doctor`, `rotation.run_now`, user docs (see "What S2b must wire")
 - [ ] S3 SPA status surface, parity flip
 
 ## Decisions taken in S1 (divergences from the issue handoff flagged)
@@ -671,6 +676,137 @@ operator e2e (`k8se2e`) asserting a rollout after rotation.
    uniform not-found. An environment-wide second person can resume such a creator's
    rotation as long as the creator still holds the formula on both keys through the rules.
    Making resume, pause and delete key-aware for narrowed creators is on the S2 checklist.
+
+## S2a as built (executor)
+
+Code: `internal/service/rotation_executor.go` (state machine), `rotation_schedule.go`
+(anchors and bounds), `internal/store/rotation_runtime*.go` (the proofless closed
+`RotationRuntime`), `internal/app/rotation.go` (worker wiring beside the dynamic
+worker). No migration: 00091 already carries every column the executor needs.
+
+### Phases and effects
+
+`minting` -> `minted` -> (stage and publish in one transaction) -> `published` ->
+`overlap` -> `revoking` -> `done`, plus `failed`, `quarantine` and `revoke_refused`.
+Every provider call is bracketed by an INTENT audit event plus a `rotation_effects`
+row opened in the same transaction as the fenced claim write, and an OUTCOME written
+when the call returns (`success`, `failure` or `unknown`). A worker that crashed with an
+open effect has it closed as `unknown` (`interrupted`) by the next claimant before it
+re-probes the provider; no effect is ever repeated blindly.
+
+- `SettleRun` is the single fence: worker, lease, claim token and `phase = ANY(from)`.
+  It is both the exact-row re-assertion and the fenced claim write before any
+  ambiguous-state `DropRole` (rule 8). A stale worker gets `ErrRotationFenceLost`.
+- The publish runs through `PublishPlanned` with the executor's hooks (begin, stage,
+  commit) in one transaction; `published_revision` is stamped in that transaction.
+- The overlap phase is entered by a follow-up settle. A lease that lapses between the
+  publish commit and that settle leaves the run in `published`, which waits exactly like
+  `overlap`; both are revoked at the same time.
+- Claim: `FOR UPDATE SKIP LOCKED` on PostgreSQL (a takeover skips a row held by an
+  open publish transaction), the writer lock on SQLite. A per-organisation cap bounds
+  concurrent runs. The lease term is 2 minutes.
+- The executor publishes as `LocalPrincipal(authority)` after
+  `Authorize(OpRotationRun)` and `RecordedPrincipalHolds` (the Gate: full before
+  publish, fail-safe after).
+
+### Schedule
+
+`P` is the publish commit time, `S = P + interval`, `D = S + 24h - publish_budget`
+(`publish_budget` 1h, slack 24h, retry window 6h, extend margin 12h). Backoff is 5m,
+doubling, capped at 6h, with an attempt cap of 12. A start is allowed up to and including
+`D`. A cycle with no superseded credential has only the attempt cap. Candidate
+`VALID UNTIL = mint + budget + interval + delay + slack`. `extend` adds 24h at
+`VALID UNTIL - 12h` while `now <= D` and no later publish exists. Retries exhausted
+moves the rotation to `halted` (`halt_reason`). `TestRotationScheduleGrid` proves
+`D - S >= 2 * retry_window` and `superseded VALID UNTIL >= D + budget + delay` over the
+configurable grid.
+
+### Loops
+
+- The candidate reconciler owns `candidate_handle` of runs with `published_revision IS
+  NULL`; the revoke-obligation loop owns `superseded_handle` of published runs. A
+  takeover of an unconfirmed pre-publish run drops its candidate under a fenced claim.
+- `superseded_handle` is derived across rotations: the newest published, not-yet-revoked
+  run of the same rotation at the same generation.
+- Restore hazard (rule 7): before the superseded drop the executor asserts that the
+  current entry ids of the delivered keys are still the ones it published; a mismatch
+  holds the run in `revoke_refused` / `versions_changed` instead of dropping.
+- Quarantine exits: probe says the role is absent or expired -> `done`; reachable and
+  still present -> the drop is retried; `ErrRoleOwnsObjects` (SQLSTATE `2BP01`) ->
+  `revoke_refused` / `role_owns_objects`, retried on the backoff and never lost.
+- Pause and service-level delete abandon: pre-publish runs go to `quarantine` due now
+  (the reconciler confirms the candidate gone); published runs keep their overlap
+  deadline and the revoke loop drops the superseded role after it.
+
+### Guards that changed
+
+- Provider delete is refused while any run may hold a live role
+  (`rotations.ProviderLiveRuns`, registered under `OpDynamicProviderDelete`).
+- Environment delete treats a failed run that never published as live until a
+  `drop_candidate` effect with outcome `success` is recorded.
+
+### Audit
+
+`rotation.run_intent`, `rotation.run_outcome`, `rotation.quarantined` are registered.
+Payloads carry ids, phase, effect kind, outcome and error codes; no credential material.
+`rotation.run_now` is not registered (S2b). `not_converged_consumers` is declared but
+not emitted yet (see S2b).
+
+### Test map
+
+`internal/isolation/rotation_executor_e2e_test.go` (fake provider, fake clock, both
+engines): happy path, crash table (three pre-publish points, revoke before and after
+the drop), delayed commit (commit and rollback, stale-claim fence), restore hazard,
+abandon past publish, quarantine exits, orphaned candidate (takeover and reconciler),
+pause, authority loss, retries exhausted, slack window and extend, superseded across
+rotations, provider delete guard, environment delete guard, delivery path (cursor moves
+once per publish, delivered username is the candidate, revealed password matches the
+provider, no password in audit or run rows).
+`rotation_executor_real_pg_test.go`: a real TLS PostgreSQL target (mint, login with the
+delivered credential, overlap, drop of the superseded role, a role that owns an object
+refused as `role_owns_objects` and dropped after the object moves).
+`internal/service/rotation_schedule_test.go`: the schedule grid, backoff and extend.
+
+### Deviations and judgment calls
+
+1. The executor publishes as the authority's local principal and gates with
+   `Authorize(OpRotationRun)`; the S1 note said "`RecordedPrincipalHolds` only".
+2. The candidate handle is `dynamic.RoleName(runID)`.
+3. Password is a Go string end to end, so `crypto.Zero` is not applied to it; Option A
+   (memory only, never stored) holds.
+4. `extend` has no authority gate (it only lengthens an existing credential) and adds 24h
+   to `VALID UNTIL`.
+5. A new generation's cycle `D` is anchored at its first run.
+6. The publish rate budget applies to the authority principal.
+7. A superseded role that the provider reports absent or expired no longer needs the
+   restore assertion: `supersededDead` self-heals a `versions_changed` hold. A restore
+   stages new versions, so it can never clear the assertion; without this the hold
+   would only end by operator action.
+8. A crashed worker's open effect is closed `unknown` by the next claimant.
+9. New provider error `ErrRoleOwnsObjects`.
+10. Not covered by a test: a later run's versions passing the restore assertion;
+    extend-after-`D` parking; the per-organisation cap; blocking claim write on
+    PostgreSQL (SKIP LOCKED never blocks, so the stale-fence assertion covers it).
+
+### Open questions for the owner
+
+- A. Should a restore ever clear the restore hazard hold, and if so by which signal?
+  Today only superseded-role expiry or absence does.
+- B. Incident containment by authority principal and key-aware resume, pause and delete
+  remain deferred to S2b.
+- C. Should `extend` be gated by the authority, given it can only prolong a credential
+  that was already delivered?
+
+### What S2b must wire
+
+- `run-now` (`rotation.run_now` audit event, `OpRotationRunNow`, a `trigger='manual'`
+  run) and `--skip-overlap`, which reports `not_converged_consumers`.
+- Runs inspection: `GET .../rotations/{id}/runs`, `hikyo rotation runs`, with the
+  OpenAPI revision bump and the TS client.
+- `--abandon` on the delete wire (the service-level abandon is built).
+- Metrics, `hikyo doctor` (approaching `credential_expires_at`, halted, quarantine,
+  `revoke_refused`), the `restore_hold` column and release, incident containment.
+- User docs and parity rows (S3 flips them).
 
 ## S2 checklist (carried forward from review)
 
