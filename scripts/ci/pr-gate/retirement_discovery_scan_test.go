@@ -238,11 +238,12 @@ func TestRetirementDiscoveryReportsUnrelatedCandidateCostsSeparately(t *testing.
 		CandidatesCompleted int    `json:"candidate_heads_completed"`
 		Requests            int    `json:"rest_requests"`
 		Pages               int    `json:"rest_pages"`
+		SuitePages          *int   `json:"suite_pages"`
 		ElapsedMS           int64  `json:"elapsed_ms"`
 		Status              string `json:"status"`
 		Workers             int    `json:"worker_limit"`
 	}
-	if err != nil || json.Unmarshal(diagnostic.Bytes(), &record) != nil || record.Snapshot != heads[0] || record.Commits != 5 || record.CandidatesAttempted != 5 || record.CandidatesCompleted != 5 || record.Requests != 5 || record.Pages != 5 || record.Status != "success" || record.Workers != 4 || record.ElapsedMS < 0 || output.Len() != 0 || len(got.Queue) != 1 {
+	if err != nil || json.Unmarshal(diagnostic.Bytes(), &record) != nil || record.Snapshot != heads[0] || record.Commits != 5 || record.CandidatesAttempted != 5 || record.CandidatesCompleted != 5 || record.Requests != 5 || record.Pages != 5 || record.SuitePages == nil || *record.SuitePages != 0 || record.Status != "success" || record.Workers != 4 || record.ElapsedMS < 0 || output.Len() != 0 || len(got.Queue) != 1 {
 		t.Fatalf("scan cost hidden or mixed with output: targets=%+v diagnostic=%s output=%q error=%v", got, diagnostic.String(), output.String(), err)
 	}
 }

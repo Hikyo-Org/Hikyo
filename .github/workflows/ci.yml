@@ -1315,8 +1315,10 @@ jobs:
   # non-Linux client platforms (Linux runs them in test_core). The macOS leg
   # also carries generic file synchronization (#164): the destination
   # publisher, the client, and the SQLite end-to-end run (Windows
-  # destinations are out of scope). ci-required gates both platform legs
-  # directly, so Linux validation can run without waiting for this proof.
+  # destinations are out of scope). The Windows leg also vets every package
+  # natively (#1393), which compiles all Windows test files. ci-required gates
+  # both platform legs directly, so Linux validation can run without waiting
+  # for this proof.
   scan-xplat:
     needs: changes
     if: ${{ fromJSON(needs.changes.outputs.plan).test }}
@@ -1341,6 +1343,11 @@ jobs:
       - name: Windows credential custody tests
         if: ${{ runner.os == 'Windows' }}
         run: go test -count=1 -run '^(TestWindows.*Custody.*|TestWindowsProtectedAtomicTemp.*)$' ./internal/cli ./internal/securefile
+      # Compiles every Windows test file, so a test that calls a helper from a
+      # //go:build unix file fails here instead of on dev (#1393).
+      - name: Windows vet
+        if: ${{ runner.os == 'Windows' }}
+        run: go vet ./...
       - name: File synchronization tests
         if: ${{ runner.os == 'macOS' }}
         run: |

@@ -23,7 +23,7 @@ jobs:
   discover:
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.head == '')
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     permissions:
       actions: read
       checks: read

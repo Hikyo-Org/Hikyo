@@ -5,9 +5,9 @@ import hashlib
 from bounded import digest, require, strict_json
 
 _DESIGN_PINS = {
-    'POLICY.md': (32023, '9e81a2b5c29f9edb8fe6d2772b9ddd1475f72f38ed41fe9c8032f964ab58ecf5'),
-    'CONTRACTS.json': (30360, 'bb92cf14fe361b50c0db76925b2e4f1d055c918fab4c171fff955c15ebcade0c'),
-    'CONFORMANCE-CASES.json': (12499, '859f4685e7eb21db5c08d1d7cae59ff3c1082b7c0978acff52741090ee8b0a82'),
+    'POLICY.md': (32456, 'e6f62e0c0e0c315521c81e112253ef85bd15bcbaacbfab69c9bc776c90299a23'),
+    'CONTRACTS.json': (27915, '6b73182ba0cdc1ca65aee4c0bdc4a278278c01baf116a26f98c8c3c6c64df30e'),
+    'CONFORMANCE-CASES.json': (12980, '612e1ea45838bd7440cf3355bf8be3f3397d39af4cd9c8f1ad98c2b82e8f1d7d'),
 }
 _constants = {'repository': {'owner': 'Hikyo-Org',
                 'name': 'Hikyo',
@@ -16,7 +16,6 @@ _constants = {'repository': {'owner': 'Hikyo-Org',
                 'branch': 'main'},
  'ownerActor': {'login': 'Dunky13', 'databaseId': 991668},
  'trustedPaths': ['.github/workflows/aws-acceptance.yml',
-                  '.github/workflows/ci-candidate.yml',
                   '.github/workflows/ci-merge-group.yml',
                   '.github/workflows/ci.yml',
                   'go.mod',
@@ -32,56 +31,7 @@ _constants = {'repository': {'owner': 'Hikyo-Org',
                   'scripts/ci/start-ci-postgres.sh'],
  'requiredAbsentPaths': ['go.work'],
  'goDirective': '1.27.4',
- 'requiredCIJobs': {'candidate': {'candidate-proof': 'success',
-                                  'validation / analysis_shards': 'success',
-                                  'validation / app-build': 'success',
-                                  'validation / changes': 'success',
-                                  'validation / ci-required': 'success',
-                                  'validation / client': 'success',
-                                  'validation / compose-demo': 'success',
-                                  'validation / docs': 'success',
-                                  'validation / floor-bench / measure': 'success',
-                                  'validation / fuzz shard (0)': 'success',
-                                  'validation / fuzz shard (1)': 'success',
-                                  'validation / fuzz shard (2)': 'success',
-                                  'validation / headline-guarantee': 'success',
-                                  'validation / isolation shard (0)': 'success',
-                                  'validation / isolation shard (1)': 'success',
-                                  'validation / isolation shard (2)': 'success',
-                                  'validation / k8s-e2e': 'success',
-                                  'validation / lint': 'success',
-                                  'validation / preflight': 'success',
-                                  'validation / race shard (0)': 'success',
-                                  'validation / race shard (1)': 'success',
-                                  'validation / race shard (10)': 'success',
-                                  'validation / race shard (11)': 'success',
-                                  'validation / race shard (2)': 'success',
-                                  'validation / race shard (3)': 'success',
-                                  'validation / race shard (4)': 'success',
-                                  'validation / race shard (5)': 'success',
-                                  'validation / race shard (6)': 'success',
-                                  'validation / race shard (7)': 'success',
-                                  'validation / race shard (8)': 'success',
-                                  'validation / race shard (9)': 'success',
-                                  'validation / release-snapshot': 'success',
-                                  'validation / scan-xplat (macos-latest)': 'success',
-                                  'validation / scan-xplat (windows-latest)': 'success',
-                                  'validation / source-artifact-security': 'success',
-                                  'validation / storybook': 'success',
-                                  'validation / supply-chain-checks': 'success',
-                                  'validation / test_core': 'success',
-                                  'validation / web (desktop, 1)': 'success',
-                                  'validation / web (desktop, 2)': 'success',
-                                  'validation / web (desktop, 3)': 'success',
-                                  'validation / web (desktop, 4)': 'success',
-                                  'validation / web (mobile, 1)': 'success',
-                                  'validation / web (mobile, 2)': 'success',
-                                  'validation / web (mobile, 3)': 'success',
-                                  'validation / web (mobile, 4)': 'success',
-                                  'validation / web-closure': 'success',
-                                  'validation / web-go': 'success',
-                                  'vouch': 'skipped'},
-                    'workflow': {'merge-group-proof': 'success',
+ 'requiredCIJobs': {'workflow': {'merge-group-proof': 'success',
                                  'validation / analysis_shards': 'success',
                                  'validation / app-build': 'success',
                                  'validation / changes': 'success',
@@ -148,8 +98,7 @@ _constants = {'repository': {'owner': 'Hikyo-Org',
  'rawRecordBytes': 2000000,
  'jsonDepth': 40,
  'jsonListItems': 2048,
- 'candidateCIPaths': ['.github/workflows/ci-candidate.yml',
-                      '.github/workflows/ci-merge-group.yml',
+ 'candidateCIPaths': ['.github/workflows/ci-merge-group.yml',
                       '.github/workflows/ci.yml',
                       'scripts/ci/ci-job-registry.json',
                       'scripts/ci/check-required-jobs.sh',
@@ -204,7 +153,7 @@ _record_contracts = {'releaseCandidate': {'unknownFields': 'reject',
                                               'mergedAt, sourceRangeSHA256}',
                                  'mergeCommit': '{sha, treeSHA, orderedParents}; exact '
                                                 '[baseSHA,headSHA]',
-                                 'trustedFileSHA256s': 'exact 15 policy paths, each lowercase '
+                                 'trustedFileSHA256s': 'exact 14 policy paths, each lowercase '
                                                        'SHA256',
                                  'workflowRun': '{id, attempt, path, event, name, headSHA, '
                                                 'testedCommitSHA, jobsEvidenceSHA256}',
@@ -434,9 +383,12 @@ _record_contracts = {'releaseCandidate': {'unknownFields': 'reject',
                                                 'No preparationSHA or claimSHA inside their own '
                                                 'transitive input binding',
                                                 'Main is covered by release by complete signed '
-                                                'first-parent lineage and 15-file equality',
-                                                'Fresh exact current pair/full 49-job candidate CI '
-                                                'and unchanged source main proof required',
+                                                'first-parent lineage and 14-file equality',
+                                                'Fresh exact current pair required: candidate is the '
+                                                'merged current-main PR episode, repeating its PR, '
+                                                'run, attempt and head, with its own complete '
+                                                '48-job queue proof, plus unchanged source main '
+                                                'proof',
                                                 'Same binding on every intent, holder, paired '
                                                 'driver, bind, executor, normalization and '
                                                 'finalizer consumer',
@@ -449,7 +401,7 @@ _record_contracts = {'releaseCandidate': {'unknownFields': 'reject',
                                                 'only if exact SHA roles identical; otherwise '
                                                 'current main has independent complete 48-job '
                                                 'queue and merged-PR proof',
-                                                'Candidate head and candidate-tested merge eight '
+                                                'Candidate head and candidate-tested merge seven '
                                                 'fixed CI path hashes equal approved release; '
                                                 'go.mod remains separately bound '
                                                 'candidate/tested-merge source',
@@ -572,11 +524,11 @@ _record_contracts = {'releaseCandidate': {'unknownFields': 'reject',
                                'testSHA256': 'exact static model test bytes',
                                'frozenNextHelpers': 'exact original seven helper pins',
                                'candidateFileSHA256s': 'exact map containing go.mod only',
-                               'candidateCIFileSHA256s': 'exact fixed eight CI paths, equal '
+                               'candidateCIFileSHA256s': 'exact fixed seven CI paths, equal '
                                                          'approved release hashes',
-                               'workflowFileSHA256s': 'exact fifteen trusted paths, equal approved '
+                               'workflowFileSHA256s': 'exact fourteen trusted paths, equal approved '
                                                       'release hashes',
-                               'requiredCIJobs': 'exact fixed candidate/workflow job maps, 49/48',
+                               'requiredCIJobs': 'exact fixed 48-job queue map',
                                'configurationSHA256': 'digest(releaseConfiguration), not '
                                                       'resource-only and not attemptTrustBinding',
                                'resourceConfigurationSHA256': 'same original eight-field digest',
@@ -635,8 +587,8 @@ POLICY_SHA256 = digest({
     'frozenHelpers': dict(FROZEN), 'acceptanceSeries': ACCEPTANCE_SERIES,
     'horizon': HORIZON,
 })
-require(len(TRUSTED_FILES) == 15 and len(CANDIDATE_CI_FILES) == 8
-        and len(REQUIRED_CI_JOBS['candidate']) == 49
+require(len(TRUSTED_FILES) == 14 and len(CANDIDATE_CI_FILES) == 7 and CANDIDATE_CI_FILES <= TRUSTED_FILES
+        and set(REQUIRED_CI_JOBS) == {'workflow'}
         and len(REQUIRED_CI_JOBS['workflow']) == 48 and len(FROZEN) == 7,
         'fixed-policy-inventories')
 

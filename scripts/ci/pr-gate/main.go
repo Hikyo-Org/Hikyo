@@ -1148,7 +1148,9 @@ func main() {
 	if err == nil {
 		c := controller{api: controllerAPI(*queueMode, *dispatch), verify: verifyPolicy, repoName: os.Getenv("GH_REPO"), checkName: checkName, expectedHead: *expectedHead, dryRun: *dryRun, output: os.Stdout, diagnostics: os.Stderr}
 		if *discoverRetirement {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			// Five minutes: a full 1000-commit window already took up to 164 s, and
+			// each commit above the check budget adds about 2 s per 100 suites.
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
 			var targets retirementTargets
 			targets, err = c.discoverRetirements(ctx, os.Getenv("GITHUB_EVENT_NAME"), e)
