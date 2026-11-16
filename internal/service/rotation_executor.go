@@ -84,15 +84,22 @@ func (e *providerOpenError) Error() string {
 func (e *providerOpenError) Unwrap() error { return e.err }
 
 // providerInfraFault reports whether opening the provider failed in the
-// executor's own datastore, keyring or decryption, rather than for anything about
-// the provider: such a fault never reached the provider and is no attempt.
+// executor's own datastore or keyring, rather than for anything about the
+// provider: such a fault never reached the provider and is no attempt. A
+// credential that cannot be decrypted is NOT infrastructure: the stored ciphertext
+// is unreadable and retrying it will not heal it, so it is a definite fault that
+// counts as an attempt and exhausts the retries loudly.
 func providerInfraFault(err error) bool {
 	var open *providerOpenError
 	if !errors.As(err, &open) || errors.Is(err, store.ErrNoProviderCredential) || errors.Is(err, store.ErrNotFound) {
 		return false
 	}
-	return open.stage == "material" || open.stage == "keyring" || open.stage == "decrypt"
+	return open.stage == "material" || open.stage == "keyring"
 }
+
+// RotationErrorClass is rotationErrClass for the worker loop outside this
+// package: a class in fixed words, never the error's own text.
+func RotationErrorClass(err error) string { return rotationErrClass(err) }
 
 // rotationErrClass names an error's class in fixed words for logs.
 func rotationErrClass(err error) string {
@@ -153,8 +160,8 @@ const (
 	rotCodeExtendFailed    = "extend_failed"
 	rotCodeExpired         = "expired"
 	// rotCodeInfra marks a run that failed only because the executor's own
-	// datastore, keyring or decryption faulted before the provider was touched. It
-	// is not counted as an attempt toward retries_exhausted.
+	// datastore or keyring faulted before the provider was touched. It is not
+	// counted as an attempt toward the attempt cap, but it backs off exponentially.
 	rotCodeInfra = "infrastructure_unavailable"
 )
 
@@ -448,6 +455,21 @@ func dueOfRun(run store.RotationRun) store.DueRotation {
 // retryPlan decides what follows a failed pre-publish run: the rotation's next
 // attempt time, or the halt that replaces it. The run being failed counts as an
 // attempt.
+// infraNext is the next start after an infrastructure fault of the run being
+// settled: the streak of infrastructure runs this cycle has already had (the run
+// being settled is still in flight and not counted) sizes the backoff.
+func (e *RotationExecutor) infraNext(ctx context.Context, run store.RotationRun, now time.Time) (time.Time, error) {
+	w, err := e.window(ctx, dueOfRun(run), now)
+	if err != nil {
+		return time.Time{}, err
+	}
+	prior, err := e.Runtime.InfraFaults(ctx, run.Chain(), run.RotationID, run.RunGeneration, w.Since)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return rotationInfraNext(now, prior, w), nil
+}
+
 func (e *RotationExecutor) retryPlan(ctx context.Context, run store.RotationRun, now time.Time) (next time.Time, halt string, err error) {
 	d := dueOfRun(run)
 	w, err := e.window(ctx, d, now)
@@ -498,7 +520,7 @@ func (e *RotationExecutor) startRun(ctx context.Context, worker string, d store.
 	}
 	runID, err := newID("rrn")
 	if err != nil {
-		return false, err
+		return false, e.deferDue(ctx, d, now, "run_id", err)
 	}
 	run := store.RotationRun{
 		ID: runID, OrgID: d.OrgID, ProjectID: d.ProjectID, EnvironmentID: d.EnvironmentID, RotationID: d.ID,
@@ -506,7 +528,7 @@ func (e *RotationExecutor) startRun(ctx context.Context, worker string, d store.
 	}
 	intent, err := e.intent(run, "mint", now)
 	if err != nil {
-		return false, err
+		return false, e.deferDue(ctx, d, now, "intent", err)
 	}
 	interval := time.Duration(d.IntervalSeconds) * time.Second
 	delay := time.Duration(d.RevocationDelaySeconds) * time.Second
@@ -517,7 +539,11 @@ func (e *RotationExecutor) startRun(ctx context.Context, worker string, d store.
 		ParkedUntil:         now.Add(rotationPublishBudget), Intent: intent,
 	})
 	if err != nil {
-		return false, err
+		// Deferred like every other pre-start failure, so a row whose start keeps
+		// failing yields the head of the queue instead of starving the tenants
+		// behind it. If the start did commit before the error, the run's own publish
+		// or settle replaces the schedule.
+		return false, e.deferDue(ctx, d, now, "start", err)
 	}
 	if !ok {
 		// Another worker took the rotation, or it was paused or already running.
@@ -718,8 +744,15 @@ func (e *RotationExecutor) failureSettle(ctx context.Context, run store.Rotation
 	}
 	if code == rotCodeInfra {
 		// Not an attempt: the executor's own infrastructure faulted before the
-		// provider was touched. Try again after a plain backoff; never halt.
-		settle.NextRunAt = now.Add(rotationBackoff(run.AttemptCount))
+		// provider was touched, so it never counts toward the attempt cap. It backs
+		// off like any retry (5 minutes doubling to the 6 hour cap) on the streak of
+		// infrastructure runs of this cycle. A window that closes meanwhile is
+		// still caught by the start check, which halts retries_exhausted.
+		next, err := e.infraNext(ctx, run, now)
+		if err != nil {
+			return settle, err
+		}
+		settle.NextRunAt = next
 		return settle, nil
 	}
 	halt := forcedHalt
@@ -1074,11 +1107,19 @@ func (e *RotationExecutor) staleEffect(ctx context.Context, run store.RotationRu
 // UNTIL has passed is still settled: the expiry exit needs no provider.
 var errNoProvider = errors.New("service: rotation provider unavailable")
 
+// rotationExpirySkew is the margin past a role's recorded VALID UNTIL before
+// Hikyo settles it as expired without asking the provider. VALID UNTIL is judged
+// by the database server's clock when the role logs in, and Hikyo reads its own:
+// the margin keeps a clock that runs ahead here from declaring a still-valid role
+// dead and skipping its drop or its restore assertion.
+const rotationExpirySkew = 5 * time.Minute
+
 // roleExpired reports whether a role can no longer authenticate: its recorded
-// VALID UNTIL has passed and no extend of it is unaccounted for (an extend that
-// ended unknown may have moved the real VALID UNTIL later).
+// VALID UNTIL has passed by more than the clock-skew margin and no extend of it is
+// unaccounted for (an extend that ended unknown may have moved the real VALID
+// UNTIL later).
 func roleExpired(validUntil time.Time, extendUncertain bool, now time.Time) bool {
-	return !extendUncertain && !validUntil.IsZero() && now.After(validUntil)
+	return !extendUncertain && !validUntil.IsZero() && now.After(validUntil.Add(rotationExpirySkew))
 }
 
 // reconcileCandidate settles a pre-publish run (failed or quarantine) whose

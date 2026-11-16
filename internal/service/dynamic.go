@@ -366,8 +366,9 @@ func (s *Dynamic) Delete(ctx context.Context, actor Actor, scope domain.Scope, p
 		if _, err := r.Dynamic().GetProvider(ctx, proof, providerID); err != nil {
 			return err
 		}
-		// A rotation run that may still hold a live role or owes a revoke needs
-		// this provider to settle it: the delete waits for the run (#148).
+		// A rotation run that may still hold a live role, or any run that owes the
+		// revoke of a role this provider minted, needs this provider to settle it:
+		// the delete waits for the run (#148).
 		live, err := r.Rotations().ProviderLiveRuns(ctx, proof, providerID)
 		if err != nil {
 			return err

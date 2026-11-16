@@ -1,8 +1,11 @@
 package service
 
 import (
+	"errors"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
 // The schedule proof of docs/handoff/148-credential-rotation.md: over the whole
@@ -119,5 +122,86 @@ func TestRotationResumeNext(t *testing.T) {
 	}
 	if got := rotationResumeNext(now, interval, delay, now.Add(-time.Hour)); !got.Equal(now) {
 		t.Errorf("a lapsed credential is restored now, got %s", got)
+	}
+}
+
+// An infrastructure fault is no attempt, but it backs off like any retry: five
+// minutes doubling to the six hour cap, never sitting at the floor, never past
+// the cap, and clamped to D so the last try inside the window still happens.
+func TestRotationInfraBackoffGrowsAndCaps(t *testing.T) {
+	now := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	var last time.Duration
+	for prior := int64(0); prior < 40; prior++ {
+		got := rotationInfraNext(now, prior, rotationWindow{}).Sub(now)
+		if got < last {
+			t.Fatalf("backoff shrank at streak %d: %s after %s", prior, got, last)
+		}
+		if got > rotationRetryWindow {
+			t.Fatalf("backoff %s at streak %d exceeds the %s cap", got, prior, rotationRetryWindow)
+		}
+		last = got
+	}
+	if got := rotationInfraNext(now, 0, rotationWindow{}).Sub(now); got != rotationBackoffFloor {
+		t.Fatalf("first infrastructure fault backs off %s, want the %s floor", got, rotationBackoffFloor)
+	}
+	if got := rotationInfraNext(now, 1, rotationWindow{}).Sub(now); got != 2*rotationBackoffFloor {
+		t.Fatalf("second infrastructure fault backs off %s, want %s", got, 2*rotationBackoffFloor)
+	}
+	if last != rotationRetryWindow {
+		t.Fatalf("a long streak settles at %s, want the %s cap", last, rotationRetryWindow)
+	}
+	w := rotationCycleWindow(now, 24*time.Hour)
+	near := w.D.Add(-time.Minute)
+	if got := rotationInfraNext(near, 10, w); !got.Equal(w.D) {
+		t.Fatalf("a backoff past D lands at %s, want D %s", got, w.D)
+	}
+	if got := rotationInfraNext(w.D.Add(time.Minute), 10, w); got.Before(w.D) {
+		t.Fatalf("a fault already past D never schedules backwards: %s", got)
+	}
+}
+
+// A credential that cannot be decrypted is a definite fault that counts as an
+// attempt; only the datastore and the keyring are infrastructure.
+func TestProviderOpenFaultClassification(t *testing.T) {
+	cause := errors.New("boom")
+	for stage, infra := range map[string]bool{"material": true, "keyring": true, "decrypt": false, "kind": false, "factory": false} {
+		if got := providerInfraFault(&providerOpenError{stage: stage, err: cause}); got != infra {
+			t.Errorf("stage %q infra = %v, want %v", stage, got, infra)
+		}
+	}
+	if providerInfraFault(&providerOpenError{stage: "material", err: store.ErrNoProviderCredential}) {
+		t.Error("a provider without a credential is the operator's state, not infrastructure")
+	}
+	if providerInfraFault(&providerOpenError{stage: "material", err: store.ErrNotFound}) {
+		t.Error("a missing provider is not infrastructure")
+	}
+	if providerInfraFault(cause) {
+		t.Error("an error that did not come from opening a provider is not infrastructure")
+	}
+}
+
+// An expiry exit needs VALID UNTIL to be past by the clock-skew margin: the
+// role's expiry is judged by the database server's clock, not this process's.
+func TestRoleExpiredNeedsTheSkewMargin(t *testing.T) {
+	until := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	edge := until.Add(rotationExpirySkew)
+	cases := []struct {
+		name      string
+		now       time.Time
+		uncertain bool
+		valid     time.Time
+		want      bool
+	}{
+		{"before VALID UNTIL", until.Add(-time.Second), false, until, false},
+		{"just past VALID UNTIL", until.Add(time.Second), false, until, false},
+		{"exactly at the margin", edge, false, until, false},
+		{"one second past the margin", edge.Add(time.Second), false, until, true},
+		{"uncertain extend never expires", edge.Add(time.Hour), true, until, false},
+		{"unrecorded VALID UNTIL never expires", edge.Add(time.Hour), false, time.Time{}, false},
+	}
+	for _, c := range cases {
+		if got := roleExpired(c.valid, c.uncertain, c.now); got != c.want {
+			t.Errorf("%s: expired = %v, want %v", c.name, got, c.want)
+		}
 	}
 }

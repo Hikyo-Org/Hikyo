@@ -131,6 +131,20 @@ func rotationRetry(now time.Time, attempt int64, w rotationWindow) (next time.Ti
 	return next, false
 }
 
+// rotationInfraNext is the next start after the (priorFaults+1)th consecutive
+// infrastructure fault of a cycle: the same capped exponential backoff as any
+// retry (5 minutes doubling to the 6 hour cap), clamped to D while D is ahead so a
+// fault near the end of the window still gets its last try. It never exhausts: an
+// infrastructure fault is no attempt, and a window that closes is caught by the
+// start check, not here.
+func rotationInfraNext(now time.Time, priorFaults int64, w rotationWindow) time.Time {
+	next := now.Add(rotationBackoff(priorFaults + 1))
+	if w.HasD && next.After(w.D) && now.Before(w.D) {
+		return w.D
+	}
+	return next
+}
+
 // rotationMayStart reports whether a run may start at now: before D, with fewer
 // than the cap of failed attempts spent.
 func rotationMayStart(now time.Time, failedAttempts int64, w rotationWindow) bool {

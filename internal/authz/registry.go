@@ -5489,7 +5489,7 @@ var operationTable = map[Operation]opSpec{
 			{Cap: domain.CapPublish, At: domain.LevelEnv},
 			{Cap: domain.CapReveal, At: domain.LevelEnv},
 		},
-		storeOps: map[StoreOp]bool{StoreRotationsCreate: true, StoreRotationsGet: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreRotationsCreate: true, StoreRotationsGet: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StorePendingListForOwnerInEnvironment: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventRotationConfigured},
 	},
 	OpRotationInspect: {
@@ -5520,14 +5520,14 @@ var operationTable = map[Operation]opSpec{
 		postGrantForbidden: true,
 		// Resume re-checks the provider can mint and both keys still exist and are
 		// secret-classified before the per-key authority checks.
-		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSetState: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSetState: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StorePendingListForOwnerInEnvironment: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventRotationConfigured},
 	},
 	OpRotationDelete: {
 		class: ClassTenant, level: domain.LevelEnv,
 		formula:  Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSetState: true, StoreRotationsCountOpenRuns: true, StoreRotationsAbandonOpenRuns: true, StoreAuditTenantInsert: true},
-		events:   []audit.EventType{audit.EventRotationConfigured, audit.EventRotationQuarantined},
+		events:   []audit.EventType{audit.EventRotationConfigured, audit.EventRotationQuarantined, audit.EventRotationRunOutcome},
 	},
 	OpRotationRun: {
 		class: ClassTenant, level: domain.LevelEnv,

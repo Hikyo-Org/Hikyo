@@ -4464,5 +4464,6 @@ var (
 )
 
 // rotationRunPhases are the transitions a rotation run records: the provider
-// side effects and the publish.
-var rotationRunPhases = []string{"mint", "publish", "drop_candidate", "revoke", "extend"}
+// side effects and the publish, and abandon, the operator closing a run that
+// owes nothing (an outcome row only; no provider call is bracketed by it).
+var rotationRunPhases = []string{"mint", "publish", "drop_candidate", "revoke", "extend", "abandon"}

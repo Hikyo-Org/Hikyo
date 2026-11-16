@@ -73,8 +73,8 @@ var (
 	// ErrRotationProviderInactive refuses a resume while the provider can no
 	// longer mint: deleted, or without an admin credential.
 	ErrRotationProviderInactive = &rotationRefusal{"the rotation's dynamic provider does not exist, was deleted, or has no admin credential set, so it cannot mint; set the credential or create the rotation again", domain.ErrConflict}
-	// ErrRotationKeyMissing refuses a resume while one of the rotation's keys is
-	// gone or no longer fit to receive a generated password.
+	// ErrRotationKeyGrouped refuses a key that belongs to a key group: a group
+	// publishes together, so an unattended publish would carry other keys with it.
 	ErrRotationKeyGrouped = &rotationRefusal{"a scheduled rotation publishes exactly its two keys, unattended, and a key group publishes together, so neither key may belong to a key group; take the keys out of their group first", domain.ErrConflict}
 
 	// ErrRotationDraftPending is the refusal for a rotation authority that holds a
@@ -82,6 +82,8 @@ var (
 	// own value into the same cell, which would replace that draft.
 	ErrRotationDraftPending = &rotationRefusal{"the rotation's authority principal has a pending draft on one of the rotation's keys, and the scheduled publish would overwrite it; publish or discard that draft first", domain.ErrConflict}
 
+	// ErrRotationKeyMissing refuses a resume while one of the rotation's keys is
+	// gone or no longer fit to receive a generated password.
 	ErrRotationKeyMissing = &rotationRefusal{"one of the rotation's keys no longer exists or is no longer secret-classified; create the rotation again", domain.ErrConflict}
 	// ErrEnvironmentHasLiveRotation refuses an environment delete while a rotation
 	// in it is not deleted or has a run that may hold a live role (any phase but
@@ -365,6 +367,10 @@ func (s *CredentialRotations) Create(ctx context.Context, actor Actor, scope dom
 		if err := requireRotationKeys(ctx, r, proof, req.KeyID, req.UsernameKeyID, false); err != nil {
 			return err
 		}
+		// Refused before the ceremony is consumed, so a refusal costs no reauth.
+		if err := requireNoAuthorityDraft(ctx, r, proof, string(caller.Principal), req.KeyID, req.UsernameKeyID); err != nil {
+			return err
+		}
 		if err := s.requireRotationCeremony(ctx, az, caller, scope, req.KeyID, req.UsernameKeyID); err != nil {
 			return err
 		}
@@ -637,14 +643,19 @@ func (s *CredentialRotations) transition(ctx context.Context, actor Actor, scope
 					return err
 				}
 				for _, run := range abandoned {
-					if run.Phase != "quarantine" {
-						continue
-					}
+					// Every run the statement closed gets its own row: a run left
+					// owing a role is quarantined, and a published run that owes
+					// nothing settles to done with an outcome row that says why.
+					eventType := audit.EventRotationQuarantined
 					payload := audit.Payload{"run_id": run.ID, "candidate_handle": run.CandidateHandle}
 					if run.SupersededHandle != "" {
 						payload["superseded_handle"] = run.SupersededHandle
 					}
-					ev, err := newAuditEvent(ctx, audit.EventRotationQuarantined, caller.Principal, audit.Object{Type: "rotation", ID: cur.ID}, audit.OutcomeSuccess, run.ID, payload)
+					if run.Phase != "quarantine" {
+						eventType = audit.EventRotationRunOutcome
+						payload = audit.Payload{"run_id": run.ID, "phase": "abandon", "handle": run.CandidateHandle, "error_code": "abandoned"}
+					}
+					ev, err := newAuditEvent(ctx, eventType, caller.Principal, audit.Object{Type: "rotation", ID: cur.ID}, audit.OutcomeSuccess, run.ID, payload)
 					if err != nil {
 						return err
 					}
@@ -675,7 +686,7 @@ func (s *CredentialRotations) transition(ctx context.Context, actor Actor, scope
 // resumes; the environment still runs unattended; the provider can still mint;
 // the keys still exist and are fit to receive the credential (a missing key is
 // its own refusal, because per-key authorization of a missing key reads as
-// not-found); the CALLER holds the resume formula (edit, publish and
+// not-found) and the authority holds no draft on either; the CALLER holds the resume formula (edit, publish and
 // reveal at the environment) on both keys; the recorded authority principal still
 // holds it too; and the publish ceremony is consumed.
 func (s *CredentialRotations) authorizeResume(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, proof authz.Proof, caller authz.Identity, scope domain.Scope, rec store.RotationRecord) error {
@@ -706,6 +717,9 @@ func (s *CredentialRotations) authorizeResume(ctx context.Context, r store.Repos
 		if !holds {
 			return ErrRotationAuthorityLost
 		}
+	}
+	if err := requireNoAuthorityDraft(ctx, r, proof, rec.AuthorityPrincipalID, rec.KeyID, rec.UsernameKeyID); err != nil {
+		return err
 	}
 	return s.requireRotationCeremony(ctx, az, caller, scope, rec.KeyID, rec.UsernameKeyID)
 }
