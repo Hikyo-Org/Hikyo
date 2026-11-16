@@ -47,3 +47,69 @@ func TestQueueExtensionPreservesOtherLintInput(t *testing.T) {
 		}
 	}
 }
+
+func TestAlertsPermissionValidation(t *testing.T) {
+	for _, test := range []struct {
+		name, doc string
+		bad       bool
+	}{
+		{"workflow read", "on: push\npermissions:\n  contents: read\n  vulnerability-alerts: read\njobs: {}\n", false},
+		{"job none", "on: push\njobs:\n  a:\n    permissions:\n      vulnerability-alerts: none\n      contents: read\n", false},
+		{"job read with comment", "on: push\njobs:\n  a:\n    permissions:\n      vulnerability-alerts: read # alerts\n", false},
+		{"write is refused", "on: push\npermissions:\n  vulnerability-alerts: write\njobs: {}\n", true},
+		{"job write is refused", "on: push\njobs:\n  a:\n    permissions:\n      vulnerability-alerts: write\n", true},
+		{"an expression is refused", "on: push\npermissions:\n  vulnerability-alerts: ${{ inputs.level }}\njobs: {}\n", true},
+		{"a quoted value is refused", "on: push\npermissions:\n  vulnerability-alerts: 'read'\njobs: {}\n", true},
+		{"an empty value is refused", "on: push\npermissions:\n  vulnerability-alerts:\njobs: {}\n", true},
+		{"duplicate is refused", "on: push\npermissions:\n  vulnerability-alerts: read\n  vulnerability-alerts: write\njobs: {}\n", true},
+		{"flow cannot hide another scope", "on: push\npermissions: {contents: write, vulnerability-alerts: read}\njobs: {}\n", true},
+		{"other places are not permissions", "on: push\nenv:\n  vulnerability-alerts: write\njobs: {}\n", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			raw := []byte(test.doc)
+			normalized, err := validateAlertsPermission(raw)
+			if (err != nil) != test.bad {
+				t.Fatalf("error=%v bad=%t", err, test.bad)
+			}
+			if err != nil {
+				return
+			}
+			if strings.Count(string(normalized), "\n") != strings.Count(string(raw), "\n") {
+				t.Fatal("line numbers must be preserved")
+			}
+			if strings.Contains(string(normalized), "vulnerability-alerts: read") || strings.Contains(string(normalized), "vulnerability-alerts: none") {
+				t.Fatal("the validated scope must be removed for the old parser")
+			}
+		})
+	}
+}
+
+func TestAlertsPermissionKeepsOtherLintInput(t *testing.T) {
+	raw := []byte("on: push\npermissions:\n  contents: write\n  vulnerability-alerts: read\n  typo: read\njobs:\n  a:\n    runs-on: invalid-runner\n    steps:\n      - run: echo vulnerability-alerts read\n")
+	normalized, err := validateAlertsPermission(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []string{"contents: write", "typo: read", "invalid-runner", "echo vulnerability-alerts read"} {
+		if !strings.Contains(string(normalized), s) {
+			t.Fatalf("other checks lost %q", s)
+		}
+	}
+}
+
+func TestNormalizeAppliesBothExtensions(t *testing.T) {
+	raw := []byte("on: push\npermissions:\n  vulnerability-alerts: read\nconcurrency:\n  group: g\n  queue: max\njobs: {}\n")
+	normalized, err := normalize(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(normalized), "queue: max") || strings.Contains(string(normalized), "vulnerability-alerts") {
+		t.Fatalf("both unsupported keys must be stripped: %q", normalized)
+	}
+	if _, err := normalize([]byte("on: push\npermissions:\n  vulnerability-alerts: write\njobs: {}\n")); err == nil {
+		t.Fatal("a write scope must be refused")
+	}
+	if _, err := normalize([]byte("on: push\nconcurrency:\n  group: g\n  queue: all\njobs: {}\n")); err == nil {
+		t.Fatal("a bad queue must still be refused")
+	}
+}
