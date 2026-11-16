@@ -18,7 +18,7 @@ func TestRotationWorkerIsWiredAndStartedByTheGeneration(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() { done <- srv.ServeWithReady(ctx, nil) }()
-	t.Cleanup(func() { cancel(); <-done })
+	t.Cleanup(func() { cancel(); _ = <-done })
 	worker := srv.owner.current.graph.rotationWorker
 	if worker == nil || worker.svc == nil || worker.svc.Log == nil {
 		t.Fatal("the rotation worker or its executor is not wired")
@@ -41,7 +41,7 @@ func TestRotationWorkerStopsWithItsContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer srv.Close()
+	defer func() { _ = srv.Close() }()
 	wired := srv.owner.current.graph.rotationWorker
 	worker := &rotationWorker{svc: wired.svc, id: "stop-test", poll: time.Millisecond, log: testLogger()}
 	ctx, cancel := context.WithCancel(t.Context())
