@@ -113,5 +113,28 @@ requires out-of-band rebootstrap. Revocations reach only verifiers that fetch
 authenticated updates. No offline-generated-root or independent-human claim is
 made.
 
+**Pre-tag compatibility check (owner decision 2026-11-15, option B; the human tag ceremony stays).**
+`release-compatibility-check` is an optional, read-only, dispatch-only workflow. Before tagging,
+a maintainer can ask whether a release of a given `X.Y.Z` built from main's tip leaves upgrade
+compatibility unchanged. It generates the candidate's `upgrade-compatibility.json` with the release
+generator on scratch PostgreSQL and compares it, minus version, sequence and commit, with
+the declaration of the highest plain stable version below it in authenticated trust. Compatibility
+counts as unchanged only when the candidate equals that declaration plus exactly one reviewed
+release-source edge per engine whose source is the baseline release's identity, carrying the
+migrations and schema digest the baseline published (owner decision 2026-11-16): the upgrade
+planner follows an edge only when its source matches the installed release's identity, and
+genesis edges never do, so without it an installed release has no route to the next, for a patch as for a minor.
+No supported command authors a stable edge; it is written by hand and reviewed. That baseline is
+fetched and verified through `stable verify --historical --published` (as the public verifier
+does: an older release embeds older trust) and its declaration is bound to the signed
+manifest; neither GitHub's "latest" flag nor a prerelease decides. A baseline not signed under the
+`github-actions-stable` policy is refused outright: the planner skips an edge across a trust-policy
+change, so only a recovery bridge can route an upgrade from it. A difference, a missing or
+unverifiable baseline, or a malformed declaration is reported and left to a maintainer. The check
+creates no tag, release or trust change and is not part of the build; `release-build` and the
+signing and publication path are unchanged. Fully unattended tagging stays deferred to a later App phase.
+The workflow lands on `dev` and reaches `main` by promotion; a dispatch-only workflow runs only from the
+default branch, so it goes live then.
+
 Operational entry point: [online signing](../release/online-signing.md).
 Primary-source evidence: [release ceremony research](../research/release-signing-ceremonies.md).

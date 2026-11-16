@@ -1,0 +1,97 @@
+name: release-compatibility-check
+
+# Pre-tag check for an operator: would a release of VERSION built from main's
+# tip leave upgrade compatibility exactly as the last stable release published
+# it? Read-only: it tags, publishes and writes nothing. The release build
+# (release.yml) is unchanged and does not depend on this workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Plain X.Y.Z you intend to tag from main's tip, for example 1.1.1"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-compatibility-check
+  cancel-in-progress: false
+
+env:
+  GOFLAGS: -mod=readonly
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    # An estimate, not a measurement: Postgres pull and start, Go builds, one
+    # release download and one signature verification.
+    timeout-minutes: 30
+    steps:
+      # A dispatch from another branch fails loudly: a skipped job would look like a pass.
+      - name: Require main
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          [ "$REF" = refs/heads/main ] || { echo "::error::run this check from main, not $REF"; exit 2; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Start healthy PostgreSQL with Docker Hub cache fallback
+        id: ci-postgres
+        env:
+          POSTGRES_PASSWORD: release-schema-fixture
+          POSTGRES_DB: hikyo_release_schema
+          POSTGRES_HEALTH_RETRIES: 12
+        run: ./scripts/ci/start-ci-postgres.sh
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      # The verifier of the previous release needs Cosign, as in the release build.
+      - name: Install pinned Cosign
+        run: |
+          mkdir -p "$HOME/.cosign"
+          ./scripts/ci/fetch-pinned-tool.sh cosign-linux-amd64 "$HOME/.cosign/cosign"
+          chmod +x "$HOME/.cosign/cosign"
+          echo "$HOME/.cosign" >>"$GITHUB_PATH"
+          "$HOME/.cosign/cosign" version
+      - name: Compare the candidate with the last stable release
+        env:
+          VERSION: ${{ inputs.version }}
+          COMMIT: ${{ github.sha }}
+          REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          HIKYO_RELEASE_SCHEMA_POSTGRES_DSN: postgres://hikyo:release-schema-fixture@127.0.0.1:5432/hikyo_release_schema?sslmode=disable
+        run: |
+          printf '%s\n' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo '::error::version must be plain X.Y.Z'; exit 2; }
+          go run ./scripts/release/stable preflight --trust release/trust
+          # The baseline is the highest stable release in trust: trust must record every
+          # published release first, or an older release would be compared.
+          ./scripts/release/require-synced-trust.sh "$REPOSITORY" release/trust/metadata.json
+          candidate="$RUNNER_TEMP/release-candidate.json"
+          declaration="$RUNNER_TEMP/upgrade-compatibility.json"
+          go run ./scripts/release/stable candidate --trust release/trust \
+            --version "$VERSION" --commit "$COMMIT" --out "$candidate" || {
+            rc=$?
+            printf '%s\n' "stable candidate refused v$VERSION (exit $rc; typically a version that is not above the last stable release): nothing is decided, see the log." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit "$rc"
+          }
+          go run ./scripts/release/compatibility --candidate "$candidate" --out "$declaration"
+          rc=0
+          reason="$RUNNER_TEMP/compatibility-check.err"
+          ./scripts/release/check-compatibility-unchanged.sh "$REPOSITORY" release/trust "$VERSION" "$declaration" 2>"$reason" || rc=$?
+          cat "$reason" >&2
+          case "$rc" in
+            0) verdict="Compatibility is unchanged: v$VERSION at $COMMIT can be tagged as a routine release (its declaration is the last stable release's plus the reviewed release-source edge from it)." ;;
+            1) verdict="Compatibility differs, the release-source edge from the last stable release is missing or wrong, or that release needs a recovery bridge: v$VERSION at $COMMIT is not a routine release and needs a maintainer decision (see the log). $(grep '^compatibility check:' "$reason" | tail -n 1)" ;;
+            5) verdict="The last stable release cannot be established or verified (exit 5): nothing is decided about compatibility. $(grep '^compatibility check:' "$reason" | tail -n 1)" ;;
+            *) verdict="The check could not run (exit $rc): nothing is decided. $(grep '^compatibility check:' "$reason" | tail -n 1)" ;;
+          esac
+          printf '%s\n' "$verdict" | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+      - name: Remove the PostgreSQL fixture
+        if: ${{ always() && steps.ci-postgres.outcome == 'success' }}
+        run: docker container rm --force hikyo-ci-postgres

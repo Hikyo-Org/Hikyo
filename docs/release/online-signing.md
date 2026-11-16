@@ -53,6 +53,36 @@ builds refuse to run until this delegation authenticates.
 Use the actual approved version in place of `VERSION`, without a leading `v`.
 Do not run `build 1.0.0` until designs and final-candidate acceptance are done.
 
+Optional pre-check: to learn before tagging whether `VERSION` changes upgrade
+compatibility, run the `release-compatibility-check` workflow from main with
+that version (`gh workflow run release-compatibility-check.yml --ref main -f version=VERSION`),
+after the sync-trust change that records the latest release has merged.
+It compares the compatibility declaration generated from main's tip with the one
+the highest earlier stable release published, verified through the signed trust.
+It must equal that declaration plus exactly one reviewed release-source edge per
+engine from that release (see below). Green means that; red means a difference, a
+missing or wrong edge, an earlier release that was not signed under the
+`github-actions-stable` policy (it needs a recovery bridge, not an edge, and the
+check refuses it with exit 1), an unverifiable earlier release or a failed lookup,
+and the log says which. Once a promotion has brought unreleased migrations to main, expect
+"differs" until a release carries them. It is read-only and tags nothing. Run it
+again if main moves before you tag. The workflow reaches main by promotion from
+dev, so it exists to dispatch only after a promotion has landed it.
+
+**Release-source edge (required for a patch as well as a minor).** An upgrade
+records the installed release by its identity, and the planner only routes an
+installed release to the next one through an edge whose source is that exact
+release; the `fresh/v1` and `legacy/v1` genesis edges never match. So each release
+needs, per engine in `release/compatibility/sources.json`, an edge whose
+`source.release` is the previous stable release's identity (version, sequence,
+commit, and the SHA-256 of its published `release-manifest.json` and
+`upgrade-compatibility.json`) and whose `migrations` and `schema_sha256` are the
+ones that release's own declaration carries. The check prints the identity it
+expects. Mode is the reviewer's decision (`maintenance`, or `restart` when the
+target keeps the same migrations and schema). No command authors a stable edge:
+`scripts/release/nightly sources` verifies nightly directories only. Write it by
+hand from the verified earlier release's files and have it reviewed.
+
 1. **Build the draft:** from clean current main, run
    `scripts/release/ceremony.sh build VERSION`. The helper requires green CI
    for the exact commit and synchronized published trust. Review the commit
