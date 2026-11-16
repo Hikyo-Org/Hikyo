@@ -39,7 +39,7 @@ func (s *retirementDiscoveryScan) deadlineDiagnostic(err error) error {
 	if pages := s.suitePages.Load(); pages == 0 || !errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}
-	return fmt.Errorf("retirement discovery ran out of time after %d check suite pages and %d of its history pages; commits with many check suites exhaust the deadline, operator review required: %w", s.suitePages.Load(), s.historyPages, err)
+	return fmt.Errorf("retirement discovery ran out of time after %d check suite pages and %d of its history pages; commits with many check suites may exhaust the deadline, operator review required: %w", s.suitePages.Load(), s.historyPages, err)
 }
 
 // Emit only bounded scan metadata after all candidate workers have joined.

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -21,7 +22,8 @@ func source(suites int, holder int64, queries *[]string) Source {
 			if strings.Contains(query, "checkSuites(") {
 				page := 0
 				if _, after, ok := strings.Cut(query, `after:"p`); ok {
-					fmt.Sscanf(after, "%d", &page)
+					digits, _, _ := strings.Cut(after, `"`)
+					page, _ = strconv.Atoi(digits)
 				}
 				nodes := []map[string]any{}
 				for id := int64(page*100 + 1); id <= int64(min(suites, page*100+100)); id++ {
@@ -79,10 +81,13 @@ func TestFindRefusesMissingNamedRunCounts(t *testing.T) {
 			nodes := response["data"].(map[string]any)["repository"].(map[string]any)["object"].(map[string]any)["checkSuites"].(map[string]any)["nodes"].([]any)
 			delete(nodes[1].(map[string]any), "named")
 		}
-		data, _ := json.Marshal(response)
+		data, err := json.Marshal(response)
+		if err != nil {
+			return err
+		}
 		return json.Unmarshal(data, out)
 	}
-	if _, _, err := Find(context.Background(), s, "abc", Selector{Name: "report"}); err == nil {
+	if _, err := Find(context.Background(), s, "abc", Selector{Name: "report"}); err == nil {
 		t.Fatal("a suite without its run count was treated as holding nothing")
 	}
 }
@@ -93,5 +98,39 @@ func TestCountRefusesForeignRepository(t *testing.T) {
 	s.RepoID = 2
 	if _, err := Count(context.Background(), s, "abc"); err == nil {
 		t.Fatal("a count for another repository was accepted")
+	}
+}
+
+// A context spread over more suites than MaxSelected is left to an operator, not
+// listed partially.
+func TestFindRefusesMoreSelectedSuitesThanMaxSelected(t *testing.T) {
+	var queries []string
+	for _, tc := range []struct {
+		suites  int
+		refused bool
+	}{{MaxSelected, false}, {MaxSelected + 1, true}} {
+		s := source(tc.suites, 0, &queries)
+		read := s.Read
+		s.Read = func(ctx context.Context, query string, out any) error {
+			var response map[string]any
+			if err := read(ctx, query, &response); err != nil {
+				return err
+			}
+			if strings.Contains(query, "checkSuites(") {
+				nodes := response["data"].(map[string]any)["repository"].(map[string]any)["object"].(map[string]any)["checkSuites"].(map[string]any)["nodes"].([]any)
+				for _, node := range nodes {
+					node.(map[string]any)["named"] = map[string]any{"totalCount": 1}
+				}
+			}
+			data, err := json.Marshal(response)
+			if err != nil {
+				return err
+			}
+			return json.Unmarshal(data, out)
+		}
+		got, err := Find(context.Background(), s, "abc", Selector{Name: "report"})
+		if (err != nil) != tc.refused || (err == nil && len(got) != tc.suites) {
+			t.Fatalf("%d suites holding the name: %d selected, err=%v, want refused=%v", tc.suites, len(got), err, tc.refused)
+		}
 	}
 }

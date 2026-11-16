@@ -280,7 +280,7 @@ func (c *controller) unfinishedRetirementChecks(ctx context.Context, head string
 }
 
 func (c *controller) oversizedRetirementChecks(ctx context.Context, head string) ([]check, error) {
-	suites, _, err := checksuites.Find(ctx, c.suiteSource(), head, checksuites.Selector{})
+	suites, err := checksuites.Find(ctx, c.suiteSource(), head, checksuites.Selector{})
 	if err != nil {
 		return nil, err
 	}

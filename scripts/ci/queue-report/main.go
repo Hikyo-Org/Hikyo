@@ -353,8 +353,7 @@ func (c client) existing(ctx context.Context, repoID int64, head, name, external
 	owner, repoName, _ := strings.Cut(c.repo, "/")
 	source := checksuites.Source{
 		Owner: owner, Name: repoName, RepoID: repoID,
-		Read:     c.graphql,
-		Diagnose: graphQLError,
+		Read: c.graphql,
 	}
 	listings, err := checksuites.Listings(ctx, source, head, name)
 	if err != nil {
@@ -407,17 +406,6 @@ func (c client) existingAt(ctx context.Context, listing, head, name, external, d
 		}
 	}
 	return errors.New("queue report pagination limit reached")
-}
-
-// graphQLError names the first error a GraphQL response reports.
-func graphQLError(errs []json.RawMessage) error {
-	var first struct {
-		Message string `json:"message"`
-	}
-	if len(errs) == 0 || json.Unmarshal(errs[0], &first) != nil || strings.TrimSpace(first.Message) == "" {
-		return errors.New("GraphQL errors: missing or malformed server error detail")
-	}
-	return fmt.Errorf("GraphQL error: %s", label(first.Message))
 }
 
 func (c client) jobs(ctx context.Context, r run) ([]job, error) {

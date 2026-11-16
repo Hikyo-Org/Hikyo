@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 )
 
 // AppID is the github-actions app that owns every synthetic check context.
@@ -37,7 +38,8 @@ type Source struct {
 	RepoID      int64
 	// Read runs query and decodes its JSON response into out.
 	Read func(ctx context.Context, query string, out any) error
-	// Diagnose turns the errors a GraphQL response reports into an error.
+	// Diagnose turns the errors a GraphQL response reports into an error. Nil
+	// reports the first error's message.
 	Diagnose func(errs []json.RawMessage) error
 }
 
@@ -54,6 +56,19 @@ type pageInfo struct {
 
 type total struct {
 	Total *int `json:"totalCount"`
+}
+
+func (s Source) diagnose(errs []json.RawMessage) error {
+	if s.Diagnose != nil {
+		return s.Diagnose(errs)
+	}
+	var first struct {
+		Message string `json:"message"`
+	}
+	if len(errs) == 0 || json.Unmarshal(errs[0], &first) != nil || strings.TrimSpace(first.Message) == "" {
+		return errors.New("GraphQL errors: missing or malformed server error detail")
+	}
+	return fmt.Errorf("GraphQL error: %.200s", first.Message)
 }
 
 func (s Source) object(head, fields string) string {
@@ -79,7 +94,7 @@ func Count(ctx context.Context, s Source, head string) (int, error) {
 		return 0, fmt.Errorf("check suite count for %s: %w", head, err)
 	}
 	if len(response.Errors) != 0 {
-		return 0, s.Diagnose(response.Errors)
+		return 0, s.diagnose(response.Errors)
 	}
 	repo := response.Data.Repo
 	if repo == nil || repo.ID != s.RepoID || repo.Object == nil || repo.Object.OID != head || repo.Object.Suites == nil || repo.Object.Suites.Total == nil || *repo.Object.Suites.Total < 0 {
@@ -103,14 +118,13 @@ func (s Source) SuitesQuery(head, after string, sel Selector) string {
 	return s.object(head, fmt.Sprintf(`every:checkSuites{totalCount} checkSuites(%s,filterBy:{appId:%d}){totalCount nodes{databaseId %s} pageInfo{hasNextPage endCursor}}`, args, AppID, runs))
 }
 
-// Find returns the ids of head's github-actions suites that sel selects, and the
-// number of suites of every app head holds. A scan that cannot be complete fails
-// instead of returning a partial set.
-func Find(ctx context.Context, s Source, head string, sel Selector) ([]int64, int, error) {
+// Find returns the ids of head's github-actions suites that sel selects.
+// A scan that cannot be complete fails instead of returning a partial set.
+func Find(ctx context.Context, s Source, head string, sel Selector) ([]int64, error) {
 	selected := []int64{}
 	seen := make(map[int64]bool)
 	seenCursors := make(map[string]bool)
-	count, every, after := -1, 0, ""
+	count, after := -1, ""
 	for page := 1; page <= MaxSuites/pageSize; page++ {
 		var response struct {
 			Errors []json.RawMessage `json:"errors"`
@@ -135,64 +149,63 @@ func Find(ctx context.Context, s Source, head string, sel Selector) ([]int64, in
 			} `json:"data"`
 		}
 		if err := s.Read(ctx, s.SuitesQuery(head, after, sel), &response); err != nil {
-			return nil, 0, fmt.Errorf("check suites for %s page %d: %w", head, page, err)
+			return nil, fmt.Errorf("check suites for %s page %d: %w", head, page, err)
 		}
 		if len(response.Errors) != 0 {
-			return nil, 0, s.Diagnose(response.Errors)
+			return nil, s.diagnose(response.Errors)
 		}
 		repo := response.Data.Repo
 		if repo == nil || repo.ID != s.RepoID || repo.Object == nil || repo.Object.OID != head || repo.Object.Suites == nil {
-			return nil, 0, errors.New("incomplete or foreign check suite snapshot")
+			return nil, errors.New("incomplete or foreign check suite snapshot")
 		}
 		part := repo.Object.Suites
 		if part.Total == nil || *part.Total < 0 || count != -1 && count != *part.Total || part.Nodes == nil || len(part.Nodes) > pageSize || part.Page.More == nil {
-			return nil, 0, errors.New("incomplete or changing check suite inventory")
+			return nil, errors.New("incomplete or changing check suite inventory")
 		}
 		count = *part.Total
 		// REST's newest-1000-suite cap counts every app's suites, not only these.
 		if repo.Object.Every == nil || repo.Object.Every.Total == nil || *repo.Object.Every.Total < count {
-			return nil, 0, errors.New("incomplete check suite count")
+			return nil, errors.New("incomplete check suite count")
 		}
-		every = max(every, *repo.Object.Every.Total)
 		if count > MaxSuites {
-			return nil, 0, fmt.Errorf("checks on %s span more than %d github-actions check suites; operator review required", head, MaxSuites)
+			return nil, fmt.Errorf("checks on %s span more than %d github-actions check suites; operator review required", head, MaxSuites)
 		}
 		for _, suite := range part.Nodes {
 			if suite == nil || suite.ID <= 0 || seen[suite.ID] {
-				return nil, 0, errors.New("incomplete or duplicate check suite identity")
+				return nil, errors.New("incomplete or duplicate check suite identity")
 			}
 			seen[suite.ID] = true
 			hit, err := sel.holds(suite.All, suite.Done, suite.Named)
 			if err != nil {
-				return nil, 0, err
+				return nil, err
 			}
 			if !hit {
 				continue
 			}
 			selected = append(selected, suite.ID)
 			if len(selected) > MaxSelected {
-				return nil, 0, fmt.Errorf("checks on %s are in more than %d check suites; operator review required", head, MaxSelected)
+				return nil, fmt.Errorf("checks on %s are in more than %d check suites; operator review required", head, MaxSelected)
 			}
 		}
 		if !*part.Page.More {
 			if len(seen) != count {
-				return nil, 0, errors.New("incomplete check suite pagination")
+				return nil, errors.New("incomplete check suite pagination")
 			}
-			return selected, every, nil
+			return selected, nil
 		}
 		if len(seen) >= count {
-			return nil, 0, errors.New("incomplete check suite pagination")
+			return nil, errors.New("incomplete check suite pagination")
 		}
 		if len(part.Nodes) != pageSize {
-			return nil, 0, errors.New("short non-final check suite page")
+			return nil, errors.New("short non-final check suite page")
 		}
 		if part.Page.End == nil || *part.Page.End == "" || len(*part.Page.End) > 1024 || seenCursors[*part.Page.End] {
-			return nil, 0, errors.New("missing or repeated check suite cursor")
+			return nil, errors.New("missing or repeated check suite cursor")
 		}
 		after = *part.Page.End
 		seenCursors[after] = true
 	}
-	return nil, 0, fmt.Errorf("checks on %s span more than %d github-actions check suites; operator review required", head, MaxSuites)
+	return nil, fmt.Errorf("checks on %s span more than %d github-actions check suites; operator review required", head, MaxSuites)
 }
 
 // holds reports whether a suite with these run counts is selected, refusing
@@ -200,12 +213,12 @@ func Find(ctx context.Context, s Source, head string, sel Selector) ([]int64, in
 func (sel Selector) holds(all, done, named *total) (bool, error) {
 	if sel.Name != "" {
 		if named == nil || named.Total == nil || *named.Total < 0 {
-			return false, errors.New("incomplete or duplicate check suite identity")
+			return false, errors.New("incomplete check suite run counts")
 		}
 		return *named.Total > 0, nil
 	}
 	if all == nil || all.Total == nil || done == nil || done.Total == nil || *done.Total < 0 || *all.Total < *done.Total {
-		return false, errors.New("incomplete or duplicate check suite identity")
+		return false, errors.New("incomplete or inconsistent check suite run counts")
 	}
 	return *all.Total > *done.Total, nil
 }
@@ -222,7 +235,7 @@ func Listings(ctx context.Context, s Source, head, name string) ([]string, error
 	if count <= Margin {
 		return []string{fmt.Sprintf("commits/%s/check-runs", head)}, nil
 	}
-	suites, _, err := Find(ctx, s, head, Selector{Name: name})
+	suites, err := Find(ctx, s, head, Selector{Name: name})
 	if err != nil {
 		return nil, err
 	}
