@@ -1191,6 +1191,9 @@ func TestRotationExecutorSlackWindowAndExtend(t *testing.T) {
 		if late == 0 {
 			t.Fatal("no retries ran inside the window")
 		}
+		if after := queryInt(t, db, "SELECT COUNT(*) FROM rotation_runs WHERE rotation_id='"+rot.ID+"' AND started_at>'"+deadline.UTC().Format("2006-01-02T15:04:05.000000Z")+"'"); after != 0 {
+			t.Fatalf("%d runs started after D", after)
+		}
 		if !x.ctl.has(role1) {
 			t.Fatal("the delivered role was dropped while the rotation failed")
 		}
