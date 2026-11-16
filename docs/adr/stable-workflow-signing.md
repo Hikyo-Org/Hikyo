@@ -136,5 +136,19 @@ signing and publication path are unchanged. Fully unattended tagging stays defer
 The workflow lands on `dev` and reaches `main` by promotion; a dispatch-only workflow runs only from the
 default branch, so it goes live then.
 
+**Security patch tag prompt (owner decision 2026-11-15, option B; the human tag ceremony stays).**
+`security-patch-plan` runs on every push to main and hourly. When a merged Dependabot security
+update (an alert-linked pull request authored by Dependabot, bound by numeric id) is missing from
+the latest stable release, it picks the patch target, checks what the ceremony would check, and
+writes one issue with exact commands for the signed tag and the existing release ceremony. The target
+is the newest of the last 60 first-parent commits of main that holds every pending security merge,
+records the latest stable release in trust, and has complete green source proof; a red tip falls back
+to the last green commit, never below the newest pending merge. The workflow tags nothing, publishes
+nothing and holds no tag or release authority: its token is read-only apart from issues, and only its
+second job writes the one issue. The issue's command starts with `security-patch-plan.sh recheck`, run
+by the maintainer with their own login, which refuses when a newer pending security merge exists or
+anything else changed since the issue was written. Fully unattended tagging stays deferred to a later
+App phase.
+
 Operational entry point: [online signing](../release/online-signing.md).
 Primary-source evidence: [release ceremony research](../research/release-signing-ceremonies.md).

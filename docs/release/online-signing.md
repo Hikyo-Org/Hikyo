@@ -83,6 +83,20 @@ target keeps the same migrations and schema). No command authors a stable edge:
 `scripts/release/nightly sources` verifies nightly directories only. Write it by
 hand from the verified earlier release's files and have it reviewed.
 
+**Security patch prompt.** After a Dependabot security update merges to main,
+the `security-patch-plan` workflow opens one issue, "Security patch release:
+maintainer action needed", with the exact commands for the patch release: the
+signed tag, then review, publish, trust synchronization and the Homebrew
+update. Use the commands in the latest version of that issue. Its first
+command, `scripts/release/security-patch-plan.sh recheck`, repeats the checks at
+tag time with your own login and refuses (tagging nothing) when a newer security
+merge exists or anything else changed. When the tip of main is not green, the
+issue offers a signed tag of the newest green commit that holds every pending
+security merge instead of `ceremony.sh build`, because `build` can only tag the
+tip. The workflow itself tags and publishes nothing. The issue closes itself
+once the security merges are released; the Homebrew tap update stays a manual
+step (`ceremony.sh homebrew VERSION`).
+
 1. **Build the draft:** from clean current main, run
    `scripts/release/ceremony.sh build VERSION`. The helper requires green CI
    for the exact commit and synchronized published trust. Review the commit
