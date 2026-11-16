@@ -4,18 +4,20 @@ description: Record the schedule for rotating one PostgreSQL credential pair, th
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/rotation.mdx
 ---
 
-Scheduled rotation will keep one pair of secret keys (a PostgreSQL role name
-and its password) fresh without a person pasting values: mint a new role,
-publish it through an ordinary revision, wait for consumers to pick it up, then
-drop the old role. PostgreSQL is the only provider, one adapter at a time.
+Scheduled rotation keeps one pair of secret keys (a PostgreSQL role name and
+its password) fresh without a person pasting values: it mints a new role,
+publishes it through an ordinary revision, waits for consumers to pick it up,
+then drops the old role. PostgreSQL is the only provider, one adapter at a
+time.
 
-:::caution[Configuration only]
-This release ships the **configuration** half only. You can create, list, show,
-pause, resume and delete a rotation, and each is audited, but **nothing is
-minted, published or revoked yet**. A configured rotation records its schedule
-and its authority and does not run. The executor arrives in a later release;
-until then rotate by hand with [dynamic secrets](/docs/dynamic-secrets/) and
-`hikyo values set`.
+:::caution[A configured rotation runs]
+Creating or resuming a rotation arms it: once its first run is due, the server
+mints, publishes and later revokes credentials on its own, with no person
+present. Read [How a run executes](#how-a-run-executes) before you create one.
+Operator controls for an incident (pausing and deleting with run awareness, a
+loud status for a held revoke) are still being completed, so deploy this release
+together with its follow-up slice and watch `hikyo doctor` and the audit log
+while rotations are enabled.
 :::
 
 ## What a rotation records
@@ -73,7 +75,10 @@ is **protected** (its publishes need a ceremony each time) or covered by an
 again at resume.
 
 A key can be driven by one live rotation at a time, whichever role (password or
-username) it plays. Pause and delete need `publish` on the environment; list and
+username) it plays. A key that belongs to a **key group** is refused: the
+rotation would publish a value the group does not own. A key with a **pending
+authority draft** (a staged change on either key) is also refused at create and
+resume; clear or publish the draft first. Pause and delete need `publish` on the environment; list and
 show need `read`.
 
 ## Providers, keys and environments
@@ -94,6 +99,50 @@ show need `read`.
   published. The refusal names the blocking rotation ids (up to ten of each kind).
   Delete each rotation first and let its runs finish; the history of deleted
   rotations is removed with the environment.
+
+## How a run executes
+
+Each cycle is a run with a durable phase, so a restart resumes or rolls back
+cleanly:
+
+1. `minting`: the server records the new role handle, then creates the role with
+   a `VALID UNTIL` of the mint time plus a one-hour publish budget, the
+   interval, the revocation delay and a 24 hour slack.
+2. `minted` and publish: the new role is staged on both keys and published in one
+   transaction as the recorded authority principal. Before it, the executor
+   re-checks that authority and the environment in full (a gate).
+3. `published`, then `overlap`: the superseded role stays valid for the
+   revocation delay so consumers can pick up the new pair.
+4. `revoking`, then `done`: the superseded role is dropped on the provider that
+   minted it. Before it, the server confirms that neither key serves a value the
+   revoke would break (for example after `revision restore`). If one does, the run
+   is held in `revoke_refused` and nothing is dropped.
+
+A failed step before the publish drops the new role and leaves the keys
+unchanged. A failure after the publish never fails the run: it keeps retrying
+the drop with backoff and stays visible until it settles. A superseded role that
+has already expired on its own settles without opening the provider.
+
+Failed runs retry with a bounded exponential backoff (5 minutes doubling to 6
+hours, at most 12 attempts) inside a window that always leaves the superseded role
+valid for the overlap. When the window or the attempt cap is spent, the rotation
+moves to `halted` with a named reason: `retries_exhausted` (the schedule ran
+out), `authority_lost` (the recorded person no longer holds the access) or
+`gate_failed` (the environment became protected, a key changed, or a draft
+appeared). A halted rotation is loud and does not extend the delivered
+credential; `resume` starts a new cycle. As the delivered credential nears its
+expiry, the server extends its `VALID UNTIL` while the rotation is active and
+the gate still holds.
+
+If a publish succeeded but the keys later serve the old value again, the revoke
+stays held (`revoke_refused`) until the old role expires on its own or the keys
+serve the new value again. The server never drops a role that a key may be using.
+
+Pausing a rotation does not touch a run in flight: a run that has published
+continues to its end, and a run that has not published is rolled back by the next
+gate check, so a paused rotation never leaves an unpublished credential behind.
+Infrastructure faults (database, keyring or decryption) back off without
+counting toward `retries_exhausted`.
 
 ## When the delivered credential expires
 
@@ -128,8 +177,9 @@ number of days with a `d` suffix (`30d`). `list` shows live rotations; add
 rotations (1 to 500, default 100) in id order; when more follow, the CLI prints the
 `--after` value that continues the list. `pause`, `resume` and `delete`
 accept `--expected-generation N`, which fails
-with a conflict if another change landed first. Resume recomputes the next run
-from the current time. Delete disables the rotation and keeps it as history; it
+with a conflict if another change landed first. Resume schedules the next run one
+interval from now, or sooner (down to now) when the delivered credential would
+otherwise lapse first. Delete disables the rotation and keeps it as history; it
 frees the keys for another rotation.
 
 ## API
@@ -144,7 +194,9 @@ They require a human session. See the [HTTP API](/docs/http-api/).
 
 ## Audit
 
-`rotation.configured` records each create, pause, resume and delete with its
+Every provider call is bracketed by an intent and an outcome event, and every
+publish, drop, halt and abandon is audited with the rotation's authority and the
+run id as the correlation id; the origin is `system`. `rotation.configured` records each create, pause, resume and delete with its
 `action` and the environment, and a pause the system caused (provider deleted or
 credential revoked, environment protected, approval policy enabled) with its
 `reason`. Reads are not audited events. Audit payloads carry identifiers and

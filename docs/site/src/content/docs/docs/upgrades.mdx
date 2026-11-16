@@ -7,6 +7,15 @@ editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs
 Hikyo migrations move forward only. A downgrade means restoring a pre-upgrade
 archive with a compatible binary, not running a down migration.
 
+## Scheduled rotation upgrade notes
+
+A scheduled credential rotation that an earlier release only recorded now runs
+after you upgrade: once its next run is due, the server mints, publishes and
+later revokes credentials without a person present. Before upgrading, list your
+rotations (`hikyo rotation list --include-disabled`) and pause any you do not
+want to start, then resume them deliberately. See
+[Scheduled credential rotation](/docs/rotation/).
+
 ## Social sign-in upgrade notes
 
 When upgrading across migration `00057_social_signin`, existing sessions survive

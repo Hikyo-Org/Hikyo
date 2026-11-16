@@ -381,6 +381,7 @@ transaction. It is never stored, not even sealed. Order:
 | Keys serve the superseded value again before the drop (restore or manual publish) | `revoking`, assertion fails | `revoke_refused` (`published_versions_changed`), no drop, loud |
 | During `DropRole` | `revoking`, effect INTENT only | re-probe `RoleStatus`, settle |
 | Fence-losing worker after `CreateRole` (multi-node takeover) | candidate role exists, run `failed` or `quarantine` | candidate reconciler re-probes `RoleStatus(candidate_handle)` and drops it (below) |
+| Key restored after the restore assertion but before the drop (TOCTOU) | `revoking`, assertion passed | the drop proceeds; the window is the span between the assertion read and the provider call, bounded by one provider deadline, and is accepted: a restore stages a new revision, and the role was already past its overlap |
 | Run abandoned past publish (`--abandon`) | `quarantine`, `published_revision` set, superseded role may be live | revoke-obligation loop drops `superseded_handle` after the overlap deadline (below) |
 
 **`superseded_handle` is derived across rotations.** The role being superseded is the
@@ -537,7 +538,9 @@ start at `D + 1s` is refused as `retries_exhausted`.
   candidate is rolled back, so a paused rotation never leaves a candidate live).
   Post-publish phases always continue to completion. This is the reading of the issue
   handoff's "never leaves a candidate unrevoked" that cannot strand a credential.
-- Resume re-authorizes the recorded authority and recomputes `next_run_at`.
+- Resume re-authorizes the recorded authority and schedules the next run with
+  `rotationResumeNext`: `min(now + interval, last permitted start, extendDue)`, clamped
+  to at least now, so a delivered credential cannot lapse before the first run.
 - Delete requires no non-terminal run, or `--abandon`. For a run before publish,
   `--abandon` quarantines the candidate, keeps the superseded role live, and is loud; the
   candidate reconciler later confirms the candidate gone and the run becomes `failed`. For
@@ -775,28 +778,68 @@ refused as `role_owns_objects` and dropped after the object moves).
 2. The candidate handle is `dynamic.RoleName(runID)`.
 3. Password is a Go string end to end, so `crypto.Zero` is not applied to it; Option A
    (memory only, never stored) holds.
-4. `extend` has no authority gate (it only lengthens an existing credential) and adds 24h
-   to `VALID UNTIL`.
+4. `extend` adds 24h to `VALID UNTIL` and now runs the pre-publish Gate minus the
+   generation check (owner decision B). A failed gate halts the rotation with a named
+   reason instead of extending. A held run's delivered credential is extended the same
+   way (`extendDelivered`) until `D`, then the run halts `retries_exhausted` and the
+   revoke proceeds with next attempt = now.
 5. A new generation's cycle `D` is anchored at its first run.
 6. The publish rate budget applies to the authority principal.
 7. A superseded role that the provider reports absent or expired no longer needs the
-   restore assertion: `supersededDead` self-heals a `versions_changed` hold. A restore
-   stages new versions, so it can never clear the assertion; without this the hold
-   would only end by operator action.
+   restore assertion: `supersededDead` self-heals a `versions_changed` hold, and an
+   expired role (`VALID UNTIL` passed, no uncertain extend) settles by expiry without
+   opening the provider or running the assertion. A restore stages new versions, so it
+   can never clear the assertion (owner decision A).
 8. A crashed worker's open effect is closed `unknown` by the next claimant.
 9. New provider error `ErrRoleOwnsObjects`.
 10. Not covered by a test: a later run's versions passing the restore assertion;
-    extend-after-`D` parking; the per-organisation cap; blocking claim write on
-    PostgreSQL (SKIP LOCKED never blocks, so the stale-fence assertion covers it).
+    blocking claim write on PostgreSQL (SKIP LOCKED never blocks, so the stale-fence
+    assertion covers it). The head-of-line deferral is tested at the store level
+    (`DeferRotation` then `DueRotation`), because a non-definite gate error cannot be
+    induced in the harness.
 
-### Open questions for the owner
+Round 1 review additions:
 
-- A. Should a restore ever clear the restore hazard hold, and if so by which signal?
-  Today only superseded-role expiry or absence does.
-- B. Incident containment by authority principal and key-aware resume, pause and delete
-  remain deferred to S2b.
-- C. Should `extend` be gated by the authority, given it can only prolong a credential
-  that was already delivered?
+11. Grouped keys are refused at create and resume (`ErrRotationKeyGrouped`); an authority
+    draft on either key is refused at create and resume (`ErrRotationDraftPending`). A
+    draft appearing on a rotated key halts the rotation `gate_failed` at the pre-start
+    gate; at stage time the run rolls back. The gate's draft check runs in the same read
+    transaction as the rest of the gate.
+12. Gate and key-role matching: the gate accepts a key in either role of a rotation (a
+    key claim binds the key, not its role).
+13. Audit attribution: the actor stays the authority principal. A ctx marker
+    (`audit.WithContext`: origin `system`, authority id, correlation id = run id) is used
+    because `ResolveActorClass` refuses an asserted system actor under a principal-backed
+    proof. Runtime-written rows use `RotationRtInsertAudit` with actor class `system`.
+14. The superseded role is dropped on the provider that minted it
+    (`RotationRtLoadSupersededRole`), not the rotation's current provider.
+15. Infrastructure faults (datastore, keyring, decrypt) record `last_error`
+    `infrastructure_unavailable`, are excluded from `RotationRtFailedAttempts` and get
+    plain backoff with no halt. Caveat: a long outage churns attempts indefinitely and
+    never halts, by design (a halt would strand nothing but would hide a platform fault).
+16. The per-organisation cap (fewer than four live leases) gates `ClaimDueRun` and
+    `DueRotation`, but it is soft: the count and the claim are separate statements, so a
+    burst can exceed it by the number of concurrent claimants.
+17. Refusals from the shared publish budget count as ordinary retries, so a busy
+    authority can exhaust a rotation's window.
+18. A failed orphan-candidate drop (`drop_orphan`) is logged and left: the role is inert
+    and expires on its own `VALID UNTIL`.
+19. `AbandonOpenRuns` audits only the rows it changed (RETURNING) and settles an
+    abandoned-past-publish run with no superseded handle straight to `done`.
+20. No migration was needed: `rotation_runs` joins `rotations` for `provider_id`.
+21. No Compose render test was added; `TestRotationExecutorDeliveryPath` covers delivery.
+22. The "key deleted after publish" case is covered by unset-after-publish.
+
+### Owner decisions on the S2a review (resolved)
+
+- A. A restore never clears the restore-hazard hold except through expiry or absence of
+  the superseded role (fail-safe). S2b adds a loud status showing the deadline plus an
+  operator action to release it.
+- B. `extend` gets the pre-publish Gate minus the generation check. A failed gate halts
+  with a named reason instead of extending.
+- C. Incident containment by authority principal and key-aware resume, pause and delete
+  stay in S2b. **S2b must ship in the same release as S2a**: until it lands, an
+  operator has no run-aware pause or delete and no `restore_hold` release.
 
 ### What S2b must wire
 
@@ -811,10 +854,14 @@ refused as `role_owns_objects` and dropped after the object moves).
 
 ## S2 checklist (carried forward from review)
 
-Status after S2a: closed in S2a are the Gate, the provider-delete and environment-delete
+Status after S2a and its round 1 review: closed in S2a are the Gate, the provider-delete and environment-delete
 guards, retry with backoff, `extend` and `halted`, the two loops, quarantine exits, the
 rule 7 and rule 8 tests, the schedule bounds test, `superseded_handle` across rotations,
-the service side of `--abandon`, multi-node takeover and the `2BP01` refusal. Carried to
+the service side of `--abandon`, multi-node takeover, the `2BP01` refusal, the grouped-key
+and draft refusals, resume scheduling, the held-run extend and expiry exits. Note: the
+Gate's "environment unattended" and provider checks run in the gate read transaction, and
+the checklist items above that mention a Gate-only authority check are satisfied by the
+same `RecordedPrincipalHolds` call per key. Carried to
 S2b: the doctor warning and metric, incident containment, the `restore_hold` column,
 key-aware resume, pause and delete, the consumer-convergence report and run-now/runs.
 The list below is the original text and stays as the acceptance record.
