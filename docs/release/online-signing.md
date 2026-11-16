@@ -95,7 +95,9 @@ issue offers a signed tag of the newest green commit that holds every pending
 security merge instead of `ceremony.sh build`, because `build` can only tag the
 tip. The workflow itself tags and publishes nothing. The issue closes itself
 once the security merges are released; the Homebrew tap update stays a manual
-step (`ceremony.sh homebrew VERSION`). The workflow reaches main by promotion from
+step (`ceremony.sh homebrew VERSION`), by owner decision of 2026-11-16, which replaces
+the earlier "Homebrew follows the latest release automatically" decision for now;
+no tap credential exists. The workflow reaches main by promotion from
 dev and runs from main only, so no issue appears before a promotion has landed it.
 
 1. **Build the draft:** from clean current main, run

@@ -151,5 +151,9 @@ anything else changed since the issue was written. Fully unattended tagging stay
 App phase. The workflow lands on `dev` and reaches `main` by promotion; its triggers run only from
 `main`, so it goes live then.
 
+**Homebrew stays manual (owner decision 2026-11-16).** `ceremony.sh homebrew VERSION` remains the last
+step of the release issue and no tap credential is added. This replaces, for now, the earlier decision
+that Homebrew follows the latest release automatically.
+
 Operational entry point: [online signing](../release/online-signing.md).
 Primary-source evidence: [release ceremony research](../research/release-signing-ceremonies.md).

@@ -70,8 +70,11 @@ lands it on `main`**. `recheck` and the fixture work from `dev` today.
   ceremony does.
 - `recheck` does not rerun the compatibility comparison (it needs scratch
   PostgreSQL); the plan did, for the planned commit.
-- Homebrew follows the latest release only through the manual last command; part
-  3 found no credential that would let automation do it.
+- **Owner decision 2026-11-16: Homebrew stays manual.** `ceremony.sh homebrew X`
+  remains the last step in the issue and no tap credential is added. This
+  replaces, for now, the earlier decision that Homebrew follows the latest
+  release automatically (part 3 found that automation would need a cross-repo
+  credential that does not exist).
 
 ## Next steps
 
