@@ -28,14 +28,24 @@ DELETE FROM rotation_key_claims WHERE rotation_id=sqlc.arg(rotation_id) AND org_
 -- name: RotationCredentialExpiry :one
 SELECT ru.id AS run_id, ru.candidate_valid_until AS expires_at FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env) AND (ro.key_id=sqlc.arg(key_id) OR ro.username_key_id=sqlc.arg(key_id)) AND ru.published_revision IS NOT NULL ORDER BY ru.published_revision DESC, ru.id DESC LIMIT 1;
 
--- The delivered-credential expiry for a page of keys: the newest published run per
--- key, ranked in SQL so the result holds one row per requested key whatever the run
--- history, and a list never queries per row.
+-- The delivered-credential expiry for a page of keys, one query per key role
+-- (the password key and the username key of a rotation): the newest published run per key, ranked in SQL so the result holds
+-- one row per requested key whatever the run history. The store merges the two
+-- roles by published_revision, exactly as the single-key variant orders them, so a
+-- key that was one rotation's username key and is now another's password key
+-- reads the same in a list and in a get. A page never queries per row.
 -- name: RotationCredentialExpiries :many
-SELECT key_id AS key_id,run_id AS run_id,expires_at AS expires_at FROM (
- SELECT ro.key_id,ru.id AS run_id,ru.candidate_valid_until AS expires_at,ROW_NUMBER() OVER (PARTITION BY ro.key_id ORDER BY ru.published_revision DESC,ru.id DESC) AS ordinal
+SELECT key_id AS key_id,run_id AS run_id,expires_at AS expires_at,published_revision AS published_revision FROM (
+ SELECT ro.key_id AS key_id,ru.id AS run_id,ru.candidate_valid_until AS expires_at,ru.published_revision AS published_revision,ROW_NUMBER() OVER (PARTITION BY ro.key_id ORDER BY ru.published_revision DESC,ru.id DESC) AS ordinal
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
  WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env) AND ro.key_id IN (sqlc.slice('key_ids')) AND ru.published_revision IS NOT NULL
+ ) ranked WHERE ordinal=1 ORDER BY key_id;
+
+-- name: RotationCredentialExpiriesByUsernameKey :many
+SELECT key_id AS key_id,run_id AS run_id,expires_at AS expires_at,published_revision AS published_revision FROM (
+ SELECT ro.username_key_id AS key_id,ru.id AS run_id,ru.candidate_valid_until AS expires_at,ru.published_revision AS published_revision,ROW_NUMBER() OVER (PARTITION BY ro.username_key_id ORDER BY ru.published_revision DESC,ru.id DESC) AS ordinal
+ FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
+ WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env) AND ro.username_key_id IN (sqlc.slice('key_ids')) AND ru.published_revision IS NOT NULL
  ) ranked WHERE ordinal=1 ORDER BY key_id;
 
 -- A run blocks an environment delete while it may hold a live role: every phase
@@ -83,8 +93,6 @@ SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,rev
 -- quarantine it would hold its provider and environment forever. RETURNING is the
 -- list of the rows this statement actually changed, so the audit rows the caller
 -- writes match them one to one.
--- hikyo:reason The statement binds the full owning chain and the rotation id as top-level conjuncts; the predicate analyzer cannot parse the RETURNING clause that reports the changed rows.
--- hikyo:instance-scoped
 -- name: RotationAbandonOpenRuns :many
 UPDATE rotation_runs SET phase=CASE WHEN published_revision IS NOT NULL AND superseded_handle IS NULL THEN 'done' ELSE 'quarantine' END,phase_at=sqlc.arg(at),last_error='abandoned',next_attempt_at=CASE WHEN published_revision IS NULL THEN sqlc.arg(at) ELSE next_attempt_at END,lease_owner=NULL,lease_expires_at=NULL,lease_claim_token=lease_claim_token+1 WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND phase NOT IN ('done','quarantine','failed') RETURNING id,phase,candidate_handle,superseded_handle;
 
@@ -95,9 +103,12 @@ UPDATE rotation_runs SET phase=CASE WHEN published_revision IS NOT NULL AND supe
 -- name: RotationUnconfirmedFailedRunRotations :many
 SELECT DISTINCT ru.rotation_id FROM rotation_runs ru LEFT JOIN rotation_effects ef ON ef.run_id=ru.id AND ef.org_id=ru.org_id AND ef.project_id=ru.project_id AND ef.environment_id=ru.environment_id AND ef.kind='drop_candidate' AND ef.outcome='success' WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env) AND ru.phase='failed' AND ru.published_revision IS NULL AND ef.id IS NULL ORDER BY ru.rotation_id LIMIT sqlc.arg(page_limit);
 
--- Runs on a provider that may still hold a live role or owe a revoke: every phase
--- but done, and a failed run that never published without a confirmed drop.
--- hikyo:reason The provider delete guard counts runs across the provider's rotations under the org and project chain; the effect join is pinned to the run's own chain.
+-- Runs that need a provider to settle: a run of one of its rotations that may
+-- hold a live role (every phase but done, and a failed run that never published
+-- without a confirmed drop), and a run of ANY rotation that still owes the revoke
+-- of a superseded role this provider minted (a recreated rotation may have moved
+-- to another provider, but the old role is only droppable where it was minted).
+-- hikyo:reason The provider delete guard counts runs across the provider's rotations, and runs of other rotations that owe a role this provider minted, under the org and project chain; the effect join and the minting-run subquery are pinned to the run's own chain.
 -- hikyo:instance-scoped
 -- name: RotationProviderLiveRuns :one
-SELECT COUNT(*) FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id LEFT JOIN rotation_effects ef ON ef.run_id=ru.id AND ef.org_id=ru.org_id AND ef.project_id=ru.project_id AND ef.environment_id=ru.environment_id AND ef.kind='drop_candidate' AND ef.outcome='success' WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ro.provider_id=sqlc.arg(provider_id) AND ru.phase<>'done' AND NOT (ru.phase='failed' AND ru.published_revision IS NULL AND ef.id IS NOT NULL);
+SELECT COUNT(*) FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id LEFT JOIN rotation_effects ef ON ef.run_id=ru.id AND ef.org_id=ru.org_id AND ef.project_id=ru.project_id AND ef.environment_id=ru.environment_id AND ef.kind='drop_candidate' AND ef.outcome='success' WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.phase<>'done' AND NOT (ru.phase='failed' AND ru.published_revision IS NULL AND ef.id IS NOT NULL) AND (ro.provider_id=sqlc.arg(provider_id) OR EXISTS (SELECT 1 FROM rotation_runs sup JOIN rotations so ON so.org_id=sup.org_id AND so.project_id=sup.project_id AND so.environment_id=sup.environment_id AND so.id=sup.rotation_id WHERE sup.org_id=ru.org_id AND sup.project_id=ru.project_id AND sup.environment_id=ru.environment_id AND sup.candidate_handle=ru.superseded_handle AND so.provider_id=sqlc.arg(provider_id)));

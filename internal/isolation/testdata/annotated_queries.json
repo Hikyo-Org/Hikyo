@@ -3360,17 +3360,10 @@
   },
   {
     "engine": "postgres",
-    "name": "RotationAbandonOpenRuns",
-    "annotation": "instance-scoped",
-    "hash": "b1e2bc72c69581a6659fcd2ad012d2f6c39ccd38ad26f5da32eb621d865bfc89",
-    "reason": "The statement binds the full owning chain and the rotation id as top-level conjuncts; the predicate analyzer cannot parse the RETURNING clause that reports the changed rows."
-  },
-  {
-    "engine": "postgres",
     "name": "RotationProviderLiveRuns",
     "annotation": "instance-scoped",
-    "hash": "7ee122d4767b2734b91445443b3fa596505e99c03d8cbcbc4421097804d2e16f",
-    "reason": "The provider delete guard counts runs across the provider's rotations under the org and project chain; the effect join is pinned to the run's own chain."
+    "hash": "62de651e1b34c6a683e4ace892bf07e43d391d6541c1e6df42d1f65a648f9042",
+    "reason": "The provider delete guard counts runs across the provider's rotations, and runs of other rotations that owe a role this provider minted, under the org and project chain; the effect join and the minting-run subquery are pinned to the run's own chain."
   },
   {
     "engine": "postgres",
@@ -7136,17 +7129,10 @@
   },
   {
     "engine": "sqlite",
-    "name": "RotationAbandonOpenRuns",
-    "annotation": "instance-scoped",
-    "hash": "b1e2bc72c69581a6659fcd2ad012d2f6c39ccd38ad26f5da32eb621d865bfc89",
-    "reason": "The statement binds the full owning chain and the rotation id as top-level conjuncts; the predicate analyzer cannot parse the RETURNING clause that reports the changed rows."
-  },
-  {
-    "engine": "sqlite",
     "name": "RotationProviderLiveRuns",
     "annotation": "instance-scoped",
-    "hash": "7ee122d4767b2734b91445443b3fa596505e99c03d8cbcbc4421097804d2e16f",
-    "reason": "The provider delete guard counts runs across the provider's rotations under the org and project chain; the effect join is pinned to the run's own chain."
+    "hash": "62de651e1b34c6a683e4ace892bf07e43d391d6541c1e6df42d1f65a648f9042",
+    "reason": "The provider delete guard counts runs across the provider's rotations, and runs of other rotations that owe a role this provider minted, under the org and project chain; the effect join and the minting-run subquery are pinned to the run's own chain."
   },
   {
     "engine": "sqlite",

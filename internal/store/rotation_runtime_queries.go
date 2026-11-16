@@ -121,6 +121,10 @@ func (q pgRotationRuntimeQueries) failedAttempts(ctx context.Context, c domain.S
 	return q.q.RotationRtFailedAttempts(ctx, pggen.RotationRtFailedAttemptsParams{RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env), SinceAt: pgRequiredTime(since), Generation: generation})
 }
 
+func (q pgRotationRuntimeQueries) infraFaults(ctx context.Context, c domain.Scope, rotationID string, generation int64, since time.Time) (int64, error) {
+	return q.q.RotationRtInfraFaults(ctx, pggen.RotationRtInfraFaultsParams{RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env), SinceAt: pgRequiredTime(since), Generation: generation})
+}
+
 func (q pgRotationRuntimeQueries) publishedAt(ctx context.Context, c domain.Scope, revision int64) (time.Time, error) {
 	v, err := q.q.RotationRtSnapshotPublishedAt(ctx, pggen.RotationRtSnapshotPublishedAtParams{ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env), Revision: revision})
 	return pgTime(v), err
@@ -233,6 +237,10 @@ func (q sqliteRotationRuntimeQueries) getRun(ctx context.Context, c domain.Scope
 
 func (q sqliteRotationRuntimeQueries) failedAttempts(ctx context.Context, c domain.Scope, rotationID string, generation int64, since time.Time) (int64, error) {
 	return q.q.RotationRtFailedAttempts(ctx, sqlitegen.RotationRtFailedAttemptsParams{RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env), SinceAt: fixedStamp(since), Generation: generation})
+}
+
+func (q sqliteRotationRuntimeQueries) infraFaults(ctx context.Context, c domain.Scope, rotationID string, generation int64, since time.Time) (int64, error) {
+	return q.q.RotationRtInfraFaults(ctx, sqlitegen.RotationRtInfraFaultsParams{RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env), SinceAt: fixedStamp(since), Generation: generation})
 }
 
 func (q sqliteRotationRuntimeQueries) publishedAt(ctx context.Context, c domain.Scope, revision int64) (time.Time, error) {

@@ -604,36 +604,91 @@ func (q pgRotationQueries) credentialExpiry(ctx context.Context, chain domain.Sc
 	return out, nil
 }
 
+// expiryPick is the newest published run seen for one key across both key roles.
+type expiryPick struct {
+	revision int64
+	runID    string
+	stamp    string
+}
+
+// keepNewest records a candidate for a key unless a newer published run is already
+// held: the single-key lookup orders by published_revision then run id, and the
+// merge of the two role queries must agree with it.
+func keepNewest(picks map[string]expiryPick, key string, c expiryPick) {
+	if cur, ok := picks[key]; ok && (cur.revision > c.revision || (cur.revision == c.revision && cur.runID >= c.runID)) {
+		return
+	}
+	picks[key] = c
+}
+
+func expiryStamps(picks map[string]expiryPick) map[string]string {
+	out := make(map[string]string, len(picks))
+	for key, pick := range picks {
+		out[key] = pick.stamp
+	}
+	return out
+}
+
 func (q sqliteRotationQueries) credentialExpiries(ctx context.Context, chain domain.Scope, keyIDs []string) (map[string]string, error) {
-	rows, err := q.q.RotationCredentialExpiries(ctx, sqlitegen.RotationCredentialExpiriesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), KeyIds: keyIDs})
+	picks := map[string]expiryPick{}
+	password, err := q.q.RotationCredentialExpiries(ctx, sqlitegen.RotationCredentialExpiriesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), KeyIds: keyIDs})
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]string{}
-	for _, row := range rows {
-		stamp := row.ExpiresAt.String
+	username, err := q.q.RotationCredentialExpiriesByUsernameKey(ctx, sqlitegen.RotationCredentialExpiriesByUsernameKeyParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), KeyIds: keyIDs})
+	if err != nil {
+		return nil, err
+	}
+	add := func(key, runID string, revision sql.NullInt64, expires sql.NullString) error {
+		stamp := expires.String
 		if err := normalizeStoredTimes(&stamp); err != nil {
+			return err
+		}
+		keepNewest(picks, key, expiryPick{revision: revision.Int64, runID: runID, stamp: stamp})
+		return nil
+	}
+	for _, row := range password {
+		if err := add(row.KeyID, row.RunID, row.PublishedRevision, row.ExpiresAt); err != nil {
 			return nil, err
 		}
-		out[row.KeyID] = stamp
 	}
-	return out, nil
+	for _, row := range username {
+		if err := add(row.KeyID, row.RunID, row.PublishedRevision, row.ExpiresAt); err != nil {
+			return nil, err
+		}
+	}
+	return expiryStamps(picks), nil
 }
 
 func (q pgRotationQueries) credentialExpiries(ctx context.Context, chain domain.Scope, keyIDs []string) (map[string]string, error) {
-	rows, err := q.q.RotationCredentialExpiries(ctx, pggen.RotationCredentialExpiriesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), KeyIds: keyIDs})
+	picks := map[string]expiryPick{}
+	password, err := q.q.RotationCredentialExpiries(ctx, pggen.RotationCredentialExpiriesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), KeyIds: keyIDs})
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]string{}
-	for _, row := range rows {
-		stamp := pgStoredStamp(row.ExpiresAt)
+	username, err := q.q.RotationCredentialExpiriesByUsernameKey(ctx, pggen.RotationCredentialExpiriesByUsernameKeyParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), KeyIds: keyIDs})
+	if err != nil {
+		return nil, err
+	}
+	add := func(key, runID string, revision pgtype.Int8, expires pgtype.Timestamptz) error {
+		stamp := pgStoredStamp(expires)
 		if err := normalizeStoredTimes(&stamp); err != nil {
+			return err
+		}
+		keepNewest(picks, key, expiryPick{revision: revision.Int64, runID: runID, stamp: stamp})
+		return nil
+	}
+	for _, row := range password {
+		if err := add(row.KeyID, row.RunID, row.PublishedRevision, row.ExpiresAt); err != nil {
 			return nil, err
 		}
-		out[row.KeyID] = stamp
 	}
-	return out, nil
+	for _, row := range username {
+		if err := add(row.KeyID, row.RunID, row.PublishedRevision, row.ExpiresAt); err != nil {
+			return nil, err
+		}
+	}
+	return expiryStamps(picks), nil
 }
 
 func (q sqliteRotationQueries) claim(ctx context.Context, chain domain.Scope, keyID, rotationID string) (bool, error) {

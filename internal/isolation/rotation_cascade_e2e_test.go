@@ -717,3 +717,64 @@ func TestRotationCredentialExpiryOverLongHistory(t *testing.T) {
 		}
 	})
 }
+
+// A key that was one rotation's username key and is now another rotation's
+// password key reads the newest published run across both roles, and a list and a
+// get agree on it. The body keeps the generated queries' names inline: the
+// reviewed query pins name this test, and the lint requires each query's name in it.
+func TestRotationCredentialExpiryMatchesEitherKeyRole(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := tctx(t)
+		f := newRotationFixture(t, db)
+		// rot_role_prev drove rk_role_prev (password) and rk_role_prev_user
+		// (username); rot_role_next now takes rk_role_prev_user as ITS password key.
+		rawRotation(t, db, f, "rot_role_prev", "rk_role_prev")
+		rawRotation(t, db, f, "rot_role_next", "rk_role_prev_user")
+		older := time.Date(2029, 1, 1, 0, 0, 0, 0, time.UTC)
+		newer := time.Date(2030, 6, 6, 0, 0, 0, 0, time.UTC)
+		stamp := func(v time.Time) string { return v.Format("2006-01-02T15:04:05.000000Z") }
+		// The previous rotation's run is the newer publish of the shared key.
+		rawRun(t, db, f, "run_role_next_old", "rot_role_next", "done", "3", stamp(older), "2026-01-01T00:00:00.000000Z")
+		rawRun(t, db, f, "run_role_prev_new", "rot_role_prev", "done", "7", stamp(newer), "2026-02-01T00:00:00.000000Z")
+
+		list, err := f.svc.List(ctx, f.actor, f.scope, service.RotationListRequest{IncludeDisabled: true, Limit: service.RotationListMaxLimit})
+		if err != nil {
+			t.Fatalf("list: %v", err)
+		}
+		listed := map[string]time.Time{}
+		for _, item := range list.Items {
+			if item.CredentialExpiresAt != "" {
+				listed[item.ID] = mustParseStamp(t, item.CredentialExpiresAt)
+			}
+		}
+		got, err := f.svc.Get(ctx, f.actor, f.scope, "rot_role_next")
+		if err != nil {
+			t.Fatalf("get: %v", err)
+		}
+		fromGet := mustParseStamp(t, got.CredentialExpiresAt)
+		if !fromGet.Equal(newer) {
+			t.Fatalf("get reports %s, want the newer publish of the shared key %s", fromGet, newer)
+		}
+		if !listed["rot_role_next"].Equal(fromGet) {
+			t.Fatalf("list reports %s and get reports %s for the same rotation", listed["rot_role_next"], fromGet)
+		}
+		// The username-role generated query reads the same key from the other side.
+		var rows int
+		if db.Engine() == store.EngineSQLite {
+			r, err := sqlitegen.New(db.SQLiteWrite()).RotationCredentialExpiriesByUsernameKey(ctx, sqlitegen.RotationCredentialExpiriesByUsernameKeyParams{ChainOrg: "org_a", ChainProject: "prj_a1", ChainEnv: string(f.env), KeyIds: []string{"rk_role_prev_user"}})
+			if err != nil {
+				t.Fatalf("RotationCredentialExpiriesByUsernameKey: %v", err)
+			}
+			rows = len(r)
+		} else {
+			r, err := pggen.New(db.PG()).RotationCredentialExpiriesByUsernameKey(ctx, pggen.RotationCredentialExpiriesByUsernameKeyParams{ChainOrg: "org_a", ChainProject: "prj_a1", ChainEnv: string(f.env), KeyIds: []string{"rk_role_prev_user"}})
+			if err != nil {
+				t.Fatalf("RotationCredentialExpiriesByUsernameKey: %v", err)
+			}
+			rows = len(r)
+		}
+		if rows != 1 {
+			t.Fatalf("username-role expiry rows = %d, want 1", rows)
+		}
+	})
+}

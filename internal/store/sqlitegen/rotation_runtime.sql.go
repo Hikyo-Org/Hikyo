@@ -302,7 +302,7 @@ type RotationRtFailedAttemptsParams struct {
 
 // Failed runs of one rotation that never published, started after a cut: the
 // attempts a cycle has spent. A run that failed only because the executor's own
-// datastore, keyring or decryption faulted (infrastructure_unavailable) is not an
+// datastore or keyring faulted (infrastructure_unavailable) is not an
 // attempt: the provider was never tried, so it must not exhaust the retries. A zero cut counts the rotation's whole history.
 func (q *Queries) RotationRtFailedAttempts(ctx context.Context, arg RotationRtFailedAttemptsParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, rotationRtFailedAttempts,
@@ -425,6 +425,37 @@ func (q *Queries) RotationRtHaltRotation(ctx context.Context, arg RotationRtHalt
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const rotationRtInfraFaults = `-- name: RotationRtInfraFaults :one
+SELECT COUNT(*) FROM rotation_runs WHERE rotation_id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND generation=?5 AND phase IN ('failed','quarantine') AND published_revision IS NULL AND last_error='infrastructure_unavailable' AND started_at>?6
+`
+
+type RotationRtInfraFaultsParams struct {
+	RotationID   string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	Generation   int64
+	SinceAt      string
+}
+
+// Failed runs of one rotation that never published and failed only because the
+// executor's own datastore or keyring faulted, started after a cut: the streak
+// that sizes the infrastructure backoff. They are not attempts, so they never
+// exhaust the retries, but they must still back off instead of retrying at the floor.
+func (q *Queries) RotationRtInfraFaults(ctx context.Context, arg RotationRtInfraFaultsParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, rotationRtInfraFaults,
+		arg.RotationID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.Generation,
+		arg.SinceAt,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const rotationRtInsertAudit = `-- name: RotationRtInsertAudit :exec

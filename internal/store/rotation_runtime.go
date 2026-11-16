@@ -182,6 +182,7 @@ type rotationRuntimeQueries interface {
 	settleRun(ctx context.Context, run RotationRun, s RotationSettle) (int64, error)
 	getRun(ctx context.Context, chain domain.Scope, runID string) (RotationRun, error)
 	failedAttempts(ctx context.Context, chain domain.Scope, rotationID string, generation int64, since time.Time) (int64, error)
+	infraFaults(ctx context.Context, chain domain.Scope, rotationID string, generation int64, since time.Time) (int64, error)
 	publishedAt(ctx context.Context, chain domain.Scope, revision int64) (time.Time, error)
 	currentEntry(ctx context.Context, chain domain.Scope, keyID string) (string, error)
 	publishedEntries(ctx context.Context, chain domain.Scope, keyID string, fromRevision int64) ([]string, error)
@@ -517,6 +518,15 @@ func (r *RotationRuntime) OpenEffect(ctx context.Context, run RotationRun) (id, 
 func (r *RotationRuntime) FailedAttempts(ctx context.Context, chain domain.Scope, rotationID string, generation int64, since time.Time) (int64, error) {
 	return rotationRead(ctx, r, func(q rotationRuntimeQueries) (int64, error) {
 		return q.failedAttempts(ctx, chain, rotationID, generation, since)
+	})
+}
+
+// InfraFaults counts the rotation's runs of one generation since `since` that never
+// published and failed only on the executor's own infrastructure: not attempts, but
+// the streak that sizes the infrastructure backoff.
+func (r *RotationRuntime) InfraFaults(ctx context.Context, chain domain.Scope, rotationID string, generation int64, since time.Time) (int64, error) {
+	return rotationRead(ctx, r, func(q rotationRuntimeQueries) (int64, error) {
+		return q.infraFaults(ctx, chain, rotationID, generation, since)
 	})
 }
 

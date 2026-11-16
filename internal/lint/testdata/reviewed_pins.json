@@ -828,17 +828,31 @@
       ]
     },
     "RotationCredentialExpiries": {
-      "authority": "Verified rotation-list project chain binds org, project and environment on both joined tables. Runs of the requested key ids only; one derived table ranks each key's published runs by start time and id and the outer predicate keeps rank one, so a key reads its newest delivered credential expiry and never the run history. Reads ids and an expiry only.",
+      "authority": "Verified rotation-list project chain binds org, project and environment on both joined tables. Runs whose rotation names a requested key id as its password key only; one derived table ranks each key's published runs by published revision and id and the outer predicate keeps rank one, so a key reads its newest delivered credential expiry and never the run history. Reads ids, a revision and an expiry only.",
       "sql_hash": {
-        "postgres": "195d8ea3998c63f5f1e2d79d69ed23610417ba25b38d39a820fe3b4e28a14947",
-        "sqlite": "a4a849453278f81eb023de2a6dc6675dc13677d85e77b55a415cebffcfb284ec"
+        "postgres": "e52e2b17ad454c13dcc70a3faeb0f72a6a9f723f305070b00e20cbabad9a283b",
+        "sqlite": "55d6ec92957bd0ae083c09255907e8cb23f20d03ed338bc23ffd518164d2025c"
       },
       "api_hash": {
-        "postgres": "0b9dd733907e25b2b7c43aae0280eaa8c9cc747c459ebd67746425a830e95315",
-        "sqlite": "b624a9c7f2265cd489ee6292371f66a0ab0a62c6bc9a041539dd795b6dd79e65"
+        "postgres": "1665c67a106c91afd985ec8538875b34bbf8066e5143f053a7acc0aeba966230",
+        "sqlite": "5e8034ac00dc0f133e2873b32822caed0908c2fdc427cb35682986f5d9f7d65a"
       },
       "tests": [
         "internal/isolation/rotation_cascade_e2e_test.go:TestRotationCredentialExpiryOverLongHistory"
+      ]
+    },
+    "RotationCredentialExpiriesByUsernameKey": {
+      "authority": "Verified rotation-list project chain binds org, project and environment on both joined tables. Runs whose rotation names a requested key id as its username key only; one derived table ranks each key's published runs by published revision and id and the outer predicate keeps rank one. The store merges it with the password-role query by revision, so a key reads its newest delivered credential expiry whichever role it played. Reads ids, a revision and an expiry only.",
+      "sql_hash": {
+        "postgres": "a41f8999deb6f76c939d4e8367aaedf27a84c35708a80e5d4ba4c7823a232d3c",
+        "sqlite": "fe31a105ec5a3455f426c1ebb53c62f77910f1beff4dfdbad4926ba7b2edd63d"
+      },
+      "api_hash": {
+        "postgres": "1665c67a106c91afd985ec8538875b34bbf8066e5143f053a7acc0aeba966230",
+        "sqlite": "5e8034ac00dc0f133e2873b32822caed0908c2fdc427cb35682986f5d9f7d65a"
+      },
+      "tests": [
+        "internal/isolation/rotation_cascade_e2e_test.go:TestRotationCredentialExpiryMatchesEitherKeyRole"
       ]
     }
   },

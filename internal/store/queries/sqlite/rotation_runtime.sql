@@ -91,10 +91,17 @@ SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generat
 
 -- Failed runs of one rotation that never published, started after a cut: the
 -- attempts a cycle has spent. A run that failed only because the executor's own
--- datastore, keyring or decryption faulted (infrastructure_unavailable) is not an
+-- datastore or keyring faulted (infrastructure_unavailable) is not an
 -- attempt: the provider was never tried, so it must not exhaust the retries. A zero cut counts the rotation's whole history.
 -- name: RotationRtFailedAttempts :one
 SELECT COUNT(*) FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(generation) AND phase IN ('failed','quarantine') AND published_revision IS NULL AND (last_error IS NULL OR last_error<>'infrastructure_unavailable') AND started_at>sqlc.arg(since_at);
+
+-- Failed runs of one rotation that never published and failed only because the
+-- executor's own datastore or keyring faulted, started after a cut: the streak
+-- that sizes the infrastructure backoff. They are not attempts, so they never
+-- exhaust the retries, but they must still back off instead of retrying at the floor.
+-- name: RotationRtInfraFaults :one
+SELECT COUNT(*) FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(generation) AND phase IN ('failed','quarantine') AND published_revision IS NULL AND last_error='infrastructure_unavailable' AND started_at>sqlc.arg(since_at);
 
 -- The commit time of the snapshot a run published: the single anchor P of the
 -- failure schedule. It is the publish transaction's own timestamp.

@@ -39,8 +39,6 @@ type RotationAbandonOpenRunsRow struct {
 // quarantine it would hold its provider and environment forever. RETURNING is the
 // list of the rows this statement actually changed, so the audit rows the caller
 // writes match them one to one.
-// hikyo:reason The statement binds the full owning chain and the rotation id as top-level conjuncts; the predicate analyzer cannot parse the RETURNING clause that reports the changed rows.
-// hikyo:instance-scoped
 func (q *Queries) RotationAbandonOpenRuns(ctx context.Context, arg RotationAbandonOpenRunsParams) ([]RotationAbandonOpenRunsRow, error) {
 	rows, err := q.db.Query(ctx, rotationAbandonOpenRuns,
 		arg.At,
@@ -222,8 +220,8 @@ func (q *Queries) RotationCreate(ctx context.Context, arg RotationCreateParams) 
 }
 
 const rotationCredentialExpiries = `-- name: RotationCredentialExpiries :many
-SELECT key_id AS key_id,run_id AS run_id,expires_at AS expires_at FROM (
- SELECT ro.key_id,ru.id AS run_id,ru.candidate_valid_until AS expires_at,ROW_NUMBER() OVER (PARTITION BY ro.key_id ORDER BY ru.published_revision DESC,ru.id DESC) AS ordinal
+SELECT key_id AS key_id,run_id AS run_id,expires_at AS expires_at,published_revision AS published_revision FROM (
+ SELECT ro.key_id AS key_id,ru.id AS run_id,ru.candidate_valid_until AS expires_at,ru.published_revision AS published_revision,ROW_NUMBER() OVER (PARTITION BY ro.key_id ORDER BY ru.published_revision DESC,ru.id DESC) AS ordinal
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
  WHERE ru.org_id=$1 AND ru.project_id=$2 AND ru.environment_id=$3 AND ro.key_id = ANY($4::text[]) AND ru.published_revision IS NOT NULL
  ) ranked WHERE ordinal=1 ORDER BY key_id
@@ -237,14 +235,18 @@ type RotationCredentialExpiriesParams struct {
 }
 
 type RotationCredentialExpiriesRow struct {
-	KeyID     string
-	RunID     string
-	ExpiresAt pgtype.Timestamptz
+	KeyID             string
+	RunID             string
+	ExpiresAt         pgtype.Timestamptz
+	PublishedRevision pgtype.Int8
 }
 
-// The delivered-credential expiry for a page of keys: the newest published run per
-// key, ranked in SQL so the result holds one row per requested key whatever the run
-// history, and a list never queries per row.
+// The delivered-credential expiry for a page of keys, one query per key role
+// (the password key and the username key of a rotation): the newest published run per key, ranked in SQL so the result holds
+// one row per requested key whatever the run history. The store merges the two
+// roles by published_revision, exactly as the single-key variant orders them, so a
+// key that was one rotation's username key and is now another's password key
+// reads the same in a list and in a get. A page never queries per row.
 func (q *Queries) RotationCredentialExpiries(ctx context.Context, arg RotationCredentialExpiriesParams) ([]RotationCredentialExpiriesRow, error) {
 	rows, err := q.db.Query(ctx, rotationCredentialExpiries,
 		arg.ChainOrg,
@@ -259,7 +261,64 @@ func (q *Queries) RotationCredentialExpiries(ctx context.Context, arg RotationCr
 	var items []RotationCredentialExpiriesRow
 	for rows.Next() {
 		var i RotationCredentialExpiriesRow
-		if err := rows.Scan(&i.KeyID, &i.RunID, &i.ExpiresAt); err != nil {
+		if err := rows.Scan(
+			&i.KeyID,
+			&i.RunID,
+			&i.ExpiresAt,
+			&i.PublishedRevision,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rotationCredentialExpiriesByUsernameKey = `-- name: RotationCredentialExpiriesByUsernameKey :many
+SELECT key_id AS key_id,run_id AS run_id,expires_at AS expires_at,published_revision AS published_revision FROM (
+ SELECT ro.username_key_id AS key_id,ru.id AS run_id,ru.candidate_valid_until AS expires_at,ru.published_revision AS published_revision,ROW_NUMBER() OVER (PARTITION BY ro.username_key_id ORDER BY ru.published_revision DESC,ru.id DESC) AS ordinal
+ FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
+ WHERE ru.org_id=$1 AND ru.project_id=$2 AND ru.environment_id=$3 AND ro.username_key_id = ANY($4::text[]) AND ru.published_revision IS NOT NULL
+ ) ranked WHERE ordinal=1 ORDER BY key_id
+`
+
+type RotationCredentialExpiriesByUsernameKeyParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	KeyIds       []string
+}
+
+type RotationCredentialExpiriesByUsernameKeyRow struct {
+	KeyID             string
+	RunID             string
+	ExpiresAt         pgtype.Timestamptz
+	PublishedRevision pgtype.Int8
+}
+
+func (q *Queries) RotationCredentialExpiriesByUsernameKey(ctx context.Context, arg RotationCredentialExpiriesByUsernameKeyParams) ([]RotationCredentialExpiriesByUsernameKeyRow, error) {
+	rows, err := q.db.Query(ctx, rotationCredentialExpiriesByUsernameKey,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.KeyIds,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RotationCredentialExpiriesByUsernameKeyRow
+	for rows.Next() {
+		var i RotationCredentialExpiriesByUsernameKeyRow
+		if err := rows.Scan(
+			&i.KeyID,
+			&i.RunID,
+			&i.ExpiresAt,
+			&i.PublishedRevision,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -706,7 +765,7 @@ func (q *Queries) RotationPauseActive(ctx context.Context, arg RotationPauseActi
 }
 
 const rotationProviderLiveRuns = `-- name: RotationProviderLiveRuns :one
-SELECT COUNT(*) FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id LEFT JOIN rotation_effects ef ON ef.run_id=ru.id AND ef.org_id=ru.org_id AND ef.project_id=ru.project_id AND ef.environment_id=ru.environment_id AND ef.kind='drop_candidate' AND ef.outcome='success' WHERE ru.org_id=$1 AND ru.project_id=$2 AND ro.provider_id=$3 AND ru.phase<>'done' AND NOT (ru.phase='failed' AND ru.published_revision IS NULL AND ef.id IS NOT NULL)
+SELECT COUNT(*) FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id LEFT JOIN rotation_effects ef ON ef.run_id=ru.id AND ef.org_id=ru.org_id AND ef.project_id=ru.project_id AND ef.environment_id=ru.environment_id AND ef.kind='drop_candidate' AND ef.outcome='success' WHERE ru.org_id=$1 AND ru.project_id=$2 AND ru.phase<>'done' AND NOT (ru.phase='failed' AND ru.published_revision IS NULL AND ef.id IS NOT NULL) AND (ro.provider_id=$3 OR EXISTS (SELECT 1 FROM rotation_runs sup JOIN rotations so ON so.org_id=sup.org_id AND so.project_id=sup.project_id AND so.environment_id=sup.environment_id AND so.id=sup.rotation_id WHERE sup.org_id=ru.org_id AND sup.project_id=ru.project_id AND sup.environment_id=ru.environment_id AND sup.candidate_handle=ru.superseded_handle AND so.provider_id=$3))
 `
 
 type RotationProviderLiveRunsParams struct {
@@ -715,9 +774,12 @@ type RotationProviderLiveRunsParams struct {
 	ProviderID   string
 }
 
-// Runs on a provider that may still hold a live role or owe a revoke: every phase
-// but done, and a failed run that never published without a confirmed drop.
-// hikyo:reason The provider delete guard counts runs across the provider's rotations under the org and project chain; the effect join is pinned to the run's own chain.
+// Runs that need a provider to settle: a run of one of its rotations that may
+// hold a live role (every phase but done, and a failed run that never published
+// without a confirmed drop), and a run of ANY rotation that still owes the revoke
+// of a superseded role this provider minted (a recreated rotation may have moved
+// to another provider, but the old role is only droppable where it was minted).
+// hikyo:reason The provider delete guard counts runs across the provider's rotations, and runs of other rotations that owe a role this provider minted, under the org and project chain; the effect join and the minting-run subquery are pinned to the run's own chain.
 // hikyo:instance-scoped
 func (q *Queries) RotationProviderLiveRuns(ctx context.Context, arg RotationProviderLiveRunsParams) (int64, error) {
 	row := q.db.QueryRow(ctx, rotationProviderLiveRuns, arg.ChainOrg, arg.ChainProject, arg.ProviderID)
