@@ -147,7 +147,7 @@ is_ancestor() {
 # shellcheck disable=SC2016
 security_pr_def='def is_security_pr($bot): . != null and .author.databaseId == $bot and .baseRefName == "main" and ((.headRefName // "") | startswith("dependabot/"));'
 # A title is untrusted text that lands in an issue: keep a small alphabet and never a URL scheme.
-clean_title_def='def clean_title: gsub("[^A-Za-z0-9 ._:/+(),-]"; "") | until(contains("://") | not; gsub("://"; "")) | .[0:100];'
+clean_title_def='def clean_title: gsub("[^A-Za-z0-9 ._:/+(),-]"; "") | until((contains("://") or test("www\\."; "i")) | not; gsub("://"; "") | gsub("www\\."; ""; "i")) | .[0:100];'
 
 # Reads every Dependabot alert (all states listed explicitly, so a change of the
 # default cannot hide the fixed ones) and prints the pull requests Dependabot
@@ -162,7 +162,7 @@ security_prs() {
 	jq -es 'all(.[]; .data.repository.vulnerabilityAlerts.nodes | type == "array")' "$work/alerts" >/dev/null ||
 		die 'the Dependabot alert answer is incomplete'
 	if jq -s -e '[.[].data.repository.vulnerabilityAlerts.nodes[]] | length == 0' "$work/alerts" >/dev/null; then
-		api "$work/alerts-rest.json" "repos/$GH_REPO/dependabot/alerts?per_page=1"
+		api "$work/alerts-rest.json" "repos/$GH_REPO/dependabot/alerts?state=open,fixed&per_page=1"
 		jq -e 'type == "array" and length == 0' "$work/alerts-rest.json" >/dev/null ||
 			die 'GraphQL listed no Dependabot alerts but REST lists some (or answered unexpectedly); nothing is decided'
 	fi
@@ -264,32 +264,62 @@ read_published() {
 	trust_highest=$(jq -r '.highest_release // empty' "$trust/metadata.json")
 }
 
-# is_burned VERSION: 0 when the tag exists, no release (published or draft) is
+# tag_run VERSION: the release-build runs of the tag push. Sets run_state (none: no run
+# found; going: a run has not finished or ended without a verdict; success: a run
+# succeeded, a re-run of failed jobs counts; failed: every run ended in failure) and
+# run_url (the newest run's page). The planner's contents:read token cannot be relied on
+# to list draft releases, so "staged" means a succeeded run, never the draft listing.
+tag_run() {
+	api "$work/runs-$1.json" "repos/$GH_REPO/actions/workflows/release.yml/runs?event=push&branch=v$1&per_page=20"
+	run_state=$(jq -er --arg tag "v$1" '[.workflow_runs[]? | select(.head_branch == $tag and .event == "push")] |
+		if length == 0 then "none"
+		elif any(.[]; .status == "completed" and .conclusion == "success") then "success"
+		elif all(.[]; .status == "completed" and (.conclusion | IN("failure", "cancelled", "timed_out", "startup_failure"))) then "failed"
+		else "going" end' "$work/runs-$1.json") || die "cannot read the release-build runs of v$1"
+	run_url=$(jq -r --arg tag "v$1" '[.workflow_runs[]? | select(.head_branch == $tag and .event == "push")][0].html_url // empty' "$work/runs-$1.json") ||
+		die "cannot read the release-build run address of v$1"
+	[ -z "$run_url" ] || printf '%s\n' "$run_url" | grep -Eq '^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/actions/runs/[0-9]+$' ||
+		die "unreadable release-build run address of v$1"
+}
+
+# is_burned VERSION: 0 when the tag exists, no release (published or visible draft) is
 # attached to it, and every release-build run of the tag push has ended without
-# success. A run still going, a run that succeeded, a draft or no run at all is not
+# success. A run still going, a run that succeeded, a release or no run at all is not
 # burned: the tag may yet complete. A pushed tag is never moved (the ceremony's
-# rule), so a failed build is what makes its version unusable.
+# rule), so a failed build is what makes its version unusable, once the failed jobs
+# cannot be re-run to completion (the alarm says to try that first).
 is_burned() {
 	jq -s -e --arg ref "refs/tags/v$1" 'any(.[][]; .ref == $ref)' "$work/matching-tags.json" >/dev/null || return 1
 	if jq -e --arg tag "v$1" 'any(.[][]; .tag_name == $tag)' "$work/releases.json" >/dev/null; then return 1; fi
-	api "$work/runs-$1.json" "repos/$GH_REPO/actions/workflows/release.yml/runs?event=push&branch=v$1&per_page=20"
-	jq -e --arg tag "v$1" '[.workflow_runs[]? | select(.head_branch == $tag and .event == "push")] |
-		length > 0 and all(.[]; .status == "completed" and (.conclusion | IN("failure", "cancelled", "timed_out", "startup_failure")))' "$work/runs-$1.json" >/dev/null
+	tag_run "$1"
+	[ "$run_state" = failed ]
 }
 
-# skip_burned: move the patch version past versions a failed release-build burned, so the
-# issue never offers a tag that cannot be used. (A burned minor needs no skipping: its tag is
-# above every patch, which the tag checks refuse.) Sets burned_note (empty when none) and
-# leaves the tag list in $work/matching-tags.json. Needs read_published.
+# burn VERSION: record a burned version and the failed run's page for the alarm.
+burn() {
+	burned_note="${burned_note:+$burned_note, }v$1"
+	burned_runs="${burned_runs:+$burned_runs; }v$1 (${run_url:-no run address})"
+	skips=$((skips + 1))
+	[ "$skips" -le 5 ] || die 'more than five burned versions; a person must look'
+}
+
+# skip_burned: move the patch version and the minor version past versions a failed
+# release-build burned, so the issue never offers a tag that cannot be used. Sets
+# burned_note and burned_runs (empty when none), minor_burned (set when the minor was
+# skipped: a stable tag above every patch exists, so only a minor can follow) and leaves
+# the tag list in $work/matching-tags.json. Needs read_published.
 skip_burned() {
-	burned_note=
+	burned_note='' burned_runs='' minor_burned=''
 	api "$work/matching-tags.json" --paginate "repos/$GH_REPO/git/matching-refs/tags/v"
 	skips=0
 	while is_burned "$next"; do
-		burned_note="${burned_note:+$burned_note, }v$next"
+		burn "$next"
 		next=$(patch_successor "$next")
-		skips=$((skips + 1))
-		[ "$skips" -le 5 ] || die 'more than five burned patch versions; a person must look'
+	done
+	while is_burned "$minor"; do
+		burn "$minor"
+		minor=$(minor_successor "$minor")
+		minor_burned=1
 	done
 }
 
@@ -388,7 +418,8 @@ fallback_check() {
 # edge_check COMMIT VERSION: the target's release/compatibility/sources.json must carry
 # the reviewed release-source edge from the latest stable release for each engine,
 # checked against that release's own verified declaration (check-compatibility-unchanged.sh
-# --edges-only, the same rule the build-time check applies). A missing or wrong edge
+# --edges-only, the same rule the pre-tag compatibility check applies; release.yml runs
+# no edge check at all, so this and that check are the only mechanical gates). A missing or wrong edge
 # is a blocking prerequisite that names what to add; an unverifiable baseline is not an
 # answer. Writes the problems to $work/edge-blocked when it refuses.
 edge_check() {
@@ -430,8 +461,17 @@ compat_checks() {
 	rc=0
 	"$COMPAT_BIN" "$GH_REPO" "$cc_tree/release/trust" "$cc_version" "$work/declaration.json" >"$work/compat.out" 2>&1 || rc=$?
 	case $rc in
-	0) [ "$cc_kind" = patch ] || refuse "the compatibility declaration is identical to $latest_tag's, so a patch release is enough" ;;
-	1) if [ "$cc_kind" = patch ]; then differs "$(tail -n 1 "$work/compat.out")"; fi ;;
+	0) [ "$cc_kind" = patch ] || [ -n "$minor_burned" ] || refuse "the compatibility declaration is identical to $latest_tag's, so a patch release is enough" ;;
+	1)
+		# Only the check's own "differs" verdict is a difference. Any other refusal (an
+		# incomplete declaration, a baseline that needs a recovery bridge) is not one: it
+		# neither turns a patch into a minor nor lets a minor through.
+		if grep -F 'the compatibility declaration differs from the one v' "$work/compat.out" >"$work/differs-line"; then
+			if [ "$cc_kind" = patch ]; then differs "$(tail -n 1 "$work/differs-line")"; fi
+		else
+			refuse "the compatibility check refused the declaration of $cc_commit: $(tail -n 1 "$work/compat.out")"
+		fi
+		;;
 	5) refuse "$(tail -n 1 "$work/compat.out")" ;;
 	*) cat "$work/compat.out" >&2; die 'cannot compare the compatibility declaration with the previous release' ;;
 	esac
@@ -444,8 +484,11 @@ compat_checks() {
 # time counts too. An unreadable time fails the run. Needs read_published and
 # security_prs to have run.
 unlinked_count() {
-	jq -s --argjson since "$(epoch "$latest_published_at")" --argjson bot "$dependabot_user_id" "$security_pr_def"'[.[].data.repository.vulnerabilityAlerts.nodes[] |
-		select(.state == "FIXED" and (((.fixedAt // "") == "") or ((.fixedAt | fromdateiso8601) > $since)) and
+	# A fixedAt that jq would read leniently must round-trip to the same text, or the run stops.
+	jq -s --argjson since "$(epoch "$latest_published_at")" --argjson bot "$dependabot_user_id" "$security_pr_def"'
+		def fixed_epoch: if (.fixedAt | fromdateiso8601 | todateiso8601) == .fixedAt then (.fixedAt | fromdateiso8601) else error("unparseable fixedAt") end;
+		[.[].data.repository.vulnerabilityAlerts.nodes[] |
+		select(.state == "FIXED" and (((.fixedAt // "") == "") or (fixed_epoch > $since)) and
 			((.dependabotUpdate.pullRequest | is_security_pr($bot) and .merged == true) | not))] | length' "$work/alerts" ||
 		die 'cannot read the fixed Dependabot alerts'
 }
@@ -472,7 +515,7 @@ plan_inner() {
 	read_open_security
 	skip_burned
 	if [ -n "$burned_note" ] && [ -s "$work/pending" ]; then
-		raise "$burned_note was tagged, but its release-build run failed and no release exists for it; a pushed tag is never moved or recreated, so that version is burned and cannot be used"
+		raise "the release-build run of $burned_runs failed and no release exists for it, so this plan skips that version. Re-run the failed jobs of the run first: a failure before the build (validation, docs, floor-bench, everything build-artifacts needs) is almost always rerunnable. Only if the byte set cannot be completed safely, use the next version this issue plans (a pushed tag is never moved or recreated)"
 	fi
 	version=$next kind=patch
 	if [ -n "$placement_blocked" ]; then
@@ -504,16 +547,26 @@ plan_inner() {
 		return 0
 	fi
 	# The version may already be tagged or staged (as a patch or as the minor): say so,
-	# never offer a second tag.
+	# never offer a second tag. Staged means the tag's release-build run succeeded: the
+	# draft listing is not trusted (the token may not see drafts), and a failed run that
+	# already created a draft is not staged.
 	for candidate_version in "$next" "$minor"; do
 		if jq -s -e --arg ref "refs/tags/v$candidate_version" 'any(.[][]; .ref == $ref)' "$work/matching-tags.json" >/dev/null; then
 			version=$candidate_version
-			if jq -e --arg tag "v$version" 'any(.[][]; .tag_name == $tag and .draft == true)' "$work/releases.json" >/dev/null; then
+			[ "$version" != "$minor" ] || kind=minor
+			tag_run "$version"
+			run_at=${run_url:+ ($run_url)}
+			if [ "$run_state" = success ]; then
 				state=drafted
-				why="v$version is tagged and its draft release is staged"
+				why="v$version is tagged and its release-build run succeeded$run_at, so its draft release is staged (this run cannot list drafts; \`review\` shows the real one)"
 			else
 				state=tagged
-				why="v$version is tagged but has no release; its release-build run is still going or failed"
+				case $run_state in
+				going) why="v$version is tagged, and its release-build run has not finished or ended without a verdict$run_at" ;;
+				failed) why="v$version is tagged and its release-build run failed$run_at, yet a release is already attached to the tag; do not trust it until you know why the run failed" ;;
+				*) why="v$version is tagged, but no release-build run was found for that tag push, so nothing says the build ever started" ;;
+				esac
+				state_note=$(tagged_note)
 			fi
 			return 0
 		fi
@@ -577,14 +630,22 @@ plan_inner() {
 	rc=0
 	main_tip=$GITHUB_SHA
 	edge_block=
-	(tag_checks "$next" "$target" patch) >"$work/refusal" 2>&1 || rc=$?
-	if [ "$rc" = 5 ]; then
-		# A patch cannot carry a compatibility change. Plan the next minor instead, if it
-		# passes every other check.
-		compat_note=$(tail -n 1 "$work/refusal" | sed -e 's/^security-patch-plan: //' -e 's/^compatibility check: //' -e 's/ *$//' | tr '\n' ' ' | sed 's/ *$//')
+	if [ -n "$minor_burned" ]; then
+		# A stable tag above every patch exists (a burned minor), so a patch can no longer be
+		# tagged: only the next unused minor can follow.
+		compat_note="a burned minor tag ($burned_note) sits above every patch version, so only the next minor can be tagged"
 		version=$minor kind=minor
-		rc=0
 		(tag_checks "$minor" "$target" minor) >"$work/refusal" 2>&1 || rc=$?
+	else
+		(tag_checks "$next" "$target" patch) >"$work/refusal" 2>&1 || rc=$?
+		if [ "$rc" = 5 ]; then
+			# A patch cannot carry a compatibility change. Plan the next minor instead, if it
+			# passes every other check.
+			compat_note=$(tail -n 1 "$work/refusal" | sed -e 's/^security-patch-plan: //' -e 's/^compatibility check: //' -e 's/ *$//' | tr '\n' ' ' | sed 's/ *$//')
+			version=$minor kind=minor
+			rc=0
+			(tag_checks "$minor" "$target" minor) >"$work/refusal" 2>&1 || rc=$?
+		fi
 	fi
 	case $rc in
 	0) ;;
@@ -641,7 +702,19 @@ ceremony_block() {
 		"git fetch origin main && git switch --detach origin/main && scripts/release/ceremony.sh homebrew $1"
 }
 
-burned_tag_hint="A pushed tag is never moved or recreated. If \`release-build\` fails before the draft is complete, inspect the original run; if the byte set cannot be completed safely, the version is burned and you use a new version (the ceremony's own rule)."
+burned_tag_hint="A pushed tag is never moved or recreated. If \`release-build\` fails, inspect the run and re-run its failed jobs first: a failure before the build (validation, docs, floor-bench, everything \`build-artifacts\` needs) is almost always rerunnable. Only if the byte set cannot be completed safely is the version burned, and you then use a new version (the ceremony's own rule)."
+
+# What a person needs when a tag exists without a staged release: the run, what to try and
+# the way out the planner cannot take for them.
+tagged_note() {
+	cat <<EOF
+$burned_tag_hint
+
+${run_url:+Release-build run: $run_url
+
+}If the run cannot be completed, treat the version as burned. The plan then skips it once its run has failed and no release is attached; a tag with no run at all is never skipped by this plan, so the next version is tagged by hand through the ceremony after your own checks of the commit.
+EOF
+}
 
 # What a person must do about a missing or wrong release-source edge. The tool gap is
 # stated, not papered over: nothing authors a stable edge today.
@@ -655,7 +728,18 @@ An upgrade records the installed release by its identity, and the planner only r
 $(tr -cd '[:print:]\n' <"$work/edge-blocked" | head -n 40)
 \`\`\`
 
-How to author it: **no supported command writes a stable release edge** (\`scripts/release/nightly sources\` reads verified nightly directories only). This is a tooling gap that the release owner has been told about. Until a tool exists, write the edge by hand from the verified $latest_tag files, in a pull request that is reviewed and merged to \`main\`: the source is that release's identity as the check printed it (version, sequence, commit, and the SHA-256 of its published \`release-manifest.json\` and \`upgrade-compatibility.json\`), the migrations and schema digest are copied from the engine's entry in its declaration, and the mode (\`maintenance\` or \`restart\`) is the reviewer's decision, see [signed upgrade compatibility](https://github.com/$GH_REPO/blob/main/docs/adr/signed-upgrade-compatibility.md). This issue is rewritten once the edge is on main; \`recheck\` enforces the same check against the commit you tag.
+How to author it: **no supported command writes a stable release edge** (\`scripts/release/nightly sources\` reads verified nightly directories only). This is a tooling gap that the release owner has been told about. Until a tool exists, write the edge by hand, in a pull request that is reviewed and merged to \`main\`. A pull request to \`main\` must come from a same-repository \`hotfix/\` branch ([branching guide](https://github.com/$GH_REPO/blob/main/docs/development/branching.md)); going through \`dev\` instead means a promotion that brings everything on \`dev\`, its migrations included, to \`main\`, which turns this patch into a minor release.
+
+Fetch and verify $latest_tag's files exactly as the check does, and read the identity the verifier prints:
+
+\`\`\`sh
+dir=\$(mktemp -d) && gh release download $latest_tag --repo $GH_REPO --dir "\$dir/files" &&
+  go run ./scripts/release/stable verify --trust release/trust --trust-only --state "\$dir/state.json" &&
+  go run ./scripts/release/stable verify --trust release/trust --directory "\$dir/files" --version ${latest_tag#v} \\
+    --commit "\$(jq -r .source_commit "\$dir/files/release-manifest.json")" --state "\$dir/state.json" --historical --published
+\`\`\`
+
+It prints \`{"identity": {...}, "published_oci_verified": true}\`. Each engine's edge is: \`source.release\` is that \`identity\` object verbatim (\`profile\`, \`version\`, \`sequence\`, \`commit\`, \`compatibility_sha256\`, \`manifest_sha256\`), \`migrations\` and \`schema_sha256\` are copied from that engine's entry in $latest_tag's \`upgrade-compatibility.json\`, and \`mode\` is the reviewer's decision, see [signed upgrade compatibility](https://github.com/$GH_REPO/blob/main/docs/adr/signed-upgrade-compatibility.md). \`restart\` is valid only when the release's migrations and schema digest are unchanged from $latest_tag's (\`internal/upgradecompat/declaration.go\` refuses it otherwise); \`maintenance\` is the choice when they changed. This issue is rewritten once the edge is on main; \`recheck\` enforces the same check against the commit you tag.
 
 EOF
 }
@@ -668,7 +752,7 @@ minor_prerequisites() {
 
 The planning run checked, for \`$target\`: trust is synchronized and authenticated, \`v$version\` is a valid successor of $latest_tag, the commit has complete green source proof, the fallback channel gate passes, no tag or release at or above \`v$version\` exists, \`release/compatibility/sources.json\` carries a sound release-source edge from $latest_tag for each engine, and the real compatibility generator produced a declaration. The declaration **differs** from $latest_tag's, which is why a patch cannot ship this commit. The run cannot tell whether a difference is intended: that is yours to confirm from the diff below. A minor release ships everything on that commit, not only the security fix. Confirm each of these yourself before the commands below:
 
-- [ ] Dispatch the \`release-compatibility-check\` workflow from main for \`$version\` (\`gh workflow run release-compatibility-check.yml --ref main -f version=$version\`) and read the diff in its log. Expect "differs"; confirm that the differences are the unreleased migrations and nothing else (no changed earlier migration, no unexpected source edge or schema change).
+- [ ] Read the difference below, which the planning run generated for \`$target\` itself, and confirm that it is the unreleased migrations and nothing else (no changed earlier migration, no unexpected source edge or schema change). The \`release-compatibility-check\` workflow compares main's tip, which is not this commit unless the tip is the target, so it is no substitute.
 - [ ] Review the edge modes (\`restart\` or \`maintenance\`) of the release-source edges and of the new release's declaration against [signed upgrade compatibility](https://github.com/$GH_REPO/blob/main/docs/adr/signed-upgrade-compatibility.md).
 - [ ] Decide that everything on \`$target\` since $latest_tag, not only the security fix, may ship: \`git log $latest_tag..$target\`.
 
@@ -684,13 +768,21 @@ $(tr -cd '[:print:]\n' <"$work/compat.out" | head -n 200)
 EOF
 }
 
+# The backticks are markdown.
+# shellcheck disable=SC2016
+minor_notes_note() {
+	printf 'A minor release needs real release notes: `publish` refuses the placeholder, so write them before it.'
+}
+
 render_ready() {
 	if [ "$kind" = minor ]; then
 		heading="Security release v$version (minor) is ready to tag once you have confirmed its prerequisites"
-		checked="trust synchronized and authenticated; \`v$version\` is the next minor of $latest_tag; green source proof; the fallback channel gate passes; the commit holds every merge above; no tag or release for \`v$version\` exists; the release-source edge from $latest_tag is sound; the compatibility generator produced a declaration, which differs from $latest_tag's."
+		if [ -n "$burned_note" ]; then successor="the next unused minor of $latest_tag after the burned $burned_note"; else successor="the next minor of $latest_tag"; fi
+		checked="trust synchronized and authenticated; \`v$version\` is $successor; green source proof; the fallback channel gate passes; the commit holds every merge above; no tag or release for \`v$version\` exists; the release-source edge from $latest_tag is sound; the compatibility generator produced a declaration, which differs from $latest_tag's."
 	else
 		heading="Security patch v$version is ready to tag"
-		checked="trust synchronized and authenticated; \`v$version\` is the patch successor of $latest_tag; green source proof; the fallback channel gate passes; the commit holds every merge above; no tag or release for \`v$version\` exists; the release-source edge from $latest_tag is sound; the compatibility declaration is identical to $latest_tag's apart from that edge."
+		if [ -n "$burned_note" ]; then successor="the next unused patch version of $latest_tag after the burned $burned_note"; else successor="the patch successor of $latest_tag"; fi
+		checked="trust synchronized and authenticated; \`v$version\` is $successor; green source proof; the fallback channel gate passes; the commit holds every merge above; no tag or release for \`v$version\` exists; the release-source edge from $latest_tag is sound; the compatibility declaration is identical to $latest_tag's apart from that edge."
 	fi
 	if [ "$target" = "$GITHUB_SHA" ]; then
 		tag_block=$(printf '%s\n' \
@@ -714,7 +806,7 @@ render_ready() {
 	prerequisites='' notes_note=''
 	if [ "$kind" = minor ]; then
 		prerequisites=$(minor_prerequisites)
-		notes_note="A minor release needs real release notes: \`publish\` refuses the placeholder, so write them before it."
+		notes_note=$(minor_notes_note)
 	fi
 	cat <<EOF
 $issue_marker
@@ -779,6 +871,8 @@ git fetch origin main && git switch --detach origin/main && scripts/release/cere
 		;;
 	drafted)
 		action=open
+		drafted_notes=
+		[ "$kind" != minor ] || drafted_notes=$(minor_notes_note)
 		cat <<EOF
 $issue_marker
 ## Security release v$version is staged: finish the ceremony
@@ -793,7 +887,9 @@ $step0_block
 $(ceremony_block "$version")
 \`\`\`
 
-Expected: \`review\` prints a manifest SHA-256; paste it in place of \`REVIEWED_MANIFEST_SHA256\`. Homebrew stays manual; this issue closes once trust records the release.
+${drafted_notes:+$drafted_notes
+
+}Expected: \`review\` prints a manifest SHA-256; paste it in place of \`REVIEWED_MANIFEST_SHA256\`. Homebrew stays manual; this issue closes once trust records the release.
 
 $burned_tag_hint
 $alarms_block
@@ -832,6 +928,8 @@ $(overdue_note)
 $step0_block
 ${edge_block:+
 $edge_block
+}${state_note:+
+$state_note
 }
 No tag command is offered while this holds. This issue is rewritten when the state changes.
 $alarms_block
@@ -845,7 +943,7 @@ plan() {
 	need_sha "$GITHUB_SHA"
 	main_tip=$GITHUB_SHA
 	: "${PLAN_OUT:=$work/plan.json}"
-	state=idle why='' target='' alarms='' alarms_block='' edge_block='' burned_note='' action=none version='' kind=patch open_block='' step0_block='' placement_blocked=''
+	state=idle why='' target='' alarms='' alarms_block='' edge_block='' state_note='' minor_burned='' burned_runs='' burned_note='' action=none version='' kind=patch open_block='' step0_block='' placement_blocked=''
 	plan_inner
 	render >"$work/body.md" || die 'cannot render the issue'
 	jq -n --arg action "$action" --rawfile body "$work/body.md" '{action:$action, body:$body}' >"$PLAN_OUT" || die 'cannot write the plan'
@@ -952,16 +1050,18 @@ recheck() {
 	contains_all "$commit" || refuse "$commit does not contain every merged security update; a newer one landed since the issue was written, so wait for it to refresh"
 	[ "$trust_highest" = "$latest" ] || refuse "main's trust ends at v$trust_highest, not $latest_tag; synchronize trust first"
 	if [ "$kind" = patch ]; then
-		# sources.json may only gain release-source edges (the required edge from $latest_tag);
+		# sources.json may only gain the one edge per engine whose source is $latest_tag (the required
+		# release-source edge; an exact-identity check follows in tag_checks); every other edge,
 		# the migrations and everything else under release/compatibility must be unchanged.
 		changed=$(git_ diff --name-only "$latest_commit" "$commit" -- internal/store/migrations release/compatibility ':(exclude)release/compatibility/sources.json') || die "cannot compare $commit with $latest_tag"
 		[ -z "$changed" ] || refuse "$commit changes migrations or compatibility files since $latest_tag, which a patch must not carry; the issue will propose a minor release"
 		git_ show "$latest_commit:release/compatibility/sources.json" >"$work/sources-old.json" || die "cannot read $latest_tag's release/compatibility/sources.json"
 		git_ show "$commit:release/compatibility/sources.json" >"$work/sources-new.json" || die "cannot read release/compatibility/sources.json at $commit"
-		jq -n -e --slurpfile old "$work/sources-old.json" --slurpfile new "$work/sources-new.json" '
-			def plain: .engines = ((.engines // {}) | with_entries(.value |= map(select(.source.release? == null))));
-			($old[0] | plain) == ($new[0] | plain)' >/dev/null ||
-			refuse "$commit changes release/compatibility/sources.json beyond adding release-source edges, which a patch must not carry; the issue will propose a minor release"
+		jq -n -e --arg latest "$latest" --slurpfile old "$work/sources-old.json" --slurpfile new "$work/sources-new.json" '
+			def plain: .engines = ((.engines // {}) | with_entries(.value |= map(select(.source.release.version? != $latest))));
+			def lookalikes: [(.engines // {})[] | map(select(.source.release.version? == $latest)) | length] | max // 0;
+			($new[0] | lookalikes) <= 1 and ($old[0] | plain) == ($new[0] | plain)' >/dev/null ||
+			refuse "$commit changes release/compatibility/sources.json beyond adding the release-source edge from $latest_tag, which a patch must not carry; the issue will propose a minor release"
 	fi
 	tag_checks "$version" "$commit"
 	printf 'security-patch-plan: ok to tag v%s at %s (%s release)\n' "$version" "$commit" "$kind"

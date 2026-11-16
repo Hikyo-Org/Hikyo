@@ -19,7 +19,8 @@ if ! printf '%s\n' "$commit" | grep -Eq '^[0-9a-f]{40}$'; then
 	exit 2
 fi
 
-repo_root=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)
+# A failure here exits 4: the shell's own status 1 would read as "not green".
+repo_root=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd) || exit 4
 # Exit 0: complete green source proof. Exit 1: no such proof. Exit 4: GitHub could
 # not be read. Exit 2: bad usage.
 # The verifier accepts complete exact landed merge-group proof as well as
@@ -30,9 +31,9 @@ repo_root=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)
 # through a file. The class starts as "lookup" (could not look), and only the
 # verifier's own definite verdict changes it to "not-green": a build failure or a
 # crash before the verdict is never read as "not green".
-class=$(mktemp "${TMPDIR:-/tmp}/hikyo-green-class.XXXXXX")
+class=$(mktemp "${TMPDIR:-/tmp}/hikyo-green-class.XXXXXX") || exit 4
 trap 'rm -f "$class"' EXIT HUP INT TERM
-printf 'lookup\n' >"$class"
+printf 'lookup\n' >"$class" || exit 4
 if ! "$GO_BIN" -C "$repo_root" run -p 2 ./scripts/ci/source-proof \
 	--repository "$repository" --mode main --commit "$commit" --authority-commit "$commit" --failure-class "$class" >/dev/null; then
 	if [ "$(cat "$class")" = not-green ]; then

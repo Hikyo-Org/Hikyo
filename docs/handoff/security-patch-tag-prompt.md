@@ -70,8 +70,17 @@ lands it on `main`**. `recheck` and the fixture work from `dev` today.
   target's own script and record, so a stale record stops the plan rather than the
   build), the release-source edge and, last, compatibility with the previous
   stable release. A version whose tag exists, has no release and whose
-  `release-build` runs all failed is burned: the plan skips it (a patch) and says
-  so. A fixed alert that is not explained by a merged security pull request
+  `release-build` runs all failed is skipped (the patch and the minor alike, and a
+  skipped minor means only a minor can follow, since a stable tag above every
+  patch exists). The issue names the failed run and says to re-run its failed jobs
+  first: a failure before the build (validation, docs, floor-bench, everything
+  `build-artifacts` needs) is almost always rerunnable, and only a byte set that
+  cannot be completed safely makes the version burned. "Staged" means the tag's
+  `release-build` push run succeeded: the plan's `contents: read` token cannot be
+  relied on to list draft releases, so the draft listing never decides it, and a
+  failed run that already created a draft is not shown as staged. A tag whose
+  run has not finished, or that has no run at all, is shown with the run link,
+  the hint and the way out, and offers no tag command. A fixed alert that is not explained by a merged security pull request
   (the same filter as the listing: Dependabot's numeric id, base `main`,
   `dependabot/` branch) blocks the tag instead of only raising an alarm. An
   alert list with no alert at all is cross-checked over REST before it is
@@ -91,7 +100,8 @@ lands it on `main`**. `recheck` and the fixture work from `dev` today.
   pending security merge is in it (no grace period), no fixed alert lacks a
   linked merge, the version is the kind's successor, trust records the latest
   release, a patch carries no change to the migrations or compatibility files and
-  its `sources.json` only gained release-source edges, the release tools the
+  its `sources.json` only gained the release-source edge from the latest
+  release (every other edge unchanged, at most one edge from it per engine), the release tools the
   commands run from the commit equal the main tip's (below the tip), and the tag
   checks pass (including the fallback gate and the edge).
 - With a green tip the command is `recheck ... --tip && ceremony.sh build`.
@@ -145,16 +155,33 @@ lands it on `main`**. `recheck` and the fixture work from `dev` today.
 - `gh issue` behavior (list limit, body files) is exercised only against a fake.
 - The job timeout (45 minutes) is an estimate, not a measurement.
 - The planner checks the fallback-channel gate (it needs `node`, as on the
-  hosted runner) but not the other gates that run after the tag: docs-live, the
-  floor benchmark and the Apple jobs. A failure there burns the version, and
-  nothing here sees it coming.
+  hosted runner) but not the other gates that run after the tag: docs-live
+  (`release.yml` runs `check-docs-live.sh` in the same step as the fallback gate,
+  against the live site), the floor benchmark and the Apple jobs. A failure there
+  is almost always rerunnable (re-run the failed jobs; the version is burned only
+  if the byte set cannot be completed safely), but nothing here sees it coming.
+- **Cost of the live checks.** `stable verify` needs the complete asset set of the
+  release it verifies: it requires the closed inventory (no missing or extra
+  file), every artifact's digest and signature, and, with `--published`, the
+  published OCI subjects. There is no mode that verifies just the manifest, the
+  declaration and their signatures, and none is added here, because that would be
+  a new weaker verification path. So every `--edges-only` or full compatibility
+  check downloads the whole baseline release (v1.1.0 is about 0.93 GB in 80
+  assets): once per hourly run while the edge is missing, up to four times per run
+  for a ready minor (the edge check and the full check, for the patch and for the
+  minor), and once per local `recheck`. A narrower identity-only verify mode would
+  be a separate change to the verifier; it is deferred.
 - `recheck` does not rerun the compatibility comparison (it needs scratch
   PostgreSQL); the plan did, for the planned commit. For a patch it checks that no
   migration or compatibility file changed since the latest release and that
-  `sources.json` only gained release edges, and it enforces the edge itself.
-- The burned-version rule trusts `release-build` run conclusions; a failed run that
-  a person re-runs successfully clears it once a draft exists. A burned minor
-  needs no skipping: its tag is above every patch, so the plan blocks.
+  `sources.json` only gained the edge from the latest release, and it enforces the edge itself.
+- The burned-version rule trusts `release-build` run conclusions: a run that
+  failed and was re-run successfully counts as succeeded (a re-run of failed jobs
+  updates the same run), so it clears the skip; the plan never needs the draft
+  listing for that. A tag with no run at all is not skipped (nothing says it is
+  dead), so its issue shows the manual way out. Applying the skip to the minor
+  was added after the owner's third review; the burned-minor path is evidenced
+  only by the fixture.
 - The edge's behavior in `PlanRoute` is not exercised against real v1.1.0 files.
   By reading the code, no existing test covers a release-to-release upgrade from
   a real v1.0.0 install: v1.1.0 declares only genesis edges.

@@ -132,11 +132,16 @@ the commands in the latest version of that issue.
 - **When the tip of main is not green**, the issue offers a signed tag of the
   newest green commit that holds every pending security merge (after the signature
   check) instead of `ceremony.sh build`, because `build` can only tag the tip.
-- **A burned tag.** A pushed tag is never moved or recreated. If `release-build`
-  fails before the draft is complete and the byte set cannot be completed safely,
-  the version is burned and you use a new version; the issue repeats this. When
-  every `release-build` run of a tag has failed and no release exists for it, the
-  plan marks that patch version burned and plans the next one.
+- **A failed tag build.** A pushed tag is never moved or recreated. If
+  `release-build` fails, inspect the run and re-run its failed jobs first: a
+  failure before the build (validation, docs, floor-bench, everything
+  `build-artifacts` needs) is almost always rerunnable. Only if the byte set cannot
+  be completed safely is the version burned, and you then use a new version; the
+  issue repeats this and names the failed run. When every `release-build` run of a
+  tag has failed and no release exists for it, the plan skips that version (a
+  patch or a minor) and plans the next one; if a re-run then succeeds, the skip
+  clears. A tag whose run succeeded is shown as staged, and a tag with an
+  unfinished run, or none, is shown with the run link and the way out.
 - **An unlinked fixed alert.** A Dependabot alert fixed after the latest stable
   release without a linked merged pull request on main (a promotion that bumped
   the dependency, or a fix by hand) raises a standing alarm, the plan offers no tag
