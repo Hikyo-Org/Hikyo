@@ -47,7 +47,8 @@ only commits that passed the full merge queue may reach `main`.
     `dependabot-security-automerge` (see the [CI guide](ci.md)), not by a person. It
     is queued only while an open Dependabot alert links to the pull request, and
     it still passes the full queue. Routine updates target dev and wait for a
-    person. Releasing is unchanged: a maintainer tags and publishes.
+    person. Releasing is unchanged: a maintainer tags and publishes. The workflow reaches
+    main by promotion, like any change, and runs from main only.
 
 ## Rollout
 

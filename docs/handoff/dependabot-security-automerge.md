@@ -4,6 +4,14 @@ Part 1 of the split of the unattended security patch release work (owner
 decision, 2026-11-15, option B). The human tag ceremony stays. This change
 tags nothing, publishes nothing and adds no App, token or secret.
 
+**Delivery.** This is a feature pull request into `dev`; it reaches `main` by the
+normal promotion. The workflow's schedule and `pull_request_target` triggers and
+its manual dispatch run only from the default branch, so **nothing runs until
+the promotion lands it on `main`**. The pull requests it queues are Dependabot
+security updates that target `main` (security updates ignore `target-branch`).
+The actionlint ignore for the `vulnerability-alerts` scope is a separate
+prerequisite pull request (#1413) that must be on `dev` first.
+
 ## Result
 
 `dependabot-security-automerge` (workflow, script and fixture) arms auto-merge
@@ -61,7 +69,7 @@ token. The pinned actionlint (1.7.12) does not know the scope yet, so
   after the ruleset's 60-minute response window and the pull request waits for
   a person. This cannot be observed before merge.
 
-## Live checks after merge (read-only unless noted)
+## Live checks after promotion to main (read-only unless noted)
 
 1. `gh workflow run dependabot-security-automerge.yml --ref main` (queues
    whatever qualifies, so run it when a security update is open) and read its
