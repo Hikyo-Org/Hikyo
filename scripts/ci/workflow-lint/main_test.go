@@ -57,7 +57,7 @@ func TestAlertsPermissionValidation(t *testing.T) {
 	}{
 		{"workflow read", "on: push\npermissions:\n  contents: read\n  vulnerability-alerts: read\njobs: {}\n", false},
 		{"job none", "on: push\njobs:\n  a:\n    permissions:\n      vulnerability-alerts: none\n      contents: read\n", false},
-		{"job read with comment", "on: push\njobs:\n  a:\n    permissions:\n      vulnerability-alerts: read # alerts\n", false},
+		{"job read with comment", "on: push\njobs:\n  a:\n    permissions:\n      vulnerability-alerts: read # alerts\n      contents: read\n", false},
 		{"write is refused", "on: push\npermissions:\n  vulnerability-alerts: write\njobs: {}\n", true},
 		{"job write is refused", "on: push\njobs:\n  a:\n    permissions:\n      vulnerability-alerts: write\n", true},
 		{"an expression is refused", "on: push\npermissions:\n  vulnerability-alerts: ${{ inputs.level }}\njobs: {}\n", true},
@@ -82,6 +82,14 @@ func TestAlertsPermissionValidation(t *testing.T) {
 			if strings.Contains(string(normalized), "vulnerability-alerts: read") || strings.Contains(string(normalized), "vulnerability-alerts: none") {
 				t.Fatal("the validated scope must be removed for the old parser")
 			}
+			var node yaml.Node
+			if err := yaml.Unmarshal(normalized, &node); err != nil {
+				t.Fatalf("the normalized workflow must still parse: %v\n%s", err, normalized)
+			}
+			// Every accepted case here keeps another key beside the scope, so no empty mapping may appear.
+			if strings.Count(string(normalized), "{}") != strings.Count(string(raw), "{}") {
+				t.Fatalf("a block with other keys must not gain an empty mapping: %q", normalized)
+			}
 		})
 	}
 }
@@ -96,6 +104,9 @@ func TestAlertsPermissionKeepsOtherLintInput(t *testing.T) {
 		if !strings.Contains(string(normalized), s) {
 			t.Fatalf("other checks lost %q", s)
 		}
+	}
+	if strings.Contains(string(normalized), "{}") {
+		t.Fatalf("a block with other keys must not gain an empty mapping: %q", normalized)
 	}
 }
 
@@ -145,8 +156,15 @@ func TestSoleAlertsPermissionBecomesAnEmptyMapping(t *testing.T) {
 			if strings.Contains(string(normalized), "vulnerability-alerts") {
 				t.Fatalf("the scope must be gone: %q", normalized)
 			}
-			if !strings.Contains(string(normalized), "{}") {
-				t.Fatalf("a sole key must become an empty mapping, not an empty value: %q", normalized)
+			// Assert on the scope's own line: the fixtures' "jobs: {}" would satisfy a whole-file search.
+			lines := strings.Split(test.doc, "\n")
+			for i, line := range lines {
+				if trimmed := strings.TrimLeft(line, " "); strings.HasPrefix(trimmed, "vulnerability-alerts:") {
+					want := line[:len(line)-len(trimmed)] + "{}"
+					if got := strings.Split(string(normalized), "\n")[i]; got != want {
+						t.Fatalf("a sole key must become an empty mapping on its own line: got %q, want %q", got, want)
+					}
+				}
 			}
 		})
 	}
