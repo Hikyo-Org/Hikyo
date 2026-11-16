@@ -133,13 +133,19 @@ the commands in the latest version of that issue.
   newest green commit that holds every pending security merge (after the signature
   check) instead of `ceremony.sh build`, because `build` can only tag the tip.
 - **A failed tag build.** A pushed tag is never moved or recreated. If
-  `release-build` fails, inspect the run and re-run its failed jobs first: a
-  failure before the build (validation, docs, floor-bench, everything
-  `build-artifacts` needs) is almost always rerunnable. Only if the byte set cannot
-  be completed safely is the version burned, and you then use a new version; the
-  issue repeats this and names the failed run. When every `release-build` run of a
-  tag has failed and no release exists for it, the plan skips that version (a
-  patch or a minor) and plans the next one; if a re-run then succeeds, the skip
+  `release-build` fails, inspect the run first. If it already created the draft
+  release, delete that draft before anything else: re-running the failed jobs
+  cannot create the release while it exists, and an outstanding stable draft stops
+  the trust synchronization check. Then re-run its failed jobs: a failure before
+  the build (validation, docs, floor-bench, everything `build-artifacts` needs) is
+  almost always rerunnable. Only if the byte set cannot be completed safely is the
+  version burned, and you then use a new version; the issue repeats this and names
+  the failed run. When every `release-build` run of a tag has failed and no
+  published release exists for it (a draft does not count: the plan cannot list
+  drafts, `recheck` can, and both must pick the same version), the plan skips that
+  version (a patch or a minor, each noted on its own) and plans the next one. A
+  burned minor tag does not force a minor release: the patch is still planned
+  unless the compatibility declaration differs. If a re-run then succeeds, the skip
   clears. A tag whose run succeeded is shown as staged, and a tag with an
   unfinished run, or none, is shown with the run link and the way out.
 - **An unlinked fixed alert.** A Dependabot alert fixed after the latest stable

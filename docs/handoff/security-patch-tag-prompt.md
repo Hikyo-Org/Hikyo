@@ -8,8 +8,8 @@ token or secret. Unattended tagging is deferred to a later App phase.
 Stacked on part 2 (`feat/compat-check-last-stable`, #1406): the issue's
 compatibility statement uses `check-compatibility-unchanged.sh`. Merge #1406
 first; this PR then retargets to `dev`. The actionlint ignore for the
-`vulnerability-alerts` scope is the separate prerequisite #1413, which must be on
-`dev` first (ci-feedback runs actionlint from the trusted base checkout).
+`vulnerability-alerts` scope was the separate prerequisite #1413; it is merged on
+`dev` (ee8056912), where ci-feedback runs actionlint from the trusted base checkout.
 
 **Delivery.** Feature pull requests land on `dev` and reach `main` by the normal
 promotion. The workflow's push-to-main, schedule and manual triggers, and its
@@ -70,21 +70,32 @@ lands it on `main`**. `recheck` and the fixture work from `dev` today.
   target's own script and record, so a stale record stops the plan rather than the
   build), the release-source edge and, last, compatibility with the previous
   stable release. A version whose tag exists, has no release and whose
-  `release-build` runs all failed is skipped (the patch and the minor alike, and a
-  skipped minor means only a minor can follow, since a stable tag above every
-  patch exists). The issue names the failed run and says to re-run its failed jobs
-  first: a failure before the build (validation, docs, floor-bench, everything
-  `build-artifacts` needs) is almost always rerunnable, and only a byte set that
-  cannot be completed safely makes the version burned. "Staged" means the tag's
-  `release-build` push run succeeded: the plan's `contents: read` token cannot be
-  relied on to list draft releases, so the draft listing never decides it, and a
-  failed run that already created a draft is not shown as staged. A tag whose
+  `release-build` runs all failed and that has no PUBLISHED release is skipped (the
+  patch and the minor alike, each with its own note; a burned minor tag orders
+  nothing, so it does not force a minor: the patch is still planned unless the
+  compatibility declaration differs). Drafts never count: the plan's
+  `contents: read` token cannot be relied on to list them and the maintainer's
+  `recheck` can, so counting them would let the two pick different versions. The
+  issue names the failed run and says to delete the draft the failed run may have
+  left (re-running its failed jobs cannot create the release while it exists, and
+  an outstanding stable draft stops the trust synchronization check), then to
+  re-run its failed jobs: a failure before the build (validation, docs,
+  floor-bench, everything `build-artifacts` needs) is almost always rerunnable, and
+  only a byte set that cannot be completed safely makes the version burned.
+  "Staged" means the tag's `release-build` push run succeeded, never the draft
+  listing; a staged tag whose commit lacks a pending security merge says so, since
+  that merge needs a further release. A tag whose
   run has not finished, or that has no run at all, is shown with the run link,
   the hint and the way out, and offers no tag command. A fixed alert that is not explained by a merged security pull request
   (the same filter as the listing: Dependabot's numeric id, base `main`,
   `dependabot/` branch) blocks the tag instead of only raising an alarm. An
   alert list with no alert at all is cross-checked over REST before it is
   believed.
+  `require-synced-trust.sh` exits 1 only for "not synchronized" and 2 when it
+  cannot read the releases, so a failed read fails the run instead of blocking
+  the plan with a trust message. A pending merge that main reaches only through a
+  side parent is held by the merge commit that brought it, so candidates qualify
+  on ancestry alone.
   A published release that trust does not record keeps the issue open (trust
   commands first) even when nothing else is pending.
 - `issue FILE` applies the plan to the single issue (marker, title and the
@@ -143,7 +154,6 @@ lands it on `main`**. `recheck` and the fixture work from `dev` today.
 - `vulnerability-alerts: read` on a push or schedule token: the 2026-11-15 check
   covered a workflow token; whether GitHub accepts the scope on this workflow is
   confirmed only by its first run on main (run link recorded after promotion).
-  Until #1413 is on `dev`, the pinned actionlint rejects the scope.
 - The hourly red-tip walk reads up to 60 commits of source proof; its API budget
   per run is an estimate, not a measurement. Step 0 adds three reads per open
   security pull request.
@@ -179,9 +189,10 @@ lands it on `main`**. `recheck` and the fixture work from `dev` today.
   failed and was re-run successfully counts as succeeded (a re-run of failed jobs
   updates the same run), so it clears the skip; the plan never needs the draft
   listing for that. A tag with no run at all is not skipped (nothing says it is
-  dead), so its issue shows the manual way out. Applying the skip to the minor
-  was added after the owner's third review; the burned-minor path is evidenced
-  only by the fixture.
+  dead), so its issue shows the manual way out. The burned-minor path and the
+  draft rule (plan and recheck agree because drafts never count) are evidenced
+  only by the fixture, whose fake `gh` gives the recheck a draft the plan cannot
+  see.
 - The edge's behavior in `PlanRoute` is not exercised against real v1.1.0 files.
   By reading the code, no existing test covers a release-to-release upgrade from
   a real v1.0.0 install: v1.1.0 declares only genesis edges.
@@ -192,7 +203,7 @@ lands it on `main`**. `recheck` and the fixture work from `dev` today.
 
 ## Next steps
 
-1. Merge #1413 and part 2 (#1406) to `dev`, retarget this PR to `dev`, merge it.
+1. Merge part 2 (#1406) to `dev`, retarget this PR to `dev`, merge it.
 2. After the promotion to `main`, dispatch the workflow once and record the run and issue.
 3. Live checks that remain after promotion: the first sweep, `gh issue` writes with
    the real token, the `vulnerability-alerts` acceptance, one real `recheck`

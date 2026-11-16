@@ -108,11 +108,12 @@ cedgeplus=$(git -C "$repo" rev-parse HEAD)
 # A patch may add the one edge from the latest release and nothing else: an older edge that is removed
 # or changed, or a second edge naming the latest release, is a change a minor must carry.
 new_edge='{source:{release:{profile:"stable/v1",version:"1.1.0"}},mode:"maintenance"}'
-for variant in removed swapped double; do
+for variant in removed swapped double stringrel; do
 	git -C "$repo" switch -q --detach "$c4"
 	case $variant in
 	removed) jq -c ".engines |= map_values(map(select(.source.release.version? != \"1.0.0\")) + [$new_edge])" "$repo/release/compatibility/sources.json" >"$scratch/sources.tmp" ;;
 	swapped) jq -c ".engines |= map_values(map(if .source.release.version? == \"1.0.0\" then .mode = \"restart\" else . end) + [$new_edge])" "$repo/release/compatibility/sources.json" >"$scratch/sources.tmp" ;;
+	stringrel) jq -c '.engines |= map_values(. + [{source:{release:"1.1.0"},mode:"maintenance"}])' "$repo/release/compatibility/sources.json" >"$scratch/sources.tmp" ;;
 	double) jq -c ".engines |= map_values(. + [$new_edge]) | .engines.sqlite += [{source:{release:{profile:\"stable/v1\",version:\"1.1.0\",sequence:9}},mode:\"maintenance\"}]" "$repo/release/compatibility/sources.json" >"$scratch/sources.tmp" ;;
 	esac
 	cp "$scratch/sources.tmp" "$repo/release/compatibility/sources.json"
@@ -137,12 +138,17 @@ hex() { printf "$1%.0s" $(seq 40); }
 case "$*" in
 	'api --paginate --slurp repos/o/r/releases?per_page=100')
 		failing releases
-		jq -nc --arg extra "${REL_EXTRA:-}" --arg draft "${REL_DRAFT:-}" '
+		# The planning token cannot list drafts, the maintainer's login can: REL_DRAFT is seen by
+		# both, REL_DRAFT_RECHECK only by the recheck (FIXTURE_VIEW=recheck).
+		drafts=${REL_DRAFT:-}
+		[ "${FIXTURE_VIEW:-}" != recheck ] || drafts="$drafts ${REL_DRAFT_RECHECK:-}"
+		jq -nc --arg extra "${REL_EXTRA:-}" --arg draft "$drafts" '
 			[("v1.1.0", "v1.0.0", (if $extra != "" then ($extra | split(" ")[]) else empty end), "v9.9.9-nightly.20260101.1.gabcdef12")] |
 			map({tag_name: ., draft: false, published_at: "2026-11-08T23:26:41Z"}) +
 			[{tag_name: "v8.0.0", draft: true, published_at: null}] +
-			(if $draft != "" then ($draft | split(" ") | map({tag_name: ., draft: true, published_at: null})) else [] end) | [.]' ;;
-	'api repos/o/r/commits/v1.1.0'|'api repos/o/r/commits/v1.1.1') failing latest-commit; jq -nc --arg sha "$C0" '{sha:$sha}' ;;
+			($draft | split(" ") | map(select(. != "") | {tag_name: ., draft: true, published_at: null})) | [.]' ;;
+	'api repos/o/r/commits/v1.1.0') failing latest-commit; jq -nc --arg sha "$C0" '{sha:$sha}' ;;
+	'api repos/o/r/commits/v1.1.1'|'api repos/o/r/commits/v1.1.2'|'api repos/o/r/commits/v1.2.0'|'api repos/o/r/commits/v1.3.0') failing tag-commit; jq -nc --arg sha "${TAG_COMMIT:-$C4}" '{sha:$sha}' ;;
 	'api graphql --paginate '*)
 		failing alerts
 		case "$*" in *'states:[OPEN,FIXED]'*) ;; *) printf 'the alert query must list its states explicitly\n' >&2; exit 2 ;; esac
@@ -182,10 +188,11 @@ case "$*" in
 		failing runs
 		tag=${args#*branch=}; tag=${tag%%&*}
 		case "${BUILD:-none}" in
-			failed) jq -nc --arg tag "$tag" '{workflow_runs:[{head_branch:$tag,event:"push",html_url:"https://github.com/o/r/actions/runs/4242",status:"completed",conclusion:"failure"}]}' ;;
-			running) jq -nc --arg tag "$tag" '{workflow_runs:[{head_branch:$tag,event:"push",html_url:"https://github.com/o/r/actions/runs/4242",status:"in_progress",conclusion:null}]}' ;;
-			success) jq -nc --arg tag "$tag" '{workflow_runs:[{head_branch:$tag,event:"push",html_url:"https://github.com/o/r/actions/runs/4242",status:"completed",conclusion:"success"}]}' ;;
-			rerun) jq -nc --arg tag "$tag" '{workflow_runs:[{head_branch:$tag,event:"push",html_url:"https://github.com/o/r/actions/runs/4242",status:"completed",conclusion:"failure"},{head_branch:$tag,event:"push",html_url:"https://github.com/o/r/actions/runs/4242",status:"completed",conclusion:"success"}]}' ;;
+			failed) jq -nc --arg tag "$tag" --arg url "${RUN_URL:-https://github.com/o/r/actions/runs/4242}" '{workflow_runs:[{head_branch:$tag,event:"push",html_url:$url,status:"completed",conclusion:"failure"}]}' ;;
+			running) jq -nc --arg tag "$tag" --arg url "${RUN_URL:-https://github.com/o/r/actions/runs/4242}" '{workflow_runs:[{head_branch:$tag,event:"push",html_url:$url,status:"in_progress",conclusion:null}]}' ;;
+			success) jq -nc --arg tag "$tag" --arg url "${RUN_URL:-https://github.com/o/r/actions/runs/4242}" '{workflow_runs:[{head_branch:$tag,event:"push",html_url:$url,status:"completed",conclusion:"success"}]}' ;;
+			rerun) jq -nc --arg tag "$tag" --arg url "${RUN_URL:-https://github.com/o/r/actions/runs/4242}" '{workflow_runs:[{head_branch:$tag,event:"push",html_url:$url,status:"completed",conclusion:"failure"},{head_branch:$tag,event:"push",html_url:$url,status:"completed",conclusion:"success"}]}' ;;
+			noarray) echo '{"workflow_runs":null}' ;;
 			*) echo '{"workflow_runs":[]}' ;;
 		esac ;;
 	'api --paginate repos/o/r/git/matching-refs/tags/v')
@@ -269,6 +276,21 @@ cat >"$scratch/bin/synced" <<'SH'
 #!/bin/sh
 case "${SYNCED:-ok}" in ok) exit 0 ;; behind) exit 1 ;; *) exit 2 ;; esac
 SH
+# The real trust helper, once with a gh that cannot read the releases at all: that is a failed read
+# (exit 2, the run fails), never the helper's own "not synchronized" answer (exit 1, a blocked plan).
+cat >"$scratch/bin/gh-down" <<'SH'
+#!/bin/sh
+printf 'gh: server error (HTTP 500)\n' >&2
+exit 1
+SH
+cat >"$scratch/bin/synced-down" <<'SH'
+#!/bin/sh
+GH_BIN="$FIXTURE/bin/gh-down" exec "$REAL_ROOT/scripts/release/require-synced-trust.sh" "$@"
+SH
+cat >"$scratch/bin/synced-real" <<'SH'
+#!/bin/sh
+exec "$REAL_ROOT/scripts/release/require-synced-trust.sh" "$@"
+SH
 cat >"$scratch/bin/compat" <<'SH'
 #!/bin/sh
 printf 'compat %s\n' "$*" >>"$FIXTURE/calls"
@@ -276,6 +298,8 @@ if [ "${1:-}" = --edges-only ]; then
 	case "${EDGES:-ok}" in
 		ok) echo 'compatibility check: every engine carries its sound release-source edge from v1.1.0'; exit 0 ;;
 		missing) printf '%s\n' 'compatibility check: sqlite: no release-source edge from v1.1.0' 'compatibility check: postgres: no release-source edge from v1.1.0' 'compatibility check: the release-source edge from v1.1.0 is missing or does not match what v1.1.0 published; add the reviewed edge per engine' >&2; exit 1 ;;
+		minor-missing) if [ "${4:-}" = 1.1.1 ]; then echo 'compatibility check: every engine carries its sound release-source edge from v1.1.0'; exit 0; fi
+			printf '%s\n' 'compatibility check: sqlite: no release-source edge from v1.1.0' 'compatibility check: the release-source edge from v1.1.0 is missing or does not match what v1.1.0 published; add the reviewed edge per engine' >&2; exit 1 ;;
 		unverified) echo 'compatibility check: v1.1.0 does not verify against the signed trust' >&2; exit 5 ;;
 		*) echo 'compatibility check: cannot download v1.1.0' >&2; exit 4 ;;
 	esac
@@ -286,6 +310,7 @@ case "${COMPAT:-same}" in
 	bigdiff) { i=1; while [ "$i" -le 300 ]; do echo "+line $i"; i=$((i + 1)); done; echo 'compatibility check: the compatibility declaration differs from the one v1.1.0 published'; } >&2; exit 1 ;;
 	unverified) echo 'compatibility check: v1.1.0 does not verify against the signed trust' >&2; exit 5 ;;
 	incomplete) echo 'compatibility check: the candidate declaration is not a complete two-engine declaration' >&2; exit 1 ;;
+	earlier-line) { echo '+  "note": "the compatibility declaration differs from the one v1.1.0 published"'; echo 'compatibility check: the candidate declaration is not a complete two-engine declaration'; } >&2; exit 1 ;;
 	minorbad) if [ "${3:-}" = 1.1.1 ]; then echo 'compatibility check: the compatibility declaration differs from the one v1.1.0 published' >&2; exit 1; fi
 		echo 'compatibility check: the candidate declaration is not a complete two-engine declaration' >&2; exit 1 ;;
 	*) echo 'compatibility check: cannot download v1.1.0' >&2; exit 4 ;;
@@ -482,6 +507,10 @@ expect_action 'unsynced' open
 has 'unsynced' 'trust is not synchronized'
 no_tag_commands 'unsynced'
 plan 'an unreadable trust sync stops the run' 1 SYNCED=boom
+plan 'a trust helper whose release read fails stops the run, it is not a refusal' 1 SYNCED_BIN="$scratch/bin/synced-down" REAL_ROOT="$real_root"
+if [ -s "$scratch/plan.json" ]; then fail 'a failed release read must not write a plan'; fi
+plan 'the real trust helper refuses an outstanding draft as a blocked plan' 0 SYNCED_BIN="$scratch/bin/synced-real" REAL_ROOT="$real_root"
+has 'real helper' 'trust is not synchronized'
 plan 'untrusted stable trust' 0 STABLE=untrusted
 has 'untrusted' 'stable trust does not authenticate'
 plan 'candidate refused' 0 STABLE=badcandidate
@@ -545,6 +574,10 @@ has 'incomplete patch' 'the tag would be refused: the compatibility check refuse
 has 'incomplete patch' 'not a complete two-engine declaration'
 lacks 'incomplete patch' 'Security release v1.2.0'
 no_tag_commands 'incomplete patch'
+plan 'a diff that mentions a difference above another refusal is not a difference' 0 COMPAT=earlier-line
+has 'earlier line' 'the tag would be refused: the compatibility check refused the declaration of'
+lacks 'earlier line' 'Security release v1.2.0'
+no_tag_commands 'earlier line'
 plan 'a minor the check refuses for another reason is blocked' 0 COMPAT=minorbad
 has 'incomplete minor' 'the tag would be refused: the compatibility check refused the declaration of'
 lacks 'incomplete minor' '(minor) is ready'
@@ -563,6 +596,7 @@ plan 'the version is tagged and its run succeeded: the draft is staged' 0 TAGS_E
 has 'drafted' 'v1.1.1 is staged'
 has 'drafted' 'its release-build run succeeded'
 has 'drafted' 'scripts/release/ceremony.sh review 1.1.1'
+lacks 'drafted' 'does not hold every security merge'
 lacks 'drafted' 'A minor release needs real release notes'
 no_tag_commands 'drafted'
 check_ceremony_lines 'drafted'
@@ -572,7 +606,8 @@ has 'tagged' 'no release-build run was found for that tag push'
 lacks 'tagged' 'is staged'
 lacks 'tagged' 'ceremony.sh review'
 has 'tagged' 'a tag with no run at all is never skipped by this plan'
-has 'tagged' 'inspect the run and re-run its failed jobs first'
+has 'tagged' 'inspect the run first'
+has 'tagged' 'delete that draft before anything else'
 no_tag_commands 'tagged'
 plan 'published prerelease ahead of trust' 0 REL_EXTRA=v1.2.0-rc.1
 has 'trust behind' 'synchronize trust first'
@@ -603,6 +638,10 @@ plan 'a minor whose sources.json lacks the edge is blocked' 0 COMPAT=differs EDG
 has 'minor no edge' '### Prerequisite that blocks tagging: the release-source edge from v1.1.0'
 lacks 'minor no edge' 'Security release v1.2.0'
 no_tag_commands 'minor no edge'
+plan 'a plan that is already a minor does not say a promotion turns it into one' 0 COMPAT=differs EDGES=minor-missing
+has 'minor edge text' '### Prerequisite that blocks tagging: the release-source edge from v1.1.0'
+lacks 'minor edge text' 'turns this patch into a minor release'
+no_tag_commands 'minor edge text'
 plan 'an unverifiable baseline stops the edge check without a how-to' 0 EDGES=unverified
 has 'edge unverified' 'does not verify against the signed trust'
 lacks 'edge unverified' 'no supported command writes'
@@ -619,8 +658,11 @@ plan 'a gate that cannot run stops the run' 1 FALLBACK=boom
 plan 'a tag whose build failed is burned: the next patch is planned' 0 TAGS_EXTRA=v1.1.1 BUILD=failed
 expect_action 'burned' open
 has 'burned' '## Security patch v1.1.2 is ready to tag'
-has 'burned' 'the release-build run of v1.1.1 (https://github.com/o/r/actions/runs/4242) failed and no release exists for it'
-has 'burned' 'Re-run the failed jobs of the run first'
+has 'burned' 'the release-build run of v1.1.1 (https://github.com/o/r/actions/runs/4242) failed and no published release exists for it'
+has 'burned' 'delete that draft first'
+has 'burned' 'Then re-run the failed jobs of the run'
+has 'burned' '**Skipped versions:** the release-build run of v1.1.1 (https://github.com/o/r/actions/runs/4242) failed'
+body | awk '/Skipped versions/ { skipped = NR } /### 1. Tag/ { step1 = NR } END { exit !(skipped > 0 && step1 > skipped) }' || fail 'the skipped version is said above step 1'
 has 'burned' 'almost always rerunnable'
 has 'burned' 'Only if the byte set cannot be completed safely, use the next version this issue plans'
 lacks 'burned' 'so that version is burned'
@@ -633,7 +675,7 @@ for build in running none; do
 	plan "a tag whose build is $build is not burned" 0 TAGS_EXTRA=v1.1.1 BUILD=$build
 	has "build $build" 'v1.1.1 is tagged'
 	has "build $build" 'treat the version as burned'
-	has "build $build" 'inspect the run and re-run its failed jobs first'
+	has "build $build" 'inspect the run first'
 	no_tag_commands "build $build"
 done
 has 'build none' 'no release-build run was found for that tag push'
@@ -645,21 +687,52 @@ for build in success rerun; do
 	has "build $build" 'its release-build run succeeded'
 	has "build $build" 'scripts/release/ceremony.sh review 1.1.1'
 done
-# A failed run that already created a draft is not a staged release.
-plan 'a failed run with a visible draft is not staged' 0 TAGS_EXTRA=v1.1.1 REL_DRAFT=v1.1.1 BUILD=failed
-has 'failed draft' 'release-build run failed (https://github.com/o/r/actions/runs/4242), yet a release is already attached'
+# A failed run that already created a draft is burned like any other: drafts never count, so the
+# plan (which cannot list them) and the recheck (which can) skip the same version.
+plan 'a failed run with a visible draft is burned, as when the draft is hidden' 0 TAGS_EXTRA=v1.1.1 REL_DRAFT=v1.1.1 BUILD=failed
+has 'failed draft' '## Security patch v1.1.2 is ready to tag'
+has 'failed draft' 'delete that draft first'
 lacks 'failed draft' 'is staged'
-lacks 'failed draft' 'ceremony.sh review'
-# A burned minor is skipped as well: a stable tag above every patch exists, so only a minor can follow.
-plan 'a minor whose build failed is burned: the next minor is planned' 0 TAGS_EXTRA=v1.2.0 BUILD=failed
-expect_action 'burned minor' open
-has 'burned minor' '## Security release v1.3.0 (minor) is ready to tag once you have confirmed its prerequisites'
-has 'burned minor' 'the next unused minor of v1.1.0 after the burned v1.2.0'
-has 'burned minor' 'A patch cannot ship it: a burned minor tag (v1.2.0) sits above every patch version'
-has 'burned minor' 'the release-build run of v1.2.0 (https://github.com/o/r/actions/runs/4242) failed'
-has 'burned minor' "recheck minor 1.3.0 $c4 --tip &&"
-lacks 'burned minor' 'recheck patch'
+lacks 'failed draft' 'ceremony.sh review 1.1.1'
+plan 'a failed run whose draft only the maintainer sees is burned' 0 TAGS_EXTRA=v1.1.1 REL_DRAFT_RECHECK=v1.1.1 BUILD=failed
+has 'hidden draft' '## Security patch v1.1.2 is ready to tag'
+# A burned minor tag does not turn a patch into a minor: the patch is planned, and the note names the minor as a minor.
+plan 'a burned minor leaves the patch alone' 0 TAGS_EXTRA=v1.2.0 BUILD=failed
+expect_action 'burned minor patch' open
+has 'burned minor patch' '## Security patch v1.1.1 is ready to tag'
+has 'burned minor patch' 'is the patch successor of v1.1.0'
+has 'burned minor patch' 'the compatibility declaration is identical to v1.1.0'"'"'s apart from that edge'
+has 'burned minor patch' 'the release-build run of v1.2.0 (https://github.com/o/r/actions/runs/4242) failed'
+has 'burned minor patch' "recheck patch 1.1.1 $c4 --tip &&"
+lacks 'burned minor patch' 'after the burned'
+lacks 'burned minor patch' '(minor)'
+lacks 'burned minor patch' 'differs'
+lacks 'burned minor patch' 'Prerequisites that block tagging'
+# When the declaration really differs, the next unused minor after the burned one is planned, with its notes separate.
+plan 'a burned minor and a differing declaration plan the next minor' 0 TAGS_EXTRA=v1.2.0 BUILD=failed COMPAT=differs
+expect_action 'burned minor differs' open
+has 'burned minor differs' '## Security release v1.3.0 (minor) is ready to tag once you have confirmed its prerequisites'
+has 'burned minor differs' 'the next unused minor of v1.1.0 after the burned v1.2.0'
+has 'burned minor differs' 'A patch cannot ship it: the compatibility declaration differs from the one v1.1.0 published'
+has 'burned minor differs' "recheck minor 1.3.0 $c4 --tip &&"
+lacks 'burned minor differs' 'recheck patch'
 grep -F 'compat o/r ' "$scratch/calls" | grep -F ' 1.3.0 ' >/dev/null || fail 'the skipped minor is compared as 1.3.0'
+# A burned patch and a burned minor at once: each note names its own kind.
+plan 'a burned patch and a burned minor' 0 TAGS_EXTRA="v1.1.1 v1.2.0" BUILD=failed
+has 'both burned' '## Security patch v1.1.2 is ready to tag'
+has 'both burned' 'is the next unused patch version of v1.1.0 after the burned v1.1.1'
+lacks 'both burned' 'after the burned v1.1.1, v1.2.0'
+# A run address is text from GitHub that reaches the issue: only this repository's own run page, whole, passes.
+for bad_url in 'https://github.com/evil/x/actions/runs/4242' 'https://github.com/o/r/actions/runs/abc' 'http://github.com/o/r/actions/runs/4242' "$(printf 'https://github.com/o/r/actions/runs/4242\nhttps://evil.example/x')" 'https://github.com/o/r/actions/runs/4242 '; do
+	plan 'a bad run address stops the run' 1 TAGS_EXTRA=v1.1.1 BUILD=failed RUN_URL="$bad_url"
+	grep -F 'unreadable release-build run address of v1.1.1' "$scratch/err" >/dev/null || { cat "$scratch/err" >&2; fail 'a bad run address is named, not swallowed'; }
+done
+plan 'a run list without a runs array stops the run' 1 TAGS_EXTRA=v1.1.1 BUILD=noarray
+grep -F 'are not a list' "$scratch/err" >/dev/null || { cat "$scratch/err" >&2; fail 'a run list that is not a list is named'; }
+# A staged draft whose tag predates a pending merge is not the release that merge needs.
+plan 'a staged release whose tag misses a pending merge says so' 0 TAGS_EXTRA=v1.1.1 BUILD=success TAG_COMMIT="$c2"
+has 'staged old tag' "Its commit $c2 does not hold every security merge listed below"
+has 'staged old tag' 'need a further release'
 plan 'a minor tag whose build is running shows the run, the hint and the way out' 0 TAGS_EXTRA=v1.2.0 BUILD=running
 has 'running minor' 'v1.2.0 is tagged, and its release-build run has not finished'
 has 'running minor' 'Release-build run: https://github.com/o/r/actions/runs/4242'
@@ -803,10 +876,17 @@ lacks 'no merge commit' 'is ready to tag'
 plan 'a merge outside the history of the tip is raised, not skipped' 0 SEC1="$side"
 expect_action 'side merge' open
 has 'side merge' "not in main's history"
-plan 'a merge that is not on the first-parent history blocks' 0 SEC1="$side" GITHUB_SHA="$m" GREEN="$m"
+# A merge main reaches only through a side parent is held by the merge commit that brought it: that
+# commit is the target, and the older first-parent commits (which lack the merge) are never taken.
+plan 'a merge reached through a side parent is held by the merge commit' 0 SEC1="$side" GITHUB_SHA="$m" GREEN="$m"
 expect_action 'off first parent' open
-has 'off first parent' 'not on main first-parent history'
-no_tag_commands 'off first parent'
+has 'off first parent' "Planned release:** \`v1.1.1\` at \`$m\`"
+has 'off first parent' 'is ready to tag'
+lacks 'off first parent' 'first-parent history'
+plan 'a side-parent merge whose merge commit is not green blocks' 0 SEC1="$side" GITHUB_SHA="$m" GREEN="$c3 $c4"
+expect_action 'off first parent red' open
+has 'off first parent red' 'no main commit among the newest'
+no_tag_commands 'off first parent red'
 plan 'a commit whose trust metadata is unreadable stops the run' 1 GITHUB_SHA="$cbad" GREEN="$cbad $c4"
 plan 'the newest merge sits in a commit that does not record the latest release' 0 SEC1="$c1" GREEN="$c1"
 expect_action 'stale trust commit' open
@@ -910,7 +990,7 @@ grep -F 'git tag' "$scratch/last-body" >/dev/null && fail 'the failure issue off
 issue_json "$title" "$(printf '<!-- security-patch-plan -->\nold')" >"$scratch/issues.json"
 apply "$script" issue --failed "$run_url"
 { [ -e "$scratch/edited" ] && [ ! -e "$scratch/created" ]; } || fail 'a failed run rewrites our open issue'
-for bad in 'http://github.com/o/r/actions/runs/1' 'https://evil.example/o/r/actions/runs/1' 'https://github.com/o/r/actions/runs/1 x' 'https://github.com/o/r/actions/runs/1?x=1' ''; do
+for bad in 'http://github.com/o/r/actions/runs/1' 'https://evil.example/o/r/actions/runs/1' 'https://github.com/o/r/actions/runs/1 x' 'https://github.com/o/r/actions/runs/1?x=1' '' "$(printf 'https://github.com/o/r/actions/runs/1\nx')"; do
 	if env GH_REPO=o/r GH_TOKEN=t "$script" issue --failed "$bad" >/dev/null 2>&1; then fail "issue --failed must refuse the URL: $bad"; fi
 done
 if env GH_REPO=o/r GH_TOKEN=t "$script" issue --failed >/dev/null 2>&1; then fail 'issue --failed needs a run URL'; fi
@@ -927,7 +1007,7 @@ recheck() { # name want-status expected-fragment version commit option ('-' for 
 	[ "$opt" != - ] || opt=
 	: >"$scratch/calls"
 	status=0
-	env GH_REPO=o/r "$@" "$script" recheck "${KIND:-patch}" "$version" "$commit" ${opt:+"$opt"} >"$scratch/out" 2>&1 || status=$?
+	env GH_REPO=o/r FIXTURE_VIEW=recheck "$@" "$script" recheck "${KIND:-patch}" "$version" "$commit" ${opt:+"$opt"} >"$scratch/out" 2>&1 || status=$?
 	[ "$status" = "$want" ] || { cat "$scratch/out" >&2; fail "recheck $name: exit $status, want $want"; }
 	grep -F -- "$fragment" "$scratch/out" >/dev/null || { cat "$scratch/out" >&2; fail "recheck $name: expected: $fragment"; }
 }
@@ -951,6 +1031,8 @@ recheck 'a stray higher tag' 3 'already exists' 1.1.1 "$c3" - TAGS_EXTRA=v1.1.2
 recheck 'an unreadable alert list' 1 'cannot read' 1.1.1 "$c3" - FAIL=alerts
 recheck 'the version already tagged' 3 'already exists' 1.1.1 "$c3" - TAGS_EXTRA=v1.1.1
 recheck 'a version that is not X.Y.Z' 1 'X.Y.Z' v1.1.1 "$c3" -
+recheck 'a version with a second line is not X.Y.Z' 1 'X.Y.Z' "$(printf '1.1.1\nx')" "$c3" -
+if env GH_REPO="$(printf 'o/r\nx')" GH_TOKEN=t GITHUB_SHA="$c4" PLAN_OUT="$scratch/plan.json" "$script" plan >/dev/null 2>&1; then fail 'a repository name with a second line is refused'; fi
 git -C "$repo" checkout -q --detach "$x"
 recheck 'a commit that main does not contain' 3 'not on main history' 1.1.1 "$x" -
 git -C "$repo" checkout -q --detach "$c3"
@@ -979,7 +1061,7 @@ recheck 'a patch that only adds the release edge' 0 'ok to tag v1.1.1' 1.1.1 "$c
 git -C "$repo" update-ref refs/remotes/origin/main "$cedgeplus"
 git -C "$repo" checkout -q --detach "$cedgeplus"
 recheck 'a patch that adds a genesis edge besides' 3 'beyond adding the release-source edge from v1.1.0' 1.1.1 "$cedgeplus" --tip GREEN="$c3 $c4 $cedge $cedgeplus"
-for variant in removed swapped double; do
+for variant in removed swapped double stringrel; do
 	eval "cv=\$c$variant"
 	git -C "$repo" update-ref refs/remotes/origin/main "$cv"
 	git -C "$repo" checkout -q --detach "$cv"
@@ -997,7 +1079,12 @@ KIND='minor'
 recheck 'a burned minor version is skipped' 0 'ok to tag v1.3.0' 1.3.0 "$c3" - TAGS_EXTRA=v1.2.0 BUILD=failed
 recheck 'a burned minor version is not accepted' 3 'not the minor successor of v1.1.0 (v1.3.0)' 1.2.0 "$c3" - TAGS_EXTRA=v1.2.0 BUILD=failed
 KIND='patch'
-recheck 'a patch below a burned minor tag is refused' 3 'a stable tag at or above v1.1.1 already exists' 1.1.1 "$c3" - TAGS_EXTRA=v1.2.0 BUILD=failed
+recheck 'a patch below a burned minor tag is valid' 0 'ok to tag v1.1.1' 1.1.1 "$c3" - TAGS_EXTRA=v1.2.0 BUILD=failed
+recheck 'a patch below a minor tag that is still building is refused' 3 'a stable tag at or above v1.1.1 already exists' 1.1.1 "$c3" - TAGS_EXTRA=v1.2.0 BUILD=running
+recheck 'a failed tag beyond an unburned gap still orders' 3 'a stable tag at or above' 1.1.2 "$c3" - TAGS_EXTRA='v1.1.1 v1.1.3' BUILD=failed
+# The draft a failed run left is seen by the recheck and not by the plan: both skip the same version.
+recheck 'a draft only the recheck sees does not make the burned version current again' 0 'ok to tag v1.1.2' 1.1.2 "$c3" - TAGS_EXTRA=v1.1.1 BUILD=failed REL_DRAFT_RECHECK=v1.1.1
+recheck 'the burned version is still not accepted when its draft is visible' 3 'not the patch successor of v1.1.0 (v1.1.2)' 1.1.1 "$c3" - TAGS_EXTRA=v1.1.1 BUILD=failed REL_DRAFT_RECHECK=v1.1.1
 # The commands run the release tools from the commit; below the tip they must match the tip's.
 git -C "$repo" checkout -q --detach "$ctool"
 recheck 'the release tools differ from the tip' 3 'release tools differ between' 1.1.1 "$ctool" -
