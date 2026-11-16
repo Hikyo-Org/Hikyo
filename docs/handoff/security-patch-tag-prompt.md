@@ -21,8 +21,10 @@ entry in part 1 (#1404); the two textual conflicts are trivial (both entries sta
   pending merge. It then checks trust synchronization, authentication, the
   candidate, main history, source proof, stray tags, existing releases and, last,
   compatibility with the previous stable release.
-- `issue FILE` applies the plan to the single issue (marker plus title), edits
-  only on a change, closes it when nothing is waiting.
+- `issue FILE` applies the plan to the single issue (marker, title and the
+  workflow's own bot as author, because anyone can open an issue with the
+  marker and its author could later edit commands people copy), edits only on
+  a change, closes it when nothing is waiting.
 - `recheck VERSION COMMIT [--tip]` is the first link of the issue's command. It
   refuses unless the checkout is at the planned commit and every pending
   security merge is in it (no grace period), the version is the patch

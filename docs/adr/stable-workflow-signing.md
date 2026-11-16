@@ -145,7 +145,7 @@ is the newest of the last 60 first-parent commits of main that holds every pendi
 records the latest stable release in trust, and has complete green source proof; a red tip falls back
 to the last green commit, never below the newest pending merge. The workflow tags nothing, publishes
 nothing and holds no tag or release authority: its token is read-only apart from issues, and only its
-second job writes the one issue. The issue's command starts with `security-patch-plan.sh recheck`, run
+second job writes the one issue, which it recognizes by title, marker and its own bot as author. The issue's command starts with `security-patch-plan.sh recheck`, run
 by the maintainer with their own login, which refuses when a newer pending security merge exists or
 anything else changed since the issue was written. Fully unattended tagging stays deferred to a later
 App phase.

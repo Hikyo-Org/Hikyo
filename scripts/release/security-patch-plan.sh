@@ -512,10 +512,12 @@ issue() {
 	[ "$#" -eq 1 ] && [ -f "$1" ] || die 'usage: security-patch-plan.sh issue PLAN_FILE'
 	action=$(jq -er '.action | select(. == "open" or . == "close" or . == "none")' "$1") || die 'the plan has no valid action'
 	jq -er '.body | select(type == "string" and length > 0 and length < 60000)' "$1" >"$work/new-body" || die 'the plan has no usable body'
-	gh issue list --repo "$GH_REPO" --state open --limit 1000 --json number,title,body >"$work/issues.json" 2>"$work/err" ||
+	gh issue list --repo "$GH_REPO" --state open --limit 1000 --json number,title,body,author >"$work/issues.json" 2>"$work/err" ||
 		{ cat "$work/err" >&2; die 'cannot list open issues'; }
-	# Title and our marker identify the issue; a listing that fails is never "no issue".
-	number=$(jq -r --arg title "$issue_title" --arg marker "$issue_marker" '[.[] | select(.title == $title and (.body | startswith($marker)))][0].number // empty' "$work/issues.json")
+	# Title, our marker and the workflow's own bot as author identify the issue: anyone can
+	# open an issue with the marker, and its author could later edit commands people copy.
+	# A listing that fails is never "no issue".
+	number=$(jq -r --arg title "$issue_title" --arg marker "$issue_marker" '[.[] | select(.title == $title and (.body | startswith($marker)) and ((.author.login // "") | test("^(app/)?github-actions(\\[bot\\])?$")))][0].number // empty' "$work/issues.json")
 	case "$action" in
 	open)
 		new=$(jq -r '.body | gsub("\r"; "")' "$1")

@@ -117,6 +117,7 @@ case "$*" in
 		if [ "${RELEASE_EXISTS:-}" = 1 ]; then echo '{"draft":false}'; else printf 'gh: Not Found (HTTP 404)\n' >&2; exit 1; fi ;;
 	'issue list '*)
 		failing issue-list
+		case "$*" in *'--json number,title,body,author'*) ;; *) printf 'the issue listing must include the author\n' >&2; exit 2 ;; esac
 		cat "$FIXTURE/issues.json" ;;
 	'issue create '*) : >"$FIXTURE/created" ;;
 	'issue edit '*) : >"$FIXTURE/edited" ;;
@@ -411,7 +412,7 @@ apply() { # plan-file name
 	: >"$scratch/calls"
 	env GH_REPO=o/r GH_TOKEN=t "$@" >"$scratch/out" 2>"$scratch/err"
 }
-issue_json() { jq -nc --arg title "$1" --arg body "$2" '[{number:5,title:$title,body:$body}]'; }
+issue_json() { jq -nc --arg title "$1" --arg body "$2" --arg author "${3:-app/github-actions}" '[{number:5,title:$title,body:$body,author:{login:$author}}]'; }
 title='Security patch release: maintainer action needed'
 echo '[]' >"$scratch/issues.json"
 apply "$script" issue "$scratch/ready-plan.json"
@@ -433,6 +434,16 @@ apply "$script" issue "$scratch/ready-plan.json"
 issue_json "$title" 'a stranger wrote this without the marker' >"$scratch/issues.json"
 apply "$script" issue "$scratch/ready-plan.json"
 [ -e "$scratch/created" ] || fail 'an issue without our marker is not ours'
+# Anyone can open an issue with the title and the marker; only the workflow's own bot owns the issue.
+issue_json "$title" "$(jq -r .body "$scratch/ready-plan.json")" someone >"$scratch/issues.json"
+apply "$script" issue "$scratch/ready-plan.json"
+{ [ -e "$scratch/created" ] && [ ! -e "$scratch/edited" ]; } || fail 'an issue with our marker from another author is not ours'
+issue_json "$title" "$(jq -r .body "$scratch/ready-plan.json")" fake-github-actions >"$scratch/issues.json"
+apply "$script" issue "$scratch/ready-plan.json"
+[ -e "$scratch/created" ] || fail 'the author name is matched exactly'
+issue_json "$title" "$(printf '<!-- security-patch-plan -->\nold')" 'github-actions[bot]' >"$scratch/issues.json"
+apply "$script" issue "$scratch/ready-plan.json"
+{ [ -e "$scratch/edited" ] && [ ! -e "$scratch/created" ]; } || fail 'the REST spelling of the bot is ours'
 plan 'released' 0 SEC1="$c0"
 issue_json "$title" "$(printf '<!-- security-patch-plan -->\nold')" >"$scratch/issues.json"
 cp "$scratch/plan.json" "$scratch/close-plan.json"
@@ -441,6 +452,9 @@ apply "$script" issue "$scratch/close-plan.json"
 echo '[]' >"$scratch/issues.json"
 apply "$script" issue "$scratch/close-plan.json"
 [ ! -e "$scratch/closed" ] || fail 'closing with no open issue does nothing'
+issue_json "$title" "$(printf '<!-- security-patch-plan -->\nold')" someone >"$scratch/issues.json"
+apply "$script" issue "$scratch/close-plan.json"
+[ ! -e "$scratch/closed" ] || fail 'another author is not closed'
 if env FAIL=issue-list GH_REPO=o/r GH_TOKEN=t "$script" issue "$scratch/ready-plan.json" >/dev/null 2>&1; then fail 'an unreadable issue list must stop the run'; fi
 printf '{"action":"delete","body":"x"}\n' >"$scratch/bad-plan.json"
 if env GH_REPO=o/r GH_TOKEN=t "$script" issue "$scratch/bad-plan.json" >/dev/null 2>&1; then fail 'an unknown action is refused'; fi
