@@ -890,6 +890,12 @@ const (
 	// create, pause, resume and delete; action says which. Run events arrive
 	// with the run state machine (S2).
 	EventRotationConfigured EventType = "rotation.configured"
+	// Rotation run transitions (#148, S2): an INTENT before each provider
+	// side effect, an OUTCOME after, and a quarantine when a candidate or
+	// superseded role may be live and unconfirmed.
+	EventRotationRunIntent   EventType = "rotation.run_intent"
+	EventRotationRunOutcome  EventType = "rotation.run_outcome"
+	EventRotationQuarantined EventType = "rotation.quarantined"
 	// SSH user certificates (#155).
 	EventSSHCAConfigured       EventType = "ssh.ca_configured"
 	EventSSHCARotated          EventType = "ssh.ca_rotated"
@@ -3756,7 +3762,7 @@ var registry = map[EventType]TypeSpec{
 	// environment protected, approval policy enabled) records each rotation it
 	// pauses with reason set (#148).
 	EventRotationConfigured: adapterLifecycleEvent(Schema{
-		"action":                   {Kind: KindString, Required: true, Enum: []string{"created", "paused", "resumed", "deleted"}},
+		"action":                   {Kind: KindString, Required: true, Enum: []string{"created", "paused", "resumed", "deleted", "halted"}},
 		"rotation_id":              {Kind: KindString, Required: true},
 		"provider_id":              {Kind: KindString, Required: true},
 		"key_id":                   {Kind: KindString, Required: true},
@@ -3768,11 +3774,52 @@ var registry = map[EventType]TypeSpec{
 		// environment_id names the rotation's environment and is set on every
 		// action; reason is set only on a cascade pause.
 		"environment_id": {Kind: KindString},
-		"reason":         {Kind: KindString, Enum: []string{"provider_deleted", "provider_credential_revoked", "environment_protected", "approval_policy_enabled"}},
+		"reason":         {Kind: KindString, Enum: []string{"provider_deleted", "provider_credential_revoked", "environment_protected", "approval_policy_enabled", "retries_exhausted", "authority_lost", "gate_failed"}},
 		// credential_expires_at is the delivered role's VALID UNTIL when one is
 		// known, so a pause or delete says when the live credential lapses.
 		"credential_expires_at": {Kind: KindString},
 	}),
+	// A run's INTENT is written before the provider side effect (or the
+	// publish) and its OUTCOME after. handle is the candidate's role name, public
+	// metadata, never the password. phase is the transition: mint, publish,
+	// drop_candidate, revoke, extend.
+	EventRotationRunIntent: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeIntent: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"run_id": {Kind: KindString, Required: true},
+			"phase":  {Kind: KindString, Required: true, Enum: rotationRunPhases},
+			"handle": {Kind: KindString, Required: true},
+		},
+	},
+	EventRotationRunOutcome: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true, OutcomeFailure: true, OutcomeUnknown: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"run_id":     {Kind: KindString, Required: true},
+			"phase":      {Kind: KindString, Required: true, Enum: rotationRunPhases},
+			"handle":     {Kind: KindString, Required: true},
+			"error_code": {Kind: KindString},
+			// not_converged_consumers is reserved for the consumer-convergence
+			// report (S2b); the executor does not emit it yet.
+			"not_converged_consumers": {Kind: KindInt},
+		},
+	},
+	EventRotationQuarantined: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"run_id":            {Kind: KindString, Required: true},
+			"candidate_handle":  {Kind: KindString, Required: true},
+			"superseded_handle": {Kind: KindString},
+		},
+	},
 	EventDynamicProviderInspected: {
 		SchemaVersion: 1, Retention: RetentionAccess,
 		Outcomes: map[Outcome]bool{OutcomeSuccess: true, OutcomeDenied: true},
@@ -4413,3 +4460,7 @@ var (
 	// verification is NOT a refusal (verify answers valid=false).
 	TransitRefusalCauses = []string{"state", "version", "compromised", "caller", "operation", "custody-unavailable", "invalid-input"}
 )
+
+// rotationRunPhases are the transitions a rotation run records: the provider
+// side effects and the publish.
+var rotationRunPhases = []string{"mint", "publish", "drop_candidate", "revoke", "extend"}

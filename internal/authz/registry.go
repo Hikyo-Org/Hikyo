@@ -726,6 +726,10 @@ const (
 	OpRotationPause   Operation = "rotation.pause"
 	OpRotationResume  Operation = "rotation.resume"
 	OpRotationDelete  Operation = "rotation.delete"
+	// OpRotationRun is the executor's own publish transaction (#148, S2): not a
+	// wire operation. It binds the run row write to the recorded authority's
+	// publish@env proof, beside the staged values and the revision.
+	OpRotationRun Operation = "rotation.run"
 
 	// SSH user certificates (#155). Everything is environment-scoped. CA and
 	// profile management is manage-identities@project; reads of public trust
@@ -1005,6 +1009,13 @@ const (
 	// environment, or of the whole project, that became protected or gained an
 	// approval policy.
 	StoreRotationsPauseForEnvironment StoreOp = "rotations.PauseForEnvironment"
+	// StoreRotationsRunPublish is the run row's fenced write inside the
+	// executor's publish transaction (begin and record); StoreRotationsAbandonRuns
+	// is the delete --abandon quarantine; StoreRotationsProviderLiveRuns is the
+	// provider delete guard (#148, S2).
+	StoreRotationsRunPublish       StoreOp = "rotations.RunPublish"
+	StoreRotationsAbandonRuns      StoreOp = "rotations.AbandonRuns"
+	StoreRotationsProviderLiveRuns StoreOp = "rotations.ProviderLiveRuns"
 
 	// SSH user certificates (#155). Proof-carrying, environment-bound; the
 	// sweeper's revocation SQL runs through the proof-free SSHRuntime.
@@ -5514,8 +5525,14 @@ var operationTable = map[Operation]opSpec{
 	OpRotationDelete: {
 		class: ClassTenant, level: domain.LevelEnv,
 		formula:  Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
-		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSetState: true, StoreRotationsCountOpenRuns: true, StoreAuditTenantInsert: true},
-		events:   []audit.EventType{audit.EventRotationConfigured},
+		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSetState: true, StoreRotationsCountOpenRuns: true, StoreRotationsAbandonRuns: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventRotationConfigured, audit.EventRotationQuarantined},
+	},
+	OpRotationRun: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsRunPublish: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventRotationRunOutcome},
 	},
 
 	// --- SSH user certificates (#155) -----------------------------------------

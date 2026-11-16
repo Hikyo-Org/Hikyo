@@ -11,6 +11,36 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const rotationAbandonOpenRuns = `-- name: RotationAbandonOpenRuns :execrows
+UPDATE rotation_runs SET phase='quarantine',phase_at=$1,last_error='abandoned',next_attempt_at=CASE WHEN published_revision IS NULL THEN $1 ELSE next_attempt_at END,lease_owner=NULL,lease_expires_at=NULL,lease_claim_token=lease_claim_token+1 WHERE rotation_id=$2 AND org_id=$3 AND project_id=$4 AND environment_id=$5 AND phase NOT IN ('done','quarantine','failed')
+`
+
+type RotationAbandonOpenRunsParams struct {
+	At           pgtype.Timestamptz
+	RotationID   string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+// Abandon closes every unsettled run as quarantine and bumps the claim token, so a
+// worker still holding the run loses its fence. A pre-publish run is due now (the
+// candidate reconciler confirms its candidate gone); a published run keeps its
+// overlap deadline (the revoke-obligation loop drops the superseded role after it).
+func (q *Queries) RotationAbandonOpenRuns(ctx context.Context, arg RotationAbandonOpenRunsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, rotationAbandonOpenRuns,
+		arg.At,
+		arg.RotationID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const rotationBlockingRunRotations = `-- name: RotationBlockingRunRotations :many
 SELECT DISTINCT rotation_id FROM rotation_runs WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND phase NOT IN ('done','failed') ORDER BY rotation_id LIMIT $4
 `
@@ -620,6 +650,57 @@ func (q *Queries) RotationListAll(ctx context.Context, arg RotationListAllParams
 	return items, nil
 }
 
+const rotationOpenRuns = `-- name: RotationOpenRuns :many
+SELECT id,phase,candidate_handle,superseded_handle,published_revision FROM rotation_runs WHERE rotation_id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4 AND phase NOT IN ('done','quarantine','failed') ORDER BY id
+`
+
+type RotationOpenRunsParams struct {
+	RotationID   string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+type RotationOpenRunsRow struct {
+	ID                string
+	Phase             string
+	CandidateHandle   string
+	SupersededHandle  pgtype.Text
+	PublishedRevision pgtype.Int8
+}
+
+// The runs a delete with --abandon closes: everything that has not settled.
+func (q *Queries) RotationOpenRuns(ctx context.Context, arg RotationOpenRunsParams) ([]RotationOpenRunsRow, error) {
+	rows, err := q.db.Query(ctx, rotationOpenRuns,
+		arg.RotationID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RotationOpenRunsRow
+	for rows.Next() {
+		var i RotationOpenRunsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Phase,
+			&i.CandidateHandle,
+			&i.SupersededHandle,
+			&i.PublishedRevision,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const rotationPauseActive = `-- name: RotationPauseActive :execrows
 UPDATE rotations SET state='paused',next_run_at=NULL,generation=generation+1,updated_at=$1 WHERE id=$2 AND org_id=$3 AND project_id=$4 AND state='active'
 `
@@ -642,6 +723,27 @@ func (q *Queries) RotationPauseActive(ctx context.Context, arg RotationPauseActi
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const rotationProviderLiveRuns = `-- name: RotationProviderLiveRuns :one
+SELECT COUNT(*) FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id LEFT JOIN rotation_effects ef ON ef.run_id=ru.id AND ef.org_id=ru.org_id AND ef.project_id=ru.project_id AND ef.environment_id=ru.environment_id AND ef.kind='drop_candidate' AND ef.outcome='success' WHERE ru.org_id=$1 AND ru.project_id=$2 AND ro.provider_id=$3 AND ru.phase<>'done' AND NOT (ru.phase='failed' AND ru.published_revision IS NULL AND ef.id IS NOT NULL)
+`
+
+type RotationProviderLiveRunsParams struct {
+	ChainOrg     string
+	ChainProject string
+	ProviderID   string
+}
+
+// Runs on a provider that may still hold a live role or owe a revoke: every phase
+// but done, and a failed run that never published without a confirmed drop.
+// hikyo:reason The provider delete guard counts runs across the provider's rotations under the org and project chain; the effect join is pinned to the run's own chain.
+// hikyo:instance-scoped
+func (q *Queries) RotationProviderLiveRuns(ctx context.Context, arg RotationProviderLiveRunsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, rotationProviderLiveRuns, arg.ChainOrg, arg.ChainProject, arg.ProviderID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const rotationPublishedFailedRunRotations = `-- name: RotationPublishedFailedRunRotations :many
@@ -770,4 +872,44 @@ func (q *Queries) RotationSetState(ctx context.Context, arg RotationSetStatePara
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const rotationUnconfirmedFailedRunRotations = `-- name: RotationUnconfirmedFailedRunRotations :many
+SELECT DISTINCT ru.rotation_id FROM rotation_runs ru LEFT JOIN rotation_effects ef ON ef.run_id=ru.id AND ef.org_id=ru.org_id AND ef.project_id=ru.project_id AND ef.environment_id=ru.environment_id AND ef.kind='drop_candidate' AND ef.outcome='success' WHERE ru.org_id=$1 AND ru.project_id=$2 AND ru.environment_id=$3 AND ru.phase='failed' AND ru.published_revision IS NULL AND ef.id IS NULL ORDER BY ru.rotation_id LIMIT $4
+`
+
+type RotationUnconfirmedFailedRunRotationsParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	PageLimit    int32
+}
+
+// A failed run that never published only stops holding a live role once its
+// candidate drop is recorded: the fenced claim write fails the run before the drop.
+// hikyo:reason A failed run that never published may still hold a live candidate role until a drop is confirmed; the chain is bound on the run row and the effect rows join under the same chain.
+// hikyo:instance-scoped
+func (q *Queries) RotationUnconfirmedFailedRunRotations(ctx context.Context, arg RotationUnconfirmedFailedRunRotationsParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, rotationUnconfirmedFailedRunRotations,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var rotation_id string
+		if err := rows.Scan(&rotation_id); err != nil {
+			return nil, err
+		}
+		items = append(items, rotation_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

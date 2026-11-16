@@ -73,3 +73,28 @@ SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,rev
 
 -- name: RotationListActiveInProject :many
 SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state='active' ORDER BY id;
+
+-- The runs a delete with --abandon closes: everything that has not settled.
+-- name: RotationOpenRuns :many
+SELECT id,phase,candidate_handle,superseded_handle,published_revision FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND phase NOT IN ('done','quarantine','failed') ORDER BY id;
+
+-- Abandon closes every unsettled run as quarantine and bumps the claim token, so a
+-- worker still holding the run loses its fence. A pre-publish run is due now (the
+-- candidate reconciler confirms its candidate gone); a published run keeps its
+-- overlap deadline (the revoke-obligation loop drops the superseded role after it).
+-- name: RotationAbandonOpenRuns :execrows
+UPDATE rotation_runs SET phase='quarantine',phase_at=sqlc.arg(at),last_error='abandoned',next_attempt_at=CASE WHEN published_revision IS NULL THEN sqlc.arg(at) ELSE next_attempt_at END,lease_owner=NULL,lease_expires_at=NULL,lease_claim_token=lease_claim_token+1 WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND phase NOT IN ('done','quarantine','failed');
+
+-- A failed run that never published only stops holding a live role once its
+-- candidate drop is recorded: the fenced claim write fails the run before the drop.
+-- hikyo:reason A failed run that never published may still hold a live candidate role until a drop is confirmed; the chain is bound on the run row and the effect rows join under the same chain.
+-- hikyo:instance-scoped
+-- name: RotationUnconfirmedFailedRunRotations :many
+SELECT DISTINCT ru.rotation_id FROM rotation_runs ru LEFT JOIN rotation_effects ef ON ef.run_id=ru.id AND ef.org_id=ru.org_id AND ef.project_id=ru.project_id AND ef.environment_id=ru.environment_id AND ef.kind='drop_candidate' AND ef.outcome='success' WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env) AND ru.phase='failed' AND ru.published_revision IS NULL AND ef.id IS NULL ORDER BY ru.rotation_id LIMIT sqlc.arg(page_limit);
+
+-- Runs on a provider that may still hold a live role or owe a revoke: every phase
+-- but done, and a failed run that never published without a confirmed drop.
+-- hikyo:reason The provider delete guard counts runs across the provider's rotations under the org and project chain; the effect join is pinned to the run's own chain.
+-- hikyo:instance-scoped
+-- name: RotationProviderLiveRuns :one
+SELECT COUNT(*) FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id LEFT JOIN rotation_effects ef ON ef.run_id=ru.id AND ef.org_id=ru.org_id AND ef.project_id=ru.project_id AND ef.environment_id=ru.environment_id AND ef.kind='drop_candidate' AND ef.outcome='success' WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ro.provider_id=sqlc.arg(provider_id) AND ru.phase<>'done' AND NOT (ru.phase='failed' AND ru.published_revision IS NULL AND ef.id IS NOT NULL);
