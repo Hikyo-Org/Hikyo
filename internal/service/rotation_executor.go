@@ -1068,10 +1068,11 @@ func (e *RotationExecutor) publish(ctx context.Context, provider dynamic.Provide
 		},
 		commit: func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity, now time.Time, out PublishResult) error {
 			// The publication time: read after the project lock, it stamps the
-			// snapshot and the publish record and is what the budget is checked
-			// against. The overlap deadline is anchored later (below and after the
-			// commit), because the staging and materialization that follow the lock
-			// also take time that consumers must not lose.
+			// snapshot and the publish record. The budget is checked against it here
+			// and again against a fresh read below, and the overlap deadline is
+			// anchored to that fresh read and to the clock after the commit, because
+			// the staging and materialization that follow the lock also take time
+			// that consumers must not lose.
 			now = store.CanonTime(now)
 			if now.After(run.StartedAt.Add(rotationPublishBudget)) {
 				return errRotationBudget
@@ -1102,6 +1103,12 @@ func (e *RotationExecutor) publish(ctx context.Context, provider dynamic.Provide
 			committedAt = store.CanonTime(e.now())
 			if committedAt.Before(now) {
 				committedAt = now
+			}
+			// The budget is checked against this fresh read too: staging and
+			// materialization ran after the post-lock read above and can outlast it,
+			// and a publish that would commit past the budget rolls back instead.
+			if committedAt.After(run.StartedAt.Add(rotationPublishBudget)) {
+				return errRotationBudget
 			}
 			if err := r.Rotations().RecordRunPublish(ctx, proof, store.RotationPublishRecord{
 				Run: run, Revision: revision, Now: now, NextRunAt: now.Add(interval), NextAttempt: committedAt.Add(delay), Outcome: *closed,

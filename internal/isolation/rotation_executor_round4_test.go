@@ -122,6 +122,74 @@ func TestRotationPublishBudgetRechecksAfterTheProjectLock(t *testing.T) {
 	})
 }
 
+// The budget is checked again at the end of the publish, on a fresh clock: staging
+// and materialization run after the post-lock read and can outlast the budget. The
+// probe fires inside the transaction after the stage check and before the commit
+// hook; an over-budget run rolls back, an in-budget run's overlap deadline is the
+// commit time plus the revocation delay.
+func TestRotationPublishBudgetRechecksAtCommit(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		rot := x.create(rotPasswordKey, rotUsernameKey)
+		x.advance(24*time.Hour + time.Minute)
+		x.ctl.set(func() {
+			x.ctl.at = func(p, _ string) {
+				if p == "create:after" {
+					x.ctl.set(func() { x.ctl.at = nil })
+					execRaw(t, db, "UPDATE rotation_runs SET lease_expires_at='2099-01-01T00:00:00.000000Z' WHERE rotation_id='"+rot.ID+"'")
+				}
+			}
+		})
+		// The lock was won in budget and the stage check passed; the clock then
+		// jumps past the budget before the commit hook runs.
+		x.exec.Revisions.PublishProbe = &rotPublishProbe{onBaseline: func() {
+			x.exec.Revisions.PublishProbe = nil
+			x.advance(61 * time.Minute)
+		}}
+		x.requireSweep(x.worker, true)
+		if got := x.runPhases(rot.ID); got != "failed," {
+			t.Fatalf("phases = %q, want failed: a publish over budget at its commit must roll back", got)
+		}
+		if x.snapshots() != 0 {
+			t.Fatalf("an over-budget publish left %d revisions", x.snapshots())
+		}
+		if got := x.lastRun(rot.ID, "last_error"); got != "publish_budget_exceeded" {
+			t.Fatalf("last error = %q, want publish_budget_exceeded", got)
+		}
+	})
+}
+
+// An in-budget run whose staging and materialization took half an hour after the
+// lock stores an overlap deadline of the commit time plus the revocation delay. The
+// run's two-minute lease lapsed during that work, so the settle after the commit
+// loses its fence and the deadline is the one the commit hook stored: the
+// fallback this test pins to the fresh clock read, not the post-lock one.
+func TestRotationOverlapDeadlineIsCommitTimePlusDelayAfterLateWork(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		req := x.request(rotPasswordKey, rotUsernameKey)
+		req.RevocationDelaySeconds = 300
+		rot, err := x.svc.Create(tctx(t), x.actor, x.scope, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		x.advance(24*time.Hour + time.Minute)
+		x.exec.Revisions.PublishProbe = &rotPublishProbe{onBaseline: func() {
+			x.exec.Revisions.PublishProbe = nil
+			x.advance(30 * time.Minute) // still inside the one-hour budget
+		}}
+		x.drain()
+		run := x.openRunID(rot.ID)
+		if got := x.phase(run); got != "published" {
+			t.Fatalf("run = %s (%s), want published: the lapsed lease keeps the settle from running", got, x.lastRun(rot.ID, "last_error"))
+		}
+		next := mustParseStamp(t, queryString(t, db, "SELECT "+stampText(db, "next_attempt_at")+" FROM rotation_runs WHERE id='"+run+"'"))
+		if want := x.now().Add(5 * time.Minute); !next.Equal(want) {
+			t.Fatalf("overlap deadline = %s, want the commit time %s + 5m = %s", next, x.now(), want)
+		}
+	})
+}
+
 // stampText selects a timestamp column as an RFC 3339 string on either engine
 // (PostgreSQL stores these as timestamptz).
 func stampText(db *store.DB, column string) string {
