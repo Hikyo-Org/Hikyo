@@ -33,10 +33,12 @@ until then rotate by hand with [dynamic secrets](/docs/dynamic-secrets/) and
   always shorter than the interval (`--revocation-delay`).
 - The **authority principal**: the person who created the rotation.
 
-A bound that is hit is refused as `invalid`, naming the flag and the bound in the
-unit you typed, for example `--interval (interval_seconds) 30m is below the 1h
-minimum rotation interval`. The record holds no password, no role name and no
-handle for a minted credential.
+A bound that is hit is refused as `invalid`, naming the flag. The server renders the
+value and the bound in the largest whole unit that divides them (`d`, then `h`, then
+`m`), whatever unit you typed: `--interval 90m` is shown as `90m`, while `--interval
+48h` is shown as `2d`, for example `--interval (interval_seconds) 30m is below the 1h
+minimum rotation interval`. The record holds no password, no role name and no handle
+for a minted credential.
 
 ## Who may configure it
 
@@ -53,12 +55,17 @@ values publish of those keys takes. `hikyo rotation create` and `hikyo rotation
 resume` prompt for it through the usual browser handoff.
 
 The person who creates the rotation is recorded as the authority principal, and
-the executor will re-check their authority before every transition. It never acts
-as a system principal. `resume` requires the caller to hold the same access on
-both keys, and requires the recorded authority principal to still hold it; if
-that authority was lost, `resume` refuses with a named error rather than
-rescheduling, so a person who can only publish cannot re-arm someone else's
-delegation.
+the executor will re-check their authority in full before every step that can still
+be rolled back; once a new credential is published, only fail-safe checks apply, so
+losing authority can never strand a live old credential. It never acts as a system
+principal. `resume` requires the caller to hold the same access on both keys, and
+requires the recorded authority principal to still hold it (including through a rule
+narrowed to those keys); if that authority was lost, `resume` refuses with a named
+error rather than rescheduling, and the denial is recorded against the person who
+asked, so a person who can only publish cannot re-arm someone else's delegation. A
+person whose access to the keys comes only from key-narrowed rules can create a
+rotation but cannot yet resume, pause or delete it; a person with the access
+environment-wide can.
 
 A rotation publishes unattended, so it is refused, by name, in an environment that
 is **protected** (its publishes need a ceremony each time) or covered by an
@@ -74,11 +81,19 @@ show need `read`.
 - Deleting a provider, or revoking its admin credential, **pauses** every active
   rotation that mints from it, and the audit event names the reason. `resume`
   refuses until the provider exists, is active and has its credential again.
+- Marking an environment **protected**, or creating or enabling an approval policy
+  that covers it (a project-wide policy covers every environment), **pauses** that
+  environment's active rotations in the same step and records the person who did it
+  and the reason (`environment_protected`, `approval_policy_enabled`). `resume` refuses
+  until the environment is unattended again.
 - `resume` also re-checks that both keys still exist and the password key is still
   secret-classified, and refuses by name if not.
-- Deleting an environment is refused, naming the rotation, while a rotation in it
-  is active or paused or has a run in flight. Delete the rotation first; a deleted
-  rotation's history is removed with the environment.
+- Deleting an environment is refused while a rotation in it is active, paused or
+  halted, or while any of its runs may still hold a live role: a run in flight, a
+  quarantined run, a revoke the provider refused, or a failed run that had already
+  published. The refusal names the blocking rotation ids (up to ten of each kind).
+  Delete each rotation first and let its runs finish; the history of deleted
+  rotations is removed with the environment.
 
 ## When the delivered credential expires
 
@@ -100,6 +115,7 @@ hikyo rotation create \
 
 hikyo rotation list --env production
 hikyo rotation list --env production --include-disabled
+hikyo rotation list --env production --limit 50 --after rot_0198...
 hikyo rotation show rot_0198... --env production
 hikyo rotation pause rot_0198... --env production
 hikyo rotation resume rot_0198... --env production
@@ -108,7 +124,9 @@ hikyo rotation delete rot_0198... --env production
 
 `--interval` and `--revocation-delay` take Go durations (`90m`, `720h`) or a whole
 number of days with a `d` suffix (`30d`). `list` shows live rotations; add
-`--include-disabled` to include deleted history. `pause`, `resume` and `delete`
+`--include-disabled` to include deleted history. A page holds up to `--limit`
+rotations (1 to 500, default 100) in id order; when more follow, the CLI prints the
+`--after` value that continues the list. `pause`, `resume` and `delete`
 accept `--expected-generation N`, which fails
 with a conflict if another change landed first. Resume recomputes the next run
 from the current time. Delete disables the rotation and keeps it as history; it
@@ -118,7 +136,8 @@ frees the keys for another rotation.
 
 The routes live under
 `/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations`:
-`GET` (with the optional `include_disabled` query parameter) and `POST` on the
+`GET` (with the optional `include_disabled`, `limit` and `after` query parameters;
+the response carries `next_after` while more follow) and `POST` on the
 collection, `GET` and `DELETE` on
 `/{rotation}`, and `POST` on `/{rotation}/pause` and `/{rotation}/resume`.
 They require a human session. See the [HTTP API](/docs/http-api/).
@@ -126,5 +145,7 @@ They require a human session. See the [HTTP API](/docs/http-api/).
 ## Audit
 
 `rotation.configured` records each create, pause, resume and delete with its
-`action`. Reads are not audited events. Audit payloads carry identifiers and
+`action` and the environment, and a pause the system caused (provider deleted or
+credential revoked, environment protected, approval policy enabled) with its
+`reason`. Reads are not audited events. Audit payloads carry identifiers and
 schedule values only, never a credential.
