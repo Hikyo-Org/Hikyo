@@ -161,8 +161,8 @@ refused() {
 }
 snapshot() {
 	# Every file under the upgrade state (journal, image record, pin, enrollment, custody
-	# vault and record), by content and mode, except the download cache.
-	helper "cd /state && find . -path ./unattended/downloads -prune -o -type f -print0 | sort -z | xargs -0 sha256sum; find . -path ./unattended/downloads -prune -o -print | sort"
+	# vault and record), by content, owner and mode, except the download cache.
+	helper "cd /state && find . -path ./unattended/downloads -prune -o -type f -print0 | sort -z | xargs -0 sha256sum; find . -path ./unattended/downloads -prune -o -printf '%m %u %p\\n' | sort"
 }
 control() {
 	if [ "$engine" = sqlite ]; then
@@ -215,11 +215,14 @@ PY
 }
 # 1. First administrator over the terminal channel: the authority is displayed on the
 # terminal once and never reaches stdout, a file or a log.
+# Without a terminal or a destination, creation must refuse before it creates anything, so
+# the terminal create below still succeeds.
+if output=$(op admin create --username operator 2>&1); then fail 'admin create succeeded without a disclosure channel'; fi
+case "$output" in *hik_*) fail 'admin create disclosed to a non-terminal stdout' ;; esac
 created=$(tty_exec "$container" /usr/local/bin/hikyo admin create --username operator) || fail 'admin create on a terminal failed (transcript withheld: it may hold the authority)'
 authority=$(printf '%s\n' "$created" | grep -Eo 'hik_[A-Za-z0-9_-]+' | head -n1)
 principal=$(printf '%s\n' "$created" | sed -n 's/.*principal \([^)]*\)).*/\1/p' | head -n1)
 [ -n "$authority" ] && [ -n "$principal" ] || fail 'admin create did not display an authority and principal on the terminal'
-case "$(op admin create --username nobody 2>&1 || true)" in *hik_*) fail 'admin create disclosed to a non-terminal stdout' ;; esac
 op admin grant --principal "$principal" --capability instance-config >/dev/null 2>&1 || fail 'admin grant failed'
 refused 'conflict' op admin create --username second --output-file /var/lib/hikyo/data/ops/second
 wait_ready 'after the first administrator'

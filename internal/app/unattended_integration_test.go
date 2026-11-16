@@ -398,8 +398,7 @@ func TestUnattendedPackagedEnrollmentUpgradeAndIntermediateCredential(t *testing
 
 // unattendedOperatorCommands covers #1112: a command started later in the same
 // admitted container resolves the installed public inputs and passes the real gate,
-// without running a second updater or
-// changing the selected release. Each refusal below leaves the database, the
+// without running a second updater or changing the selected release. Each refusal below leaves the database, the
 // journal and the image record exactly as they were.
 func unattendedOperatorCommands(t *testing.T, engine store.Engine, live store.Config, directory string, release releaseidentity.Identity, fixture *unattendedChildFixture, runChild func(int) error) {
 	t.Helper()

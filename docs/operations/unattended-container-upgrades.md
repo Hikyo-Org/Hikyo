@@ -167,11 +167,14 @@ chart already does, so `docker exec` and `kubectl exec` find the root key. The i
 has no shell, `cat` or `tar`, so `kubectl cp` and `docker exec cat` do not work. Move
 values this way instead:
 
-- Disclosed values (an authority, a backup identity) go to the terminal (`-it`, and
-  answer the prompt) or to `--output-file`, which the command creates owner-only
-  inside the container. A later command reads that file in place, for example
-  `restore drill --identity-file`. `--output-file` needs a parent directory owned by
-  the runtime user, such as the unattended state directory.
+- Disclosed values (an authority, a backup identity) go to the terminal by default
+  (`-it`, and answer the prompt). `--output-file` creates an owner-only file inside the
+  container for a later command to read in place, for example `restore drill
+  --identity-file`. The image has no `rm` or shell, so that file persists. Its parent
+  directory must be owned by the runtime user: prefer a dedicated volume, never the
+  server-owned `unattended/` subdirectory, and move the value off the host and delete
+  the file outside the container. The disposable CI fixtures write to the state
+  directory root only because their cluster and volumes are discarded.
 - Input files (a drill target DSN, a backup passphrase) are mounted before the pod or
   container starts: a Secret or ConfigMap volume on Kubernetes, a bind mount or
   prepared volume on Docker. `docker cp` can also copy a file out of or into a Docker

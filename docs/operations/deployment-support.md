@@ -127,8 +127,10 @@ commands](unattended-container-upgrades.md#local-operator-commands).
 Real-container acceptance (`scripts/ci/unattended-operator.sh`) covers the first
 administrator, credential establishment, diagnostics, encrypted backup and the
 readable restore drill in a distroless SQLite container and a singleton
-PostgreSQL container. It runs through Docker; the Kubernetes exec path reads the
-same records, and CI does not drive `kubectl exec` itself. The complete
+PostgreSQL container through Docker. The kind singleton run (`unattended-kind.sh`)
+repeats `admin create`, `backup keygen`, `backup export`, `restore status` and
+`admin config status` through `kubectl exec` in the admitted pod; credential
+establishment and the restore drill are covered only through Docker. The complete
 singleton example still documents manual custody; choosing unattended custody
 for a fresh Kubernetes install remains an operator decision. Do not bypass
 release admission, invent installation pins, relaunch an upgrade coordinator
