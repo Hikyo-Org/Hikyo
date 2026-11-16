@@ -1380,7 +1380,9 @@ func (e *RotationExecutor) revoke(ctx context.Context, run store.RotationRun) er
 }
 
 // supersededDead reports whether the superseded role can no longer authenticate:
-// it is gone, or its VALID UNTIL has passed. Only then can a value that serves it
+// it is gone, or its VALID UNTIL passed more than rotationExpirySkew ago (the same
+// margin every expiry exit uses, so a clock ahead of the database never drops a role
+// that can still log in). Only then can a value that serves it
 // again (the restore hold) no longer be an outage, so dropping it is harmless and
 // the hold stops blocking the rotation. A probe that fails leaves the hold. The
 // provider is the one that minted the role.
@@ -1391,7 +1393,7 @@ func (e *RotationExecutor) supersededDead(ctx context.Context, provider dynamic.
 	if err != nil {
 		return false
 	}
-	return !status.Exists || (!status.ValidUntil.IsZero() && status.ValidUntil.Before(now))
+	return !status.Exists || (!status.ValidUntil.IsZero() && now.After(status.ValidUntil.Add(rotationExpirySkew)))
 }
 
 // ---------------------------------------------------------------- extend

@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/service"
+
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
@@ -94,3 +96,60 @@ func stampText(db *store.DB, column string) string {
 	}
 	return column
 }
+
+// The restore hold lets go when the provider says the superseded role is dead, but
+// only past the same skew margin the expiry exits use: with the application clock
+// ahead of PostgreSQL, a role whose VALID UNTIL passed a minute ago may still log
+// in, and dropping it would cut it off early.
+func TestRotationSupersededDeadNeedsTheSkewMargin(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		rot := x.create(rotPasswordKey, rotUsernameKey)
+		x.cycle(rot.ID)
+		role1 := x.lastRun(rot.ID, "candidate_handle")
+		x.advance(24 * time.Hour)
+		x.drain()
+		run2 := x.openRunID(rot.ID)
+		me := service.LocalPrincipal(alice)
+		values := &service.Values{DB: db, Keyring: probeKeyring(t, db)}
+		var staged []string
+		for name, value := range map[string]string{"ROT_DB_USER": "manual_user", "ROT_DB_PASSWORD": "manual-pw-value"} {
+			change, err := values.Set(tctx(t), me, x.scope, name, value, nil)
+			if err != nil {
+				t.Fatalf("stage %s: %v", name, err)
+			}
+			staged = append(staged, change.VersionID)
+		}
+		if _, err := x.revisions().PublishPlanned(tctx(t), me, x.scope, service.PublishRequest{VersionIDs: staged}); err != nil {
+			t.Fatalf("manual publish: %v", err)
+		}
+		x.advance(time.Hour + time.Minute)
+		x.drain()
+		if got := x.phase(run2); got != "revoke_refused" {
+			t.Fatalf("phase with another value serving = %s, want revoke_refused", got)
+		}
+		validUntil := func(ago time.Duration) {
+			x.ctl.set(func() {
+				role := x.ctl.roles[role1]
+				role.validUntil = x.now().Add(-ago)
+				x.ctl.roles[role1] = role
+			})
+		}
+		// The provider reports VALID UNTIL a minute in the past: inside the margin.
+		x.advance(time.Hour)
+		validUntil(time.Minute)
+		x.drain()
+		if got := x.phase(run2); got != "revoke_refused" || x.ctl.count("drop:"+role1) != 0 {
+			t.Fatalf("a role one minute past VALID UNTIL was treated as dead (phase %s)", got)
+		}
+		// Past the margin, the role is dead and the hold lets go.
+		x.advance(time.Hour)
+		validUntil(rotationSkewForTest + time.Minute)
+		x.drain()
+		if got := x.phase(run2); got != "done" {
+			t.Fatalf("a role past the skew margin kept the hold: phase %s", got)
+		}
+	})
+}
+
+const rotationSkewForTest = 5 * time.Minute
