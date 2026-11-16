@@ -933,9 +933,20 @@ Round 4 review additions (CodeRabbit threads on PR #1426):
 35. `RotationAbandonOpenRuns` keeps a pre-publish run's lease owner and ends its lease at
     the abandon time (a run nobody held keeps no lease). The token bump stops the worker's
     settles but not a provider call it already started, so the claim's lease cut (one
-    provider deadline past the lease end) holds the candidate reconciler back until that
-    call has landed or timed out. A published run keeps the null lease: its revoke and the
-    done settle make no provider call a late candidate could orphan.
+    provider deadline past the lease end) holds the candidate reconciler back until the
+    client has stopped waiting on that call. The cut bounds the client's wait, not the
+    server: the PostgreSQL provider therefore sends its `CREATE ROLE` behind a server-side
+    `statement_timeout` of three quarters of the time left, so the server aborts a blocked
+    mint first and answers SQLSTATE 57014, a definite refusal
+    (`TestProviderMintIsBoundedOnTheServer`, real target). What remains: a server before
+    PostgreSQL 13 starts that timer once per message, and a partition during COMMIT leaves
+    the outcome ambiguous. In those cases a mint the client abandoned can still commit
+    after the reconciler probed the role absent and settled the run, leaving a role no
+    run tracks. It cannot be used: its password was generated in the worker's memory and
+    is published only after a successful mint, and `VALID UNTIL` expires it. No sweep drops
+    it before then; `dropOrphan` and the reconciler's drop cover only a role that exists
+    when they run. A published run keeps the null lease: its revoke and the done settle
+    make no provider call a late candidate could orphan.
     `TestRotationAbandonDelaysTheCandidateReconcileByAProviderDeadline` pins it.
 
 36. `StartRun` re-reads the org's live-lease count (`RotationRtOrgLeaseCount`, cap
