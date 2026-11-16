@@ -431,8 +431,8 @@ targets any other branch, and it retires a pending record left by an earlier pas
 Such a PR holds no queue role: it neither protects a queue record from retirement
 nor makes a main PR on the same commit ambiguous. A refusal that an older publisher
 left on a stacked head stays until the next push, because retirement skips
-completed records. A stack's later retarget to main reruns `ci-feedback`, whose callback
-admits the PR afresh.
+completed records. A stack's later retarget to main reaches `gate-queue` through its `edited`
+event, which admits the PR afresh.
 
 The `gate-queue` publisher answers only callbacks whose run path is
 `.github/workflows/ci-feedback.yml`. `ci-feedback-retarget.yml` shares the name
