@@ -40,6 +40,7 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
       - name: Start healthy PostgreSQL with Docker Hub cache fallback
+        id: ci-postgres
         env:
           POSTGRES_PASSWORD: release-schema-fixture
           POSTGRES_DB: hikyo_release_schema
@@ -67,6 +68,9 @@ jobs:
         run: |
           printf '%s\n' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo '::error::version must be plain X.Y.Z'; exit 2; }
           go run ./scripts/release/stable preflight --trust release/trust
+          # The baseline is the highest stable release in trust: trust must record every
+          # published release first, or an older release would be compared.
+          ./scripts/release/require-synced-trust.sh "$REPOSITORY" release/trust/metadata.json
           candidate="$RUNNER_TEMP/release-candidate.json"
           declaration="$RUNNER_TEMP/upgrade-compatibility.json"
           go run ./scripts/release/stable candidate --trust release/trust \
@@ -81,10 +85,13 @@ jobs:
           ./scripts/release/check-compatibility-unchanged.sh "$REPOSITORY" release/trust "$VERSION" "$declaration" 2>"$reason" || rc=$?
           cat "$reason" >&2
           case "$rc" in
-            0) verdict="Compatibility is unchanged: v$VERSION at $COMMIT can be tagged as a routine release." ;;
-            1) verdict="Compatibility differs: v$VERSION at $COMMIT is not a routine release and needs a maintainer decision (the log shows the diff). $(grep '^compatibility check:' "$reason" | tail -n 1)" ;;
+            0) verdict="Compatibility is unchanged: v$VERSION at $COMMIT can be tagged as a routine release (its declaration is the last stable release's plus the reviewed release-source edge from it)." ;;
+            1) verdict="Compatibility differs, or the release-source edge from the last stable release is missing or wrong: v$VERSION at $COMMIT is not a routine release and needs a maintainer decision (see the log). $(grep '^compatibility check:' "$reason" | tail -n 1)" ;;
             5) verdict="The last stable release cannot be established or verified (exit 5): nothing is decided about compatibility. $(grep '^compatibility check:' "$reason" | tail -n 1)" ;;
             *) verdict="The check could not run (exit $rc): nothing is decided. $(grep '^compatibility check:' "$reason" | tail -n 1)" ;;
           esac
           printf '%s\n' "$verdict" | tee -a "$GITHUB_STEP_SUMMARY"
           exit "$rc"
+      - name: Remove the PostgreSQL fixture
+        if: ${{ always() && steps.ci-postgres.outcome == 'success' }}
+        run: docker container rm --force hikyo-ci-postgres

@@ -27,6 +27,41 @@ validate_release_compatibility() {
 	' "$compatibility_file" >/dev/null
 }
 
+# release_identity_json MANIFEST COMPATIBILITY_FILE
+# The release identity an installed release is recorded under and a release-source
+# edge must name (internal/releaseidentity.Identity): the signed manifest's version,
+# sequence and commit, and the SHA-256 of the exact bytes of the published manifest
+# and compatibility declaration. Callers pass the files of a release that
+# `stable verify` accepted, so the digests are the verified ones.
+release_identity_json() {
+	jq -ce --arg compatibility "$(sha256_file "$2")" --arg manifest "$(sha256_file "$1")" '
+		{profile: "stable/v1", version: .version, sequence: .release_sequence, commit: .source_commit,
+		 compatibility_sha256: $compatibility, manifest_sha256: $manifest} |
+		select(all(.[]; . != null))' "$1"
+}
+
+# release_source_edge_problems IDENTITY_JSON BASELINE_DECLARATION EDGES_JSON
+# EDGES_JSON is {"sqlite": [edge...], "postgres": [edge...]}, the source edges a
+# candidate declares (or a sources.json carries) per engine. An installed
+# baseline release is only routed to the next release by an edge whose source is
+# that exact release (genesis edges never match a release-identified install), so
+# every engine needs exactly one, with the migrations and schema digest the
+# baseline itself published. Prints one problem per line; nothing when sound.
+release_source_edge_problems() {
+	jq -r --argjson id "$1" --slurpfile baseline "$2" '
+		. as $edges | ("v" + $id.version) as $from | ["sqlite", "postgres"][] | . as $engine |
+		($baseline[0].engines[] | select(.migrations.engine == $engine)) as $published |
+		[($edges[$engine] // [])[] | select(.source.release? == $id)] as $own |
+		[($edges[$engine] // [])[] | select(.source.release? != null and .source.release.version? == $id.version and .source.release != $id)] as $lookalike |
+		if ($own | length) == 0 then
+			"\($engine): no release-source edge from \($from)" + (if ($lookalike | length) > 0 then " (an edge names \($from) with a different release identity)" else "" end)
+		elif ($own | length) > 1 then "\($engine): more than one release-source edge from \($from)"
+		elif $own[0].migrations != $published.migrations then "\($engine): the edge from \($from) lists migrations other than the ones \($from) published"
+		elif $own[0].schema_sha256 != $published.schema_sha256 then "\($engine): the edge from \($from) names a schema digest other than the one \($from) published"
+		elif ($own[0].mode != "restart" and $own[0].mode != "maintenance") then "\($engine): the edge from \($from) has no valid mode"
+		else empty end' "$3"
+}
+
 verify_release_compatibility_artifact() {
 	compatibility_manifest=$1
 	compatibility_bundle=$2

@@ -16,8 +16,12 @@ run from any other ref, so **it is unusable until the promotion lands it on
 - `scripts/release/check-compatibility-unchanged.sh REPOSITORY TRUST_DIR VERSION DECLARATION`
   compares a candidate's generated `upgrade-compatibility.json` with the one the
   highest stable release below `VERSION` published. Both are normalized with
-  `jq -S` minus `version`, `sequence` and `commit`, and must be byte-identical.
-  Exit 0 identical, 1 different, 5 the baseline cannot be established or
+  `jq -S` minus `version`, `sequence` and `commit`, and must be identical apart
+  from exactly one release-source edge per engine whose source is the baseline
+  release's identity, with the migrations and schema digest the baseline
+  published (owner decision 2026-11-16: an installed release is routed only
+  through an edge from that exact release; genesis edges never match it).
+  Exit 0 identical plus the edge, 1 different or the edge is missing or wrong, 5 the baseline cannot be established or
   verified (nothing decided about compatibility), 2 bad usage, 4 a lookup failed
   (nothing decided). A difference prints a bounded unified diff before its
   refusal line.
@@ -32,11 +36,22 @@ run from any other ref, so **it is unusable until the promotion lands it on
   script. The operator runs it before tagging, after the sync-trust change that
   records the latest release has merged (the baseline is read from trust):
   `gh workflow run release-compatibility-check.yml --ref main -f version=X.Y.Z`.
-  Green means identical. Red means a difference (exit 1), an earlier release
+  Green means identical plus the edge. Red means a difference or a missing or
+  wrong edge (exit 1), an earlier release
   that cannot be established or verified (exit 5) or a failed lookup (exit 4);
   the step summary names which and quotes the script's own line. A dispatch
   from any other ref fails with exit 2 (the first step), and a version that
   `stable candidate` refuses gets a one-line summary.
+- `check-compatibility-unchanged.sh --edges-only REPOSITORY TRUST_DIR VERSION SOURCES_JSON`
+  judges only the edge, reading `release/compatibility/sources.json` (the reviewed
+  edges the generator copies into the declaration). The release planner (part 4)
+  uses it to name what is missing before it generates anything.
+- `release_identity_json` and `release_source_edge_problems` in
+  `scripts/lib/release.sh` build the baseline's identity from its verified
+  files and judge the edges; `TestReleaseIdentityFromPublishedFilesMatchesTheVerifier`
+  proves the identity equals what `releasetrust.VerifyStable` derives.
+  No command authors the edge (`scripts/release/nightly sources` handles nightly
+  directories only); it is hand-written in `release/compatibility/sources.json`.
 - `scripts/lib/release.sh` gains `validate_compatibility_shape`;
   `validate_release_compatibility` calls it and then binds the candidate's
   version, sequence and commit. Behavior of the build path is unchanged.
@@ -51,8 +66,14 @@ is advisory for the maintainer: nothing requires it.
 - `dash scripts/release/check-compatibility-unchanged_test.sh`: the declarations
   are real (the generator's development declaration plus the reviewed source
   edges); only `gh release download` and the signature verifier are faked.
-- 28 mutations of the script, the shared library and the workflow: every one
-  fails the fixture or `TestReleaseCompatibilityCheckWorkflowBoundaries`.
+- Mutations of the script, the shared library and the workflow: each fails the
+  fixture, `TestReleaseCompatibilityCheckWorkflowBoundaries`,
+  `TestPostgresFixturesStartAfterCheckout` or
+  `TestReleaseIdentityFromPublishedFilesMatchesTheVerifier`. Round 3 added the
+  edge rule (missing edge, mismatched migrations or schema, wrong release, a
+  duplicate, a bad mode, the edge not stripped before the comparison, the
+  identity digests swapped), the Postgres guard, the synced-trust step and the
+  verdict wording; each was killed by one mutation.
 - `go test -p 2 ./scripts/ci/... ./scripts/release/...` through `agent-heavy`.
 - shellcheck, the pinned actionlint.
 - A local run of the real chain against the published `v1.1.0` assets, with the
@@ -66,7 +87,8 @@ is advisory for the maintainer: nothing requires it.
 
 - **The workflow has not run on GitHub.** A workflow that exists only on a
   branch cannot be dispatched. After promotion to `main`, run it once for the next patch
-  version and read the step summary. **Expect "differs" on the first dispatch**:
+  version and read the step summary. **Expect "edge missing" on the first dispatch**
+  (no release carries the edge from v1.1.0 yet) **and "differs"**:
   the promotion that lands this workflow also carries the migrations that sit on
   `dev`, so main's tip no longer matches the last stable release.
   The "unchanged" verdict is evidenced separately by a local run (see Evidence).

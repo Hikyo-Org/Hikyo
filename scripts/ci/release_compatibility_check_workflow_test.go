@@ -74,6 +74,17 @@ func TestReleaseCompatibilityCheckWorkflowBoundaries(t *testing.T) {
 	if cosign < 0 || compare < 0 || cosign > compare {
 		t.Fatalf("pinned Cosign must be installed before the comparison: cosign=%d compare=%d", cosign, compare)
 	}
+	// Trust must be authenticated and synchronized before a baseline is chosen from it, so an
+	// older release is never compared when a newer one is published but not yet recorded.
+	run := job.Steps[compare].Run
+	preflight, synced, candidate := strings.Index(run, "stable preflight"), strings.Index(run, "require-synced-trust.sh"), strings.Index(run, "stable candidate")
+	if preflight < 0 || synced < preflight || candidate < synced {
+		t.Fatalf("preflight, then the synchronized-trust check, then the candidate: %d %d %d", preflight, synced, candidate)
+	}
+	// A refused shape also exits 1 and prints no diff, so the verdict must not promise one.
+	if strings.Contains(string(raw), "the log shows the diff") {
+		t.Fatal("the exit 1 verdict must say \"see the log\", not promise a diff")
+	}
 }
 
 func TestCompatibilityUnchangedFixture(t *testing.T) {

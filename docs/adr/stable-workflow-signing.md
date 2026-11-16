@@ -117,8 +117,14 @@ made.
 `release-compatibility-check` is an optional, read-only, dispatch-only workflow. Before tagging,
 a maintainer can ask whether a release of a given `X.Y.Z` built from main's tip leaves upgrade
 compatibility unchanged. It generates the candidate's `upgrade-compatibility.json` with the release
-generator on scratch PostgreSQL and compares it, minus version, sequence and commit, byte for byte with
-the declaration of the highest plain stable version below it in authenticated trust. That baseline is
+generator on scratch PostgreSQL and compares it, minus version, sequence and commit, with
+the declaration of the highest plain stable version below it in authenticated trust. Compatibility
+counts as unchanged only when the candidate equals that declaration plus exactly one reviewed
+release-source edge per engine whose source is the baseline release's identity, carrying the
+migrations and schema digest the baseline published (owner decision 2026-11-16): the upgrade
+planner follows an edge only when its source matches the installed release's identity, and
+genesis edges never do, so without it an installed release has no route to the next, for a patch as for a minor.
+No supported command authors a stable edge; it is written by hand and reviewed. That baseline is
 fetched and verified through `stable verify --historical --published` (as the public verifier
 does: an older release embeds older trust) and its declaration is bound to the signed
 manifest; neither GitHub's "latest" flag nor a prerelease decides. A difference, a missing or
