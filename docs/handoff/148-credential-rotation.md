@@ -915,6 +915,14 @@ Round 4 review additions (CodeRabbit threads on PR #1426):
     read); the superseded exit is covered by
     `TestRotationExtendSkippedBySupersessionClosesItsIntent`.
 
+35. `RotationAbandonOpenRuns` keeps a pre-publish run's lease owner and ends its lease at
+    the abandon time (a run nobody held keeps no lease). The token bump stops the worker's
+    settles but not a provider call it already started, so the claim's lease cut (one
+    provider deadline past the lease end) holds the candidate reconciler back until that
+    call has landed or timed out. A published run keeps the null lease: its revoke and the
+    done settle make no provider call a late candidate could orphan.
+    `TestRotationAbandonDelaysTheCandidateReconcileByAProviderDeadline` pins it.
+
 ### Owner decisions on the S2a review (resolved)
 
 - A. A restore never clears the restore-hazard hold except through expiry or absence of

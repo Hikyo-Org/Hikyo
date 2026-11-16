@@ -181,3 +181,33 @@ func TestRotationExtendSkippedBySupersessionClosesItsIntent(t *testing.T) {
 		}
 	})
 }
+
+// An abandon cannot stop a provider call a worker already started, so the run of a
+// worker that held its lease stays claimed until one provider deadline has passed:
+// the candidate reconciler then probes after that call has landed, not before it.
+func TestRotationAbandonDelaysTheCandidateReconcileByAProviderDeadline(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		rot := x.create(rotPasswordKey, rotUsernameKey)
+		x.advance(24*time.Hour + time.Minute)
+		x.crashOnce("create:after")
+		if !x.crashSweep("wrk_a") {
+			t.Fatal("no crash")
+		}
+		run := x.openRunID(rot.ID)
+		x.svc.Now = x.now // the abandon time must follow the executor's clock
+		if _, err := x.svc.Delete(tctx(t), x.actor, x.scope, service.RotationStateRequest{RotationID: rot.ID, Abandon: true}); err != nil {
+			t.Fatal(err)
+		}
+		if got := x.phase(run); got != "quarantine" {
+			t.Fatalf("run = %s, want quarantine", got)
+		}
+		// The run was held by wrk_a: no other worker may probe its candidate yet.
+		x.requireSweep(x.worker, false)
+		x.advance(6 * time.Second)
+		x.drain()
+		if got := x.phase(run); got != "failed" {
+			t.Fatalf("run = %s after the provider deadline, want failed", got)
+		}
+	})
+}

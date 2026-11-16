@@ -12,7 +12,7 @@ import (
 )
 
 const rotationAbandonOpenRuns = `-- name: RotationAbandonOpenRuns :many
-UPDATE rotation_runs SET phase=CASE WHEN published_revision IS NOT NULL AND superseded_handle IS NULL THEN 'done' ELSE 'quarantine' END,phase_at=?1,last_error='abandoned',next_attempt_at=CASE WHEN published_revision IS NULL THEN ?1 ELSE next_attempt_at END,lease_owner=NULL,lease_expires_at=NULL,lease_claim_token=lease_claim_token+1 WHERE rotation_id=?2 AND org_id=?3 AND project_id=?4 AND environment_id=?5 AND phase NOT IN ('done','quarantine','failed') RETURNING id,phase,candidate_handle,superseded_handle
+UPDATE rotation_runs SET phase=CASE WHEN published_revision IS NOT NULL AND superseded_handle IS NULL THEN 'done' ELSE 'quarantine' END,phase_at=?1,last_error='abandoned',next_attempt_at=CASE WHEN published_revision IS NULL THEN ?1 ELSE next_attempt_at END,lease_owner=CASE WHEN published_revision IS NULL THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN published_revision IS NULL AND lease_owner IS NOT NULL THEN ?1 ELSE NULL END,lease_claim_token=lease_claim_token+1 WHERE rotation_id=?2 AND org_id=?3 AND project_id=?4 AND environment_id=?5 AND phase NOT IN ('done','quarantine','failed') RETURNING id,phase,candidate_handle,superseded_handle
 `
 
 type RotationAbandonOpenRunsParams struct {
@@ -32,8 +32,12 @@ type RotationAbandonOpenRunsRow struct {
 
 // Abandon closes every unsettled run and bumps the claim token, so a worker still
 // holding the run loses its fence. A pre-publish run becomes quarantine and is due
-// now (the candidate reconciler confirms its candidate gone). A published run that
-// owes a revoke becomes quarantine and keeps its overlap deadline (the
+// now, but it keeps its lease owner and its lease ends at the abandon time: a
+// worker that was mid-provider call is not stopped by the token, and the claim's
+// lease cut (one provider deadline past the lease end) makes the candidate
+// reconciler wait for that call to finish before it probes and drops the candidate.
+// A pre-publish run nobody held has no lease to keep and is claimable at once. A
+// published run that owes a revoke becomes quarantine and keeps its overlap deadline (the
 // revoke-obligation loop drops the superseded role after it). A published run with
 // no superseded role owes nothing, so it settles straight to done; left in
 // quarantine it would hold its provider and environment forever. RETURNING is the
