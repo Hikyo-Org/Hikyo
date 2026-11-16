@@ -88,7 +88,7 @@ func TestRotationInheritedWindow(t *testing.T) {
 	delay := time.Hour
 	delivered := now.Add(30 * time.Hour)
 	w := rotationInheritedWindow(now, delivered, delay, false)
-	if !w.HasD || !w.D.Equal(delivered.Add(-(rotationPublishBudget+delay))) {
+	if !w.HasD || !w.D.Equal(delivered.Add(-(rotationPublishBudget + delay))) {
 		t.Fatalf("window = %+v, want D = delivered - (budget + delay)", w)
 	}
 	if got := rotationInheritedWindow(delivered, delivered, delay, true); got.HasD {
