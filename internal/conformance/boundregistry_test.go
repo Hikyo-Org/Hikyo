@@ -32,6 +32,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/importer"
 	"github.com/Hikyo-Org/hikyo/internal/mail"
 	"github.com/Hikyo-Org/hikyo/internal/remotefetch"
@@ -171,6 +172,9 @@ var Registry = []Bound{
 		goTest("internal/schema", "TestJSONSchemaEvaluationFailsLoudOnTheDeadline")),
 	bound("plan-expiry-open-quota", "Plan expiry / open-plan quota", "ops-spec §8 source-of-truth", "PlanTTL + MaxOpenPlansPerProject", "isolation definitions_e2e", StatusEnforced,
 		goHelper("internal/isolation", "definitionsPlanLifecycle")),
+	bound("rotation-bounds", "Scheduled rotation interval (1h to 90d) and revocation delay (5m to 7d, shorter than the interval)", "ops-catalogue §Scheduled credential rotation", "domain.ErrInvalid naming the interval or delay bound that was hit", "service.TestRotationBoundsAreNamedRefusals pins both edges of all four bounds and the delay-below-interval rule; the isolation refusals test proves an out-of-bounds create is refused on both engines", StatusEnforced,
+		goTest("internal/service", "TestRotationBoundsAreNamedRefusals"),
+		goTest("internal/isolation", "TestRotationCreateRefusals")),
 	bound("per-target-render-total", "Per-target render total", "ops-spec §8", "domain.ErrLimitExceeded (MaxRenderBytesPerTarget)", "service.TestRenderTotalRefusesAnOversizedTarget", StatusEnforced,
 		goTest("internal/service", "TestRenderTotalRefusesAnOversizedTarget")),
 	bound("pending-versions-per-project", "Pending versions per project", "ops-spec §8", "domain.ErrLimitExceeded (MaxPendingPerProject)", "isolation.TestPendingPerProjectCap", StatusEnforced,
@@ -404,6 +408,10 @@ func TestReconciledBoundsMatchOpsSpecValues(t *testing.T) {
 		{"schema.EvaluationDeadline", schema.EvaluationDeadline, 100 * time.Millisecond},
 		{"service.ReencryptChunkPause", service.ReencryptChunkPause, 100 * time.Millisecond},
 		{"service.PlanTTL", service.PlanTTL, 24 * time.Hour},
+		{"domain.MinRotationInterval", domain.MinRotationInterval, time.Hour},
+		{"domain.MaxRotationInterval", domain.MaxRotationInterval, 90 * 24 * time.Hour},
+		{"domain.MinRevocationDelay", domain.MinRevocationDelay, 5 * time.Minute},
+		{"domain.MaxRevocationDelay", domain.MaxRevocationDelay, 7 * 24 * time.Hour},
 		{"service.BootstrapLifetime", service.BootstrapLifetime, 24 * time.Hour},
 		{"service.BrowserSessionIdle", service.BrowserSessionIdle, 7 * 24 * time.Hour},
 		{"service.BrowserSessionAbsolute", service.BrowserSessionAbsolute, 30 * 24 * time.Hour},

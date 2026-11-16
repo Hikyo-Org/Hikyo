@@ -530,6 +530,9 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// once), worker-driven renew/revoke, an ambiguous outcome, reconcile and
 		// provider deletion all traverse the real service, runtime and store.
 		runDynamicLifecycle(t, db)
+		// Scheduled credential rotation (#148, S1): create, pause, resume and
+		// delete all traverse the real service, authorizer and store.
+		runRotationAuditLifecycle(t, db)
 		// SSH user certificates (#155): CA create/rotate/retire/delete,
 		// profile configure/delete, issuance and revocation all traverse the
 		// real service and store.
