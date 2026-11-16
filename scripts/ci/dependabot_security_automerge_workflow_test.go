@@ -50,7 +50,7 @@ func TestDependabotSecurityAutomergeWorkflowBoundaries(t *testing.T) {
 	}
 	node := workflow.On["pull_request_target"]
 	if err := node.Decode(&trigger); err != nil || !reflect.DeepEqual(trigger.Branches, []string{"main"}) ||
-		!reflect.DeepEqual(trigger.Types, []string{"opened", "reopened", "synchronize", "ready_for_review"}) {
+		!reflect.DeepEqual(trigger.Types, []string{"opened", "reopened", "synchronize"}) {
 		t.Fatalf("the pull request trigger must wake the sweep for main only: %+v %v", trigger, err)
 	}
 	if _, ok := workflow.On["schedule"]; !ok {

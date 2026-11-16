@@ -15,7 +15,9 @@ on:
   workflow_dispatch:
   pull_request_target:
     branches: [main]
-    types: [opened, reopened, synchronize, ready_for_review]
+    # No ready_for_review: a suite on an unchanged head must not rerun (dev gate rule).
+    # The hourly schedule arms a pull request that left draft.
+    types: [opened, reopened, synchronize]
 
 permissions: {}
 

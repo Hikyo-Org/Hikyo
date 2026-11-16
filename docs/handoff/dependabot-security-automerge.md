@@ -69,6 +69,10 @@ token. The pinned actionlint (1.7.12) does not know the scope yet, so
   after the ruleset's 60-minute response window and the pull request waits for
   a person. This cannot be observed before merge.
 
+- **No `ready_for_review` trigger.** The dev gate refuses a pull request workflow
+  that reruns on an unchanged head (`TestPullRequestWorkflowsDoNotRerunOnAnUnchangedHead`).
+  A Dependabot pull request that leaves draft is armed by the next hourly run.
+
 ## Live checks after promotion to main (read-only unless noted)
 
 1. `gh workflow run dependabot-security-automerge.yml --ref main` (queues
