@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/scripts/ci/checksuites"
@@ -24,7 +25,9 @@ type oversizedHead struct {
 	// countErr and scanErr fail the suite count and the suite scan.
 	countErr, scanErr error
 	// skew answers suite queries for another repository.
-	skew  int64
+	skew int64
+	// mu guards reads: the controller reads repository roles concurrently.
+	mu    sync.Mutex
 	reads []string
 	// listed, when set, replaces what a holding suite lists.
 	listed map[int64][]check
@@ -54,7 +57,9 @@ func (a *oversizedHead) suiteResponse(nodes []map[string]any, more bool, cursor 
 }
 
 func (a *oversizedHead) read(ctx context.Context, path string, result any) error {
+	a.mu.Lock()
 	a.reads = append(a.reads, path)
+	a.mu.Unlock()
 	head := a.f.pr.Head.SHA
 	empty := map[string]any{"total_count": 0, "check_runs": []check{}}
 	switch {
@@ -103,6 +108,8 @@ func (a *oversizedHead) read(ctx context.Context, path string, result any) error
 }
 
 func (a *oversizedHead) readsOf(substring string) int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	n := 0
 	for _, path := range a.reads {
 		if strings.Contains(path, substring) {
