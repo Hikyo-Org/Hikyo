@@ -7,11 +7,14 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
+	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
@@ -58,7 +61,6 @@ func runRotationCascadePauses(t *testing.T, db *store.DB) {
 	if _, err := settings.SetEnvironment(ctx, service.LocalPrincipal(orgAdmin), f.scope, service.EnvironmentSettings{}); err != nil {
 		t.Fatalf("unprotect the environment: %v", err)
 	}
-	// Re-saving settings of an environment that was already protected pauses nothing new.
 	if resumed, err := f.transition(f.actor, "resume", active.ID); err != nil || resumed.State != store.RotationStateActive {
 		t.Fatalf("resume once unprotected = %+v, %v", resumed, err)
 	}
@@ -534,4 +536,176 @@ func runRotationHaltedSlot(t *testing.T, db *store.DB) {
 	if err := rotationRunRowErr(t, db, f, "run_halt_2", created.ID, "minting", "", "", ts); err == nil {
 		t.Fatal("a revoke_refused run released the open-run slot")
 	}
+}
+
+// rawRotation inserts a disabled rotation row directly: it is history, so only
+// its runs can block an environment delete.
+func rawRotation(t *testing.T, db *store.DB, f *rotationFixture, id, keyID string) {
+	t.Helper()
+	execRaw(t, db, fmt.Sprintf(`INSERT INTO rotations (id, org_id, project_id, environment_id, provider_id, key_id, username_key_id, interval_seconds, revocation_delay_seconds, authority_principal_id, created_by, state, next_run_at, generation, created_at, updated_at) VALUES ('%s','org_a','prj_a1','%s','%s','%s','%s_user',86400,3600,'usr_alice','usr_alice','disabled',NULL,1,%s,%s)`, id, f.env, f.provider, keyID, keyID, ts, ts))
+}
+
+// rawRun inserts a run directly at a start time (an RFC 3339 literal).
+func rawRun(t *testing.T, db *store.DB, f *rotationFixture, id, rotationID, phase, published, validUntil, startedAt string) {
+	t.Helper()
+	until := "NULL"
+	if validUntil != "" {
+		until = "'" + validUntil + "'"
+	}
+	execRaw(t, db, fmt.Sprintf(`INSERT INTO rotation_runs (id, org_id, project_id, environment_id, rotation_id, generation, run_trigger, phase, candidate_handle, candidate_valid_until, published_revision, revocation_delay_seconds, started_at, phase_at, next_attempt_at) VALUES ('%s','org_a','prj_a1','%s','%s',1,'schedule','%s','role_%s',%s,%s,3600,'%s',%s,%s)`, id, f.env, rotationID, phase, id, until, published, startedAt, ts, ts))
+}
+
+// One rotation with many blocking runs must not hide the other blocking rotations
+// under the page limit, and the "first N shown" marker must appear exactly when
+// more rotations block than the refusal names.
+func TestRotationEnvironmentDeleteNamesEveryBlockingRotation(t *testing.T) {
+	forEngines(t, runRotationEnvironmentDeleteNamesEveryBlockingRotation)
+}
+
+func runRotationEnvironmentDeleteNamesEveryBlockingRotation(t *testing.T, db *store.DB) {
+	ctx := tctx(t)
+	f := newRotationFixture(t, db)
+	envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
+	refusal := func() string {
+		t.Helper()
+		err := envs.Delete(ctx, service.LocalPrincipal(alice), f.scope)
+		if !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
+			t.Fatalf("delete = %v, want the live-rotation refusal", err)
+		}
+		return safeError(err)
+	}
+
+	// rot_blk_00 sorts first and holds 12 blocking runs (failed after publish, so
+	// terminal and not constrained to one open run). rot_blk_01 holds one
+	// quarantined run and would be cut off by a page of repeats.
+	rawRotation(t, db, f, "rot_blk_00", "rk_blk_00")
+	for i := range 12 {
+		rawRun(t, db, f, fmt.Sprintf("run_blk_00_%02d", i), "rot_blk_00", "failed", "3", "", "2026-01-01T00:00:00.000000Z")
+	}
+	rawRotation(t, db, f, "rot_blk_01", "rk_blk_01")
+	rawRun(t, db, f, "run_blk_01_00", "rot_blk_01", "quarantine", "NULL", "", "2026-01-01T00:00:00.000000Z")
+	got := refusal()
+	if !strings.Contains(got, "rot_blk_00") || !strings.Contains(got, "rot_blk_01") {
+		t.Fatalf("refusal must name both blocking rotations: %q", got)
+	}
+	if strings.Contains(got, "shown") {
+		t.Fatalf("two blocking rotations must not carry the truncation marker: %q", got)
+	}
+	if n := strings.Count(got, "rot_blk_00"); n != 1 {
+		t.Fatalf("rot_blk_00 named %d times, want once: %q", n, got)
+	}
+
+	// Exactly the limit of distinct blocking rotations is still complete.
+	for i := 2; i < store.RotationBlockingIDsLimit; i++ {
+		id := fmt.Sprintf("rot_blk_%02d", i)
+		rawRotation(t, db, f, id, "rk_"+id[4:])
+		rawRun(t, db, f, "run_"+id[4:]+"_00", id, "quarantine", "NULL", "", "2026-01-01T00:00:00.000000Z")
+	}
+	got = refusal()
+	if strings.Contains(got, "shown") || !strings.Contains(got, fmt.Sprintf("rot_blk_%02d", store.RotationBlockingIDsLimit-1)) {
+		t.Fatalf("exactly %d blocking rotations must be named in full without a marker: %q", store.RotationBlockingIDsLimit, got)
+	}
+
+	// One more distinct rotation exceeds the limit: the marker is now honest.
+	rawRotation(t, db, f, "rot_blk_99", "rk_blk_99")
+	rawRun(t, db, f, "run_blk_99_00", "rot_blk_99", "quarantine", "NULL", "", "2026-01-01T00:00:00.000000Z")
+	got = refusal()
+	if !strings.Contains(got, fmt.Sprintf("(first %d shown)", store.RotationBlockingIDsLimit)) {
+		t.Fatalf("more than %d blocking rotations must carry the marker: %q", store.RotationBlockingIDsLimit, got)
+	}
+	if strings.Contains(got, "rot_blk_99") {
+		t.Fatalf("the eleventh rotation must be the one left out: %q", got)
+	}
+}
+
+// The delivered credential's expiry is the newest published run per key, read in
+// one bounded query: a long run history changes neither the answer nor the number
+// of rows read, a newer published run under another rotation of the same key
+// wins, and an unpublished newer run never does.
+func TestRotationCredentialExpiryOverLongHistory(t *testing.T) {
+	// The body stays inline: the reviewed query pin names this test, and the
+	// lint requires the query's name inside it.
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := tctx(t)
+		f := newRotationFixture(t, db)
+		rawRotation(t, db, f, "rot_exp_a", "rk_exp_a")
+		rawRotation(t, db, f, "rot_exp_a2", "rk_exp_a")
+		rawRotation(t, db, f, "rot_exp_b", "rk_exp_b")
+		const history = 60
+		// rot_exp_a: the newest start has the EARLIEST expiry, so ordering by expiry
+		// instead of by start would pick the wrong run.
+		for i := range history {
+			start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(i) * time.Hour).Format("2006-01-02T15:04:05.000000Z")
+			until := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC).Add(-time.Duration(i) * time.Hour).Format("2006-01-02T15:04:05.000000Z")
+			rawRun(t, db, f, fmt.Sprintf("run_exp_a_%02d", i), "rot_exp_a", "done", "2", until, start)
+			rawRun(t, db, f, fmt.Sprintf("run_exp_b_%02d", i), "rot_exp_b", "done", "2", "2028-06-06T00:00:00.000000Z", start)
+		}
+		newestA := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC).Add(-time.Duration(history-1) * time.Hour)
+		expiries := func() map[string]time.Time {
+			t.Helper()
+			out := map[string]time.Time{}
+			got, err := f.svc.List(ctx, f.actor, f.scope, service.RotationListRequest{IncludeDisabled: true, Limit: service.RotationListMaxLimit})
+			if err != nil {
+				t.Fatalf("list: %v", err)
+			}
+			for _, item := range got.Items {
+				if item.CredentialExpiresAt != "" {
+					out[item.ID] = mustParseStamp(t, item.CredentialExpiresAt)
+				}
+			}
+			return out
+		}
+		got := expiries()
+		if !got["rot_exp_a"].Equal(newestA) || !got["rot_exp_b"].Equal(time.Date(2028, 6, 6, 0, 0, 0, 0, time.UTC)) {
+			t.Fatalf("expiries over %d runs = %v, want a=%s b=2028-06-06", history, got, newestA)
+		}
+		if !got["rot_exp_a2"].Equal(newestA) {
+			t.Fatalf("a rotation sharing the key must report the key's newest run: %v", got)
+		}
+		// A newer unpublished run delivered nothing and changes no expiry.
+		rawRun(t, db, f, "run_exp_a_unpub", "rot_exp_a", "failed", "NULL", "2035-01-01T00:00:00.000000Z", "2030-01-01T00:00:00.000000Z")
+		if again := expiries(); !again["rot_exp_a"].Equal(newestA) {
+			t.Fatalf("an unpublished newer run changed the expiry to %v", again["rot_exp_a"])
+		}
+		// A newer published run under the other rotation of the same key wins for both.
+		later := time.Date(2029, 3, 3, 0, 0, 0, 0, time.UTC)
+		rawRun(t, db, f, "run_exp_a2_new", "rot_exp_a2", "done", "9", later.Format("2006-01-02T15:04:05.000000Z"), "2031-01-01T00:00:00.000000Z")
+		again := expiries()
+		if !again["rot_exp_a"].Equal(later) || !again["rot_exp_a2"].Equal(later) {
+			t.Fatalf("the newest published run across rotations must win: %v", again)
+		}
+		// The generated query itself is bounded: one row per requested key whatever the
+		// history, nothing for an unrequested key, and nothing under another chain.
+		rowsFor := func(org string, keys ...string) int {
+			t.Helper()
+			if db.Engine() == store.EngineSQLite {
+				rows, err := sqlitegen.New(db.SQLiteWrite()).RotationCredentialExpiries(ctx, sqlitegen.RotationCredentialExpiriesParams{ChainOrg: org, ChainProject: "prj_a1", ChainEnv: string(f.env), KeyIds: keys})
+				if err != nil {
+					t.Fatalf("RotationCredentialExpiries: %v", err)
+				}
+				return len(rows)
+			}
+			rows, err := pggen.New(db.PG()).RotationCredentialExpiries(ctx, pggen.RotationCredentialExpiriesParams{ChainOrg: org, ChainProject: "prj_a1", ChainEnv: string(f.env), KeyIds: keys})
+			if err != nil {
+				t.Fatalf("RotationCredentialExpiries: %v", err)
+			}
+			return len(rows)
+		}
+		if n := rowsFor("org_a", "rk_exp_a", "rk_exp_b"); n != 2 {
+			t.Fatalf("expiry rows for two keys over %d runs each = %d, want 2", history, n)
+		}
+		if n := rowsFor("org_a", "rk_exp_a"); n != 1 {
+			t.Fatalf("expiry rows for one requested key = %d, want 1", n)
+		}
+		if n := rowsFor("org_a"); n != 0 {
+			t.Fatalf("expiry rows for no requested key = %d, want 0", n)
+		}
+		if n := rowsFor("org_b", "rk_exp_a", "rk_exp_b"); n != 0 {
+			t.Fatalf("expiry rows under another org = %d, want 0", n)
+		}
+		// The fixture really holds a long history behind the two keys.
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM rotation_runs WHERE environment_id='"+string(f.env)+"' AND published_revision IS NOT NULL"); n < 2*history {
+			t.Fatalf("fixture holds %d published runs, want at least %d", n, 2*history)
+		}
+	})
 }

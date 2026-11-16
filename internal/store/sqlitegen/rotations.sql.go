@@ -8,10 +8,11 @@ package sqlitegen
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 const rotationBlockingRunRotations = `-- name: RotationBlockingRunRotations :many
-SELECT rotation_id FROM rotation_runs WHERE org_id=?1 AND project_id=?2 AND environment_id=?3 AND phase NOT IN ('done','failed') ORDER BY rotation_id LIMIT ?4
+SELECT DISTINCT rotation_id FROM rotation_runs WHERE org_id=?1 AND project_id=?2 AND environment_id=?3 AND phase NOT IN ('done','failed') ORDER BY rotation_id LIMIT ?4
 `
 
 type RotationBlockingRunRotationsParams struct {
@@ -25,7 +26,8 @@ type RotationBlockingRunRotationsParams struct {
 // except done and failed (quarantine and revoke_refused included), plus a failed
 // run that had already published. A failed run that never published had its
 // candidate confirmed dropped, so it and done are the only purgeable runs. The
-// rotation ids are returned so the refusal can name them (a page, with repeats).
+// distinct rotation ids are returned so the refusal can name them and one rotation
+// with many runs cannot hide the others under the page limit.
 func (q *Queries) RotationBlockingRunRotations(ctx context.Context, arg RotationBlockingRunRotationsParams) ([]string, error) {
 	rows, err := q.db.QueryContext(ctx, rotationBlockingRunRotations,
 		arg.ChainOrg,
@@ -162,13 +164,18 @@ func (q *Queries) RotationCreate(ctx context.Context, arg RotationCreateParams) 
 }
 
 const rotationCredentialExpiries = `-- name: RotationCredentialExpiries :many
-SELECT ro.key_id AS key_id, ru.id AS run_id, ru.candidate_valid_until AS expires_at FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id WHERE ru.org_id=?1 AND ru.project_id=?2 AND ru.environment_id=?3 AND ru.published_revision IS NOT NULL ORDER BY ru.started_at DESC, ru.id DESC
+SELECT key_id AS key_id,run_id AS run_id,expires_at AS expires_at FROM (
+ SELECT ro.key_id,ru.id AS run_id,ru.candidate_valid_until AS expires_at,ROW_NUMBER() OVER (PARTITION BY ro.key_id ORDER BY ru.started_at DESC,ru.id DESC) AS ordinal
+ FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
+ WHERE ru.org_id=?1 AND ru.project_id=?2 AND ru.environment_id=?3 AND ro.key_id IN (/*SLICE:key_ids*/?) AND ru.published_revision IS NOT NULL
+ ) ranked WHERE ordinal=1 ORDER BY key_id
 `
 
 type RotationCredentialExpiriesParams struct {
 	ChainOrg     string
 	ChainProject string
 	ChainEnv     string
+	KeyIds       []string
 }
 
 type RotationCredentialExpiriesRow struct {
@@ -177,10 +184,24 @@ type RotationCredentialExpiriesRow struct {
 	ExpiresAt sql.NullString
 }
 
-// The same expiry for every key of the environment in one read, newest first, so a
-// list never queries per row. The caller keeps the first row per key_id.
+// The delivered-credential expiry for a page of keys: the newest published run per
+// key, ranked in SQL so the result holds one row per requested key whatever the run
+// history, and a list never queries per row.
 func (q *Queries) RotationCredentialExpiries(ctx context.Context, arg RotationCredentialExpiriesParams) ([]RotationCredentialExpiriesRow, error) {
-	rows, err := q.db.QueryContext(ctx, rotationCredentialExpiries, arg.ChainOrg, arg.ChainProject, arg.ChainEnv)
+	query := rotationCredentialExpiries
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.ChainOrg)
+	queryParams = append(queryParams, arg.ChainProject)
+	queryParams = append(queryParams, arg.ChainEnv)
+	if len(arg.KeyIds) > 0 {
+		for _, v := range arg.KeyIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:key_ids*/?", strings.Repeat(",?", len(arg.KeyIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:key_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -653,7 +674,7 @@ func (q *Queries) RotationPauseActive(ctx context.Context, arg RotationPauseActi
 }
 
 const rotationPublishedFailedRunRotations = `-- name: RotationPublishedFailedRunRotations :many
-SELECT rotation_id FROM rotation_runs WHERE org_id=?1 AND project_id=?2 AND environment_id=?3 AND phase='failed' AND published_revision IS NOT NULL ORDER BY rotation_id LIMIT ?4
+SELECT DISTINCT rotation_id FROM rotation_runs WHERE org_id=?1 AND project_id=?2 AND environment_id=?3 AND phase='failed' AND published_revision IS NOT NULL ORDER BY rotation_id LIMIT ?4
 `
 
 type RotationPublishedFailedRunRotationsParams struct {

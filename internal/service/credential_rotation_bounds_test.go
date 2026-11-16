@@ -42,3 +42,24 @@ func TestRotationBoundsAreNamedRefusals(t *testing.T) {
 		})
 	}
 }
+
+// TestRotationBoundsRefuseHugeSecondsWithoutOverflow pins that a value above the
+// time.Duration range (about 9.2e9 seconds) is rendered from seconds, not wrapped
+// into a negative or small duration.
+func TestRotationBoundsRefuseHugeSecondsWithoutOverflow(t *testing.T) {
+	const huge = int64(9_300_000_001)
+	if got := rotationDuration(huge); got != "9300000001s" {
+		t.Fatalf("rotationDuration(%d) = %q, want 9300000001s", huge, got)
+	}
+	if got := rotationDuration(86400 * 108000); got != "108000d" {
+		t.Fatalf("rotationDuration of a huge whole-day value = %q, want 108000d", got)
+	}
+	err := ValidateRotationBounds(huge, int64(domain.MinRevocationDelay/time.Second))
+	if !errors.Is(err, domain.ErrInvalid) || !strings.Contains(err.Error(), "9300000001s is above the 90d maximum rotation interval") {
+		t.Fatalf("ValidateRotationBounds(huge interval) = %v, want ErrInvalid naming the raw seconds", err)
+	}
+	err = ValidateRotationBounds(int64(domain.MaxRotationInterval/time.Second), huge)
+	if !errors.Is(err, domain.ErrInvalid) || !strings.Contains(err.Error(), "9300000001s is above the 7d maximum revocation delay") {
+		t.Fatalf("ValidateRotationBounds(huge delay) = %v, want ErrInvalid naming the raw seconds", err)
+	}
+}

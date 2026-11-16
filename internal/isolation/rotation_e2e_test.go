@@ -857,16 +857,24 @@ func runRotationRunConstraints(t *testing.T, db *store.DB) {
 	f := newRotationFixture(t, db)
 	created := f.create(rotPasswordKey, rotUsernameKey)
 
+	// Published-onward phases require a recorded publish. The rotation has no open
+	// run yet, so only the CHECK can refuse these rows, never the one-open-run
+	// index.
+	for _, phase := range []string{"published", "overlap", "revoking", "revoke_refused", "done"} {
+		if err := rotationRunRowErr(t, db, f, "run_nopub_"+phase, created.ID, phase, "", "", ts); err == nil {
+			t.Fatalf("phase %s without a published_revision was accepted", phase)
+		}
+		// The same phase with a recorded publish is accepted; it is closed again so
+		// it never occupies the rotation's open-run slot.
+		if err := rotationRunRowErr(t, db, f, "run_pub_"+phase, created.ID, phase, "7", "", ts); err != nil {
+			t.Fatalf("phase %s with a published_revision was refused: %v", phase, err)
+		}
+		execRaw(t, db, `UPDATE rotation_runs SET phase='done' WHERE id='run_pub_`+phase+`'`)
+	}
 	rotationRunRow(t, db, f, "run_open_1", created.ID, "minting", "", "")
 	// At most one non-terminal run per rotation.
 	if err := rotationRunRowErr(t, db, f, "run_open_2", created.ID, "minted", "", "", ts); err == nil {
 		t.Fatal("a second non-terminal run for one rotation was accepted")
-	}
-	// Published-onward phases require a recorded publish.
-	for _, phase := range []string{"published", "overlap", "revoking", "done"} {
-		if err := rotationRunRowErr(t, db, f, "run_nopub_"+phase, created.ID, phase, "", "", ts); err == nil {
-			t.Fatalf("phase %s without a published_revision was accepted", phase)
-		}
 	}
 	// A run in flight blocks delete.
 	if _, err := f.transition(f.actor, "delete", created.ID); !errors.Is(err, domain.ErrConflict) {

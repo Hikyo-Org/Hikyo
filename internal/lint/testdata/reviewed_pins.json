@@ -826,6 +826,20 @@
       "flow_tests": [
         "internal/isolation/scim_retirement_generated_scope_test.go:TestSCIMRetirementUsesProofScopedBindingPrincipal"
       ]
+    },
+    "RotationCredentialExpiries": {
+      "authority": "Verified rotation-list project chain binds org, project and environment on both joined tables. Runs of the requested key ids only; one derived table ranks each key's published runs by start time and id and the outer predicate keeps rank one, so a key reads its newest delivered credential expiry and never the run history. Reads ids and an expiry only.",
+      "sql_hash": {
+        "postgres": "90379552bfe6070b40c08ddbad866898653f91a2c9c88c51d1f13d1c06ea2c86",
+        "sqlite": "7f6c5553e08262571cf7d451b0e3e277a9602a0e7c024a7bcf486b4a9c6ab367"
+      },
+      "api_hash": {
+        "postgres": "0b9dd733907e25b2b7c43aae0280eaa8c9cc747c459ebd67746425a830e95315",
+        "sqlite": "b624a9c7f2265cd489ee6292371f66a0ab0a62c6bc9a041539dd795b6dd79e65"
+      },
+      "tests": [
+        "internal/isolation/rotation_cascade_e2e_test.go:TestRotationCredentialExpiryOverLongHistory"
+      ]
     }
   },
   "protocols": {

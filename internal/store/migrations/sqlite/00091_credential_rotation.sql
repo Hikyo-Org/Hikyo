@@ -53,6 +53,7 @@ CREATE TABLE rotations (
 );
 CREATE INDEX rotations_due ON rotations (state, next_run_at);
 CREATE INDEX rotations_provider ON rotations (provider_id, state);
+CREATE INDEX rotations_key ON rotations (environment_id, key_id);
 
 -- hikyo:table rotation_key_claims class=environment chain=org_id,project_id
 -- One live rotation may drive a key, whichever role (password or username) the
@@ -103,15 +104,18 @@ CREATE TABLE rotation_runs (
     next_attempt_at TEXT NOT NULL,
     last_error TEXT CHECK (last_error IS NULL OR length(last_error) <= 200),
     UNIQUE (org_id, project_id, environment_id, id),
-    CHECK (phase NOT IN ('published', 'overlap', 'revoking', 'done') OR published_revision IS NOT NULL),
+    CHECK (phase NOT IN ('published', 'overlap', 'revoking', 'revoke_refused', 'done') OR published_revision IS NOT NULL),
     FOREIGN KEY (org_id, project_id, environment_id, rotation_id) REFERENCES rotations (org_id, project_id, environment_id, id)
 );
 -- At most one non-terminal run per rotation. quarantine and failed are terminal
 -- for scheduling, but an environment delete still refuses while a quarantined or
--- post-publish failed run may hold a live role (see RotationCountBlockingRuns).
+-- post-publish failed run may hold a live role (see RotationBlockingRunRotations and
+-- RotationPublishedFailedRunRotations).
 CREATE UNIQUE INDEX rotation_runs_open ON rotation_runs (rotation_id) WHERE phase NOT IN ('done', 'quarantine', 'failed');
 CREATE INDEX rotation_runs_due ON rotation_runs (phase, next_attempt_at);
 CREATE INDEX rotation_runs_rotation ON rotation_runs (rotation_id, started_at);
+-- The delivered credential's expiry reads only runs that published.
+CREATE INDEX rotation_runs_published ON rotation_runs (rotation_id, started_at) WHERE published_revision IS NOT NULL;
 
 -- hikyo:table rotation_effects class=environment chain=org_id,project_id
 CREATE TABLE rotation_effects (

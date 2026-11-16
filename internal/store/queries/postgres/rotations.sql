@@ -28,21 +28,27 @@ DELETE FROM rotation_key_claims WHERE rotation_id=sqlc.arg(rotation_id) AND org_
 -- name: RotationCredentialExpiry :one
 SELECT ru.id AS run_id, ru.candidate_valid_until AS expires_at FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env) AND ro.key_id=sqlc.arg(key_id) AND ru.published_revision IS NOT NULL ORDER BY ru.started_at DESC, ru.id DESC LIMIT 1;
 
--- The same expiry for every key of the environment in one read, newest first, so a
--- list never queries per row. The caller keeps the first row per key_id.
+-- The delivered-credential expiry for a page of keys: the newest published run per
+-- key, ranked in SQL so the result holds one row per requested key whatever the run
+-- history, and a list never queries per row.
 -- name: RotationCredentialExpiries :many
-SELECT ro.key_id AS key_id, ru.id AS run_id, ru.candidate_valid_until AS expires_at FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env) AND ru.published_revision IS NOT NULL ORDER BY ru.started_at DESC, ru.id DESC;
+SELECT key_id AS key_id,run_id AS run_id,expires_at AS expires_at FROM (
+ SELECT ro.key_id,ru.id AS run_id,ru.candidate_valid_until AS expires_at,ROW_NUMBER() OVER (PARTITION BY ro.key_id ORDER BY ru.started_at DESC,ru.id DESC) AS ordinal
+ FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
+ WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env) AND ro.key_id = ANY(sqlc.arg(key_ids)::text[]) AND ru.published_revision IS NOT NULL
+ ) ranked WHERE ordinal=1 ORDER BY key_id;
 
 -- A run blocks an environment delete while it may hold a live role: every phase
 -- except done and failed (quarantine and revoke_refused included), plus a failed
 -- run that had already published. A failed run that never published had its
 -- candidate confirmed dropped, so it and done are the only purgeable runs. The
--- rotation ids are returned so the refusal can name them (a page, with repeats).
+-- distinct rotation ids are returned so the refusal can name them and one rotation
+-- with many runs cannot hide the others under the page limit.
 -- name: RotationBlockingRunRotations :many
-SELECT rotation_id FROM rotation_runs WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND phase NOT IN ('done','failed') ORDER BY rotation_id LIMIT sqlc.arg(page_limit);
+SELECT DISTINCT rotation_id FROM rotation_runs WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND phase NOT IN ('done','failed') ORDER BY rotation_id LIMIT sqlc.arg(page_limit);
 
 -- name: RotationPublishedFailedRunRotations :many
-SELECT rotation_id FROM rotation_runs WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND phase='failed' AND published_revision IS NOT NULL ORDER BY rotation_id LIMIT sqlc.arg(page_limit);
+SELECT DISTINCT rotation_id FROM rotation_runs WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND phase='failed' AND published_revision IS NOT NULL ORDER BY rotation_id LIMIT sqlc.arg(page_limit);
 
 -- name: RotationPurgeEffects :exec
 DELETE FROM rotation_effects WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env);

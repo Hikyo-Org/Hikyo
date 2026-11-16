@@ -5495,7 +5495,7 @@ var operationTable = map[Operation]opSpec{
 	OpRotationResume: {
 		class: ClassTenant, level: domain.LevelEnv,
 		// Resume is the human act that re-arms a standing delegation, so it needs
-		// the create formula: the per-key checks (the caller's, and the recorded
+		// the full formula (edit, publish and reveal): the per-key checks (the caller's, and the recorded
 		// authority's) run under this operation, so a denial is recorded as a
 		// rotation.resume denial.
 		formula: Formula{

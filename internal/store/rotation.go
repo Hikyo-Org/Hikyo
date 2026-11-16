@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
@@ -47,6 +48,9 @@ var (
 type RotationLiveError struct {
 	LiveRotationIDs   []string
 	BlockingRunOwners []string
+	// Truncated reports that more rotations block than the limit names: each list
+	// was read one past RotationBlockingIDsLimit, so the flag is exact.
+	Truncated bool
 }
 
 func (e *RotationLiveError) Error() string { return ErrRotationLiveInEnvironment.Error() }
@@ -158,13 +162,14 @@ type rotationStoreQueries interface {
 	credentialExpiry(ctx context.Context, chain domain.Scope, keyID string) (string, error)
 	// credentialExpiries returns the delivered-credential expiry per key, from the
 	// latest published run of each key, in one read.
-	credentialExpiries(ctx context.Context, chain domain.Scope) (map[string]string, error)
+	credentialExpiries(ctx context.Context, chain domain.Scope, keyIDs []string) (map[string]string, error)
 	// claim takes one key for a rotation; a taken key is reported by
 	// uniqueViolation, never by constraint text.
 	claim(ctx context.Context, chain domain.Scope, keyID, rotationID string) (uniqueViolation bool, err error)
 	releaseClaims(ctx context.Context, chain domain.Scope, rotationID string) error
-	// blockingRunRotations names, up to limit, the rotations that have a run that
-	// may hold a live role: any phase but done and failed, or failed after publish.
+	// blockingRunRotations names, up to limit, the distinct rotations that have a
+	// run that may hold a live role: any phase but done and failed, or failed after
+	// publish.
 	blockingRunRotations(ctx context.Context, chain domain.Scope, limit int) ([]string, error)
 	purge(ctx context.Context, chain domain.Scope) error
 	activeByProvider(ctx context.Context, chain domain.Scope, providerID string) ([]RotationRecord, error)
@@ -260,7 +265,11 @@ func (r rotationQueries) List(ctx context.Context, p authz.Proof, q RotationList
 	if len(rows) == 0 {
 		return rows, nil
 	}
-	expiries, err := r.queries.credentialExpiries(ctx, chain)
+	keyIDs := make([]string, len(rows))
+	for i := range rows {
+		keyIDs[i] = rows[i].KeyID
+	}
+	expiries, err := r.queries.credentialExpiries(ctx, chain, keyIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -357,21 +366,24 @@ func (r rotationQueries) PurgeEnvironment(ctx context.Context, p authz.Proof) er
 	if err != nil {
 		return err
 	}
-	live, err := r.queries.list(ctx, chain, RotationListQuery{Limit: RotationBlockingIDsLimit})
+	live, err := r.queries.list(ctx, chain, RotationListQuery{Limit: RotationBlockingIDsLimit + 1})
 	if err != nil {
 		return err
 	}
-	blocking, err := r.queries.blockingRunRotations(ctx, chain, RotationBlockingIDsLimit)
+	blocking, err := r.queries.blockingRunRotations(ctx, chain, RotationBlockingIDsLimit+1)
 	if err != nil {
 		return err
 	}
 	if len(live) == 0 && len(blocking) == 0 {
 		return r.queries.purge(ctx, chain)
 	}
-	out := &RotationLiveError{BlockingRunOwners: blocking}
-	for _, rec := range live {
-		out.LiveRotationIDs = append(out.LiveRotationIDs, rec.ID)
+	out := &RotationLiveError{Truncated: len(live) > RotationBlockingIDsLimit || len(blocking) > RotationBlockingIDsLimit}
+	for i, rec := range live {
+		if i < RotationBlockingIDsLimit {
+			out.LiveRotationIDs = append(out.LiveRotationIDs, rec.ID)
+		}
 	}
+	out.BlockingRunOwners = blocking[:min(len(blocking), RotationBlockingIDsLimit)]
 	return out
 }
 
@@ -540,16 +552,13 @@ func (q pgRotationQueries) credentialExpiry(ctx context.Context, chain domain.Sc
 	return out, nil
 }
 
-func (q sqliteRotationQueries) credentialExpiries(ctx context.Context, chain domain.Scope) (map[string]string, error) {
-	rows, err := q.q.RotationCredentialExpiries(ctx, sqlitegen.RotationCredentialExpiriesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+func (q sqliteRotationQueries) credentialExpiries(ctx context.Context, chain domain.Scope, keyIDs []string) (map[string]string, error) {
+	rows, err := q.q.RotationCredentialExpiries(ctx, sqlitegen.RotationCredentialExpiriesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), KeyIds: keyIDs})
 	if err != nil {
 		return nil, err
 	}
 	out := map[string]string{}
 	for _, row := range rows {
-		if _, seen := out[row.KeyID]; seen {
-			continue
-		}
 		stamp := row.ExpiresAt.String
 		if err := normalizeStoredTimes(&stamp); err != nil {
 			return nil, err
@@ -559,16 +568,13 @@ func (q sqliteRotationQueries) credentialExpiries(ctx context.Context, chain dom
 	return out, nil
 }
 
-func (q pgRotationQueries) credentialExpiries(ctx context.Context, chain domain.Scope) (map[string]string, error) {
-	rows, err := q.q.RotationCredentialExpiries(ctx, pggen.RotationCredentialExpiriesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+func (q pgRotationQueries) credentialExpiries(ctx context.Context, chain domain.Scope, keyIDs []string) (map[string]string, error) {
+	rows, err := q.q.RotationCredentialExpiries(ctx, pggen.RotationCredentialExpiriesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), KeyIds: keyIDs})
 	if err != nil {
 		return nil, err
 	}
 	out := map[string]string{}
 	for _, row := range rows {
-		if _, seen := out[row.KeyID]; seen {
-			continue
-		}
 		stamp := pgStoredStamp(row.ExpiresAt)
 		if err := normalizeStoredTimes(&stamp); err != nil {
 			return nil, err
@@ -626,18 +632,20 @@ func (q pgRotationQueries) blockingRunRotations(ctx context.Context, chain domai
 	return uniqueFirst(append(open, failed...), limit), nil
 }
 
-// uniqueFirst keeps the first limit distinct ids in order.
+// uniqueFirst keeps the first limit distinct ids in id order. Each source list is
+// the smallest ids of its own predicate, so the smallest ids of their union are
+// within them and the cut is the same on both engines.
 func uniqueFirst(ids []string, limit int) []string {
 	seen := make(map[string]bool, len(ids))
-	out := make([]string, 0, min(len(ids), limit))
+	out := make([]string, 0, len(ids))
 	for _, id := range ids {
-		if seen[id] || len(out) == limit {
-			continue
+		if !seen[id] {
+			seen[id] = true
+			out = append(out, id)
 		}
-		seen[id] = true
-		out = append(out, id)
 	}
-	return out
+	slices.Sort(out)
+	return out[:min(len(out), limit)]
 }
 
 // purge deletes children before parents, the order the foreign keys require.

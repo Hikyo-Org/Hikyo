@@ -106,7 +106,7 @@ func purgeEnvironmentRotations(ctx context.Context, r store.Repos, proof authz.P
 	if len(live.BlockingRunOwners) > 0 {
 		detail += "; rotations whose runs may hold a live role: " + strings.Join(live.BlockingRunOwners, ", ")
 	}
-	if len(live.LiveRotationIDs) == store.RotationBlockingIDsLimit || len(live.BlockingRunOwners) == store.RotationBlockingIDsLimit {
+	if live.Truncated {
 		detail += " (first " + fmt.Sprint(store.RotationBlockingIDsLimit) + " shown)"
 	}
 	return &environmentLiveRotationError{detail: detail + "; delete each rotation and let its runs finish first"}
@@ -149,14 +149,14 @@ const (
 
 // rotationDuration renders a bound in the units the CLI flags accept.
 func rotationDuration(seconds int64) string {
-	d := time.Duration(seconds) * time.Second
+	// Computed from seconds: converting to time.Duration overflows above ~9.2e9.
 	switch {
-	case d%(24*time.Hour) == 0:
-		return fmt.Sprintf("%dd", d/(24*time.Hour))
-	case d%time.Hour == 0:
-		return fmt.Sprintf("%dh", d/time.Hour)
-	case d%time.Minute == 0:
-		return fmt.Sprintf("%dm", d/time.Minute)
+	case seconds%86400 == 0:
+		return fmt.Sprintf("%dd", seconds/86400)
+	case seconds%3600 == 0:
+		return fmt.Sprintf("%dh", seconds/3600)
+	case seconds%60 == 0:
+		return fmt.Sprintf("%dm", seconds/60)
 	}
 	return fmt.Sprintf("%ds", seconds)
 }
@@ -601,8 +601,9 @@ func (s *CredentialRotations) transition(ctx context.Context, actor Actor, scope
 // resumes; the environment still runs unattended; the provider can still mint;
 // the keys still exist and are fit to receive the credential (a missing key is
 // its own refusal, because per-key authorization of a missing key reads as
-// not-found); the CALLER holds the create formula on both keys; the recorded
-// authority principal still holds it too; and the publish ceremony is consumed.
+// not-found); the CALLER holds the resume formula (edit, publish and
+// reveal at the environment) on both keys; the recorded authority principal still
+// holds it too; and the publish ceremony is consumed.
 func (s *CredentialRotations) authorizeResume(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, proof authz.Proof, caller authz.Identity, scope domain.Scope, rec store.RotationRecord) error {
 	if err := requireRotationHuman(caller); err != nil {
 		return err
