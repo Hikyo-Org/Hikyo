@@ -18,7 +18,7 @@ not CLEAN; independent adversarial Claude review is recorded on the PR):
 ## What this is
 
 An operator configures a rotation for one PostgreSQL provider (#147), one secret key
-(the password) and optionally one more key (the role name), an interval and a
+(the password) and one more key (the role name, required), an interval and a
 revocation delay. On schedule Hikyo mints a replacement role, publishes the new
 value(s) through the ordinary validated revision path, waits a bounded overlap, then
 drops the superseded role. Delivery cursors move for free because the publish is an
@@ -293,6 +293,16 @@ operator e2e (`k8se2e`) asserting a rollout after rotation.
 4. **Incident containment.** Should the incident ledger enumerate rotations by
    `authority_principal_id` so a contained principal's rotations are paused? Not done
    in S1; there is no executor yet.
+
+5. **Key-narrowed authority.** Pause, resume and delete are `publish@environment`
+   with no key target, so a key-narrowed member access rule cannot satisfy them
+   (fail closed). A creator authorized only by a rule narrowed to the two keys can
+   therefore create a rotation but not pause, resume or delete it. Options: (a) keep
+   publish across the whole environment for these three; (b) make them key-aware by
+   reading the row under the inspect proof and then authorizing the operation on both
+   stored keys. Recommendation: (a) for S1; revisit with the S2 gate, which already
+   re-authorizes per key.
+
 
 ## S1 divergences from the issue handoff (summary)
 
