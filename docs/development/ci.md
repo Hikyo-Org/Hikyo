@@ -373,14 +373,16 @@ workflow that runs when a head first gets suites therefore does not run on
 opened, synchronize or reopened, so it never hosts a record. For a base retarget
 it calls `ci-feedback.yml` and its lanes are named `retarget / feedback (go)`; a
 title or body edit leaves one skipped `retarget` job. The workflow is named
-`ci-feedback`, so the existing `gate-dev` and `gate-queue` callbacks reassess the
-PR, and the publisher reads both workflows' runs and uses the newest useful one.
+`ci-feedback`, so the existing `gate-dev` callback reassesses the PR (the
+`gate-queue` publisher's filter skips this callback, and a retarget to main reaches
+it through its `edited` event), and the publisher reads both workflows' runs and
+uses the newest useful one.
 The shared name assumes GitHub supersedes suites per workflow file, not per name.
 That is unverified: the evidence only shows that other workflows, which had both
 another file and another name, did not hide a record. If edits still hide a record
-that `ci-feedback` hosts, the fallback is a distinct name in the `gate-dev` and
-`gate-queue` callback filters and the publisher's source list; the `gate-dev`
-edit needs the backmerge first.
+that `ci-feedback` hosts, the fallback is a distinct name in the `gate-dev`
+callback filter and the publisher's source list; the `gate-dev` edit needs the
+backmerge first.
 When the retarget run does not start, because the PR conflicts with its new base
 or a fork run awaits approval, the hourly schedule reassesses it.
 `scripts/ci/dev_gate_workflow_test.go` refuses any other pull request trigger
