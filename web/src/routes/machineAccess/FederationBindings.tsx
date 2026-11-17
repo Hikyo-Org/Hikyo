@@ -264,10 +264,12 @@ export function BindingDialog({
   // pinned; a fresh binding starts on Kubernetes. The account is locked to the
   // row the replace was launched from, because a binding belongs to one.
   const seedPreset = replaces === undefined ? KUBERNETES_PRESET : presetForBinding(replaces);
-  const unsafeClaim = replaces === undefined ? null : unsafeNumericClaim(replaces);
   // Predecessor pins no form field renders, carried verbatim so a replacement
   // never silently drops an identity constraint the form could not show.
   const carried = replaces === undefined ? [] : carriedClaims(seedPreset, replaces);
+  // Only carried pins are sent as numbers; preset fields are re-pinned as exact
+  // decimal strings, so a large legacy id there needs no range guard.
+  const unsafeClaim = replaces === undefined ? null : unsafeNumericClaim({ ...replaces, required_claims: carried });
   const [account, setAccount] = useState(initial.id);
   const [preset, setPreset] = useState<FederationPreset>(seedPreset);
   const unsupportedPreset = preset.id === 'forgejo';

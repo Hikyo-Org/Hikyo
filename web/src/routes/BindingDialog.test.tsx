@@ -109,6 +109,31 @@ it('re-pins a legacy numeric GitHub id as the string GitHub emits', async () => 
   } finally { await view.unmount(); }
 });
 
+it('replaces a legacy id past 2^53 exactly, because preset fields pin strings', async () => {
+  const fetchMock = vi.fn((..._args: Parameters<typeof fetch>) => Promise.resolve(
+    new Response(JSON.stringify({ code: 'refused', message: 'fixture refusal' }), {
+      status: 422, headers: { 'Content-Type': 'application/json' },
+    }),
+  ));
+  vi.stubGlobal('fetch', fetchMock);
+  const base = predecessor(7n);
+  const legacy = {
+    ...base,
+    required_claims: (base.required_claims ?? []).map((pin) =>
+      pin.claim === 'repository_id' ? { claim: 'repository_id', number_value: 9007199254740993n } : pin),
+  };
+  const view = await renderForm(
+    <BindingDialog project={{ org: 'acme', project: 'payments' }} accounts={[account]} initial={account}
+      replaces={legacy} reachFor={() => []} onClose={() => {}} onCreated={() => {}} />,
+  );
+  try {
+    await submitReplacement(view.container);
+    const request = fetchMock.mock.calls[0]?.[0];
+    if (!(request instanceof Request)) throw new Error('binding request missing');
+    expect(await request.clone().text()).toContain('"claim":"repository_id","string_value":"9007199254740993"');
+  } finally { await view.unmount(); }
+});
+
 it('disables Forgejo Actions and explains the immutable-identity refusal', async () => {
   const view = await renderForm(
     <BindingDialog project={{ org: 'acme', project: 'payments' }} accounts={[account]} initial={account}
