@@ -43,16 +43,18 @@ SELECT ru.candidate_handle,ru.candidate_valid_until AS valid_until_at FROM rotat
 INSERT INTO rotation_runs (id,org_id,project_id,environment_id,rotation_id,generation,run_trigger,phase,candidate_handle,superseded_handle,candidate_valid_until,revocation_delay_seconds,started_at,phase_at,lease_owner,lease_expires_at,lease_claim_token,attempt_count,next_attempt_at) VALUES (sqlc.arg(id),sqlc.arg(chain_org),sqlc.arg(chain_project),sqlc.arg(chain_env),sqlc.arg(rotation_id),sqlc.arg(generation),sqlc.arg(run_trigger),'minting',sqlc.arg(candidate_handle),sqlc.narg(superseded_handle),sqlc.arg(candidate_valid_until_at),sqlc.arg(revocation_delay_seconds),sqlc.arg(at),sqlc.arg(at),sqlc.arg(worker),sqlc.arg(lease_until_at),1,1,sqlc.arg(at));
 
 -- The schedule moves, never the generation: the run that is in flight asserts the
--- generation it started under, so a schedule write must not invalidate it.
+-- generation it started under, so a schedule write must not invalidate it. A rotation
+-- a restore holds is not moved at all (here, by a deferral or by a halt): the hold can
+-- land after the run was claimed, and releasing it must find the rotation as it was.
 -- name: RotationRtSetNextRun :execrows
-UPDATE rotations SET deferred_from=NULL,next_run_at=sqlc.arg(next_run_at),updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active';
+UPDATE rotations SET deferred_from=NULL,next_run_at=sqlc.arg(next_run_at),updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active' AND restore_hold=FALSE;
 
 -- A datastore fault that keeps failing a rotation's start pushes next_run_at out so it
 -- yields the head of the queue. The first due time of that wait is kept in deferred_from,
 -- which only a real schedule write clears, so the overdue gauge measures from the time the
 -- rotation first came due and a stuck rotation cannot defer its way out of it.
 -- name: RotationRtDeferNextRun :execrows
-UPDATE rotations SET next_run_at=sqlc.arg(next_run_at),deferred_from=COALESCE(deferred_from,next_run_at),updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active';
+UPDATE rotations SET next_run_at=sqlc.arg(next_run_at),deferred_from=COALESCE(deferred_from,next_run_at),updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active' AND restore_hold=FALSE;
 
 -- The request a started run consumed: cleared in the start transaction.
 -- name: RotationRtClearManual :exec
@@ -66,7 +68,7 @@ SELECT COUNT(DISTINCT t.id) FROM adapter_targets t JOIN adapter_target_keys k ON
  WHERE t.org_id=sqlc.arg(chain_org) AND t.project_id=sqlc.arg(chain_project) AND t.environment_id=sqlc.arg(chain_env) AND t.state<>'tombstoned' AND k.key_id IN (sqlc.arg(key_id),sqlc.arg(username_key_id)) AND (t.converged_revision IS NULL OR t.converged_revision<sqlc.arg(revision));
 
 -- name: RotationRtHaltRotation :execrows
-UPDATE rotations SET deferred_from=NULL,state='halted',halt_reason=sqlc.arg(halt_reason),next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=FALSE,generation=generation+1,updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active';
+UPDATE rotations SET deferred_from=NULL,state='halted',halt_reason=sqlc.arg(halt_reason),next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=FALSE,generation=generation+1,updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active' AND restore_hold=FALSE;
 
 -- name: RotationRtInsertEffect :exec
 INSERT INTO rotation_effects (id,org_id,project_id,environment_id,run_id,kind,intent_audit_id,created_at) VALUES (sqlc.arg(id),sqlc.arg(chain_org),sqlc.arg(chain_project),sqlc.arg(chain_env),sqlc.arg(run_id),sqlc.arg(kind),sqlc.arg(intent_audit_id),sqlc.arg(at));

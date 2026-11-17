@@ -261,7 +261,7 @@ func (q *Queries) RotationRtCycleStart(ctx context.Context, arg RotationRtCycleS
 }
 
 const rotationRtDeferNextRun = `-- name: RotationRtDeferNextRun :execrows
-UPDATE rotations SET next_run_at=$1,deferred_from=COALESCE(deferred_from,next_run_at),updated_at=$2 WHERE id=$3 AND org_id=$4 AND project_id=$5 AND environment_id=$6 AND state='active'
+UPDATE rotations SET next_run_at=$1,deferred_from=COALESCE(deferred_from,next_run_at),updated_at=$2 WHERE id=$3 AND org_id=$4 AND project_id=$5 AND environment_id=$6 AND state='active' AND restore_hold=FALSE
 `
 
 type RotationRtDeferNextRunParams struct {
@@ -522,7 +522,7 @@ func (q *Queries) RotationRtGetRun(ctx context.Context, arg RotationRtGetRunPara
 }
 
 const rotationRtHaltRotation = `-- name: RotationRtHaltRotation :execrows
-UPDATE rotations SET deferred_from=NULL,state='halted',halt_reason=$1,next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=FALSE,generation=generation+1,updated_at=$2 WHERE id=$3 AND org_id=$4 AND project_id=$5 AND environment_id=$6 AND state='active'
+UPDATE rotations SET deferred_from=NULL,state='halted',halt_reason=$1,next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=FALSE,generation=generation+1,updated_at=$2 WHERE id=$3 AND org_id=$4 AND project_id=$5 AND environment_id=$6 AND state='active' AND restore_hold=FALSE
 `
 
 type RotationRtHaltRotationParams struct {
@@ -1115,7 +1115,7 @@ func (q *Queries) RotationRtPublishedEntries(ctx context.Context, arg RotationRt
 }
 
 const rotationRtSetNextRun = `-- name: RotationRtSetNextRun :execrows
-UPDATE rotations SET deferred_from=NULL,next_run_at=$1,updated_at=$2 WHERE id=$3 AND org_id=$4 AND project_id=$5 AND environment_id=$6 AND state='active'
+UPDATE rotations SET deferred_from=NULL,next_run_at=$1,updated_at=$2 WHERE id=$3 AND org_id=$4 AND project_id=$5 AND environment_id=$6 AND state='active' AND restore_hold=FALSE
 `
 
 type RotationRtSetNextRunParams struct {
@@ -1128,7 +1128,9 @@ type RotationRtSetNextRunParams struct {
 }
 
 // The schedule moves, never the generation: the run that is in flight asserts the
-// generation it started under, so a schedule write must not invalidate it.
+// generation it started under, so a schedule write must not invalidate it. A rotation
+// a restore holds is not moved at all (here, by a deferral or by a halt): the hold can
+// land after the run was claimed, and releasing it must find the rotation as it was.
 func (q *Queries) RotationRtSetNextRun(ctx context.Context, arg RotationRtSetNextRunParams) (int64, error) {
 	result, err := q.db.Exec(ctx, rotationRtSetNextRun,
 		arg.NextRunAt,

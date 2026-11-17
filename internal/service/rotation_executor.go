@@ -439,9 +439,28 @@ func (e *RotationExecutor) gateWithin(ctx context.Context, r store.Repos, az *au
 	return requireRotationStartable(ctx, r, az, proof, caller, caller.Principal, authz.OpRotationResume, scope, rec, check.drafts)
 }
 
+// authorizeRotationRun is the executor's own publish authorization for the
+// recorded authority: OpRotationRun on both of the rotation's keys, so an
+// authority that holds publish only through member rules narrowed to those keys
+// passes exactly as it does resume's check (RecordedPrincipalHolds on both keys),
+// and an environment-wide holder passes for every key. A keyless check could never
+// be satisfied by a key-narrowed rule. The caller stays the authority principal;
+// no identity is synthesized for it.
+func authorizeRotationRun(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, scope domain.Scope, keyID, usernameKeyID string) (authz.Proof, error) {
+	var proof authz.Proof
+	for _, id := range []string{keyID, usernameKeyID} {
+		held, err := az.AuthorizeKey(ctx, caller, authz.OpRotationRun, scope, authz.KeyByID(id))
+		if err != nil {
+			return held, err
+		}
+		proof = held
+	}
+	return proof, nil
+}
+
 // gate runs gateWithin in its own transaction, as the recorded authority: before
 // a run is created, and before a delivered credential is extended.
-func (e *RotationExecutor) gate(ctx context.Context, chain domain.Scope, rotationID, authority string, check gateCheck, now time.Time) error {
+func (e *RotationExecutor) gate(ctx context.Context, chain domain.Scope, rotationID, authority, keyID, usernameKeyID string, check gateCheck, now time.Time) error {
 	actor := LocalPrincipal(domain.PrincipalID(authority))
 	return tx.Write(ctx, e.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, err := actor.resolve(ctx, az, now)
@@ -449,7 +468,7 @@ func (e *RotationExecutor) gate(ctx context.Context, chain domain.Scope, rotatio
 			return err
 		}
 		az.SetClock(now)
-		proof, err := az.Authorize(ctx, caller, authz.OpRotationRun, chain)
+		proof, err := authorizeRotationRun(ctx, az, caller, chain, keyID, usernameKeyID)
 		if err != nil {
 			return err
 		}
@@ -534,7 +553,7 @@ func (e *RotationExecutor) startRun(ctx context.Context, worker string, d store.
 	now := e.now()
 	// The Gate's own transaction and its denials carry the authority; no run id
 	// exists yet.
-	if err := e.gate(attributed(ctx, d.AuthorityPrincipalID, ""), d.Chain(), d.ID, d.AuthorityPrincipalID, gateCheck{generation: d.Generation, drafts: true}, now); err != nil {
+	if err := e.gate(attributed(ctx, d.AuthorityPrincipalID, ""), d.Chain(), d.ID, d.AuthorityPrincipalID, d.KeyID, d.UsernameKeyID, gateCheck{generation: d.Generation, drafts: true}, now); err != nil {
 		reason, definite := rotationGateReason(err)
 		if errors.Is(err, errRotationInactive) {
 			// Paused or changed between selection and the gate: nothing to do.
@@ -1047,7 +1066,7 @@ func (e *RotationExecutor) publish(ctx context.Context, provider dynamic.Provide
 			if now.After(run.StartedAt.Add(rotationPublishBudget)) {
 				return errRotationBudget
 			}
-			proof, err := az.Authorize(ctx, caller, authz.OpRotationRun, scope)
+			proof, err := authorizeRotationRun(ctx, az, caller, scope, run.KeyID, run.UsernameKeyID)
 			if err != nil {
 				return err
 			}
@@ -1063,7 +1082,7 @@ func (e *RotationExecutor) publish(ctx context.Context, provider dynamic.Provide
 			if store.CanonTime(now).After(run.StartedAt.Add(rotationPublishBudget)) {
 				return nil, errRotationBudget
 			}
-			proof, err := az.Authorize(ctx, caller, authz.OpRotationRun, scope)
+			proof, err := authorizeRotationRun(ctx, az, caller, scope, run.KeyID, run.UsernameKeyID)
 			if err != nil {
 				return nil, err
 			}
@@ -1102,7 +1121,7 @@ func (e *RotationExecutor) publish(ctx context.Context, provider dynamic.Provide
 			if now.After(run.StartedAt.Add(rotationPublishBudget)) {
 				return errRotationBudget
 			}
-			proof, err := az.Authorize(ctx, caller, authz.OpRotationRun, scope)
+			proof, err := authorizeRotationRun(ctx, az, caller, scope, run.KeyID, run.UsernameKeyID)
 			if err != nil {
 				return err
 			}
@@ -1618,7 +1637,7 @@ func (e *RotationExecutor) extendDelivered(ctx context.Context, run store.Rotati
 		// lapse with nothing left to extend it. Stop loudly rather than silently.
 		return e.haltClosing(ctx, run, from, rotHaltExhausted, now, now, intent)
 	}
-	if err := e.gate(ctx, run.Chain(), run.RotationID, run.AuthorityPrincipalID, gateCheck{generation: anyGeneration}, now); err != nil {
+	if err := e.gate(ctx, run.Chain(), run.RotationID, run.AuthorityPrincipalID, run.KeyID, run.UsernameKeyID, gateCheck{generation: anyGeneration}, now); err != nil {
 		if errors.Is(err, errRotationHeld) {
 			// A restore hold landed after the claim. The claim skips held rotations, so
 			// the run stays due without being picked up until the hold is released;
