@@ -351,6 +351,35 @@ func (q *Queries) RotationRtDueRotation(ctx context.Context, now sql.NullString)
 	return i, err
 }
 
+const rotationRtDueRun = `-- name: RotationRtDueRun :execrows
+UPDATE rotation_runs SET next_attempt_at=?1 WHERE id=?2 AND org_id=?3 AND project_id=?4 AND environment_id=?5
+`
+
+type RotationRtDueRunParams struct {
+	Now          string
+	ID           string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+// Leaves a settled run due now. Run inside the settle's own transaction, after a
+// settle that would park the run at "never" met a rotation a restore holds: the
+// claim skips a held rotation and a release never re-arms a parked run.
+func (q *Queries) RotationRtDueRun(ctx context.Context, arg RotationRtDueRunParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, rotationRtDueRun,
+		arg.Now,
+		arg.ID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const rotationRtFailedAttempts = `-- name: RotationRtFailedAttempts :one
 SELECT COUNT(*) FROM rotation_runs WHERE rotation_id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND generation=?5 AND phase IN ('failed','quarantine') AND published_revision IS NULL AND (last_error IS NULL OR last_error<>'infrastructure_unavailable') AND started_at>?6
 `

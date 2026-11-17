@@ -1410,8 +1410,21 @@ key was deleted (the key lookup answers not-found); an environment-wide holder c
   window-spent credential, a failed run's finished drop) or unreachable for a held rotation (the
   claim skips held rotations, so a claimed run's state is never the held state); the pre-start gate
   in `startRun` halts a held rotation's due row, which the hold also blocks, leaving the row due
-  for the release. Residual window: a hold landing between the new read and the settle can still
-  park that one run at "never"; the next cycle's publish supersedes its credential.
+  for the release.
+- **Hold decided in the settle transaction (confirmed residual, fixed).** The `RestoreHeld` read
+  and the settle that follows were separate transactions, so a hold landing between them still
+  parked the done run at "never" while the halt refused the held rotation. `RotationSettle` now
+  carries `DueIfHeld`, which `settleDrop` sets for every done-phase settle that parks at
+  `rotationNever` (extend parks, skips and halts alike). `RotationRuntime.Settle` then reads the
+  hold last, in the transaction that wrote the settle and tried the halt, and leaves the run due
+  now (`RotationRtDueRun`, both engines) when the rotation is held. Under PG serializable a hold
+  committed after the transaction began conflicts with the halt write (an error the executor
+  retries) and one committed before it is seen by the read, so the held decision and the halt agree;
+  sqlite has one writer. The earlier read stays as the fast path. The run stays due, the claim
+  skips the held rotation, and a release re-evaluates the gate. A nested SELECT inside the settle
+  UPDATE was tried first and refused by the SQL predicate analyzer, hence the in-transaction read.
+  `TestRotationExtendHoldLandingAfterTheHoldReadStaysDueAfterRelease` (seam `AfterExtendHoldRead`)
+  failed before the fix on both engines (next attempt 9000-01-01, 0 extends after release).
 
 ### Incident containment
 

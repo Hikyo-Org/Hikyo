@@ -140,6 +140,11 @@ type RotationSettle struct {
 	// NotConverged, when set, records the adapter targets still on the superseded
 	// revision at the revoke decision (#148, S2b-1).
 	NotConverged *int64
+	// DueIfHeld leaves the run due now, instead of at NextAttempt, when a restore holds
+	// the rotation inside the settle's own transaction. It is for a settle that parks a
+	// run at "never": the decision is made with the halt write, so a hold landing after
+	// the caller last read the rotation cannot strand the run.
+	DueIfHeld bool
 	// KeepLease leaves the lease held, for a settle that is followed by a
 	// provider call in the same claim.
 	KeepLease bool
@@ -214,6 +219,7 @@ type rotationRuntimeQueries interface {
 	publishedEntries(ctx context.Context, chain domain.Scope, keyID string, fromRevision int64) ([]string, error)
 	laterPublished(ctx context.Context, chain domain.Scope, keyID string, revision int64) (int64, error)
 	restoreHeld(ctx context.Context, chain domain.Scope, rotationID string) (int64, error)
+	dueRun(ctx context.Context, run RotationRun, now time.Time) error
 	providerMaterial(ctx context.Context, run RotationRun, now time.Time) (LeaseProviderMaterial, error)
 	supersededRole(ctx context.Context, run RotationRun, now time.Time) (SupersededRole, error)
 	openRunCount(ctx context.Context, chain domain.Scope, rotationID string) (int64, error)
@@ -487,8 +493,21 @@ func (r *RotationRuntime) Settle(ctx context.Context, run RotationRun, s Rotatio
 				return err
 			}
 			if halted == 1 && s.HaltAudit != nil {
-				return q.insertAudit(ctx, chain, run.AuthorityPrincipalID, run.RotationID, run.ID, *s.HaltAudit, s.Now)
+				if err := q.insertAudit(ctx, chain, run.AuthorityPrincipalID, run.RotationID, run.ID, *s.HaltAudit, s.Now); err != nil {
+					return err
+				}
 			}
+		}
+		if s.DueIfHeld {
+			// Read last, in the transaction that wrote the settle and tried the halt: under
+			// PG serializable a hold committed after this transaction began conflicts with
+			// the halt write (an error the executor retries), and one committed before it
+			// is seen here, so the held decision and the halt always agree.
+			held, err := q.restoreHeld(ctx, chain, run.RotationID)
+			if err != nil || held == 0 {
+				return err
+			}
+			return q.dueRun(ctx, run, s.Now)
 		}
 		return nil
 	})

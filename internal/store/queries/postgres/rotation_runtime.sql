@@ -112,6 +112,12 @@ SELECT COUNT(*) FROM rotation_runs WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(cha
 -- name: RotationRtSettleRun :execrows
 UPDATE rotation_runs SET phase=sqlc.arg(phase),phase_at=sqlc.arg(now),last_error=sqlc.narg(last_error),next_attempt_at=sqlc.arg(next_attempt_at),candidate_valid_until=COALESCE(sqlc.narg(valid_until_at),candidate_valid_until),revoke_not_before_at=COALESCE(sqlc.narg(revoke_not_before_at),revoke_not_before_at),published_revision=COALESCE(sqlc.narg(published_revision),published_revision),not_converged_adapter_targets=COALESCE(sqlc.narg(not_converged_adapter_targets),not_converged_adapter_targets),lease_owner=CASE WHEN sqlc.arg(keep_lease)::bigint=1 THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN sqlc.arg(keep_lease)::bigint=1 THEN lease_expires_at ELSE NULL END WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND lease_owner=sqlc.arg(worker) AND lease_expires_at>sqlc.arg(now) AND lease_claim_token=sqlc.arg(claim_token) AND phase = ANY(sqlc.arg(from_phases)::text[]);
 
+-- Leaves a settled run due now. Run inside the settle's own transaction, after a
+-- settle that would park the run at "never" met a rotation a restore holds: the
+-- claim skips a held rotation and a release never re-arms a parked run.
+-- name: RotationRtDueRun :execrows
+UPDATE rotation_runs SET next_attempt_at=sqlc.arg(now) WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env);
+
 -- name: RotationRtGetRun :one
 SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.revoke_not_before_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds AS rotation_delay_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.restore_hold AS rotation_restore_hold,ro.generation AS rotation_generation
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id

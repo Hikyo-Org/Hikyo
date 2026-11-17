@@ -46,6 +46,11 @@ type RotationExecutor struct {
 	// anything else. A test publishes a replacement run there to prove that the
 	// replacement's revoke read counts the extend as uncertain. nil in production.
 	AfterExtendSupersessionCheck func()
+	// AfterExtendHoldRead is a conformance seam: it runs after an extend refused by
+	// a definite gate error has read that no restore holds the rotation, before the
+	// halting settle. A test lands the hold there to prove the settle decides on the
+	// hold at write time. nil in production.
+	AfterExtendHoldRead func()
 	// Log receives the executor's operational faults as redacted error classes,
 	// never the cause text. nil logs to the default logger.
 	Log *slog.Logger
@@ -970,6 +975,10 @@ func (e *RotationExecutor) dropCandidate(ctx context.Context, provider dynamic.P
 }
 
 func (e *RotationExecutor) settleDrop(ctx context.Context, run store.RotationRun, s store.RotationSettle) error {
+	// A done run parked at "never" is never claimed again, and a restore release does
+	// not re-arm it; the write decides on the hold itself so one landing after the
+	// caller's own reads cannot strand a delivered credential.
+	s.DueIfHeld = s.DueIfHeld || (s.Phase == "done" && s.NextAttempt.Equal(rotationNever))
 	err := e.Runtime.Settle(ctx, run, s)
 	if errors.Is(err, store.ErrRotationFenceLost) {
 		return nil
@@ -1663,6 +1672,9 @@ func (e *RotationExecutor) extendDelivered(ctx context.Context, run store.Rotati
 		}
 		if restoreHeld {
 			return skip(now)
+		}
+		if e.AfterExtendHoldRead != nil {
+			e.AfterExtendHoldRead()
 		}
 		next := rotationNever
 		if held {

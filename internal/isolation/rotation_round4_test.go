@@ -221,3 +221,49 @@ func TestRotationExtendHeldAndAuthorityRefusedStaysDueAfterRelease(t *testing.T)
 		}
 	})
 }
+
+// The hold read that classifies a refused extend and the settle that follows are
+// separate steps: a hold landing between them must still leave the run due. The
+// settle decides on the hold at write time, so the done run is not parked at
+// "never" for a rotation the halt then refuses to halt.
+func TestRotationExtendHoldLandingAfterTheHoldReadStaysDueAfterRelease(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		rot := x.create(rotPasswordKey, rotUsernameKey)
+		run := x.cycle(rot.ID)
+		role := x.lastRun(rot.ID, "candidate_handle")
+		x.ctl.set(func() { x.ctl.createErr = dynamic.ErrUnreachable })
+		due := mustParseStamp(t, queryString(t, db, "SELECT "+stampText(db, "next_attempt_at")+" FROM rotation_runs WHERE id='"+run+"'"))
+		if d := due.Sub(x.now()); d > 0 {
+			x.advance(d + time.Second)
+		}
+		restore := x.parkAuthority()
+		landed := false
+		x.exec.AfterExtendHoldRead = func() {
+			x.exec.AfterExtendHoldRead = nil
+			landed = true
+			execRaw(t, db, `UPDATE rotations SET restore_hold=TRUE WHERE id='`+rot.ID+`'`)
+		}
+		if _, err := x.sweep(x.worker); err != nil {
+			t.Fatalf("sweep: %v", err)
+		}
+		if !landed {
+			t.Fatal("the extend never reached its hold read")
+		}
+		if got := x.state(rot.ID); got.State != store.RotationStateActive || !got.RestoreHold {
+			t.Fatalf("rotation = %s hold=%v, want active and held", got.State, got.RestoreHold)
+		}
+
+		restore()
+		execRaw(t, db, `UPDATE rotations SET restore_hold=FALSE WHERE id='`+rot.ID+`'`)
+		for i := 0; i < 3 && x.ctl.count("extend:"+role) == 0; i++ {
+			x.advance(5 * time.Minute)
+			if _, err := x.sweep(x.worker); err != nil {
+				t.Fatalf("sweep after the release: %v", err)
+			}
+		}
+		if n := x.ctl.count("extend:" + role); n != 1 {
+			t.Fatalf("after the release the delivered credential was extended %d times, want 1 (run %s next attempt %s)", n, x.phase(run), queryString(t, db, "SELECT "+stampText(db, "next_attempt_at")+" FROM rotation_runs WHERE id='"+run+"'"))
+		}
+	})
+}

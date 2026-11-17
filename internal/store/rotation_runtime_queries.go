@@ -151,6 +151,11 @@ func (q pgRotationRuntimeQueries) restoreHeld(ctx context.Context, c domain.Scop
 	return q.q.RotationRtRestoreHeld(ctx, pggen.RotationRtRestoreHeldParams{RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env)})
 }
 
+func (q pgRotationRuntimeQueries) dueRun(ctx context.Context, run RotationRun, now time.Time) error {
+	_, err := q.q.RotationRtDueRun(ctx, pggen.RotationRtDueRunParams{Now: pgRequiredTime(now), ID: run.ID, ChainOrg: run.OrgID, ChainProject: run.ProjectID, ChainEnv: run.EnvironmentID})
+	return err
+}
+
 func (q pgRotationRuntimeQueries) providerMaterial(ctx context.Context, run RotationRun, now time.Time) (LeaseProviderMaterial, error) {
 	c, err := q.q.RotationRtLoadProviderMaterial(ctx, pggen.RotationRtLoadProviderMaterialParams{RunID: run.ID, ChainOrg: run.OrgID, ChainProject: run.ProjectID, ChainEnv: run.EnvironmentID, Worker: pgText(run.LeaseOwner), Now: pgRequiredTime(now), ClaimToken: run.ClaimToken})
 	return LeaseProviderMaterial{Kind: c.Kind, Origin: c.Origin, TLSMode: c.TlsMode, GrantRole: c.GrantRole, CredentialOwnerID: c.ID, CredentialCiphertext: append([]byte(nil), c.AdminCredentialCiphertext...)}, err
@@ -313,6 +318,11 @@ func (q sqliteRotationRuntimeQueries) laterPublished(ctx context.Context, c doma
 
 func (q sqliteRotationRuntimeQueries) restoreHeld(ctx context.Context, c domain.Scope, rotationID string) (int64, error) {
 	return q.q.RotationRtRestoreHeld(ctx, sqlitegen.RotationRtRestoreHeldParams{RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env)})
+}
+
+func (q sqliteRotationRuntimeQueries) dueRun(ctx context.Context, run RotationRun, now time.Time) error {
+	_, err := q.q.RotationRtDueRun(ctx, sqlitegen.RotationRtDueRunParams{Now: fixedStamp(now), ID: run.ID, ChainOrg: run.OrgID, ChainProject: run.ProjectID, ChainEnv: run.EnvironmentID})
+	return err
 }
 
 func (q sqliteRotationRuntimeQueries) providerMaterial(ctx context.Context, run RotationRun, now time.Time) (LeaseProviderMaterial, error) {
