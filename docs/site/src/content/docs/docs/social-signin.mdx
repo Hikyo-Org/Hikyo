@@ -1,6 +1,6 @@
 ---
 title: Social sign-in and registration
-description: Configure Google, tenant-specific Microsoft Entra, GitHub or any OpenID Connect provider such as Clerk for sign-in, receive directory lifecycle events, and explicitly admit new accounts.
+description: Configure Google, tenant-specific Microsoft Entra, GitHub or another OpenID Connect provider for sign-in, and explicitly admit new accounts.
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/social-signin.mdx
 ---
 
@@ -139,63 +139,12 @@ does not fetch an address to find an account. Callback tokens are discarded
 after use. GitHub's upstream two-factor state does not establish Hikyo disclosure
 assurance; use a local authenticator or passkey for that operation.
 
-## Any OIDC provider (Clerk example)
+## Any other OIDC provider
 
 Any standards-compliant OpenID Connect provider works in **Instance settings →
-Identity providers**: enter its issuer URL, client ID and client secret, and
-register the callback shown above. The issuer's OpenID configuration must be
-reachable and its discovered issuer must match exactly. Clerk is a worked
-example: use your Clerk instance's Frontend API URL as the issuer and the
-client credentials of an OAuth application created in the Clerk dashboard.
-
-### Directory lifecycle events
-
-A provider can tell Hikyo when its user directory deletes or bans a user.
-Without this, an upstream deletion changes nothing in Hikyo until the person
-next fails to sign in. Select the **Clerk** lifecycle profile, paste the
-webhook signing secret (`whsec_...`) from your Clerk webhook endpoint into the
-write-only field, and register the **Lifecycle endpoint URL** shown in the
-provider editor as that endpoint. Subscribe it to `user.deleted` and
-`user.updated`. The URL has the form
-`https://hikyo.example.com/api/v1/auth/oidc/work/lifecycle`.
-
-From the CLI, with the secret in a private regular file:
-
-```sh
-hikyo instance-config provider update work --kind oidc \
-  --lifecycle-profile clerk --lifecycle-secret-file ./clerk-signing-secret
-```
-
-Like any other provider update, the command also prompts for the provider's
-client secret.
-
-Use `--lifecycle-profile none` to stop accepting events and discard the stored
-secret.
-
-Hikyo verifies the [Standard Webhooks](https://www.standardwebhooks.com/)
-signature, including a five-minute timestamp window, before reading the body.
-Clerk's `svix-*` headers are accepted. After a valid signature every event is
-answered `204`, so a sender cannot learn which users exist. An invalid signature,
-a stale timestamp, an unknown slug, a disabled provider and a provider with no
-lifecycle profile all get the same refusal.
-
-| Event | Effect in Hikyo |
-| --- | --- |
-| `user.deleted` | Unlinks the identity whose subject equals the deleted user's ID, ends that account's sessions that came through this issuer, and revokes the developer credentials minted from those sessions or through this issuer's providers. The change is audited with a system actor. Deleting the last sign-in credential is allowed, and the account is flagged `auth.account_no_login_credential`. |
-| `user.updated` with `banned: true` | Ends that account's sessions that came through this issuer and revokes the developer credentials minted from them. The link stays, so unbanning upstream restores sign-in. |
-| `user.updated` with `locked: true`, and every other event | Ignored. A lock is temporary upstream and does not end Hikyo sessions. |
-
-Password and passkey sessions, and local credentials, are never touched, so an
-account that also has a local credential keeps working. The one exception is a
-password session carrying a credential-establishment stamp for this issuer's
-identity: it came through the issuer, so it ends with the others, along with the
-developer credentials minted from it.
-
-Setting, rotating or clearing the lifecycle secret ends no sessions. A disabled
-provider refuses events; Clerk eventually disables an endpoint that keeps
-failing. Re-enabling the provider does not replay missed events, so after a
-restore or an outage an operator must revalidate the directory against Hikyo:
-unlink identities of users deleted upstream and review banned users.
+Identity providers**. For step-by-step setup of Clerk, Auth0, Okta, Amazon
+Cognito, Keycloak, authentik, ZITADEL and Authelia, and for Clerk's directory
+lifecycle events, see [Other OIDC providers](/docs/oidc-providers/).
 
 ## Claim an invitation with a provider
 
