@@ -351,6 +351,10 @@ func noteCredentialExpiry(ios IO, r apigen.CredentialRotation, verb string) {
 		r.Id, verb, r.CredentialExpiresAt.UTC().Format(time.RFC3339))
 }
 
+// versionsChangedCode is the run error code of a drop the executor refuses because
+// a restore may have put the superseded role back into service.
+const versionsChangedCode = "published_versions_changed"
+
 // maxOwedRunPages bounds how far show reads back through a rotation's runs.
 const maxOwedRunPages = 20
 
@@ -383,7 +387,9 @@ func noteAllOwedRuns(ctx context.Context, client *Client, ios IO, runsPath strin
 // when that role stays valid: a revoke_refused run could not drop the superseded
 // role and a quarantine run holds a candidate that may still be live. Hikyo has no
 // operator action that releases either; the role lapses at the time printed unless
-// the operator drops it at the provider.
+// the operator drops it at the provider. The exception is a run refused as
+// published_versions_changed: a restore may have put the role back in service, so
+// it is not to be dropped until the keys have moved off it.
 func noteOwedRuns(ios IO, runs apigen.RotationRunList) {
 	for _, r := range runs.Items {
 		if r.Phase != apigen.RotationRunPhaseRevokeRefused && r.Phase != apigen.RotationRunPhaseQuarantine {
@@ -396,6 +402,12 @@ func noteOwedRuns(ios IO, runs apigen.RotationRunList) {
 				// An unsettled extend means the role may outlive the recorded time.
 				until = "stays valid at least until " + r.CredentialValidUntil.UTC().Format(time.RFC3339) + ", and possibly longer: an extend of it is unsettled"
 			}
+		}
+		if r.ErrorCode != nil && *r.ErrorCode == versionsChangedCode {
+			// A restore put an older value back, so the keys may be serving this very
+			// role again: dropping it now would cut off the consumers.
+			_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: run %s is %s (%s): a restore put an earlier value back, so the keys may be serving the role it owes a drop again (%s); do NOT drop it at the provider until the keys have moved off it\n", r.Id, r.Phase, versionsChangedCode, until)
+			continue
 		}
 		_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: run %s is %s and a provider role it owes a drop is still live (%s); drop it at the provider if that is too late\n", r.Id, r.Phase, until)
 	}

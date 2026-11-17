@@ -12,3 +12,6 @@ ALTER TABLE rotations ADD COLUMN restore_hold BOOLEAN NOT NULL DEFAULT FALSE;
 -- expiring gauge's latest-published-run lookup without scanning every run.
 ALTER TABLE rotations ADD COLUMN deferred_from TIMESTAMPTZ;
 CREATE INDEX rotation_runs_env_published ON rotation_runs (org_id, project_id, environment_id, published_revision DESC, id DESC) WHERE published_revision IS NOT NULL;
+-- A superseded role is found by the handle its minting run recorded (the run list's
+-- expiry, the revoke step's role lookup), so that handle is indexed within the chain.
+CREATE INDEX rotation_runs_minter ON rotation_runs (org_id, project_id, environment_id, candidate_handle);

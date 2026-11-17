@@ -117,3 +117,54 @@ func TestRotationShowSaysWhenTheRunHistoryIsTruncated(t *testing.T) {
 		t.Fatalf("calls=%d stderr=%q", calls, stderr)
 	}
 }
+
+// A run refused because a restore put the superseded role back in service must
+// not tell the operator to drop it; every other refusal keeps the drop advice.
+func TestRotationOwedRunRestoredRoleIsNotToBeDropped(t *testing.T) {
+	until := time.Date(2030, 2, 3, 4, 5, 6, 0, time.UTC)
+	withCode := func(id string, phase apigen.RotationRunPhase, code string) apigen.RotationRun {
+		run := owedRun(id, phase, until, false)
+		run.ErrorCode = &code
+		return run
+	}
+	ios, _, stderr := definitionsTestIO(t, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case rotationBase:
+			_ = jsonwire.Encode(rw, apigen.CredentialRotation{Id: "rot_70", State: "active"})
+		case rotationBase + "/runs":
+			_ = jsonwire.Encode(rw, apigen.RotationRunList{Items: []apigen.RotationRun{
+				withCode("rrn_restored", apigen.RotationRunPhaseRevokeRefused, "published_versions_changed"),
+				withCode("rrn_restored_q", apigen.RotationRunPhaseQuarantine, "published_versions_changed"),
+				withCode("rrn_objects", apigen.RotationRunPhaseRevokeRefused, "role_owns_objects"),
+				withCode("rrn_down", apigen.RotationRunPhaseRevokeRefused, "provider_unavailable"),
+			}})
+		default:
+			http.NotFound(rw, r)
+		}
+	}))
+	args := append([]string{"rotation", "show", "rot_70"}, rotationScope...)
+	if code := cli.Run(t.Context(), ios, args); code != cli.ExitOK {
+		t.Fatalf("exit %d; stderr=%s", code, stderr)
+	}
+	lines := map[string]string{}
+	for _, line := range strings.Split(stderr.String(), "\n") {
+		for _, id := range []string{"rrn_restored_q", "rrn_restored ", "rrn_objects", "rrn_down"} {
+			if strings.Contains(line, "run "+id) {
+				lines[strings.TrimSpace(id)] = line
+			}
+		}
+	}
+	for _, id := range []string{"rrn_restored", "rrn_restored_q"} {
+		line := lines[id]
+		if !strings.Contains(line, "do NOT drop it at the provider until the keys have moved off it") || !strings.Contains(line, "may be serving") || strings.Contains(line, "drop it at the provider if that is too late") {
+			t.Errorf("%s: a restored role is advised wrongly: %q", id, line)
+		}
+	}
+	for _, id := range []string{"rrn_objects", "rrn_down"} {
+		line := lines[id]
+		if !strings.Contains(line, "drop it at the provider if that is too late") || strings.Contains(line, "do NOT") {
+			t.Errorf("%s: an ordinary refusal lost its drop advice: %q", id, line)
+		}
+	}
+}

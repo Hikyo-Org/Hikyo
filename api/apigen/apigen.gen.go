@@ -10917,13 +10917,13 @@ type RotateSSHCARequest struct {
 
 // RotationRun defines model for RotationRun.
 type RotationRun struct {
-	// CredentialValidUntil For a revoke_refused or quarantine run that published, when the superseded role it still owes a drop expires on its own (its candidate is the serving credential and is never named here); for a quarantine run that never published, when its candidate role does. Null for every other phase, or when no expiry was recorded. A lower bound when credential_valid_until_lower_bound is true.
+	// CredentialValidUntil For a revoke_refused or quarantine run that published, when the superseded role it still owes a drop expires on its own (its candidate is the serving credential and is never named here); for a quarantine run that never published, when its candidate role does. Null for every other phase, or when no expiry was recorded. The role is owed a drop, not necessarily safe to drop: see error_code `published_versions_changed`. A lower bound when credential_valid_until_lower_bound is true.
 	CredentialValidUntil *time.Time `json:"credential_valid_until,omitzero"`
 
 	// CredentialValidUntilLowerBound True when an extend of that role has an open or unknown outcome, so the role may stay valid past credential_valid_until: read the time as "at least until". Absent otherwise.
 	CredentialValidUntilLowerBound *bool `json:"credential_valid_until_lower_bound,omitzero"`
 
-	// ErrorCode The fixed-word code of the last failure, if any. Never provider detail.
+	// ErrorCode The fixed-word code of the last failure, if any. Never provider detail. `published_versions_changed` on a revoke_refused or quarantine run means a restore put an earlier value back, so the keys may be serving the role the run owes a drop again: that role must not be dropped until the keys have moved off it.
 	ErrorCode *string `json:"error_code,omitzero"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/dynamic"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -260,6 +261,19 @@ func runRotationReleaseHoldUsesTheGate(t *testing.T, db *store.DB) {
 	rotationHuman(t, db, releaser, "read", "edit", "publish", "reveal")
 	holdRestored(t, db)
 	session := x.session(releaser, true)
+	// A consumed ceremony slides the session's reauthentication window to the
+	// environment's effective idle time, away from the 24 hours the fixture opened it
+	// with, so an unmoved window shows the ceremony was not spent.
+	windowExpiry := func() string {
+		return queryString(t, db, `SELECT CAST(window_expires_at AS TEXT) FROM reauth_windows WHERE session_id LIKE 'ses_rot_`+string(releaser)+`%'`)
+	}
+	opened := windowExpiry()
+	spent := func() int64 {
+		if windowExpiry() != opened {
+			return 1
+		}
+		return 0
+	}
 	req := service.RotationStateRequest{RotationID: rot.ID}
 	release := func() error {
 		_, err := x.svc.ReleaseHold(ctx, session, x.scope, req)
@@ -280,6 +294,9 @@ func runRotationReleaseHoldUsesTheGate(t *testing.T, db *store.DB) {
 	if !held() {
 		t.Fatal("a refused release cleared the hold")
 	}
+	if n := spent(); n != 0 {
+		t.Fatalf("refused releases (protected environment, authority draft) spent the ceremony window: %d consumed", n)
+	}
 	execRaw(t, db, `DELETE FROM pending_changes WHERE owner_id='`+string(alice)+`'`)
 
 	// A refused authority is recorded under release-hold, not resume.
@@ -287,7 +304,10 @@ func runRotationReleaseHoldUsesTheGate(t *testing.T, db *store.DB) {
 	if err := release(); !errors.Is(err, service.ErrRotationAuthorityLost) {
 		t.Fatalf("release with a contained authority = %v", err)
 	}
-	if deniedUnder(t, db, releaser, "rotation.release_hold") == 0 || deniedUnder(t, db, releaser, "rotation.resume") != 0 {
+	if n := spent(); n != 0 {
+		t.Fatalf("a release refused for its authority spent the ceremony window: %d consumed", n)
+	}
+	if deniedUnder(t, db, releaser, "rotation.release_hold") != 1 || deniedUnder(t, db, releaser, "rotation.resume") != 0 {
 		t.Fatalf("authority refusal recorded under release_hold=%d, resume=%d", deniedUnder(t, db, releaser, "rotation.release_hold"), deniedUnder(t, db, releaser, "rotation.resume"))
 	}
 	execRaw(t, db, `UPDATE principals SET containment_state='none' WHERE id='`+string(alice)+`'`)
@@ -302,6 +322,11 @@ func runRotationReleaseHoldUsesTheGate(t *testing.T, db *store.DB) {
 	}
 	if got := x.state(rot.ID); got.RestoreHold || got.State != store.RotationStatePaused {
 		t.Fatalf("after the release: held=%v state=%s", got.RestoreHold, got.State)
+	}
+	// The ceremony is spent by the release that succeeds, which proves the checks
+	// above could have seen a spent window.
+	if n := spent(); n != 1 {
+		t.Fatalf("a successful release consumed %d ceremony windows, want 1", n)
 	}
 	if g, err := store.NewRotationRuntime(db).Gauges(ctx, x.now()); err != nil || g.RestoreHeld != 0 {
 		t.Fatalf("held gauge after the release = %+v, %v", g, err)
@@ -492,4 +517,53 @@ func runRotationReleaseHoldRefusesNonSessions(t *testing.T, db *store.DB) {
 			t.Logf("transport answers differ by credential class: %q vs %q", want, got)
 		}
 	}
+}
+
+// A restore hold that lands between an extend's claim and its Gate refuses the
+// extend, but must leave the settled run claimable once the hold is released: the
+// claim skips held rotations, so an extend parked "never" would leave the delivered
+// credential to lapse with nothing left to extend it.
+func TestRotationExtendRacingARestoreHoldIsRetriedAfterRelease(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		rot := x.create(rotPasswordKey, rotUsernameKey)
+		run := x.cycle(rot.ID)
+		role := x.lastRun(rot.ID, "candidate_handle")
+		// Failing mints keep this run the newest published one until its credential
+		// is due for an extension.
+		x.ctl.set(func() { x.ctl.createErr = dynamic.ErrUnreachable })
+		due := mustParseStamp(t, queryString(t, db, "SELECT "+stampText(db, "next_attempt_at")+" FROM rotation_runs WHERE id='"+run+"'"))
+		if d := due.Sub(x.now()); d > 0 {
+			x.advance(d + time.Second)
+		}
+		fired := false
+		x.exec.AfterExtendSupersessionCheck = func() {
+			x.exec.AfterExtendSupersessionCheck = nil
+			fired = true
+			execRaw(t, db, `UPDATE rotations SET restore_hold=TRUE WHERE id='`+rot.ID+`'`)
+		}
+		if _, err := x.sweep(x.worker); err != nil {
+			t.Fatalf("sweep: %v", err)
+		}
+		if !fired {
+			t.Fatal("the extend never reached its supersession check")
+		}
+		if n := x.ctl.count("extend:" + role); n != 0 {
+			t.Fatalf("a held rotation's credential was extended %d times", n)
+		}
+		if !x.state(rot.ID).RestoreHold {
+			t.Fatal("setup: the hold did not land")
+		}
+
+		execRaw(t, db, `UPDATE rotations SET restore_hold=FALSE WHERE id='`+rot.ID+`'`)
+		for i := 0; i < 3 && x.ctl.count("extend:"+role) == 0; i++ {
+			x.advance(5 * time.Minute)
+			if _, err := x.sweep(x.worker); err != nil {
+				t.Fatalf("sweep after the release: %v", err)
+			}
+		}
+		if n := x.ctl.count("extend:" + role); n != 1 {
+			t.Fatalf("after the release the delivered credential was extended %d times, want 1 (run %s next attempt %s)", n, x.phase(run), queryString(t, db, "SELECT "+stampText(db, "next_attempt_at")+" FROM rotation_runs WHERE id='"+run+"'"))
+		}
+	})
 }

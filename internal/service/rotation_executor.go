@@ -1619,6 +1619,13 @@ func (e *RotationExecutor) extendDelivered(ctx context.Context, run store.Rotati
 		return e.haltClosing(ctx, run, from, rotHaltExhausted, now, now, intent)
 	}
 	if err := e.gate(ctx, run.Chain(), run.RotationID, run.AuthorityPrincipalID, gateCheck{generation: anyGeneration}, now); err != nil {
+		if errors.Is(err, errRotationHeld) {
+			// A restore hold landed after the claim. The claim skips held rotations, so
+			// the run stays due without being picked up until the hold is released;
+			// parking it at "never" would leave the delivered credential with nothing
+			// to extend it.
+			return skip(now)
+		}
 		if errors.Is(err, errRotationInactive) {
 			return skip(rotationNever)
 		}

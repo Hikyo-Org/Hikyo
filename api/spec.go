@@ -91,7 +91,8 @@ var SpecYAML []byte
 // `abandon` flag (#148).
 // Revision 19 adds the scheduled-rotation health counts to the retention health
 // read, the `restore_hold` flag of a rotation, its `release-hold` route and the
-// `credential_valid_until` of a revoke_refused or quarantine run (#148).
+// `credential_valid_until` of a revoke_refused or quarantine run with its
+// `credential_valid_until_lower_bound` flag (#148).
 const Revision = 19
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1

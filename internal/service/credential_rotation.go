@@ -218,12 +218,6 @@ func requireRotationHuman(caller authz.Identity) error {
 	return nil
 }
 
-// isRotationRefusal reports an authorization refusal (as opposed to a fault): the
-// uniform not-found or the grant-class refusal.
-func isRotationRefusal(err error) bool {
-	return errors.Is(err, domain.ErrNotFound) || errors.Is(err, domain.ErrUnauthorized)
-}
-
 // authorizeRotationKeys is the outer authorization of pause, resume, delete,
 // run-now and release-hold. The operation is authorized on BOTH stored keys as
 // individual keys, so a person who holds its formula through key-narrowed member
@@ -251,22 +245,11 @@ func authorizeRotationKeys(ctx context.Context, r store.Repos, az *authz.TxAutho
 		return
 	}
 	az.SetClock(now)
-	lookup, err := az.AuthorizeUnrecorded(ctx, caller, op, scope)
-	viaInspect := false
-	if err != nil && isRotationRefusal(err) {
-		lookup, err = az.AuthorizeUnrecorded(ctx, caller, authz.OpRotationInspect, scope)
-		viaInspect = true
-	}
+	lookup, held, err := az.AuthorizeFirst(ctx, caller, scope, op, authz.OpRotationInspect)
 	if err != nil {
-		if !isRotationRefusal(err) {
-			return
-		}
-		// Neither probe passed: the refusal is recorded under the real operation.
-		if _, err = az.Authorize(ctx, caller, op, scope); err == nil {
-			err = domain.ErrNotFound
-		}
 		return
 	}
+	viaInspect := held != op
 	if cur, err = r.Rotations().Get(ctx, lookup, rotationID); err != nil {
 		if viaInspect && errors.Is(err, domain.ErrNotFound) {
 			// The caller does not hold the operation environment-wide and the
