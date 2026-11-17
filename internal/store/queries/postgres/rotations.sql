@@ -124,8 +124,8 @@ SELECT COUNT(*) FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id A
 
 -- A run-now request: records the run it asks for and makes the rotation due now.
 -- It matches only an active rotation at the expected generation with no pending
--- request; the service refuses an open run in the same transaction, and the
--- caller reads the row to say which condition refused.
+-- request; the service re-counts open runs after this write, in the same
+-- transaction, and the caller reads the row to say which condition refused.
 -- name: RotationRequestRun :execrows
 UPDATE rotations SET manual_run_id=sqlc.arg(run_id),manual_skip_overlap=sqlc.arg(skip_overlap),next_run_at=sqlc.arg(now),updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active' AND generation=sqlc.arg(expected_generation) AND manual_run_id IS NULL;
 
@@ -133,8 +133,9 @@ UPDATE rotations SET manual_run_id=sqlc.arg(run_id),manual_skip_overlap=sqlc.arg
 -- name: RotationManualPending :one
 SELECT COUNT(*) FROM rotations WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND manual_run_id IS NOT NULL;
 
--- A page of a rotation's runs, newest first. Run ids are time-ordered (UUIDv7) and
--- a run takes its id when it starts, so id order is start order. The cursor is the last run id of the
+-- A page of a rotation's runs, newest first. Run ids are time-ordered (UUIDv7); a
+-- manual run's id is minted when it is requested and it is the first run to start
+-- after the request, so id order is start order. The cursor is the last run id of the
 -- previous page. Only operator-visible metadata: no handle, no candidate, no
 -- provider detail beyond the fixed-word last_error code.
 -- name: RotationListRuns :many

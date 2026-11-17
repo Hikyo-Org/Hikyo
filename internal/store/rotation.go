@@ -178,8 +178,8 @@ type RotationRepo interface {
 	// RequestRun records a run-now request and makes the rotation due now. A
 	// rotation that is not active at the expected generation is ErrConflict; one
 	// with a request already waiting is ErrRotationRunPending. The open-run check
-	// is the service's, in the same transaction: a run opening in between only
-	// delays the manual run until it settles, since one run is open at a time.
+	// is the service's: it counts again after this write, which holds the row the
+	// executor locks to start a run, and rolls the request back if one opened.
 	RequestRun(ctx context.Context, p authz.Proof, m RotationRunRequest) (RotationRecord, error)
 	// PauseForProvider pauses every active rotation that mints from the provider,
 	// in the proof's project, and returns them as paused. It is the provider

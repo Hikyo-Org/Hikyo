@@ -773,8 +773,9 @@ type RotationListRunsRow struct {
 	NotConvergedConsumers  pgtype.Int8
 }
 
-// A page of a rotation's runs, newest first. Run ids are time-ordered (UUIDv7) and
-// a run takes its id when it starts, so id order is start order. The cursor is the last run id of the
+// A page of a rotation's runs, newest first. Run ids are time-ordered (UUIDv7); a
+// manual run's id is minted when it is requested and it is the first run to start
+// after the request, so id order is start order. The cursor is the last run id of the
 // previous page. Only operator-visible metadata: no handle, no candidate, no
 // provider detail beyond the fixed-word last_error code.
 func (q *Queries) RotationListRuns(ctx context.Context, arg RotationListRunsParams) ([]RotationListRunsRow, error) {
@@ -1062,8 +1063,8 @@ type RotationRequestRunParams struct {
 
 // A run-now request: records the run it asks for and makes the rotation due now.
 // It matches only an active rotation at the expected generation with no pending
-// request; the service refuses an open run in the same transaction, and the
-// caller reads the row to say which condition refused.
+// request; the service re-counts open runs after this write, in the same
+// transaction, and the caller reads the row to say which condition refused.
 func (q *Queries) RotationRequestRun(ctx context.Context, arg RotationRequestRunParams) (int64, error) {
 	result, err := q.db.Exec(ctx, rotationRequestRun,
 		arg.RunID,

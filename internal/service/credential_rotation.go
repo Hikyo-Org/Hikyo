@@ -635,6 +635,15 @@ func (s *CredentialRotations) RunNow(ctx context.Context, actor Actor, scope dom
 			}
 			return err
 		}
+		// The UPDATE above holds the rotation row, which the executor locks to start
+		// a run, so a run that started before it is committed and visible here. Without
+		// this re-check a run that opened after the first count would leave the request
+		// pending until its next scheduled start; the refusal rolls the request back.
+		if open, err := r.Rotations().CountOpenRuns(ctx, proof, cur.ID); err != nil {
+			return err
+		} else if open > 0 {
+			return ErrRotationRunInFlight
+		}
 		ev, err := domainEvent(ctx, audit.EventRotationRunNow, caller.Principal, audit.Object{Type: "rotation", ID: cur.ID}, audit.Payload{"run_id": runID, "skip_overlap": req.SkipOverlap})
 		if err != nil {
 			return err
