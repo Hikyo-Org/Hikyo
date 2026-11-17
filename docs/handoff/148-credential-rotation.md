@@ -1089,8 +1089,10 @@ and `rotation_runs.not_converged_consumers`. API revision 18 (additive).
   `VALID UNTIL` still uses the rotation's delay, because that role becomes the next run's
   superseded role and must outlast that overlap. `RotationRun.RotationDelaySeconds` (the
   rotation's own delay) feeds the halt audit and the windows so a skip run cannot shorten them.
-- The open-run check is the service's, in the same transaction; a run that opens in between
-  only delays the manual run until it settles (one open run per rotation is the unique index).
+- The open-run check is the service's: it counts before the ceremony and again after the
+  request write, which holds the row the executor locks to start a run, and rolls the request
+  back (`ErrRotationRunInFlight`) if a run opened in between. No interleaving test: the
+  window needs a concurrent transaction.
 
 ### `not_converged_consumers` (decided definition, needs product confirmation)
 
@@ -1111,8 +1113,8 @@ delivery precedes the publish" cannot be computed. Options for that part:
 ### Runs inspection
 
 `OpRotationRuns` (`read@environment`, audited-none bare read), `GET .../rotations/{rotation}/runs`
-with `limit` and `after`, newest first by run id (UUIDv7 ids are time-ordered and a run takes
-its id when it starts). Items carry id, trigger, phase, published revision, revocation delay,
+with `limit` and `after`, newest first by run id (UUIDv7 ids are time-ordered; a manual run's id
+is minted at request time and it is the first run to start after the request). Items carry id, trigger, phase, published revision, revocation delay,
 timestamps, `not_converged_consumers` and the fixed-word `error_code`; never a handle, role
 name, password or provider detail. No run-detail route (the ADR family does not declare one).
 
