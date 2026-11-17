@@ -1416,6 +1416,8 @@ type Rotation struct {
 	Generation             int64
 	CreatedAt              pgtype.Timestamptz
 	UpdatedAt              pgtype.Timestamptz
+	ManualRunID            pgtype.Text
+	ManualSkipOverlap      bool
 }
 
 type RotationEffect struct {
@@ -1463,6 +1465,7 @@ type RotationRun struct {
 	NextAttemptAt          pgtype.Timestamptz
 	LastError              pgtype.Text
 	RevokeNotBeforeAt      pgtype.Timestamptz
+	NotConvergedConsumers  pgtype.Int8
 }
 
 type Rule struct {

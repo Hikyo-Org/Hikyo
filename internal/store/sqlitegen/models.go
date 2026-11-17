@@ -1414,6 +1414,8 @@ type Rotation struct {
 	Generation             int64
 	CreatedAt              string
 	UpdatedAt              string
+	ManualRunID            sql.NullString
+	ManualSkipOverlap      int64
 }
 
 type RotationEffect struct {
@@ -1461,6 +1463,7 @@ type RotationRun struct {
 	NextAttemptAt          string
 	LastError              sql.NullString
 	RevokeNotBeforeAt      sql.NullString
+	NotConvergedConsumers  sql.NullInt64
 }
 
 type Rule struct {

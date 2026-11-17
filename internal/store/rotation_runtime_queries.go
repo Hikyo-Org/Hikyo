@@ -50,12 +50,13 @@ func sqlTimeReq(s string) time.Time { return sqlTime(sql.NullString{String: s, V
 
 func (q pgRotationRuntimeQueries) dueRotation(ctx context.Context, now time.Time) (DueRotation, error) {
 	r, err := q.q.RotationRtDueRotation(ctx, pgRequiredTime(now))
-	return DueRotation{ID: r.ID, OrgID: r.OrgID, ProjectID: r.ProjectID, EnvironmentID: r.EnvironmentID, ProviderID: r.ProviderID, KeyID: r.KeyID, UsernameKeyID: r.UsernameKeyID, IntervalSeconds: r.IntervalSeconds, RevocationDelaySeconds: r.RevocationDelaySeconds, AuthorityPrincipalID: r.AuthorityPrincipalID, Generation: r.Generation}, err
+	return DueRotation{ID: r.ID, OrgID: r.OrgID, ProjectID: r.ProjectID, EnvironmentID: r.EnvironmentID, ProviderID: r.ProviderID, KeyID: r.KeyID, UsernameKeyID: r.UsernameKeyID, IntervalSeconds: r.IntervalSeconds, RevocationDelaySeconds: r.RevocationDelaySeconds, AuthorityPrincipalID: r.AuthorityPrincipalID, Generation: r.Generation, ManualRunID: r.ManualRunID.String, ManualSkipOverlap: r.ManualSkipOverlap}, err
 }
 
 func (q pgRotationRuntimeQueries) lockDueRotation(ctx context.Context, d DueRotation, now time.Time) (DueRotation, error) {
 	r, err := q.q.RotationRtLockDueRotation(ctx, pggen.RotationRtLockDueRotationParams{RotationID: d.ID, ChainOrg: d.OrgID, ChainProject: d.ProjectID, ChainEnv: d.EnvironmentID, ExpectedGeneration: d.Generation, Now: pgRequiredTime(now)})
 	d.KeyID, d.UsernameKeyID, d.ProviderID = r.KeyID, r.UsernameKeyID, r.ProviderID
+	d.ManualRunID, d.ManualSkipOverlap = r.ManualRunID.String, r.ManualSkipOverlap
 	return d, err
 }
 
@@ -68,7 +69,7 @@ func (q pgRotationRuntimeQueries) latestPublished(ctx context.Context, chain dom
 }
 
 func (q pgRotationRuntimeQueries) insertRun(ctx context.Context, d DueRotation, s StartRun, superseded string) error {
-	return q.q.RotationRtInsertRun(ctx, pggen.RotationRtInsertRunParams{ID: s.RunID, ChainOrg: d.OrgID, ChainProject: d.ProjectID, ChainEnv: d.EnvironmentID, RotationID: d.ID, Generation: d.Generation, RunTrigger: s.Trigger, CandidateHandle: s.CandidateHandle, SupersededHandle: pgText(superseded), CandidateValidUntilAt: pgNullTimestamp(s.CandidateValidUntil), RevocationDelaySeconds: d.RevocationDelaySeconds, At: pgRequiredTime(s.Now), Worker: pgText(s.Worker), LeaseUntilAt: pgRequiredTime(s.LeaseUntil)})
+	return q.q.RotationRtInsertRun(ctx, pggen.RotationRtInsertRunParams{ID: s.RunID, ChainOrg: d.OrgID, ChainProject: d.ProjectID, ChainEnv: d.EnvironmentID, RotationID: d.ID, Generation: d.Generation, RunTrigger: s.Trigger, CandidateHandle: s.CandidateHandle, SupersededHandle: pgText(superseded), CandidateValidUntilAt: pgNullTimestamp(s.CandidateValidUntil), RevocationDelaySeconds: runDelay(d), At: pgRequiredTime(s.Now), Worker: pgText(s.Worker), LeaseUntilAt: pgRequiredTime(s.LeaseUntil)})
 }
 
 func (q pgRotationRuntimeQueries) setNextRun(ctx context.Context, c domain.Scope, rotationID string, next, now time.Time) (int64, error) {
@@ -93,7 +94,7 @@ func (q pgRotationRuntimeQueries) insertAudit(ctx context.Context, c domain.Scop
 
 func (q pgRotationRuntimeQueries) claimDueRun(ctx context.Context, now, leaseCut time.Time) (RotationRun, error) {
 	r, err := q.q.RotationRtClaimDueRun(ctx, pggen.RotationRtClaimDueRunParams{Now: pgRequiredTime(now), LeaseCut: pgRequiredTime(leaseCut)})
-	return RotationRun{ID: r.ID, OrgID: r.OrgID, ProjectID: r.ProjectID, EnvironmentID: r.EnvironmentID, RotationID: r.RotationID, RunGeneration: r.RunGeneration, Trigger: r.RunTrigger, Phase: r.Phase, CandidateHandle: r.CandidateHandle, SupersededHandle: r.SupersededHandle.String, CandidateValidUntil: pgTime(r.CandidateValidUntilAt), RevokeNotBefore: pgTime(r.RevokeNotBeforeAt), PublishedRevision: r.PublishedRevision.Int64, RevocationDelaySeconds: r.RevocationDelaySeconds, StartedAt: pgTime(r.StartedAt), PhaseAt: pgTime(r.PhaseAt), NextAttemptAt: pgTime(r.NextAttemptAt), AttemptCount: r.AttemptCount, LastError: r.LastError.String, ClaimToken: r.LeaseClaimToken, ProviderID: r.ProviderID, KeyID: r.KeyID, UsernameKeyID: r.UsernameKeyID, IntervalSeconds: r.IntervalSeconds, AuthorityPrincipalID: r.AuthorityPrincipalID, RotationState: r.RotationState, RotationGeneration: r.RotationGeneration}, err
+	return RotationRun{ID: r.ID, OrgID: r.OrgID, ProjectID: r.ProjectID, EnvironmentID: r.EnvironmentID, RotationID: r.RotationID, RunGeneration: r.RunGeneration, Trigger: r.RunTrigger, Phase: r.Phase, CandidateHandle: r.CandidateHandle, SupersededHandle: r.SupersededHandle.String, CandidateValidUntil: pgTime(r.CandidateValidUntilAt), RevokeNotBefore: pgTime(r.RevokeNotBeforeAt), PublishedRevision: r.PublishedRevision.Int64, RevocationDelaySeconds: r.RevocationDelaySeconds, StartedAt: pgTime(r.StartedAt), PhaseAt: pgTime(r.PhaseAt), NextAttemptAt: pgTime(r.NextAttemptAt), AttemptCount: r.AttemptCount, LastError: r.LastError.String, ClaimToken: r.LeaseClaimToken, ProviderID: r.ProviderID, KeyID: r.KeyID, UsernameKeyID: r.UsernameKeyID, IntervalSeconds: r.IntervalSeconds, RotationDelaySeconds: r.RotationDelaySeconds, AuthorityPrincipalID: r.AuthorityPrincipalID, RotationState: r.RotationState, RotationGeneration: r.RotationGeneration}, err
 }
 
 func (q pgRotationRuntimeQueries) claimRun(ctx context.Context, run RotationRun, until time.Time) error {
@@ -109,12 +110,12 @@ func (q pgRotationRuntimeQueries) settleRun(ctx context.Context, run RotationRun
 	if s.KeepLease {
 		keep = 1
 	}
-	return q.q.RotationRtSettleRun(ctx, pggen.RotationRtSettleRunParams{Phase: s.Phase, Now: pgRequiredTime(s.Now), LastError: pgText(s.LastError), NextAttemptAt: pgRequiredTime(s.NextAttempt), ValidUntilAt: pgNullTimestamp(s.ValidUntil), RevokeNotBeforeAt: pgNullTimestamp(s.RevokeNotBefore), PublishedRevision: pgtype.Int8{Int64: s.PublishedRevision, Valid: s.PublishedRevision != 0}, KeepLease: keep, ID: run.ID, ChainOrg: run.OrgID, ChainProject: run.ProjectID, ChainEnv: run.EnvironmentID, Worker: pgText(run.LeaseOwner), ClaimToken: run.ClaimToken, FromPhases: s.FromPhases})
+	return q.q.RotationRtSettleRun(ctx, pggen.RotationRtSettleRunParams{Phase: s.Phase, Now: pgRequiredTime(s.Now), LastError: pgText(s.LastError), NextAttemptAt: pgRequiredTime(s.NextAttempt), ValidUntilAt: pgNullTimestamp(s.ValidUntil), RevokeNotBeforeAt: pgNullTimestamp(s.RevokeNotBefore), PublishedRevision: pgtype.Int8{Int64: s.PublishedRevision, Valid: s.PublishedRevision != 0}, NotConvergedConsumers: pgNullInt8(s.NotConverged), KeepLease: keep, ID: run.ID, ChainOrg: run.OrgID, ChainProject: run.ProjectID, ChainEnv: run.EnvironmentID, Worker: pgText(run.LeaseOwner), ClaimToken: run.ClaimToken, FromPhases: s.FromPhases})
 }
 
 func (q pgRotationRuntimeQueries) getRun(ctx context.Context, c domain.Scope, runID string) (RotationRun, error) {
 	r, err := q.q.RotationRtGetRun(ctx, pggen.RotationRtGetRunParams{RunID: runID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env)})
-	return RotationRun{ID: r.ID, OrgID: r.OrgID, ProjectID: r.ProjectID, EnvironmentID: r.EnvironmentID, RotationID: r.RotationID, RunGeneration: r.RunGeneration, Trigger: r.RunTrigger, Phase: r.Phase, CandidateHandle: r.CandidateHandle, SupersededHandle: r.SupersededHandle.String, CandidateValidUntil: pgTime(r.CandidateValidUntilAt), RevokeNotBefore: pgTime(r.RevokeNotBeforeAt), PublishedRevision: r.PublishedRevision.Int64, RevocationDelaySeconds: r.RevocationDelaySeconds, StartedAt: pgTime(r.StartedAt), PhaseAt: pgTime(r.PhaseAt), NextAttemptAt: pgTime(r.NextAttemptAt), AttemptCount: r.AttemptCount, LastError: r.LastError.String, ClaimToken: r.LeaseClaimToken, ProviderID: r.ProviderID, KeyID: r.KeyID, UsernameKeyID: r.UsernameKeyID, IntervalSeconds: r.IntervalSeconds, AuthorityPrincipalID: r.AuthorityPrincipalID, RotationState: r.RotationState, RotationGeneration: r.RotationGeneration}, err
+	return RotationRun{ID: r.ID, OrgID: r.OrgID, ProjectID: r.ProjectID, EnvironmentID: r.EnvironmentID, RotationID: r.RotationID, RunGeneration: r.RunGeneration, Trigger: r.RunTrigger, Phase: r.Phase, CandidateHandle: r.CandidateHandle, SupersededHandle: r.SupersededHandle.String, CandidateValidUntil: pgTime(r.CandidateValidUntilAt), RevokeNotBefore: pgTime(r.RevokeNotBeforeAt), PublishedRevision: r.PublishedRevision.Int64, RevocationDelaySeconds: r.RevocationDelaySeconds, StartedAt: pgTime(r.StartedAt), PhaseAt: pgTime(r.PhaseAt), NextAttemptAt: pgTime(r.NextAttemptAt), AttemptCount: r.AttemptCount, LastError: r.LastError.String, ClaimToken: r.LeaseClaimToken, ProviderID: r.ProviderID, KeyID: r.KeyID, UsernameKeyID: r.UsernameKeyID, IntervalSeconds: r.IntervalSeconds, RotationDelaySeconds: r.RotationDelaySeconds, AuthorityPrincipalID: r.AuthorityPrincipalID, RotationState: r.RotationState, RotationGeneration: r.RotationGeneration}, err
 }
 
 func (q pgRotationRuntimeQueries) failedAttempts(ctx context.Context, c domain.Scope, rotationID string, generation int64, since time.Time) (int64, error) {
@@ -168,16 +169,48 @@ func (q pgRotationRuntimeQueries) openEffect(ctx context.Context, c domain.Scope
 	return r.ID, r.Kind, err
 }
 
+func (q pgRotationRuntimeQueries) clearManual(ctx context.Context, c domain.Scope, rotationID string) error {
+	return q.q.RotationRtClearManual(ctx, pggen.RotationRtClearManualParams{RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env)})
+}
+
+func (q pgRotationRuntimeQueries) notConverged(ctx context.Context, run RotationRun) (int64, error) {
+	return q.q.RotationRtNotConverged(ctx, pggen.RotationRtNotConvergedParams{ChainOrg: run.OrgID, ChainProject: run.ProjectID, ChainEnv: run.EnvironmentID, KeyID: run.KeyID, UsernameKeyID: run.UsernameKeyID, Revision: pgtype.Int8{Int64: run.PublishedRevision, Valid: true}})
+}
+
+// runDelay is the revocation delay a run snapshots: zero for a run-now that skips
+// the overlap, the rotation's own delay otherwise.
+func runDelay(d DueRotation) int64 {
+	if d.ManualSkipOverlap {
+		return 0
+	}
+	return d.RevocationDelaySeconds
+}
+
+func pgNullInt8(v *int64) pgtype.Int8 {
+	if v == nil {
+		return pgtype.Int8{}
+	}
+	return pgtype.Int8{Int64: *v, Valid: true}
+}
+
+func sqlNullInt(v *int64) sql.NullInt64 {
+	if v == nil {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: *v, Valid: true}
+}
+
 // ------------------------------------------------------------------ sqlite
 
 func (q sqliteRotationRuntimeQueries) dueRotation(ctx context.Context, now time.Time) (DueRotation, error) {
 	r, err := q.q.RotationRtDueRotation(ctx, sql.NullString{String: fixedStamp(now), Valid: true})
-	return DueRotation{ID: r.ID, OrgID: r.OrgID, ProjectID: r.ProjectID, EnvironmentID: r.EnvironmentID, ProviderID: r.ProviderID, KeyID: r.KeyID, UsernameKeyID: r.UsernameKeyID, IntervalSeconds: r.IntervalSeconds, RevocationDelaySeconds: r.RevocationDelaySeconds, AuthorityPrincipalID: r.AuthorityPrincipalID, Generation: r.Generation}, err
+	return DueRotation{ID: r.ID, OrgID: r.OrgID, ProjectID: r.ProjectID, EnvironmentID: r.EnvironmentID, ProviderID: r.ProviderID, KeyID: r.KeyID, UsernameKeyID: r.UsernameKeyID, IntervalSeconds: r.IntervalSeconds, RevocationDelaySeconds: r.RevocationDelaySeconds, AuthorityPrincipalID: r.AuthorityPrincipalID, Generation: r.Generation, ManualRunID: r.ManualRunID.String, ManualSkipOverlap: r.ManualSkipOverlap != 0}, err
 }
 
 func (q sqliteRotationRuntimeQueries) lockDueRotation(ctx context.Context, d DueRotation, now time.Time) (DueRotation, error) {
 	r, err := q.q.RotationRtLockDueRotation(ctx, sqlitegen.RotationRtLockDueRotationParams{RotationID: d.ID, ChainOrg: d.OrgID, ChainProject: d.ProjectID, ChainEnv: d.EnvironmentID, ExpectedGeneration: d.Generation, Now: sql.NullString{String: fixedStamp(now), Valid: true}})
 	d.KeyID, d.UsernameKeyID, d.ProviderID = r.KeyID, r.UsernameKeyID, r.ProviderID
+	d.ManualRunID, d.ManualSkipOverlap = r.ManualRunID.String, r.ManualSkipOverlap != 0
 	return d, err
 }
 
@@ -190,7 +223,7 @@ func (q sqliteRotationRuntimeQueries) latestPublished(ctx context.Context, chain
 }
 
 func (q sqliteRotationRuntimeQueries) insertRun(ctx context.Context, d DueRotation, s StartRun, superseded string) error {
-	return q.q.RotationRtInsertRun(ctx, sqlitegen.RotationRtInsertRunParams{ID: s.RunID, ChainOrg: d.OrgID, ChainProject: d.ProjectID, ChainEnv: d.EnvironmentID, RotationID: d.ID, Generation: d.Generation, RunTrigger: s.Trigger, CandidateHandle: s.CandidateHandle, SupersededHandle: sqlText(superseded), CandidateValidUntilAt: nullTimeString(s.CandidateValidUntil), RevocationDelaySeconds: d.RevocationDelaySeconds, At: fixedStamp(s.Now), Worker: sqlText(s.Worker), LeaseUntilAt: sql.NullString{String: fixedStamp(s.LeaseUntil), Valid: true}})
+	return q.q.RotationRtInsertRun(ctx, sqlitegen.RotationRtInsertRunParams{ID: s.RunID, ChainOrg: d.OrgID, ChainProject: d.ProjectID, ChainEnv: d.EnvironmentID, RotationID: d.ID, Generation: d.Generation, RunTrigger: s.Trigger, CandidateHandle: s.CandidateHandle, SupersededHandle: sqlText(superseded), CandidateValidUntilAt: nullTimeString(s.CandidateValidUntil), RevocationDelaySeconds: runDelay(d), At: fixedStamp(s.Now), Worker: sqlText(s.Worker), LeaseUntilAt: sql.NullString{String: fixedStamp(s.LeaseUntil), Valid: true}})
 }
 
 func (q sqliteRotationRuntimeQueries) setNextRun(ctx context.Context, c domain.Scope, rotationID string, next, now time.Time) (int64, error) {
@@ -215,7 +248,7 @@ func (q sqliteRotationRuntimeQueries) insertAudit(ctx context.Context, c domain.
 
 func (q sqliteRotationRuntimeQueries) claimDueRun(ctx context.Context, now, leaseCut time.Time) (RotationRun, error) {
 	r, err := q.q.RotationRtClaimDueRun(ctx, sqlitegen.RotationRtClaimDueRunParams{Now: fixedStamp(now), LeaseCut: fixedStamp(leaseCut)})
-	return RotationRun{ID: r.ID, OrgID: r.OrgID, ProjectID: r.ProjectID, EnvironmentID: r.EnvironmentID, RotationID: r.RotationID, RunGeneration: r.RunGeneration, Trigger: r.RunTrigger, Phase: r.Phase, CandidateHandle: r.CandidateHandle, SupersededHandle: r.SupersededHandle.String, CandidateValidUntil: sqlTime(r.CandidateValidUntilAt), RevokeNotBefore: sqlTime(r.RevokeNotBeforeAt), PublishedRevision: r.PublishedRevision.Int64, RevocationDelaySeconds: r.RevocationDelaySeconds, StartedAt: sqlTimeReq(r.StartedAt), PhaseAt: sqlTimeReq(r.PhaseAt), NextAttemptAt: sqlTimeReq(r.NextAttemptAt), AttemptCount: r.AttemptCount, LastError: r.LastError.String, ClaimToken: r.LeaseClaimToken, ProviderID: r.ProviderID, KeyID: r.KeyID, UsernameKeyID: r.UsernameKeyID, IntervalSeconds: r.IntervalSeconds, AuthorityPrincipalID: r.AuthorityPrincipalID, RotationState: r.RotationState, RotationGeneration: r.RotationGeneration}, err
+	return RotationRun{ID: r.ID, OrgID: r.OrgID, ProjectID: r.ProjectID, EnvironmentID: r.EnvironmentID, RotationID: r.RotationID, RunGeneration: r.RunGeneration, Trigger: r.RunTrigger, Phase: r.Phase, CandidateHandle: r.CandidateHandle, SupersededHandle: r.SupersededHandle.String, CandidateValidUntil: sqlTime(r.CandidateValidUntilAt), RevokeNotBefore: sqlTime(r.RevokeNotBeforeAt), PublishedRevision: r.PublishedRevision.Int64, RevocationDelaySeconds: r.RevocationDelaySeconds, StartedAt: sqlTimeReq(r.StartedAt), PhaseAt: sqlTimeReq(r.PhaseAt), NextAttemptAt: sqlTimeReq(r.NextAttemptAt), AttemptCount: r.AttemptCount, LastError: r.LastError.String, ClaimToken: r.LeaseClaimToken, ProviderID: r.ProviderID, KeyID: r.KeyID, UsernameKeyID: r.UsernameKeyID, IntervalSeconds: r.IntervalSeconds, RotationDelaySeconds: r.RotationDelaySeconds, AuthorityPrincipalID: r.AuthorityPrincipalID, RotationState: r.RotationState, RotationGeneration: r.RotationGeneration}, err
 }
 
 func (q sqliteRotationRuntimeQueries) claimRun(ctx context.Context, run RotationRun, until time.Time) error {
@@ -231,12 +264,12 @@ func (q sqliteRotationRuntimeQueries) settleRun(ctx context.Context, run Rotatio
 	if s.KeepLease {
 		keep = 1
 	}
-	return q.q.RotationRtSettleRun(ctx, sqlitegen.RotationRtSettleRunParams{Phase: s.Phase, Now: fixedStamp(s.Now), LastError: sqlText(s.LastError), NextAttemptAt: fixedStamp(s.NextAttempt), ValidUntilAt: nullTimeString(s.ValidUntil), RevokeNotBeforeAt: nullTimeString(s.RevokeNotBefore), PublishedRevision: sql.NullInt64{Int64: s.PublishedRevision, Valid: s.PublishedRevision != 0}, KeepLease: keep, ID: run.ID, ChainOrg: run.OrgID, ChainProject: run.ProjectID, ChainEnv: run.EnvironmentID, Worker: sqlText(run.LeaseOwner), ClaimToken: run.ClaimToken, FromPhases: s.FromPhases})
+	return q.q.RotationRtSettleRun(ctx, sqlitegen.RotationRtSettleRunParams{Phase: s.Phase, Now: fixedStamp(s.Now), LastError: sqlText(s.LastError), NextAttemptAt: fixedStamp(s.NextAttempt), ValidUntilAt: nullTimeString(s.ValidUntil), RevokeNotBeforeAt: nullTimeString(s.RevokeNotBefore), PublishedRevision: sql.NullInt64{Int64: s.PublishedRevision, Valid: s.PublishedRevision != 0}, NotConvergedConsumers: sqlNullInt(s.NotConverged), KeepLease: keep, ID: run.ID, ChainOrg: run.OrgID, ChainProject: run.ProjectID, ChainEnv: run.EnvironmentID, Worker: sqlText(run.LeaseOwner), ClaimToken: run.ClaimToken, FromPhases: s.FromPhases})
 }
 
 func (q sqliteRotationRuntimeQueries) getRun(ctx context.Context, c domain.Scope, runID string) (RotationRun, error) {
 	r, err := q.q.RotationRtGetRun(ctx, sqlitegen.RotationRtGetRunParams{RunID: runID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env)})
-	return RotationRun{ID: r.ID, OrgID: r.OrgID, ProjectID: r.ProjectID, EnvironmentID: r.EnvironmentID, RotationID: r.RotationID, RunGeneration: r.RunGeneration, Trigger: r.RunTrigger, Phase: r.Phase, CandidateHandle: r.CandidateHandle, SupersededHandle: r.SupersededHandle.String, CandidateValidUntil: sqlTime(r.CandidateValidUntilAt), RevokeNotBefore: sqlTime(r.RevokeNotBeforeAt), PublishedRevision: r.PublishedRevision.Int64, RevocationDelaySeconds: r.RevocationDelaySeconds, StartedAt: sqlTimeReq(r.StartedAt), PhaseAt: sqlTimeReq(r.PhaseAt), NextAttemptAt: sqlTimeReq(r.NextAttemptAt), AttemptCount: r.AttemptCount, LastError: r.LastError.String, ClaimToken: r.LeaseClaimToken, ProviderID: r.ProviderID, KeyID: r.KeyID, UsernameKeyID: r.UsernameKeyID, IntervalSeconds: r.IntervalSeconds, AuthorityPrincipalID: r.AuthorityPrincipalID, RotationState: r.RotationState, RotationGeneration: r.RotationGeneration}, err
+	return RotationRun{ID: r.ID, OrgID: r.OrgID, ProjectID: r.ProjectID, EnvironmentID: r.EnvironmentID, RotationID: r.RotationID, RunGeneration: r.RunGeneration, Trigger: r.RunTrigger, Phase: r.Phase, CandidateHandle: r.CandidateHandle, SupersededHandle: r.SupersededHandle.String, CandidateValidUntil: sqlTime(r.CandidateValidUntilAt), RevokeNotBefore: sqlTime(r.RevokeNotBeforeAt), PublishedRevision: r.PublishedRevision.Int64, RevocationDelaySeconds: r.RevocationDelaySeconds, StartedAt: sqlTimeReq(r.StartedAt), PhaseAt: sqlTimeReq(r.PhaseAt), NextAttemptAt: sqlTimeReq(r.NextAttemptAt), AttemptCount: r.AttemptCount, LastError: r.LastError.String, ClaimToken: r.LeaseClaimToken, ProviderID: r.ProviderID, KeyID: r.KeyID, UsernameKeyID: r.UsernameKeyID, IntervalSeconds: r.IntervalSeconds, RotationDelaySeconds: r.RotationDelaySeconds, AuthorityPrincipalID: r.AuthorityPrincipalID, RotationState: r.RotationState, RotationGeneration: r.RotationGeneration}, err
 }
 
 func (q sqliteRotationRuntimeQueries) failedAttempts(ctx context.Context, c domain.Scope, rotationID string, generation int64, since time.Time) (int64, error) {
@@ -308,4 +341,12 @@ func (q sqliteRotationRuntimeQueries) ownPublished(ctx context.Context, c domain
 func (q sqliteRotationRuntimeQueries) cycleStart(ctx context.Context, c domain.Scope, rotationID string, generation int64) (time.Time, error) {
 	v, err := q.q.RotationRtCycleStart(ctx, sqlitegen.RotationRtCycleStartParams{RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env), Generation: generation})
 	return sqlTimeReq(v), err
+}
+
+func (q sqliteRotationRuntimeQueries) clearManual(ctx context.Context, c domain.Scope, rotationID string) error {
+	return q.q.RotationRtClearManual(ctx, sqlitegen.RotationRtClearManualParams{RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env)})
+}
+
+func (q sqliteRotationRuntimeQueries) notConverged(ctx context.Context, run RotationRun) (int64, error) {
+	return q.q.RotationRtNotConverged(ctx, sqlitegen.RotationRtNotConvergedParams{ChainOrg: run.OrgID, ChainProject: run.ProjectID, ChainEnv: run.EnvironmentID, KeyID: run.KeyID, UsernameKeyID: run.UsernameKeyID, Revision: sql.NullInt64{Int64: run.PublishedRevision, Valid: true}})
 }

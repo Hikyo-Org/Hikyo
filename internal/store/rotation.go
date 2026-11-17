@@ -115,6 +115,45 @@ type RotationListQuery struct {
 	Limit           int
 }
 
+// RotationRunRequest is one run-now request: the run the rotation will start (its
+// id is chosen by the caller, so the audit row can name it) and whether it skips
+// the overlap. The rotation must be active at ExpectedGeneration with no pending
+// request and no open run.
+type RotationRunRequest struct {
+	RotationID         string
+	RunID              string
+	SkipOverlap        bool
+	ExpectedGeneration int64
+	At                 time.Time
+}
+
+// ErrRotationRunPending is a run-now request refused because the rotation already
+// has one waiting for the executor.
+var ErrRotationRunPending = fmt.Errorf("%w: a run is already requested", ErrConflict)
+
+// RotationRunQuery is one page of a rotation's runs, newest first; After is the
+// last run id of the previous page.
+type RotationRunQuery struct {
+	RotationID string
+	After      string
+	Limit      int
+}
+
+// RotationRunRecord is one run's operator-visible metadata. It carries no role
+// handle, candidate or provider detail: ErrorCode is the fixed-word code of the
+// last failure. NotConvergedConsumers is nil until a revoke decided.
+type RotationRunRecord struct {
+	ID                     string
+	Trigger                string
+	Phase                  string
+	PublishedRevision      int64
+	RevocationDelaySeconds int64
+	StartedAt              string
+	PhaseAt                string
+	ErrorCode              string
+	NotConvergedConsumers  *int64
+}
+
 // RotationReader is the read side.
 type RotationReader interface {
 	Get(ctx context.Context, p authz.Proof, rotationID string) (RotationRecord, error)
@@ -124,6 +163,8 @@ type RotationReader interface {
 	List(ctx context.Context, p authz.Proof, q RotationListQuery) ([]RotationRecord, error)
 	// CountOpenRuns counts the rotation's non-terminal runs.
 	CountOpenRuns(ctx context.Context, p authz.Proof, rotationID string) (int64, error)
+	// ListRuns returns up to Limit of the rotation's runs, newest first.
+	ListRuns(ctx context.Context, p authz.Proof, q RotationRunQuery) ([]RotationRunRecord, error)
 }
 
 // RotationRepo is the write side plus the reads.
@@ -134,6 +175,12 @@ type RotationRepo interface {
 	// generation. A stale expected generation, or a disabled rotation, is
 	// ErrConflict; a missing rotation is ErrNotFound.
 	SetState(ctx context.Context, p authz.Proof, m RotationSetState) (RotationRecord, error)
+	// RequestRun records a run-now request and makes the rotation due now. A
+	// rotation that is not active at the expected generation is ErrConflict; one
+	// with a request already waiting is ErrRotationRunPending. The open-run check
+	// is the service's, in the same transaction: a run opening in between only
+	// delays the manual run until it settles, since one run is open at a time.
+	RequestRun(ctx context.Context, p authz.Proof, m RotationRunRequest) (RotationRecord, error)
 	// PauseForProvider pauses every active rotation that mints from the provider,
 	// in the proof's project, and returns them as paused. It is the provider
 	// delete and credential revoke cascade: a rotation never stays active against
@@ -202,6 +249,9 @@ type rotationStoreQueries interface {
 	list(ctx context.Context, chain domain.Scope, q RotationListQuery) ([]RotationRecord, error)
 	setState(ctx context.Context, chain domain.Scope, m RotationSetState) (int64, error)
 	countOpenRuns(ctx context.Context, chain domain.Scope, rotationID string) (int64, error)
+	requestRun(ctx context.Context, chain domain.Scope, m RotationRunRequest) (int64, error)
+	manualPending(ctx context.Context, chain domain.Scope, rotationID string) (bool, error)
+	listRuns(ctx context.Context, chain domain.Scope, q RotationRunQuery) ([]RotationRunRecord, error)
 	credentialExpiry(ctx context.Context, chain domain.Scope, keyID string) (string, error)
 	// credentialExpiries returns the delivered-credential expiry per key, from the
 	// latest published run of each key, in one read.
@@ -444,6 +494,39 @@ func (r rotationQueries) CountOpenRuns(ctx context.Context, p authz.Proof, rotat
 		return 0, err
 	}
 	return r.queries.countOpenRuns(ctx, chain, rotationID)
+}
+
+func (r rotationQueries) RequestRun(ctx context.Context, p authz.Proof, m RotationRunRequest) (RotationRecord, error) {
+	chain, err := r.envChain(p, authz.StoreRotationsRequestRun)
+	if err != nil {
+		return RotationRecord{}, err
+	}
+	rows, err := r.queries.requestRun(ctx, chain, m)
+	if err != nil {
+		return RotationRecord{}, err
+	}
+	if rows != 1 {
+		pending, err := r.queries.manualPending(ctx, chain, m.RotationID)
+		if err != nil {
+			return RotationRecord{}, err
+		}
+		if pending {
+			return RotationRecord{}, ErrRotationRunPending
+		}
+		return RotationRecord{}, ErrConflict
+	}
+	return r.get(ctx, chain, m.RotationID)
+}
+
+func (r rotationQueries) ListRuns(ctx context.Context, p authz.Proof, q RotationRunQuery) ([]RotationRunRecord, error) {
+	chain, err := r.envChain(p, authz.StoreRotationsListRuns)
+	if err != nil {
+		return nil, err
+	}
+	if q.Limit <= 0 || q.Limit > RotationListMaxLimit+1 {
+		return nil, fmt.Errorf("%w: rotation runs limit out of range", domain.ErrInvalid)
+	}
+	return r.queries.listRuns(ctx, chain, q)
 }
 
 type sqliteRotationQueries struct{ q *sqlitegen.Queries }
@@ -983,4 +1066,84 @@ func (q sqliteRotationQueries) providerLiveRuns(ctx context.Context, chain domai
 
 func (q pgRotationQueries) providerLiveRuns(ctx context.Context, chain domain.Scope, providerID string) (int64, error) {
 	return q.q.RotationProviderLiveRuns(ctx, pggen.RotationProviderLiveRunsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ProviderID: providerID})
+}
+
+func (q sqliteRotationQueries) requestRun(ctx context.Context, chain domain.Scope, m RotationRunRequest) (int64, error) {
+	skip := int64(0)
+	if m.SkipOverlap {
+		skip = 1
+	}
+	return q.q.RotationRequestRun(ctx, sqlitegen.RotationRequestRunParams{RunID: sqlText(m.RunID), SkipOverlap: skip, Now: sql.NullString{String: fixedStamp(m.At), Valid: true}, RotationID: m.RotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), ExpectedGeneration: m.ExpectedGeneration})
+}
+
+func (q pgRotationQueries) requestRun(ctx context.Context, chain domain.Scope, m RotationRunRequest) (int64, error) {
+	return q.q.RotationRequestRun(ctx, pggen.RotationRequestRunParams{RunID: pgText(m.RunID), SkipOverlap: m.SkipOverlap, Now: pgRequiredTime(m.At), RotationID: m.RotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), ExpectedGeneration: m.ExpectedGeneration})
+}
+
+func (q sqliteRotationQueries) manualPending(ctx context.Context, chain domain.Scope, rotationID string) (bool, error) {
+	n, err := q.q.RotationManualPending(ctx, sqlitegen.RotationManualPendingParams{RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	return n > 0, err
+}
+
+func (q pgRotationQueries) manualPending(ctx context.Context, chain domain.Scope, rotationID string) (bool, error) {
+	n, err := q.q.RotationManualPending(ctx, pggen.RotationManualPendingParams{RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	return n > 0, err
+}
+
+func (q sqliteRotationQueries) listRuns(ctx context.Context, chain domain.Scope, lq RotationRunQuery) ([]RotationRunRecord, error) {
+	var rows []sqlitegen.RotationListRunsRow
+	var err error
+	if lq.After == "" {
+		rows, err = q.q.RotationListRuns(ctx, sqlitegen.RotationListRunsParams{RotationID: lq.RotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), PageLimit: int64(lq.Limit)})
+	} else {
+		var after []sqlitegen.RotationListRunsAfterRow
+		after, err = q.q.RotationListRunsAfter(ctx, sqlitegen.RotationListRunsAfterParams{RotationID: lq.RotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), AfterID: lq.After, PageLimit: int64(lq.Limit)})
+		for _, r := range after {
+			rows = append(rows, sqlitegen.RotationListRunsRow(r))
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RotationRunRecord, 0, len(rows))
+	for _, r := range rows {
+		rec := RotationRunRecord{ID: r.ID, Trigger: r.RunTrigger, Phase: r.Phase, PublishedRevision: r.PublishedRevision.Int64, RevocationDelaySeconds: r.RevocationDelaySeconds, StartedAt: r.StartedAt, PhaseAt: r.PhaseAt, ErrorCode: r.LastError.String}
+		if err := normalizeStoredTimes(&rec.StartedAt, &rec.PhaseAt); err != nil {
+			return nil, err
+		}
+		if r.NotConvergedConsumers.Valid {
+			rec.NotConvergedConsumers = &r.NotConvergedConsumers.Int64
+		}
+		out = append(out, rec)
+	}
+	return out, nil
+}
+
+func (q pgRotationQueries) listRuns(ctx context.Context, chain domain.Scope, lq RotationRunQuery) ([]RotationRunRecord, error) {
+	var rows []pggen.RotationListRunsRow
+	var err error
+	if lq.After == "" {
+		rows, err = q.q.RotationListRuns(ctx, pggen.RotationListRunsParams{RotationID: lq.RotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), PageLimit: int32(lq.Limit)})
+	} else {
+		var after []pggen.RotationListRunsAfterRow
+		after, err = q.q.RotationListRunsAfter(ctx, pggen.RotationListRunsAfterParams{RotationID: lq.RotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), AfterID: lq.After, PageLimit: int32(lq.Limit)})
+		for _, r := range after {
+			rows = append(rows, pggen.RotationListRunsRow(r))
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RotationRunRecord, 0, len(rows))
+	for _, r := range rows {
+		rec := RotationRunRecord{ID: r.ID, Trigger: r.RunTrigger, Phase: r.Phase, PublishedRevision: r.PublishedRevision.Int64, RevocationDelaySeconds: r.RevocationDelaySeconds, StartedAt: pgStoredStamp(r.StartedAt), PhaseAt: pgStoredStamp(r.PhaseAt), ErrorCode: r.LastError.String}
+		if err := normalizeStoredTimes(&rec.StartedAt, &rec.PhaseAt); err != nil {
+			return nil, err
+		}
+		if r.NotConvergedConsumers.Valid {
+			rec.NotConvergedConsumers = &r.NotConvergedConsumers.Int64
+		}
+		out = append(out, rec)
+	}
+	return out, nil
 }

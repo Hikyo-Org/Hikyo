@@ -41,6 +41,11 @@ type DueRotation struct {
 	RevocationDelaySeconds int64
 	AuthorityPrincipalID   string
 	Generation             int64
+	// ManualRunID is the run a pending run-now request asked for, empty for a
+	// scheduled start; ManualSkipOverlap asks for a run whose revocation delay is
+	// zero (#148, S2b-1).
+	ManualRunID       string
+	ManualSkipOverlap bool
 }
 
 // RotationRun is one claimed or re-read run joined to its rotation's immutable
@@ -72,9 +77,13 @@ type RotationRun struct {
 	KeyID                  string
 	UsernameKeyID          string
 	IntervalSeconds        int64
-	AuthorityPrincipalID   string
-	RotationState          string
-	RotationGeneration     int64
+	// RotationDelaySeconds is the rotation's own revocation delay; the run's
+	// RevocationDelaySeconds is its snapshot (zero for a run-now that skipped the
+	// overlap).
+	RotationDelaySeconds int64
+	AuthorityPrincipalID string
+	RotationState        string
+	RotationGeneration   int64
 	// LeaseOwner and ClaimToken are the crash fence this claim stamped. Every
 	// settling write asserts both, so a stale term cannot overwrite a newer one.
 	LeaseOwner string
@@ -128,6 +137,9 @@ type RotationSettle struct {
 	RevokeNotBefore time.Time
 	// PublishedRevision, when non-zero, records the revision this run published.
 	PublishedRevision int64
+	// NotConverged, when set, records the consumers still on the superseded
+	// revision at the revoke decision (#148, S2b-1).
+	NotConverged *int64
 	// KeepLease leaves the lease held, for a settle that is followed by a
 	// provider call in the same claim.
 	KeepLease bool
@@ -202,6 +214,8 @@ type rotationRuntimeQueries interface {
 	supersededRole(ctx context.Context, run RotationRun, now time.Time) (SupersededRole, error)
 	openRunCount(ctx context.Context, chain domain.Scope, rotationID string) (int64, error)
 	orgLeaseCount(ctx context.Context, org domain.OrgID, now time.Time) (int64, error)
+	clearManual(ctx context.Context, chain domain.Scope, rotationID string) error
+	notConverged(ctx context.Context, run RotationRun) (int64, error)
 	openEffect(ctx context.Context, chain domain.Scope, runID string) (id, kind string, err error)
 	ownPublished(ctx context.Context, chain domain.Scope, rotationID string, generation int64) (int64, error)
 	cycleStart(ctx context.Context, chain domain.Scope, rotationID string, generation int64) (time.Time, error)
@@ -220,6 +234,14 @@ func mapNoRows(err error) error {
 		return ErrNotFound
 	}
 	return err
+}
+
+// NotConverged counts the adapter targets that mirror the run's keys and have
+// not converged to the run's published revision: the consumers that may still
+// hold the superseded credential (#148, S2b-1). Machine principals reading the
+// keys directly are not counted: no per-principal delivery is recorded.
+func (r *RotationRuntime) NotConverged(ctx context.Context, run RotationRun) (int64, error) {
+	return rotationRead(ctx, r, func(q rotationRuntimeQueries) (int64, error) { return q.notConverged(ctx, run) })
 }
 
 // DueRotation returns the oldest active rotation whose next run is due and that
@@ -257,6 +279,11 @@ func (r *RotationRuntime) StartRun(ctx context.Context, d DueRotation, s StartRu
 		if err != nil {
 			return err
 		}
+		// A run-now request that arrived after the selection read changes what the
+		// start must be: re-select rather than start a scheduled run over it.
+		if locked.ManualRunID != d.ManualRunID || locked.ManualSkipOverlap != d.ManualSkipOverlap {
+			return nil
+		}
 		chain := domain.Scope{Org: domain.OrgID(d.OrgID), Project: domain.ProjectID(d.ProjectID), Env: domain.EnvID(d.EnvironmentID)}
 		open, err := q.openRunCount(ctx, chain, locked.ID)
 		if err != nil {
@@ -283,6 +310,11 @@ func (r *RotationRuntime) StartRun(ctx context.Context, d DueRotation, s StartRu
 		}
 		if err := q.insertRun(ctx, d, s, superseded); err != nil {
 			return err
+		}
+		if d.ManualRunID != "" {
+			if err := q.clearManual(ctx, chain, d.ID); err != nil {
+				return err
+			}
 		}
 		if rows, err := q.setNextRun(ctx, chain, d.ID, s.ParkedUntil, s.Now); err != nil || rows != 1 {
 			if err != nil {

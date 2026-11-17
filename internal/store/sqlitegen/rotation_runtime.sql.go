@@ -41,7 +41,7 @@ func (q *Queries) RotationRtAssertRun(ctx context.Context, arg RotationRtAssertR
 }
 
 const rotationRtClaimDueRun = `-- name: RotationRtClaimDueRun :one
-SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.revoke_not_before_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.generation AS rotation_generation
+SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.revoke_not_before_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds AS rotation_delay_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.generation AS rotation_generation
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
  WHERE ru.next_attempt_at<=?1
  AND (ru.lease_owner IS NULL OR ru.lease_expires_at IS NULL OR ru.lease_expires_at<=CAST(?2 AS TEXT))
@@ -83,6 +83,7 @@ type RotationRtClaimDueRunRow struct {
 	KeyID                  string
 	UsernameKeyID          string
 	IntervalSeconds        int64
+	RotationDelaySeconds   int64
 	AuthorityPrincipalID   string
 	RotationState          string
 	RotationGeneration     int64
@@ -121,6 +122,7 @@ func (q *Queries) RotationRtClaimDueRun(ctx context.Context, arg RotationRtClaim
 		&i.KeyID,
 		&i.UsernameKeyID,
 		&i.IntervalSeconds,
+		&i.RotationDelaySeconds,
 		&i.AuthorityPrincipalID,
 		&i.RotationState,
 		&i.RotationGeneration,
@@ -150,6 +152,28 @@ func (q *Queries) RotationRtClaimRun(ctx context.Context, arg RotationRtClaimRun
 		arg.UntilAt,
 		arg.ClaimToken,
 		arg.ID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+	)
+	return err
+}
+
+const rotationRtClearManual = `-- name: RotationRtClearManual :exec
+UPDATE rotations SET manual_run_id=NULL,manual_skip_overlap=0 WHERE id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4
+`
+
+type RotationRtClearManualParams struct {
+	RotationID   string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+// The request a started run consumed: cleared in the start transaction.
+func (q *Queries) RotationRtClearManual(ctx context.Context, arg RotationRtClearManualParams) error {
+	_, err := q.db.ExecContext(ctx, rotationRtClearManual,
+		arg.RotationID,
 		arg.ChainOrg,
 		arg.ChainProject,
 		arg.ChainEnv,
@@ -236,7 +260,7 @@ func (q *Queries) RotationRtCycleStart(ctx context.Context, arg RotationRtCycleS
 
 const rotationRtDueRotation = `-- name: RotationRtDueRotation :one
 
-SELECT ro.id,ro.org_id,ro.project_id,ro.environment_id,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds,ro.authority_principal_id,ro.generation
+SELECT ro.id,ro.org_id,ro.project_id,ro.environment_id,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds,ro.authority_principal_id,ro.generation,ro.manual_run_id,ro.manual_skip_overlap
  FROM rotations ro
  WHERE ro.state='active' AND ro.next_run_at<=?1
  AND NOT EXISTS (SELECT 1 FROM rotation_runs op WHERE op.rotation_id=ro.id AND op.phase NOT IN ('done','quarantine','failed'))
@@ -256,6 +280,8 @@ type RotationRtDueRotationRow struct {
 	RevocationDelaySeconds int64
 	AuthorityPrincipalID   string
 	Generation             int64
+	ManualRunID            sql.NullString
+	ManualSkipOverlap      int64
 }
 
 // Rotation executor (#148, slice S2a). Two boundaries share these statements. The
@@ -285,6 +311,8 @@ func (q *Queries) RotationRtDueRotation(ctx context.Context, now sql.NullString)
 		&i.RevocationDelaySeconds,
 		&i.AuthorityPrincipalID,
 		&i.Generation,
+		&i.ManualRunID,
+		&i.ManualSkipOverlap,
 	)
 	return i, err
 }
@@ -321,7 +349,7 @@ func (q *Queries) RotationRtFailedAttempts(ctx context.Context, arg RotationRtFa
 }
 
 const rotationRtGetRun = `-- name: RotationRtGetRun :one
-SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.revoke_not_before_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.generation AS rotation_generation
+SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.revoke_not_before_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds AS rotation_delay_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.generation AS rotation_generation
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
  WHERE ru.id=?1 AND ru.org_id=?2 AND ru.project_id=?3 AND ru.environment_id=?4
 `
@@ -358,6 +386,7 @@ type RotationRtGetRunRow struct {
 	KeyID                  string
 	UsernameKeyID          string
 	IntervalSeconds        int64
+	RotationDelaySeconds   int64
 	AuthorityPrincipalID   string
 	RotationState          string
 	RotationGeneration     int64
@@ -396,6 +425,7 @@ func (q *Queries) RotationRtGetRun(ctx context.Context, arg RotationRtGetRunPara
 		&i.KeyID,
 		&i.UsernameKeyID,
 		&i.IntervalSeconds,
+		&i.RotationDelaySeconds,
 		&i.AuthorityPrincipalID,
 		&i.RotationState,
 		&i.RotationGeneration,
@@ -404,7 +434,7 @@ func (q *Queries) RotationRtGetRun(ctx context.Context, arg RotationRtGetRunPara
 }
 
 const rotationRtHaltRotation = `-- name: RotationRtHaltRotation :execrows
-UPDATE rotations SET state='halted',halt_reason=?1,next_run_at=NULL,generation=generation+1,updated_at=?2 WHERE id=?3 AND org_id=?4 AND project_id=?5 AND environment_id=?6 AND state='active'
+UPDATE rotations SET state='halted',halt_reason=?1,next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=0,generation=generation+1,updated_at=?2 WHERE id=?3 AND org_id=?4 AND project_id=?5 AND environment_id=?6 AND state='active'
 `
 
 type RotationRtHaltRotationParams struct {
@@ -771,7 +801,7 @@ func (q *Queries) RotationRtLoadSupersededRole(ctx context.Context, arg Rotation
 }
 
 const rotationRtLockDueRotation = `-- name: RotationRtLockDueRotation :one
-SELECT id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,generation FROM rotations WHERE id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND state='active' AND generation=?5 AND next_run_at<=?6
+SELECT id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,generation,manual_run_id,manual_skip_overlap FROM rotations WHERE id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND state='active' AND generation=?5 AND next_run_at<=?6
 `
 
 type RotationRtLockDueRotationParams struct {
@@ -792,6 +822,8 @@ type RotationRtLockDueRotationRow struct {
 	RevocationDelaySeconds int64
 	AuthorityPrincipalID   string
 	Generation             int64
+	ManualRunID            sql.NullString
+	ManualSkipOverlap      int64
 }
 
 func (q *Queries) RotationRtLockDueRotation(ctx context.Context, arg RotationRtLockDueRotationParams) (RotationRtLockDueRotationRow, error) {
@@ -813,8 +845,41 @@ func (q *Queries) RotationRtLockDueRotation(ctx context.Context, arg RotationRtL
 		&i.RevocationDelaySeconds,
 		&i.AuthorityPrincipalID,
 		&i.Generation,
+		&i.ManualRunID,
+		&i.ManualSkipOverlap,
 	)
 	return i, err
+}
+
+const rotationRtNotConverged = `-- name: RotationRtNotConverged :one
+SELECT COUNT(DISTINCT t.id) FROM adapter_targets t JOIN adapter_target_keys k ON k.target_id=t.id AND k.org_id=t.org_id AND k.project_id=t.project_id AND k.environment_id=t.environment_id
+ WHERE t.org_id=?1 AND t.project_id=?2 AND t.environment_id=?3 AND t.state<>'tombstoned' AND k.key_id IN (?4,?5) AND (t.converged_revision IS NULL OR t.converged_revision<?6)
+`
+
+type RotationRtNotConvergedParams struct {
+	ChainOrg      string
+	ChainProject  string
+	ChainEnv      string
+	KeyID         string
+	UsernameKeyID string
+	Revision      sql.NullInt64
+}
+
+// The adapter targets that mirror either of the rotation's keys and have not
+// converged to the run's published revision: the consumers that may still hold
+// the superseded credential. Tombstoned targets receive nothing.
+func (q *Queries) RotationRtNotConverged(ctx context.Context, arg RotationRtNotConvergedParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, rotationRtNotConverged,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.KeyID,
+		arg.UsernameKeyID,
+		arg.Revision,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const rotationRtOpenEffect = `-- name: RotationRtOpenEffect :one
@@ -995,25 +1060,26 @@ func (q *Queries) RotationRtSetNextRun(ctx context.Context, arg RotationRtSetNex
 }
 
 const rotationRtSettleRun = `-- name: RotationRtSettleRun :execrows
-UPDATE rotation_runs SET phase=?1,phase_at=?2,last_error=?3,next_attempt_at=?4,candidate_valid_until=COALESCE(?5,candidate_valid_until),revoke_not_before_at=COALESCE(?6,revoke_not_before_at),published_revision=COALESCE(?7,published_revision),lease_owner=CASE WHEN CAST(?8 AS INTEGER)=1 THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN CAST(?8 AS INTEGER)=1 THEN lease_expires_at ELSE NULL END WHERE id=?9 AND org_id=?10 AND project_id=?11 AND environment_id=?12 AND lease_owner=?13 AND lease_expires_at>?2 AND lease_claim_token=?14 AND phase IN (/*SLICE:from_phases*/?)
+UPDATE rotation_runs SET phase=?1,phase_at=?2,last_error=?3,next_attempt_at=?4,candidate_valid_until=COALESCE(?5,candidate_valid_until),revoke_not_before_at=COALESCE(?6,revoke_not_before_at),published_revision=COALESCE(?7,published_revision),not_converged_consumers=COALESCE(?8,not_converged_consumers),lease_owner=CASE WHEN CAST(?9 AS INTEGER)=1 THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN CAST(?9 AS INTEGER)=1 THEN lease_expires_at ELSE NULL END WHERE id=?10 AND org_id=?11 AND project_id=?12 AND environment_id=?13 AND lease_owner=?14 AND lease_expires_at>?2 AND lease_claim_token=?15 AND phase IN (/*SLICE:from_phases*/?)
 `
 
 type RotationRtSettleRunParams struct {
-	Phase             string
-	Now               string
-	LastError         sql.NullString
-	NextAttemptAt     string
-	ValidUntilAt      sql.NullString
-	RevokeNotBeforeAt sql.NullString
-	PublishedRevision sql.NullInt64
-	KeepLease         int64
-	ID                string
-	ChainOrg          string
-	ChainProject      string
-	ChainEnv          string
-	Worker            sql.NullString
-	ClaimToken        int64
-	FromPhases        []string
+	Phase                 string
+	Now                   string
+	LastError             sql.NullString
+	NextAttemptAt         string
+	ValidUntilAt          sql.NullString
+	RevokeNotBeforeAt     sql.NullString
+	PublishedRevision     sql.NullInt64
+	NotConvergedConsumers sql.NullInt64
+	KeepLease             int64
+	ID                    string
+	ChainOrg              string
+	ChainProject          string
+	ChainEnv              string
+	Worker                sql.NullString
+	ClaimToken            int64
+	FromPhases            []string
 }
 
 // The one settling write. It names the phases it may leave, so it is both the
@@ -1030,6 +1096,7 @@ func (q *Queries) RotationRtSettleRun(ctx context.Context, arg RotationRtSettleR
 	queryParams = append(queryParams, arg.ValidUntilAt)
 	queryParams = append(queryParams, arg.RevokeNotBeforeAt)
 	queryParams = append(queryParams, arg.PublishedRevision)
+	queryParams = append(queryParams, arg.NotConvergedConsumers)
 	queryParams = append(queryParams, arg.KeepLease)
 	queryParams = append(queryParams, arg.ID)
 	queryParams = append(queryParams, arg.ChainOrg)

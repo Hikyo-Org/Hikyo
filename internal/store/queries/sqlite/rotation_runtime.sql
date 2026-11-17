@@ -12,7 +12,7 @@
 -- hikyo:reason RotationRuntime closed scheduler picks one due rotation across tenants under the per-org concurrency cap; the run is then created under the recorded authority's proof and binds the selected immutable chain.
 -- hikyo:instance-scoped
 -- name: RotationRtDueRotation :one
-SELECT ro.id,ro.org_id,ro.project_id,ro.environment_id,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds,ro.authority_principal_id,ro.generation
+SELECT ro.id,ro.org_id,ro.project_id,ro.environment_id,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds,ro.authority_principal_id,ro.generation,ro.manual_run_id,ro.manual_skip_overlap
  FROM rotations ro
  WHERE ro.state='active' AND ro.next_run_at<=sqlc.arg(now)
  AND NOT EXISTS (SELECT 1 FROM rotation_runs op WHERE op.rotation_id=ro.id AND op.phase NOT IN ('done','quarantine','failed'))
@@ -28,7 +28,7 @@ SELECT ro.id,ro.org_id,ro.project_id,ro.environment_id,ro.provider_id,ro.key_id,
 SELECT COUNT(*) FROM rotation_runs WHERE org_id=sqlc.arg(chain_org) AND lease_owner IS NOT NULL AND lease_expires_at>sqlc.arg(now);
 
 -- name: RotationRtLockDueRotation :one
-SELECT id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,generation FROM rotations WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active' AND generation=sqlc.arg(expected_generation) AND next_run_at<=sqlc.arg(now);
+SELECT id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,generation,manual_run_id,manual_skip_overlap FROM rotations WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active' AND generation=sqlc.arg(expected_generation) AND next_run_at<=sqlc.arg(now);
 
 -- The role currently delivered into a key: the candidate of the run that published
 -- the newest revision, across every rotation that ever drove the key (as its
@@ -47,8 +47,19 @@ INSERT INTO rotation_runs (id,org_id,project_id,environment_id,rotation_id,gener
 -- name: RotationRtSetNextRun :execrows
 UPDATE rotations SET next_run_at=sqlc.arg(next_run_at),updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active';
 
+-- The request a started run consumed: cleared in the start transaction.
+-- name: RotationRtClearManual :exec
+UPDATE rotations SET manual_run_id=NULL,manual_skip_overlap=0 WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env);
+
+-- The adapter targets that mirror either of the rotation's keys and have not
+-- converged to the run's published revision: the consumers that may still hold
+-- the superseded credential. Tombstoned targets receive nothing.
+-- name: RotationRtNotConverged :one
+SELECT COUNT(DISTINCT t.id) FROM adapter_targets t JOIN adapter_target_keys k ON k.target_id=t.id AND k.org_id=t.org_id AND k.project_id=t.project_id AND k.environment_id=t.environment_id
+ WHERE t.org_id=sqlc.arg(chain_org) AND t.project_id=sqlc.arg(chain_project) AND t.environment_id=sqlc.arg(chain_env) AND t.state<>'tombstoned' AND k.key_id IN (sqlc.arg(key_id),sqlc.arg(username_key_id)) AND (t.converged_revision IS NULL OR t.converged_revision<sqlc.arg(revision));
+
 -- name: RotationRtHaltRotation :execrows
-UPDATE rotations SET state='halted',halt_reason=sqlc.arg(halt_reason),next_run_at=NULL,generation=generation+1,updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active';
+UPDATE rotations SET state='halted',halt_reason=sqlc.arg(halt_reason),next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=0,generation=generation+1,updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active';
 
 -- name: RotationRtInsertEffect :exec
 INSERT INTO rotation_effects (id,org_id,project_id,environment_id,run_id,kind,intent_audit_id,created_at) VALUES (sqlc.arg(id),sqlc.arg(chain_org),sqlc.arg(chain_project),sqlc.arg(chain_env),sqlc.arg(run_id),sqlc.arg(kind),sqlc.arg(intent_audit_id),sqlc.arg(at));
@@ -68,7 +79,7 @@ INSERT INTO audit_tenant_events (id,type,schema_version,occurred_at,occurred_ass
 -- hikyo:reason RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension.
 -- hikyo:instance-scoped
 -- name: RotationRtClaimDueRun :one
-SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.revoke_not_before_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.generation AS rotation_generation
+SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.revoke_not_before_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds AS rotation_delay_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.generation AS rotation_generation
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
  WHERE ru.next_attempt_at<=sqlc.arg(now)
  AND (ru.lease_owner IS NULL OR ru.lease_expires_at IS NULL OR ru.lease_expires_at<=CAST(sqlc.arg(lease_cut) AS TEXT))
@@ -90,10 +101,10 @@ SELECT COUNT(*) FROM rotation_runs WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(cha
 -- a row lock a publish transaction holds, and matches zero rows once the run has
 -- left those phases. A settle that keeps the lease passes keep_lease.
 -- name: RotationRtSettleRun :execrows
-UPDATE rotation_runs SET phase=sqlc.arg(phase),phase_at=sqlc.arg(now),last_error=sqlc.narg(last_error),next_attempt_at=sqlc.arg(next_attempt_at),candidate_valid_until=COALESCE(sqlc.narg(valid_until_at),candidate_valid_until),revoke_not_before_at=COALESCE(sqlc.narg(revoke_not_before_at),revoke_not_before_at),published_revision=COALESCE(sqlc.narg(published_revision),published_revision),lease_owner=CASE WHEN CAST(sqlc.arg(keep_lease) AS INTEGER)=1 THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN CAST(sqlc.arg(keep_lease) AS INTEGER)=1 THEN lease_expires_at ELSE NULL END WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND lease_owner=sqlc.arg(worker) AND lease_expires_at>sqlc.arg(now) AND lease_claim_token=sqlc.arg(claim_token) AND phase IN (sqlc.slice('from_phases'));
+UPDATE rotation_runs SET phase=sqlc.arg(phase),phase_at=sqlc.arg(now),last_error=sqlc.narg(last_error),next_attempt_at=sqlc.arg(next_attempt_at),candidate_valid_until=COALESCE(sqlc.narg(valid_until_at),candidate_valid_until),revoke_not_before_at=COALESCE(sqlc.narg(revoke_not_before_at),revoke_not_before_at),published_revision=COALESCE(sqlc.narg(published_revision),published_revision),not_converged_consumers=COALESCE(sqlc.narg(not_converged_consumers),not_converged_consumers),lease_owner=CASE WHEN CAST(sqlc.arg(keep_lease) AS INTEGER)=1 THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN CAST(sqlc.arg(keep_lease) AS INTEGER)=1 THEN lease_expires_at ELSE NULL END WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND lease_owner=sqlc.arg(worker) AND lease_expires_at>sqlc.arg(now) AND lease_claim_token=sqlc.arg(claim_token) AND phase IN (sqlc.slice('from_phases'));
 
 -- name: RotationRtGetRun :one
-SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.revoke_not_before_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.generation AS rotation_generation
+SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.revoke_not_before_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds AS rotation_delay_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.generation AS rotation_generation
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
  WHERE ru.id=sqlc.arg(run_id) AND ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env);
 

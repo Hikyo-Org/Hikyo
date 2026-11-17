@@ -792,6 +792,162 @@ func (q *Queries) RotationListAll(ctx context.Context, arg RotationListAllParams
 	return items, nil
 }
 
+const rotationListRuns = `-- name: RotationListRuns :many
+SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_consumers FROM rotation_runs WHERE rotation_id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 ORDER BY id DESC LIMIT ?5
+`
+
+type RotationListRunsParams struct {
+	RotationID   string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	PageLimit    int64
+}
+
+type RotationListRunsRow struct {
+	ID                     string
+	RunTrigger             string
+	Phase                  string
+	PublishedRevision      sql.NullInt64
+	RevocationDelaySeconds int64
+	StartedAt              string
+	PhaseAt                string
+	LastError              sql.NullString
+	NotConvergedConsumers  sql.NullInt64
+}
+
+// A page of a rotation's runs, newest first. Run ids are time-ordered (UUIDv7) and
+// a run takes its id when it starts, so id order is start order. The cursor is the last run id of the
+// previous page. Only operator-visible metadata: no handle, no candidate, no
+// provider detail beyond the fixed-word last_error code.
+func (q *Queries) RotationListRuns(ctx context.Context, arg RotationListRunsParams) ([]RotationListRunsRow, error) {
+	rows, err := q.db.QueryContext(ctx, rotationListRuns,
+		arg.RotationID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RotationListRunsRow
+	for rows.Next() {
+		var i RotationListRunsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.RunTrigger,
+			&i.Phase,
+			&i.PublishedRevision,
+			&i.RevocationDelaySeconds,
+			&i.StartedAt,
+			&i.PhaseAt,
+			&i.LastError,
+			&i.NotConvergedConsumers,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rotationListRunsAfter = `-- name: RotationListRunsAfter :many
+SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_consumers FROM rotation_runs WHERE rotation_id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND id < ?5 ORDER BY id DESC LIMIT ?6
+`
+
+type RotationListRunsAfterParams struct {
+	RotationID   string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	AfterID      string
+	PageLimit    int64
+}
+
+type RotationListRunsAfterRow struct {
+	ID                     string
+	RunTrigger             string
+	Phase                  string
+	PublishedRevision      sql.NullInt64
+	RevocationDelaySeconds int64
+	StartedAt              string
+	PhaseAt                string
+	LastError              sql.NullString
+	NotConvergedConsumers  sql.NullInt64
+}
+
+func (q *Queries) RotationListRunsAfter(ctx context.Context, arg RotationListRunsAfterParams) ([]RotationListRunsAfterRow, error) {
+	rows, err := q.db.QueryContext(ctx, rotationListRunsAfter,
+		arg.RotationID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.AfterID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RotationListRunsAfterRow
+	for rows.Next() {
+		var i RotationListRunsAfterRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.RunTrigger,
+			&i.Phase,
+			&i.PublishedRevision,
+			&i.RevocationDelaySeconds,
+			&i.StartedAt,
+			&i.PhaseAt,
+			&i.LastError,
+			&i.NotConvergedConsumers,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rotationManualPending = `-- name: RotationManualPending :one
+SELECT COUNT(*) FROM rotations WHERE id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND manual_run_id IS NOT NULL
+`
+
+type RotationManualPendingParams struct {
+	RotationID   string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+// Whether a run-now request is pending for the rotation.
+func (q *Queries) RotationManualPending(ctx context.Context, arg RotationManualPendingParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, rotationManualPending,
+		arg.RotationID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const rotationPauseActive = `-- name: RotationPauseActive :execrows
 UPDATE rotations SET state='paused',next_run_at=NULL,generation=generation+1,updated_at=?1 WHERE id=?2 AND org_id=?3 AND project_id=?4 AND state='active'
 `
@@ -941,8 +1097,44 @@ func (q *Queries) RotationPurgeRuns(ctx context.Context, arg RotationPurgeRunsPa
 	return err
 }
 
+const rotationRequestRun = `-- name: RotationRequestRun :execrows
+UPDATE rotations SET manual_run_id=?1,manual_skip_overlap=?2,next_run_at=?3,updated_at=?3 WHERE id=?4 AND org_id=?5 AND project_id=?6 AND environment_id=?7 AND state='active' AND generation=?8 AND manual_run_id IS NULL
+`
+
+type RotationRequestRunParams struct {
+	RunID              sql.NullString
+	SkipOverlap        int64
+	Now                sql.NullString
+	RotationID         string
+	ChainOrg           string
+	ChainProject       string
+	ChainEnv           string
+	ExpectedGeneration int64
+}
+
+// A run-now request: records the run it asks for and makes the rotation due now.
+// It matches only an active rotation at the expected generation with no pending
+// request; the service refuses an open run in the same transaction, and the
+// caller reads the row to say which condition refused.
+func (q *Queries) RotationRequestRun(ctx context.Context, arg RotationRequestRunParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, rotationRequestRun,
+		arg.RunID,
+		arg.SkipOverlap,
+		arg.Now,
+		arg.RotationID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.ExpectedGeneration,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const rotationSetState = `-- name: RotationSetState :execrows
-UPDATE rotations SET state=?1,halt_reason=NULL,next_run_at=?2,generation=generation+1,updated_at=?3 WHERE id=?4 AND org_id=?5 AND project_id=?6 AND environment_id=?7 AND generation=?8 AND state<>'disabled'
+UPDATE rotations SET state=?1,halt_reason=NULL,manual_run_id=NULL,manual_skip_overlap=0,next_run_at=?2,generation=generation+1,updated_at=?3 WHERE id=?4 AND org_id=?5 AND project_id=?6 AND environment_id=?7 AND generation=?8 AND state<>'disabled'
 `
 
 type RotationSetStateParams struct {
