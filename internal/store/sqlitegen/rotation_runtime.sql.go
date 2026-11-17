@@ -45,8 +45,9 @@ SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generat
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
  WHERE ru.next_attempt_at<=?1
  AND (ru.lease_owner IS NULL OR ru.lease_expires_at IS NULL OR ru.lease_expires_at<=CAST(?2 AS TEXT))
- AND (ru.phase IN ('minting','minted','published','overlap','revoking','revoke_refused')
-  OR (ru.phase IN ('failed','quarantine') AND ru.published_revision IS NULL AND NOT EXISTS (SELECT 1 FROM rotation_effects ef WHERE ef.run_id=ru.id AND ef.kind='drop_candidate' AND ef.outcome='success'))
+ AND (ru.phase IN ('published','overlap','revoking','revoke_refused')
+  OR (ru.phase IN ('minting','minted') AND ro.restore_hold=0)
+  OR (ru.phase IN ('failed','quarantine') AND ru.published_revision IS NULL AND ro.restore_hold=0 AND NOT EXISTS (SELECT 1 FROM rotation_effects ef WHERE ef.run_id=ru.id AND ef.kind='drop_candidate' AND ef.outcome='success'))
   OR (ru.phase IN ('failed','quarantine') AND ru.published_revision IS NOT NULL AND ru.superseded_handle IS NOT NULL AND NOT EXISTS (SELECT 1 FROM rotation_effects ef WHERE ef.run_id=ru.id AND ef.kind='revoke' AND ef.outcome='success'))
   OR (ru.phase='done' AND ru.candidate_valid_until IS NOT NULL AND ro.state='active' AND ro.restore_hold=0))
  AND (SELECT COUNT(*) FROM rotation_runs x WHERE x.org_id=ru.org_id AND x.lease_owner IS NOT NULL AND x.lease_expires_at>?1) < 4
@@ -93,7 +94,7 @@ type RotationRtClaimDueRunRow struct {
 // The lease cut is now minus one provider deadline: a run is taken over only that
 // long after its lease expired, so a provider call the old worker started inside
 // its lease has finished or timed out before the takeover's rollback drops.
-// hikyo:reason RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension.
+// hikyo:reason RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only; the in-flight and reconciler selections skip a rotation a restore holds, because the archive may not know a publish the live instance made and a drop would kill a credential consumers fetched), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension.
 // hikyo:instance-scoped
 func (q *Queries) RotationRtClaimDueRun(ctx context.Context, arg RotationRtClaimDueRunParams) (RotationRtClaimDueRunRow, error) {
 	row := q.db.QueryRowContext(ctx, rotationRtClaimDueRun, arg.Now, arg.LeaseCut)

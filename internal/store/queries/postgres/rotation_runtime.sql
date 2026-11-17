@@ -85,15 +85,16 @@ INSERT INTO audit_tenant_events (id,type,schema_version,occurred_at,occurred_ass
 -- The lease cut is now minus one provider deadline: a run is taken over only that
 -- long after its lease expired, so a provider call the old worker started inside
 -- its lease has finished or timed out before the takeover's rollback drops.
--- hikyo:reason RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension.
+-- hikyo:reason RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only; the in-flight and reconciler selections skip a rotation a restore holds, because the archive may not know a publish the live instance made and a drop would kill a credential consumers fetched), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension.
 -- hikyo:instance-scoped
 -- name: RotationRtClaimDueRun :one
 SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.revoke_not_before_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds AS rotation_delay_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.restore_hold AS rotation_restore_hold,ro.generation AS rotation_generation
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
  WHERE ru.next_attempt_at<=sqlc.arg(now)
  AND (ru.lease_owner IS NULL OR ru.lease_expires_at IS NULL OR ru.lease_expires_at<=sqlc.arg(lease_cut))
- AND (ru.phase IN ('minting','minted','published','overlap','revoking','revoke_refused')
-  OR (ru.phase IN ('failed','quarantine') AND ru.published_revision IS NULL AND NOT EXISTS (SELECT 1 FROM rotation_effects ef WHERE ef.run_id=ru.id AND ef.kind='drop_candidate' AND ef.outcome='success'))
+ AND (ru.phase IN ('published','overlap','revoking','revoke_refused')
+  OR (ru.phase IN ('minting','minted') AND NOT ro.restore_hold)
+  OR (ru.phase IN ('failed','quarantine') AND ru.published_revision IS NULL AND NOT ro.restore_hold AND NOT EXISTS (SELECT 1 FROM rotation_effects ef WHERE ef.run_id=ru.id AND ef.kind='drop_candidate' AND ef.outcome='success'))
   OR (ru.phase IN ('failed','quarantine') AND ru.published_revision IS NOT NULL AND ru.superseded_handle IS NOT NULL AND NOT EXISTS (SELECT 1 FROM rotation_effects ef WHERE ef.run_id=ru.id AND ef.kind='revoke' AND ef.outcome='success'))
   OR (ru.phase='done' AND ru.candidate_valid_until IS NOT NULL AND ro.state='active' AND NOT ro.restore_hold))
  AND (SELECT COUNT(*) FROM rotation_runs x WHERE x.org_id=ru.org_id AND x.lease_owner IS NOT NULL AND x.lease_expires_at>sqlc.arg(now)) < 4

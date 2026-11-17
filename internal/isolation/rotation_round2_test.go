@@ -301,12 +301,11 @@ func runRotationReleaseHoldCallers(t *testing.T, db *store.DB) {
 	}
 }
 
-// A run recovered after its worker died records why: a rotation a restore holds is
-// "rotation_held", not "rotation_paused", so an operator reading the run list is
-// not told a person paused a rotation that is only waiting for release-hold.
-func TestRotationRecoveryRecordsHeldNotPaused(t *testing.T) {
+// A run recovered after its worker died records why: a paused rotation is
+// "rotation_paused". A rotation a restore holds recovers nothing at all (see
+// TestRotationHeldRotationDoesNotRecoverInFlightRuns).
+func TestRotationRecoveryRecordsPaused(t *testing.T) {
 	for _, tc := range []struct{ name, set, want string }{
-		{"held by a restore", "restore_hold=TRUE", "rotation_held"},
 		{"paused", "state='paused', next_run_at=NULL", "rotation_paused"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
