@@ -166,6 +166,9 @@ hikyo instance-config provider update work --kind oidc \
   --lifecycle-profile clerk --lifecycle-secret-file ./clerk-signing-secret
 ```
 
+Like any other provider update, the command also prompts for the provider's
+client secret.
+
 Use `--lifecycle-profile none` to stop accepting events and discard the stored
 secret.
 
@@ -178,12 +181,15 @@ lifecycle profile all get the same refusal.
 
 | Event | Effect in Hikyo |
 | --- | --- |
-| `user.deleted` | Unlinks the identity whose subject equals the deleted user's ID, ends that account's sessions that came through this issuer, and revokes any developer scope the link carried. The change is audited with a system actor. Deleting the last sign-in credential is allowed, and the account is flagged `auth.account_no_login_credential`. |
-| `user.updated` with `banned: true` | Ends that account's sessions that came through this issuer. The link stays, so unbanning upstream restores sign-in. |
+| `user.deleted` | Unlinks the identity whose subject equals the deleted user's ID, ends that account's sessions that came through this issuer, and revokes the developer credentials minted from those sessions or through this issuer's providers. The change is audited with a system actor. Deleting the last sign-in credential is allowed, and the account is flagged `auth.account_no_login_credential`. |
+| `user.updated` with `banned: true` | Ends that account's sessions that came through this issuer and revokes the developer credentials minted from them. The link stays, so unbanning upstream restores sign-in. |
 | `user.updated` with `locked: true`, and every other event | Ignored. A lock is temporary upstream and does not end Hikyo sessions. |
 
 Password and passkey sessions, and local credentials, are never touched, so an
-account that also has a local credential keeps working.
+account that also has a local credential keeps working. The one exception is a
+password session carrying a credential-establishment stamp for this issuer's
+identity: it came through the issuer, so it ends with the others, along with the
+developer credentials minted from it.
 
 Setting, rotating or clearing the lifecycle secret ends no sessions. A disabled
 provider refuses events; Clerk eventually disables an endpoint that keeps

@@ -1,14 +1,18 @@
 package isolation
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"testing"
 	"time"
 
 	standardwebhooks "github.com/standard-webhooks/standard-webhooks/libraries/go"
 
+	"github.com/Hikyo-Org/hikyo/api"
+	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
@@ -309,4 +313,236 @@ func hexOf(db *store.DB, col string) string {
 		return "encode(" + col + ", 'hex')"
 	}
 	return "hex(" + col + ")"
+}
+
+// signedHeaders signs body at ts. standard selects the Standard Webhooks
+// header names; otherwise the Svix names Clerk sends.
+func signedHeaders(t *testing.T, secret string, ts time.Time, body string, standard bool) http.Header {
+	t.Helper()
+	wh, err := standardwebhooks.NewWebhook(secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := "msg_" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	sig, err := wh.Sign(id, ts, []byte(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix := "Svix-"
+	if standard {
+		prefix = "Webhook-"
+	}
+	h := http.Header{}
+	h.Set(prefix+"Id", id)
+	h.Set(prefix+"Timestamp", strconv.FormatInt(ts.Unix(), 10))
+	h.Set(prefix+"Signature", sig)
+	return h
+}
+
+// TestOIDCLifecycleHTTP drives the real handler over the real service: header
+// names, the status mapping, and verification before parsing.
+func TestOIDCLifecycleHTTP(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := newLifecycleFixture(t, db)
+		h := server.New(&server.API{Auth: f.admin.auth}, nil)
+		post := func(slug string, header http.Header, body string) int {
+			t.Helper()
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, api.PathPrefix+"/auth/oidc/"+slug+"/lifecycle", bytes.NewReader([]byte(body)))
+			for k, v := range header {
+				req.Header[k] = v
+			}
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			return rec.Code
+		}
+		wrong := "whsec_" + "MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSx"
+		unrelated := userEvent("user.deleted", "user_nobody", "")
+
+		// Malformed JSON under a bad signature is the signature refusal, not a parse error.
+		if got := post(f.slug, signedHeaders(t, wrong, time.Now(), `{malformed`, false), `{malformed`); got != http.StatusUnauthorized {
+			t.Fatalf("malformed body with a bad signature = %d, want 401", got)
+		}
+		// Malformed JSON under a good signature is a verified no-op.
+		if got := post(f.slug, signedHeaders(t, lifecycleTestSecret, time.Now(), `{malformed`, false), `{malformed`); got != http.StatusNoContent {
+			t.Fatalf("malformed body with a good signature = %d, want 204", got)
+		}
+		if got := post("no-such-slug", signedHeaders(t, lifecycleTestSecret, time.Now(), unrelated, false), unrelated); got != http.StatusUnauthorized {
+			t.Fatalf("unknown slug = %d, want 401", got)
+		}
+		if got := post(f.slug, http.Header{}, unrelated); got != http.StatusUnauthorized {
+			t.Fatalf("no signature headers = %d, want 401", got)
+		}
+		// A body over the bound never reaches verification.
+		big := string(bytes.Repeat([]byte("a"), service.MaxLifecycleBodyBytes+1))
+		if got := post(f.slug, signedHeaders(t, lifecycleTestSecret, time.Now(), big, false), big); got != http.StatusBadRequest {
+			t.Fatalf("oversize body = %d, want 400", got)
+		}
+
+		// Both header families apply a delete, through HTTP.
+		del := userEvent("user.deleted", f.subject, "")
+		if got := post(f.slug, signedHeaders(t, lifecycleTestSecret, time.Now(), del, true), del); got != http.StatusNoContent {
+			t.Fatalf("standard headers = %d, want 204", got)
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM external_identities"); n != 0 {
+			t.Fatalf("a standard-header delete left %d identities", n)
+		}
+		linkOn(t, f.admin.auth, t.Context(), f.slug, f.subject, f.admin.password)
+		if got := post(f.slug, signedHeaders(t, lifecycleTestSecret, time.Now(), del, false), del); got != http.StatusNoContent {
+			t.Fatalf("svix headers = %d, want 204", got)
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM external_identities"); n != 0 {
+			t.Fatalf("a svix-header delete left %d identities", n)
+		}
+	})
+}
+
+// TestOIDCLifecycleSweepBoundaries pins which sessions a delete ends: the
+// principal's sessions through the issuer, and a password session carrying a
+// credential-establishment stamp for that issuer; nothing else.
+func TestOIDCLifecycleSweepBoundaries(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := newLifecycleFixture(t, db)
+		ctx := t.Context()
+		// A second issuer linked to the same account.
+		configureProvider(t, f.admin.auth, ctx, f.admin.boot.PrincipalID, "other-idp", service.ProviderInput{
+			DisplayName: "Other", ClientID: "c", ClientSecret: "s", Scopes: "openid", Enabled: true,
+		})
+		linkOn(t, f.admin.auth, ctx, "other-idp", "user_2", f.admin.password)
+		clerkSession := oidcLogin(t, f.admin.auth, ctx, f.slug, f.subject).SessionToken
+		otherSession := oidcLogin(t, f.admin.auth, ctx, "other-idp", "user_2").SessionToken
+
+		extraPassword := func() service.LoginResult {
+			t.Helper()
+			r, err := f.admin.auth.LocalLogin(ctx, "oidc-admin", f.admin.password, service.ArtifactCLI)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return r
+		}
+		// Linking reissues earlier sessions, so mint the password ones afterwards.
+		plain := extraPassword()
+		stamped := extraPassword()
+		identityID := queryString(t, db, "SELECT id FROM external_identities WHERE subject = '"+f.subject+"'")
+		execRaw(t, db, "INSERT INTO credential_establish_evidence (session_id, identity_id, purpose, expires_at) VALUES ('"+
+			stamped.SessionID+"', '"+identityID+"', 'account-security', '2099-01-01T00:00:00Z')")
+		// A passkey session: no provider, a non-password method.
+		passkey := extraPassword()
+		execRaw(t, db, "UPDATE sessions SET auth_method = 'passkey' WHERE id = '"+passkey.SessionID+"'")
+		// A stamp for another issuer's identity must not sweep.
+		stampedOther := extraPassword()
+		otherIdentity := queryString(t, db, "SELECT id FROM external_identities WHERE subject = 'user_2'")
+		execRaw(t, db, "INSERT INTO credential_establish_evidence (session_id, identity_id, purpose, expires_at) VALUES ('"+
+			stampedOther.SessionID+"', '"+otherIdentity+"', 'account-security', '2099-01-01T00:00:00Z')")
+
+		f.ok(t, userEvent("user.deleted", f.subject, ""))
+
+		for name, tc := range map[string]struct {
+			token string
+			live  bool
+		}{
+			"clerk oidc session":         {clerkSession, false},
+			"establish-stamped password": {stamped.SessionToken, false},
+			"plain password":             {plain.SessionToken, true},
+			"passkey":                    {passkey.SessionToken, true},
+			"other issuer oidc":          {otherSession, true},
+			"other issuer stamp":         {stampedOther.SessionToken, true},
+		} {
+			if got := f.live(t, tc.token); got != tc.live {
+				t.Errorf("%s: live=%v, want %v", name, got, tc.live)
+			}
+		}
+	})
+}
+
+// TestOIDCLifecycleResolution covers identities the happy path does not: one
+// from an earlier credential epoch, and one whose provider_id points at another
+// row of the same issuer.
+func TestOIDCLifecycleResolution(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := newLifecycleFixture(t, db)
+		ctx := t.Context()
+		// An earlier-epoch identity: below the account's current password epoch.
+		current := queryInt(t, db, "SELECT credential_epoch FROM password_credentials")
+		execRaw(t, db, "UPDATE external_identities SET credential_epoch = credential_epoch - 1")
+		if queryInt(t, db, "SELECT credential_epoch FROM external_identities") == current {
+			t.Fatal("the identity is not from an earlier epoch")
+		}
+		// A disabled twin row of the same issuer; the identity points at it.
+		if _, err := f.provider.Put(ctx, service.LocalPrincipal(f.admin.boot.PrincipalID), "clerk-twin", service.ProviderInput{
+			DisplayName: "Twin", Issuer: f.idpIssue, ClientID: "c", ClientSecret: "s", Scopes: "openid", Enabled: false,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		execRaw(t, db, "UPDATE external_identities SET provider_id = (SELECT id FROM oidc_providers WHERE slug = 'clerk-twin')")
+
+		f.ok(t, userEvent("user.deleted", f.subject, ""))
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM external_identities"); n != 0 {
+			t.Fatalf("an earlier-epoch identity pointing at a twin row survived: %d", n)
+		}
+		if countAudit(t, db, "auth.identity_unlinked_by_directory") != 1 {
+			t.Fatal("unlink not audited")
+		}
+	})
+}
+
+// TestOIDCLifecycleSystemActor pins the developer-credential and personal-value
+// consequences of a directory delete: attributed to the system, and scoped to
+// the swept sessions.
+func TestOIDCLifecycleSystemActor(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := newLifecycleFixture(t, db)
+		ctx := t.Context()
+		oidcSession := oidcLogin(t, f.admin.auth, ctx, f.slug, f.subject)
+		fromOIDC := seedSecurityDeveloper(t, db, oidcSession.SessionToken, envScope(envA1), "lifecycle-oidc")
+		fromPassword := seedSecurityDeveloper(t, db, f.password, envScope(envA1), "lifecycle-password")
+
+		blob := "X'00'"
+		if db.Engine() == store.EnginePostgres {
+			blob = `'\x00'::bytea`
+		}
+		execRaw(t, db, `INSERT INTO personal_values (id, org_id, project_id, environment_id, key_id, owner_principal_id, ciphertext, created_at, updated_at) VALUES `+
+			`('pv_lifecycle', 'org_a', 'prj_a1', 'env_a1', 'key_a1', '`+string(f.admin.boot.PrincipalID)+`', `+blob+`, `+ts+`, `+ts+`)`)
+
+		f.ok(t, userEvent("user.deleted", f.subject, ""))
+
+		if authenticateCaller(t, db, fromOIDC).Principal != "" {
+			t.Fatal("a developer credential minted from the swept OIDC session still authenticates")
+		}
+		if authenticateCaller(t, db, fromPassword).Principal == "" {
+			t.Fatal("a developer credential minted from a surviving password session was revoked")
+		}
+		revoked := "SELECT COUNT(*) FROM audit_instance_events WHERE type = 'identity.developer_credential_revoked'"
+		if queryInt(t, db, revoked) != 1 || queryInt(t, db, revoked+" AND actor_class = 'system'") != 1 {
+			t.Fatal("the developer-credential revocation is not recorded once with the system actor")
+		}
+		if queryInt(t, db, "SELECT COUNT(*) FROM personal_values") != 0 {
+			t.Fatal("the personal value was not purged")
+		}
+		purged := "SELECT COUNT(*) FROM audit_instance_events WHERE type = 'personal_value.deleted'"
+		if queryInt(t, db, purged) != 1 || queryInt(t, db, purged+" AND actor_class = 'system'") != 1 {
+			t.Fatal("the purge is not recorded once with the system actor")
+		}
+	})
+}
+
+// TestOIDCLifecycleKeepsPasskeyAccountQuiet: an account that still has a
+// passkey has a way in, so the zero-credential event stays quiet.
+func TestOIDCLifecycleKeepsPasskeyAccountQuiet(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := newLifecycleFixture(t, db)
+		blob := "X'01'"
+		if db.Engine() == store.EnginePostgres {
+			blob = `'\x01'::bytea`
+		}
+		execRaw(t, db, "DELETE FROM password_credentials")
+		execRaw(t, db, `INSERT INTO webauthn_credentials (id, account_id, credential_id, public_key, aaguid, sign_count, transports, discoverable, backup_eligible, backup_state, label, credential_epoch, row_version, created_at) VALUES `+
+			`('wc_lifecycle', (SELECT id FROM accounts LIMIT 1), `+blob+`, `+blob+`, `+blob+`, 0, '[]', 1, 0, 0, 'key', 1, 1, `+ts+`)`)
+		f.ok(t, userEvent("user.deleted", f.subject, ""))
+		if countAudit(t, db, "auth.identity_unlinked_by_directory") != 1 {
+			t.Fatal("unlink not audited")
+		}
+		if countAudit(t, db, "auth.account_no_login_credential") != 0 {
+			t.Fatal("the zero-credential event fired for an account with a passkey")
+		}
+	})
 }
