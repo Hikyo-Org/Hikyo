@@ -151,6 +151,49 @@ type RotationRepo interface {
 	// yet disabled, or a run that may hold a live role (every phase but done, and a
 	// failed run that had already published).
 	PurgeEnvironment(ctx context.Context, p authz.Proof) error
+	// BeginRunPublish is the first write of a run's publish transaction: a fenced
+	// touch of the run row under its crash fence. It takes the row lock the whole
+	// publish holds, so a takeover worker's fenced claim write waits for the
+	// commit or rollback (crash-safety rule 8). A run that is no longer minted, or
+	// whose fence was lost, is ErrRotationFenceLost.
+	BeginRunPublish(ctx context.Context, p authz.Proof, run RotationRun, now time.Time) error
+	// RecordRunPublish records the publish in the same transaction as the revision:
+	// the run moves minted to published with its revision and its overlap
+	// deadline, the publish effect closes, and the rotation's next run is anchored
+	// at the commit time.
+	RecordRunPublish(ctx context.Context, p authz.Proof, rec RotationPublishRecord) error
+	// AbandonOpenRuns closes every unsettled run of the rotation (quarantine, or
+	// done for a published run that owes no revoke) and returns exactly the runs
+	// that statement changed, so the service's audit rows match them one to one. A
+	// run still in phase published owes a revoke only after delay from at: its
+	// stored deadline was read before the publish committed, so it is replaced by
+	// at plus the rotation's revocation delay (an observation after the commit).
+	AbandonOpenRuns(ctx context.Context, p authz.Proof, rotationID string, at time.Time, delay time.Duration) ([]AbandonedRun, error)
+	// ProviderLiveRuns counts runs on a provider that may still hold a live role
+	// or owe a revoke, so a provider delete can refuse.
+	ProviderLiveRuns(ctx context.Context, p authz.Proof, providerID string) (int64, error)
+}
+
+// RotationPublishRecord is one run's publish, written beside the revision it
+// published.
+type RotationPublishRecord struct {
+	Run       RotationRun
+	Revision  int64
+	Now       time.Time
+	NextRunAt time.Time
+	// NextAttempt is when the overlap ends: the earliest the revoke may run.
+	NextAttempt time.Time
+	Outcome     RotationEffectOutcome
+}
+
+// AbandonedRun is one run an abandon closed, as the statement that closed it
+// returned it. Phase is the phase it was closed into: quarantine, or done for a
+// published run that owes no revoke.
+type AbandonedRun struct {
+	ID               string
+	Phase            string
+	CandidateHandle  string
+	SupersededHandle string
 }
 
 type rotationStoreQueries interface {
@@ -176,6 +219,9 @@ type rotationStoreQueries interface {
 	activeInEnvironment(ctx context.Context, chain domain.Scope, environmentID string) ([]RotationRecord, error)
 	activeInProject(ctx context.Context, chain domain.Scope) ([]RotationRecord, error)
 	pauseActive(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) (int64, error)
+	abandonRuns(ctx context.Context, chain domain.Scope, rotationID string, at, publishedDue time.Time) ([]AbandonedRun, error)
+	providerLiveRuns(ctx context.Context, chain domain.Scope, providerID string) (int64, error)
+	runtime() rotationRuntimeQueries
 }
 
 type rotationQueries struct {
@@ -190,6 +236,11 @@ func (r sqliteRepos) Rotations() RotationRepo {
 func (r pgRepos) Rotations() RotationRepo {
 	return rotationQueries{queries: pgRotationQueries{q: pggen.New(r.db)}, tok: r.tok}
 }
+
+func (q sqliteRotationQueries) runtime() rotationRuntimeQueries {
+	return sqliteRotationRuntimeQueries{q: q.q}
+}
+func (q pgRotationQueries) runtime() rotationRuntimeQueries { return pgRotationRuntimeQueries{q: q.q} }
 
 func (r rotationQueries) envChain(p authz.Proof, op authz.StoreOp) (domain.Scope, error) {
 	chain, err := authz.Verify(p, op, r.tok)
@@ -556,36 +607,91 @@ func (q pgRotationQueries) credentialExpiry(ctx context.Context, chain domain.Sc
 	return out, nil
 }
 
+// expiryPick is the newest published run seen for one key across both key roles.
+type expiryPick struct {
+	revision int64
+	runID    string
+	stamp    string
+}
+
+// keepNewest records a candidate for a key unless a newer published run is already
+// held: the single-key lookup orders by published_revision then run id, and the
+// merge of the two role queries must agree with it.
+func keepNewest(picks map[string]expiryPick, key string, c expiryPick) {
+	if cur, ok := picks[key]; ok && (cur.revision > c.revision || (cur.revision == c.revision && cur.runID >= c.runID)) {
+		return
+	}
+	picks[key] = c
+}
+
+func expiryStamps(picks map[string]expiryPick) map[string]string {
+	out := make(map[string]string, len(picks))
+	for key, pick := range picks {
+		out[key] = pick.stamp
+	}
+	return out
+}
+
 func (q sqliteRotationQueries) credentialExpiries(ctx context.Context, chain domain.Scope, keyIDs []string) (map[string]string, error) {
-	rows, err := q.q.RotationCredentialExpiries(ctx, sqlitegen.RotationCredentialExpiriesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), KeyIds: keyIDs})
+	picks := map[string]expiryPick{}
+	password, err := q.q.RotationCredentialExpiries(ctx, sqlitegen.RotationCredentialExpiriesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), KeyIds: keyIDs})
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]string{}
-	for _, row := range rows {
-		stamp := row.ExpiresAt.String
+	username, err := q.q.RotationCredentialExpiriesByUsernameKey(ctx, sqlitegen.RotationCredentialExpiriesByUsernameKeyParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), KeyIds: keyIDs})
+	if err != nil {
+		return nil, err
+	}
+	add := func(key, runID string, revision sql.NullInt64, expires sql.NullString) error {
+		stamp := expires.String
 		if err := normalizeStoredTimes(&stamp); err != nil {
+			return err
+		}
+		keepNewest(picks, key, expiryPick{revision: revision.Int64, runID: runID, stamp: stamp})
+		return nil
+	}
+	for _, row := range password {
+		if err := add(row.KeyID, row.RunID, row.PublishedRevision, row.ExpiresAt); err != nil {
 			return nil, err
 		}
-		out[row.KeyID] = stamp
 	}
-	return out, nil
+	for _, row := range username {
+		if err := add(row.KeyID, row.RunID, row.PublishedRevision, row.ExpiresAt); err != nil {
+			return nil, err
+		}
+	}
+	return expiryStamps(picks), nil
 }
 
 func (q pgRotationQueries) credentialExpiries(ctx context.Context, chain domain.Scope, keyIDs []string) (map[string]string, error) {
-	rows, err := q.q.RotationCredentialExpiries(ctx, pggen.RotationCredentialExpiriesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), KeyIds: keyIDs})
+	picks := map[string]expiryPick{}
+	password, err := q.q.RotationCredentialExpiries(ctx, pggen.RotationCredentialExpiriesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), KeyIds: keyIDs})
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]string{}
-	for _, row := range rows {
-		stamp := pgStoredStamp(row.ExpiresAt)
+	username, err := q.q.RotationCredentialExpiriesByUsernameKey(ctx, pggen.RotationCredentialExpiriesByUsernameKeyParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), KeyIds: keyIDs})
+	if err != nil {
+		return nil, err
+	}
+	add := func(key, runID string, revision pgtype.Int8, expires pgtype.Timestamptz) error {
+		stamp := pgStoredStamp(expires)
 		if err := normalizeStoredTimes(&stamp); err != nil {
+			return err
+		}
+		keepNewest(picks, key, expiryPick{revision: revision.Int64, runID: runID, stamp: stamp})
+		return nil
+	}
+	for _, row := range password {
+		if err := add(row.KeyID, row.RunID, row.PublishedRevision, row.ExpiresAt); err != nil {
 			return nil, err
 		}
-		out[row.KeyID] = stamp
 	}
-	return out, nil
+	for _, row := range username {
+		if err := add(row.KeyID, row.RunID, row.PublishedRevision, row.ExpiresAt); err != nil {
+			return nil, err
+		}
+	}
+	return expiryStamps(picks), nil
 }
 
 func (q sqliteRotationQueries) claim(ctx context.Context, chain domain.Scope, keyID, rotationID string) (bool, error) {
@@ -621,7 +727,11 @@ func (q sqliteRotationQueries) blockingRunRotations(ctx context.Context, chain d
 	if err != nil {
 		return nil, err
 	}
-	return uniqueFirst(append(open, failed...), limit), nil
+	unconfirmed, err := q.q.RotationUnconfirmedFailedRunRotations(ctx, sqlitegen.RotationUnconfirmedFailedRunRotationsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), PageLimit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return uniqueFirst(append(append(open, failed...), unconfirmed...), limit), nil
 }
 
 func (q pgRotationQueries) blockingRunRotations(ctx context.Context, chain domain.Scope, limit int) ([]string, error) {
@@ -637,7 +747,11 @@ func (q pgRotationQueries) blockingRunRotations(ctx context.Context, chain domai
 	if err != nil {
 		return nil, err
 	}
-	return uniqueFirst(append(open, failed...), limit), nil
+	unconfirmed, err := q.q.RotationUnconfirmedFailedRunRotations(ctx, pggen.RotationUnconfirmedFailedRunRotationsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), PageLimit: pageLimit})
+	if err != nil {
+		return nil, err
+	}
+	return uniqueFirst(append(append(open, failed...), unconfirmed...), limit), nil
 }
 
 // uniqueFirst keeps the first limit distinct ids in id order. Each source list is
@@ -777,4 +891,96 @@ func pgRotation(c pggen.RotationGetRow) (RotationRecord, error) {
 		return RotationRecord{}, err
 	}
 	return out, nil
+}
+
+func (r rotationQueries) BeginRunPublish(ctx context.Context, p authz.Proof, run RotationRun, now time.Time) error {
+	chain, err := r.envChain(p, authz.StoreRotationsBeginRunPublish)
+	if err != nil {
+		return err
+	}
+	if chain != run.Chain() {
+		return ErrNotFound
+	}
+	rows, err := r.queries.runtime().settleRun(ctx, run, RotationSettle{Now: now, FromPhases: []string{"minted"}, Phase: "minted", NextAttempt: run.NextAttemptAt, KeepLease: true})
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return ErrRotationFenceLost
+	}
+	return nil
+}
+
+func (r rotationQueries) RecordRunPublish(ctx context.Context, p authz.Proof, rec RotationPublishRecord) error {
+	chain, err := r.envChain(p, authz.StoreRotationsRecordRunPublish)
+	if err != nil {
+		return err
+	}
+	run := rec.Run
+	if chain != run.Chain() {
+		return ErrNotFound
+	}
+	rt := r.queries.runtime()
+	rows, err := rt.settleRun(ctx, run, RotationSettle{Now: rec.Now, FromPhases: []string{"minted"}, Phase: "published", NextAttempt: rec.NextAttempt, PublishedRevision: rec.Revision, KeepLease: true})
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return ErrRotationFenceLost
+	}
+	if err := rt.insertAudit(ctx, chain, run.AuthorityPrincipalID, run.RotationID, run.ID, rec.Outcome.Audit, rec.Now); err != nil {
+		return err
+	}
+	if err := rt.closeEffect(ctx, chain, run.ID, rec.Outcome, rec.Now); err != nil {
+		return err
+	}
+	// Zero rows is correct: the rotation was paused or deleted while the run was
+	// in flight. The publish still stands, so the run still revokes; only the
+	// schedule is not re-armed.
+	_, err = rt.setNextRun(ctx, chain, run.RotationID, rec.NextRunAt, rec.Now)
+	return err
+}
+
+func (r rotationQueries) AbandonOpenRuns(ctx context.Context, p authz.Proof, rotationID string, at time.Time, delay time.Duration) ([]AbandonedRun, error) {
+	chain, err := r.envChain(p, authz.StoreRotationsAbandonOpenRuns)
+	if err != nil {
+		return nil, err
+	}
+	return r.queries.abandonRuns(ctx, chain, rotationID, at, at.Add(delay))
+}
+
+func (r rotationQueries) ProviderLiveRuns(ctx context.Context, p authz.Proof, providerID string) (int64, error) {
+	chain, err := authz.Verify(p, authz.StoreRotationsProviderLiveRuns, r.tok)
+	if err != nil {
+		return 0, err
+	}
+	return r.queries.providerLiveRuns(ctx, chain, providerID)
+}
+
+func (q sqliteRotationQueries) abandonRuns(ctx context.Context, chain domain.Scope, rotationID string, at, publishedDue time.Time) ([]AbandonedRun, error) {
+	rows, err := q.q.RotationAbandonOpenRuns(ctx, sqlitegen.RotationAbandonOpenRunsParams{At: fixedStamp(at), PublishedDueAt: fixedStamp(publishedDue), RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(row sqlitegen.RotationAbandonOpenRunsRow) (AbandonedRun, error) {
+		return AbandonedRun{ID: row.ID, Phase: row.Phase, CandidateHandle: row.CandidateHandle, SupersededHandle: row.SupersededHandle.String}, nil
+	})
+}
+
+func (q pgRotationQueries) abandonRuns(ctx context.Context, chain domain.Scope, rotationID string, at, publishedDue time.Time) ([]AbandonedRun, error) {
+	rows, err := q.q.RotationAbandonOpenRuns(ctx, pggen.RotationAbandonOpenRunsParams{At: pgRequiredTime(at), PublishedDueAt: pgRequiredTime(publishedDue), RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(row pggen.RotationAbandonOpenRunsRow) (AbandonedRun, error) {
+		return AbandonedRun{ID: row.ID, Phase: row.Phase, CandidateHandle: row.CandidateHandle, SupersededHandle: row.SupersededHandle.String}, nil
+	})
+}
+
+func (q sqliteRotationQueries) providerLiveRuns(ctx context.Context, chain domain.Scope, providerID string) (int64, error) {
+	return q.q.RotationProviderLiveRuns(ctx, sqlitegen.RotationProviderLiveRunsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ProviderID: providerID})
+}
+
+func (q pgRotationQueries) providerLiveRuns(ctx context.Context, chain domain.Scope, providerID string) (int64, error) {
+	return q.q.RotationProviderLiveRuns(ctx, pggen.RotationProviderLiveRunsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ProviderID: providerID})
 }

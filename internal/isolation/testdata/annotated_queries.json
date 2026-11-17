@@ -3360,6 +3360,48 @@
   },
   {
     "engine": "postgres",
+    "name": "RotationProviderLiveRuns",
+    "annotation": "instance-scoped",
+    "hash": "7090b5799fb0d6fe925a3287c8fed95516753f96d52a1c324ab9f8646b39ac27",
+    "reason": "The provider delete guard counts runs across the provider's rotations, and runs of other rotations that owe a role this provider minted, under the org and project chain; the effect join and the minting-run subquery are pinned to the run's own chain."
+  },
+  {
+    "engine": "postgres",
+    "name": "RotationRtClaimDueRun",
+    "annotation": "instance-scoped",
+    "hash": "7e83c5d1d0dac3171434297cc74cb4a45194079b855db884eb90f3e38fb87acf",
+    "reason": "RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension."
+  },
+  {
+    "engine": "postgres",
+    "name": "RotationRtDueRotation",
+    "annotation": "instance-scoped",
+    "hash": "302c8d242bd3ab59515e5754da14efb583c8af7241e15ed8d2422f73167874e9",
+    "reason": "RotationRuntime closed scheduler picks one due rotation across tenants under the per-org concurrency cap; the run is then created under the recorded authority's proof and binds the selected immutable chain."
+  },
+  {
+    "engine": "postgres",
+    "name": "RotationRtLoadSupersededRole",
+    "annotation": "instance-scoped",
+    "hash": "049d94355f99b958334a09e0bdc0b8ef22d51a10a8dfe0270b5b6815a96db31f",
+    "reason": "The superseded role is minted by another run of the same org, project and environment chain (joined on every chain column), under a rotation of possibly another provider; the read is fenced on the claimed run's lease and chain, and the extend-uncertainty count is a chain-bound subquery."
+  },
+  {
+    "engine": "postgres",
+    "name": "RotationRtOrgLeaseCount",
+    "annotation": "instance-scoped",
+    "hash": "30b602cf10495555be085d1652700de5cb40516491700a1d99059127827e8fd9",
+    "reason": "RotationRuntime closed scheduler bounds concurrent runs per org: the count spans every project and environment of the one org the due rotation belongs to and carries no tenant data out."
+  },
+  {
+    "engine": "postgres",
+    "name": "RotationUnconfirmedFailedRunRotations",
+    "annotation": "instance-scoped",
+    "hash": "0d929ed2569aa903ae06286d3bbc85d3cb5dc2a62c5f66106725d3799a78629b",
+    "reason": "A failed run that never published may still hold a live candidate role until a drop is confirmed; the chain is bound on the run row and the effect rows join under the same chain."
+  },
+  {
+    "engine": "postgres",
     "name": "RuntimeDynamicClaimDueLease",
     "annotation": "instance-scoped",
     "hash": "29acf34d40a14f9adc61eab1f35f124425ee2a97d76e2f98823cbf49cf072670",
@@ -7091,6 +7133,48 @@
     "name": "RotateSessionFactors",
     "annotation": "authn-resolution",
     "hash": "7b657d72d590c757f8ff97a6ce19a015d434dedd618878fc2eef6ee31d5e63c5"
+  },
+  {
+    "engine": "sqlite",
+    "name": "RotationProviderLiveRuns",
+    "annotation": "instance-scoped",
+    "hash": "7090b5799fb0d6fe925a3287c8fed95516753f96d52a1c324ab9f8646b39ac27",
+    "reason": "The provider delete guard counts runs across the provider's rotations, and runs of other rotations that owe a role this provider minted, under the org and project chain; the effect join and the minting-run subquery are pinned to the run's own chain."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RotationRtClaimDueRun",
+    "annotation": "instance-scoped",
+    "hash": "3c7800a6452cffc2e1ade4334d2b0fb8dac66a7da64ed0b27fd8fdca9cef74e2",
+    "reason": "RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RotationRtDueRotation",
+    "annotation": "instance-scoped",
+    "hash": "302c8d242bd3ab59515e5754da14efb583c8af7241e15ed8d2422f73167874e9",
+    "reason": "RotationRuntime closed scheduler picks one due rotation across tenants under the per-org concurrency cap; the run is then created under the recorded authority's proof and binds the selected immutable chain."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RotationRtLoadSupersededRole",
+    "annotation": "instance-scoped",
+    "hash": "049d94355f99b958334a09e0bdc0b8ef22d51a10a8dfe0270b5b6815a96db31f",
+    "reason": "The superseded role is minted by another run of the same org, project and environment chain (joined on every chain column), under a rotation of possibly another provider; the read is fenced on the claimed run's lease and chain, and the extend-uncertainty count is a chain-bound subquery."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RotationRtOrgLeaseCount",
+    "annotation": "instance-scoped",
+    "hash": "30b602cf10495555be085d1652700de5cb40516491700a1d99059127827e8fd9",
+    "reason": "RotationRuntime closed scheduler bounds concurrent runs per org: the count spans every project and environment of the one org the due rotation belongs to and carries no tenant data out."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RotationUnconfirmedFailedRunRotations",
+    "annotation": "instance-scoped",
+    "hash": "0d929ed2569aa903ae06286d3bbc85d3cb5dc2a62c5f66106725d3799a78629b",
+    "reason": "A failed run that never published may still hold a live candidate role until a drop is confirmed; the chain is bound on the run row and the effect rows join under the same chain."
   },
   {
     "engine": "sqlite",

@@ -270,6 +270,9 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		// lifecycle writes and reads with no external call or fan-out
 		authz.OpRotationCreate, authz.OpRotationInspect, authz.OpRotationPause,
 		authz.OpRotationResume, authz.OpRotationDelete,
+		// the executor's own publish transaction (#148, S2): never a request
+		// path, charged under the publish categories by PublishPlanned itself
+		authz.OpRotationRun,
 		// ssh certificates (#155): bounded reads of one environment's CAs,
 		// profiles and certificates (the KRL read is capped at its serial
 		// bound), and single-row lifecycle writes with no external call

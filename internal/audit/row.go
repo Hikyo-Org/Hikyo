@@ -125,6 +125,13 @@ type Context struct {
 	// against the origin actually presenting it: a `ws` bearer issued to
 	// origin A must not authenticate from allowlisted origin B.
 	RequestOrigin string
+	// AuthorityID and CorrelationID mark events a system worker emits while it
+	// acts with a recorded authority principal's delegated access (the rotation
+	// executor): the principal the worker acts for, and the run id that ties every
+	// row of one run together. The acting principal stays the event's actor; an
+	// emitter cannot assert a system actor class under a principal-backed proof.
+	AuthorityID   string
+	CorrelationID string
 }
 
 type ctxKey struct{}
@@ -134,6 +141,8 @@ func WithContext(ctx context.Context, c Context) context.Context {
 	c.SourceIP = SanitizeFreeText(c.SourceIP)
 	c.UserAgent = SanitizeFreeText(c.UserAgent)
 	c.RequestOrigin = SanitizeFreeText(c.RequestOrigin)
+	c.AuthorityID = SanitizeFreeText(c.AuthorityID)
+	c.CorrelationID = SanitizeFreeText(c.CorrelationID)
 	return context.WithValue(ctx, ctxKey{}, c)
 }
 

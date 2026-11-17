@@ -45,6 +45,7 @@ type applicationGeneration struct {
 	scheduler                         *Scheduler
 	adapterWorker                     *adapter.Worker
 	dynamicWorker                     *dynamicWorker
+	rotationWorker                    *rotationWorker
 	sshSweeper                        *sshSweeper
 	pkiWorker                         *pkiWorker
 	updateReconciler                  *service.Updates
@@ -200,6 +201,10 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		DB: db, Auth: authSvc, Keyring: kr, Budget: budget, Runtime: dynamicRuntime,
 		ProviderFactory: newDynamicFactory(cfg.DynamicEgressPolicy), LeaseDeadline: dynamicProviderDeadline,
 	}
+	rotationExecutor := &service.RotationExecutor{
+		DB: db, Runtime: store.NewRotationRuntime(db), Keyring: kr,
+		ProviderFactory: newDynamicFactory(cfg.DynamicEgressPolicy), ProviderDeadline: dynamicProviderDeadline, Log: log,
+	}
 	sshService := &service.SSH{DB: db, Auth: authSvc, Keyring: kr, Budget: budget, Runtime: store.NewSSHRuntime(db)}
 
 	// Transit (#156): software custody only. The external-custody seam has no
@@ -246,6 +251,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	// they ride the same credential, federation cache and budget.
 	deliverySvc := &service.Delivery{DB: db, Keyring: kr, Federation: federation, Budget: budget}
 	revisionsSvc := &service.Revisions{DB: db, Keyring: kr, Auth: authSvc, Advisory: advisory, Budget: budget}
+	rotationExecutor.Values, rotationExecutor.Revisions = valuesSvc, revisionsSvc
 	// The registration policy (#606): reauth through the one Auth; the
 	// `no-public-origin` and `mailer-unconfigured` preconditions read the
 	// operator's explicit origin and the active runtime mail transport. A
@@ -523,6 +529,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		}}},
 		adapterWorker:    adapterWorker,
 		dynamicWorker:    &dynamicWorker{svc: dynamicService, id: "dynamic-worker-" + uuid.Must(uuid.NewV7()).String(), log: log, selfConfig: selfConfig},
+		rotationWorker:   &rotationWorker{svc: rotationExecutor, id: "rotation-worker-" + uuid.Must(uuid.NewV7()).String(), log: log, selfConfig: selfConfig},
 		sshSweeper:       &sshSweeper{svc: sshService, log: log, selfConfig: selfConfig},
 		pkiWorker:        &pkiWorker{svc: pkiService, log: log, selfConfig: selfConfig},
 		updateReconciler: updatesService,

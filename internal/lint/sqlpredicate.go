@@ -70,7 +70,7 @@ var (
 	// sqlc named form (the reserved chain_* parameters use it on postgres).
 	paramRe        = `(\?|\$\d+|SQLCARG_\w+)`
 	predicateValue = `(?:` + paramRe + `|'(?:[^']|'')*'|-?\d+(?:\.\d+)?|TRUE|FALSE|NULL)`
-	predicateTails = []string{" ORDER BY ", " FOR UPDATE", " FOR SHARE", " FOR NO KEY UPDATE", " FOR KEY SHARE", " GROUP BY ", " LIMIT "}
+	predicateTails = []string{" ORDER BY ", " FOR UPDATE", " FOR SHARE", " FOR NO KEY UPDATE", " FOR KEY SHARE", " GROUP BY ", " LIMIT ", " RETURNING "}
 	// sqlcArgRe masks sqlc.arg(name) into a paren-free token so the
 	// conservative parenthesis rejection doesn't fire on the named-parameter
 	// syntax itself.
@@ -418,7 +418,9 @@ func checkWhere(label, sql, upper string, chainCols []string) []string {
 	// Trailing clauses that are not predicates get cut before the conjunct
 	// walk. FOR UPDATE is a row-lock request, ORDER BY a sort, GROUP BY (with
 	// any HAVING after it) an aggregation over rows the chain conjuncts already
-	// confined; none of them widens that set.
+	// confined; none of them widens that set. RETURNING names the output columns
+	// of an UPDATE or DELETE after its predicate has chosen the rows; a nested
+	// SELECT inside it is still caught by the nested-SELECT refusal.
 	for _, tail := range predicateTails {
 		if end := strings.Index(strings.ToUpper(maskSQLContractLiteralsAndComments(where)), tail); end >= 0 {
 			where = where[:end]

@@ -11,6 +11,74 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const rotationAbandonOpenRuns = `-- name: RotationAbandonOpenRuns :many
+UPDATE rotation_runs SET phase=CASE WHEN published_revision IS NOT NULL AND superseded_handle IS NULL THEN 'done' ELSE 'quarantine' END,phase_at=$1,last_error='abandoned',next_attempt_at=CASE WHEN published_revision IS NULL THEN $1 WHEN phase='published' AND superseded_handle IS NOT NULL THEN $2 ELSE next_attempt_at END,lease_owner=CASE WHEN published_revision IS NULL THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN published_revision IS NULL AND lease_owner IS NOT NULL THEN $1 ELSE NULL END,lease_claim_token=lease_claim_token+1 WHERE rotation_id=$3 AND org_id=$4 AND project_id=$5 AND environment_id=$6 AND phase NOT IN ('done','quarantine','failed') RETURNING id,phase,candidate_handle,superseded_handle
+`
+
+type RotationAbandonOpenRunsParams struct {
+	At             pgtype.Timestamptz
+	PublishedDueAt pgtype.Timestamptz
+	RotationID     string
+	ChainOrg       string
+	ChainProject   string
+	ChainEnv       string
+}
+
+type RotationAbandonOpenRunsRow struct {
+	ID               string
+	Phase            string
+	CandidateHandle  string
+	SupersededHandle pgtype.Text
+}
+
+// Abandon closes every unsettled run and bumps the claim token, so a worker still
+// holding the run loses its fence. A pre-publish run becomes quarantine and is due
+// now, but it keeps its lease owner and its lease ends at the abandon time: a
+// worker that was mid-provider call is not stopped by the token, and the claim's
+// lease cut (one provider deadline past the lease end) makes the candidate
+// reconciler wait for that call to finish before it probes and drops the candidate.
+// A pre-publish run nobody held has no lease to keep and is claimable at once. A
+// published run that owes a revoke becomes quarantine and keeps its overlap deadline (the
+// revoke-obligation loop drops the superseded role after it), except a run still in
+// phase published: its stored deadline was read before the publish committed, so
+// it takes published_due_at, the abandon time plus the revocation delay, an observation
+// after the commit. A published run with
+// no superseded role owes nothing, so it settles straight to done; left in
+// quarantine it would hold its provider and environment forever. RETURNING is the
+// list of the rows this statement actually changed, so the audit rows the caller
+// writes match them one to one.
+func (q *Queries) RotationAbandonOpenRuns(ctx context.Context, arg RotationAbandonOpenRunsParams) ([]RotationAbandonOpenRunsRow, error) {
+	rows, err := q.db.Query(ctx, rotationAbandonOpenRuns,
+		arg.At,
+		arg.PublishedDueAt,
+		arg.RotationID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RotationAbandonOpenRunsRow
+	for rows.Next() {
+		var i RotationAbandonOpenRunsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Phase,
+			&i.CandidateHandle,
+			&i.SupersededHandle,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const rotationBlockingRunRotations = `-- name: RotationBlockingRunRotations :many
 SELECT DISTINCT rotation_id FROM rotation_runs WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND phase NOT IN ('done','failed') ORDER BY rotation_id LIMIT $4
 `
@@ -161,8 +229,8 @@ func (q *Queries) RotationCreate(ctx context.Context, arg RotationCreateParams) 
 }
 
 const rotationCredentialExpiries = `-- name: RotationCredentialExpiries :many
-SELECT key_id AS key_id,run_id AS run_id,expires_at AS expires_at FROM (
- SELECT ro.key_id,ru.id AS run_id,ru.candidate_valid_until AS expires_at,ROW_NUMBER() OVER (PARTITION BY ro.key_id ORDER BY ru.started_at DESC,ru.id DESC) AS ordinal
+SELECT key_id AS key_id,run_id AS run_id,expires_at AS expires_at,published_revision AS published_revision FROM (
+ SELECT ro.key_id AS key_id,ru.id AS run_id,ru.candidate_valid_until AS expires_at,ru.published_revision AS published_revision,ROW_NUMBER() OVER (PARTITION BY ro.key_id ORDER BY ru.published_revision DESC,ru.id DESC) AS ordinal
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
  WHERE ru.org_id=$1 AND ru.project_id=$2 AND ru.environment_id=$3 AND ro.key_id = ANY($4::text[]) AND ru.published_revision IS NOT NULL
  ) ranked WHERE ordinal=1 ORDER BY key_id
@@ -176,14 +244,18 @@ type RotationCredentialExpiriesParams struct {
 }
 
 type RotationCredentialExpiriesRow struct {
-	KeyID     string
-	RunID     string
-	ExpiresAt pgtype.Timestamptz
+	KeyID             string
+	RunID             string
+	ExpiresAt         pgtype.Timestamptz
+	PublishedRevision pgtype.Int8
 }
 
-// The delivered-credential expiry for a page of keys: the newest published run per
-// key, ranked in SQL so the result holds one row per requested key whatever the run
-// history, and a list never queries per row.
+// The delivered-credential expiry for a page of keys, one query per key role
+// (the password key and the username key of a rotation): the newest published run per key, ranked in SQL so the result holds
+// one row per requested key whatever the run history. The store merges the two
+// roles by published_revision, exactly as the single-key variant orders them, so a
+// key that was one rotation's username key and is now another's password key
+// reads the same in a list and in a get. A page never queries per row.
 func (q *Queries) RotationCredentialExpiries(ctx context.Context, arg RotationCredentialExpiriesParams) ([]RotationCredentialExpiriesRow, error) {
 	rows, err := q.db.Query(ctx, rotationCredentialExpiries,
 		arg.ChainOrg,
@@ -198,7 +270,64 @@ func (q *Queries) RotationCredentialExpiries(ctx context.Context, arg RotationCr
 	var items []RotationCredentialExpiriesRow
 	for rows.Next() {
 		var i RotationCredentialExpiriesRow
-		if err := rows.Scan(&i.KeyID, &i.RunID, &i.ExpiresAt); err != nil {
+		if err := rows.Scan(
+			&i.KeyID,
+			&i.RunID,
+			&i.ExpiresAt,
+			&i.PublishedRevision,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rotationCredentialExpiriesByUsernameKey = `-- name: RotationCredentialExpiriesByUsernameKey :many
+SELECT key_id AS key_id,run_id AS run_id,expires_at AS expires_at,published_revision AS published_revision FROM (
+ SELECT ro.username_key_id AS key_id,ru.id AS run_id,ru.candidate_valid_until AS expires_at,ru.published_revision AS published_revision,ROW_NUMBER() OVER (PARTITION BY ro.username_key_id ORDER BY ru.published_revision DESC,ru.id DESC) AS ordinal
+ FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
+ WHERE ru.org_id=$1 AND ru.project_id=$2 AND ru.environment_id=$3 AND ro.username_key_id = ANY($4::text[]) AND ru.published_revision IS NOT NULL
+ ) ranked WHERE ordinal=1 ORDER BY key_id
+`
+
+type RotationCredentialExpiriesByUsernameKeyParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	KeyIds       []string
+}
+
+type RotationCredentialExpiriesByUsernameKeyRow struct {
+	KeyID             string
+	RunID             string
+	ExpiresAt         pgtype.Timestamptz
+	PublishedRevision pgtype.Int8
+}
+
+func (q *Queries) RotationCredentialExpiriesByUsernameKey(ctx context.Context, arg RotationCredentialExpiriesByUsernameKeyParams) ([]RotationCredentialExpiriesByUsernameKeyRow, error) {
+	rows, err := q.db.Query(ctx, rotationCredentialExpiriesByUsernameKey,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.KeyIds,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RotationCredentialExpiriesByUsernameKeyRow
+	for rows.Next() {
+		var i RotationCredentialExpiriesByUsernameKeyRow
+		if err := rows.Scan(
+			&i.KeyID,
+			&i.RunID,
+			&i.ExpiresAt,
+			&i.PublishedRevision,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -210,7 +339,7 @@ func (q *Queries) RotationCredentialExpiries(ctx context.Context, arg RotationCr
 }
 
 const rotationCredentialExpiry = `-- name: RotationCredentialExpiry :one
-SELECT ru.id AS run_id, ru.candidate_valid_until AS expires_at FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id WHERE ru.org_id=$1 AND ru.project_id=$2 AND ru.environment_id=$3 AND ro.key_id=$4 AND ru.published_revision IS NOT NULL ORDER BY ru.started_at DESC, ru.id DESC LIMIT 1
+SELECT ru.id AS run_id, ru.candidate_valid_until AS expires_at FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id WHERE ru.org_id=$1 AND ru.project_id=$2 AND ru.environment_id=$3 AND (ro.key_id=$4 OR ro.username_key_id=$4) AND ru.published_revision IS NOT NULL ORDER BY ru.published_revision DESC, ru.id DESC LIMIT 1
 `
 
 type RotationCredentialExpiryParams struct {
@@ -644,6 +773,32 @@ func (q *Queries) RotationPauseActive(ctx context.Context, arg RotationPauseActi
 	return result.RowsAffected(), nil
 }
 
+const rotationProviderLiveRuns = `-- name: RotationProviderLiveRuns :one
+SELECT COUNT(*) FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id LEFT JOIN rotation_effects ef ON ef.run_id=ru.id AND ef.org_id=ru.org_id AND ef.project_id=ru.project_id AND ef.environment_id=ru.environment_id AND ef.kind='drop_candidate' AND ef.outcome='success' WHERE ru.org_id=$1 AND ru.project_id=$2 AND ru.phase<>'done' AND NOT (ru.phase='failed' AND ru.published_revision IS NULL AND ef.id IS NOT NULL) AND (ro.provider_id=$3 OR ((ru.published_revision IS NOT NULL OR ru.phase IN ('minting','minted','staged','published')) AND EXISTS (SELECT 1 FROM rotation_runs sup JOIN rotations so ON so.org_id=sup.org_id AND so.project_id=sup.project_id AND so.environment_id=sup.environment_id AND so.id=sup.rotation_id WHERE sup.org_id=ru.org_id AND sup.project_id=ru.project_id AND sup.environment_id=ru.environment_id AND sup.candidate_handle=ru.superseded_handle AND so.provider_id=$3)))
+`
+
+type RotationProviderLiveRunsParams struct {
+	ChainOrg     string
+	ChainProject string
+	ProviderID   string
+}
+
+// Runs that need a provider to settle: a run of one of its rotations that may
+// hold a live role (every phase but done, and a failed run that never published
+// without a confirmed drop), and a run of ANY rotation that still owes the revoke
+// of a superseded role this provider minted (a recreated rotation may have moved
+// to another provider, but the old role is only droppable where it was minted). A
+// run that never published and has settled (failed, quarantine) never revokes that
+// role, so it does not count.
+// hikyo:reason The provider delete guard counts runs across the provider's rotations, and runs of other rotations that owe a role this provider minted, under the org and project chain; the effect join and the minting-run subquery are pinned to the run's own chain.
+// hikyo:instance-scoped
+func (q *Queries) RotationProviderLiveRuns(ctx context.Context, arg RotationProviderLiveRunsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, rotationProviderLiveRuns, arg.ChainOrg, arg.ChainProject, arg.ProviderID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const rotationPublishedFailedRunRotations = `-- name: RotationPublishedFailedRunRotations :many
 SELECT DISTINCT rotation_id FROM rotation_runs WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND phase='failed' AND published_revision IS NOT NULL ORDER BY rotation_id LIMIT $4
 `
@@ -770,4 +925,44 @@ func (q *Queries) RotationSetState(ctx context.Context, arg RotationSetStatePara
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const rotationUnconfirmedFailedRunRotations = `-- name: RotationUnconfirmedFailedRunRotations :many
+SELECT DISTINCT ru.rotation_id FROM rotation_runs ru LEFT JOIN rotation_effects ef ON ef.run_id=ru.id AND ef.org_id=ru.org_id AND ef.project_id=ru.project_id AND ef.environment_id=ru.environment_id AND ef.kind='drop_candidate' AND ef.outcome='success' WHERE ru.org_id=$1 AND ru.project_id=$2 AND ru.environment_id=$3 AND ru.phase='failed' AND ru.published_revision IS NULL AND ef.id IS NULL ORDER BY ru.rotation_id LIMIT $4
+`
+
+type RotationUnconfirmedFailedRunRotationsParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	PageLimit    int32
+}
+
+// A failed run that never published only stops holding a live role once its
+// candidate drop is recorded: the fenced claim write fails the run before the drop.
+// hikyo:reason A failed run that never published may still hold a live candidate role until a drop is confirmed; the chain is bound on the run row and the effect rows join under the same chain.
+// hikyo:instance-scoped
+func (q *Queries) RotationUnconfirmedFailedRunRotations(ctx context.Context, arg RotationUnconfirmedFailedRunRotationsParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, rotationUnconfirmedFailedRunRotations,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var rotation_id string
+		if err := rows.Scan(&rotation_id); err != nil {
+			return nil, err
+		}
+		items = append(items, rotation_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

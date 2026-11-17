@@ -164,6 +164,13 @@ func runRotationEnvironmentDeleteBlockedByRuns(t *testing.T, db *store.DB) {
 	}
 	execRaw(t, db, `UPDATE rotation_runs SET phase='failed' WHERE id='run_blk_quarantine'`)
 
+	// A failed run that never published still blocks until its candidate drop is
+	// recorded as confirmed.
+	if err := envs.Delete(ctx, service.LocalPrincipal(alice), f.scope); !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
+		t.Fatalf("delete with an unconfirmed pre-publish failure = %v", err)
+	}
+	execRaw(t, db, `INSERT INTO rotation_effects (id, org_id, project_id, environment_id, run_id, kind, intent_audit_id, outcome_audit_id, outcome, created_at, finished_at) VALUES ('rfx_blk_drop','org_a','prj_a1','`+string(f.env)+`','run_blk_quarantine','drop_candidate','aud_blk_i','aud_blk_o','success',`+ts+`,`+ts+`)`)
+
 	// A failed run that had published may hold the live role.
 	blocked("failed", "5", "failed_published")
 	if err := envs.Delete(ctx, service.LocalPrincipal(alice), f.scope); !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
@@ -235,6 +242,7 @@ func runRotationDefinitionsApplyEnvironmentDelete(t *testing.T, db *store.DB) {
 
 	// Done history with run and effect rows is purged with the environment.
 	execRaw(t, db, `UPDATE rotation_runs SET phase='failed' WHERE id='run_rotenv_q'`)
+	execRaw(t, db, `INSERT INTO rotation_effects (id, org_id, project_id, environment_id, run_id, kind, intent_audit_id, outcome_audit_id, outcome, created_at, finished_at) VALUES ('rfx_rotenv_drop','org_a','`+project+`','`+f.env+`','run_rotenv_q','drop_candidate','aud_rotenv_di','aud_rotenv_do','success',`+ts+`,`+ts+`)`)
 	insertRun("run_rotenv_done", "done", "9")
 	execRaw(t, db, `INSERT INTO rotation_effects (id, org_id, project_id, environment_id, run_id, kind, intent_audit_id, created_at) VALUES ('rfx_rotenv','org_a','`+project+`','`+f.env+`','run_rotenv_done','mint','aud_rotenv',`+ts+`)`)
 	plan = planDefinitions(t, svc, f, raw)
@@ -706,6 +714,67 @@ func TestRotationCredentialExpiryOverLongHistory(t *testing.T) {
 		// The fixture really holds a long history behind the two keys.
 		if n := queryInt(t, db, "SELECT COUNT(*) FROM rotation_runs WHERE environment_id='"+string(f.env)+"' AND published_revision IS NOT NULL"); n < 2*history {
 			t.Fatalf("fixture holds %d published runs, want at least %d", n, 2*history)
+		}
+	})
+}
+
+// A key that was one rotation's username key and is now another rotation's
+// password key reads the newest published run across both roles, and a list and a
+// get agree on it. The body keeps the generated queries' names inline: the
+// reviewed query pins name this test, and the lint requires each query's name in it.
+func TestRotationCredentialExpiryMatchesEitherKeyRole(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := tctx(t)
+		f := newRotationFixture(t, db)
+		// rot_role_prev drove rk_role_prev (password) and rk_role_prev_user
+		// (username); rot_role_next now takes rk_role_prev_user as ITS password key.
+		rawRotation(t, db, f, "rot_role_prev", "rk_role_prev")
+		rawRotation(t, db, f, "rot_role_next", "rk_role_prev_user")
+		older := time.Date(2029, 1, 1, 0, 0, 0, 0, time.UTC)
+		newer := time.Date(2030, 6, 6, 0, 0, 0, 0, time.UTC)
+		stamp := func(v time.Time) string { return v.Format("2006-01-02T15:04:05.000000Z") }
+		// The previous rotation's run is the newer publish of the shared key.
+		rawRun(t, db, f, "run_role_next_old", "rot_role_next", "done", "3", stamp(older), "2026-01-01T00:00:00.000000Z")
+		rawRun(t, db, f, "run_role_prev_new", "rot_role_prev", "done", "7", stamp(newer), "2026-02-01T00:00:00.000000Z")
+
+		list, err := f.svc.List(ctx, f.actor, f.scope, service.RotationListRequest{IncludeDisabled: true, Limit: service.RotationListMaxLimit})
+		if err != nil {
+			t.Fatalf("list: %v", err)
+		}
+		listed := map[string]time.Time{}
+		for _, item := range list.Items {
+			if item.CredentialExpiresAt != "" {
+				listed[item.ID] = mustParseStamp(t, item.CredentialExpiresAt)
+			}
+		}
+		got, err := f.svc.Get(ctx, f.actor, f.scope, "rot_role_next")
+		if err != nil {
+			t.Fatalf("get: %v", err)
+		}
+		fromGet := mustParseStamp(t, got.CredentialExpiresAt)
+		if !fromGet.Equal(newer) {
+			t.Fatalf("get reports %s, want the newer publish of the shared key %s", fromGet, newer)
+		}
+		if !listed["rot_role_next"].Equal(fromGet) {
+			t.Fatalf("list reports %s and get reports %s for the same rotation", listed["rot_role_next"], fromGet)
+		}
+		// The username-role generated query reads the same key from the other side.
+		var rows int
+		if db.Engine() == store.EngineSQLite {
+			r, err := sqlitegen.New(db.SQLiteWrite()).RotationCredentialExpiriesByUsernameKey(ctx, sqlitegen.RotationCredentialExpiriesByUsernameKeyParams{ChainOrg: "org_a", ChainProject: "prj_a1", ChainEnv: string(f.env), KeyIds: []string{"rk_role_prev_user"}})
+			if err != nil {
+				t.Fatalf("RotationCredentialExpiriesByUsernameKey: %v", err)
+			}
+			rows = len(r)
+		} else {
+			r, err := pggen.New(db.PG()).RotationCredentialExpiriesByUsernameKey(ctx, pggen.RotationCredentialExpiriesByUsernameKeyParams{ChainOrg: "org_a", ChainProject: "prj_a1", ChainEnv: string(f.env), KeyIds: []string{"rk_role_prev_user"}})
+			if err != nil {
+				t.Fatalf("RotationCredentialExpiriesByUsernameKey: %v", err)
+			}
+			rows = len(r)
+		}
+		if rows != 1 {
+			t.Fatalf("username-role expiry rows = %d, want 1", rows)
 		}
 	})
 }

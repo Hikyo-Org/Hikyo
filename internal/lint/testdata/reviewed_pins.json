@@ -828,23 +828,37 @@
       ]
     },
     "RotationCredentialExpiries": {
-      "authority": "Verified rotation-list project chain binds org, project and environment on both joined tables. Runs of the requested key ids only; one derived table ranks each key's published runs by start time and id and the outer predicate keeps rank one, so a key reads its newest delivered credential expiry and never the run history. Reads ids and an expiry only.",
+      "authority": "Verified rotation-list project chain binds org, project and environment on both joined tables. Runs whose rotation names a requested key id as its password key only; one derived table ranks each key's published runs by published revision and id and the outer predicate keeps rank one, so a key reads its newest delivered credential expiry and never the run history. Reads ids, a revision and an expiry only.",
       "sql_hash": {
-        "postgres": "90379552bfe6070b40c08ddbad866898653f91a2c9c88c51d1f13d1c06ea2c86",
-        "sqlite": "7f6c5553e08262571cf7d451b0e3e277a9602a0e7c024a7bcf486b4a9c6ab367"
+        "postgres": "e52e2b17ad454c13dcc70a3faeb0f72a6a9f723f305070b00e20cbabad9a283b",
+        "sqlite": "55d6ec92957bd0ae083c09255907e8cb23f20d03ed338bc23ffd518164d2025c"
       },
       "api_hash": {
-        "postgres": "0b9dd733907e25b2b7c43aae0280eaa8c9cc747c459ebd67746425a830e95315",
-        "sqlite": "b624a9c7f2265cd489ee6292371f66a0ab0a62c6bc9a041539dd795b6dd79e65"
+        "postgres": "1665c67a106c91afd985ec8538875b34bbf8066e5143f053a7acc0aeba966230",
+        "sqlite": "5e8034ac00dc0f133e2873b32822caed0908c2fdc427cb35682986f5d9f7d65a"
       },
       "tests": [
         "internal/isolation/rotation_cascade_e2e_test.go:TestRotationCredentialExpiryOverLongHistory"
+      ]
+    },
+    "RotationCredentialExpiriesByUsernameKey": {
+      "authority": "Verified rotation-list project chain binds org, project and environment on both joined tables. Runs whose rotation names a requested key id as its username key only; one derived table ranks each key's published runs by published revision and id and the outer predicate keeps rank one. The store merges it with the password-role query by revision, so a key reads its newest delivered credential expiry whichever role it played. Reads ids, a revision and an expiry only.",
+      "sql_hash": {
+        "postgres": "a41f8999deb6f76c939d4e8367aaedf27a84c35708a80e5d4ba4c7823a232d3c",
+        "sqlite": "fe31a105ec5a3455f426c1ebb53c62f77910f1beff4dfdbad4926ba7b2edd63d"
+      },
+      "api_hash": {
+        "postgres": "1665c67a106c91afd985ec8538875b34bbf8066e5143f053a7acc0aeba966230",
+        "sqlite": "5e8034ac00dc0f133e2873b32822caed0908c2fdc427cb35682986f5d9f7d65a"
+      },
+      "tests": [
+        "internal/isolation/rotation_cascade_e2e_test.go:TestRotationCredentialExpiryMatchesEitherKeyRole"
       ]
     }
   },
   "protocols": {
     "internal/dynamic/postgres/postgres.go:Provider.CreateRole": {
-      "hash": "74e6046307f79fbad05496a167126ba198fd8f595897fc92a19ba47e3d5bd9b1",
+      "hash": "3899f64ff5086098508f64780686d945daa073a22d2ccd9cb92db2ec441323a3",
       "reason": "External PostgreSQL role-DDL protocol; validates generated role/password, sanitizes role identifiers and sets engine-enforced login expiry under policy-approved verify-full connection. No Hikyo application table is queried.",
       "dependencies": [
         "internal/dynamic/dynamic.go:ValidPassword",
@@ -852,6 +866,7 @@
         "internal/dynamic/dynamic.go:inAlphabet",
         "internal/dynamic/dynamic.go:inRoleAlphabet",
         "internal/dynamic/postgres/postgres.go:Provider.connect",
+        "internal/dynamic/postgres/postgres.go:boundedStatement",
         "internal/dynamic/postgres/postgres.go:classifyExec",
         "internal/dynamic/postgres/postgres.go:createRoleSQL",
         "internal/dynamic/postgres/postgres.go:quoteLiteral"
@@ -2925,7 +2940,8 @@
     "internal/dynamic/dynamic.go:inAlphabet": "1de2dc30f219b6ce33ca59905216f0723e8e9dbc9d2ba9acf9933f9668b03cd2",
     "internal/dynamic/dynamic.go:inRoleAlphabet": "86d562ef415150399f7c4d89b83f3b653479f1b5333f4e8fd96ce68649f885dc",
     "internal/dynamic/postgres/postgres.go:Provider.connect": "5da80205a17e200685d9a71e89aa157f3fc3bbed023db72eeeb54c8da4bfee8a",
-    "internal/dynamic/postgres/postgres.go:classifyExec": "81f67cfb50638588f34f2d8c580370989c15ba2fb112c640e8fc2b6200033b61",
+    "internal/dynamic/postgres/postgres.go:boundedStatement": "b1cc94caf82d408d53e0721758a3f2c8d40a0638a62a66d7dca4dacabc756464",
+    "internal/dynamic/postgres/postgres.go:classifyExec": "c589450d289c1727081f68389bd739ae7ad0b67ef428d32a039eec09b1e426b7",
     "internal/dynamic/postgres/postgres.go:createRoleSQL": "708c40acb8c646cf4d968032edec98c943fd61d883a971328419e7bfc113916e",
     "internal/dynamic/postgres/postgres.go:dropRoleSQL": "b88fc8c188d8fce4c1c30c3a20ae8864837bdb37c77205de277b9c5e3d4c4ce1",
     "internal/dynamic/postgres/postgres.go:extendRoleSQL": "49bbdc39f38fc8dc2e18362b983d3a6dc06b616000ad301fde561df6e5e1ea94",
