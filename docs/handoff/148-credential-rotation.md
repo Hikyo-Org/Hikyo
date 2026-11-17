@@ -1205,9 +1205,10 @@ when they pass for each key, like the create that made the rotation. The rotatio
 up under a proof chosen by the same evaluation `Authorize` makes, member rules included
 (round 2: the round-1 choice used `CallerHolds`, which reads grants only, so a person whose
 read and operation come only from member rules got not-found with no audit row). The probe is
-`TxAuthorizer.AuthorizeUnrecorded`, one new exported authz method (shared `CallerHolds` is
-unchanged, it has other callers): it runs `Authorize` and, on a refusal, discards the denial it
-captured. The order is the operation's own environment-wide proof when held (so a publisher
+`TxAuthorizer.AuthorizeFirst` (round 3 folded the round-2 `AuthorizeUnrecorded` primitive into it and
+unexported the primitive, so a caller cannot refuse quietly; shared `CallerHolds` is unchanged, it
+has other callers): it authorizes the first of the given operations the caller holds, without
+recording a refusal of the earlier ones, and when all refuse it records one denial under the first. The order is the operation's own environment-wide proof when held (so a publisher
 without read can pause), else the inspect proof (how a key-narrowed holder finds the keys),
 else the operation itself is authorized so the refusal is recorded once under it. Every
 refusal, an absent rotation included, answers the same not-found and is recorded the same
@@ -1284,6 +1285,11 @@ key was deleted (the key lookup answers not-found); an environment-wide holder c
   and `rotation show` print an `ATTENTION` line per such run; `show` pages through every
   run and warns on stderr, without failing, when the runs cannot be read or the history
   exceeds 20 pages of 500. The run-level release action stays unbuilt.
+  A run refused as `published_versions_changed` (a restore put an earlier value back, so the
+  keys may serve the superseded role again; the executor deliberately keeps the role) gets a
+  different `ATTENTION` line: do **not** drop it at the provider until the keys have moved off it.
+  A quarantine run that published can reach the same hold. `role_owns_objects` and
+  `provider_unavailable` keep the drop advice.
 - Tests: `TestRotationRestoreHold`, `TestRotationRestoreHoldFallbackPausesWithoutTheColumn`,
   `TestRotationReleaseLeavesARefusedRunAlone` (the run-level hold stays untouched).
 
@@ -1293,9 +1299,10 @@ key was deleted (the key lookup answers not-found); an environment-wide holder c
   Gate refused because a restore holds the rotation, and `rotation_paused` for a pause.
 - The doctor's rotation gauges are read through the `RotationGauger` interface, so a test
   pins that `OperationalHealth` reads them once and within the 2 second bound.
-- **Rebuild note (migration 00094).** Round 1 edited migration 00094 in place (it adds
-  `rotations.deferred_from`). A development or preview database that applied the earlier
-  version of 00094 lacks that column and **must be rebuilt**; no stable release carries the
+- **Rebuild note (migration 00094).** Rounds 1 and 3 edited migration 00094 in place (it adds
+  `rotations.deferred_from`, and in round 3 the `rotation_runs_minter` index). A development or
+  preview database that applied an earlier version of 00094 lacks that column or index and
+  **must be rebuilt**; no stable release carries the
   migration, so nothing shipped is affected.
 - `release_hold` storeOps gained the approval-policy and pending-list reads the Gate's checks
   use for an active rotation.
@@ -1304,6 +1311,42 @@ key was deleted (the key lookup answers not-found); an environment-wide holder c
 - Not covered over HTTP: wire ids must match `^[a-z]{2,8}_[0-9a-fA-F-]{36}$`, which the
   isolation fixtures' short ids do not, so the transport leg of the human-only test uses
   absent well-formed ids (status 404 or 403) and the service leg proves the refusal.
+
+### Review round 3 (as built)
+
+- The `ATTENTION` line branches on `published_versions_changed` (above); openapi `error_code`
+  and `credential_valid_until`, `rotation.mdx` and `credential_rotation_owed_test.go` say the same.
+- `TxAuthorizer.AuthorizeFirst` replaces the exported `AuthorizeUnrecorded`; the unrecorded probe
+  is private to it, so the "must then record the refusal" rule is enforced by the method, not by
+  a comment. `tx_authorizer_surface.json` follows.
+- `TestRotationReleaseHoldMatchesResume` (authz registry test) pins release-hold's formula,
+  post-grant reauthentication and self-config membership to resume's: the Gate checks the recorded
+  authority under resume's formula, so the two rows change together.
+- `TestRotationReleaseHoldUsesTheGate` now also asserts the ceremony window is not spent by a
+  refused release (the sliding window's expiry does not move; the successful release moves it) and
+  that exactly one `rotation.release_hold` denial is recorded.
+- **Expiry lookup index.** Migration 00094 gains `rotation_runs_minter (org_id, project_id,
+  environment_id, candidate_handle)` on both engines (edited in place, unreleased; the
+  rebuild note of round 2 covers it, and `development.json` is regenerated). The superseded
+  role is found by handle, and the revoke step's own role lookup (`RotationRtLoadSupersededRole`)
+  uses the same join, so neither scans a chain's runs any more. A run leaves `quarantine` after a
+  successful drop: a pre-publish one settles to `failed` once its candidate drop is confirmed and a
+  published one to `done` once its revoke succeeds, so the per-run lookups of `rotation runs` and
+  `show` are bounded by the runs whose drop keeps failing.
+- **Extend racing a restore hold (confirmed, fixed).** The claim skips held rotations, but a hold
+  landing between the claim and the Gate made `extendDelivered` treat `errRotationHeld` as
+  inactive and park the settled run at "never", so nothing extended the delivered credential after
+  the release. A held refusal now leaves the run due (`NextAttempt` now); the claim still skips it
+  while held. `TestRotationExtendRacingARestoreHoldIsRetriedAfterRelease` failed before the fix (the
+  run parked at year 9000) and passes after.
+- **Published `failed` runs.** Not reachable by any writer: the only writers of `failed` are the
+  pre-publish rollback and the candidate reconciler (both `published_revision IS NULL`), a published
+  run that cannot drop its superseded role stays in its phase (`revoke_refused`, `quarantine`, or
+  the executor phases) and a successful revoke settles `done`, and abandon sets `done` or
+  `quarantine`. The SQL still treats a published `failed` run as possibly owing a role (environment
+  delete, the claim), so the CLI is left flagging `revoke_refused` and `quarantine` only: flagging a
+  published `failed` run would also flag one whose revoke already succeeded, which the run record
+  cannot tell apart.
 
 ### Incident containment
 

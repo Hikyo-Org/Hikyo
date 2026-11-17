@@ -20,7 +20,8 @@ owes a provider role, with the time that role lapses on its own (when an extend 
 it is unsettled, the time is a lower bound and the line says so). One operator
 action is not built yet: a run held at `revoke_refused`, or closed as quarantine,
 has no release command. Its role expires at the time the line prints, or you drop
-it at the provider. Watch `hikyo rotation list` (state and halt reason), `hikyo
+it at the provider, except a run refused as `published_versions_changed` after a
+restore: its role may be serving again, so leave it until the keys have moved off it. Watch `hikyo rotation list` (state and halt reason), `hikyo
 doctor` and the audit log while rotations are enabled.
 :::
 
@@ -266,8 +267,14 @@ on its own. That is the superseded role once the run has published (the new cred
 is then the one in use and is never named), or the candidate of a run that never
 published. When an extend of that role has no settled outcome, the run also carries
 `credential_valid_until_lower_bound: true`: the role may outlive the time shown. The
-CLI repeats both in the `ATTENTION` line, and `hikyo rotation show` checks every page
-of runs. A page holds up to `--limit` runs (1 to 500, default 100); when more
+CLI repeats both in the `ATTENTION` line, and `hikyo rotation show` checks up to
+10,000 runs and warns beyond that. **A run with the error code
+`published_versions_changed` is different.** A restore put an earlier value back, so
+the keys may be serving that role again, and the run is held on purpose: its `ATTENTION`
+line says not to drop the role until the keys have moved off it. Every other refusal
+(`role_owns_objects`, `provider_unavailable`) leaves a superseded role that no key
+serves, so you may drop it at the provider to end it sooner (after reassigning what it
+owns, for `role_owns_objects`). A page holds up to `--limit` runs (1 to 500, default 100); when more
 follow, the CLI prints the `--after` value that continues the list. It needs only
 **read** on the environment.
 
