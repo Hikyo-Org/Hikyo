@@ -72,6 +72,13 @@ is a storage-level property, not an override guarantee: a repository-
 level secret or variable with the same name shadows the organization-level
 value for workflows in that repository.
 
+Warning for GitHub: values written to a repository or organization target are
+readable by any workflow run that can reference secrets, from any branch, for
+example through `toJSON(secrets)`. Keep production secrets out of CI. Prefer
+environment targets protected by deployment-branch rules and required reviewers,
+and let production workloads fetch at runtime. See
+[Keep production secrets out of CI](/docs/machine-identities/#keep-production-secrets-out-of-ci).
+
 For GitHub, a repository environment is the recommended multi-environment
 shape: map dev, stage, and production to separate GitHub environments with no
 prefix. A missing environment is created during the reauthenticated target-add

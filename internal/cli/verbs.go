@@ -817,11 +817,15 @@ oidc federation:
   --claim /kubernetes.io/serviceaccount/uid=9f2c-… .
 
   every binding MUST pin the immutable identifiers its platform exposes:
-    github-actions  repository_id, repository_owner_id, event_name
+    github-actions  repository_id, repository_owner_id, event_name,
+                    ref_protected, runner_environment, job_workflow_ref
     kubernetes      /kubernetes.io/serviceaccount/uid
     Forgejo issuers are refused: Forgejo exposes no immutable repository id.
   pinning a name where an id exists lets a renamed-and-reused path inherit the
   binding, so there is no override.
+  these required pins are JSON strings, which is how GitHub and Kubernetes emit
+  them (repository_id is "74"): pin name=value, never name=#74 or name=?true,
+  or creation is refused. A real GitHub token shows the values to copy.
 
   Bindings are listed and revoked through "sa credential".
 scim provisioning (org scope; the identity provider's own wire is not a CLI surface):

@@ -8,7 +8,6 @@ import {
   identityRefusalText,
   isoDay,
   KUBERNETES_PRESET,
-  parseClaimNumber,
   presetFieldId,
   pullRequestRefusal,
   useCreateBinding,
@@ -325,12 +324,12 @@ export function BindingDialog({
         pins.push({ claim: field.claim, bool_value: raw === 'true' });
         continue;
       }
-      if (original?.number_value !== undefined || field.kind === 'number') {
-        const value = parseClaimNumber(raw);
-        if (value === null) {
-          return `${field.label} (${field.claim}) must be a whole number the issuer actually mints: digits only, and inside the range this contract can carry exactly. Nothing was bound.`;
+      if (field.kind === 'id') {
+        // GitHub emits ids as strings ("74"): validate the digits, pin the string.
+        if (!/^[0-9]+$/.test(raw.trim())) {
+          return `${field.label} (${field.claim}) must be a whole number the issuer actually mints: digits only. Nothing was bound.`;
         }
-        pins.push({ claim: field.claim, number_value: value });
+        pins.push({ claim: field.claim, string_value: raw.trim() });
         continue;
       }
       if (raw.trim() === '') {
@@ -604,7 +603,7 @@ export function BindingDialog({
             <input
               id={presetFieldId(field.claim)}
               className="mono"
-              inputMode={field.kind === 'number' ? 'numeric' : 'text'}
+              inputMode={field.kind === 'id' ? 'numeric' : 'text'}
               value={claims[field.claim] ?? ''}
               onChange={(event) => {
                 setClaims((current) => ({ ...current, [field.claim]: event.target.value }));
@@ -674,9 +673,9 @@ export function BindingDialog({
   );
 }
 
-/** blankClaims is a preset's pin fields, empty except the event a CI binding defaults to. */
+/** blankClaims is a preset's pin fields, empty except the event and any default a preset names. */
 function blankClaims(preset: FederationPreset): Record<string, string> {
   return Object.fromEntries(
-    preset.claims.map((field) => [field.claim, field.kind === 'event' ? 'push' : '']),
+    preset.claims.map((field) => [field.claim, field.kind === 'event' ? 'push' : (field.defaultValue ?? '')]),
   );
 }

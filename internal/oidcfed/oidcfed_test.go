@@ -5,9 +5,12 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 )
 
 // The pointer resolver's edge cases (#62, review round 2). They are table tests
@@ -245,8 +248,8 @@ func TestRequireHTTPS(t *testing.T) {
 	}
 }
 
-// TestSameJSONScalarNeverFolds is the byte-exact rule: a GitHub `repository_id`
-// is the number 4242 and the string "4242" is a different claim value, so a
+// TestSameJSONScalarNeverFolds is the byte-exact rule: a number
+// 4242 and the string "4242" are different claim values, so a
 // binding written one way must not be satisfiable by a token the other.
 func TestSameJSONScalarNeverFolds(t *testing.T) {
 	if sameJSONScalar(jsontext.Value(`4242`), jsontext.Value(`"4242"`)) {
@@ -260,5 +263,38 @@ func TestSameJSONScalarNeverFolds(t *testing.T) {
 	}
 	if !sameJSONScalar(jsontext.Value(`"push"`), jsontext.Value(`"push"`)) {
 		t.Error("identical strings did not match")
+	}
+}
+
+func TestRequiredPinsGitHubActions(t *testing.T) {
+	want := []string{
+		"event_name", "job_workflow_ref", "ref_protected", "repository_id",
+		"repository_owner_id", "runner_environment",
+	}
+	if got := MissingRequiredPins(domain.IssuerGitHubActions, nil); !slices.Equal(got, want) {
+		t.Fatalf("missing = %v, want %v", got, want)
+	}
+	// job_workflow_sha changes every commit for a same-repo workflow: never required.
+	if slices.Contains(RequiredPins[domain.IssuerGitHubActions], "job_workflow_sha") {
+		t.Fatal("job_workflow_sha must not be a required pin")
+	}
+	pinned := mustClaims(`{"repository_id":"74","repository_owner_id":"65","event_name":"push",
+	  "ref_protected":"true","runner_environment":"github-hosted","job_workflow_ref":"o/r/.github/workflows/x.yml@refs/heads/main"}`)
+	if got := MissingRequiredPins(domain.IssuerGitHubActions, pinned); len(got) != 0 {
+		t.Fatalf("missing = %v, want none", got)
+	}
+	if got := NonStringRequiredPins(domain.IssuerGitHubActions, pinned); len(got) != 0 {
+		t.Fatalf("non-string = %v, want none", got)
+	}
+}
+
+func TestNonStringRequiredPins(t *testing.T) {
+	pinned := mustClaims(`{"repository_id":74,"ref_protected":true,"repository_owner_id":"65","runner_environment":"github-hosted"}`)
+	want := []string{"ref_protected", "repository_id"}
+	if got := NonStringRequiredPins(domain.IssuerGitHubActions, pinned); !slices.Equal(got, want) {
+		t.Fatalf("non-string = %v, want %v", got, want)
+	}
+	if got := NonStringRequiredPins(domain.IssuerKubernetes, mustClaims(`{"/kubernetes.io/serviceaccount/uid":7}`)); len(got) != 1 {
+		t.Fatalf("kubernetes numeric uid = %v, want one refusal", got)
 	}
 }
