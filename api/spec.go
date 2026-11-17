@@ -87,7 +87,9 @@ var SpecYAML []byte
 // revoke, preview and accept (#1207).
 // Revision 17 adds scheduled credential rotation configuration (#148): create,
 // list, show, pause, resume and delete. Execution arrives in a later slice.
-const Revision = 17
+// Revision 18 adds run-now and the runs list of a rotation, and the delete's
+// `abandon` flag (#148).
+const Revision = 18
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
 // explicitly does not plan one.

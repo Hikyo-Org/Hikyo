@@ -487,6 +487,8 @@ operations:
   deleteRotation:              {issue: 148}
   pauseRotation:               {issue: 148}
   resumeRotation:              {issue: 148}
+  runRotationNow:              {issue: 148}
+  listRotationRuns:            {issue: 148}
 
   # dynamic secrets (#147 shipped API+CLI+read-only status; management WebUI #595)
   listLeases:                  {webui: machine-access}

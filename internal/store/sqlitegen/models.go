@@ -1414,6 +1414,8 @@ type Rotation struct {
 	Generation             int64
 	CreatedAt              string
 	UpdatedAt              string
+	ManualRunID            sql.NullString
+	ManualSkipOverlap      int64
 }
 
 type RotationEffect struct {
@@ -1439,28 +1441,29 @@ type RotationKeyClaim struct {
 }
 
 type RotationRun struct {
-	ID                     string
-	OrgID                  string
-	ProjectID              string
-	EnvironmentID          string
-	RotationID             string
-	Generation             int64
-	RunTrigger             string
-	Phase                  string
-	CandidateHandle        string
-	SupersededHandle       sql.NullString
-	CandidateValidUntil    sql.NullString
-	PublishedRevision      sql.NullInt64
-	RevocationDelaySeconds int64
-	StartedAt              string
-	PhaseAt                string
-	LeaseOwner             sql.NullString
-	LeaseExpiresAt         sql.NullString
-	LeaseClaimToken        int64
-	AttemptCount           int64
-	NextAttemptAt          string
-	LastError              sql.NullString
-	RevokeNotBeforeAt      sql.NullString
+	ID                         string
+	OrgID                      string
+	ProjectID                  string
+	EnvironmentID              string
+	RotationID                 string
+	Generation                 int64
+	RunTrigger                 string
+	Phase                      string
+	CandidateHandle            string
+	SupersededHandle           sql.NullString
+	CandidateValidUntil        sql.NullString
+	PublishedRevision          sql.NullInt64
+	RevocationDelaySeconds     int64
+	StartedAt                  string
+	PhaseAt                    string
+	LeaseOwner                 sql.NullString
+	LeaseExpiresAt             sql.NullString
+	LeaseClaimToken            int64
+	AttemptCount               int64
+	NextAttemptAt              string
+	LastError                  sql.NullString
+	RevokeNotBeforeAt          sql.NullString
+	NotConvergedAdapterTargets sql.NullInt64
 }
 
 type Rule struct {

@@ -263,6 +263,7 @@ import {
   listRemotes,
   listRevisionPins,
   listRevisions,
+  listRotationRuns,
   listRotations,
   listSamlProviders,
   listSamlSpKeys,
@@ -391,6 +392,7 @@ import {
   rotateSshCa,
   rotateTokenKey,
   rotateTransitKey,
+  runRotationNow,
   samlAcs,
   samlMetadata,
   samlStart,
@@ -695,6 +697,7 @@ import type {
   ListRemotesData,
   ListRevisionPinsData,
   ListRevisionsData,
+  ListRotationRunsData,
   ListRotationsData,
   ListSamlProvidersData,
   ListSamlSpKeysData,
@@ -823,6 +826,7 @@ import type {
   RotateSshCaData,
   RotateTokenKeyData,
   RotateTransitKeyData,
+  RunRotationNowData,
   SamlAcsData,
   SamlMetadataData,
   SamlStartData,
@@ -1104,6 +1108,7 @@ import {
   zListRemotesResponse,
   zListRevisionPinsResponse,
   zListRevisionsResponse,
+  zListRotationRunsResponse,
   zListRotationsResponse,
   zListSamlProvidersResponse,
   zListSamlSpKeysResponse,
@@ -1211,6 +1216,7 @@ import {
   zRotateSshCaResponse,
   zRotateTokenKeyResponse,
   zRotateTransitKeyResponse,
+  zRunRotationNowResponse,
   zSamlAcsResponse,
   zSamlMetadataResponse,
   zSamlStartResponse,
@@ -1484,6 +1490,7 @@ export const listRemotePairingInvitesOp: BodyOperation<ListRemotePairingInvitesD
 export const listRemotesOp: BodyOperation<ListRemotesData, typeof zListRemotesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listRemotes, [200], zListRemotesResponse);
 export const listRevisionPinsOp: BodyOperation<ListRevisionPinsData, typeof zListRevisionPinsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listRevisionPins, [200], zListRevisionPinsResponse);
 export const listRevisionsOp: BodyOperation<ListRevisionsData, typeof zListRevisionsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listRevisions, [200], zListRevisionsResponse);
+export const listRotationRunsOp: BodyOperation<ListRotationRunsData, typeof zListRotationRunsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listRotationRuns, [200], zListRotationRunsResponse);
 export const listRotationsOp: BodyOperation<ListRotationsData, typeof zListRotationsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listRotations, [200], zListRotationsResponse);
 export const listSamlProvidersOp: BodyOperation<ListSamlProvidersData, typeof zListSamlProvidersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listSamlProviders, [200], zListSamlProvidersResponse);
 export const listSamlSpKeysOp: BodyOperation<ListSamlSpKeysData, typeof zListSamlSpKeysResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listSamlSpKeys, [200], zListSamlSpKeysResponse);
@@ -1591,6 +1598,7 @@ export const rotateScanningKeyOp: BodyOperation<RotateScanningKeyData, typeof zR
 export const rotateSshCaOp: BodyOperation<RotateSshCaData, typeof zRotateSshCaResponse> = /* @__PURE__ */ new GeneratedBodyOperation(rotateSshCa, [200], zRotateSshCaResponse);
 export const rotateTokenKeyOp: BodyOperation<RotateTokenKeyData, typeof zRotateTokenKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(rotateTokenKey, [200], zRotateTokenKeyResponse);
 export const rotateTransitKeyOp: BodyOperation<RotateTransitKeyData, typeof zRotateTransitKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(rotateTransitKey, [200], zRotateTransitKeyResponse);
+export const runRotationNowOp: BodyOperation<RunRotationNowData, typeof zRunRotationNowResponse> = /* @__PURE__ */ new GeneratedBodyOperation(runRotationNow, [202], zRunRotationNowResponse);
 export const samlAcsOp: BodyOperation<SamlAcsData, typeof zSamlAcsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(samlAcs, [200], zSamlAcsResponse);
 export const samlMetadataOp: BodyOperation<SamlMetadataData, typeof zSamlMetadataResponse> = /* @__PURE__ */ new GeneratedBodyOperation(samlMetadata, [200], zSamlMetadataResponse);
 export const samlStartOp: BodyOperation<SamlStartData, typeof zSamlStartResponse> = /* @__PURE__ */ new GeneratedBodyOperation(samlStart, [200], zSamlStartResponse);

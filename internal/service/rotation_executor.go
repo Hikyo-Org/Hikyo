@@ -366,7 +366,7 @@ type haltSubject struct {
 
 func subjectOfRun(run store.RotationRun) haltSubject {
 	return haltSubject{ID: run.RotationID, ProviderID: run.ProviderID, KeyID: run.KeyID, UsernameKeyID: run.UsernameKeyID, Authority: run.AuthorityPrincipalID,
-		IntervalSeconds: run.IntervalSeconds, DelaySeconds: run.RevocationDelaySeconds, Generation: run.RotationGeneration}
+		IntervalSeconds: run.IntervalSeconds, DelaySeconds: run.RotationDelaySeconds, Generation: run.RotationGeneration}
 }
 
 func subjectOfDue(d store.DueRotation) haltSubject {
@@ -499,7 +499,7 @@ func dueOfRun(run store.RotationRun) store.DueRotation {
 	return store.DueRotation{
 		ID: run.RotationID, OrgID: run.OrgID, ProjectID: run.ProjectID, EnvironmentID: run.EnvironmentID, ProviderID: run.ProviderID,
 		KeyID: run.KeyID, UsernameKeyID: run.UsernameKeyID, IntervalSeconds: run.IntervalSeconds,
-		RevocationDelaySeconds: run.RevocationDelaySeconds, AuthorityPrincipalID: run.AuthorityPrincipalID, Generation: run.RunGeneration,
+		RevocationDelaySeconds: run.RotationDelaySeconds, AuthorityPrincipalID: run.AuthorityPrincipalID, Generation: run.RunGeneration,
 	}
 }
 
@@ -569,9 +569,15 @@ func (e *RotationExecutor) startRun(ctx context.Context, worker string, d store.
 	if !rotationMayStart(now, spent, w) {
 		return true, e.haltDue(ctx, d, rotHaltExhausted, now)
 	}
-	runID, err := newID("rrn")
-	if err != nil {
-		return false, e.deferDue(ctx, d, now, "run_id", err)
+	// A run-now request names the run it asked for and may skip the overlap; every
+	// check above and below is the same one a scheduled start passes.
+	runID, trigger := d.ManualRunID, "manual"
+	if runID == "" {
+		var err error
+		if runID, err = newID("rrn"); err != nil {
+			return false, e.deferDue(ctx, d, now, "run_id", err)
+		}
+		trigger = "schedule"
 	}
 	run := store.RotationRun{
 		ID: runID, OrgID: d.OrgID, ProjectID: d.ProjectID, EnvironmentID: d.EnvironmentID, RotationID: d.ID,
@@ -582,9 +588,12 @@ func (e *RotationExecutor) startRun(ctx context.Context, worker string, d store.
 		return false, e.deferDue(ctx, d, now, "intent", err)
 	}
 	interval := time.Duration(d.IntervalSeconds) * time.Second
+	// The candidate lives as long as a scheduled run's even when this run skips its
+	// own overlap (a revocation delay of zero on the run row): it becomes the
+	// superseded role of the next run, whose overlap it must outlast.
 	delay := time.Duration(d.RevocationDelaySeconds) * time.Second
 	started, ok, err := e.Runtime.StartRun(ctx, d, store.StartRun{
-		RunID: runID, Worker: worker, Now: now, LeaseUntil: now.Add(rotationLeaseTerm), Trigger: "schedule",
+		RunID: runID, Worker: worker, Now: now, LeaseUntil: now.Add(rotationLeaseTerm), Trigger: trigger,
 		CandidateHandle:     run.CandidateHandle,
 		CandidateValidUntil: rotationCandidateValidUntil(now, interval, delay),
 		ParkedUntil:         now.Add(rotationPublishBudget), Intent: intent,
@@ -597,7 +606,8 @@ func (e *RotationExecutor) startRun(ctx context.Context, worker string, d store.
 		return false, e.deferDue(ctx, d, now, "start", err)
 	}
 	if !ok {
-		// Another worker took the rotation, or it was paused or already running.
+		// Another worker took the rotation, or it was paused or already running, or
+		// a run-now request arrived since the selection and the next sweep picks it up.
 		return true, nil
 	}
 	return true, e.mint(attributed(ctx, d.AuthorityPrincipalID, runID), started, intent.EffectID)
@@ -1421,6 +1431,10 @@ func (e *RotationExecutor) revoke(ctx context.Context, run store.RotationRun) er
 		}
 		return err
 	}
+	// The adapter targets still behind the published revision, read before the drop: the
+	// report a run that skips its overlap owes. A failed read leaves it out; the
+	// revoke does not wait on a report.
+	notConverged := e.notConverged(ctx, run)
 	err = errNoProvider
 	if provider != nil {
 		opCtx, cancel := context.WithTimeout(ctx, e.providerDeadline())
@@ -1430,11 +1444,15 @@ func (e *RotationExecutor) revoke(ctx context.Context, run store.RotationRun) er
 	now = e.now()
 	backoff := now.Add(rotationBackoff(run.AttemptCount))
 	finish := func(result audit.Outcome, code, phase string, next time.Time) error {
-		closed, err := e.outcome(run, intent.EffectID, "revoke", result, code, now)
+		var extra audit.Payload
+		if notConverged != nil {
+			extra = audit.Payload{"not_converged_adapter_targets": *notConverged}
+		}
+		closed, err := e.outcomeWith(run, intent.EffectID, "revoke", result, code, now, extra)
 		if err != nil {
 			return err
 		}
-		return e.settleDrop(ctx, run, store.RotationSettle{Now: now, FromPhases: []string{revokingPhase}, Phase: phase, LastError: code, NextAttempt: next, Close: closed})
+		return e.settleDrop(ctx, run, store.RotationSettle{Now: now, FromPhases: []string{revokingPhase}, Phase: phase, LastError: code, NextAttempt: next, Close: closed, NotConverged: notConverged})
 	}
 	switch {
 	case err == nil:
@@ -1454,6 +1472,21 @@ func (e *RotationExecutor) revoke(ctx context.Context, run store.RotationRun) er
 	default:
 		return finish(audit.OutcomeFailure, rotCodeRevokeFailed, revokingPhase, backoff)
 	}
+}
+
+// notConverged counts the adapter targets still behind the run's published
+// revision, nil when the count could not be read. Machine principals reading the
+// keys directly are not counted: no delivery to them is recorded.
+func (e *RotationExecutor) notConverged(ctx context.Context, run store.RotationRun) *int64 {
+	if run.PublishedRevision == 0 {
+		return nil
+	}
+	n, err := e.Runtime.NotConverged(ctx, run)
+	if err != nil {
+		e.warn("rotation revoke could not count unconverged adapter targets", run, "revoke", err)
+		return nil
+	}
+	return &n
 }
 
 // supersededDead reports whether the superseded role can no longer authenticate:

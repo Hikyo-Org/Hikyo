@@ -146,7 +146,7 @@ type RotationStateRequest struct {
 	RotationID         string
 	ExpectedGeneration int64
 	// Abandon, on a delete only, closes the rotation's unsettled runs as
-	// quarantine instead of refusing (#148, S2). The wire flag is S2b.
+	// quarantine instead of refusing (#148, S2); the wire flag is --abandon.
 	Abandon bool
 }
 
@@ -557,6 +557,175 @@ func (s *CredentialRotations) Delete(ctx context.Context, actor Actor, scope dom
 	return s.transition(ctx, actor, scope, req, rotationActionDeleted)
 }
 
+// RunNowRequest asks for a run now. ExpectedGeneration 0 means "the current
+// generation". SkipOverlap makes the run revoke the superseded credential right
+// after the publish (a revocation delay of zero for this run only).
+// ConfirmDestructive must be true on every request: a run-now publishes a new
+// credential off the schedule, and a skipped overlap revokes the old one at once.
+type RunNowRequest struct {
+	RotationID         string
+	ExpectedGeneration int64
+	SkipOverlap        bool
+	ConfirmDestructive bool
+}
+
+// RunNowResult names the run the executor will start; it does not exist until
+// the executor picks the request up, so a run list shows it only then.
+type RunNowResult struct {
+	RotationID  string
+	RunID       string
+	SkipOverlap bool
+}
+
+var (
+	// ErrRotationRunInFlight refuses a run-now while the rotation has an unsettled run.
+	ErrRotationRunInFlight = &rotationRefusal{"the rotation has a run in flight; let it finish first", domain.ErrConflict}
+	// ErrRotationRunNowUnconfirmed refuses a run-now that did not confirm itself.
+	ErrRotationRunNowUnconfirmed = &rotationRefusal{"a run-now publishes a new credential outside the schedule, and with skip-overlap revokes the superseded one at once; confirm it with confirm_destructive", domain.ErrConflict}
+	// ErrRotationRunPending refuses a second run-now while one waits for the executor.
+	ErrRotationRunPending = &rotationRefusal{"a run was already requested and has not started yet", domain.ErrConflict}
+)
+
+// RunNow requests a run outside the schedule. It is resume's equivalent: a
+// signed-in person who holds edit, publish and reveal environment-wide, under this
+// operation (a denial is recorded as rotation.run_now), and who consumes the
+// publish ceremony over both keys, so a publisher without reveal cannot start one.
+// There is no per-key check after the environment one: a key-narrowed rule never
+// satisfies an operation that passes no key, and an environment-wide holder of the
+// formula passes it for every key, so a per-key AuthorizeKey could never deny here
+// (TestRotationRunNowKeyChecksAddNothing pins that). It executes nothing: the request makes the
+// rotation due now, and the executor starts the run through its normal path with
+// the recorded authority, the pre-publish Gate and the overlap, exactly as a
+// scheduled run. A manual run bypasses none of them. Because it resets the next
+// run time to now it also overrides a retry backoff; the attempt cap and the
+// retry deadline still apply.
+func (s *CredentialRotations) RunNow(ctx context.Context, actor Actor, scope domain.Scope, req RunNowRequest) (RunNowResult, error) {
+	if err := requireRotationEnv(scope, "run-now", req.RotationID); err != nil {
+		return RunNowResult{}, err
+	}
+	now := store.CanonTime(s.now())
+	var out RunNowResult
+	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		caller, proof, err := authorize(ctx, az, actor, authz.OpRotationRunNow, scope, now)
+		if err != nil {
+			return err
+		}
+		if err := requireRotationHuman(caller); err != nil {
+			return err
+		}
+		if !req.ConfirmDestructive {
+			return ErrRotationRunNowUnconfirmed
+		}
+		cur, err := r.Rotations().Get(ctx, proof, req.RotationID)
+		if err != nil {
+			return err
+		}
+		if req.ExpectedGeneration != 0 && req.ExpectedGeneration != cur.Generation {
+			return ErrRotationStale
+		}
+		if cur.State != store.RotationStateActive {
+			return fmt.Errorf("%w: only an active rotation can run now (state is %s)", domain.ErrConflict, cur.State)
+		}
+		open, err := r.Rotations().CountOpenRuns(ctx, proof, cur.ID)
+		if err != nil {
+			return err
+		}
+		if open > 0 {
+			return ErrRotationRunInFlight
+		}
+		// The ceremony is consumed inside this transaction, so any refusal below,
+		// the pending-request one included, rolls the consumption back with it.
+		if err := s.requireRotationCeremony(ctx, az, caller, scope, cur.KeyID, cur.UsernameKeyID); err != nil {
+			return err
+		}
+		runID, err := newID("rrn")
+		if err != nil {
+			return err
+		}
+		if err := r.Rotations().RequestRun(ctx, proof, store.RotationRunRequest{RotationID: cur.ID, RunID: runID, SkipOverlap: req.SkipOverlap, ExpectedGeneration: cur.Generation, At: now}); err != nil {
+			switch {
+			case errors.Is(err, store.ErrRotationRunPending):
+				return ErrRotationRunPending
+			case errors.Is(err, store.ErrConflict):
+				return ErrRotationStale
+			}
+			return err
+		}
+		// A run the executor started between the first count and this write is
+		// caught here: the write transaction is serializable (retried on a
+		// serialization failure on PostgreSQL, BEGIN IMMEDIATE on SQLite), and the
+		// UPDATE above holds the row the executor locks to start a run, so the
+		// recount sees any run that committed first. Without it that run would leave
+		// the request pending until the next scheduled start; the refusal rolls the
+		// request back.
+		if open, err := r.Rotations().CountOpenRuns(ctx, proof, cur.ID); err != nil {
+			return err
+		} else if open > 0 {
+			return ErrRotationRunInFlight
+		}
+		ev, err := domainEvent(ctx, audit.EventRotationRunNow, caller.Principal, audit.Object{Type: "rotation", ID: cur.ID}, audit.Payload{"run_id": runID, "skip_overlap": req.SkipOverlap})
+		if err != nil {
+			return err
+		}
+		if err := r.Audit().InsertTenant(ctx, proof, ev); err != nil {
+			return err
+		}
+		out = RunNowResult{RotationID: cur.ID, RunID: runID, SkipOverlap: req.SkipOverlap}
+		return nil
+	})
+	return out, err
+}
+
+// RotationRunsRequest is one page of a rotation's runs, newest first; After is
+// the last run id of the previous page.
+type RotationRunsRequest struct {
+	RotationID string
+	After      string
+	Limit      int
+}
+
+// RotationRunsPage is one page of runs; NextAfter is empty on the last page.
+type RotationRunsPage struct {
+	Items     []store.RotationRunRecord
+	NextAfter string
+}
+
+// Runs lists a rotation's runs: phase, trigger, revision and the fixed-word code
+// of the last failure. It carries no secret, role handle or provider detail.
+func (s *CredentialRotations) Runs(ctx context.Context, actor Actor, scope domain.Scope, req RotationRunsRequest) (RotationRunsPage, error) {
+	if err := requireRotationEnv(scope, "runs", req.RotationID); err != nil {
+		return RotationRunsPage{}, err
+	}
+	limit := req.Limit
+	if limit == 0 {
+		limit = RotationListDefaultLimit
+	}
+	if limit < 0 || limit > RotationListMaxLimit {
+		return RotationRunsPage{}, fmt.Errorf("%w: limit must be between 1 and %d", domain.ErrInvalid, RotationListMaxLimit)
+	}
+	var out RotationRunsPage
+	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
+		_, proof, err := authorize(ctx, az, actor, authz.OpRotationRuns, scope, s.now())
+		if err != nil {
+			return err
+		}
+		if _, err := r.Rotations().Get(ctx, proof, req.RotationID); err != nil {
+			return err
+		}
+		rows, err := r.Rotations().ListRuns(ctx, proof, store.RotationRunQuery{RotationID: req.RotationID, After: req.After, Limit: limit + 1})
+		if err != nil {
+			return err
+		}
+		if len(rows) > limit {
+			rows = rows[:limit]
+			out.NextAfter = rows[limit-1].ID
+		}
+		out.Items = rows
+		return nil
+	})
+	return out, err
+}
+
 func rotationActionOperation(action rotationAction) (authz.Operation, bool) {
 	switch action {
 	case rotationActionPaused:
@@ -619,6 +788,14 @@ func (s *CredentialRotations) transition(ctx context.Context, actor Actor, scope
 			}
 			next.NextRunAt = rotationResumeNext(now, time.Duration(cur.IntervalSeconds)*time.Second, time.Duration(cur.RevocationDelaySeconds)*time.Second, delivered)
 		case rotationActionDeleted:
+			// Abandoning closes runs by hand, a standing-delegation decision like
+			// create, resume and run-now, so only a signed-in person may ask for it,
+			// whether or not a run is in flight.
+			if req.Abandon {
+				if err := requireRotationHuman(caller); err != nil {
+					return err
+				}
+			}
 			if cur.State == store.RotationStateDisabled {
 				return fmt.Errorf("%w: the rotation is already deleted", domain.ErrConflict)
 			}

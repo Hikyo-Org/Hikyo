@@ -536,15 +536,28 @@ scheduled credential rotation:
   hikyo rotation show <rotation> --env E [-o table|json]
   hikyo rotation pause <rotation> --env E [--expected-generation N]
   hikyo rotation resume <rotation> --env E [--expected-generation N]
-  hikyo rotation delete <rotation> --env E [--expected-generation N]
+  hikyo rotation delete <rotation> --env E [--expected-generation N] [--abandon]
+  hikyo rotation run-now <rotation> --env E --confirm-destructive
+      [--expected-generation N] [--skip-overlap]
+  hikyo rotation runs <rotation> --env E [--limit N] [--after RUN] [-o table|json]
 
-  configuration only: a signed-in person holding edit, publish and reveal on
-  both keys records the schedule and is kept as its authority. create and
-  resume run the publish ceremony over both keys (an unattended publish can
-  never run one itself); a protected environment or one under an approval
-  policy is refused. Durations take h, m, s or d, e.g. 90d. Interval 1h to 90d
-  and revocation delay 5m to 7d, the delay shorter than the interval. pause
-  and delete do not revoke the credential already delivered; it stays valid
+  a signed-in person holding edit, publish and reveal on both keys records the
+  schedule and is kept as its authority. create, resume and run-now run the
+  publish ceremony over both keys (an unattended publish can never run one
+  itself); a protected environment or one under an approval policy is refused.
+  run-now requests a run outside the schedule: the executor starts it with the
+  same checks and authority as a scheduled run and prints its id; runs lists a
+  rotation's runs, newest first, with phase and failure code only (no
+  password or provider detail). run-now always needs --confirm-destructive, and
+  --skip-overlap revokes the superseded credential right after the publish,
+  so a consumer still on it loses access; the revoke records how many adapter
+  (sync) targets had not converged to the new revision (NOT CONVERGED
+  TARGETS), not counting machines that read the keys directly. delete
+  refuses while a run is in flight; --abandon, for a signed-in person only,
+  closes the unsettled runs instead and revokes nothing. Durations take h,
+  m, s or d, e.g. 90d. Interval 1h to 90d and revocation delay 5m to 7d, the
+  delay shorter than the interval. pause and delete do not revoke the
+  credential already delivered; it stays valid
   until the CREDENTIAL EXPIRES time they print. delete keeps the rotation as
   history (list --include-disabled); no credential is stored.
 

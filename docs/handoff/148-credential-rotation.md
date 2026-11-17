@@ -73,8 +73,13 @@ decision 13). Never a `SystemProof`, never a scheduler site.
   audit events, provider-delete and environment-delete guards (see "S2a as built")
 - [x] S2a dual-engine crash, takeover and scenario e2e, delivery-path e2e, real PostgreSQL
   provider e2e (skips without `HIKYO_TEST_DYNAMIC_PG_*`)
-- [ ] S2b run-now, runs inspection (API and CLI), `--abandon` on the wire, metrics, `hikyo
-  doctor`, `rotation.run_now`, user docs (see "What S2b must wire")
+- [x] S2b-1 run-now (`rotation.run_now`, `OpRotationRunNow`, manual runs, `--skip-overlap`),
+  runs inspection (API and CLI), `--abandon` on the wire, user docs (see "S2b-1 as built")
+- [ ] S2b-1 consumer-convergence report: adapter (sync) targets only
+  (`not_converged_adapter_targets`); the machine-principal part is pending an owner decision
+  (options A to D under "S2b-1 as built")
+- [ ] S2b-2 metrics, `hikyo doctor`, the `restore_hold` column and release, incident
+  containment, key-aware resume, pause and delete
 - [ ] S3 SPA status surface, parity flip
 
 ## Decisions taken in S1 (divergences from the issue handoff flagged)
@@ -563,13 +568,14 @@ start at `D + 1s` is refused as `retries_exhausted`.
 
 ### Run-now (S2)
 
-`OpRotationRunNow` requires `publish@env` plus a `PurposePublish` ceremony (unit = the
-rotation's key ids) and `--confirm-destructive`. `--skip-overlap` snapshots
-`revocation_delay_seconds = 0` for that run only; the response lists consumers that
-may still hold the superseded credential (machine principals with `read@env` whose
-last delivery `issued_at` precedes the publish, and adapter targets whose
-`converged_revision < published_revision`). Event `rotation.run_now` carries
-`skip_overlap`.
+Superseded by "S2b-1 as built" (the Run-now subsection): `OpRotationRunNow` takes resume's
+formula (`edit`, `publish` and `reveal` at the environment, environment-wide), a
+`PurposePublish` ceremony over both keys and a required `confirm_destructive` body field
+(CLI `--confirm-destructive`) on every request. `--skip-overlap` snapshots
+`revocation_delay_seconds = 0` for that run only. The response lists no consumers; the revoke
+outcome carries `not_converged_adapter_targets` (adapter targets only; the machine-principal
+part is an open owner decision, options A to D). Event `rotation.run_now` carries `run_id`
+and `skip_overlap`.
 
 ### Audit events specified for S2 (not registered in S1)
 
@@ -577,11 +583,11 @@ All tenant trail, `RetentionSecurity`, no credential material in any payload:
 
 - `rotation.run_intent`: `{run_id, phase, handle}` (outcome `intent`).
 - `rotation.run_outcome`: `{run_id, phase (enum), handle, error_code,
-  not_converged_consumers (int, optional)}` (outcomes `success|failure|unknown`); the
-  revoke OUTCOME sets `not_converged_consumers` to the number of consumers (machine
+  not_converged_adapter_targets (int, optional)}` (outcomes `success|failure|unknown`); the
+  revoke OUTCOME sets `not_converged_adapter_targets` to the number of consumers (machine
   principals with `read@env` whose last delivery precedes the publish, adapter targets
   whose `converged_revision < published_revision`) that may still hold the superseded
-  credential.
+  credential. (S2b-1 counts the adapter targets only; see "S2b-1 as built".)
 - `rotation.quarantined`: `{run_id, candidate_handle, superseded_handle}`.
 - `rotation.run_now`: `{run_id, skip_overlap (bool)}`.
 
@@ -765,8 +771,8 @@ configurable grid.
 `rotation.run_intent`, `rotation.run_outcome`, `rotation.quarantined` are registered
 (plus `rotation.configured` from S1). Abandon writes one row per run it closed.
 Payloads carry ids, phase, effect kind, outcome and error codes; no credential material.
-`rotation.run_now` is not registered (S2b). `not_converged_consumers` is declared but
-not emitted yet (see S2b).
+`rotation.run_now` and the `not_converged_adapter_targets` count on the revoke outcome arrived
+in S2b-1 (see "S2b-1 as built").
 
 ### Test map
 
@@ -1053,14 +1059,109 @@ Round 4 review additions (CodeRabbit threads on PR #1426):
 
 ### What S2b must wire
 
-- `run-now` (`rotation.run_now` audit event, `OpRotationRunNow`, a `trigger='manual'`
-  run) and `--skip-overlap`, which reports `not_converged_consumers`.
-- Runs inspection: `GET .../rotations/{id}/runs`, `hikyo rotation runs`, with the
-  OpenAPI revision bump and the TS client.
-- `--abandon` on the delete wire (the service-level abandon is built).
+Done in S2b-1: run-now, runs inspection, `--abandon` on the wire and the user docs (see "S2b-1 as built"). Remaining for S2b-2:
+
 - Metrics, `hikyo doctor` (approaching `credential_expires_at`, halted, quarantine,
-  `revoke_refused`), the `restore_hold` column and release, incident containment.
-- User docs and parity rows (S3 flips them).
+  `revoke_refused`), the `restore_hold` column and release, incident containment, and
+  key-aware pause, resume and delete.
+- Parity rows (S3 flips them).
+- The machine-principal part of the consumer report, if the owner picks option B or C
+  below.
+
+## S2b-1 as built (run-now, runs, abandon wire)
+
+Migration 00093 (both engines): `rotations.manual_run_id`, `rotations.manual_skip_overlap`
+and `rotation_runs.not_converged_adapter_targets`. API revision 18 (additive).
+
+### Run-now
+
+- `OpRotationRunNow` (resume's formula: `edit`, `publish` and `reveal` at the environment,
+  `postGrantForbidden`, wire route `POST .../rotations/{rotation}/run-now`, 202 with the
+  pre-generated `run_id`). The service authorizes, requires a human session and the body's
+  `confirm_destructive: true` (a body without it, or with false, gets the named refusal, enforced server-side on every request; no body at all is a plain 400),
+  checks generation and active state (a paused, halted or deleted rotation is refused), checks
+  there is no open run, consumes the publish ceremony over both keys, then
+  writes the request (`manual_run_id`, `manual_skip_overlap`, `next_run_at = now`) and the
+  `rotation.run_now` audit row (`run_id`, `skip_overlap`) in one transaction. A request that
+  is already pending is refused by the store write, after the ceremony; the refusal rolls the
+  whole transaction back, the ceremony consumption included, so it costs no reauth. It starts
+  nothing and holds no provider handle. There is no per-key `AuthorizeKey` after the
+  environment check: a key-narrowed rule never satisfies an operation that passes no key and an
+  environment-wide holder passes for every key, so it could never deny. Like resume, run-now
+  therefore needs the formula environment-wide: a principal who could create a rotation through
+  key-narrowed rules can neither run it now nor resume it (S2b-2 makes these key-aware).
+  `TestRotationRunNowKeyChecksAddNothing` pins the equivalence. The request resets `next_run_at` to now, so it also
+  overrides a retry backoff; the attempt cap and the retry deadline still apply.
+- The executor's due read exposes the request; `startRun` uses the pre-generated id with
+  trigger `manual` through the same Gate, window and attempts checks as a scheduled run.
+  `StartRun` re-asserts the locked manual fields and clears them in the run-insert
+  transaction. Pause (user and system), resume, delete and halt clear a request that has not
+  started. A manual run whose Gate fails halts the rotation like a scheduled one and clears
+  the request.
+- `--skip-overlap` snapshots `revocation_delay_seconds = 0` on that run only. The candidate
+  `VALID UNTIL` still uses the rotation's delay, because that role becomes the next run's
+  superseded role and must outlast that overlap. `RotationRun.RotationDelaySeconds` (the
+  rotation's own delay) feeds the halt audit and the windows so a skip run cannot shorten them.
+- The open-run check is the service's: it counts before the ceremony and again after the
+  request write, and rolls the request back (`ErrRotationRunInFlight`) if a run opened in
+  between. The write transaction is serializable (retried on a serialization failure on
+  PostgreSQL, `BEGIN IMMEDIATE` on SQLite) and the request UPDATE holds the row the executor
+  locks to start a run, so a racing run is caught either by the recount or by the
+  serialization retry. No interleaving test: the window needs a concurrent transaction.
+
+### `not_converged_adapter_targets` (adapter targets only, owner decision pending)
+
+The field was named `not_converged_consumers` while it was designed; it is renamed because it
+counts adapter (sync) targets only, never "delivery targets" (that term is the Kubernetes
+operator's). A zero does not prove that machine consumers are unaffected. The run-now
+response carries no consumer list (nothing has been revoked when it answers).
+
+Smallest truthful definition from what the code can know: the count of non-tombstoned
+`adapter_targets` that mirror either rotation key (`adapter_target_keys`) with
+`converged_revision IS NULL OR < run.published_revision`, computed just before the provider
+drop in `revoke()`. It is emitted on the revoke `rotation.run_outcome` payload and stored in
+`rotation_runs.not_converged_adapter_targets`, for every revoking run (a run with no superseded
+role has none). Machine principals reading keys directly are not counted: no per-principal
+delivery record exists, so the spec text "machine principals with `read@env` whose last
+delivery precedes the publish" cannot be computed. Options for that part:
+
+- A: keep adapter targets only and document it (as built).
+- B: add per-principal last-delivery tracking (a migration plus a write on every value read).
+- C: proxy through `delivery_target_reports` and revision pins.
+- D: drop the machine-consumer wording from the spec and the field name's promise.
+
+### Runs inspection
+
+`OpRotationRuns` (`read@environment`, audited-none bare read), `GET .../rotations/{rotation}/runs`
+with `limit` and `after`, newest first by run id (UUIDv7 ids are time-ordered; a manual run's id
+is minted at request time and it is the first run to start after the request). Items carry id, trigger, phase, published revision, revocation delay,
+timestamps, `not_converged_adapter_targets` and the fixed-word `error_code`; never a handle,
+password or provider detail (the run id is the lowercased role name, public metadata). No run-detail route (the ADR family does not declare one).
+
+### Abandon on the wire
+
+`DELETE .../rotations/{rotation}?abandon=true` and `hikyo rotation delete --abandon` pass the
+service's abandon. Abandon is human-session only (`requireRotationHuman`, like create, resume
+and run-now); it keeps its per-run audit rows (`rotation.quarantined` or a `rotation.run_outcome`
+of phase `abandon`). A run that has not published is quarantined, and the candidate reconciler
+drops its candidate later; nothing is revoked at abandon time. Plain delete without a run in
+flight is unchanged.
+
+### Judgment calls and deviations
+
+1. `--confirm-destructive` is required on every run-now, as the issue and test plan say. The
+   server enforces it through the required `confirm_destructive` body field (the
+   `confirm_protected` pattern) with the named refusal `ErrRotationRunNowUnconfirmed`; the CLI
+   always requires the flag and sends the field.
+2. The run-now response cannot list consumers (no run exists yet, and nothing was revoked). The
+   report lives on the revoke outcome row and in `runs`.
+3. A pending request is not shown by `rotation show`.
+4. `rotation.runs` and `rotation.run_now` are human-session only on the wire like the rest of the family.
+
+### Still S2b-2
+
+Metrics, `hikyo doctor` warnings, the `restore_hold` column and release, incident containment,
+key-aware resume, pause and delete. S2b-2 must ship in the same release as S2a and S2b-1.
 
 ## S2 checklist (carried forward from review)
 

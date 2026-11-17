@@ -3369,14 +3369,14 @@
     "engine": "postgres",
     "name": "RotationRtClaimDueRun",
     "annotation": "instance-scoped",
-    "hash": "7e83c5d1d0dac3171434297cc74cb4a45194079b855db884eb90f3e38fb87acf",
+    "hash": "a86cb7f280d4326ce9c71715a203c4563e5382707d88143e93b06cb949b926cc",
     "reason": "RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension."
   },
   {
     "engine": "postgres",
     "name": "RotationRtDueRotation",
     "annotation": "instance-scoped",
-    "hash": "302c8d242bd3ab59515e5754da14efb583c8af7241e15ed8d2422f73167874e9",
+    "hash": "d5214e9c7f74b073ce927bbb9719a3fb2fe66f4a2d917ba65676bac1e1316299",
     "reason": "RotationRuntime closed scheduler picks one due rotation across tenants under the per-org concurrency cap; the run is then created under the recorded authority's proof and binds the selected immutable chain."
   },
   {
@@ -7145,14 +7145,14 @@
     "engine": "sqlite",
     "name": "RotationRtClaimDueRun",
     "annotation": "instance-scoped",
-    "hash": "3c7800a6452cffc2e1ade4334d2b0fb8dac66a7da64ed0b27fd8fdca9cef74e2",
+    "hash": "8140b87b222c6ad3267315f3c07cb2f9ce2ad77cf5c22e59dbd9aa9c2b952be3",
     "reason": "RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension."
   },
   {
     "engine": "sqlite",
     "name": "RotationRtDueRotation",
     "annotation": "instance-scoped",
-    "hash": "302c8d242bd3ab59515e5754da14efb583c8af7241e15ed8d2422f73167874e9",
+    "hash": "d5214e9c7f74b073ce927bbb9719a3fb2fe66f4a2d917ba65676bac1e1316299",
     "reason": "RotationRuntime closed scheduler picks one due rotation across tenants under the per-org concurrency cap; the run is then created under the recorded authority's proof and binds the selected immutable chain."
   },
   {

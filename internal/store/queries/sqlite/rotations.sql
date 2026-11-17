@@ -11,7 +11,7 @@ SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,rev
 SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND id > sqlc.arg(after_id) ORDER BY id LIMIT sqlc.arg(page_limit);
 
 -- name: RotationSetState :execrows
-UPDATE rotations SET state=sqlc.arg(state),halt_reason=NULL,next_run_at=sqlc.narg(next_run_at),generation=generation+1,updated_at=sqlc.arg(at) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(expected_generation) AND state<>'disabled';
+UPDATE rotations SET state=sqlc.arg(state),halt_reason=NULL,manual_run_id=NULL,manual_skip_overlap=0,next_run_at=sqlc.narg(next_run_at),generation=generation+1,updated_at=sqlc.arg(at) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(expected_generation) AND state<>'disabled';
 
 -- name: RotationCountOpenRuns :one
 SELECT COUNT(*) FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND phase NOT IN ('done','quarantine','failed');
@@ -76,7 +76,7 @@ DELETE FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(c
 SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND provider_id=sqlc.arg(provider_id) AND state='active' ORDER BY id;
 
 -- name: RotationPauseActive :execrows
-UPDATE rotations SET state='paused',next_run_at=NULL,generation=generation+1,updated_at=sqlc.arg(at) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state='active';
+UPDATE rotations SET state='paused',next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=0,generation=generation+1,updated_at=sqlc.arg(at) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state='active';
 
 -- name: RotationListActiveInEnvironment :many
 SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(environment_id) AND state='active' ORDER BY id;
@@ -121,3 +121,25 @@ SELECT DISTINCT ru.rotation_id FROM rotation_runs ru LEFT JOIN rotation_effects 
 -- hikyo:instance-scoped
 -- name: RotationProviderLiveRuns :one
 SELECT COUNT(*) FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id LEFT JOIN rotation_effects ef ON ef.run_id=ru.id AND ef.org_id=ru.org_id AND ef.project_id=ru.project_id AND ef.environment_id=ru.environment_id AND ef.kind='drop_candidate' AND ef.outcome='success' WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.phase<>'done' AND NOT (ru.phase='failed' AND ru.published_revision IS NULL AND ef.id IS NOT NULL) AND (ro.provider_id=sqlc.arg(provider_id) OR ((ru.published_revision IS NOT NULL OR ru.phase IN ('minting','minted','staged','published')) AND EXISTS (SELECT 1 FROM rotation_runs sup JOIN rotations so ON so.org_id=sup.org_id AND so.project_id=sup.project_id AND so.environment_id=sup.environment_id AND so.id=sup.rotation_id WHERE sup.org_id=ru.org_id AND sup.project_id=ru.project_id AND sup.environment_id=ru.environment_id AND sup.candidate_handle=ru.superseded_handle AND so.provider_id=sqlc.arg(provider_id))));
+
+-- A run-now request: records the run it asks for and makes the rotation due now.
+-- It matches only an active rotation at the expected generation with no pending
+-- request; the service re-counts open runs after this write, in the same
+-- transaction, and the caller reads the row to say which condition refused.
+-- name: RotationRequestRun :execrows
+UPDATE rotations SET manual_run_id=sqlc.arg(run_id),manual_skip_overlap=sqlc.arg(skip_overlap),next_run_at=sqlc.arg(now),updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active' AND generation=sqlc.arg(expected_generation) AND manual_run_id IS NULL;
+
+-- Whether a run-now request is pending for the rotation.
+-- name: RotationManualPending :one
+SELECT COUNT(*) FROM rotations WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND manual_run_id IS NOT NULL;
+
+-- A page of a rotation's runs, newest first. Run ids are time-ordered (UUIDv7); a
+-- manual run's id is minted when it is requested and it is the first run to start
+-- after the request, so id order is start order. The cursor is the last run id of the
+-- previous page. Only operator-visible metadata: no handle, no candidate, no
+-- provider detail beyond the fixed-word last_error code.
+-- name: RotationListRuns :many
+SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_adapter_targets FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) ORDER BY id DESC LIMIT sqlc.arg(page_limit);
+
+-- name: RotationListRunsAfter :many
+SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_adapter_targets FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND id < sqlc.arg(after_id) ORDER BY id DESC LIMIT sqlc.arg(page_limit);

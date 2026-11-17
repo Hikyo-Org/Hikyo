@@ -3071,6 +3071,66 @@ func (e RotateRootKeyRequestPhase) Valid() bool {
 	}
 }
 
+// Defines values for RotationRunTrigger.
+const (
+	RotationRunTriggerManual   RotationRunTrigger = "manual"
+	RotationRunTriggerSchedule RotationRunTrigger = "schedule"
+)
+
+// Valid indicates whether the value is a known member of the RotationRunTrigger enum.
+func (e RotationRunTrigger) Valid() bool {
+	switch e {
+	case RotationRunTriggerManual:
+		return true
+	case RotationRunTriggerSchedule:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RotationRunPhase.
+const (
+	RotationRunPhaseDone          RotationRunPhase = "done"
+	RotationRunPhaseFailed        RotationRunPhase = "failed"
+	RotationRunPhaseMinted        RotationRunPhase = "minted"
+	RotationRunPhaseMinting       RotationRunPhase = "minting"
+	RotationRunPhaseOverlap       RotationRunPhase = "overlap"
+	RotationRunPhasePublished     RotationRunPhase = "published"
+	RotationRunPhaseQuarantine    RotationRunPhase = "quarantine"
+	RotationRunPhaseRevokeRefused RotationRunPhase = "revoke_refused"
+	RotationRunPhaseRevoking      RotationRunPhase = "revoking"
+	RotationRunPhaseStaged        RotationRunPhase = "staged"
+)
+
+// Valid indicates whether the value is a known member of the RotationRunPhase enum.
+func (e RotationRunPhase) Valid() bool {
+	switch e {
+	case RotationRunPhaseDone:
+		return true
+	case RotationRunPhaseFailed:
+		return true
+	case RotationRunPhaseMinted:
+		return true
+	case RotationRunPhaseMinting:
+		return true
+	case RotationRunPhaseOverlap:
+		return true
+	case RotationRunPhasePublished:
+		return true
+	case RotationRunPhaseQuarantine:
+		return true
+	case RotationRunPhaseRevokeRefused:
+		return true
+	case RotationRunPhaseRevoking:
+		return true
+	case RotationRunPhaseStaged:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RuleAxisMode.
 const (
 	RuleAxisModeAll  RuleAxisMode = "all"
@@ -10831,6 +10891,58 @@ type RotateSSHCARequest struct {
 	PrivateKey *string `json:"private_key,omitzero"`
 }
 
+// RotationRun defines model for RotationRun.
+type RotationRun struct {
+	// ErrorCode The fixed-word code of the last failure, if any. Never provider detail.
+	ErrorCode *string `json:"error_code,omitzero"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id ID `json:"id"`
+
+	// NotConvergedAdapterTargets Adapter (sync) targets that mirror either rotation key and had not converged to the published revision when the run decided to revoke the superseded credential. Machine principals that read the keys directly are not counted. Null until then.
+	NotConvergedAdapterTargets *int64 `json:"not_converged_adapter_targets,omitzero"`
+
+	// Phase The run's state-machine phase. `quarantine` and `failed` are terminal; `done` is a settled run.
+	Phase RotationRunPhase `json:"phase"`
+
+	// PhaseAt RFC 3339 UTC, microsecond precision.
+	PhaseAt Timestamp `json:"phase_at"`
+
+	// PublishedRevision The catalogue revision this run published. Null until it publishes.
+	PublishedRevision *int64 `json:"published_revision,omitzero"`
+
+	// RevocationDelaySeconds The overlap this run snapshotted; zero for a run that skipped it.
+	RevocationDelaySeconds int64 `json:"revocation_delay_seconds"`
+
+	// StartedAt RFC 3339 UTC, microsecond precision.
+	StartedAt Timestamp          `json:"started_at"`
+	Trigger   RotationRunTrigger `json:"trigger"`
+}
+
+// RotationRunTrigger defines model for RotationRun.Trigger.
+type RotationRunTrigger string
+
+// RotationRunList defines model for RotationRunList.
+type RotationRunList struct {
+	Items []RotationRun `json:"items"`
+
+	// NextAfter Pass as `after` to read the next page. Absent on the last page.
+	NextAfter *string `json:"next_after,omitzero"`
+}
+
+// RotationRunPhase The run's state-machine phase. `quarantine` and `failed` are terminal; `done` is a settled run.
+type RotationRunPhase string
+
+// RotationRunRequested defines model for RotationRunRequested.
+type RotationRunRequested struct {
+	// RotationId A prefixed UUIDv7, e.g. `org_0198…`.
+	RotationId ID `json:"rotation_id"`
+
+	// RunId A prefixed UUIDv7, e.g. `org_0198…`.
+	RunId       ID   `json:"run_id"`
+	SkipOverlap bool `json:"skip_overlap"`
+}
+
 // RotationStateRequest defines model for RotationStateRequest.
 type RotationStateRequest struct {
 	// ExpectedGeneration The generation the caller last read. Omitted or null means the current generation.
@@ -10940,6 +11052,22 @@ type RuleWhere struct {
 	Environments RuleEnvironmentAxis `json:"environments"`
 	Keys         RuleKeyAxis         `json:"keys"`
 	Projects     []ID                `json:"projects"`
+}
+
+// RunRotationNowRequest defines model for RunRotationNowRequest.
+type RunRotationNowRequest struct {
+	// ConfirmDestructive The run-now confirmation, required on every request. It must be true: the
+	// run publishes a new credential now, off the schedule, and with
+	// `skip_overlap` revokes the superseded one at once. A body without it,
+	// or with false, is refused by name; a request with no body at all is a
+	// plain bad request.
+	ConfirmDestructive bool `json:"confirm_destructive"`
+
+	// ExpectedGeneration The generation the caller last read. Omitted or null means the current generation.
+	ExpectedGeneration *int64 `json:"expected_generation,omitzero"`
+
+	// SkipOverlap Revoke the superseded credential right after this run publishes the new one (a revocation delay of zero for this run only).
+	SkipOverlap *bool `json:"skip_overlap,omitzero"`
 }
 
 // RuntimeStatus defines model for RuntimeStatus.
@@ -13828,6 +13956,18 @@ type ListRotationsParams struct {
 type DeleteRotationParams struct {
 	// ExpectedGeneration The generation the caller last read. A different current generation is a conflict.
 	ExpectedGeneration *ExpectedGeneration `form:"expected_generation" json:"expected_generation,omitzero"`
+
+	// Abandon Close the rotation's unsettled runs instead of refusing the delete. Off by default.
+	Abandon *bool `form:"abandon" json:"abandon,omitzero"`
+}
+
+// ListRotationRunsParams defines parameters for ListRotationRuns.
+type ListRotationRunsParams struct {
+	// Limit Maximum runs on this page, newest first.
+	Limit *int `form:"limit" json:"limit,omitzero"`
+
+	// After The `next_after` a previous page returned. Absent reads the first page.
+	After *string `form:"after" json:"after,omitzero"`
 }
 
 // DeleteSshProfileParams defines parameters for DeleteSshProfile.
@@ -14355,6 +14495,9 @@ type PauseRotationJSONRequestBody = RotationStateRequest
 
 // ResumeRotationJSONRequestBody defines body for ResumeRotation for application/json ContentType.
 type ResumeRotationJSONRequestBody = RotationStateRequest
+
+// RunRotationNowJSONRequestBody defines body for RunRotationNow for application/json ContentType.
+type RunRotationNowJSONRequestBody = RunRotationNowRequest
 
 // SetEnvironmentSettingsJSONRequestBody defines body for SetEnvironmentSettings for application/json ContentType.
 type SetEnvironmentSettingsJSONRequestBody = EnvironmentSettings
@@ -16423,6 +16566,12 @@ type ServerInterface interface {
 	// ResumeRotation Resume a paused or halted rotation and recompute its next run.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume)
 	ResumeRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID)
+	// RunRotationNow Request a rotation run now, outside its schedule.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/run-now)
+	RunRotationNow(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID)
+	// ListRotationRuns List a rotation's runs, newest first.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/runs)
+	ListRotationRuns(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID, params ListRotationRunsParams)
 	// GetEnvironmentSettings Read an environment's protection state and reauthentication window.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/settings)
 	GetEnvironmentSettings(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
@@ -18613,6 +18762,18 @@ func (_ Unimplemented) PauseRotation(w http.ResponseWriter, r *http.Request, org
 // ResumeRotation Resume a paused or halted rotation and recompute its next run.
 // (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume)
 func (_ Unimplemented) ResumeRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RunRotationNow Request a rotation run now, outside its schedule.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/run-now)
+func (_ Unimplemented) RunRotationNow(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListRotationRuns List a rotation's runs, newest first.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/runs)
+func (_ Unimplemented) ListRotationRuns(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID, params ListRotationRunsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -29678,6 +29839,19 @@ func (siw *ServerInterfaceWrapper) DeleteRotation(w http.ResponseWriter, r *http
 		return
 	}
 
+	// ------------- Optional query parameter "abandon" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "abandon", r.URL.Query(), &params.Abandon, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "abandon"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "abandon", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DeleteRotation(w, r, org, project, environment, rotation, params)
 	}))
@@ -29839,6 +30013,141 @@ func (siw *ServerInterfaceWrapper) ResumeRotation(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ResumeRotation(w, r, org, project, environment, rotation)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RunRotationNow operation middleware
+func (siw *ServerInterfaceWrapper) RunRotationNow(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "rotation" -------------
+	var rotation RotationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rotation", chi.URLParam(r, "rotation"), &rotation, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rotation", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RunRotationNow(w, r, org, project, environment, rotation)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListRotationRuns operation middleware
+func (siw *ServerInterfaceWrapper) ListRotationRuns(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "rotation" -------------
+	var rotation RotationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rotation", chi.URLParam(r, "rotation"), &rotation, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rotation", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListRotationRunsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "after" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "after", r.URL.Query(), &params.After, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "after"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "after", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRotationRuns(w, r, org, project, environment, rotation, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -36833,6 +37142,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume", wrapper.ResumeRotation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/run-now", wrapper.RunRotationNow)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/runs", wrapper.ListRotationRuns)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/settings", wrapper.GetEnvironmentSettings)
@@ -71019,6 +71334,228 @@ func (response ResumeRotation503JSONResponse) VisitResumeRotationResponse(w http
 	return err
 }
 
+type RunRotationNowRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Rotation    RotationID    `json:"rotation"`
+	Body        *RunRotationNowJSONRequestBody
+}
+
+type RunRotationNowResponseObject interface {
+	VisitRunRotationNowResponse(w http.ResponseWriter) error
+}
+
+type RunRotationNow202JSONResponse RotationRunRequested
+
+func (response RunRotationNow202JSONResponse) VisitRunRotationNowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunRotationNow400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RunRotationNow400JSONResponse) VisitRunRotationNowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunRotationNow401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RunRotationNow401JSONResponse) VisitRunRotationNowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunRotationNow403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RunRotationNow403JSONResponse) VisitRunRotationNowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunRotationNow404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RunRotationNow404JSONResponse) VisitRunRotationNowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunRotationNow409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RunRotationNow409JSONResponse) VisitRunRotationNowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunRotationNow500JSONResponse struct{ InternalJSONResponse }
+
+func (response RunRotationNow500JSONResponse) VisitRunRotationNowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunRotationNow503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RunRotationNow503JSONResponse) VisitRunRotationNowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRotationRunsRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Rotation    RotationID    `json:"rotation"`
+	Params      ListRotationRunsParams
+}
+
+type ListRotationRunsResponseObject interface {
+	VisitListRotationRunsResponse(w http.ResponseWriter) error
+}
+
+type ListRotationRuns200JSONResponse RotationRunList
+
+func (response ListRotationRuns200JSONResponse) VisitListRotationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRotationRuns400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListRotationRuns400JSONResponse) VisitListRotationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRotationRuns401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListRotationRuns401JSONResponse) VisitListRotationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRotationRuns404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListRotationRuns404JSONResponse) VisitListRotationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRotationRuns500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListRotationRuns500JSONResponse) VisitListRotationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRotationRuns503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListRotationRuns503JSONResponse) VisitListRotationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetEnvironmentSettingsRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -87345,6 +87882,12 @@ type StrictServerInterface interface {
 	// ResumeRotation Resume a paused or halted rotation and recompute its next run.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume)
 	ResumeRotation(ctx context.Context, request ResumeRotationRequestObject) (ResumeRotationResponseObject, error)
+	// RunRotationNow Request a rotation run now, outside its schedule.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/run-now)
+	RunRotationNow(ctx context.Context, request RunRotationNowRequestObject) (RunRotationNowResponseObject, error)
+	// ListRotationRuns List a rotation's runs, newest first.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/runs)
+	ListRotationRuns(ctx context.Context, request ListRotationRunsRequestObject) (ListRotationRunsResponseObject, error)
 	// GetEnvironmentSettings Read an environment's protection state and reauthentication window.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/settings)
 	GetEnvironmentSettings(ctx context.Context, request GetEnvironmentSettingsRequestObject) (GetEnvironmentSettingsResponseObject, error)
@@ -96499,6 +97042,72 @@ func (sh *strictHandler) ResumeRotation(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ResumeRotationResponseObject); ok {
 		if err := validResponse.VisitResumeRotationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RunRotationNow operation middleware
+func (sh *strictHandler) RunRotationNow(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
+	var request RunRotationNowRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Rotation = rotation
+
+	var body RunRotationNowJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RunRotationNow(ctx, request.(RunRotationNowRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RunRotationNow")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RunRotationNowResponseObject); ok {
+		if err := validResponse.VisitRunRotationNowResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListRotationRuns operation middleware
+func (sh *strictHandler) ListRotationRuns(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID, params ListRotationRunsParams) {
+	var request ListRotationRunsRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Rotation = rotation
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRotationRuns(ctx, request.(ListRotationRunsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRotationRuns")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRotationRunsResponseObject); ok {
+		if err := validResponse.VisitListRotationRunsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

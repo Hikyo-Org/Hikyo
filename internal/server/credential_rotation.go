@@ -144,7 +144,7 @@ func (a *API) ResumeRotation(ctx context.Context, req apigen.ResumeRotationReque
 
 func (a *API) DeleteRotation(ctx context.Context, req apigen.DeleteRotationRequestObject) (apigen.DeleteRotationResponseObject, error) {
 	view, err := a.CredentialRotations.Delete(ctx, service.Bearer(bearer(ctx)), dynamicEnvScope(req.Org, req.Project, req.Environment),
-		service.RotationStateRequest{RotationID: string(req.Rotation), ExpectedGeneration: expectedGeneration(req.Params.ExpectedGeneration)})
+		service.RotationStateRequest{RotationID: string(req.Rotation), ExpectedGeneration: expectedGeneration(req.Params.ExpectedGeneration), Abandon: req.Params.Abandon != nil && *req.Params.Abandon})
 	if err != nil {
 		return nil, err
 	}
@@ -153,4 +153,59 @@ func (a *API) DeleteRotation(ctx context.Context, req apigen.DeleteRotationReque
 		return nil, err
 	}
 	return apigen.DeleteRotation200JSONResponse(resp), nil
+}
+
+func (a *API) RunRotationNow(ctx context.Context, req apigen.RunRotationNowRequestObject) (apigen.RunRotationNowResponseObject, error) {
+	// The body is required, so the strict handler never passes a nil one.
+	run := service.RunNowRequest{
+		RotationID:         string(req.Rotation),
+		ExpectedGeneration: expectedGeneration(req.Body.ExpectedGeneration),
+		SkipOverlap:        req.Body.SkipOverlap != nil && *req.Body.SkipOverlap,
+		ConfirmDestructive: req.Body.ConfirmDestructive,
+	}
+	got, err := a.CredentialRotations.RunNow(ctx, service.Bearer(bearer(ctx)), dynamicEnvScope(req.Org, req.Project, req.Environment), run)
+	if err != nil {
+		return nil, err
+	}
+	return apigen.RunRotationNow202JSONResponse(apigen.RotationRunRequested{RotationId: apigen.ID(got.RotationID), RunId: apigen.ID(got.RunID), SkipOverlap: got.SkipOverlap}), nil
+}
+
+func (a *API) ListRotationRuns(ctx context.Context, req apigen.ListRotationRunsRequestObject) (apigen.ListRotationRunsResponseObject, error) {
+	page := service.RotationRunsRequest{RotationID: string(req.Rotation)}
+	if req.Params.Limit != nil {
+		page.Limit = *req.Params.Limit
+	}
+	if req.Params.After != nil {
+		page.After = *req.Params.After
+	}
+	got, err := a.CredentialRotations.Runs(ctx, service.Bearer(bearer(ctx)), dynamicEnvScope(req.Org, req.Project, req.Environment), page)
+	if err != nil {
+		return nil, err
+	}
+	out := apigen.RotationRunList{Items: []apigen.RotationRun{}}
+	for _, row := range got.Items {
+		started, err := time.Parse(time.RFC3339Nano, row.StartedAt)
+		if err != nil {
+			return nil, fmt.Errorf("server: parse run started_at: %w", err)
+		}
+		phaseAt, err := time.Parse(time.RFC3339Nano, row.PhaseAt)
+		if err != nil {
+			return nil, fmt.Errorf("server: parse run phase_at: %w", err)
+		}
+		run := apigen.RotationRun{
+			Id: apigen.ID(row.ID), Trigger: apigen.RotationRunTrigger(row.Trigger), Phase: apigen.RotationRunPhase(row.Phase),
+			RevocationDelaySeconds: row.RevocationDelaySeconds, StartedAt: started, PhaseAt: phaseAt, NotConvergedAdapterTargets: row.NotConvergedAdapterTargets,
+		}
+		if row.PublishedRevision != 0 {
+			run.PublishedRevision = &row.PublishedRevision
+		}
+		if row.ErrorCode != "" {
+			run.ErrorCode = &row.ErrorCode
+		}
+		out.Items = append(out.Items, run)
+	}
+	if got.NextAfter != "" {
+		out.NextAfter = &got.NextAfter
+	}
+	return apigen.ListRotationRuns200JSONResponse(out), nil
 }
