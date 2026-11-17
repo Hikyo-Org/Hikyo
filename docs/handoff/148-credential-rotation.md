@@ -73,8 +73,11 @@ decision 13). Never a `SystemProof`, never a scheduler site.
   audit events, provider-delete and environment-delete guards (see "S2a as built")
 - [x] S2a dual-engine crash, takeover and scenario e2e, delivery-path e2e, real PostgreSQL
   provider e2e (skips without `HIKYO_TEST_DYNAMIC_PG_*`)
-- [ ] S2b run-now, runs inspection (API and CLI), `--abandon` on the wire, metrics, `hikyo
-  doctor`, `rotation.run_now`, user docs (see "What S2b must wire")
+- [x] S2b-1 run-now (`rotation.run_now`, `OpRotationRunNow`, manual runs, `--skip-overlap` with
+  `not_converged_consumers`), runs inspection (API and CLI), `--abandon` on the wire, user
+  docs (see "S2b-1 as built")
+- [ ] S2b-2 metrics, `hikyo doctor`, the `restore_hold` column and release, incident
+  containment, key-aware resume, pause and delete
 - [ ] S3 SPA status surface, parity flip
 
 ## Decisions taken in S1 (divergences from the issue handoff flagged)
@@ -765,8 +768,8 @@ configurable grid.
 `rotation.run_intent`, `rotation.run_outcome`, `rotation.quarantined` are registered
 (plus `rotation.configured` from S1). Abandon writes one row per run it closed.
 Payloads carry ids, phase, effect kind, outcome and error codes; no credential material.
-`rotation.run_now` is not registered (S2b). `not_converged_consumers` is declared but
-not emitted yet (see S2b).
+`rotation.run_now` and the `not_converged_consumers` count on the revoke outcome arrived
+in S2b-1 (see "S2b-1 as built").
 
 ### Test map
 
@@ -1053,6 +1056,8 @@ Round 4 review additions (CodeRabbit threads on PR #1426):
 
 ### What S2b must wire
 
+Done in S2b-1: run-now, runs inspection, `--abandon` on the wire and the user docs (see "S2b-1 as built"). Remaining for S2b-2:
+
 - `run-now` (`rotation.run_now` audit event, `OpRotationRunNow`, a `trigger='manual'`
   run) and `--skip-overlap`, which reports `not_converged_consumers`.
 - Runs inspection: `GET .../rotations/{id}/runs`, `hikyo rotation runs`, with the
@@ -1061,6 +1066,75 @@ Round 4 review additions (CodeRabbit threads on PR #1426):
 - Metrics, `hikyo doctor` (approaching `credential_expires_at`, halted, quarantine,
   `revoke_refused`), the `restore_hold` column and release, incident containment.
 - User docs and parity rows (S3 flips them).
+
+## S2b-1 as built (run-now, runs, abandon wire)
+
+Migration 00093 (both engines): `rotations.manual_run_id`, `rotations.manual_skip_overlap`
+and `rotation_runs.not_converged_consumers`. API revision 18 (additive).
+
+### Run-now
+
+- `OpRotationRunNow` (`publish@environment`, `postGrantForbidden`, wire route `POST
+  .../rotations/{rotation}/run-now`, 202 with the pre-generated `run_id`). The service
+  authorizes, requires a human session, checks generation, active state, no open run and
+  no pending request, consumes the publish ceremony over both keys, then writes the
+  request (`manual_run_id`, `manual_skip_overlap`, `next_run_at = now`) and the
+  `rotation.run_now` audit row (`run_id`, `skip_overlap`) in one transaction. It starts
+  nothing and holds no provider handle.
+- The executor's due read exposes the request; `startRun` uses the pre-generated id with
+  trigger `manual` through the same Gate, window and attempts checks as a scheduled run.
+  `StartRun` re-asserts the locked manual fields and clears them in the run-insert
+  transaction. Pause, resume, delete and halt clear a request that has not started.
+- `--skip-overlap` snapshots `revocation_delay_seconds = 0` on that run only. The candidate
+  `VALID UNTIL` still uses the rotation's delay, because that role becomes the next run's
+  superseded role and must outlast that overlap. `RotationRun.RotationDelaySeconds` (the
+  rotation's own delay) feeds the halt audit and the windows so a skip run cannot shorten them.
+- The open-run check is the service's, in the same transaction; a run that opens in between
+  only delays the manual run until it settles (one open run per rotation is the unique index).
+
+### `not_converged_consumers` (decided definition, needs product confirmation)
+
+Smallest truthful definition from what the code can know: the count of non-tombstoned
+`adapter_targets` that mirror either rotation key (`adapter_target_keys`) with
+`converged_revision IS NULL OR < run.published_revision`, computed just before the provider
+drop in `revoke()`. It is emitted on the revoke `rotation.run_outcome` payload and stored in
+`rotation_runs.not_converged_consumers`, for every revoking run (a run with no superseded
+role has none). Machine principals reading keys directly are not counted: no per-principal
+delivery record exists, so the spec text "machine principals with `read@env` whose last
+delivery precedes the publish" cannot be computed. Options for that part:
+
+- A: keep adapter targets only and document it (as built).
+- B: add per-principal last-delivery tracking (a migration plus a write on every value read).
+- C: proxy through `delivery_target_reports` and revision pins.
+- D: drop the machine-consumer wording from the spec and the field name's promise.
+
+### Runs inspection
+
+`OpRotationRuns` (`read@environment`, audited-none bare read), `GET .../rotations/{rotation}/runs`
+with `limit` and `after`, newest first by run id (UUIDv7 ids are time-ordered and a run takes
+its id when it starts). Items carry id, trigger, phase, published revision, revocation delay,
+timestamps, `not_converged_consumers` and the fixed-word `error_code`; never a handle, role
+name, password or provider detail. No run-detail route (the ADR family does not declare one).
+
+### Abandon on the wire
+
+`DELETE .../rotations/{rotation}?abandon=true` and `hikyo rotation delete --abandon` pass the
+service's abandon unchanged.
+
+### Judgment calls and deviations
+
+1. `--confirm-destructive` is required by the CLI only, and only with `--skip-overlap`. The
+   spec text "plus `--confirm-destructive`" had no mechanism in the repo; the API and the audit
+   row carry `skip_overlap` and nothing else.
+2. The run-now response cannot list consumers (no run exists yet, and nothing was revoked). The
+   report lives on the revoke outcome row and in `runs`.
+3. A pending request is not shown by `rotation show`.
+4. `rotation.runs` and `rotation.run_now` are human-session only on the wire like the rest of the family.
+
+### Still S2b-2
+
+Metrics, `hikyo doctor` warnings, the `restore_hold` column and release, incident containment,
+key-aware resume, pause and delete. S2b-2 must ship in the same release as S2a and S2b-1.
 
 ## S2 checklist (carried forward from review)
 
