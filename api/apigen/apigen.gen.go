@@ -40658,6 +40658,20 @@ func (response OidcLifecycle204Response) VisitOidcLifecycleResponse(w http.Respo
 	return nil
 }
 
+type OidcLifecycle400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response OidcLifecycle400JSONResponse) VisitOidcLifecycleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type OidcLifecycle401JSONResponse struct{ UnauthenticatedJSONResponse }
 
 func (response OidcLifecycle401JSONResponse) VisitOidcLifecycleResponse(w http.ResponseWriter) error {

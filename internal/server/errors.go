@@ -193,6 +193,7 @@ var wireErrorRules = []struct {
 }{
 	{service.ErrCLILoginBrowserFactorRequired, apigen.ErrorCodeCliLoginFactorRequired},
 	{service.ErrSelfConfigUnavailable, apigen.ErrorCodeServiceUnavailable},
+	{service.ErrLifecycleRetry, apigen.ErrorCodeServiceUnavailable},
 	// Explicit operator sends may find mail disabled or an unreachable relay.
 	// Both use the closed unavailable policy, without SMTP response details.
 	{mail.ErrDisabled, apigen.ErrorCodeServiceUnavailable},

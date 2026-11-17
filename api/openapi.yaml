@@ -5885,6 +5885,8 @@ paths:
               type: string
               format: binary
       responses:
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
         "204":

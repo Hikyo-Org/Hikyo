@@ -367,6 +367,8 @@ func (a *API) OidcLifecycle(ctx context.Context, req apigen.OidcLifecycleRequest
 		return apigen.OidcLifecycle204Response{}, nil
 	}
 	switch policy := wireErrorFor(err); policy.code {
+	case apigen.ErrorCodeServiceUnavailable:
+		return apigen.OidcLifecycle503JSONResponse{ServiceUnavailableJSONResponse: apigen.ServiceUnavailableJSONResponse{Body: wirePolicyForCode(apigen.ErrorCodeServiceUnavailable).bodyWithDetail(""), Headers: apigen.ServiceUnavailableResponseHeaders{RetryAfter: 2}}}, nil
 	case apigen.ErrorCodeTooManyRequests:
 		return apigen.OidcLifecycle429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}, nil
 	case apigen.ErrorCodeInternal:
