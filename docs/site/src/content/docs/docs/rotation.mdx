@@ -288,7 +288,11 @@ brings back** (including paused and halted ones): a held rotation starts no run,
 does no pre-publish step and extends nothing, and `rotation resume` and
 `rotation run-now` refuse it with a named error. A run already past its publish
 continues to its revoke, because that only removes a role the instance has
-already replaced. `rotation show`, `rotation list` and `rotation runs` print a
+already replaced. A run found in flight that never published is left alone too:
+the archive may not know a publish the live instance made, so Hikyo issues no
+`DROP ROLE` for its candidate while the hold stands. That unused role lingers
+until you release the hold, when the normal rollback and drop happen; it is
+bounded by its own `VALID UNTIL` either way. `rotation show`, `rotation list` and `rotation runs` print a
 `RESTORE HOLD` line on stderr, and the JSON carries `restore_hold`. The delivered
 credential keeps lapsing at its `credential_expires_at`, which is the deadline:
 reconcile the rotation before then.

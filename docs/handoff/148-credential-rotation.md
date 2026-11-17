@@ -77,15 +77,16 @@ decision 13). Never a `SystemProof`, never a scheduler site.
   provider e2e (skips without `HIKYO_TEST_DYNAMIC_PG_*`)
 - [x] S2b-1 run-now (`rotation.run_now`, `OpRotationRunNow`, manual runs, `--skip-overlap`),
   runs inspection (API and CLI), `--abandon` on the wire, user docs (see "S2b-1 as built")
-- [ ] S2b-1 consumer-convergence report: adapter (sync) targets only
-  (`not_converged_adapter_targets`); the machine-principal part is pending an owner decision
-  (options A to D under "S2b-1 as built")
+- [x] S2b-1 consumer-convergence report: adapter (sync) targets only
+  (`not_converged_adapter_targets`); the machine-principal part is option A, accepted as
+  recommended (see "Owner decisions on S2b-2")
 - [x] S2b-2 metrics, `hikyo doctor`, the `restore_hold` column and release, key-aware
   pause, resume, delete and run-now (see "S2b-2 as built")
-- [ ] S2b-2 incident ledger enumeration of rotations: stopped for an owner decision
-  (options A to C under "S2b-2 as built"); containment itself already halts the rotation
-- [ ] S2b-2 run-level `published_versions_changed` hold release: owner decision pending
-  (options A to C under "S2b-2 as built")
+- [ ] S2b-2 incident ledger enumeration of rotations: owner chose B (account scope only),
+  built in a follow-up branch from dev after this PR merges, not in this PR; containment itself
+  already halts the rotation
+- [x] S2b-2 run-level `published_versions_changed` hold release: option A (status only, as
+  built), accepted as recommended
 - [ ] S3 SPA status surface, parity flip
 
 ## Decisions taken in S1 (divergences from the issue handoff flagged)
@@ -1074,7 +1075,8 @@ Round 4 review additions (CodeRabbit threads on PR #1426):
 
 Done in S2b-1: run-now, runs inspection, `--abandon` on the wire and the user docs (see "S2b-1 as built"). Built in S2b-2 (see "S2b-2 as built"): metrics, doctor, the `restore_hold` column and
 release, and key-aware pause, resume, delete and run-now. Still open: ledger enumeration of
-rotations and the run-level hold release, both awaiting owner decisions.
+rotations, owner decision B, built in a follow-up branch after this PR merges (see "Owner
+decisions on S2b-2").
 
 - Parity rows (S3 flips them).
 - The machine-principal part of the consumer report, if the owner picks option B or C
@@ -1120,7 +1122,7 @@ and `rotation_runs.not_converged_adapter_targets`. API revision 18 (additive).
   locks to start a run, so a racing run is caught either by the recount or by the
   serialization retry. No interleaving test: the window needs a concurrent transaction.
 
-### `not_converged_adapter_targets` (adapter targets only, owner decision pending)
+### `not_converged_adapter_targets` (adapter targets only, option A accepted)
 
 The field was named `not_converged_consumers` while it was designed; it is renamed because it
 counts adapter (sync) targets only, never "delivery targets" (that term is the Kubernetes
@@ -1193,7 +1195,7 @@ A partial index (`rotation_runs_env_published`, migration 00094) backs the expir
 subquery. Doctor reports counts only and names no tenant or rotation id, a deliberate
 deviation from listing the affected ids: it tells the operator to run `hikyo rotation list`
 (halted, held, overdue) and `hikyo rotation runs <rotation>` (quarantined, refused, unknown
-outcome). **Flag for owner sign-off.** `hikyo doctor` has one `rotation`
+outcome). **Accepted as recommended (owner, round 5).** `hikyo doctor` has one `rotation`
 finding fed by `RetentionHealth` (new optional fields, omitted when unmeasured, so doctor
 says `unknown`, never ok).
 
@@ -1245,8 +1247,8 @@ key was deleted (the key lookup answers not-found); an environment-wide holder c
   (`rotation.configured`, `hold_released`) and the held state is visible in `show`, `list`
   and the gauge. If an owner wants a per-rotation restore row, that is a follow-up.
 - A held rotation is a non-active one to the executor (projected into the run's
-  `RotationState`): no start, no pre-publish step, no extend; a run past its publish
-  continues to its revoke and a candidate drop continues. The stored `state` is unchanged,
+  `RotationState`): no start, no pre-publish step, no extend, no candidate drop; a run past
+  its publish continues to its revoke. The stored `state` is unchanged,
   so resume cannot bypass the hold: resume and run-now refuse with `ErrRotationRestoreHeld`;
   pause and delete are allowed. The Gate refuses a held rotation.
 - `rotation release-hold` (`rotation.release_hold`, `POST .../release-hold`): human only,
@@ -1263,7 +1265,8 @@ key was deleted (the key lookup answers not-found); an environment-wide holder c
   rotation is released without that preflight: release only lifts the hold, and resume
   re-runs every check, so a provider that was revoked cannot trap the hold. Denials of the
   authority check are recorded under `rotation.release_hold`, not `rotation.resume`.
-  A run recovered while the rotation is held records `rotation_held` (not `rotation_paused`).
+  A run found in flight while the rotation is held is not recovered at all (round 5, owner
+  decision B); the recovery code still records `rotation_paused` for a paused rotation.
 - `rotation show`, `list` and `runs` print a `RESTORE HOLD` line on stderr with the
   `credential_expires_at` deadline; the JSON carries `restore_hold`.
 - Observed: a hold that outlasts the delivered credential's window makes the first run after
@@ -1426,6 +1429,37 @@ key was deleted (the key lookup answers not-found); an environment-wide holder c
   `TestRotationExtendHoldLandingAfterTheHoldReadStaysDueAfterRelease` (seam `AfterExtendHoldRead`)
   failed before the fix on both engines (next attempt 9000-01-01, 0 extends after release).
 
+- **Candidate drops while held (owner decision B, built).** Every path that issues `DROP ROLE`
+  for a candidate was checked: `dropOrphan`, `dropCandidate` (the rollback of `recoverInFlight`
+  and of a refused publish), the reconciler's drop in `reconcileCandidate`, and the superseded
+  revoke. The revoke is unchanged. The other three now read the hold first and issue no drop for
+  a held rotation. The claim query no longer selects `minting`, `minted` and unpublished
+  `failed`/`quarantine` runs of a held rotation (both engines), so the run and its role are left
+  untouched until `release-hold`; `recoverInFlight` and `reconcileCandidate` also read the hold
+  themselves for a hold landing after the claim, and the drops re-read it just before the
+  provider call (`leaveCandidateHeld` closes an opened INTENT as a failure with `rotation_held`
+  and leaves the run due). The `rotation_held` recovery label is gone with the recovery: a
+  held rotation recovers nothing. After the release the run is due and the normal rollback and
+  drop happen. Tests: `TestRotationHeldRotationDoesNotRecoverInFlightRuns` (minting and minted),
+  `TestRotationHeldRotationDoesNotReconcileCandidates` and
+  `TestRotationHoldDuringARunSkipsTheRollbackDrop`, each failing before the change on both
+  engines. The residual window is a hold landing between the final read and the provider call.
+
+### Owner decisions on S2b-2 (resolved)
+
+Owner answered "continue as recommended" on the open S2b-2 decisions:
+
+- Decision 1, provider-role drops while held: **B**, built above.
+- Decision 2, containment ledger: **B** (account scope only: object kind `rotation`, owner
+  function `rotation.halt`, enumerated by authority principal in `collectAccount`, one new store
+  read and one authz read operation), conditional on org and project scopes inheriting through
+  the accounts they select. Not in PR #1430: built in a follow-up branch from dev after it merges.
+- Decision 3, run-level `published_versions_changed` hold release: **A**, status only, as built
+  (accepted as recommended).
+- Decision 4, key-narrowed holders without read: **A**, accepted (accepted as recommended).
+- Doctor count-only and `not_converged_adapter_targets` adapter-only: **A**, accepted as
+  recommended; no code change.
+
 ### Incident containment
 
 A contained principal loads no grants, so a Gate that runs while the principal is contained
@@ -1462,16 +1496,17 @@ Options for the operator's view of that hold after a restore:
 - Recommendation: A for this release, B as a follow-up if operators ask. C hands the
   operator a way to keep a role the instance can no longer account for.
 
-### Open owner decision: restored in-flight runs may drop a role consumers already fetched
+### Restored in-flight runs do not drop a role consumers already fetched (resolved, option B)
 
-(Security review round 1, M2; no code changed.) `recoverInFlight` and the failed/quarantine
-reconciler drop provider roles while a rotation is held. Scenario: the archive was taken while
-a run was `minting` or `minted`; the live instance then published that run's candidate and
-consumers fetched it. After the restore the archive says the run never published, so recovery
-rolls it back and `DROP ROLE IF EXISTS` kills a credential consumers already hold, with no
-restore assertion guarding the drop. Options: (A) keep as built and document the risk;
-(B) skip pre-publish candidate drops while the rotation is held, leaving the role to expire at
-its `VALID UNTIL` (costs a lingering unused role). Recommendation: B.
+(Security review round 1, M2; resolved by the owner in round 5.) Scenario: the archive was
+taken while a run was `minting` or `minted`; the live instance then published that run's
+candidate and consumers fetched it. After the restore the archive says the run never
+published, so recovery used to roll it back and `DROP ROLE IF EXISTS` killed a credential
+consumers already hold, with no restore assertion guarding the drop. Built as option B: while a
+rotation is restore-held, no `DROP ROLE` is issued for a candidate that never published.
+See "Review round 5" for the mechanism. An unpublished candidate role lingers until
+`release-hold` and is bounded by its `VALID UNTIL`. Revokes of the superseded role are
+unchanged (the restore assertion guards them) and runs past their publish still finish.
 
 ### Judgment calls
 
