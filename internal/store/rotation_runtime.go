@@ -665,6 +665,8 @@ type RotationGauges struct {
 	UnknownOutcome int64
 	// Halted is rotations stopped by a failed gate or an exhausted retry window.
 	Halted int64
+	// RestoreHeld is rotations a restore held and no operator has released yet.
+	RestoreHeld int64
 	// Overdue is active rotations due for longer than RotationOverdueGrace with no
 	// run open.
 	Overdue int64

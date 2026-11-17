@@ -424,7 +424,7 @@ func (e *RotationExecutor) gateWithin(ctx context.Context, r store.Repos, az *au
 	if err != nil {
 		return err
 	}
-	if rec.State != store.RotationStateActive || (check.generation != anyGeneration && rec.Generation != check.generation) {
+	if rec.State != store.RotationStateActive || rec.RestoreHold || (check.generation != anyGeneration && rec.Generation != check.generation) {
 		return errRotationInactive
 	}
 	if err := requireUnattendedEnvironment(ctx, r, az, proof, scope); err != nil {

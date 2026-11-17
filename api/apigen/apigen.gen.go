@@ -6906,7 +6906,10 @@ type CredentialRotation struct {
 	NextRunAt *time.Time `json:"next_run_at,omitzero"`
 
 	// ProviderId A prefixed UUIDv7, e.g. `org_0198…`.
-	ProviderId             ID    `json:"provider_id"`
+	ProviderId ID `json:"provider_id"`
+
+	// RestoreHold True while a restore holds the rotation: it starts no run and takes no pre-publish step, whatever its state, until `release-hold`. The delivered credential keeps lapsing at credential_expires_at, so release the hold before then.
+	RestoreHold            bool  `json:"restore_hold"`
 	RevocationDelaySeconds int64 `json:"revocation_delay_seconds"`
 
 	// State `paused` is an operator or cascade pause (a deleted provider, a protected
@@ -10584,6 +10587,9 @@ type RetentionHealth struct {
 
 	// RotationOverdue Active scheduled rotations due for over fifteen minutes with no run started (#148). Absent when not measured.
 	RotationOverdue *int `json:"rotation_overdue,omitzero"`
+
+	// RotationRestoreHeld Scheduled rotations a restore holds until an operator releases them, so none starts a run (#148). Absent when not measured.
+	RotationRestoreHeld *int `json:"rotation_restore_held,omitzero"`
 
 	// RotationRunsQuarantined Scheduled-rotation runs closed as quarantine that still owe a drop (#148). Absent when not measured.
 	RotationRunsQuarantined *int `json:"rotation_runs_quarantined,omitzero"`
@@ -14511,6 +14517,9 @@ type CreateRotationJSONRequestBody = CreateRotationRequest
 // PauseRotationJSONRequestBody defines body for PauseRotation for application/json ContentType.
 type PauseRotationJSONRequestBody = RotationStateRequest
 
+// ReleaseRotationHoldJSONRequestBody defines body for ReleaseRotationHold for application/json ContentType.
+type ReleaseRotationHoldJSONRequestBody = RotationStateRequest
+
 // ResumeRotationJSONRequestBody defines body for ResumeRotation for application/json ContentType.
 type ResumeRotationJSONRequestBody = RotationStateRequest
 
@@ -16581,6 +16590,9 @@ type ServerInterface interface {
 	// PauseRotation Pause a rotation so it stops being scheduled.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/pause)
 	PauseRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID)
+	// ReleaseRotationHold Release the restore hold of a rotation.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/release-hold)
+	ReleaseRotationHold(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID)
 	// ResumeRotation Resume a paused or halted rotation and recompute its next run.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume)
 	ResumeRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID)
@@ -18774,6 +18786,12 @@ func (_ Unimplemented) ShowRotation(w http.ResponseWriter, r *http.Request, org 
 // PauseRotation Pause a rotation so it stops being scheduled.
 // (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/pause)
 func (_ Unimplemented) PauseRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ReleaseRotationHold Release the restore hold of a rotation.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/release-hold)
+func (_ Unimplemented) ReleaseRotationHold(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -29987,6 +30005,59 @@ func (siw *ServerInterfaceWrapper) PauseRotation(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// ReleaseRotationHold operation middleware
+func (siw *ServerInterfaceWrapper) ReleaseRotationHold(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "rotation" -------------
+	var rotation RotationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rotation", chi.URLParam(r, "rotation"), &rotation, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rotation", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReleaseRotationHold(w, r, org, project, environment, rotation)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ResumeRotation operation middleware
 func (siw *ServerInterfaceWrapper) ResumeRotation(w http.ResponseWriter, r *http.Request) {
 
@@ -37157,6 +37228,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/pause", wrapper.PauseRotation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/release-hold", wrapper.ReleaseRotationHold)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume", wrapper.ResumeRotation)
@@ -71227,6 +71301,131 @@ func (response PauseRotation503JSONResponse) VisitPauseRotationResponse(w http.R
 	return err
 }
 
+type ReleaseRotationHoldRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Rotation    RotationID    `json:"rotation"`
+	Body        *ReleaseRotationHoldJSONRequestBody
+}
+
+type ReleaseRotationHoldResponseObject interface {
+	VisitReleaseRotationHoldResponse(w http.ResponseWriter) error
+}
+
+type ReleaseRotationHold200JSONResponse CredentialRotation
+
+func (response ReleaseRotationHold200JSONResponse) VisitReleaseRotationHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseRotationHold400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ReleaseRotationHold400JSONResponse) VisitReleaseRotationHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseRotationHold401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ReleaseRotationHold401JSONResponse) VisitReleaseRotationHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseRotationHold403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ReleaseRotationHold403JSONResponse) VisitReleaseRotationHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseRotationHold404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ReleaseRotationHold404JSONResponse) VisitReleaseRotationHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseRotationHold409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ReleaseRotationHold409JSONResponse) VisitReleaseRotationHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseRotationHold500JSONResponse struct{ InternalJSONResponse }
+
+func (response ReleaseRotationHold500JSONResponse) VisitReleaseRotationHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseRotationHold503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ReleaseRotationHold503JSONResponse) VisitReleaseRotationHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ResumeRotationRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -87897,6 +88096,9 @@ type StrictServerInterface interface {
 	// PauseRotation Pause a rotation so it stops being scheduled.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/pause)
 	PauseRotation(ctx context.Context, request PauseRotationRequestObject) (PauseRotationResponseObject, error)
+	// ReleaseRotationHold Release the restore hold of a rotation.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/release-hold)
+	ReleaseRotationHold(ctx context.Context, request ReleaseRotationHoldRequestObject) (ReleaseRotationHoldResponseObject, error)
 	// ResumeRotation Resume a paused or halted rotation and recompute its next run.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume)
 	ResumeRotation(ctx context.Context, request ResumeRotationRequestObject) (ResumeRotationResponseObject, error)
@@ -97021,6 +97223,45 @@ func (sh *strictHandler) PauseRotation(w http.ResponseWriter, r *http.Request, o
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PauseRotationResponseObject); ok {
 		if err := validResponse.VisitPauseRotationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReleaseRotationHold operation middleware
+func (sh *strictHandler) ReleaseRotationHold(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
+	var request ReleaseRotationHoldRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Rotation = rotation
+
+	var body ReleaseRotationHoldJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReleaseRotationHold(ctx, request.(ReleaseRotationHoldRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReleaseRotationHold")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReleaseRotationHoldResponseObject); ok {
+		if err := validResponse.VisitReleaseRotationHoldResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

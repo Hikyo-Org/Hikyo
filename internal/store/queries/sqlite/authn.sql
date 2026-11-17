@@ -752,6 +752,23 @@ DELETE FROM remotes;
 -- name: HoldRestoredPKIIssuers :exec
 UPDATE pki_issuers SET restore_hold = 1;
 
+-- A restore brings back rotations whose grants, provider credentials and served
+-- keys are not reconciled yet, so every restored rotation is held: it starts no
+-- run and takes no pre-publish step until an operator releases it with
+-- `hikyo rotation release-hold` (#148, decision 9). A disabled rotation never runs
+-- again and is not held.
+-- hikyo:authn-resolution
+-- name: HoldRestoredRotations :exec
+UPDATE rotations SET restore_hold = 1 WHERE state <> 'disabled';
+
+-- The fallback for an archive written before the restore_hold column existed
+-- (migrations 00091 to 00093): the closure runs against the archive's own schema,
+-- so it can only use the columns that archive has. Every active rotation is
+-- paused, which is a state the operator must resume by hand.
+-- hikyo:authn-resolution
+-- name: PauseRestoredRotations :exec
+UPDATE rotations SET state = 'paused', next_run_at = NULL, generation = generation + 1 WHERE state = 'active';
+
 -- The operator's commit covers `manual` origins ONLY (#73, scim-provisioning
 -- ADR section 9.1). A restored `scim` origin is a claim about what an identity
 -- provider asserted BEFORE the backup was taken, and the whole point of the

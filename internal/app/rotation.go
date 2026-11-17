@@ -99,5 +99,5 @@ func (s rotationGaugeSource) RotationSnapshot() (server.RotationCounts, error) {
 		s.log.Warn("rotation gauge scrape failed", "class", service.RotationErrorClass(err))
 		return server.RotationCounts{}, err
 	}
-	return server.RotationCounts{Quarantined: g.Quarantined, UnknownOutcome: g.UnknownOutcome, RevokeRefused: g.RevokeRefused, Halted: g.Halted, Overdue: g.Overdue, CredentialsExpiring: g.Expiring}, nil
+	return server.RotationCounts{Quarantined: g.Quarantined, UnknownOutcome: g.UnknownOutcome, RevokeRefused: g.RevokeRefused, Halted: g.Halted, RestoreHeld: g.RestoreHeld, Overdue: g.Overdue, CredentialsExpiring: g.Expiring}, nil
 }

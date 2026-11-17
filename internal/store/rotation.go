@@ -29,6 +29,10 @@ const (
 	RotationStatePaused   = "paused"
 	RotationStateHalted   = "halted"
 	RotationStateDisabled = "disabled"
+	// RotationStateRestoreHeld is what the executor sees in place of the state of a
+	// rotation a restore holds (RotationRecord.RestoreHold): not active, so it starts
+	// and extends nothing, whatever the stored state is. It is never stored.
+	RotationStateRestoreHeld = "restore_hold"
 )
 
 var (
@@ -82,6 +86,9 @@ type RotationRecord struct {
 	CreatedAt              string
 	UpdatedAt              string
 	CredentialExpiresAt    string
+	// RestoreHold is set by a restore and cleared by ReleaseHold: a held rotation
+	// starts no run and takes no pre-publish step, whatever its state.
+	RestoreHold bool
 }
 
 // RotationCreate is one rotation configuration. The environment is bound from
@@ -181,6 +188,10 @@ type RotationRepo interface {
 	// is the service's: it counts again after this write, which holds the row the
 	// executor locks to start a run, and rolls the request back if one opened.
 	RequestRun(ctx context.Context, p authz.Proof, m RotationRunRequest) error
+	// ReleaseHold clears the restore hold of a held rotation. It reports
+	// ErrConflict when the rotation is not held (or is gone). The generation is
+	// not bumped, so a run in flight is not invalidated.
+	ReleaseHold(ctx context.Context, p authz.Proof, rotationID string, at time.Time) error
 	// PauseForProvider pauses every active rotation that mints from the provider,
 	// in the proof's project, and returns them as paused. It is the provider
 	// delete and credential revoke cascade: a rotation never stays active against
@@ -250,6 +261,7 @@ type rotationStoreQueries interface {
 	setState(ctx context.Context, chain domain.Scope, m RotationSetState) (int64, error)
 	countOpenRuns(ctx context.Context, chain domain.Scope, rotationID string) (int64, error)
 	requestRun(ctx context.Context, chain domain.Scope, m RotationRunRequest) (int64, error)
+	releaseHold(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) (int64, error)
 	manualPending(ctx context.Context, chain domain.Scope, rotationID string) (bool, error)
 	listRuns(ctx context.Context, chain domain.Scope, q RotationRunQuery) ([]RotationRunRecord, error)
 	credentialExpiry(ctx context.Context, chain domain.Scope, keyID string) (string, error)
@@ -516,6 +528,21 @@ func (r rotationQueries) RequestRun(ctx context.Context, p authz.Proof, m Rotati
 		return ErrRotationRunPending
 	}
 	return ErrConflict
+}
+
+func (r rotationQueries) ReleaseHold(ctx context.Context, p authz.Proof, rotationID string, at time.Time) error {
+	chain, err := r.envChain(p, authz.StoreRotationsReleaseHold)
+	if err != nil {
+		return err
+	}
+	rows, err := r.queries.releaseHold(ctx, chain, rotationID, at)
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return ErrConflict
+	}
+	return nil
 }
 
 func (r rotationQueries) ListRuns(ctx context.Context, p authz.Proof, q RotationRunQuery) ([]RotationRunRecord, error) {
@@ -955,7 +982,7 @@ func sqliteRotation(c sqlitegen.RotationGetRow) (RotationRecord, error) {
 		ID: c.ID, EnvironmentID: c.EnvironmentID, ProviderID: c.ProviderID, KeyID: c.KeyID, UsernameKeyID: c.UsernameKeyID,
 		IntervalSeconds: c.IntervalSeconds, RevocationDelaySeconds: c.RevocationDelaySeconds,
 		AuthorityPrincipalID: c.AuthorityPrincipalID, CreatedBy: c.CreatedBy, State: c.State,
-		NextRunAt: c.NextRunAt.String, Generation: c.Generation, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+		NextRunAt: c.NextRunAt.String, Generation: c.Generation, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, RestoreHold: c.RestoreHold != 0,
 	}
 	if err := normalizeStoredTimes(&out.NextRunAt, &out.CreatedAt, &out.UpdatedAt); err != nil {
 		return RotationRecord{}, err
@@ -968,7 +995,7 @@ func pgRotation(c pggen.RotationGetRow) (RotationRecord, error) {
 		ID: c.ID, EnvironmentID: c.EnvironmentID, ProviderID: c.ProviderID, KeyID: c.KeyID, UsernameKeyID: c.UsernameKeyID,
 		IntervalSeconds: c.IntervalSeconds, RevocationDelaySeconds: c.RevocationDelaySeconds,
 		AuthorityPrincipalID: c.AuthorityPrincipalID, CreatedBy: c.CreatedBy, State: c.State,
-		NextRunAt: pgStoredStamp(c.NextRunAt), Generation: c.Generation, CreatedAt: pgStoredStamp(c.CreatedAt), UpdatedAt: pgStoredStamp(c.UpdatedAt),
+		NextRunAt: pgStoredStamp(c.NextRunAt), Generation: c.Generation, CreatedAt: pgStoredStamp(c.CreatedAt), UpdatedAt: pgStoredStamp(c.UpdatedAt), RestoreHold: c.RestoreHold,
 	}
 	if err := normalizeStoredTimes(&out.NextRunAt, &out.CreatedAt, &out.UpdatedAt); err != nil {
 		return RotationRecord{}, err
@@ -1066,6 +1093,14 @@ func (q sqliteRotationQueries) providerLiveRuns(ctx context.Context, chain domai
 
 func (q pgRotationQueries) providerLiveRuns(ctx context.Context, chain domain.Scope, providerID string) (int64, error) {
 	return q.q.RotationProviderLiveRuns(ctx, pggen.RotationProviderLiveRunsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ProviderID: providerID})
+}
+
+func (q sqliteRotationQueries) releaseHold(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) (int64, error) {
+	return q.q.RotationReleaseHold(ctx, sqlitegen.RotationReleaseHoldParams{At: fixedStamp(at), RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+}
+
+func (q pgRotationQueries) releaseHold(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) (int64, error) {
+	return q.q.RotationReleaseHold(ctx, pggen.RotationReleaseHoldParams{At: pgRequiredTime(at), RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
 }
 
 func (q sqliteRotationQueries) requestRun(ctx context.Context, chain domain.Scope, m RotationRunRequest) (int64, error) {

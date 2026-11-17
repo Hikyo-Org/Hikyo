@@ -1418,6 +1418,7 @@ type Rotation struct {
 	UpdatedAt              pgtype.Timestamptz
 	ManualRunID            pgtype.Text
 	ManualSkipOverlap      bool
+	RestoreHold            bool
 }
 
 type RotationEffect struct {

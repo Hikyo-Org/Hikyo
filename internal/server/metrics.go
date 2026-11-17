@@ -153,6 +153,7 @@ const (
 	MetricRotationRunsUnknownOutcome  = "hikyo_rotation_runs_unknown_outcome"
 	MetricRotationRunsRevokeRefused   = "hikyo_rotation_runs_revoke_refused"
 	MetricRotationHalted              = "hikyo_rotation_halted"
+	MetricRotationRestoreHeld         = "hikyo_rotation_restore_held"
 	MetricRotationOverdue             = "hikyo_rotation_overdue"
 	MetricRotationCredentialsExpiring = "hikyo_rotation_credentials_expiring"
 	MetricRotationGaugesKnown         = "hikyo_rotation_gauges_known"
@@ -832,7 +833,7 @@ func (c *pkiCollector) Collect(ch chan<- prometheus.Metric) {
 // RotationCounts are the rotation gauge values, in the order the collector emits
 // them.
 type RotationCounts struct {
-	Quarantined, UnknownOutcome, RevokeRefused, Halted, Overdue, CredentialsExpiring int64
+	Quarantined, UnknownOutcome, RevokeRefused, Halted, RestoreHeld, Overdue, CredentialsExpiring int64
 }
 
 // RotationSnapshotter is the scheduled-rotation gauge source, read at scrape time,
@@ -846,16 +847,17 @@ func (m *Metrics) SetRotationSource(source RotationSnapshotter) { m.rotation.sou
 
 type rotationCollector struct {
 	source atomic.Pointer[RotationSnapshotter]
-	descs  [6]*prometheus.Desc
+	descs  [7]*prometheus.Desc
 	known  *prometheus.Desc
 }
 
 func newRotationCollector() *rotationCollector {
-	return &rotationCollector{descs: [6]*prometheus.Desc{
+	return &rotationCollector{descs: [7]*prometheus.Desc{
 		prometheus.NewDesc(MetricRotationRunsQuarantined, "Number of rotation runs closed as quarantine that still owe a drop.", nil, nil),
 		prometheus.NewDesc(MetricRotationRunsUnknownOutcome, "Number of unsettled rotation runs with an effect of unknown outcome, so a possibly live credential exists.", nil, nil),
 		prometheus.NewDesc(MetricRotationRunsRevokeRefused, "Number of rotation runs whose superseded role could not be dropped.", nil, nil),
 		prometheus.NewDesc(MetricRotationHalted, "Number of rotations halted by a failed gate or an exhausted retry window.", nil, nil),
+		prometheus.NewDesc(MetricRotationRestoreHeld, "Number of rotations a restore holds until an operator releases them.", nil, nil),
 		prometheus.NewDesc(MetricRotationOverdue, "Number of active rotations due for over fifteen minutes with no run started.", nil, nil),
 		prometheus.NewDesc(MetricRotationCredentialsExpiring, "Number of rotations whose delivered credential expires within six hours.", nil, nil),
 	}, known: prometheus.NewDesc(MetricRotationGaugesKnown, "Whether the rotation gauges were measured on this scrape; they are omitted when 0.", nil, nil)}
@@ -869,11 +871,11 @@ func (c *rotationCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (c *rotationCollector) Collect(ch chan<- prometheus.Metric) {
-	var values [6]float64
+	var values [7]float64
 	measured := false
 	if p := c.source.Load(); p != nil && *p != nil {
 		if n, err := (*p).RotationSnapshot(); err == nil {
-			values = [6]float64{float64(n.Quarantined), float64(n.UnknownOutcome), float64(n.RevokeRefused), float64(n.Halted), float64(n.Overdue), float64(n.CredentialsExpiring)}
+			values = [7]float64{float64(n.Quarantined), float64(n.UnknownOutcome), float64(n.RevokeRefused), float64(n.Halted), float64(n.RestoreHeld), float64(n.Overdue), float64(n.CredentialsExpiring)}
 			measured = true
 		}
 	}

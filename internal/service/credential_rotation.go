@@ -154,10 +154,11 @@ type RotationStateRequest struct {
 type rotationAction string
 
 const (
-	rotationActionCreated rotationAction = "created"
-	rotationActionPaused  rotationAction = "paused"
-	rotationActionResumed rotationAction = "resumed"
-	rotationActionDeleted rotationAction = "deleted"
+	rotationActionCreated      rotationAction = "created"
+	rotationActionPaused       rotationAction = "paused"
+	rotationActionResumed      rotationAction = "resumed"
+	rotationActionDeleted      rotationAction = "deleted"
+	rotationActionHoldReleased rotationAction = "hold_released"
 )
 
 // rotationDuration renders a bound in the units the CLI flags accept.
@@ -606,6 +607,10 @@ var (
 	ErrRotationRunInFlight = &rotationRefusal{"the rotation has a run in flight; let it finish first", domain.ErrConflict}
 	// ErrRotationRunNowUnconfirmed refuses a run-now that did not confirm itself.
 	ErrRotationRunNowUnconfirmed = &rotationRefusal{"a run-now publishes a new credential outside the schedule, and with skip-overlap revokes the superseded one at once; confirm it with confirm_destructive", domain.ErrConflict}
+	// ErrRotationRestoreHeld refuses to start or re-arm a rotation a restore holds.
+	ErrRotationRestoreHeld = &rotationRefusal{"the rotation is held after a restore; reconcile its grants and provider credential, then release it with release-hold", domain.ErrConflict}
+	// ErrRotationNotHeld refuses a release of a rotation no restore holds.
+	ErrRotationNotHeld = &rotationRefusal{"the rotation is not held by a restore", domain.ErrConflict}
 	// ErrRotationRunPending refuses a second run-now while one waits for the executor.
 	ErrRotationRunPending = &rotationRefusal{"a run was already requested and has not started yet", domain.ErrConflict}
 )
@@ -642,6 +647,9 @@ func (s *CredentialRotations) RunNow(ctx context.Context, actor Actor, scope dom
 		}
 		if cur.State != store.RotationStateActive {
 			return fmt.Errorf("%w: only an active rotation can run now (state is %s)", domain.ErrConflict, cur.State)
+		}
+		if cur.RestoreHold {
+			return ErrRotationRestoreHeld
 		}
 		open, err := r.Rotations().CountOpenRuns(ctx, proof, cur.ID)
 		if err != nil {
@@ -786,6 +794,9 @@ func (s *CredentialRotations) transition(ctx context.Context, actor Actor, scope
 			if cur.State != store.RotationStatePaused && cur.State != store.RotationStateHalted {
 				return fmt.Errorf("%w: only a paused or halted rotation can be resumed (state is %s)", domain.ErrConflict, cur.State)
 			}
+			if cur.RestoreHold {
+				return ErrRotationRestoreHeld
+			}
 			if err := s.authorizeResume(ctx, r, az, proof, caller, scope, cur); err != nil {
 				return err
 			}
@@ -877,12 +888,62 @@ func (s *CredentialRotations) transition(ctx context.Context, actor Actor, scope
 	return out, err
 }
 
+// ReleaseHold clears the restore hold a restore put on a rotation (#148, decision
+// 9). It is a human act with resume's authorization (both keys, key-narrowed rules
+// apply) and consumes the publish ceremony, because the next scheduled run mints
+// and publishes unattended again. It changes nothing else: the state, the schedule,
+// every run and every provider role stay as they are, so releasing never drops a
+// superseded role early and never resumes a paused or halted rotation. A run held
+// for its superseded role (published_versions_changed) is not released by this; it
+// ends only on its own exits.
+func (s *CredentialRotations) ReleaseHold(ctx context.Context, actor Actor, scope domain.Scope, req RotationStateRequest) (RotationView, error) {
+	if err := requireRotationEnv(scope, "release-hold", req.RotationID); err != nil {
+		return RotationView{}, err
+	}
+	now := store.CanonTime(s.now())
+	var out RotationView
+	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		caller, proof, cur, err := authorizeRotationKeys(ctx, r, az, actor, authz.OpRotationReleaseHold, scope, req.RotationID, now)
+		if err != nil {
+			return err
+		}
+		if err := requireRotationHuman(caller); err != nil {
+			return err
+		}
+		if req.ExpectedGeneration != 0 && req.ExpectedGeneration != cur.Generation {
+			return ErrRotationStale
+		}
+		if cur.State == store.RotationStateDisabled {
+			return fmt.Errorf("%w: the rotation is deleted", domain.ErrConflict)
+		}
+		if !cur.RestoreHold {
+			return ErrRotationNotHeld
+		}
+		if err := s.requireRotationCeremony(ctx, az, caller, scope, cur.KeyID, cur.UsernameKeyID); err != nil {
+			return err
+		}
+		if err := r.Rotations().ReleaseHold(ctx, proof, cur.ID, now); err != nil {
+			if errors.Is(err, store.ErrConflict) {
+				return ErrRotationNotHeld
+			}
+			return err
+		}
+		rec, err := r.Rotations().Get(ctx, proof, cur.ID)
+		if err != nil {
+			return err
+		}
+		out = RotationView{RotationRecord: rec}
+		return insertRotationConfigured(ctx, r, proof, caller.Principal, rotationActionHoldReleased, "", rec)
+	})
+	return out, err
+}
+
 // authorizeResume is everything a resume needs beyond the environment's publish
 // formula, in the order that keeps each refusal honest: only a signed-in person
 // resumes; the environment still runs unattended; the provider can still mint;
-// the keys still exist and are fit to receive the credential (a missing key is
-// its own refusal, because per-key authorization of a missing key reads as
-// not-found); the recorded authority principal still holds the resume formula
+// the keys still exist and are fit to receive the credential (the key-aware
+// check that ran first already answers not-found for a deleted key to a
+// key-narrowed caller; an environment-wide caller reaches the named refusal); the recorded authority principal still holds the resume formula
 // (edit, publish and reveal at the environment) on both keys; the authority holds no draft on either key; and the publish ceremony is
 // consumed.
 func (s *CredentialRotations) authorizeResume(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, proof authz.Proof, caller authz.Identity, scope domain.Scope, rec store.RotationRecord) error {

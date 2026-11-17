@@ -221,8 +221,8 @@ func TestDoctorPKIFinding(t *testing.T) {
 
 func TestDoctorRotationFinding(t *testing.T) {
 	zero, one := 0, 1
-	health := func(halted, quarantined, refused, unknown, overdue, expiring *int) apigen.RetentionHealth {
-		return apigen.RetentionHealth{RotationHalted: halted, RotationRunsQuarantined: quarantined, RotationRunsRevokeRefused: refused,
+	health := func(halted, held, quarantined, refused, unknown, overdue, expiring *int) apigen.RetentionHealth {
+		return apigen.RetentionHealth{RotationHalted: halted, RotationRestoreHeld: held, RotationRunsQuarantined: quarantined, RotationRunsRevokeRefused: refused,
 			RotationRunsUnknownOutcome: unknown, RotationOverdue: overdue, RotationCredentialsExpiring: expiring}
 	}
 	cases := []struct {
@@ -230,14 +230,15 @@ func TestDoctorRotationFinding(t *testing.T) {
 		health            apigen.RetentionHealth
 		severity, message string
 	}{
-		{"healthy", health(&zero, &zero, &zero, &zero, &zero, &zero), "ok", "0 halted rotation(s), 0 quarantined run(s)"},
-		{"halted", health(&one, &zero, &zero, &zero, &zero, &zero), "warn", "1 halted rotation(s)"},
-		{"quarantined", health(&zero, &one, &zero, &zero, &zero, &zero), "warn", "1 quarantined run(s)"},
-		{"revoke refused", health(&zero, &zero, &one, &zero, &zero, &zero), "warn", "1 run(s) whose superseded role could not be dropped"},
-		{"unknown outcome", health(&zero, &zero, &zero, &one, &zero, &zero), "warn", "1 run(s) with an unknown outcome"},
-		{"overdue", health(&zero, &zero, &zero, &zero, &one, &zero), "warn", "1 overdue rotation(s)"},
-		{"expiring", health(&zero, &zero, &zero, &zero, &zero, &one), "warn", "1 credential(s) expiring within six hours"},
-		{"one missing", health(&zero, &zero, &zero, &zero, &zero, nil), "unknown", "not measured"},
+		{"healthy", health(&zero, &zero, &zero, &zero, &zero, &zero, &zero), "ok", "0 halted rotation(s), 0 rotation(s) held"},
+		{"halted", health(&one, &zero, &zero, &zero, &zero, &zero, &zero), "warn", "1 halted rotation(s)"},
+		{"held", health(&zero, &one, &zero, &zero, &zero, &zero, &zero), "warn", "1 rotation(s) held by a restore"},
+		{"quarantined", health(&zero, &zero, &one, &zero, &zero, &zero, &zero), "warn", "1 quarantined run(s)"},
+		{"revoke refused", health(&zero, &zero, &zero, &one, &zero, &zero, &zero), "warn", "1 run(s) whose superseded role could not be dropped"},
+		{"unknown outcome", health(&zero, &zero, &zero, &zero, &one, &zero, &zero), "warn", "1 run(s) with an unknown outcome"},
+		{"overdue", health(&zero, &zero, &zero, &zero, &zero, &one, &zero), "warn", "1 overdue rotation(s)"},
+		{"expiring", health(&zero, &zero, &zero, &zero, &zero, &zero, &one), "warn", "1 credential(s) expiring within six hours"},
+		{"one missing", health(&zero, &zero, &zero, &zero, &zero, &zero, nil), "unknown", "not measured"},
 		{"unmeasured", apigen.RetentionHealth{}, "unknown", "not measured"},
 	}
 	for _, tc := range cases {

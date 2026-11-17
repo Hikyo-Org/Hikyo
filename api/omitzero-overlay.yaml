@@ -688,7 +688,7 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
-  - target: $['components']['schemas']['RetentionHealth']['properties']['diagnostics','pki_certificates_unknown','pki_issuers_on_hold','rotation_runs_quarantined','rotation_runs_unknown_outcome','rotation_runs_revoke_refused','rotation_halted','rotation_overdue','rotation_credentials_expiring']
+  - target: $['components']['schemas']['RetentionHealth']['properties']['diagnostics','pki_certificates_unknown','pki_issuers_on_hold','rotation_runs_quarantined','rotation_runs_unknown_outcome','rotation_runs_revoke_refused','rotation_halted','rotation_restore_held','rotation_overdue','rotation_credentials_expiring']
     update:
       x-omitempty: false
       x-omitzero: true

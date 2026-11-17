@@ -264,6 +264,7 @@ func doctorRotationFinding(health apigen.RetentionHealth) doctorFinding {
 		what string
 	}{
 		{health.RotationHalted, "halted rotation(s)"},
+		{health.RotationRestoreHeld, "rotation(s) held by a restore (release with `hikyo rotation release-hold`)"},
 		{health.RotationRunsQuarantined, "quarantined run(s)"},
 		{health.RotationRunsRevokeRefused, "run(s) whose superseded role could not be dropped"},
 		{health.RotationRunsUnknownOutcome, "run(s) with an unknown outcome"},

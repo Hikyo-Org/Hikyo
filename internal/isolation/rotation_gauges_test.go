@@ -59,6 +59,11 @@ func runRotationGauges(t *testing.T, db *store.DB) {
 	x.advance(2 * time.Minute)
 	expect("due past the grace", store.RotationGauges{Overdue: 1})
 
+	// A rotation a restore holds starts nothing, so it is held, not overdue.
+	execRaw(t, db, "UPDATE rotations SET restore_hold=TRUE WHERE id='"+rot.ID+"'")
+	expect("held after a restore", store.RotationGauges{RestoreHeld: 1})
+	execRaw(t, db, "UPDATE rotations SET restore_hold=FALSE WHERE id='"+rot.ID+"'")
+
 	// A paused rotation is not overdue, and its delivered credential still expires:
 	// inside the horizon it is counted, outside it is not.
 	execRaw(t, db, "UPDATE rotations SET state='paused', next_run_at=NULL WHERE id='"+rot.ID+"'")

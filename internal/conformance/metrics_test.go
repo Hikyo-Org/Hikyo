@@ -127,6 +127,7 @@ func pinnedMetricRegistry() []metricFamily {
 		{Name: "hikyo_rotation_runs_unknown_outcome", MaxSeries: 1},
 		{Name: "hikyo_rotation_runs_revoke_refused", MaxSeries: 1},
 		{Name: "hikyo_rotation_halted", MaxSeries: 1},
+		{Name: "hikyo_rotation_restore_held", MaxSeries: 1},
 		{Name: "hikyo_rotation_overdue", MaxSeries: 1},
 		{Name: "hikyo_rotation_credentials_expiring", MaxSeries: 1},
 		{Name: "hikyo_rotation_gauges_known", MaxSeries: 1},

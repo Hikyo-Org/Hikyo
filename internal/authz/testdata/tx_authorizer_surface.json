@@ -169,6 +169,7 @@
   "GuardProviderForMint": "func(ctx context.Context, id string, rowVersion int64, issuer string) (bool, error)",
   "GuardSAMLProviderForMint": "func(ctx context.Context, id string, rowVersion int64, entityID string) (bool, error)",
   "HoldRestoredPKIIssuers": "func(ctx context.Context) error",
+  "HoldRestoredRotations": "func(ctx context.Context) error",
   "HoldsInstanceCapability": "func(ctx context.Context, caller Identity, op Operation) (bool, error)",
   "IncidentByID": "func(ctx context.Context, id string) (Incident, error)",
   "IncidentItemByID": "func(ctx context.Context, incidentID, id string) (IncidentItem, error)",

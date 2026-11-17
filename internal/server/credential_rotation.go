@@ -40,6 +40,7 @@ func credentialRotationResponse(v service.RotationView) (apigen.CredentialRotati
 		AuthorityPrincipalId:   apigen.ID(v.AuthorityPrincipalID),
 		CreatedBy:              apigen.ID(v.CreatedBy),
 		State:                  apigen.CredentialRotationState(v.State),
+		RestoreHold:            v.RestoreHold,
 		NextRunAt:              next,
 		CredentialExpiresAt:    expires,
 		Generation:             v.Generation,
@@ -140,6 +141,23 @@ func (a *API) ResumeRotation(ctx context.Context, req apigen.ResumeRotationReque
 		return nil, err
 	}
 	return apigen.ResumeRotation200JSONResponse(resp), nil
+}
+
+func (a *API) ReleaseRotationHold(ctx context.Context, req apigen.ReleaseRotationHoldRequestObject) (apigen.ReleaseRotationHoldResponseObject, error) {
+	var expected *int64
+	if req.Body != nil {
+		expected = req.Body.ExpectedGeneration
+	}
+	view, err := a.CredentialRotations.ReleaseHold(ctx, service.Bearer(bearer(ctx)), dynamicEnvScope(req.Org, req.Project, req.Environment),
+		service.RotationStateRequest{RotationID: string(req.Rotation), ExpectedGeneration: expectedGeneration(expected)})
+	if err != nil {
+		return nil, err
+	}
+	resp, err := credentialRotationResponse(view)
+	if err != nil {
+		return nil, err
+	}
+	return apigen.ReleaseRotationHold200JSONResponse(resp), nil
 }
 
 func (a *API) DeleteRotation(ctx context.Context, req apigen.DeleteRotationRequestObject) (apigen.DeleteRotationResponseObject, error) {

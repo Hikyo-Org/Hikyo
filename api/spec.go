@@ -90,7 +90,7 @@ var SpecYAML []byte
 // Revision 18 adds run-now and the runs list of a rotation, and the delete's
 // `abandon` flag (#148).
 // Revision 19 adds the scheduled-rotation health counts to the retention health
-// read (#148).
+// read, the `restore_hold` flag of a rotation and its `release-hold` route (#148).
 const Revision = 19
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1

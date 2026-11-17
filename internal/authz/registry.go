@@ -730,6 +730,9 @@ const (
 	// executor drives it through the same Gate and authority as a scheduled one.
 	// edit, publish and reveal at env (resume's formula) plus a publish ceremony.
 	OpRotationRunNow Operation = "rotation.run_now"
+	// OpRotationReleaseHold clears the restore hold a restore put on a rotation
+	// (#148, S2b-2): resume's formula plus a publish ceremony, human only.
+	OpRotationReleaseHold Operation = "rotation.release_hold"
 	// OpRotationRuns lists a rotation's runs (read@env, a bare read).
 	OpRotationRuns Operation = "rotation.runs"
 	// OpRotationRun is the executor's own publish transaction (#148, S2): not a
@@ -1027,6 +1030,8 @@ const (
 	// is the runs inspection read (#148, S2b-1).
 	StoreRotationsRequestRun StoreOp = "rotations.RequestRun"
 	StoreRotationsListRuns   StoreOp = "rotations.ListRuns"
+	// StoreRotationsReleaseHold clears a rotation's restore hold (#148, S2b-2).
+	StoreRotationsReleaseHold StoreOp = "rotations.ReleaseHold"
 
 	// SSH user certificates (#155). Proof-carrying, environment-bound; the
 	// sweeper's revocation SQL runs through the proof-free SSHRuntime.
@@ -5555,6 +5560,20 @@ var operationTable = map[Operation]opSpec{
 		postGrantForbidden: true,
 		storeOps:           map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsCountOpenRuns: true, StoreRotationsRequestRun: true, StoreAuditTenantInsert: true},
 		events:             []audit.EventType{audit.EventRotationRunNow},
+	},
+	OpRotationReleaseHold: {
+		class: ClassTenant, level: domain.LevelEnv,
+		// Releasing the hold lets a restored rotation mint again, so it needs
+		// resume's formula, authorized on both stored keys, and consumes the
+		// publish reauthentication window over them.
+		formula: Formula{
+			{Cap: domain.CapEdit, At: domain.LevelEnv},
+			{Cap: domain.CapPublish, At: domain.LevelEnv},
+			{Cap: domain.CapReveal, At: domain.LevelEnv},
+		},
+		postGrantForbidden: true,
+		storeOps:           map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsReleaseHold: true, StoreAuditTenantInsert: true},
+		events:             []audit.EventType{audit.EventRotationConfigured},
 	},
 	OpRotationRuns: {
 		class: ClassTenant, level: domain.LevelEnv,

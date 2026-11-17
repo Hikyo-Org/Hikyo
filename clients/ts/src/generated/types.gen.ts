@@ -897,6 +897,10 @@ export type CredentialRotation = {
     created_by: Id;
     state: CredentialRotationState;
     /**
+     * True while a restore holds the rotation: it starts no run and takes no pre-publish step, whatever its state, until `release-hold`. The delivered credential keeps lapsing at credential_expires_at, so release the hold before then.
+     */
+    restore_hold: boolean;
+    /**
      * Set only while the rotation is active.
      */
     next_run_at?: string | null;
@@ -4858,6 +4862,10 @@ export type RetentionHealth = {
      * Scheduled rotations halted by a failed authority gate or an exhausted retry window (#148). Absent when not measured.
      */
     rotation_halted?: number;
+    /**
+     * Scheduled rotations a restore holds until an operator releases them, so none starts a run (#148). Absent when not measured.
+     */
+    rotation_restore_held?: number;
     /**
      * Active scheduled rotations due for over fifteen minutes with no run started (#148). Absent when not measured.
      */
@@ -34125,6 +34133,95 @@ export type ResumeRotationResponses = {
 };
 
 export type ResumeRotationResponse = ResumeRotationResponses[keyof ResumeRotationResponses];
+
+export type ReleaseRotationHoldData = {
+    body?: RotationStateRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        rotation: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/release-hold';
+};
+
+export type ReleaseRotationHoldErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ReleaseRotationHoldError = ReleaseRotationHoldErrors[keyof ReleaseRotationHoldErrors];
+
+export type ReleaseRotationHoldResponses = {
+    /**
+     * Rotation after the release.
+     */
+    200: CredentialRotation;
+};
+
+export type ReleaseRotationHoldResponse = ReleaseRotationHoldResponses[keyof ReleaseRotationHoldResponses];
 
 export type RunRotationNowData = {
     body: RunRotationNowRequest;

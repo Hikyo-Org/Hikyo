@@ -14,7 +14,7 @@
 -- name: RotationRtDueRotation :one
 SELECT ro.id,ro.org_id,ro.project_id,ro.environment_id,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds,ro.authority_principal_id,ro.generation,ro.manual_run_id,ro.manual_skip_overlap
  FROM rotations ro
- WHERE ro.state='active' AND ro.next_run_at<=sqlc.arg(now)
+ WHERE ro.state='active' AND NOT ro.restore_hold AND ro.next_run_at<=sqlc.arg(now)
  AND NOT EXISTS (SELECT 1 FROM rotation_runs op WHERE op.rotation_id=ro.id AND op.phase NOT IN ('done','quarantine','failed'))
  AND (SELECT COUNT(*) FROM rotation_runs x WHERE x.org_id=ro.org_id AND x.lease_owner IS NOT NULL AND x.lease_expires_at>sqlc.arg(now)) < 4
  ORDER BY ro.next_run_at,ro.id LIMIT 1;
@@ -28,7 +28,7 @@ SELECT ro.id,ro.org_id,ro.project_id,ro.environment_id,ro.provider_id,ro.key_id,
 SELECT COUNT(*) FROM rotation_runs WHERE org_id=sqlc.arg(chain_org) AND lease_owner IS NOT NULL AND lease_expires_at>sqlc.arg(now);
 
 -- name: RotationRtLockDueRotation :one
-SELECT id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,generation,manual_run_id,manual_skip_overlap FROM rotations WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active' AND generation=sqlc.arg(expected_generation) AND next_run_at<=sqlc.arg(now) FOR UPDATE SKIP LOCKED;
+SELECT id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,generation,manual_run_id,manual_skip_overlap FROM rotations WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active' AND restore_hold=FALSE AND generation=sqlc.arg(expected_generation) AND next_run_at<=sqlc.arg(now) FOR UPDATE SKIP LOCKED;
 
 -- The role currently delivered into a key: the candidate of the run that published
 -- the newest revision, across every rotation that ever drove the key (as its
@@ -79,14 +79,14 @@ INSERT INTO audit_tenant_events (id,type,schema_version,occurred_at,occurred_ass
 -- hikyo:reason RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension.
 -- hikyo:instance-scoped
 -- name: RotationRtClaimDueRun :one
-SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.revoke_not_before_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds AS rotation_delay_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.generation AS rotation_generation
+SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.revoke_not_before_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds AS rotation_delay_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.restore_hold AS rotation_restore_hold,ro.generation AS rotation_generation
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
  WHERE ru.next_attempt_at<=sqlc.arg(now)
  AND (ru.lease_owner IS NULL OR ru.lease_expires_at IS NULL OR ru.lease_expires_at<=sqlc.arg(lease_cut))
  AND (ru.phase IN ('minting','minted','published','overlap','revoking','revoke_refused')
   OR (ru.phase IN ('failed','quarantine') AND ru.published_revision IS NULL AND NOT EXISTS (SELECT 1 FROM rotation_effects ef WHERE ef.run_id=ru.id AND ef.kind='drop_candidate' AND ef.outcome='success'))
   OR (ru.phase IN ('failed','quarantine') AND ru.published_revision IS NOT NULL AND ru.superseded_handle IS NOT NULL AND NOT EXISTS (SELECT 1 FROM rotation_effects ef WHERE ef.run_id=ru.id AND ef.kind='revoke' AND ef.outcome='success'))
-  OR (ru.phase='done' AND ru.candidate_valid_until IS NOT NULL AND ro.state='active'))
+  OR (ru.phase='done' AND ru.candidate_valid_until IS NOT NULL AND ro.state='active' AND NOT ro.restore_hold))
  AND (SELECT COUNT(*) FROM rotation_runs x WHERE x.org_id=ru.org_id AND x.lease_owner IS NOT NULL AND x.lease_expires_at>sqlc.arg(now)) < 4
  ORDER BY ru.next_attempt_at,ru.id FOR UPDATE OF ru SKIP LOCKED LIMIT 1;
 
@@ -104,7 +104,7 @@ SELECT COUNT(*) FROM rotation_runs WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(cha
 UPDATE rotation_runs SET phase=sqlc.arg(phase),phase_at=sqlc.arg(now),last_error=sqlc.narg(last_error),next_attempt_at=sqlc.arg(next_attempt_at),candidate_valid_until=COALESCE(sqlc.narg(valid_until_at),candidate_valid_until),revoke_not_before_at=COALESCE(sqlc.narg(revoke_not_before_at),revoke_not_before_at),published_revision=COALESCE(sqlc.narg(published_revision),published_revision),not_converged_adapter_targets=COALESCE(sqlc.narg(not_converged_adapter_targets),not_converged_adapter_targets),lease_owner=CASE WHEN sqlc.arg(keep_lease)::bigint=1 THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN sqlc.arg(keep_lease)::bigint=1 THEN lease_expires_at ELSE NULL END WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND lease_owner=sqlc.arg(worker) AND lease_expires_at>sqlc.arg(now) AND lease_claim_token=sqlc.arg(claim_token) AND phase = ANY(sqlc.arg(from_phases)::text[]);
 
 -- name: RotationRtGetRun :one
-SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.revoke_not_before_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds AS rotation_delay_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.generation AS rotation_generation
+SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.revoke_not_before_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds AS rotation_delay_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.restore_hold AS rotation_restore_hold,ro.generation AS rotation_generation
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
  WHERE ru.id=sqlc.arg(run_id) AND ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env);
 
@@ -196,5 +196,6 @@ SELECT
  (SELECT COUNT(*) FROM rotation_runs WHERE phase='revoke_refused') AS revoke_refused,
  (SELECT COUNT(*) FROM rotation_runs ru WHERE ru.phase NOT IN ('done','failed') AND EXISTS (SELECT 1 FROM rotation_effects ef WHERE ef.run_id=ru.id AND ef.outcome='unknown')) AS unknown_outcome,
  (SELECT COUNT(*) FROM rotations WHERE state='halted') AS halted,
- (SELECT COUNT(*) FROM rotations ro WHERE ro.state='active' AND ro.next_run_at<sqlc.arg(overdue_at) AND NOT EXISTS (SELECT 1 FROM rotation_runs op WHERE op.rotation_id=ro.id AND op.phase NOT IN ('done','quarantine','failed'))) AS overdue,
+ (SELECT COUNT(*) FROM rotations WHERE state<>'disabled' AND restore_hold) AS restore_held,
+ (SELECT COUNT(*) FROM rotations ro WHERE ro.state='active' AND NOT ro.restore_hold AND ro.next_run_at<sqlc.arg(overdue_at) AND NOT EXISTS (SELECT 1 FROM rotation_runs op WHERE op.rotation_id=ro.id AND op.phase NOT IN ('done','quarantine','failed'))) AS overdue,
  (SELECT COUNT(*) FROM rotations ro WHERE ro.state<>'disabled' AND (SELECT ru.candidate_valid_until FROM rotation_runs ru JOIN rotations r2 ON r2.org_id=ru.org_id AND r2.project_id=ru.project_id AND r2.environment_id=ru.environment_id AND r2.id=ru.rotation_id WHERE ru.org_id=ro.org_id AND ru.project_id=ro.project_id AND ru.environment_id=ro.environment_id AND (r2.key_id=ro.key_id OR r2.username_key_id=ro.key_id) AND ru.published_revision IS NOT NULL ORDER BY ru.published_revision DESC,ru.id DESC LIMIT 1)<sqlc.arg(expiring_at)) AS expiring;

@@ -260,6 +260,37 @@ id is public metadata. A page holds up to `--limit` runs (1 to 500, default 100)
 follow, the CLI prints the `--after` value that continues the list. It needs only
 **read** on the environment.
 
+## After a restore
+
+A restore can bring back a rotation whose provider grants, or whose delivered
+credential, no longer match the instance. So the restore **holds every rotation it
+brings back** (including paused and halted ones): a held rotation starts no run,
+does no pre-publish step and extends nothing, and `rotation resume` and
+`rotation run-now` refuse it with a named error. A run already past its publish
+continues to its revoke, because that only removes a role the instance has
+already replaced. `rotation show`, `rotation list` and `rotation runs` print a
+`RESTORE HOLD` line on stderr, and the JSON carries `restore_hold`. The delivered
+credential keeps lapsing at its `credential_expires_at`, which is the deadline:
+reconcile the rotation before then.
+
+When the grants and the provider credential are correct, a person releases the
+hold:
+
+```sh
+hikyo rotation release-hold <rotation> --env E [--expected-generation N]
+```
+
+It needs what resume needs (edit, publish and reveal, on both keys, so a
+key-narrowed operator can run it) and the publish ceremony, and it is audited as a `rotation.configured`
+event with `action` `hold_released`. It lifts the hold and nothing else: it does
+not resume a paused or halted rotation, drop a superseded role, or touch a run.
+A hold that outlasts the delivered credential leaves the first run after release
+without a window, and the rotation halts; resume it once the credential is checked.
+A run held at `revoke_refused` because the keys served other values stays held
+until the old role expires, as above. An archive written before migration 00094
+has no hold column; its active rotations come back paused instead, and you resume
+them by hand.
+
 ## Monitoring
 
 `hikyo doctor` and the metrics endpoint report what needs an operator. None of
@@ -272,6 +303,7 @@ could not be measured.
 | `hikyo_rotation_runs_unknown_outcome` | unsettled runs with a provider effect of unknown outcome (alert on > 0) |
 | `hikyo_rotation_runs_revoke_refused` | runs whose revoke was refused (alert on > 0) |
 | `hikyo_rotation_halted` | rotations the system halted |
+| `hikyo_rotation_restore_held` | rotations a restore holds, not yet released (alert on > 0) |
 | `hikyo_rotation_overdue` | active rotations more than 15 minutes past their next run with no run open |
 | `hikyo_rotation_credentials_expiring` | rotations whose delivered credential expires within 6 hours |
 | `hikyo_rotation_gauges_known` | 1 when the counts above were measured; they are omitted otherwise, not when zero |
@@ -286,7 +318,7 @@ The routes live under
 `GET` (with the optional `include_disabled`, `limit` and `after` query parameters;
 the response carries `next_after` while more follow) and `POST` on the
 collection, `GET` and `DELETE` on
-`/{rotation}`, and `POST` on `/{rotation}/pause`, `/{rotation}/resume` and
+`/{rotation}`, and `POST` on `/{rotation}/pause`, `/{rotation}/resume`, `/{rotation}/release-hold` and
 `/{rotation}/run-now` (body: the required `confirm_destructive`, which must be true,
 and the optional `expected_generation` and `skip_overlap`; answers `202` with the
 requested `run_id`), and `GET` on `/{rotation}/runs` (with
@@ -302,7 +334,7 @@ closed (`rotation.quarantined` for a run that still owes a role, otherwise a
 `rotation.run_outcome` of phase `abandon`). The executor's run events use the
 rotation's authority and the run id as the correlation id, with origin `system`;
 the abandon events are authored by the operator who deleted the rotation, with
-the run id as the correlation id. `rotation.configured` records each create, pause, resume and delete with its
+the run id as the correlation id. `rotation.configured` records each create, pause, resume, hold release and delete with its
 `action` and the environment, and a pause the system caused (provider deleted or
 credential revoked, environment protected, approval policy enabled) with its
 `reason`. `rotation.run_now` records each run-now request with the requested

@@ -335,7 +335,7 @@ func TestMeasuredGaugesAreOmittedWhenTheSourceFails(t *testing.T) {
 		server.MetricSSHCertificatesActive, server.MetricSSHKRLEntries,
 		server.MetricPKICertificatesLive, server.MetricPKICertificatesUnknown, server.MetricPKIIssuersOnHold,
 		server.MetricRotationRunsQuarantined, server.MetricRotationRunsUnknownOutcome, server.MetricRotationRunsRevokeRefused,
-		server.MetricRotationHalted, server.MetricRotationOverdue, server.MetricRotationCredentialsExpiring,
+		server.MetricRotationHalted, server.MetricRotationRestoreHeld, server.MetricRotationOverdue, server.MetricRotationCredentialsExpiring,
 	}
 
 	body := scrape(t, stubMeasuredGauges{err: errors.New("datastore unavailable")})
@@ -351,11 +351,12 @@ func TestMeasuredGaugesAreOmittedWhenTheSourceFails(t *testing.T) {
 	mustContain(t, body, server.MetricRotationGaugesKnown+" 0")
 
 	body = scrape(t, stubMeasuredGauges{approvals: server.ApprovalStats{Open: 3, Expired: 1}, active: 5, unknown: 2, pkiLive: 7, pkiUnknown: 1, pkiHeld: 2,
-		rotation: server.RotationCounts{Quarantined: 1, UnknownOutcome: 2, RevokeRefused: 3, Halted: 4, Overdue: 5, CredentialsExpiring: 6}})
+		rotation: server.RotationCounts{Quarantined: 1, UnknownOutcome: 2, RevokeRefused: 3, Halted: 4, RestoreHeld: 7, Overdue: 5, CredentialsExpiring: 6}})
 	mustContain(t, body, server.MetricRotationRunsQuarantined+" 1")
 	mustContain(t, body, server.MetricRotationRunsUnknownOutcome+" 2")
 	mustContain(t, body, server.MetricRotationRunsRevokeRefused+" 3")
 	mustContain(t, body, server.MetricRotationHalted+" 4")
+	mustContain(t, body, server.MetricRotationRestoreHeld+" 7")
 	mustContain(t, body, server.MetricRotationOverdue+" 5")
 	mustContain(t, body, server.MetricRotationCredentialsExpiring+" 6")
 	mustContain(t, body, server.MetricRotationGaugesKnown+" 1")

@@ -36,7 +36,7 @@ func TestDoctorDiagnosticVerdictsAndExitCodes(t *testing.T) {
 			now := time.Now().UTC()
 			zero := 0
 			health := apigen.RetentionHealth{LastPruneSuccess: &now, Backup: healthyBackup(now), Diagnostics: tc.diagnostics, PkiCertificatesUnknown: &zero, PkiIssuersOnHold: &zero,
-				RotationHalted: &zero, RotationRunsQuarantined: &zero, RotationRunsRevokeRefused: &zero, RotationRunsUnknownOutcome: &zero, RotationOverdue: &zero, RotationCredentialsExpiring: &zero}
+				RotationHalted: &zero, RotationRestoreHeld: &zero, RotationRunsQuarantined: &zero, RotationRunsRevokeRefused: &zero, RotationRunsUnknownOutcome: &zero, RotationOverdue: &zero, RotationCredentialsExpiring: &zero}
 			requests := 0
 			server := newRevisionAwareFixtureServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requests++

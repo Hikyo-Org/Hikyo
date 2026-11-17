@@ -78,8 +78,12 @@ decision 13). Never a `SystemProof`, never a scheduler site.
 - [ ] S2b-1 consumer-convergence report: adapter (sync) targets only
   (`not_converged_adapter_targets`); the machine-principal part is pending an owner decision
   (options A to D under "S2b-1 as built")
-- [ ] S2b-2 metrics, `hikyo doctor`, the `restore_hold` column and release, incident
-  containment, key-aware resume, pause and delete
+- [x] S2b-2 metrics, `hikyo doctor`, the `restore_hold` column and release, key-aware
+  pause, resume, delete and run-now (see "S2b-2 as built")
+- [ ] S2b-2 incident ledger enumeration of rotations: stopped for an owner decision
+  (options A to C under "S2b-2 as built"); containment itself already halts the rotation
+- [ ] S2b-2 run-level `published_versions_changed` hold release: owner decision pending
+  (options A to C under "S2b-2 as built")
 - [ ] S3 SPA status surface, parity flip
 
 ## Decisions taken in S1 (divergences from the issue handoff flagged)
@@ -175,11 +179,10 @@ decision 13). Never a `SystemProof`, never a scheduler site.
    rotation).
    Resume (owner decision Q5) is the `rotation.resume` operation, whose formula is
    `edit ∧ publish ∧ reveal @environment` (the same atoms as create, so a resume denial is
-   recorded under the resume operation, never `rotation.create`). The outer authorization
-   has no key target, so it needs those grants environment-wide; a caller who holds the
-   formula only through key-narrowed member rules gets the uniform not-found at that outer
-   step and CANNOT resume (S2 checklist: make resume, pause and delete key-aware for
-   narrowed creators). Inside, in order: a human caller, the environment still unattended,
+   recorded under the resume operation, never `rotation.create`). S1 had no key target in the
+   outer authorization; S2b-2 authorizes the operation on both stored keys, so a caller who
+   holds the formula through key-narrowed member rules resumes like an environment-wide one
+   (see "S2b-2 as built"). Inside, in order: a human caller, the environment still unattended,
    the provider active with a credential, both keys present and secret, the CALLER holding
    the formula on both stored keys (`AuthorizeKey`), the recorded authority principal still
    holding it on both stored keys (`RecordedPrincipalHolds` with a key target, resolved from
@@ -1059,11 +1062,10 @@ Round 4 review additions (CodeRabbit threads on PR #1426):
 
 ### What S2b must wire
 
-Done in S2b-1: run-now, runs inspection, `--abandon` on the wire and the user docs (see "S2b-1 as built"). Remaining for S2b-2:
+Done in S2b-1: run-now, runs inspection, `--abandon` on the wire and the user docs (see "S2b-1 as built"). Built in S2b-2 (see "S2b-2 as built"): metrics, doctor, the `restore_hold` column and
+release, and key-aware pause, resume, delete and run-now. Still open: ledger enumeration of
+rotations and the run-level hold release, both awaiting owner decisions.
 
-- Metrics, `hikyo doctor` (approaching `credential_expires_at`, halted, quarantine,
-  `revoke_refused`), the `restore_hold` column and release, incident containment, and
-  key-aware pause, resume and delete.
 - Parity rows (S3 flips them).
 - The machine-principal part of the consumer report, if the owner picks option B or C
   below.
@@ -1088,9 +1090,8 @@ and `rotation_runs.not_converged_adapter_targets`. API revision 18 (additive).
   nothing and holds no provider handle. There is no per-key `AuthorizeKey` after the
   environment check: a key-narrowed rule never satisfies an operation that passes no key and an
   environment-wide holder passes for every key, so it could never deny. Like resume, run-now
-  therefore needs the formula environment-wide: a principal who could create a rotation through
-  key-narrowed rules can neither run it now nor resume it (S2b-2 makes these key-aware).
-  `TestRotationRunNowKeyChecksAddNothing` pins the equivalence. The request resets `next_run_at` to now, so it also
+  therefore needed the formula environment-wide in S2b-1; S2b-2 made run-now, pause, resume and
+  delete key-aware (see "S2b-2 as built"). The request resets `next_run_at` to now, so it also
   overrides a retry backoff; the attempt cap and the retry deadline still apply.
 - The executor's due read exposes the request; `startRun` uses the pre-generated id with
   trigger `manual` through the same Gate, window and attempts checks as a scheduled run.
@@ -1160,8 +1161,101 @@ flight is unchanged.
 
 ### Still S2b-2
 
-Metrics, `hikyo doctor` warnings, the `restore_hold` column and release, incident containment,
-key-aware resume, pause and delete. S2b-2 must ship in the same release as S2a and S2b-1.
+Done; see "S2b-2 as built". S2b-2 must ship in the same release as S2a and S2b-1.
+
+## S2b-2 as built (operability)
+
+### Metrics and doctor
+
+`hikyo_rotation_runs_quarantined`, `_runs_unknown_outcome`, `_runs_revoke_refused`,
+`_halted`, `_restore_held`, `_overdue` and `_credentials_expiring`, with
+`hikyo_rotation_gauges_known`. All label-free, from one `RotationRtGauges` read (instance
+scope, one series each; the conformance bound registry pins `MaxSeries: 1`). Overdue means an
+active, unheld rotation more than `RotationOverdueGrace` (15 minutes) past `next_run_at` with
+no run open; expiring means a delivered credential inside `RotationExpiringWithin` (6 hours)
+of `credential_expires_at`, for any state but deleted. `hikyo doctor` has one `rotation`
+finding fed by `RetentionHealth` (new optional fields, omitted when unmeasured, so doctor
+says `unknown`, never ok).
+
+### Key-aware pause, resume, delete, run-now
+
+`authorizeRotationKeys` reads the rotation under `rotation.inspect` (read is never
+key-narrowed), then authorizes the operation on both stored keys. An environment-wide holder
+passes both keys, so nothing narrows for them; a key-narrowed holder passes exactly when they
+pass for each key, like the create that made the rotation.
+**Deviation:** a caller without `read` is denied under `rotation.inspect`, not under the
+operation. The alternative is a rotation-key target inside authz (costlier).
+Denials stay under the operation itself because the per-key step names it.
+`TestRotationTransitionsAreKeyAware` pins the allowed and refused cases.
+
+### Restore hold
+
+- Migration 00094 adds `rotations.restore_hold` (both engines). `CompleteRestore` calls
+  `HoldRestoredRotations`: every non-deleted rotation, paused and halted included, is held.
+  The closure runs against the archive's schema before migrations, so it probes the table
+  and the column; an archive from migrations 00091 to 00093 (pre-release builds only, no
+  tagged release has the table) has no column, so its active rotations are paused.
+- A held rotation is a non-active one to the executor (projected into the run's
+  `RotationState`): no start, no pre-publish step, no extend; a run past its publish
+  continues to its revoke and a candidate drop continues. The stored `state` is unchanged,
+  so resume cannot bypass the hold: resume and run-now refuse with `ErrRotationRestoreHeld`;
+  pause and delete are allowed. The Gate refuses a held rotation.
+- `rotation release-hold` (`rotation.release_hold`, `POST .../release-hold`): human only,
+  resume's formula (edit, publish and reveal) on both keys through `authorizeRotationKeys` (so key-narrowed operators can run
+  it), the publish ceremony, an optional generation compare-and-set, audited as
+  `rotation.configured` with `action: hold_released` (no new event type). It lifts the hold
+  only. It does not resume, does not drop a superseded role, does not touch a run and does
+  not bump the generation (an in-flight run asserts the generation it started under).
+- `rotation show`, `list` and `runs` print a `RESTORE HOLD` line on stderr with the
+  `credential_expires_at` deadline; the JSON carries `restore_hold`.
+- Observed: a hold that outlasts the delivered credential's window makes the first run after
+  release halt (`retries_exhausted`); the operator resumes after checking the credential.
+- Tests: `TestRotationRestoreHold`, `TestRotationRestoreHoldFallbackPausesWithoutTheColumn`,
+  `TestRotationReleaseLeavesARefusedRunAlone` (the run-level hold stays untouched).
+
+### Incident containment
+
+A contained principal loads no grants, so the rotation's Gate (`RecordedPrincipalHolds`)
+refuses at its next start and halts the rotation; a release of the principal never resumes it
+(`TestRotationHaltsWhenItsAuthorityIsContained`). That is containment through the existing
+seam. **Stopped, owner decision needed:** listing a principal's rotations as ledger items and
+pausing them through an owner function. What is settled: the ledger vocabulary is code-level
+(no CHECK on `owner_function` or `object_kind`), and `Incidents.Owners` has no registered
+owners yet (#1039 wires them). What is not settled: the ADR lists scheduled rotation under
+"Not decided here", and it gives no rotation effect for the org and project scopes.
+
+- A. Leave it. Containment halts by effect; the ledger does not list rotations. Cheapest;
+  the operator sees halted rotations in doctor and metrics but not on the incident.
+- B. Account scope only: add object kind `rotation` and owner function `rotation.halt`,
+  enumerate by authority principal in `collectAccount` (new store read and authz op), the
+  owner function halts with a named reason; org and project scopes ride on the accounts they
+  select. Registration of the owner stays with #1039.
+- C. B plus a project-scope item for every rotation in the project, whatever its authority.
+  Needs an ADR amendment for project scope.
+- Recommendation: B, after the owner confirms that org and project scopes inherit through
+  the accounts they select. It needs one new store read, one authz read operation and about
+  one slice of tests; none of it is in this PR.
+
+### Run-level hold (`revoke_refused` with `published_versions_changed`)
+
+Not released by `release-hold`. Decisions 7 and 33 say it exits only through the restore
+assertion passing or the superseded role being dead, and release must not drop a role early.
+Options for the operator's view of that hold after a restore:
+
+- A. Status only (as built): `rotation runs` shows the phase and error; `release-hold` leaves it.
+- B. A separate human action moves the run to `quarantine` so the next cycle supersedes it.
+- C. A separate human acknowledgement that extends the superseded role.
+- Recommendation: A for this release, B as a follow-up if operators ask. C hands the
+  operator a way to keep a role the instance can no longer account for.
+
+### Judgment calls
+
+- Generation is not bumped on release.
+- The audit enum gains `hold_released` on `rotation.configured`; no new event type.
+- `RestoreHold` is a boolean on rotations and an integer on `pki_issuers.restore_hold`; the
+  query contract lint accepts int32 for that one name instead of renaming either column.
+- The audit coverage test lacked a `rotation.run_now` emitter (a gap from S2b-1); the
+  executor audit lifecycle now issues one run-now.
 
 ## S2 checklist (carried forward from review)
 
@@ -1172,7 +1266,7 @@ the service side of `--abandon`, multi-node takeover, the `2BP01` refusal, the g
 and draft refusals, resume scheduling, the held-run extend and expiry exits. Gate placement is described in
 judgment call 11. Carried to
 S2b: the doctor warning and metric, incident containment, the `restore_hold` column,
-key-aware resume, pause and delete, the consumer-convergence report and run-now/runs.
+key-aware resume, pause and delete (all built in S2b-2 except ledger enumeration), the consumer-convergence report and run-now/runs.
 The list below is the original text and stays as the acceptance record.
 
 - Gate: `RecordedPrincipalHolds` only, with a key target per stored key (see The Gate);

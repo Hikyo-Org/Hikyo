@@ -470,9 +470,9 @@ func (a *API) GetRetentionHealth(ctx context.Context, _ apigen.GetRetentionHealt
 	if health.RotationKnown {
 		r := health.Rotation
 		quarantined, unknown, refused := int(r.Quarantined), int(r.UnknownOutcome), int(r.RevokeRefused)
-		halted, overdue, expiring := int(r.Halted), int(r.Overdue), int(r.Expiring)
+		halted, held, overdue, expiring := int(r.Halted), int(r.RestoreHeld), int(r.Overdue), int(r.Expiring)
 		out.RotationRunsQuarantined, out.RotationRunsUnknownOutcome, out.RotationRunsRevokeRefused = &quarantined, &unknown, &refused
-		out.RotationHalted, out.RotationOverdue, out.RotationCredentialsExpiring = &halted, &overdue, &expiring
+		out.RotationHalted, out.RotationRestoreHeld, out.RotationOverdue, out.RotationCredentialsExpiring = &halted, &held, &overdue, &expiring
 	}
 	return out, nil
 }

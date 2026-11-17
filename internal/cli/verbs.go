@@ -536,6 +536,7 @@ scheduled credential rotation:
   hikyo rotation show <rotation> --env E [-o table|json]
   hikyo rotation pause <rotation> --env E [--expected-generation N]
   hikyo rotation resume <rotation> --env E [--expected-generation N]
+  hikyo rotation release-hold <rotation> --env E [--expected-generation N]
   hikyo rotation delete <rotation> --env E [--expected-generation N] [--abandon]
   hikyo rotation run-now <rotation> --env E --confirm-destructive
       [--expected-generation N] [--skip-overlap]
@@ -559,7 +560,12 @@ scheduled credential rotation:
   delay shorter than the interval. pause and delete do not revoke the
   credential already delivered; it stays valid
   until the CREDENTIAL EXPIRES time they print. delete keeps the rotation as
-  history (list --include-disabled); no credential is stored.
+  history (list --include-disabled); no credential is stored. A restore holds
+  every rotation it brings back: a held rotation starts no run and cannot be
+  resumed or run now until release-hold (a person's act with resume's access
+  and publish ceremony), and show, list and runs say so, with the time the
+  delivered credential lapses. release-hold changes nothing else; it never
+  drops a superseded role.
 
 ssh certificates:
   hikyo ssh-ca create <name> --env E [--algorithm ed25519|ecdsa-p256|rsa-3072]

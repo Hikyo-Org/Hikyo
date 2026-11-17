@@ -67,7 +67,7 @@ func rotationRunsTable(list apigen.RotationRunList) Table {
 }
 
 func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
-	sub, rest, err := subverb("rotation", args, "create", "list", "show", "pause", "resume", "delete", "run-now", "runs")
+	sub, rest, err := subverb("rotation", args, "create", "list", "show", "pause", "resume", "release-hold", "delete", "run-now", "runs")
 	if err != nil {
 		return err
 	}
@@ -101,7 +101,7 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 			fs.StringVar(&interval, "interval", "", "time between rotations, 1h to 90d, e.g. 30d")
 			fs.StringVar(&delay, "revocation-delay", "", "how long the superseded credential stays valid, 5m to 7d, e.g. 1d")
 		}
-		if sub == "pause" || sub == "resume" || sub == "delete" || sub == "run-now" {
+		if sub == "pause" || sub == "resume" || sub == "release-hold" || sub == "delete" || sub == "run-now" {
 			fs.Int64Var(&expectedGeneration, "expected-generation", 0, "fail unless the rotation is at this generation (0 = current)")
 		}
 	})
@@ -174,6 +174,9 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 		if err := Render(ios.Stdout, f, credentialRotationTable(out)); err != nil {
 			return err
 		}
+		for _, r := range out.Items {
+			noteRestoreHold(ios, r)
+		}
 		if out.NextAfter != nil {
 			_, _ = fmt.Fprintf(ios.Stderr, "more rotations follow; continue with --after %s\n", *out.NextAfter)
 		}
@@ -187,6 +190,7 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 		if err := client.Do(ctx, http.MethodGet, base+"/"+url.PathEscape(id), nil, &out); err != nil {
 			return err
 		}
+		noteRestoreHold(ios, out)
 		return one(out)
 	case "create":
 		if provider == "" || key == "" || usernameKey == "" || interval == "" || delay == "" {
@@ -210,7 +214,7 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 			return err
 		}
 		return one(out)
-	case "pause", "resume":
+	case "pause", "resume", "release-hold":
 		id := flags.positional()
 		if id == "" {
 			return failf(ExitUsage, "rotation %s requires a rotation id", sub)
@@ -221,8 +225,8 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 		}
 		var out apigen.CredentialRotation
 		act := func() error { return client.Do(ctx, http.MethodPost, base+"/"+url.PathEscape(id)+"/"+sub, body, &out) }
-		if sub == "resume" {
-			// Resume is a human act like create.
+		if sub == "resume" || sub == "release-hold" {
+			// Resume and release-hold are human acts like create.
 			err = withRevealCeremony(ctx, client, st, ios, artifact, projectPath, []string{env}, disclosure{purpose: "publish", keys: keysOf(id)}, act)
 		} else {
 			err = act()
@@ -233,6 +237,7 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 		if sub == "pause" {
 			noteCredentialExpiry(ios, out, "paused")
 		}
+		noteRestoreHold(ios, out)
 		return one(out)
 	case "run-now":
 		id := flags.positional()
@@ -282,6 +287,13 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 		if err := client.Do(ctx, http.MethodGet, target, nil, &out); err != nil {
 			return err
 		}
+		// A held rotation is the first thing the runs list must say: none of the
+		// runs below it will start another until the hold is released.
+		var cur apigen.CredentialRotation
+		if err := client.Do(ctx, http.MethodGet, base+"/"+url.PathEscape(id), nil, &cur); err != nil {
+			return err
+		}
+		noteRestoreHold(ios, cur)
 		if err := Render(ios.Stdout, f, rotationRunsTable(out)); err != nil {
 			return err
 		}
@@ -333,4 +345,18 @@ func noteCredentialExpiry(ios IO, r apigen.CredentialRotation, verb string) {
 	}
 	_, _ = fmt.Fprintf(ios.Stderr, "rotation %s %s; the credential already delivered stays valid until %s\n",
 		r.Id, verb, r.CredentialExpiresAt.UTC().Format(time.RFC3339))
+}
+
+// noteRestoreHold says loudly, on stderr, that a restore holds the rotation: it
+// starts no run until released, and the credential already delivered keeps lapsing
+// at the time printed, so the operator has until then.
+func noteRestoreHold(ios IO, r apigen.CredentialRotation) {
+	if !r.RestoreHold {
+		return
+	}
+	until := "no recorded expiry"
+	if r.CredentialExpiresAt != nil {
+		until = "the delivered credential lapses at " + r.CredentialExpiresAt.UTC().Format(time.RFC3339)
+	}
+	_, _ = fmt.Fprintf(ios.Stderr, "RESTORE HOLD: rotation %s is held after a restore and starts no run (%s); reconcile its grants and provider credential, then run: hikyo rotation release-hold %s\n", r.Id, until, r.Id)
 }
