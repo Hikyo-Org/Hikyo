@@ -1460,6 +1460,7 @@ type RotationRun struct {
 	AttemptCount           int64
 	NextAttemptAt          string
 	LastError              sql.NullString
+	RevokeNotBeforeAt      sql.NullString
 }
 
 type Rule struct {

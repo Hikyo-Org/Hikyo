@@ -97,6 +97,25 @@ func rotationResumeNext(now time.Time, interval, delay time.Duration, delivered 
 	return next
 }
 
+// rotationOverlapWake is when a run waiting out its overlap is next visited: its
+// revoke deadline, or the delivered credential's extension margin when that comes
+// first (an extension after VALID UNTIL is impossible, and a recovered run can be
+// inside the margin already). A visit before the deadline extends and parks again;
+// the deadline itself lives in the run's RevokeNotBefore, never only in this wake.
+// A zero validUntil (nothing to extend) leaves the deadline.
+func rotationOverlapWake(now, deadline, validUntil time.Time) time.Time {
+	wake := deadline
+	if !validUntil.IsZero() {
+		if due := rotationExtendDue(validUntil); due.Before(wake) {
+			wake = due
+		}
+	}
+	if wake.Before(now) {
+		wake = now
+	}
+	return wake
+}
+
 // rotationBackoff is the delay after the nth failed attempt of a cycle (n >= 1):
 // five minutes, doubling, capped at the retry window.
 func rotationBackoff(attempt int64) time.Duration {

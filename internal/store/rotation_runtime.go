@@ -46,17 +46,21 @@ type DueRotation struct {
 // RotationRun is one claimed or re-read run joined to its rotation's immutable
 // configuration. Empty strings and zero times are the absent values.
 type RotationRun struct {
-	ID                     string
-	OrgID                  string
-	ProjectID              string
-	EnvironmentID          string
-	RotationID             string
-	RunGeneration          int64
-	Trigger                string
-	Phase                  string
-	CandidateHandle        string
-	SupersededHandle       string
-	CandidateValidUntil    time.Time
+	ID                  string
+	OrgID               string
+	ProjectID           string
+	EnvironmentID       string
+	RotationID          string
+	RunGeneration       int64
+	Trigger             string
+	Phase               string
+	CandidateHandle     string
+	SupersededHandle    string
+	CandidateValidUntil time.Time
+	// RevokeNotBefore is the earliest the superseded credential may be revoked,
+	// kept apart from NextAttemptAt so a wake earlier than it (an extension of
+	// the delivered credential) never revokes early. Zero: the wake is the deadline.
+	RevokeNotBefore        time.Time
 	PublishedRevision      int64
 	RevocationDelaySeconds int64
 	StartedAt              time.Time
@@ -120,6 +124,8 @@ type RotationSettle struct {
 	NextAttempt time.Time
 	// ValidUntil, when non-zero, moves the run's delivered-role expiry (extend).
 	ValidUntil time.Time
+	// RevokeNotBefore, when non-zero, records the earliest revoke time (see RotationRun).
+	RevokeNotBefore time.Time
 	// PublishedRevision, when non-zero, records the revision this run published.
 	PublishedRevision int64
 	// KeepLease leaves the lease held, for a settle that is followed by a

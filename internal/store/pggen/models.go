@@ -1462,6 +1462,7 @@ type RotationRun struct {
 	AttemptCount           int64
 	NextAttemptAt          pgtype.Timestamptz
 	LastError              pgtype.Text
+	RevokeNotBeforeAt      pgtype.Timestamptz
 }
 
 type Rule struct {

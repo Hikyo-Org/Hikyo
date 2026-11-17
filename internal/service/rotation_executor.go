@@ -858,6 +858,22 @@ func (e *RotationExecutor) rollback(ctx context.Context, provider dynamic.Provid
 	return e.dropCandidate(ctx, provider, run, intent.EffectID)
 }
 
+// overlapSettle settles a published run into its overlap wait. The revoke deadline
+// is from plus the delay, stored as RevokeNotBefore; the wake is that deadline, or
+// the extension margin when it comes first (rotationOverlapWake), so a long delay
+// never parks a run past the point its credential can still be extended.
+func overlapSettle(r store.RotationRun, now, from time.Time) store.RotationSettle {
+	deadline := from.Add(time.Duration(r.RevocationDelaySeconds) * time.Second)
+	validUntil := r.CandidateValidUntil
+	if r.RotationState != "active" {
+		validUntil = time.Time{}
+	}
+	return store.RotationSettle{
+		Now: now, FromPhases: []string{"published"}, Phase: "overlap",
+		NextAttempt: rotationOverlapWake(now, deadline, validUntil), RevokeNotBefore: deadline,
+	}
+}
+
 // followState re-reads a run after a fence loss and acts on what it now is. A run
 // that published carries on as published (the publish transaction committed
 // first); anything else belongs to another worker or to the reconciler, and the
@@ -875,10 +891,7 @@ func (e *RotationExecutor) followState(ctx context.Context, run store.RotationRu
 	// observation, which is after the commit, not from the one the commit hook
 	// stored before it.
 	now := e.now()
-	return e.settleDrop(ctx, run, store.RotationSettle{
-		Now: now, FromPhases: []string{"published"}, Phase: "overlap",
-		NextAttempt: now.Add(time.Duration(cur.RevocationDelaySeconds) * time.Second),
-	})
+	return e.settleDrop(ctx, run, overlapSettle(cur, now, now))
 }
 
 // dropOrphan drops the candidate of a worker that lost its claim while the role
@@ -1142,10 +1155,7 @@ func (e *RotationExecutor) publish(ctx context.Context, provider dynamic.Provide
 	if committedAt.After(deadlineFrom) {
 		deadlineFrom = committedAt
 	}
-	err = e.Runtime.Settle(ctx, run, store.RotationSettle{
-		Now: now, FromPhases: []string{"published"}, Phase: "overlap",
-		NextAttempt: deadlineFrom.Add(time.Duration(run.RevocationDelaySeconds) * time.Second),
-	})
+	err = e.Runtime.Settle(ctx, run, overlapSettle(run, now, deadlineFrom))
 	if errors.Is(err, store.ErrRotationFenceLost) {
 		return nil
 	}
@@ -1338,10 +1348,30 @@ func (e *RotationExecutor) revoke(ctx context.Context, run store.RotationRun) er
 		// commit, so the overlap is established from it and revoke waits it out. It
 		// follows the extend step: a delivered credential due for extension is
 		// extended, or halts by name, before the wait is started.
-		return e.settleDrop(ctx, run, store.RotationSettle{
-			Now: now, FromPhases: []string{"published"}, Phase: "overlap",
-			NextAttempt: now.Add(time.Duration(run.RevocationDelaySeconds) * time.Second),
-		})
+		return e.settleDrop(ctx, run, overlapSettle(run, now, now))
+	}
+	if until := run.RevokeNotBefore; now.Before(until) {
+		// A visit before the overlap deadline: the wake was the extension margin (the
+		// extend step above has run) or a lease retry. Nothing is revoked before the
+		// deadline, so park again for the next margin or the deadline itself. The
+		// states that never extend (a quarantined run) wait for the deadline.
+		wake := until
+		if executorPhase {
+			validUntil := run.CandidateValidUntil
+			if run.RotationState != "active" {
+				validUntil = time.Time{}
+			}
+			wake = rotationOverlapWake(now, until, validUntil)
+			if !wake.After(now) {
+				// The extension was due and did not happen (a failed or skipped try):
+				// retry on the backoff, not in a tight loop.
+				wake = now.Add(rotationBackoff(run.AttemptCount))
+				if wake.After(until) {
+					wake = until
+				}
+			}
+		}
+		return e.settleDrop(ctx, run, store.RotationSettle{Now: now, FromPhases: from, Phase: run.Phase, LastError: run.LastError, NextAttempt: wake})
 	}
 	role, err := e.Runtime.LoadSupersededRole(ctx, run, now)
 	if errors.Is(err, store.ErrNotFound) {

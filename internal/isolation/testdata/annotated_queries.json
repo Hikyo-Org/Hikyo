@@ -3369,7 +3369,7 @@
     "engine": "postgres",
     "name": "RotationRtClaimDueRun",
     "annotation": "instance-scoped",
-    "hash": "490e955225d6a4388e3bbce0492ccb0d569ba42cc840ea86527072606ef4f6b0",
+    "hash": "7e83c5d1d0dac3171434297cc74cb4a45194079b855db884eb90f3e38fb87acf",
     "reason": "RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension."
   },
   {
@@ -7145,7 +7145,7 @@
     "engine": "sqlite",
     "name": "RotationRtClaimDueRun",
     "annotation": "instance-scoped",
-    "hash": "21b1ae5feb00a5f9ef6a26831664fafd01622f350aff6462125e0f92761d55af",
+    "hash": "3c7800a6452cffc2e1ade4334d2b0fb8dac66a7da64ed0b27fd8fdca9cef74e2",
     "reason": "RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension."
   },
   {

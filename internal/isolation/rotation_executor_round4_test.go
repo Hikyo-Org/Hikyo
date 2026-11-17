@@ -721,3 +721,136 @@ func rotationTxConflict(err error) bool {
 	}
 	return false
 }
+
+// longOverlapRecovery drives run 2 of a rotation (90 minute delay, 2 hour interval)
+// into a lapsed `published` run that is recovered 15.5 hours after the commit. The
+// delivered credential's extension margin (12 hours before its VALID UNTIL) falls
+// half an hour before the recovered overlap deadline (the delay must stay below the interval), so the wake is clamped to it.
+// It returns the old role, the new role, the run, the recovery observation (the
+// start of the delay) and the extension margin.
+func longOverlapRecovery(t *testing.T, db *store.DB) (x *rotExec, rotationID, role1, role2, run2 string, observed, margin time.Time) {
+	t.Helper()
+	x = newRotExec(t, db)
+	req := x.request(rotPasswordKey, rotUsernameKey)
+	req.RevocationDelaySeconds = 5400
+	req.IntervalSeconds = 2 * 3600 // keeps the fake clock inside the fixture session's 48 hours
+	rot, err := x.svc.Create(tctx(t), x.actor, x.scope, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	x.advance(mustParseStamp(t, x.state(rot.ID).NextRunAt).Sub(x.now()) + time.Minute)
+	x.drain()
+	role1 = x.lastRun(rot.ID, "candidate_handle")
+	x.advance(91 * time.Minute) // past the delay: run 1 revokes
+	x.drain()
+	if got := x.phase(x.openRunID(rot.ID)); got != "done" {
+		t.Fatalf("run 1 = %s, want done", got)
+	}
+	x.advance(mustParseStamp(t, x.state(rot.ID).NextRunAt).Sub(x.now()) + time.Minute) // run 2 is due
+	armed := false
+	x.exec.Now = func() time.Time {
+		at := x.now()
+		if armed {
+			armed = false
+			x.advance(15*time.Hour + 30*time.Minute) // the executor is away: the lease lapses before the settle
+		}
+		return at
+	}
+	x.exec.Revisions.PublishProbe = &rotPublishProbe{onBaseline: func() {
+		x.exec.Revisions.PublishProbe = nil
+		armed = true
+	}}
+	x.drain()
+	run2 = x.openRunID(rot.ID)
+	if x.snapshots() != 2 {
+		t.Fatalf("%d revisions, want 2: the second publish did not commit", x.snapshots())
+	}
+	role2 = x.lastRun(rot.ID, "candidate_handle")
+	if got := x.phase(run2); got != "overlap" {
+		t.Fatalf("run 2 = %s (%s), want overlap after the recovery", got, x.lastRun(rot.ID, "last_error"))
+	}
+	observed = x.now()
+	validUntil := mustParseStamp(t, queryString(t, db, "SELECT "+stampText(db, "candidate_valid_until")+" FROM rotation_runs WHERE id='"+run2+"'"))
+	margin = validUntil.Add(-12 * time.Hour)
+	return x, rot.ID, role1, role2, run2, observed, margin
+}
+
+func runStamp(t *testing.T, x *rotExec, run, column string) time.Time {
+	t.Helper()
+	return mustParseStamp(t, queryString(t, x.db, "SELECT "+stampText(x.db, column)+" FROM rotation_runs WHERE id='"+run+"'"))
+}
+
+// A recovered overlap whose delay runs past the delivered credential's extension
+// margin is visited at the margin, not at the deadline: the credential is extended
+// while it still can be, and the run parks again for the real deadline. Nothing is
+// revoked before the commit plus the delay.
+func TestRotationRecoveredOverlapIsVisitedAtTheExtendMargin(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x, _, role1, role2, run2, observed, margin := longOverlapRecovery(t, db)
+		deadline := observed.Add(90 * time.Minute)
+		if !margin.Before(deadline) {
+			t.Fatalf("fixture: margin %s is not before the deadline %s", margin, deadline)
+		}
+		if got := runStamp(t, x, run2, "next_attempt_at"); !got.Equal(margin) {
+			t.Fatalf("wake = %s, want the extension margin %s", got, margin)
+		}
+		if got := runStamp(t, x, run2, "revoke_not_before_at"); !got.Equal(deadline) {
+			t.Fatalf("stored deadline = %s, want %s", got, deadline)
+		}
+		validBefore := runStamp(t, x, run2, "candidate_valid_until")
+		x.advance(margin.Sub(x.now()) + time.Minute)
+		x.drain()
+		if n := x.ctl.count("extend:" + role2); n != 1 {
+			t.Fatalf("%d extends of the delivered credential at the margin, want 1 (run %s)", n, x.phase(run2))
+		}
+		if got := runStamp(t, x, run2, "candidate_valid_until"); !got.After(validBefore) {
+			t.Fatalf("VALID UNTIL %s did not move past %s", got, validBefore)
+		}
+		if n := x.ctl.count("drop:" + role1); n != 0 {
+			t.Fatalf("the superseded role was dropped %d times at the margin, before the deadline", n)
+		}
+		if got := x.phase(run2); got != "overlap" {
+			t.Fatalf("run 2 = %s after the margin visit, want overlap", got)
+		}
+		if got := runStamp(t, x, run2, "next_attempt_at"); !got.Equal(deadline) {
+			t.Fatalf("parked for %s after the extend, want the deadline %s", got, deadline)
+		}
+		x.advance(deadline.Sub(x.now()) + time.Minute)
+		x.drain()
+		if n := x.ctl.count("drop:" + role1); n != 1 {
+			t.Fatalf("%d drops of the superseded role after the deadline, want 1", n)
+		}
+	})
+}
+
+// The clamp only moves the wake: the overlap keeps its whole delay after the
+// recovery observation, however often the run is visited before that, and an
+// abandon during the wait neither shortens it nor drops early.
+func TestRotationOverlapClampDoesNotShortenTheDelay(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x, rotationID, role1, _, run2, observed, margin := longOverlapRecovery(t, db)
+		deadline := observed.Add(90 * time.Minute)
+		x.svc.Now = x.now // the abandon time must follow the executor's clock
+		// The abandon keeps the clamped wake (the margin), which is before the deadline.
+		if _, err := x.svc.Delete(tctx(t), x.actor, x.scope, service.RotationStateRequest{RotationID: rotationID, Abandon: true}); err != nil {
+			t.Fatal(err)
+		}
+		if got := x.phase(run2); got != "quarantine" {
+			t.Fatalf("run 2 = %s, want quarantine", got)
+		}
+		// Visits from the margin to the deadline revoke nothing.
+		x.advance(margin.Sub(x.now()) + time.Minute)
+		for _, at := range []time.Duration{0, 10 * time.Minute, 10 * time.Minute} {
+			x.advance(at)
+			x.drain()
+			if n := x.ctl.count("drop:" + role1); n != 0 {
+				t.Fatalf("dropped %d times at %s, before the deadline %s", n, x.now(), deadline)
+			}
+		}
+		x.advance(deadline.Sub(x.now()) + time.Minute)
+		x.drain()
+		if n := x.ctl.count("drop:" + role1); n != 1 {
+			t.Fatalf("%d drops of the superseded role after the deadline, want 1", n)
+		}
+	})
+}

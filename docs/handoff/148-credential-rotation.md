@@ -317,7 +317,9 @@ transaction. It is never stored, not even sealed. Order:
    fenced claim write as step 3, never by a plain read: the write waits for the in-flight
    transaction to finish, then matches zero rows if it published and one row if it did
    not (the run is then rolled back as in step 3).
-5. **`overlap`.** Durable wait until `next_attempt_at`. Nothing else happens. Skipping
+5. **`overlap`.** Durable wait until `revoke_not_before_at` (the wake, `next_attempt_at`,
+   is that time or the delivered credential's extension margin when earlier, and a visit
+   at the margin extends and parks again, see note 38). Skipping
    the overlap (`run-now --skip-overlap`) sets the run's `revocation_delay_seconds`
    to `0`, so this phase is immediate.
 6. **`revoking`.** First the **restore assertion**: for both keys, the current published
@@ -1000,11 +1002,25 @@ Round 4 review additions (CodeRabbit threads on PR #1426):
     delay; a run abandoned from `overlap` or later keeps its (post-commit) deadline. No
     other path reads a published run's stored deadline except the claim: extend and the
     restore hold use the current clock. The recovery branch follows the extend step, so a credential due for extension is extended (or the
-    rotation halts by name) before the wait starts. Limit: the fresh delay is not clamped
-    to the credential's VALID UNTIL. The maximum delay (`domain.MaxRevocationDelay`, 7
-    days) can exceed the extend margin (12 hours), so an executor down from the commit
-    until close to the extend due time can carry the run past its own VALID UNTIL before
-    it is claimed again; delays up to 12 hours cannot. Tests:
+    rotation halts by name) before the wait starts. The wake is clamped, the deadline
+    is not: a settle into `overlap` (publish, recovery, `followState`) stores the revoke
+    deadline in `rotation_runs.revoke_not_before_at` (migration 00092) and parks the run
+    at `rotationOverlapWake`: the deadline, or the credential's extension margin when
+    that comes first, never before now. `revoke` has no deadline check of its own (the
+    wake and the deadline were the same column), so a clamp alone would extend on the
+    early visit and then fall through to the drop; instead `revoke` compares the stored
+    deadline after the extend step and re-parks (to the next margin, or the deadline)
+    without revoking. A quarantined run (abandon) has no extend step, so it waits for
+    the stored deadline itself; the abandon of a `published` run needs no clamp because
+    that run is never extended. A NULL column (a run from before the migration, or one
+    that never settled into overlap) means the wake is the deadline. Tests:
+    `TestRotationRecoveredOverlapIsVisitedAtTheExtendMargin` (visited at the margin,
+    extended once, parked at the deadline, dropped only after it) and
+    `TestRotationOverlapClampDoesNotShortenTheDelay` (an abandon during the wait keeps
+    the stored deadline; no drop at any visit before it). Both fail, dropping early, if
+    the comparison is removed and only the clamp is kept. The delay is below the
+    interval, so the clamp only bites a recovery that is late by more than the interval
+    plus 13 hours. Other tests:
     `TestRotationOverlapDeadlineFollowsPublicationTime`,
     `TestRotationOverlapDeadlineCountsWorkAfterTheLockRefresh`,
     `TestRotationPublishBudgetRechecksAtCommit` (the clock jumps past the budget after

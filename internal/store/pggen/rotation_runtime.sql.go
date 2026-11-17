@@ -41,7 +41,7 @@ func (q *Queries) RotationRtAssertRun(ctx context.Context, arg RotationRtAssertR
 }
 
 const rotationRtClaimDueRun = `-- name: RotationRtClaimDueRun :one
-SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.generation AS rotation_generation
+SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.revoke_not_before_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.generation AS rotation_generation
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
  WHERE ru.next_attempt_at<=$1
  AND (ru.lease_owner IS NULL OR ru.lease_expires_at IS NULL OR ru.lease_expires_at<=$2)
@@ -70,6 +70,7 @@ type RotationRtClaimDueRunRow struct {
 	CandidateHandle        string
 	SupersededHandle       pgtype.Text
 	CandidateValidUntilAt  pgtype.Timestamptz
+	RevokeNotBeforeAt      pgtype.Timestamptz
 	PublishedRevision      pgtype.Int8
 	RevocationDelaySeconds int64
 	StartedAt              pgtype.Timestamptz
@@ -107,6 +108,7 @@ func (q *Queries) RotationRtClaimDueRun(ctx context.Context, arg RotationRtClaim
 		&i.CandidateHandle,
 		&i.SupersededHandle,
 		&i.CandidateValidUntilAt,
+		&i.RevokeNotBeforeAt,
 		&i.PublishedRevision,
 		&i.RevocationDelaySeconds,
 		&i.StartedAt,
@@ -319,7 +321,7 @@ func (q *Queries) RotationRtFailedAttempts(ctx context.Context, arg RotationRtFa
 }
 
 const rotationRtGetRun = `-- name: RotationRtGetRun :one
-SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.generation AS rotation_generation
+SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.revoke_not_before_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.generation AS rotation_generation
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
  WHERE ru.id=$1 AND ru.org_id=$2 AND ru.project_id=$3 AND ru.environment_id=$4
 `
@@ -343,6 +345,7 @@ type RotationRtGetRunRow struct {
 	CandidateHandle        string
 	SupersededHandle       pgtype.Text
 	CandidateValidUntilAt  pgtype.Timestamptz
+	RevokeNotBeforeAt      pgtype.Timestamptz
 	PublishedRevision      pgtype.Int8
 	RevocationDelaySeconds int64
 	StartedAt              pgtype.Timestamptz
@@ -380,6 +383,7 @@ func (q *Queries) RotationRtGetRun(ctx context.Context, arg RotationRtGetRunPara
 		&i.CandidateHandle,
 		&i.SupersededHandle,
 		&i.CandidateValidUntilAt,
+		&i.RevokeNotBeforeAt,
 		&i.PublishedRevision,
 		&i.RevocationDelaySeconds,
 		&i.StartedAt,
@@ -988,7 +992,7 @@ func (q *Queries) RotationRtSetNextRun(ctx context.Context, arg RotationRtSetNex
 }
 
 const rotationRtSettleRun = `-- name: RotationRtSettleRun :execrows
-UPDATE rotation_runs SET phase=$1,phase_at=$2,last_error=$3,next_attempt_at=$4,candidate_valid_until=COALESCE($5,candidate_valid_until),published_revision=COALESCE($6,published_revision),lease_owner=CASE WHEN $7::bigint=1 THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN $7::bigint=1 THEN lease_expires_at ELSE NULL END WHERE id=$8 AND org_id=$9 AND project_id=$10 AND environment_id=$11 AND lease_owner=$12 AND lease_expires_at>$2 AND lease_claim_token=$13 AND phase = ANY($14::text[])
+UPDATE rotation_runs SET phase=$1,phase_at=$2,last_error=$3,next_attempt_at=$4,candidate_valid_until=COALESCE($5,candidate_valid_until),revoke_not_before_at=COALESCE($6,revoke_not_before_at),published_revision=COALESCE($7,published_revision),lease_owner=CASE WHEN $8::bigint=1 THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN $8::bigint=1 THEN lease_expires_at ELSE NULL END WHERE id=$9 AND org_id=$10 AND project_id=$11 AND environment_id=$12 AND lease_owner=$13 AND lease_expires_at>$2 AND lease_claim_token=$14 AND phase = ANY($15::text[])
 `
 
 type RotationRtSettleRunParams struct {
@@ -997,6 +1001,7 @@ type RotationRtSettleRunParams struct {
 	LastError         pgtype.Text
 	NextAttemptAt     pgtype.Timestamptz
 	ValidUntilAt      pgtype.Timestamptz
+	RevokeNotBeforeAt pgtype.Timestamptz
 	PublishedRevision pgtype.Int8
 	KeepLease         int64
 	ID                string
@@ -1019,6 +1024,7 @@ func (q *Queries) RotationRtSettleRun(ctx context.Context, arg RotationRtSettleR
 		arg.LastError,
 		arg.NextAttemptAt,
 		arg.ValidUntilAt,
+		arg.RevokeNotBeforeAt,
 		arg.PublishedRevision,
 		arg.KeepLease,
 		arg.ID,
