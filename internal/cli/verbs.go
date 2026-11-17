@@ -692,6 +692,8 @@ instance configuration:
   hikyo instance-config provider update <name> [--kind oidc|saml] [--display-name NAME]
       [--assurance-context URI]... | [--clear-assurance-policy]
       [--allow-email-nameid BOOL] [--force-sign-requests BOOL] [--enabled BOOL]
+      [--lifecycle-profile clerk|none] [--lifecycle-secret-file <path>] [--client-secret-file <path>]
+      (OIDC takes --display-name, --enabled and the lifecycle flags; secrets come from a file or a prompt)
   hikyo instance-config provider disable <name> [--kind oidc|saml]
   hikyo instance-config provider refresh-metadata <name> [--metadata-file <xml>]
       [--confirm-fingerprint FP]... [--confirm-endpoint URL]...
