@@ -12,6 +12,7 @@ import (
 	standardwebhooks "github.com/standard-webhooks/standard-webhooks/libraries/go"
 
 	"github.com/Hikyo-Org/hikyo/api"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -592,4 +593,47 @@ func TestOIDCLifecycleProviderMatchRevokes(t *testing.T) {
 			t.Fatal("a credential minted through the issuer's provider survived the event")
 		}
 	})
+}
+
+// runOIDCDirectoryLifecycle drives every directory lifecycle audit event once
+// into the shared audit_e2e datastore: a ban that sweeps an OIDC session, then
+// a delete that leaves the account with no login credential.
+func runOIDCDirectoryLifecycle(t *testing.T, db *store.DB, auth *service.Auth, admin domain.PrincipalID) {
+	t.Helper()
+	ctx := t.Context()
+	const password = "correct horse battery staple directory"
+	invite, err := (&service.Grants{DB: db, Auth: auth}).InviteMember(ctx, service.LocalPrincipal(admin),
+		service.InviteSpec{Scope: domain.Scope{Org: orgA}, Username: "directory-user", Template: domain.TemplateViewer, Delivery: "response"})
+	if err != nil {
+		t.Fatalf("invite directory user: %v", err)
+	}
+	if err := auth.EstablishCredential(ctx, invite.Authority, password); err != nil {
+		t.Fatalf("establish directory user: %v", err)
+	}
+	configureProvider(t, auth, ctx, admin, "directory-idp", service.ProviderInput{
+		DisplayName: "Directory", ClientID: "c", ClientSecret: "s", Scopes: "openid", Enabled: true,
+		LifecycleProfile: strptr(service.LifecycleProfileClerk), LifecycleSecret: lifecycleTestSecret,
+	})
+	login, err := auth.LocalLogin(ctx, "directory-user", password, service.ArtifactCLI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, err := auth.OIDCStart(ctx, "directory-idp", "link", "", "", "", login.SessionToken, password, false)
+	if err != nil {
+		t.Fatalf("directory link start: %v", err)
+	}
+	code, state := driveIdP(t, start.AuthURL+"&sub=directory-subject")
+	if _, err := auth.OIDCCallback(ctx, "directory-idp", code, state, "", "", "", login.SessionToken); err != nil {
+		t.Fatalf("directory link callback: %v", err)
+	}
+	oidcLogin(t, auth, ctx, "directory-idp", "directory-subject")
+	deliver := func(body string) {
+		t.Helper()
+		if err := auth.OIDCLifecycle(ctx, "directory-idp", signedHeaders(t, lifecycleTestSecret, time.Now(), body, false), []byte(body)); err != nil {
+			t.Fatalf("directory event %s: %v", body, err)
+		}
+	}
+	deliver(userEvent("user.updated", "directory-subject", `,"banned":true`))
+	execRaw(t, db, "DELETE FROM password_credentials WHERE account_id = (SELECT account_id FROM external_identities WHERE subject = 'directory-subject')")
+	deliver(userEvent("user.deleted", "directory-subject", ""))
 }
