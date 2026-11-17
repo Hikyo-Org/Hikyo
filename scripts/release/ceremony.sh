@@ -211,12 +211,13 @@ validate_manifest_assets() {
 	if find "$bundle" -maxdepth 1 -type l -print | grep . >/dev/null; then
 		fail 'release bundle contains a symbolic link'
 	fi
+	# Bind $manifest first: jq 1.8 binds `as` over the whole preceding and-chain.
 	jq -e --arg version "$version" --arg tag "$tag" '
+		. as $manifest |
 		.schema == "hikyo.dev/release-manifest/v1" and
 		.version == $version and .tag == $tag and
 		([.artifacts[] | select(.kind == "binary")] | length) == 6 and
 		([.artifacts[] | select(.kind == "package")] | length) == 8 and
-		. as $manifest |
 		all(["apk", "archlinux", "deb", "rpm"][];
 			. as $format |
 			([$manifest.artifacts[] | select(.kind == "package" and .format == $format and .arch == "amd64")] | length) == 1 and
