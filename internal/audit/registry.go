@@ -890,6 +890,9 @@ const (
 	// create, pause, resume and delete; action says which. Run events arrive
 	// with the run state machine (S2).
 	EventRotationConfigured EventType = "rotation.configured"
+	// A manual run requested (#148, S2b-1): run_id is the run the executor will
+	// start, skip_overlap whether it revokes right after the publish.
+	EventRotationRunNow EventType = "rotation.run_now"
 	// Rotation run transitions (#148, S2): an INTENT before each provider
 	// side effect, an OUTCOME after, and a quarantine when a candidate or
 	// superseded role may be live and unconfirmed.
@@ -3779,6 +3782,15 @@ var registry = map[EventType]TypeSpec{
 		// known, so a pause or delete says when the live credential lapses.
 		"credential_expires_at": {Kind: KindString},
 	}),
+	EventRotationRunNow: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true, OutcomeDenied: true},
+		Trails:   map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"run_id":       {Kind: KindString, Required: true},
+			"skip_overlap": {Kind: KindBool, Required: true},
+		},
+	},
 	// A run's INTENT is written before the provider side effect (or the
 	// publish) and its OUTCOME after. handle is the candidate's role name, public
 	// metadata, never the password. phase is the transition: mint, publish,
@@ -3806,8 +3818,8 @@ var registry = map[EventType]TypeSpec{
 			"error_code": {Kind: KindString},
 			// revision is the catalogue revision a publish outcome produced.
 			"revision": {Kind: KindInt},
-			// not_converged_consumers is reserved for the consumer-convergence
-			// report (S2b); the executor does not emit it yet.
+			// not_converged_consumers is the revoke outcome's count of adapter
+			// targets still on the superseded revision (#148, S2b-1).
 			"not_converged_consumers": {Kind: KindInt},
 		},
 	},

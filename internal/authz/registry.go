@@ -726,6 +726,12 @@ const (
 	OpRotationPause   Operation = "rotation.pause"
 	OpRotationResume  Operation = "rotation.resume"
 	OpRotationDelete  Operation = "rotation.delete"
+	// OpRotationRunNow asks for a run now (#148, S2b-1): it requests the run, the
+	// executor drives it through the same Gate and authority as a scheduled one.
+	// publish@env plus a publish ceremony over the rotation's keys.
+	OpRotationRunNow Operation = "rotation.run_now"
+	// OpRotationRuns lists a rotation's runs (read@env, a bare read).
+	OpRotationRuns Operation = "rotation.runs"
 	// OpRotationRun is the executor's own publish transaction (#148, S2): not a
 	// wire operation. It binds the run row write to the recorded authority's
 	// publish@env proof, beside the staged values and the revision.
@@ -1017,6 +1023,10 @@ const (
 	StoreRotationsRecordRunPublish StoreOp = "rotations.RecordRunPublish"
 	StoreRotationsAbandonOpenRuns  StoreOp = "rotations.AbandonOpenRuns"
 	StoreRotationsProviderLiveRuns StoreOp = "rotations.ProviderLiveRuns"
+	// StoreRotationsRequestRun records a run-now request; StoreRotationsListRuns
+	// is the runs inspection read (#148, S2b-1).
+	StoreRotationsRequestRun StoreOp = "rotations.RequestRun"
+	StoreRotationsListRuns   StoreOp = "rotations.ListRuns"
 
 	// SSH user certificates (#155). Proof-carrying, environment-bound; the
 	// sweeper's revocation SQL runs through the proof-free SSHRuntime.
@@ -1537,6 +1547,7 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreRotationsGet:           true,
 	StoreRotationsList:          true,
 	StoreRotationsCountOpenRuns: true,
+	StoreRotationsListRuns:      true,
 	// SSH reads of public trust material and certificate metadata (#155).
 	StoreSSHGetCA:            true,
 	StoreSSHListCAs:          true,
@@ -5528,6 +5539,21 @@ var operationTable = map[Operation]opSpec{
 		formula:  Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSetState: true, StoreRotationsCountOpenRuns: true, StoreRotationsAbandonOpenRuns: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventRotationConfigured, audit.EventRotationQuarantined, audit.EventRotationRunOutcome},
+	},
+	OpRotationRunNow: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula: Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
+		// Run-now consumes the publish reauthentication window over the rotation's
+		// keys after the grant passes; its refusal is a reachable 403.
+		postGrantForbidden: true,
+		storeOps:           map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsCountOpenRuns: true, StoreRotationsRequestRun: true, StoreAuditTenantInsert: true},
+		events:             []audit.EventType{audit.EventRotationRunNow},
+	},
+	OpRotationRuns: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:     Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps:    map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsListRuns: true},
+		auditedNone: true,
 	},
 	OpRotationRun: {
 		class: ClassTenant, level: domain.LevelEnv,

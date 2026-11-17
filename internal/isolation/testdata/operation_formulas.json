@@ -2008,6 +2008,23 @@
     ]
   },
   {
+    "operation": "rotation.run_now",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "publish@environment"
+    ],
+    "post_grant_forbidden": true
+  },
+  {
+    "operation": "rotation.runs",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ]
+  },
+  {
     "operation": "rule.create",
     "class": "tenant",
     "level": "project",
