@@ -269,7 +269,7 @@ func doctorRotationFinding(health apigen.RetentionHealth) doctorFinding {
 		{health.RotationRunsRevokeRefused, "run(s) whose superseded role could not be dropped"},
 		{health.RotationRunsUnknownOutcome, "run(s) with an unknown outcome"},
 		{health.RotationOverdue, "overdue rotation(s)"},
-		{health.RotationCredentialsExpiring, "credential(s) expiring within six hours"},
+		{health.RotationCredentialsExpiring, "credential(s) expiring within the next six hours"},
 	}
 	var parts []string
 	needs := false
@@ -285,7 +285,7 @@ func doctorRotationFinding(health apigen.RetentionHealth) doctorFinding {
 	finding.Message = strings.Join(parts, ", ")
 	if needs {
 		finding.Severity = "warn"
-		finding.Message += "; see `hikyo rotation list` and `hikyo rotation runs`"
+		finding.Message += "; `hikyo rotation list` shows halted, held and overdue rotations, `hikyo rotation runs <rotation>` shows quarantined, refused and unknown-outcome runs"
 	}
 	return finding
 }

@@ -1706,7 +1706,7 @@
     "engine": "postgres",
     "name": "HoldRestoredRotations",
     "annotation": "authn-resolution",
-    "hash": "55806973b318ab33f8b08b0968c52fb4bdf6d65844a32e47e16b1d9030b1a30b"
+    "hash": "5de08a9ed962448d61e3bc085b5a90df1385c549378ceec1e6d1f60137c031f2"
   },
   {
     "engine": "postgres",
@@ -2778,7 +2778,7 @@
     "engine": "postgres",
     "name": "PauseRestoredRotations",
     "annotation": "authn-resolution",
-    "hash": "f46fd8fa12d3da80f7158cd685d90d02db3216d43d386b14c5a0e5c78201fc3b"
+    "hash": "16e422bff1a8d14dc2d346557f393de946c80a12b52fc6c4eb6b677efae07d37"
   },
   {
     "engine": "postgres",
@@ -3372,6 +3372,20 @@
   },
   {
     "engine": "postgres",
+    "name": "RotationListRuns",
+    "annotation": "instance-scoped",
+    "hash": "fcd424dfc6ac1f28d3d8eab416f384ed6c32e006643a31956da8a688908ea21e",
+    "reason": "The run list reads one rotation's runs under the org, project and environment chain; the superseded_valid_until subquery is pinned to the same chain on every column and reads only the run that delivered the superseded role."
+  },
+  {
+    "engine": "postgres",
+    "name": "RotationListRunsAfter",
+    "annotation": "instance-scoped",
+    "hash": "1e8df0508b795f391cbab4adc2362bef426e6ca28046d71ca7c277f024e8fb3c",
+    "reason": "The run list reads one rotation's runs under the org, project and environment chain; the superseded_valid_until subquery is pinned to the same chain on every column and reads only the run that delivered the superseded role."
+  },
+  {
+    "engine": "postgres",
     "name": "RotationProviderLiveRuns",
     "annotation": "instance-scoped",
     "hash": "7090b5799fb0d6fe925a3287c8fed95516753f96d52a1c324ab9f8646b39ac27",
@@ -3395,7 +3409,7 @@
     "engine": "postgres",
     "name": "RotationRtGauges",
     "annotation": "instance-scoped",
-    "hash": "256daf88862b5c9251d4cc2d3701bcdc10bb14ba80e2f580df858fda50b2f45c",
+    "hash": "ca8eae0a4256a54fc5ff9c4d284b862774b25d74526f0c797a1a11e3207e9c26",
     "reason": "RotationRuntime metrics scrape and doctor read only instance-wide counts of rotations and runs that need an operator through the closed runtime boundary; no tenant identity leaves it."
   },
   {
@@ -5515,7 +5529,7 @@
     "engine": "sqlite",
     "name": "HoldRestoredRotations",
     "annotation": "authn-resolution",
-    "hash": "18da0d020ec574cd3df486ef10678dc7fbcf93b787350260a99d2a8f53dde0c0"
+    "hash": "a1f65352d1b9dac758f35f0a33b32d4005f761f4605b73b18905a2aa23d79975"
   },
   {
     "engine": "sqlite",
@@ -6587,7 +6601,7 @@
     "engine": "sqlite",
     "name": "PauseRestoredRotations",
     "annotation": "authn-resolution",
-    "hash": "f46fd8fa12d3da80f7158cd685d90d02db3216d43d386b14c5a0e5c78201fc3b"
+    "hash": "16e422bff1a8d14dc2d346557f393de946c80a12b52fc6c4eb6b677efae07d37"
   },
   {
     "engine": "sqlite",
@@ -7167,6 +7181,20 @@
   },
   {
     "engine": "sqlite",
+    "name": "RotationListRuns",
+    "annotation": "instance-scoped",
+    "hash": "fcd424dfc6ac1f28d3d8eab416f384ed6c32e006643a31956da8a688908ea21e",
+    "reason": "The run list reads one rotation's runs under the org, project and environment chain; the superseded_valid_until subquery is pinned to the same chain on every column and reads only the run that delivered the superseded role."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RotationListRunsAfter",
+    "annotation": "instance-scoped",
+    "hash": "1e8df0508b795f391cbab4adc2362bef426e6ca28046d71ca7c277f024e8fb3c",
+    "reason": "The run list reads one rotation's runs under the org, project and environment chain; the superseded_valid_until subquery is pinned to the same chain on every column and reads only the run that delivered the superseded role."
+  },
+  {
+    "engine": "sqlite",
     "name": "RotationProviderLiveRuns",
     "annotation": "instance-scoped",
     "hash": "7090b5799fb0d6fe925a3287c8fed95516753f96d52a1c324ab9f8646b39ac27",
@@ -7190,7 +7218,7 @@
     "engine": "sqlite",
     "name": "RotationRtGauges",
     "annotation": "instance-scoped",
-    "hash": "720f2509f66d81405f6ca995357182c3de964dbfd05d767eadcca0fa029fdfdd",
+    "hash": "11cd0b8ccf06359b50501520c9651c1c099683f76fb7ec0904f47e14639f81d3",
     "reason": "RotationRuntime metrics scrape and doctor read only instance-wide counts of rotations and runs that need an operator through the closed runtime boundary; no tenant identity leaves it."
   },
   {

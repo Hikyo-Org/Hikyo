@@ -196,6 +196,8 @@ type rotationRuntimeQueries interface {
 	latestPublished(ctx context.Context, chain domain.Scope, keyID string) (handle string, validUntil time.Time, err error)
 	insertRun(ctx context.Context, d DueRotation, s StartRun, superseded string) error
 	setNextRun(ctx context.Context, chain domain.Scope, rotationID string, next, now time.Time) (int64, error)
+	// deferNextRun is setNextRun for a deferral: it keeps the first due time in deferred_from.
+	deferNextRun(ctx context.Context, chain domain.Scope, rotationID string, next, now time.Time) (int64, error)
 	haltRotation(ctx context.Context, chain domain.Scope, rotationID, reason string, now time.Time) (int64, error)
 	insertEffect(ctx context.Context, chain domain.Scope, runID string, e RotationEffectIntent, at time.Time) error
 	closeEffect(ctx context.Context, chain domain.Scope, runID string, o RotationEffectOutcome, at time.Time) error
@@ -513,7 +515,7 @@ func (r *RotationRuntime) HaltRotation(ctx context.Context, d DueRotation, reaso
 // longer active) is correct.
 func (r *RotationRuntime) DeferRotation(ctx context.Context, d DueRotation, next, now time.Time) error {
 	return r.transaction(ctx, func(q rotationRuntimeQueries) error {
-		_, err := q.setNextRun(ctx, d.Chain(), d.ID, next, now)
+		_, err := q.deferNextRun(ctx, d.Chain(), d.ID, next, now)
 		return err
 	})
 }
@@ -671,7 +673,8 @@ type RotationGauges struct {
 	// run open.
 	Overdue int64
 	// Expiring is rotations (not deleted) whose delivered credential expires within
-	// RotationExpiringWithin.
+	// RotationExpiringWithin from now. A credential already past its expiry is not
+	// counted: a lapsed credential halts or overdues its rotation instead.
 	Expiring int64
 }
 

@@ -348,7 +348,7 @@ func (r *Resolver) HoldRestoredPKIIssuers(ctx context.Context) error {
 // that has the table but not the restore_hold column (migrations 00091 to 00093,
 // pre-release builds) cannot be held, so its active rotations are paused instead,
 // which the operator must resume by hand.
-func (r *Resolver) HoldRestoredRotations(ctx context.Context) error {
+func (r *Resolver) HoldRestoredRotations(ctx context.Context, now time.Time) error {
 	var table, column bool
 	var err error
 	if r.sq != nil {
@@ -368,13 +368,13 @@ func (r *Resolver) HoldRestoredRotations(ctx context.Context) error {
 	}
 	switch {
 	case r.sq != nil && column:
-		err = r.sq.HoldRestoredRotations(ctx)
+		err = r.sq.HoldRestoredRotations(ctx, encodeTime(now))
 	case r.sq != nil:
-		err = r.sq.PauseRestoredRotations(ctx)
+		err = r.sq.PauseRestoredRotations(ctx, encodeTime(now))
 	case column:
-		err = r.pg.HoldRestoredRotations(ctx)
+		err = r.pg.HoldRestoredRotations(ctx, pgTimestamp(now))
 	default:
-		err = r.pg.PauseRestoredRotations(ctx)
+		err = r.pg.PauseRestoredRotations(ctx, pgTimestamp(now))
 	}
 	if err != nil {
 		return fmt.Errorf("authn: hold restored rotations: %w", err)

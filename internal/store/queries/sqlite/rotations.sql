@@ -11,7 +11,7 @@ SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,rev
 SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND id > sqlc.arg(after_id) ORDER BY id LIMIT sqlc.arg(page_limit);
 
 -- name: RotationSetState :execrows
-UPDATE rotations SET state=sqlc.arg(state),halt_reason=NULL,manual_run_id=NULL,manual_skip_overlap=0,next_run_at=sqlc.narg(next_run_at),generation=generation+1,updated_at=sqlc.arg(at) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(expected_generation) AND state<>'disabled';
+UPDATE rotations SET deferred_from=NULL,state=sqlc.arg(state),halt_reason=NULL,manual_run_id=NULL,manual_skip_overlap=0,restore_hold=CASE WHEN sqlc.arg(state)='disabled' THEN 0 ELSE restore_hold END,next_run_at=sqlc.narg(next_run_at),generation=generation+1,updated_at=sqlc.arg(at) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(expected_generation) AND state<>'disabled';
 
 -- name: RotationCountOpenRuns :one
 SELECT COUNT(*) FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND phase NOT IN ('done','quarantine','failed');
@@ -76,7 +76,7 @@ DELETE FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(c
 SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND provider_id=sqlc.arg(provider_id) AND state='active' ORDER BY id;
 
 -- name: RotationPauseActive :execrows
-UPDATE rotations SET state='paused',next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=0,generation=generation+1,updated_at=sqlc.arg(at) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state='active';
+UPDATE rotations SET deferred_from=NULL,state='paused',next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=0,generation=generation+1,updated_at=sqlc.arg(at) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state='active';
 
 -- name: RotationListActiveInEnvironment :many
 SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(environment_id) AND state='active' ORDER BY id;
@@ -127,7 +127,7 @@ SELECT COUNT(*) FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id A
 -- request; the service re-counts open runs after this write, in the same
 -- transaction, and the caller reads the row to say which condition refused.
 -- name: RotationRequestRun :execrows
-UPDATE rotations SET manual_run_id=sqlc.arg(run_id),manual_skip_overlap=sqlc.arg(skip_overlap),next_run_at=sqlc.arg(now),updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active' AND generation=sqlc.arg(expected_generation) AND manual_run_id IS NULL;
+UPDATE rotations SET deferred_from=NULL,manual_run_id=sqlc.arg(run_id),manual_skip_overlap=sqlc.arg(skip_overlap),next_run_at=sqlc.arg(now),updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active' AND generation=sqlc.arg(expected_generation) AND manual_run_id IS NULL;
 
 -- Whether a run-now request is pending for the rotation.
 -- name: RotationManualPending :one
@@ -138,11 +138,17 @@ SELECT COUNT(*) FROM rotations WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.ar
 -- after the request, so id order is start order. The cursor is the last run id of the
 -- previous page. Only operator-visible metadata: no handle, no candidate, no
 -- provider detail beyond the fixed-word last_error code.
+-- candidate_valid_until and superseded_valid_until let a revoke_refused or quarantine run say when the
+-- role it still owes a drop lapses on its own (the superseded role's expiry is the run that delivered it).
+-- hikyo:reason The run list reads one rotation's runs under the org, project and environment chain; the superseded_valid_until subquery is pinned to the same chain on every column and reads only the run that delivered the superseded role.
+-- hikyo:instance-scoped
 -- name: RotationListRuns :many
-SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_adapter_targets FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) ORDER BY id DESC LIMIT sqlc.arg(page_limit);
+SELECT r.id,r.run_trigger,r.phase,r.published_revision,r.revocation_delay_seconds,r.started_at,r.phase_at,r.last_error,r.not_converged_adapter_targets,r.candidate_valid_until,(SELECT s.candidate_valid_until FROM rotation_runs s WHERE s.rotation_id=r.rotation_id AND s.org_id=sqlc.arg(chain_org) AND s.project_id=sqlc.arg(chain_project) AND s.environment_id=sqlc.arg(chain_env) AND s.candidate_handle=r.superseded_handle ORDER BY s.id DESC LIMIT 1) AS superseded_valid_until FROM rotation_runs r WHERE r.rotation_id=sqlc.arg(rotation_id) AND r.org_id=sqlc.arg(chain_org) AND r.project_id=sqlc.arg(chain_project) AND r.environment_id=sqlc.arg(chain_env) ORDER BY r.id DESC LIMIT sqlc.arg(page_limit);
 
+-- hikyo:reason The run list reads one rotation's runs under the org, project and environment chain; the superseded_valid_until subquery is pinned to the same chain on every column and reads only the run that delivered the superseded role.
+-- hikyo:instance-scoped
 -- name: RotationListRunsAfter :many
-SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_adapter_targets FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND id < sqlc.arg(after_id) ORDER BY id DESC LIMIT sqlc.arg(page_limit);
+SELECT r.id,r.run_trigger,r.phase,r.published_revision,r.revocation_delay_seconds,r.started_at,r.phase_at,r.last_error,r.not_converged_adapter_targets,r.candidate_valid_until,(SELECT s.candidate_valid_until FROM rotation_runs s WHERE s.rotation_id=r.rotation_id AND s.org_id=sqlc.arg(chain_org) AND s.project_id=sqlc.arg(chain_project) AND s.environment_id=sqlc.arg(chain_env) AND s.candidate_handle=r.superseded_handle ORDER BY s.id DESC LIMIT 1) AS superseded_valid_until FROM rotation_runs r WHERE r.rotation_id=sqlc.arg(rotation_id) AND r.org_id=sqlc.arg(chain_org) AND r.project_id=sqlc.arg(chain_project) AND r.environment_id=sqlc.arg(chain_env) AND r.id < sqlc.arg(after_id) ORDER BY r.id DESC LIMIT sqlc.arg(page_limit);
 
 -- Clears the restore hold of one rotation. The generation is not bumped: a run in
 -- flight asserts the generation it started under, and a release must not

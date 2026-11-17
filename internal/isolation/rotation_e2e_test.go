@@ -107,6 +107,12 @@ func newRotationFixture(t *testing.T, db *store.DB) *rotationFixture {
 // publish ceremony intent consumes.
 func (f *rotationFixture) session(principal domain.PrincipalID, withWindow bool) service.Actor {
 	f.t.Helper()
+	return service.Bearer(f.sessionToken(principal, withWindow))
+}
+
+// sessionToken is session's bearer artifact, for a test that drives the router.
+func (f *rotationFixture) sessionToken(principal domain.PrincipalID, withWindow bool) string {
+	f.t.Helper()
 	f.seq++
 	artifact, verifier, err := crypto.NewArtifact(crypto.ArtifactCLISession)
 	if err != nil {
@@ -141,7 +147,7 @@ func (f *rotationFixture) session(principal domain.PrincipalID, withWindow bool)
 	}); err != nil {
 		f.t.Fatalf("mint session: %v", err)
 	}
-	return service.Bearer(artifact)
+	return artifact
 }
 
 func (f *rotationFixture) request(key, user string) service.CreateRotationRequest {

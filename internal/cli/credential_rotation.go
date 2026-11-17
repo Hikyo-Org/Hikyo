@@ -191,6 +191,11 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 			return err
 		}
 		noteRestoreHold(ios, out)
+		var runs apigen.RotationRunList
+		if err := client.Do(ctx, http.MethodGet, base+"/"+url.PathEscape(id)+"/runs", nil, &runs); err != nil {
+			return err
+		}
+		noteOwedRuns(ios, runs)
 		return one(out)
 	case "create":
 		if provider == "" || key == "" || usernameKey == "" || interval == "" || delay == "" {
@@ -294,6 +299,7 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 			return err
 		}
 		noteRestoreHold(ios, cur)
+		noteOwedRuns(ios, out)
 		if err := Render(ios.Stdout, f, rotationRunsTable(out)); err != nil {
 			return err
 		}
@@ -345,6 +351,24 @@ func noteCredentialExpiry(ios IO, r apigen.CredentialRotation, verb string) {
 	}
 	_, _ = fmt.Fprintf(ios.Stderr, "rotation %s %s; the credential already delivered stays valid until %s\n",
 		r.Id, verb, r.CredentialExpiresAt.UTC().Format(time.RFC3339))
+}
+
+// noteOwedRuns says loudly, on stderr, which runs still owe a role drop and until
+// when that role stays valid: a revoke_refused run could not drop the superseded
+// role and a quarantine run holds a candidate that may still be live. Hikyo has no
+// operator action that releases either; the role lapses at the time printed unless
+// the operator drops it at the provider.
+func noteOwedRuns(ios IO, runs apigen.RotationRunList) {
+	for _, r := range runs.Items {
+		if r.Phase != apigen.RotationRunPhaseRevokeRefused && r.Phase != apigen.RotationRunPhaseQuarantine {
+			continue
+		}
+		until := "no recorded expiry"
+		if r.CredentialValidUntil != nil {
+			until = "stays valid until " + r.CredentialValidUntil.UTC().Format(time.RFC3339)
+		}
+		_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: run %s is %s and a provider role it owes a drop is still live (%s); drop it at the provider if that is too late\n", r.Id, r.Phase, until)
+	}
 }
 
 // noteRestoreHold says loudly, on stderr, that a restore holds the rotation: it

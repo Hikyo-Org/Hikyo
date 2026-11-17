@@ -1022,8 +1022,13 @@
       "reason": "Historical authenticated-archive catalog probe accepts pre-migration-00064 archives without pki_issuers; existing issuer data update remains a generated query."
     },
     "internal/store/authn/restore.go:Resolver.HoldRestoredRotations": {
-      "hash": "c27c76004d7c35a55d47ae419f2a981aa4dea6b360c8c7e8a26061d94cd4e299",
-      "reason": "Restore probes the fixed rotations table and restore_hold column in the archive's own catalog before generated hold queries; archives from pre-release builds (migrations 00091 to 00093) lack the column and are paused instead. PostgreSQL must not discover absence through a transaction-aborting write. No tenant rows or request-selected schema identifiers are read."
+      "hash": "ecd72505f0f4696de3a1bbfc314b15ad6eca7c203e1e509f5833cb2a8b5ec362",
+      "reason": "Restore probes the fixed rotations table and restore_hold column in the archive's own catalog before generated hold queries; archives from pre-release builds (migrations 00091 to 00093) lack the column and are paused instead. PostgreSQL must not discover absence through a transaction-aborting write. No tenant rows or request-selected schema identifiers are read.",
+      "dependencies": [
+        "internal/store/authn/human.go:canon",
+        "internal/store/authn/human.go:encodeTime",
+        "internal/store/authn/human.go:pgTimestamp"
+      ]
     },
     "internal/store/authn/restore.go:Resolver.InvalidateRestoredAdapterCredentials": {
       "hash": "b9276860f72c010e8a5578f30a57d0765edb9b57ee200ce349a567e6ce7ea48a",

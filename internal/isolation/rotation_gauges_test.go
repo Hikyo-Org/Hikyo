@@ -68,11 +68,18 @@ func runRotationGauges(t *testing.T, db *store.DB) {
 	// inside the horizon it is counted, outside it is not.
 	execRaw(t, db, "UPDATE rotations SET state='paused', next_run_at=NULL WHERE id='"+rot.ID+"'")
 	expect("paused with a credential far from expiring", store.RotationGauges{})
-	x.advance(48 * time.Hour)
+	until := mustParseStamp(t, x.state(rot.ID).CredentialExpiresAt)
+	x.advance(until.Add(-3 * time.Hour).Sub(x.now()))
 	expect("paused near the credential's expiry", store.RotationGauges{Expiring: 1})
 
 	execRaw(t, db, "UPDATE rotations SET state='halted', halt_reason='retries_exhausted' WHERE id='"+rot.ID+"'")
 	expect("halted", store.RotationGauges{Halted: 1, Expiring: 1})
+
+	// A credential already past its expiry is not "expiring": the gauge counts only
+	// what an operator can still extend in time.
+	x.advance(4 * time.Hour)
+	expect("halted with a lapsed credential", store.RotationGauges{Halted: 1})
+	x.advance(-4 * time.Hour)
 
 	// A deleted rotation is history: nothing about it needs an operator.
 	execRaw(t, db, "UPDATE rotations SET state='disabled', halt_reason=NULL WHERE id='"+rot.ID+"'")

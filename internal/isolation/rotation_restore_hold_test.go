@@ -16,7 +16,7 @@ import (
 func holdRestored(t *testing.T, db *store.DB) {
 	t.Helper()
 	if err := tx.Write(tctx(t), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
-		return az.HoldRestoredRotations(ctx)
+		return az.HoldRestoredRotations(ctx, time.Now().UTC())
 	}); err != nil {
 		t.Fatalf("hold restored rotations: %v", err)
 	}
@@ -79,7 +79,7 @@ func runRotationRestoreHold(t *testing.T, db *store.DB) {
 
 	// Release: a person with the ceremony, one generation, one audit row.
 	req := service.RotationStateRequest{RotationID: rot.ID}
-	if _, err := x.svc.ReleaseHold(ctx, x.session(alice, false), x.scope, req); err == nil || !held(rot.ID) {
+	if _, err := x.svc.ReleaseHold(ctx, x.session(alice, false), x.scope, req); !errors.Is(err, service.ErrNoReauthWindow) || !held(rot.ID) {
 		t.Fatalf("release without the publish ceremony = %v (held: %v)", err, held(rot.ID))
 	}
 	req.ExpectedGeneration = 99

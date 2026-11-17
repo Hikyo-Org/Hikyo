@@ -10579,7 +10579,7 @@ type RetentionHealth struct {
 	// PkiIssuersOnHold Private-PKI issuer versions held after a restore until reconciled (#154). Absent when not measured.
 	PkiIssuersOnHold *int `json:"pki_issuers_on_hold,omitzero"`
 
-	// RotationCredentialsExpiring Scheduled rotations (not deleted) whose delivered credential expires within six hours (#148). Absent when not measured.
+	// RotationCredentialsExpiring Scheduled rotations (not deleted) whose delivered credential expires within the next six hours; credentials already past expiry are not counted (#148). Absent when not measured.
 	RotationCredentialsExpiring *int `json:"rotation_credentials_expiring,omitzero"`
 
 	// RotationHalted Scheduled rotations halted by a failed authority gate or an exhausted retry window (#148). Absent when not measured.
@@ -10917,6 +10917,9 @@ type RotateSSHCARequest struct {
 
 // RotationRun defines model for RotationRun.
 type RotationRun struct {
+	// CredentialValidUntil For a revoke_refused run, when the superseded role it could not drop expires on its own; for a quarantine run, when its candidate role does. Null for every other phase, or when no expiry was recorded.
+	CredentialValidUntil *time.Time `json:"credential_valid_until,omitzero"`
+
 	// ErrorCode The fixed-word code of the last failure, if any. Never provider detail.
 	ErrorCode *string `json:"error_code,omitzero"`
 

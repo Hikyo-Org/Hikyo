@@ -1419,6 +1419,7 @@ type Rotation struct {
 	ManualRunID            pgtype.Text
 	ManualSkipOverlap      bool
 	RestoreHold            bool
+	DeferredFrom           pgtype.Timestamptz
 }
 
 type RotationEffect struct {

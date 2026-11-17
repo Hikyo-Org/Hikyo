@@ -859,7 +859,7 @@ func newRotationCollector() *rotationCollector {
 		prometheus.NewDesc(MetricRotationHalted, "Number of rotations halted by a failed gate or an exhausted retry window.", nil, nil),
 		prometheus.NewDesc(MetricRotationRestoreHeld, "Number of rotations a restore holds until an operator releases them.", nil, nil),
 		prometheus.NewDesc(MetricRotationOverdue, "Number of active rotations due for over fifteen minutes with no run started.", nil, nil),
-		prometheus.NewDesc(MetricRotationCredentialsExpiring, "Number of rotations whose delivered credential expires within six hours.", nil, nil),
+		prometheus.NewDesc(MetricRotationCredentialsExpiring, "Number of rotations whose delivered credential expires within the next six hours (already expired credentials are not counted).", nil, nil),
 	}, known: prometheus.NewDesc(MetricRotationGaugesKnown, "Whether the rotation gauges were measured on this scrape; they are omitted when 0.", nil, nil)}
 }
 

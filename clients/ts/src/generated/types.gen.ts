@@ -995,6 +995,10 @@ export type RotationRun = {
      * Adapter (sync) targets that mirror either rotation key and had not converged to the published revision when the run decided to revoke the superseded credential. Machine principals that read the keys directly are not counted. Null until then.
      */
     not_converged_adapter_targets?: number | null;
+    /**
+     * For a revoke_refused run, when the superseded role it could not drop expires on its own; for a quarantine run, when its candidate role does. Null for every other phase, or when no expiry was recorded.
+     */
+    credential_valid_until?: string | null;
 };
 
 export type RotationRunList = {
@@ -4871,7 +4875,7 @@ export type RetentionHealth = {
      */
     rotation_overdue?: number;
     /**
-     * Scheduled rotations (not deleted) whose delivered credential expires within six hours (#148). Absent when not measured.
+     * Scheduled rotations (not deleted) whose delivered credential expires within the next six hours; credentials already past expiry are not counted (#148). Absent when not measured.
      */
     rotation_credentials_expiring?: number;
 };

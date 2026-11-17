@@ -399,8 +399,9 @@ func runRotationTransitionsAreKeyAware(t *testing.T, db *store.DB) {
 	if got := x.manualRequest(rot.ID); got != "" {
 		t.Fatalf("a refused run-now left request %q", got)
 	}
-	// Pause needs publish only, so the publisher passes it and the one-key person
-	// does not: a key they cannot reach refuses even a reducing change.
+	// Pause needs publish only, so the publisher passes it (and the key-narrowed
+	// holder resumes it) while the one-key person does not: a key they cannot
+	// reach refuses even a reducing change.
 	if _, err := x.svc.Pause(ctx, x.session(oneKey, true), x.scope, req); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("pause by the one-key holder = %v, want not-found", err)
 	}
@@ -416,6 +417,12 @@ func runRotationTransitionsAreKeyAware(t *testing.T, db *store.DB) {
 		t.Fatal("the key-narrowed run-now requested nothing")
 	}
 	x.drain()
+	if got, err := x.svc.Pause(ctx, x.session(rotPublisher, true), x.scope, req); err != nil || got.State != store.RotationStatePaused {
+		t.Fatalf("pause by the publisher = %+v, %v", got, err)
+	}
+	if _, err := x.svc.Resume(ctx, x.session(rotNarrow, true), x.scope, req); err != nil {
+		t.Fatalf("resume by the key-narrowed holder after the publisher's pause = %v", err)
+	}
 	paused, err := x.svc.Pause(ctx, x.session(rotNarrow, true), x.scope, req)
 	if err != nil {
 		t.Fatalf("pause by the key-narrowed holder = %v", err)

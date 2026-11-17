@@ -1385,17 +1385,18 @@ func (q *Queries) HoldRestoredPKIIssuers(ctx context.Context) error {
 }
 
 const holdRestoredRotations = `-- name: HoldRestoredRotations :exec
-UPDATE rotations SET restore_hold = 1 WHERE state <> 'disabled'
+UPDATE rotations SET restore_hold = 1, manual_run_id = NULL, manual_skip_overlap = 0, updated_at = ?1 WHERE state <> 'disabled'
 `
 
 // A restore brings back rotations whose grants, provider credentials and served
 // keys are not reconciled yet, so every restored rotation is held: it starts no
 // run and takes no pre-publish step until an operator releases it with
-// `hikyo rotation release-hold` (#148, decision 9). A disabled rotation never runs
-// again and is not held.
+// `hikyo rotation release-hold` (#148, decision 9). A run-now queued before the
+// backup is cleared so it cannot fire on release (a skip-overlap request would
+// revoke a role still serving). A disabled rotation never runs again and is not held.
 // hikyo:authn-resolution
-func (q *Queries) HoldRestoredRotations(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, holdRestoredRotations)
+func (q *Queries) HoldRestoredRotations(ctx context.Context, updatedAt string) error {
+	_, err := q.db.ExecContext(ctx, holdRestoredRotations, updatedAt)
 	return err
 }
 
@@ -2543,7 +2544,7 @@ func (q *Queries) MaxKnownCredentialEpoch(ctx context.Context) (interface{}, err
 }
 
 const pauseRestoredRotations = `-- name: PauseRestoredRotations :exec
-UPDATE rotations SET state = 'paused', next_run_at = NULL, generation = generation + 1 WHERE state = 'active'
+UPDATE rotations SET state = 'paused', next_run_at = NULL, generation = generation + 1, updated_at = ?1 WHERE state = 'active'
 `
 
 // The fallback for an archive written before the restore_hold column existed
@@ -2551,8 +2552,8 @@ UPDATE rotations SET state = 'paused', next_run_at = NULL, generation = generati
 // so it can only use the columns that archive has. Every active rotation is
 // paused, which is a state the operator must resume by hand.
 // hikyo:authn-resolution
-func (q *Queries) PauseRestoredRotations(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, pauseRestoredRotations)
+func (q *Queries) PauseRestoredRotations(ctx context.Context, updatedAt string) error {
+	_, err := q.db.ExecContext(ctx, pauseRestoredRotations, updatedAt)
 	return err
 }
 

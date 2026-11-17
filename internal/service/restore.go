@@ -169,7 +169,7 @@ func CompleteRestore(now time.Time, m store.Manifest) tx.RestoreFn {
 			return err
 		}
 		// #148: restored rotations start no run until `rotation release-hold`.
-		if err := az.HoldRestoredRotations(ctx); err != nil {
+		if err := az.HoldRestoredRotations(ctx, now); err != nil {
 			return err
 		}
 		state, err := az.RestoreState(ctx)

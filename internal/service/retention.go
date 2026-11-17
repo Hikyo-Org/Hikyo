@@ -583,7 +583,8 @@ func (s *Retention) OperationalHealth(ctx context.Context) (PruneHealth, error) 
 	out := s.health(at, recorded, peak, backup, adapters)
 	out.Diagnostics = s.diagnosticHealth(metadata, instance, incarnation)
 	s.pkiHealth(ctx, &out)
-	s.rotationHealth(ctx, &out)
+	// Rotation counts are not read here: /metrics scrapes them through its own
+	// collector, so reading them again would run the same queries twice per scrape.
 	return out, nil
 }
 
@@ -599,12 +600,18 @@ func (s *Retention) pkiHealth(ctx context.Context, out *PruneHealth) {
 	}
 }
 
+// rotationHealthTimeout bounds the doctor-path rotation count read.
+const rotationHealthTimeout = 2 * time.Second
+
 // rotationHealth reads the aggregate scheduled-rotation counts, with pkiHealth's
 // semantics: instance-wide totals only, and a failed read leaves RotationKnown false.
+// The read is bounded so a slow scan degrades doctor to "unknown" instead of hanging it.
 func (s *Retention) rotationHealth(ctx context.Context, out *PruneHealth) {
 	if s.Rotation == nil {
 		return
 	}
+	ctx, cancel := context.WithTimeout(ctx, rotationHealthTimeout)
+	defer cancel()
 	if gauges, err := s.Rotation.Gauges(ctx, s.now()); err == nil {
 		out.Rotation, out.RotationKnown = gauges, true
 	}

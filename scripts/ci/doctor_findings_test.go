@@ -51,7 +51,7 @@ func TestDeploymentDoctorFindingContract(t *testing.T) {
 					"adapter-targets": "ok", "argon2-floor": "ok", "backup-retention": "warn",
 					"backup-rpo": "warn", "data-volume": deployment.volume, "database-durability": "ok",
 					"pin-expiry": "ok", "pki": "ok", "project-storage": "ok", "reencrypt": "ok",
-					"restore-drill": "warn", "retention-prune": "ok", "root-escrow": "warn", "root-rotation": "ok",
+					"restore-drill": "warn", "retention-prune": "ok", "root-escrow": "warn", "root-rotation": "ok", "rotation": "ok",
 				} {
 					if code == tc.changeCode && tc.omit {
 						continue

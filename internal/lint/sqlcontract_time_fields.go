@@ -27,6 +27,8 @@ var timestampQueryFields = map[string]map[string]bool{
 	"PKIListIssuers":                                      {"CrlNextUpdate": true, "CrlThisUpdate": true, "NotAfter": true, "NotBefore": true},
 	"PKIPublishCRL":                                       {"NextUpdate": true, "ThisUpdate": true},
 	"PKISigningIssuer":                                    {"CrlNextUpdate": true, "CrlThisUpdate": true, "NotAfter": true, "NotBefore": true},
+	"RotationListRuns":                                    {"CandidateValidUntil": true, "SupersededValidUntil": true},
+	"RotationListRunsAfter":                               {"CandidateValidUntil": true, "SupersededValidUntil": true},
 	"RotationRtClaimDueRun":                               {"LeaseCut": true},
 	"RotationRtCycleStart":                                {"RotationRtCycleStart": true},
 	"RuntimeDynamicClaimLease":                            {"Until": true},

@@ -1417,6 +1417,7 @@ type Rotation struct {
 	ManualRunID            sql.NullString
 	ManualSkipOverlap      int64
 	RestoreHold            int64
+	DeferredFrom           sql.NullString
 }
 
 type RotationEffect struct {

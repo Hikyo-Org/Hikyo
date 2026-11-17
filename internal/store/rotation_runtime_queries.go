@@ -76,6 +76,10 @@ func (q pgRotationRuntimeQueries) setNextRun(ctx context.Context, c domain.Scope
 	return q.q.RotationRtSetNextRun(ctx, pggen.RotationRtSetNextRunParams{NextRunAt: pgRequiredTime(next), Now: pgRequiredTime(now), RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env)})
 }
 
+func (q pgRotationRuntimeQueries) deferNextRun(ctx context.Context, c domain.Scope, rotationID string, next, now time.Time) (int64, error) {
+	return q.q.RotationRtDeferNextRun(ctx, pggen.RotationRtDeferNextRunParams{NextRunAt: pgRequiredTime(next), Now: pgRequiredTime(now), RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env)})
+}
+
 func (q pgRotationRuntimeQueries) haltRotation(ctx context.Context, c domain.Scope, rotationID, reason string, now time.Time) (int64, error) {
 	return q.q.RotationRtHaltRotation(ctx, pggen.RotationRtHaltRotationParams{HaltReason: pgText(reason), Now: pgRequiredTime(now), RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env)})
 }
@@ -232,6 +236,10 @@ func (q sqliteRotationRuntimeQueries) setNextRun(ctx context.Context, c domain.S
 	return q.q.RotationRtSetNextRun(ctx, sqlitegen.RotationRtSetNextRunParams{NextRunAt: sql.NullString{String: fixedStamp(next), Valid: true}, Now: fixedStamp(now), RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env)})
 }
 
+func (q sqliteRotationRuntimeQueries) deferNextRun(ctx context.Context, c domain.Scope, rotationID string, next, now time.Time) (int64, error) {
+	return q.q.RotationRtDeferNextRun(ctx, sqlitegen.RotationRtDeferNextRunParams{NextRunAt: sql.NullString{String: fixedStamp(next), Valid: true}, Now: fixedStamp(now), RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env)})
+}
+
 func (q sqliteRotationRuntimeQueries) haltRotation(ctx context.Context, c domain.Scope, rotationID, reason string, now time.Time) (int64, error) {
 	return q.q.RotationRtHaltRotation(ctx, sqlitegen.RotationRtHaltRotationParams{HaltReason: sqlText(reason), Now: fixedStamp(now), RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env)})
 }
@@ -354,12 +362,12 @@ func (q sqliteRotationRuntimeQueries) notConverged(ctx context.Context, run Rota
 }
 
 func (q pgRotationRuntimeQueries) gauges(ctx context.Context, now time.Time) (RotationGauges, error) {
-	r, err := q.q.RotationRtGauges(ctx, pggen.RotationRtGaugesParams{OverdueAt: pgRequiredTime(now.Add(-RotationOverdueGrace)), ExpiringAt: pgRequiredTime(now.Add(RotationExpiringWithin))})
+	r, err := q.q.RotationRtGauges(ctx, pggen.RotationRtGaugesParams{OverdueAt: pgRequiredTime(now.Add(-RotationOverdueGrace)), NowAt: pgRequiredTime(now), ExpiringAt: pgRequiredTime(now.Add(RotationExpiringWithin))})
 	return RotationGauges{Quarantined: r.Quarantined, RevokeRefused: r.RevokeRefused, UnknownOutcome: r.UnknownOutcome, Halted: r.Halted, RestoreHeld: r.RestoreHeld, Overdue: r.Overdue, Expiring: r.Expiring}, err
 }
 
 func (q sqliteRotationRuntimeQueries) gauges(ctx context.Context, now time.Time) (RotationGauges, error) {
-	r, err := q.q.RotationRtGauges(ctx, sqlitegen.RotationRtGaugesParams{OverdueAt: fixedStamp(now.Add(-RotationOverdueGrace)), ExpiringAt: fixedStamp(now.Add(RotationExpiringWithin))})
+	r, err := q.q.RotationRtGauges(ctx, sqlitegen.RotationRtGaugesParams{OverdueAt: fixedStamp(now.Add(-RotationOverdueGrace)), NowAt: fixedStamp(now), ExpiringAt: fixedStamp(now.Add(RotationExpiringWithin))})
 	return RotationGauges{Quarantined: r.Quarantined, RevokeRefused: r.RevokeRefused, UnknownOutcome: r.UnknownOutcome, Halted: r.Halted, RestoreHeld: r.RestoreHeld, Overdue: r.Overdue, Expiring: r.Expiring}, err
 }
 

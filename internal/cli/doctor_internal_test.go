@@ -237,7 +237,7 @@ func TestDoctorRotationFinding(t *testing.T) {
 		{"revoke refused", health(&zero, &zero, &zero, &one, &zero, &zero, &zero), "warn", "1 run(s) whose superseded role could not be dropped"},
 		{"unknown outcome", health(&zero, &zero, &zero, &zero, &one, &zero, &zero), "warn", "1 run(s) with an unknown outcome"},
 		{"overdue", health(&zero, &zero, &zero, &zero, &zero, &one, &zero), "warn", "1 overdue rotation(s)"},
-		{"expiring", health(&zero, &zero, &zero, &zero, &zero, &zero, &one), "warn", "1 credential(s) expiring within six hours"},
+		{"expiring", health(&zero, &zero, &zero, &zero, &zero, &zero, &one), "warn", "1 credential(s) expiring within the next six hours"},
 		{"one missing", health(&zero, &zero, &zero, &zero, &zero, &zero, nil), "unknown", "not measured"},
 		{"unmeasured", apigen.RetentionHealth{}, "unknown", "not measured"},
 	}
@@ -246,6 +246,10 @@ func TestDoctorRotationFinding(t *testing.T) {
 			got := doctorRotationFinding(tc.health)
 			if got.Code != "rotation" || got.Severity != tc.severity || !strings.Contains(got.Message, tc.message) {
 				t.Fatalf("finding = %#v", got)
+			}
+			// Counts only, no tenant ids: a warning must name the commands that find the rotations and runs.
+			if tc.severity == "warn" && !strings.Contains(got.Message, "`hikyo rotation list`") {
+				t.Fatalf("warning does not name the listing commands: %q", got.Message)
 			}
 		})
 	}

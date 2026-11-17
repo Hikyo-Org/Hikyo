@@ -220,6 +220,13 @@ func (a *API) ListRotationRuns(ctx context.Context, req apigen.ListRotationRunsR
 		if row.ErrorCode != "" {
 			run.ErrorCode = &row.ErrorCode
 		}
+		if row.CredentialValidUntil != "" {
+			until, err := time.Parse(time.RFC3339Nano, row.CredentialValidUntil)
+			if err != nil {
+				return nil, fmt.Errorf("server: parse run credential_valid_until: %w", err)
+			}
+			run.CredentialValidUntil = &until
+		}
 		out.Items = append(out.Items, run)
 	}
 	if got.NextAfter != "" {

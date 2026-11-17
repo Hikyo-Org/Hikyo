@@ -166,6 +166,7 @@ const (
 	rotCodePublishFailed   = "publish_failed"
 	rotCodeBudget          = "publish_budget_exceeded"
 	rotCodePaused          = "rotation_paused"
+	rotCodeHeld            = "rotation_held"
 	rotCodeDropFailed      = "drop_failed"
 	rotCodeOwnsObjects     = "role_owns_objects"
 	rotCodeVersionsChanged = "published_versions_changed"
@@ -800,7 +801,7 @@ func (e *RotationExecutor) confirmAbsent(ctx context.Context, run store.Rotation
 func (e *RotationExecutor) failureSettle(ctx context.Context, run store.RotationRun, code string, now time.Time, forcedHalt string) (store.RotationSettle, error) {
 	settle := store.RotationSettle{Now: now, FromPhases: []string{"minting", "minted"}, Phase: "failed", LastError: code, NextAttempt: now, KeepLease: true}
 	if run.RotationState != "active" && run.RotationState != "" {
-		// Paused, deleted or already halted: the schedule is not ours to move.
+		// Paused, deleted, held by a restore or already halted: the schedule is not ours to move.
 		return settle, nil
 	}
 	if code == rotCodeInfra {
@@ -975,7 +976,13 @@ func (e *RotationExecutor) settleDrop(ctx context.Context, run store.RotationRun
 // its password with it. It always rolls back, under the fenced claim write.
 func (e *RotationExecutor) recoverInFlight(ctx context.Context, run store.RotationRun) error {
 	code := rotCodeInterrupted
-	if run.RotationState != "active" {
+	switch run.RotationState {
+	case "active":
+	case store.RotationStateRestoreHeld:
+		// An active rotation a restore holds: not paused, and releasing the hold
+		// must not look like a resume.
+		code = rotCodeHeld
+	default:
 		code = rotCodePaused
 	}
 	var closing *store.RotationEffectOutcome

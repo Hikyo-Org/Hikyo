@@ -45,7 +45,14 @@ INSERT INTO rotation_runs (id,org_id,project_id,environment_id,rotation_id,gener
 -- The schedule moves, never the generation: the run that is in flight asserts the
 -- generation it started under, so a schedule write must not invalidate it.
 -- name: RotationRtSetNextRun :execrows
-UPDATE rotations SET next_run_at=sqlc.arg(next_run_at),updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active';
+UPDATE rotations SET deferred_from=NULL,next_run_at=sqlc.arg(next_run_at),updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active';
+
+-- A datastore fault that keeps failing a rotation's start pushes next_run_at out so it
+-- yields the head of the queue. The first due time of that wait is kept in deferred_from,
+-- which only a real schedule write clears, so the overdue gauge measures from the time the
+-- rotation first came due and a stuck rotation cannot defer its way out of it.
+-- name: RotationRtDeferNextRun :execrows
+UPDATE rotations SET next_run_at=sqlc.arg(next_run_at),deferred_from=COALESCE(deferred_from,next_run_at),updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active';
 
 -- The request a started run consumed: cleared in the start transaction.
 -- name: RotationRtClearManual :exec
@@ -59,7 +66,7 @@ SELECT COUNT(DISTINCT t.id) FROM adapter_targets t JOIN adapter_target_keys k ON
  WHERE t.org_id=sqlc.arg(chain_org) AND t.project_id=sqlc.arg(chain_project) AND t.environment_id=sqlc.arg(chain_env) AND t.state<>'tombstoned' AND k.key_id IN (sqlc.arg(key_id),sqlc.arg(username_key_id)) AND (t.converged_revision IS NULL OR t.converged_revision<sqlc.arg(revision));
 
 -- name: RotationRtHaltRotation :execrows
-UPDATE rotations SET state='halted',halt_reason=sqlc.arg(halt_reason),next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=0,generation=generation+1,updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active';
+UPDATE rotations SET deferred_from=NULL,state='halted',halt_reason=sqlc.arg(halt_reason),next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=0,generation=generation+1,updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active';
 
 -- name: RotationRtInsertEffect :exec
 INSERT INTO rotation_effects (id,org_id,project_id,environment_id,run_id,kind,intent_audit_id,created_at) VALUES (sqlc.arg(id),sqlc.arg(chain_org),sqlc.arg(chain_project),sqlc.arg(chain_env),sqlc.arg(run_id),sqlc.arg(kind),sqlc.arg(intent_audit_id),sqlc.arg(at));
@@ -186,8 +193,8 @@ SELECT started_at FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND
 -- the runs that are not settled and recorded an effect as unknown; halted is the
 -- rotations a failed gate or an exhausted retry window stopped; overdue is the
 -- active rotations nothing has started although they came due before the grace;
--- expiring is the rotations (not deleted) whose delivered credential expires before
--- the horizon, derived the way credential_expires_at is for the rotation's password key.
+-- expiring is the rotations (not deleted) whose delivered credential expires after now and
+-- before the horizon (a lapsed credential is not counted), derived the way credential_expires_at is for the rotation's password key.
 -- hikyo:reason RotationRuntime metrics scrape and doctor read only instance-wide counts of rotations and runs that need an operator through the closed runtime boundary; no tenant identity leaves it.
 -- hikyo:instance-scoped
 -- name: RotationRtGauges :one
@@ -197,5 +204,5 @@ SELECT
  (SELECT COUNT(*) FROM rotation_runs ru WHERE ru.phase NOT IN ('done','failed') AND EXISTS (SELECT 1 FROM rotation_effects ef WHERE ef.run_id=ru.id AND ef.outcome='unknown')) AS unknown_outcome,
  (SELECT COUNT(*) FROM rotations WHERE state='halted') AS halted,
  (SELECT COUNT(*) FROM rotations WHERE state<>'disabled' AND restore_hold=1) AS restore_held,
- (SELECT COUNT(*) FROM rotations ro WHERE ro.state='active' AND ro.restore_hold=0 AND ro.next_run_at<CAST(sqlc.arg(overdue_at) AS TEXT) AND NOT EXISTS (SELECT 1 FROM rotation_runs op WHERE op.rotation_id=ro.id AND op.phase NOT IN ('done','quarantine','failed'))) AS overdue,
- (SELECT COUNT(*) FROM rotations ro WHERE ro.state<>'disabled' AND (SELECT ru.candidate_valid_until FROM rotation_runs ru JOIN rotations r2 ON r2.org_id=ru.org_id AND r2.project_id=ru.project_id AND r2.environment_id=ru.environment_id AND r2.id=ru.rotation_id WHERE ru.org_id=ro.org_id AND ru.project_id=ro.project_id AND ru.environment_id=ro.environment_id AND (r2.key_id=ro.key_id OR r2.username_key_id=ro.key_id) AND ru.published_revision IS NOT NULL ORDER BY ru.published_revision DESC,ru.id DESC LIMIT 1)<CAST(sqlc.arg(expiring_at) AS TEXT)) AS expiring;
+ (SELECT COUNT(*) FROM rotations ro WHERE ro.state='active' AND ro.restore_hold=0 AND COALESCE(ro.deferred_from,ro.next_run_at)<CAST(sqlc.arg(overdue_at) AS TEXT) AND NOT EXISTS (SELECT 1 FROM rotation_runs op WHERE op.rotation_id=ro.id AND op.phase NOT IN ('done','quarantine','failed'))) AS overdue,
+ (SELECT COUNT(*) FROM rotations ro WHERE ro.state<>'disabled' AND (SELECT ru.candidate_valid_until FROM rotation_runs ru JOIN rotations r2 ON r2.org_id=ru.org_id AND r2.project_id=ru.project_id AND r2.environment_id=ru.environment_id AND r2.id=ru.rotation_id WHERE ru.org_id=ro.org_id AND ru.project_id=ro.project_id AND ru.environment_id=ro.environment_id AND (r2.key_id=ro.key_id OR r2.username_key_id=ro.key_id) AND ru.published_revision IS NOT NULL ORDER BY ru.published_revision DESC,ru.id DESC LIMIT 1)>CAST(sqlc.arg(now_at) AS TEXT) AND (SELECT ru.candidate_valid_until FROM rotation_runs ru JOIN rotations r2 ON r2.org_id=ru.org_id AND r2.project_id=ru.project_id AND r2.environment_id=ru.environment_id AND r2.id=ru.rotation_id WHERE ru.org_id=ro.org_id AND ru.project_id=ro.project_id AND ru.environment_id=ro.environment_id AND (r2.key_id=ro.key_id OR r2.username_key_id=ro.key_id) AND ru.published_revision IS NOT NULL ORDER BY ru.published_revision DESC,ru.id DESC LIMIT 1)<CAST(sqlc.arg(expiring_at) AS TEXT)) AS expiring;

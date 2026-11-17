@@ -159,6 +159,10 @@ type RotationRunRecord struct {
 	PhaseAt                    string
 	ErrorCode                  string
 	NotConvergedAdapterTargets *int64
+	// CredentialValidUntil is, for a revoke_refused run, when the superseded role it
+	// could not drop lapses on its own and, for a quarantine run, when its candidate
+	// role does. Empty for every other phase or when no expiry was recorded.
+	CredentialValidUntil string
 }
 
 // RotationReader is the read side.
@@ -1125,6 +1129,19 @@ func (q pgRotationQueries) manualPending(ctx context.Context, chain domain.Scope
 	return n > 0, err
 }
 
+// runCredentialValidUntil picks the expiry an operator needs for a run that still
+// owes a role drop: the superseded role's for revoke_refused, the candidate's for
+// quarantine.
+func runCredentialValidUntil(phase, candidate, superseded string) string {
+	switch phase {
+	case "revoke_refused":
+		return superseded
+	case "quarantine":
+		return candidate
+	}
+	return ""
+}
+
 func (q sqliteRotationQueries) listRuns(ctx context.Context, chain domain.Scope, lq RotationRunQuery) ([]RotationRunRecord, error) {
 	var rows []sqlitegen.RotationListRunsRow
 	var err error
@@ -1143,7 +1160,8 @@ func (q sqliteRotationQueries) listRuns(ctx context.Context, chain domain.Scope,
 	out := make([]RotationRunRecord, 0, len(rows))
 	for _, r := range rows {
 		rec := RotationRunRecord{ID: r.ID, Trigger: r.RunTrigger, Phase: r.Phase, PublishedRevision: r.PublishedRevision.Int64, RevocationDelaySeconds: r.RevocationDelaySeconds, StartedAt: r.StartedAt, PhaseAt: r.PhaseAt, ErrorCode: r.LastError.String}
-		if err := normalizeStoredTimes(&rec.StartedAt, &rec.PhaseAt); err != nil {
+		rec.CredentialValidUntil = runCredentialValidUntil(r.Phase, r.CandidateValidUntil.String, r.SupersededValidUntil.String)
+		if err := normalizeStoredTimes(&rec.StartedAt, &rec.PhaseAt, &rec.CredentialValidUntil); err != nil {
 			return nil, err
 		}
 		if r.NotConvergedAdapterTargets.Valid {
@@ -1175,7 +1193,8 @@ func (q pgRotationQueries) listRuns(ctx context.Context, chain domain.Scope, lq 
 	out := make([]RotationRunRecord, 0, len(rows))
 	for _, r := range rows {
 		rec := RotationRunRecord{ID: r.ID, Trigger: r.RunTrigger, Phase: r.Phase, PublishedRevision: r.PublishedRevision.Int64, RevocationDelaySeconds: r.RevocationDelaySeconds, StartedAt: pgStoredStamp(r.StartedAt), PhaseAt: pgStoredStamp(r.PhaseAt), ErrorCode: r.LastError.String}
-		if err := normalizeStoredTimes(&rec.StartedAt, &rec.PhaseAt); err != nil {
+		rec.CredentialValidUntil = runCredentialValidUntil(r.Phase, pgStoredStamp(r.CandidateValidUntil), pgStoredStamp(r.SupersededValidUntil))
+		if err := normalizeStoredTimes(&rec.StartedAt, &rec.PhaseAt, &rec.CredentialValidUntil); err != nil {
 			return nil, err
 		}
 		if r.NotConvergedAdapterTargets.Valid {

@@ -7,3 +7,8 @@
 -- the state, so a paused or halted rotation cannot resume past it. A column on
 -- its own rather than a rebuild: rotations is not written by any shipped release.
 ALTER TABLE rotations ADD COLUMN restore_hold INTEGER NOT NULL DEFAULT 0 CHECK (restore_hold IN (0, 1));
+-- deferred_from keeps the first due time of a wait that datastore faults keep deferring,
+-- so the overdue gauge cannot be defeated by the deferral; the index serves the
+-- expiring gauge's latest-published-run lookup without scanning every run.
+ALTER TABLE rotations ADD COLUMN deferred_from TEXT;
+CREATE INDEX rotation_runs_env_published ON rotation_runs (org_id, project_id, environment_id, published_revision DESC, id DESC) WHERE published_revision IS NOT NULL;

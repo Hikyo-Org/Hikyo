@@ -805,14 +805,14 @@ func (q *Queries) RotationListAll(ctx context.Context, arg RotationListAllParams
 }
 
 const rotationListRuns = `-- name: RotationListRuns :many
-SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_adapter_targets FROM rotation_runs WHERE rotation_id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 ORDER BY id DESC LIMIT ?5
+SELECT r.id,r.run_trigger,r.phase,r.published_revision,r.revocation_delay_seconds,r.started_at,r.phase_at,r.last_error,r.not_converged_adapter_targets,r.candidate_valid_until,(SELECT s.candidate_valid_until FROM rotation_runs s WHERE s.rotation_id=r.rotation_id AND s.org_id=?1 AND s.project_id=?2 AND s.environment_id=?3 AND s.candidate_handle=r.superseded_handle ORDER BY s.id DESC LIMIT 1) AS superseded_valid_until FROM rotation_runs r WHERE r.rotation_id=?4 AND r.org_id=?1 AND r.project_id=?2 AND r.environment_id=?3 ORDER BY r.id DESC LIMIT ?5
 `
 
 type RotationListRunsParams struct {
-	RotationID   string
 	ChainOrg     string
 	ChainProject string
 	ChainEnv     string
+	RotationID   string
 	PageLimit    int64
 }
 
@@ -826,6 +826,8 @@ type RotationListRunsRow struct {
 	PhaseAt                    string
 	LastError                  sql.NullString
 	NotConvergedAdapterTargets sql.NullInt64
+	CandidateValidUntil        sql.NullString
+	SupersededValidUntil       sql.NullString
 }
 
 // A page of a rotation's runs, newest first. Run ids are time-ordered (UUIDv7); a
@@ -833,12 +835,16 @@ type RotationListRunsRow struct {
 // after the request, so id order is start order. The cursor is the last run id of the
 // previous page. Only operator-visible metadata: no handle, no candidate, no
 // provider detail beyond the fixed-word last_error code.
+// candidate_valid_until and superseded_valid_until let a revoke_refused or quarantine run say when the
+// role it still owes a drop lapses on its own (the superseded role's expiry is the run that delivered it).
+// hikyo:reason The run list reads one rotation's runs under the org, project and environment chain; the superseded_valid_until subquery is pinned to the same chain on every column and reads only the run that delivered the superseded role.
+// hikyo:instance-scoped
 func (q *Queries) RotationListRuns(ctx context.Context, arg RotationListRunsParams) ([]RotationListRunsRow, error) {
 	rows, err := q.db.QueryContext(ctx, rotationListRuns,
-		arg.RotationID,
 		arg.ChainOrg,
 		arg.ChainProject,
 		arg.ChainEnv,
+		arg.RotationID,
 		arg.PageLimit,
 	)
 	if err != nil {
@@ -858,6 +864,8 @@ func (q *Queries) RotationListRuns(ctx context.Context, arg RotationListRunsPara
 			&i.PhaseAt,
 			&i.LastError,
 			&i.NotConvergedAdapterTargets,
+			&i.CandidateValidUntil,
+			&i.SupersededValidUntil,
 		); err != nil {
 			return nil, err
 		}
@@ -873,14 +881,14 @@ func (q *Queries) RotationListRuns(ctx context.Context, arg RotationListRunsPara
 }
 
 const rotationListRunsAfter = `-- name: RotationListRunsAfter :many
-SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_adapter_targets FROM rotation_runs WHERE rotation_id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND id < ?5 ORDER BY id DESC LIMIT ?6
+SELECT r.id,r.run_trigger,r.phase,r.published_revision,r.revocation_delay_seconds,r.started_at,r.phase_at,r.last_error,r.not_converged_adapter_targets,r.candidate_valid_until,(SELECT s.candidate_valid_until FROM rotation_runs s WHERE s.rotation_id=r.rotation_id AND s.org_id=?1 AND s.project_id=?2 AND s.environment_id=?3 AND s.candidate_handle=r.superseded_handle ORDER BY s.id DESC LIMIT 1) AS superseded_valid_until FROM rotation_runs r WHERE r.rotation_id=?4 AND r.org_id=?1 AND r.project_id=?2 AND r.environment_id=?3 AND r.id < ?5 ORDER BY r.id DESC LIMIT ?6
 `
 
 type RotationListRunsAfterParams struct {
-	RotationID   string
 	ChainOrg     string
 	ChainProject string
 	ChainEnv     string
+	RotationID   string
 	AfterID      string
 	PageLimit    int64
 }
@@ -895,14 +903,18 @@ type RotationListRunsAfterRow struct {
 	PhaseAt                    string
 	LastError                  sql.NullString
 	NotConvergedAdapterTargets sql.NullInt64
+	CandidateValidUntil        sql.NullString
+	SupersededValidUntil       sql.NullString
 }
 
+// hikyo:reason The run list reads one rotation's runs under the org, project and environment chain; the superseded_valid_until subquery is pinned to the same chain on every column and reads only the run that delivered the superseded role.
+// hikyo:instance-scoped
 func (q *Queries) RotationListRunsAfter(ctx context.Context, arg RotationListRunsAfterParams) ([]RotationListRunsAfterRow, error) {
 	rows, err := q.db.QueryContext(ctx, rotationListRunsAfter,
-		arg.RotationID,
 		arg.ChainOrg,
 		arg.ChainProject,
 		arg.ChainEnv,
+		arg.RotationID,
 		arg.AfterID,
 		arg.PageLimit,
 	)
@@ -923,6 +935,8 @@ func (q *Queries) RotationListRunsAfter(ctx context.Context, arg RotationListRun
 			&i.PhaseAt,
 			&i.LastError,
 			&i.NotConvergedAdapterTargets,
+			&i.CandidateValidUntil,
+			&i.SupersededValidUntil,
 		); err != nil {
 			return nil, err
 		}
@@ -962,7 +976,7 @@ func (q *Queries) RotationManualPending(ctx context.Context, arg RotationManualP
 }
 
 const rotationPauseActive = `-- name: RotationPauseActive :execrows
-UPDATE rotations SET state='paused',next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=0,generation=generation+1,updated_at=?1 WHERE id=?2 AND org_id=?3 AND project_id=?4 AND state='active'
+UPDATE rotations SET deferred_from=NULL,state='paused',next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=0,generation=generation+1,updated_at=?1 WHERE id=?2 AND org_id=?3 AND project_id=?4 AND state='active'
 `
 
 type RotationPauseActiveParams struct {
@@ -1140,7 +1154,7 @@ func (q *Queries) RotationReleaseHold(ctx context.Context, arg RotationReleaseHo
 }
 
 const rotationRequestRun = `-- name: RotationRequestRun :execrows
-UPDATE rotations SET manual_run_id=?1,manual_skip_overlap=?2,next_run_at=?3,updated_at=?3 WHERE id=?4 AND org_id=?5 AND project_id=?6 AND environment_id=?7 AND state='active' AND generation=?8 AND manual_run_id IS NULL
+UPDATE rotations SET deferred_from=NULL,manual_run_id=?1,manual_skip_overlap=?2,next_run_at=?3,updated_at=?3 WHERE id=?4 AND org_id=?5 AND project_id=?6 AND environment_id=?7 AND state='active' AND generation=?8 AND manual_run_id IS NULL
 `
 
 type RotationRequestRunParams struct {
@@ -1176,7 +1190,7 @@ func (q *Queries) RotationRequestRun(ctx context.Context, arg RotationRequestRun
 }
 
 const rotationSetState = `-- name: RotationSetState :execrows
-UPDATE rotations SET state=?1,halt_reason=NULL,manual_run_id=NULL,manual_skip_overlap=0,next_run_at=?2,generation=generation+1,updated_at=?3 WHERE id=?4 AND org_id=?5 AND project_id=?6 AND environment_id=?7 AND generation=?8 AND state<>'disabled'
+UPDATE rotations SET deferred_from=NULL,state=?1,halt_reason=NULL,manual_run_id=NULL,manual_skip_overlap=0,restore_hold=CASE WHEN ?1='disabled' THEN 0 ELSE restore_hold END,next_run_at=?2,generation=generation+1,updated_at=?3 WHERE id=?4 AND org_id=?5 AND project_id=?6 AND environment_id=?7 AND generation=?8 AND state<>'disabled'
 `
 
 type RotationSetStateParams struct {

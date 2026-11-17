@@ -260,6 +260,38 @@ func (q *Queries) RotationRtCycleStart(ctx context.Context, arg RotationRtCycleS
 	return started_at, err
 }
 
+const rotationRtDeferNextRun = `-- name: RotationRtDeferNextRun :execrows
+UPDATE rotations SET next_run_at=$1,deferred_from=COALESCE(deferred_from,next_run_at),updated_at=$2 WHERE id=$3 AND org_id=$4 AND project_id=$5 AND environment_id=$6 AND state='active'
+`
+
+type RotationRtDeferNextRunParams struct {
+	NextRunAt    pgtype.Timestamptz
+	Now          pgtype.Timestamptz
+	RotationID   string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+// A datastore fault that keeps failing a rotation's start pushes next_run_at out so it
+// yields the head of the queue. The first due time of that wait is kept in deferred_from,
+// which only a real schedule write clears, so the overdue gauge measures from the time the
+// rotation first came due and a stuck rotation cannot defer its way out of it.
+func (q *Queries) RotationRtDeferNextRun(ctx context.Context, arg RotationRtDeferNextRunParams) (int64, error) {
+	result, err := q.db.Exec(ctx, rotationRtDeferNextRun,
+		arg.NextRunAt,
+		arg.Now,
+		arg.RotationID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const rotationRtDueRotation = `-- name: RotationRtDueRotation :one
 
 SELECT ro.id,ro.org_id,ro.project_id,ro.environment_id,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds,ro.authority_principal_id,ro.generation,ro.manual_run_id,ro.manual_skip_overlap
@@ -357,12 +389,13 @@ SELECT
  (SELECT COUNT(*) FROM rotation_runs ru WHERE ru.phase NOT IN ('done','failed') AND EXISTS (SELECT 1 FROM rotation_effects ef WHERE ef.run_id=ru.id AND ef.outcome='unknown')) AS unknown_outcome,
  (SELECT COUNT(*) FROM rotations WHERE state='halted') AS halted,
  (SELECT COUNT(*) FROM rotations WHERE state<>'disabled' AND restore_hold) AS restore_held,
- (SELECT COUNT(*) FROM rotations ro WHERE ro.state='active' AND NOT ro.restore_hold AND ro.next_run_at<$1 AND NOT EXISTS (SELECT 1 FROM rotation_runs op WHERE op.rotation_id=ro.id AND op.phase NOT IN ('done','quarantine','failed'))) AS overdue,
- (SELECT COUNT(*) FROM rotations ro WHERE ro.state<>'disabled' AND (SELECT ru.candidate_valid_until FROM rotation_runs ru JOIN rotations r2 ON r2.org_id=ru.org_id AND r2.project_id=ru.project_id AND r2.environment_id=ru.environment_id AND r2.id=ru.rotation_id WHERE ru.org_id=ro.org_id AND ru.project_id=ro.project_id AND ru.environment_id=ro.environment_id AND (r2.key_id=ro.key_id OR r2.username_key_id=ro.key_id) AND ru.published_revision IS NOT NULL ORDER BY ru.published_revision DESC,ru.id DESC LIMIT 1)<$2) AS expiring
+ (SELECT COUNT(*) FROM rotations ro WHERE ro.state='active' AND NOT ro.restore_hold AND COALESCE(ro.deferred_from,ro.next_run_at)<$1 AND NOT EXISTS (SELECT 1 FROM rotation_runs op WHERE op.rotation_id=ro.id AND op.phase NOT IN ('done','quarantine','failed'))) AS overdue,
+ (SELECT COUNT(*) FROM rotations ro WHERE ro.state<>'disabled' AND (SELECT ru.candidate_valid_until FROM rotation_runs ru JOIN rotations r2 ON r2.org_id=ru.org_id AND r2.project_id=ru.project_id AND r2.environment_id=ru.environment_id AND r2.id=ru.rotation_id WHERE ru.org_id=ro.org_id AND ru.project_id=ro.project_id AND ru.environment_id=ro.environment_id AND (r2.key_id=ro.key_id OR r2.username_key_id=ro.key_id) AND ru.published_revision IS NOT NULL ORDER BY ru.published_revision DESC,ru.id DESC LIMIT 1)>$2 AND (SELECT ru.candidate_valid_until FROM rotation_runs ru JOIN rotations r2 ON r2.org_id=ru.org_id AND r2.project_id=ru.project_id AND r2.environment_id=ru.environment_id AND r2.id=ru.rotation_id WHERE ru.org_id=ro.org_id AND ru.project_id=ro.project_id AND ru.environment_id=ro.environment_id AND (r2.key_id=ro.key_id OR r2.username_key_id=ro.key_id) AND ru.published_revision IS NOT NULL ORDER BY ru.published_revision DESC,ru.id DESC LIMIT 1)<$3) AS expiring
 `
 
 type RotationRtGaugesParams struct {
 	OverdueAt  pgtype.Timestamptz
+	NowAt      pgtype.Timestamptz
 	ExpiringAt pgtype.Timestamptz
 }
 
@@ -382,12 +415,12 @@ type RotationRtGaugesRow struct {
 // the runs that are not settled and recorded an effect as unknown; halted is the
 // rotations a failed gate or an exhausted retry window stopped; overdue is the
 // active rotations nothing has started although they came due before the grace;
-// expiring is the rotations (not deleted) whose delivered credential expires before
-// the horizon, derived the way credential_expires_at is for the rotation's password key.
+// expiring is the rotations (not deleted) whose delivered credential expires after now and
+// before the horizon (a lapsed credential is not counted), derived the way credential_expires_at is for the rotation's password key.
 // hikyo:reason RotationRuntime metrics scrape and doctor read only instance-wide counts of rotations and runs that need an operator through the closed runtime boundary; no tenant identity leaves it.
 // hikyo:instance-scoped
 func (q *Queries) RotationRtGauges(ctx context.Context, arg RotationRtGaugesParams) (RotationRtGaugesRow, error) {
-	row := q.db.QueryRow(ctx, rotationRtGauges, arg.OverdueAt, arg.ExpiringAt)
+	row := q.db.QueryRow(ctx, rotationRtGauges, arg.OverdueAt, arg.NowAt, arg.ExpiringAt)
 	var i RotationRtGaugesRow
 	err := row.Scan(
 		&i.Quarantined,
@@ -489,7 +522,7 @@ func (q *Queries) RotationRtGetRun(ctx context.Context, arg RotationRtGetRunPara
 }
 
 const rotationRtHaltRotation = `-- name: RotationRtHaltRotation :execrows
-UPDATE rotations SET state='halted',halt_reason=$1,next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=FALSE,generation=generation+1,updated_at=$2 WHERE id=$3 AND org_id=$4 AND project_id=$5 AND environment_id=$6 AND state='active'
+UPDATE rotations SET deferred_from=NULL,state='halted',halt_reason=$1,next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=FALSE,generation=generation+1,updated_at=$2 WHERE id=$3 AND org_id=$4 AND project_id=$5 AND environment_id=$6 AND state='active'
 `
 
 type RotationRtHaltRotationParams struct {
@@ -1082,7 +1115,7 @@ func (q *Queries) RotationRtPublishedEntries(ctx context.Context, arg RotationRt
 }
 
 const rotationRtSetNextRun = `-- name: RotationRtSetNextRun :execrows
-UPDATE rotations SET next_run_at=$1,updated_at=$2 WHERE id=$3 AND org_id=$4 AND project_id=$5 AND environment_id=$6 AND state='active'
+UPDATE rotations SET deferred_from=NULL,next_run_at=$1,updated_at=$2 WHERE id=$3 AND org_id=$4 AND project_id=$5 AND environment_id=$6 AND state='active'
 `
 
 type RotationRtSetNextRunParams struct {

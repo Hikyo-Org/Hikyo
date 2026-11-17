@@ -5572,7 +5572,7 @@ var operationTable = map[Operation]opSpec{
 			{Cap: domain.CapReveal, At: domain.LevelEnv},
 		},
 		postGrantForbidden: true,
-		storeOps:           map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsReleaseHold: true, StoreAuditTenantInsert: true},
+		storeOps:           map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsReleaseHold: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreAuditTenantInsert: true},
 		events:             []audit.EventType{audit.EventRotationConfigured},
 	},
 	OpRotationRuns: {
