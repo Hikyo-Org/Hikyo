@@ -2,7 +2,7 @@ name: nightly-release
 
 on:
   schedule:
-    - cron: "0 2 * * *"
+    - cron: "23 2 * * *"
   # repository_dispatch always loads this workflow from the default branch.
   # The manual wrapper requests an ordinary release through this event, keeping
   # publication out of a branch-selected workflow definition.
