@@ -546,3 +546,50 @@ func TestOIDCLifecycleKeepsPasskeyAccountQuiet(t *testing.T) {
 		}
 	})
 }
+
+// TestOIDCLifecycleBanDeveloperCredentials: a ban revokes the developer
+// credentials of the swept OIDC session, with the system actor, and leaves one
+// minted from a password session working.
+func TestOIDCLifecycleBanDeveloperCredentials(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := newLifecycleFixture(t, db)
+		oidcSession := oidcLogin(t, f.admin.auth, t.Context(), f.slug, f.subject)
+		fromOIDC := seedSecurityDeveloper(t, db, oidcSession.SessionToken, envScope(envA1), "ban-oidc")
+		fromPassword := seedSecurityDeveloper(t, db, f.password, envScope(envA1), "ban-password")
+
+		f.ok(t, userEvent("user.updated", f.subject, `,"banned":true`))
+
+		if authenticateCaller(t, db, fromOIDC).Principal != "" {
+			t.Fatal("a ban left the OIDC-born developer credential working")
+		}
+		if authenticateCaller(t, db, fromPassword).Principal == "" {
+			t.Fatal("a ban revoked a credential minted from a password session")
+		}
+		revoked := "SELECT COUNT(*) FROM audit_instance_events WHERE type = 'identity.developer_credential_revoked'"
+		if queryInt(t, db, revoked) != 1 || queryInt(t, db, revoked+" AND actor_class = 'system'") != 1 {
+			t.Fatal("the ban revocation is not recorded once with the system actor")
+		}
+	})
+}
+
+// TestOIDCLifecycleProviderMatchRevokes: a credential minted through the
+// issuer's provider whose parent session ended before the event is still
+// revoked, through the provider-id match alone.
+func TestOIDCLifecycleProviderMatchRevokes(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := newLifecycleFixture(t, db)
+		oidcSession := oidcLogin(t, f.admin.auth, t.Context(), f.slug, f.subject)
+		seedSecurityDeveloper(t, db, oidcSession.SessionToken, envScope(envA1), "ended-session")
+		execRaw(t, db, "UPDATE developer_credentials SET parent_session_id = 'ses_ended' WHERE id = 'dev_security_ended-session'")
+		pending := "SELECT COUNT(*) FROM developer_credentials WHERE id = 'dev_security_ended-session' AND revoked_at IS NULL"
+		if queryInt(t, db, pending) != 1 {
+			t.Fatal("the credential is already revoked before the event")
+		}
+
+		f.ok(t, userEvent("user.updated", f.subject, `,"banned":true`))
+
+		if queryInt(t, db, pending) != 0 {
+			t.Fatal("a credential minted through the issuer's provider survived the event")
+		}
+	})
+}
