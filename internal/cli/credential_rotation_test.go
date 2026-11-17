@@ -86,6 +86,42 @@ func TestRotationRunNowNeedsConfirmation(t *testing.T) {
 	}
 }
 
+// A second rotation id is refused before any login or request, on every verb:
+// run-now would otherwise publish for the first id and silently drop the rest,
+// and list and create take no positional at all.
+func TestRotationRefusesSurplusPositionals(t *testing.T) {
+	cases := []struct {
+		name    string
+		args    []string
+		message string
+	}{
+		{"run-now", []string{"run-now", "rot_70", "rot_71", "--confirm-destructive", "--skip-overlap"}, "rotation run-now takes one rotation id, got 2"},
+		{"pause", []string{"pause", "rot_70", "rot_71"}, "rotation pause takes one rotation id, got 2"},
+		{"resume", []string{"resume", "rot_70", "rot_71"}, "rotation resume takes one rotation id, got 2"},
+		{"show", []string{"show", "rot_70", "rot_71"}, "rotation show takes one rotation id, got 2"},
+		{"runs", []string{"runs", "rot_70", "rot_71"}, "rotation runs takes one rotation id, got 2"},
+		{"delete", []string{"delete", "rot_70", "rot_71", "--abandon"}, "rotation delete takes one rotation id, got 2"},
+		{"list", []string{"list", "rot_70"}, "rotation list takes no positional arguments"},
+		{"create", []string{"create", "rot_70", "--provider", "p", "--key", "k", "--username-key", "u", "--interval", "30d", "--revocation-delay", "1d"}, "rotation create takes no positional arguments"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var wire rotationWire
+			ios, _, stderr := definitionsTestIO(t, wire.handler(t))
+			args := append(append([]string{"rotation"}, tc.args...), rotationScope...)
+			if code := cli.Run(t.Context(), ios, args); code != cli.ExitUsage {
+				t.Fatalf("exit %d, want usage; stderr=%s", code, stderr)
+			}
+			if !strings.Contains(stderr.String(), tc.message) {
+				t.Fatalf("stderr = %q, want %q", stderr, tc.message)
+			}
+			if seen := wire.take(); len(seen) != 0 {
+				t.Fatalf("requests before the refusal: %v", seen)
+			}
+		})
+	}
+}
+
 // The confirmation travels in the body as confirm_destructive, next to skip_overlap.
 func TestRotationRunNowSendsTheConfirmation(t *testing.T) {
 	var wire rotationWire

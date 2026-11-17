@@ -108,6 +108,17 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
+	// Once, before any login or request: list and create take no positional,
+	// every other verb takes exactly one rotation id and a second would be
+	// silently dropped (run-now publishes, delete closes the rotation).
+	if sub == "list" || sub == "create" {
+		err = flags.checkNoPositionals("rotation " + sub)
+	} else {
+		err = flags.checkTarget("rotation "+sub, "rotation id", "")
+	}
+	if err != nil {
+		return err
+	}
 	f, err := ParseFormat(format)
 	if err != nil {
 		return err
@@ -142,9 +153,6 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 
 	switch sub {
 	case "list":
-		if err := flags.checkNoPositionals("rotation list"); err != nil {
-			return err
-		}
 		query := url.Values{}
 		if includeDisabled {
 			query.Set("include_disabled", "true")
@@ -181,9 +189,6 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 		}
 		return one(out)
 	case "create":
-		if err := flags.checkNoPositionals("rotation create"); err != nil {
-			return err
-		}
 		if provider == "" || key == "" || usernameKey == "" || interval == "" || delay == "" {
 			return failf(ExitUsage, "rotation create requires --provider, --key, --username-key, --interval and --revocation-delay")
 		}
