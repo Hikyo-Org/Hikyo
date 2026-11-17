@@ -1289,7 +1289,9 @@ key was deleted (the key lookup answers not-found); an environment-wide holder c
   keys may serve the superseded role again; the executor deliberately keeps the role) gets a
   different `ATTENTION` line: do **not** drop it at the provider until the keys have moved off it.
   A quarantine run that published can reach the same hold. `role_owns_objects` and
-  `provider_unavailable` keep the drop advice.
+  `provider_unavailable` keep the drop advice, now with the same caution (review round 4):
+  check that neither key serves the role first, because a restore after the refusal can
+  put it back and no flag records that.
 - Tests: `TestRotationRestoreHold`, `TestRotationRestoreHoldFallbackPausesWithoutTheColumn`,
   `TestRotationReleaseLeavesARefusedRunAlone` (the run-level hold stays untouched).
 
@@ -1347,6 +1349,42 @@ key was deleted (the key lookup answers not-found); an environment-wide holder c
   delete, the claim), so the CLI is left flagging `revoke_refused` and `quarantine` only: flagging a
   published `failed` run would also flag one whose revoke already succeeded, which the run record
   cannot tell apart.
+
+### Review round 4 (as built)
+
+- **Runs read survives a failed hold read.** `rotation runs` reads the rotation after the runs;
+  when only that second read fails it renders the runs and warns on stderr that the hold status
+  is unknown (`TestRotationRunsRenderWhenTheHoldStatusCannotBeRead`).
+- **Every manual drop carries the key check.** The `ATTENTION` line of a `role_owns_objects`,
+  `provider_unavailable` or unflagged quarantine run now says to check that neither key serves
+  the role before dropping it, because a revision restore after the refusal can put it back and
+  nothing flags that. `published_versions_changed` keeps its stronger "do NOT drop". openapi,
+  `rotation.mdx` and the owed-run test follow; the reassign-owned-objects instruction stays.
+- **Release-hold transport test is exact.** `TestRotationReleaseHoldRefusesNonSessions` pins a
+  404 for the person, the workload machine and the automation credential on an absent rotation
+  and fails if the answers differ; none of them gets a 403 there (observed on sqlite and
+  PostgreSQL).
+- **Key-narrowed authority (confirmed, fixed).** The Gate and the three publish callbacks
+  authorized `OpRotationRun` with no key, which a key-narrowed rule never satisfies, while
+  create, resume and release-hold accept such an authority through `RecordedPrincipalHolds` on both
+  keys. A rotation created by a narrowed authority therefore halted `authority_lost` at its first
+  due time. `authorizeRotationRun` now authorizes `OpRotationRun` on both of the rotation's keys
+  (`AuthorizeKey`), as the recorded authority itself; an environment-wide holder passes for every
+  key as before, and no identity is synthesized. `TestRotationExecutorRunsAKeyNarrowedAuthority`
+  failed before the fix (`authority_lost`) and publishes and settles after it.
+- **Hold landing between claim and publish (confirmed, fixed).** The run is loaded before the
+  hold, so `failureSettle` still saw an active rotation: its retry plan could return a halt, and
+  the halt, schedule and defer statements matched `state='active'` only, so a held row was
+  halted (a release does not undo a halt) or rescheduled. `RotationRtHaltRotation`,
+  `RotationRtSetNextRun` and `RotationRtDeferNextRun` now also require the hold to be absent, on
+  both engines; a halt that matches no row writes no halt audit. The same predicate makes the
+  start transaction's schedule write refuse (conflict, rolled back) when a hold lands after the
+  Gate, so no run starts under a hold. Left alone on purpose: the human verbs `pause`,
+  `set state` and `run-now` read the hold in their own transaction. Consequences: a publish that
+  commits after a hold does not re-arm the schedule, so a release finds the rotation due; and the
+  run the hold interrupts is a failed attempt like any other (`rotation_held` counts toward the cap).
+  `TestRotationHoldDuringAClaimedRunLeavesTheRotationAlone` (retry and would-halt cases) failed
+  before the fix.
 
 ### Incident containment
 
