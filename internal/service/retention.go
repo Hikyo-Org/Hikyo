@@ -58,6 +58,11 @@ type PruneHealth struct {
 	// the counts could not be read, which must never read as healthy.
 	PKI      store.PKIGauges
 	PKIKnown bool
+	// Rotation is the scheduled-rotation half (#148): the instance-wide counts of
+	// rotations and runs that need an operator. RotationKnown is false when the counts
+	// could not be read, which must never read as healthy.
+	Rotation      store.RotationGauges
+	RotationKnown bool
 }
 
 // peakProjectStorage sums each project's stored ciphertext bytes across both
@@ -105,6 +110,8 @@ type Retention struct {
 	Backup BackupPolicy
 	// PKI, when set, supplies the private-PKI health counts (#154).
 	PKI *store.PKIRuntime
+	// Rotation, when set, supplies the scheduled-rotation health counts (#148).
+	Rotation *store.RotationRuntime
 }
 
 func (s *Retention) now() time.Time {
@@ -576,6 +583,7 @@ func (s *Retention) OperationalHealth(ctx context.Context) (PruneHealth, error) 
 	out := s.health(at, recorded, peak, backup, adapters)
 	out.Diagnostics = s.diagnosticHealth(metadata, instance, incarnation)
 	s.pkiHealth(ctx, &out)
+	s.rotationHealth(ctx, &out)
 	return out, nil
 }
 
@@ -588,6 +596,17 @@ func (s *Retention) pkiHealth(ctx context.Context, out *PruneHealth) {
 	}
 	if gauges, err := s.PKI.Gauges(ctx, s.now()); err == nil {
 		out.PKI, out.PKIKnown = gauges, true
+	}
+}
+
+// rotationHealth reads the aggregate scheduled-rotation counts, with pkiHealth's
+// semantics: instance-wide totals only, and a failed read leaves RotationKnown false.
+func (s *Retention) rotationHealth(ctx context.Context, out *PruneHealth) {
+	if s.Rotation == nil {
+		return
+	}
+	if gauges, err := s.Rotation.Gauges(ctx, s.now()); err == nil {
+		out.Rotation, out.RotationKnown = gauges, true
 	}
 }
 
@@ -648,5 +667,6 @@ func (s *Retention) GetHealth(ctx context.Context, actor Actor) (PruneHealth, er
 	// authorization and audit transaction has committed, without holding locks.
 	out.Diagnostics = s.diagnosticHealth(metadata, instance, incarnation)
 	s.pkiHealth(ctx, &out)
+	s.rotationHealth(ctx, &out)
 	return out, nil
 }

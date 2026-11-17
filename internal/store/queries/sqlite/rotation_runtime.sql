@@ -179,3 +179,22 @@ SELECT published_revision FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation
 
 -- name: RotationRtCycleStart :one
 SELECT started_at FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(generation) ORDER BY started_at,id LIMIT 1;
+
+-- The instance-wide counts /metrics and doctor read, so an operator hears about a
+-- rotation that needs them without opening each one. quarantined and revoke_refused
+-- are runs that still owe a revoke or hold a possibly live role; unknown_outcome is
+-- the runs that are not settled and recorded an effect as unknown; halted is the
+-- rotations a failed gate or an exhausted retry window stopped; overdue is the
+-- active rotations nothing has started although they came due before the grace;
+-- expiring is the rotations (not deleted) whose delivered credential expires before
+-- the horizon, derived the way credential_expires_at is for the rotation's password key.
+-- hikyo:reason RotationRuntime metrics scrape and doctor read only instance-wide counts of rotations and runs that need an operator through the closed runtime boundary; no tenant identity leaves it.
+-- hikyo:instance-scoped
+-- name: RotationRtGauges :one
+SELECT
+ (SELECT COUNT(*) FROM rotation_runs WHERE phase='quarantine') AS quarantined,
+ (SELECT COUNT(*) FROM rotation_runs WHERE phase='revoke_refused') AS revoke_refused,
+ (SELECT COUNT(*) FROM rotation_runs ru WHERE ru.phase NOT IN ('done','failed') AND EXISTS (SELECT 1 FROM rotation_effects ef WHERE ef.run_id=ru.id AND ef.outcome='unknown')) AS unknown_outcome,
+ (SELECT COUNT(*) FROM rotations WHERE state='halted') AS halted,
+ (SELECT COUNT(*) FROM rotations ro WHERE ro.state='active' AND ro.next_run_at<CAST(sqlc.arg(overdue_at) AS TEXT) AND NOT EXISTS (SELECT 1 FROM rotation_runs op WHERE op.rotation_id=ro.id AND op.phase NOT IN ('done','quarantine','failed'))) AS overdue,
+ (SELECT COUNT(*) FROM rotations ro WHERE ro.state<>'disabled' AND (SELECT ru.candidate_valid_until FROM rotation_runs ru JOIN rotations r2 ON r2.org_id=ru.org_id AND r2.project_id=ru.project_id AND r2.environment_id=ru.environment_id AND r2.id=ru.rotation_id WHERE ru.org_id=ro.org_id AND ru.project_id=ro.project_id AND ru.environment_id=ro.environment_id AND (r2.key_id=ro.key_id OR r2.username_key_id=ro.key_id) AND ru.published_revision IS NOT NULL ORDER BY ru.published_revision DESC,ru.id DESC LIMIT 1)<CAST(sqlc.arg(expiring_at) AS TEXT)) AS expiring;

@@ -259,6 +259,25 @@ id is public metadata. A page holds up to `--limit` runs (1 to 500, default 100)
 follow, the CLI prints the `--after` value that continues the list. It needs only
 **read** on the environment.
 
+## Monitoring
+
+`hikyo doctor` and the metrics endpoint report what needs an operator. None of
+these counts carries a label, and each is omitted (doctor shows "unknown") when it
+could not be measured.
+
+| Metric | Meaning |
+|---|---|
+| `hikyo_rotation_runs_quarantined` | runs that still owe a provider role (alert on > 0) |
+| `hikyo_rotation_runs_unknown_outcome` | unsettled runs with a provider effect of unknown outcome (alert on > 0) |
+| `hikyo_rotation_runs_revoke_refused` | runs whose revoke was refused (alert on > 0) |
+| `hikyo_rotation_halted` | rotations the system halted |
+| `hikyo_rotation_overdue` | active rotations more than 15 minutes past their next run with no run open |
+| `hikyo_rotation_credentials_expiring` | rotations whose delivered credential expires within 6 hours |
+| `hikyo_rotation_gauges_known` | 1 when the counts above were measured; they are omitted otherwise, not when zero |
+
+`hikyo doctor` warns when any count is above zero and points at
+`hikyo rotation list` and `hikyo rotation runs`.
+
 ## API
 
 The routes live under

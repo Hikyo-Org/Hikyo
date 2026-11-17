@@ -3381,6 +3381,13 @@
   },
   {
     "engine": "postgres",
+    "name": "RotationRtGauges",
+    "annotation": "instance-scoped",
+    "hash": "b7000da2e6e02ce86755a8e4e1895e251736ac65bc768aa65968a14d238c0a18",
+    "reason": "RotationRuntime metrics scrape and doctor read only instance-wide counts of rotations and runs that need an operator through the closed runtime boundary; no tenant identity leaves it."
+  },
+  {
+    "engine": "postgres",
     "name": "RotationRtLoadSupersededRole",
     "annotation": "instance-scoped",
     "hash": "049d94355f99b958334a09e0bdc0b8ef22d51a10a8dfe0270b5b6815a96db31f",
@@ -7154,6 +7161,13 @@
     "annotation": "instance-scoped",
     "hash": "d5214e9c7f74b073ce927bbb9719a3fb2fe66f4a2d917ba65676bac1e1316299",
     "reason": "RotationRuntime closed scheduler picks one due rotation across tenants under the per-org concurrency cap; the run is then created under the recorded authority's proof and binds the selected immutable chain."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RotationRtGauges",
+    "annotation": "instance-scoped",
+    "hash": "d2c18918e96b6a889e51b40a2dab50e0f441b15c3c6e29681a0ee775d6bc2b5b",
+    "reason": "RotationRuntime metrics scrape and doctor read only instance-wide counts of rotations and runs that need an operator through the closed runtime boundary; no tenant identity leaves it."
   },
   {
     "engine": "sqlite",

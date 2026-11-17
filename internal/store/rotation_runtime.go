@@ -190,6 +190,7 @@ type SupersededRole struct {
 }
 
 type rotationRuntimeQueries interface {
+	gauges(ctx context.Context, now time.Time) (RotationGauges, error)
 	dueRotation(ctx context.Context, now time.Time) (DueRotation, error)
 	lockDueRotation(ctx context.Context, d DueRotation, now time.Time) (DueRotation, error)
 	latestPublished(ctx context.Context, chain domain.Scope, keyID string) (handle string, validUntil time.Time, err error)
@@ -637,4 +638,42 @@ func (r *RotationRuntime) RestoreAssertion(ctx context.Context, run RotationRun)
 		}
 		return true, nil
 	})
+}
+
+// RotationOverdueGrace is how long an active rotation may sit due with no run
+// started before it counts as overdue. A legitimate retry backoff schedules its
+// next attempt in the future, so only a stalled or starved executor trips it.
+const RotationOverdueGrace = 15 * time.Minute
+
+// RotationExpiringWithin is the horizon of the approaching-expiry count: a
+// rotation's delivered credential that expires inside it should have been extended
+// already (the extend step starts at twice the retry window), so one still inside
+// it needs an operator.
+const RotationExpiringWithin = 6 * time.Hour
+
+// RotationGauges are the label-free instance-wide counts /metrics and doctor read.
+// They carry no tenant identity.
+type RotationGauges struct {
+	// Quarantined is runs closed as quarantine: an abandoned run whose candidate or
+	// superseded role is still owed a drop.
+	Quarantined int64
+	// RevokeRefused is runs whose superseded role could not be dropped (it owns
+	// objects, or the restore assertion refused it).
+	RevokeRefused int64
+	// UnknownOutcome is runs not yet done or failed that recorded an effect whose
+	// outcome is unknown: a possibly live credential exists.
+	UnknownOutcome int64
+	// Halted is rotations stopped by a failed gate or an exhausted retry window.
+	Halted int64
+	// Overdue is active rotations due for longer than RotationOverdueGrace with no
+	// run open.
+	Overdue int64
+	// Expiring is rotations (not deleted) whose delivered credential expires within
+	// RotationExpiringWithin.
+	Expiring int64
+}
+
+// Gauges is a proof-free scrape-time system read, like DynamicRuntime.Gauges.
+func (r *RotationRuntime) Gauges(ctx context.Context, now time.Time) (RotationGauges, error) {
+	return rotationRead(ctx, r, func(q rotationRuntimeQueries) (RotationGauges, error) { return q.gauges(ctx, now) })
 }

@@ -89,7 +89,9 @@ var SpecYAML []byte
 // list, show, pause, resume and delete. Execution arrives in a later slice.
 // Revision 18 adds run-now and the runs list of a rotation, and the delete's
 // `abandon` flag (#148).
-const Revision = 18
+// Revision 19 adds the scheduled-rotation health counts to the retention health
+// read (#148).
+const Revision = 19
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
 // explicitly does not plan one.

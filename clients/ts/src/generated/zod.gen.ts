@@ -3220,7 +3220,13 @@ export const zRetentionHealth = z.object({
     adapter_targets_attention: z.int().gte(0),
     adapter_jobs_queued: z.int().gte(0),
     pki_certificates_unknown: z.int().gte(0).optional(),
-    pki_issuers_on_hold: z.int().gte(0).optional()
+    pki_issuers_on_hold: z.int().gte(0).optional(),
+    rotation_runs_quarantined: z.int().gte(0).optional(),
+    rotation_runs_unknown_outcome: z.int().gte(0).optional(),
+    rotation_runs_revoke_refused: z.int().gte(0).optional(),
+    rotation_halted: z.int().gte(0).optional(),
+    rotation_overdue: z.int().gte(0).optional(),
+    rotation_credentials_expiring: z.int().gte(0).optional()
 });
 
 export const zProjectRetentionPolicy = z.object({

@@ -122,6 +122,14 @@ func pinnedMetricRegistry() []metricFamily {
 		{Name: "hikyo_pki_certificates_unknown", MaxSeries: 1},
 		{Name: "hikyo_pki_issuers_on_hold", MaxSeries: 1},
 		{Name: "hikyo_pki_gauges_known", MaxSeries: 1},
+		// Scheduled credential rotation (#148): label-free, one series each.
+		{Name: "hikyo_rotation_runs_quarantined", MaxSeries: 1},
+		{Name: "hikyo_rotation_runs_unknown_outcome", MaxSeries: 1},
+		{Name: "hikyo_rotation_runs_revoke_refused", MaxSeries: 1},
+		{Name: "hikyo_rotation_halted", MaxSeries: 1},
+		{Name: "hikyo_rotation_overdue", MaxSeries: 1},
+		{Name: "hikyo_rotation_credentials_expiring", MaxSeries: 1},
+		{Name: "hikyo_rotation_gauges_known", MaxSeries: 1},
 		// Authentication refusal accounting health (#1034): label-free, so no
 		// source, request, principal or token can multiply series under a flood.
 		{Name: "hikyo_auth_refusal_accounting_healthy", MaxSeries: 1},
@@ -146,6 +154,10 @@ func (stubMeasuredSources) DynamicSnapshot() (int64, int64, error) { return 0, 0
 func (stubMeasuredSources) SSHSnapshot() (int64, int64, error)        { return 0, 0, nil }
 func (stubMeasuredSources) PKISnapshot() (int64, int64, int64, error) { return 0, 0, 0, nil }
 
+func (stubMeasuredSources) RotationSnapshot() (server.RotationCounts, error) {
+	return server.RotationCounts{}, nil
+}
+
 func (stubMeasuredSources) TransitSnapshot() (int64, int64, int64, error) { return 0, 0, 0, nil }
 func (stubMeasuredSources) AccessSnapshot() (int64, int64, error)         { return 0, 0, nil }
 
@@ -164,6 +176,7 @@ func scrapeOperationalMetrics(t *testing.T) string {
 	metrics.SetSSHSource(stubMeasuredSources{})
 	metrics.SetTransitSource(stubMeasuredSources{})
 	metrics.SetPKISource(stubMeasuredSources{})
+	metrics.SetRotationSource(stubMeasuredSources{})
 	metrics.SetAccessSource(stubMeasuredSources{})
 	metrics.SetRefusalSource(stubRefusalHealth{})
 	_ = metrics.ObserveMCP(http.NotFoundHandler(), nil, mcpserver.AllToolNames())

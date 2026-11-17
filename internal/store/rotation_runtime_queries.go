@@ -352,3 +352,13 @@ func (q sqliteRotationRuntimeQueries) clearManual(ctx context.Context, c domain.
 func (q sqliteRotationRuntimeQueries) notConverged(ctx context.Context, run RotationRun) (int64, error) {
 	return q.q.RotationRtNotConverged(ctx, sqlitegen.RotationRtNotConvergedParams{ChainOrg: run.OrgID, ChainProject: run.ProjectID, ChainEnv: run.EnvironmentID, KeyID: run.KeyID, UsernameKeyID: run.UsernameKeyID, Revision: sql.NullInt64{Int64: run.PublishedRevision, Valid: true}})
 }
+
+func (q pgRotationRuntimeQueries) gauges(ctx context.Context, now time.Time) (RotationGauges, error) {
+	r, err := q.q.RotationRtGauges(ctx, pggen.RotationRtGaugesParams{OverdueAt: pgRequiredTime(now.Add(-RotationOverdueGrace)), ExpiringAt: pgRequiredTime(now.Add(RotationExpiringWithin))})
+	return RotationGauges{Quarantined: r.Quarantined, RevokeRefused: r.RevokeRefused, UnknownOutcome: r.UnknownOutcome, Halted: r.Halted, Overdue: r.Overdue, Expiring: r.Expiring}, err
+}
+
+func (q sqliteRotationRuntimeQueries) gauges(ctx context.Context, now time.Time) (RotationGauges, error) {
+	r, err := q.q.RotationRtGauges(ctx, sqlitegen.RotationRtGaugesParams{OverdueAt: fixedStamp(now.Add(-RotationOverdueGrace)), ExpiringAt: fixedStamp(now.Add(RotationExpiringWithin))})
+	return RotationGauges{Quarantined: r.Quarantined, RevokeRefused: r.RevokeRefused, UnknownOutcome: r.UnknownOutcome, Halted: r.Halted, Overdue: r.Overdue, Expiring: r.Expiring}, err
+}

@@ -4842,6 +4842,30 @@ export type RetentionHealth = {
      * Private-PKI issuer versions held after a restore until reconciled (#154). Absent when not measured.
      */
     pki_issuers_on_hold?: number;
+    /**
+     * Scheduled-rotation runs closed as quarantine that still owe a drop (#148). Absent when not measured.
+     */
+    rotation_runs_quarantined?: number;
+    /**
+     * Scheduled-rotation runs not yet settled that recorded an effect of unknown outcome, so a possibly live credential exists (#148). Absent when not measured.
+     */
+    rotation_runs_unknown_outcome?: number;
+    /**
+     * Scheduled-rotation runs whose superseded role could not be dropped, because it owns objects or a restore put its value back (#148). Absent when not measured.
+     */
+    rotation_runs_revoke_refused?: number;
+    /**
+     * Scheduled rotations halted by a failed authority gate or an exhausted retry window (#148). Absent when not measured.
+     */
+    rotation_halted?: number;
+    /**
+     * Active scheduled rotations due for over fifteen minutes with no run started (#148). Absent when not measured.
+     */
+    rotation_overdue?: number;
+    /**
+     * Scheduled rotations (not deleted) whose delivered credential expires within six hours (#148). Absent when not measured.
+     */
+    rotation_credentials_expiring?: number;
 };
 
 /**

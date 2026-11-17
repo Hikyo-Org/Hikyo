@@ -10574,9 +10574,27 @@ type RetentionHealth struct {
 	PkiCertificatesUnknown *int `json:"pki_certificates_unknown,omitzero"`
 
 	// PkiIssuersOnHold Private-PKI issuer versions held after a restore until reconciled (#154). Absent when not measured.
-	PkiIssuersOnHold  *int                             `json:"pki_issuers_on_hold,omitzero"`
-	Stale             bool                             `json:"stale"`
-	StaleAfterSeconds RetentionHealthStaleAfterSeconds `json:"stale_after_seconds"`
+	PkiIssuersOnHold *int `json:"pki_issuers_on_hold,omitzero"`
+
+	// RotationCredentialsExpiring Scheduled rotations (not deleted) whose delivered credential expires within six hours (#148). Absent when not measured.
+	RotationCredentialsExpiring *int `json:"rotation_credentials_expiring,omitzero"`
+
+	// RotationHalted Scheduled rotations halted by a failed authority gate or an exhausted retry window (#148). Absent when not measured.
+	RotationHalted *int `json:"rotation_halted,omitzero"`
+
+	// RotationOverdue Active scheduled rotations due for over fifteen minutes with no run started (#148). Absent when not measured.
+	RotationOverdue *int `json:"rotation_overdue,omitzero"`
+
+	// RotationRunsQuarantined Scheduled-rotation runs closed as quarantine that still owe a drop (#148). Absent when not measured.
+	RotationRunsQuarantined *int `json:"rotation_runs_quarantined,omitzero"`
+
+	// RotationRunsRevokeRefused Scheduled-rotation runs whose superseded role could not be dropped, because it owns objects or a restore put its value back (#148). Absent when not measured.
+	RotationRunsRevokeRefused *int `json:"rotation_runs_revoke_refused,omitzero"`
+
+	// RotationRunsUnknownOutcome Scheduled-rotation runs not yet settled that recorded an effect of unknown outcome, so a possibly live credential exists (#148). Absent when not measured.
+	RotationRunsUnknownOutcome *int                             `json:"rotation_runs_unknown_outcome,omitzero"`
+	Stale                      bool                             `json:"stale"`
+	StaleAfterSeconds          RetentionHealthStaleAfterSeconds `json:"stale_after_seconds"`
 
 	// StorageWarn True once peak_project_bytes reaches the 1 GiB warn threshold, well before the 4 GiB publish refusal.
 	StorageWarn bool `json:"storage_warn"`

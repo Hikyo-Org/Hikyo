@@ -348,6 +348,54 @@ func (q *Queries) RotationRtFailedAttempts(ctx context.Context, arg RotationRtFa
 	return count, err
 }
 
+const rotationRtGauges = `-- name: RotationRtGauges :one
+SELECT
+ (SELECT COUNT(*) FROM rotation_runs WHERE phase='quarantine') AS quarantined,
+ (SELECT COUNT(*) FROM rotation_runs WHERE phase='revoke_refused') AS revoke_refused,
+ (SELECT COUNT(*) FROM rotation_runs ru WHERE ru.phase NOT IN ('done','failed') AND EXISTS (SELECT 1 FROM rotation_effects ef WHERE ef.run_id=ru.id AND ef.outcome='unknown')) AS unknown_outcome,
+ (SELECT COUNT(*) FROM rotations WHERE state='halted') AS halted,
+ (SELECT COUNT(*) FROM rotations ro WHERE ro.state='active' AND ro.next_run_at<$1 AND NOT EXISTS (SELECT 1 FROM rotation_runs op WHERE op.rotation_id=ro.id AND op.phase NOT IN ('done','quarantine','failed'))) AS overdue,
+ (SELECT COUNT(*) FROM rotations ro WHERE ro.state<>'disabled' AND (SELECT ru.candidate_valid_until FROM rotation_runs ru JOIN rotations r2 ON r2.org_id=ru.org_id AND r2.project_id=ru.project_id AND r2.environment_id=ru.environment_id AND r2.id=ru.rotation_id WHERE ru.org_id=ro.org_id AND ru.project_id=ro.project_id AND ru.environment_id=ro.environment_id AND (r2.key_id=ro.key_id OR r2.username_key_id=ro.key_id) AND ru.published_revision IS NOT NULL ORDER BY ru.published_revision DESC,ru.id DESC LIMIT 1)<$2) AS expiring
+`
+
+type RotationRtGaugesParams struct {
+	OverdueAt  pgtype.Timestamptz
+	ExpiringAt pgtype.Timestamptz
+}
+
+type RotationRtGaugesRow struct {
+	Quarantined    int64
+	RevokeRefused  int64
+	UnknownOutcome int64
+	Halted         int64
+	Overdue        int64
+	Expiring       int64
+}
+
+// The instance-wide counts /metrics and doctor read, so an operator hears about a
+// rotation that needs them without opening each one. quarantined and revoke_refused
+// are runs that still owe a revoke or hold a possibly live role; unknown_outcome is
+// the runs that are not settled and recorded an effect as unknown; halted is the
+// rotations a failed gate or an exhausted retry window stopped; overdue is the
+// active rotations nothing has started although they came due before the grace;
+// expiring is the rotations (not deleted) whose delivered credential expires before
+// the horizon, derived the way credential_expires_at is for the rotation's password key.
+// hikyo:reason RotationRuntime metrics scrape and doctor read only instance-wide counts of rotations and runs that need an operator through the closed runtime boundary; no tenant identity leaves it.
+// hikyo:instance-scoped
+func (q *Queries) RotationRtGauges(ctx context.Context, arg RotationRtGaugesParams) (RotationRtGaugesRow, error) {
+	row := q.db.QueryRow(ctx, rotationRtGauges, arg.OverdueAt, arg.ExpiringAt)
+	var i RotationRtGaugesRow
+	err := row.Scan(
+		&i.Quarantined,
+		&i.RevokeRefused,
+		&i.UnknownOutcome,
+		&i.Halted,
+		&i.Overdue,
+		&i.Expiring,
+	)
+	return i, err
+}
+
 const rotationRtGetRun = `-- name: RotationRtGetRun :one
 SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.revoke_not_before_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds AS rotation_delay_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.generation AS rotation_generation
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
