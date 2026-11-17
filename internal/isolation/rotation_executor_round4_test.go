@@ -190,6 +190,109 @@ func TestRotationOverlapDeadlineIsCommitTimePlusDelayAfterLateWork(t *testing.T)
 	})
 }
 
+// The deadline the commit hook stores with `published` is read before the commit. A
+// run whose settle into overlap never happened (here its lease lapsed during a slow
+// commit) is recovered from that phase, and recovery must not revoke on the stored
+// value: it establishes the overlap from its own, post-commit observation, so the
+// superseded role stays valid commit time + RevocationDelaySeconds at least.
+func TestRotationPublishedRecoveryWaitsAFullDelayAfterTheCommit(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		req := x.request(rotPasswordKey, rotUsernameKey)
+		req.RevocationDelaySeconds = 300
+		rot, err := x.svc.Create(tctx(t), x.actor, x.scope, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		x.cycle(rot.ID)
+		role1 := x.lastRun(rot.ID, "candidate_handle")
+		x.advance(24*time.Hour + time.Minute)
+		// The first executor clock read after the baseline read is the commit hook's
+		// deadline read; the clock then moves 20 minutes before the commit lands.
+		armed := false
+		x.exec.Now = func() time.Time {
+			at := x.now()
+			if armed {
+				armed = false
+				x.advance(20 * time.Minute)
+			}
+			return at
+		}
+		x.exec.Revisions.PublishProbe = &rotPublishProbe{onBaseline: func() {
+			x.exec.Revisions.PublishProbe = nil
+			armed = true
+		}}
+		x.drain()
+		run2 := x.openRunID(rot.ID)
+		commit := x.now() // the clock stopped when the commit landed
+		if x.snapshots() != 2 {
+			t.Fatalf("%d revisions, want 2: the second publish did not commit", x.snapshots())
+		}
+		if got := x.phase(run2); got != "overlap" {
+			t.Fatalf("run 2 = %s (%s), want overlap established by the recovery", got, x.lastRun(rot.ID, "last_error"))
+		}
+		if n := x.ctl.count("drop:" + role1); n != 0 {
+			t.Fatalf("the superseded role was dropped %d times before the delay after the commit", n)
+		}
+		next := mustParseStamp(t, queryString(t, db, "SELECT "+stampText(db, "next_attempt_at")+" FROM rotation_runs WHERE id='"+run2+"'"))
+		if want := commit.Add(5 * time.Minute); !next.Equal(want) {
+			t.Fatalf("overlap deadline = %s, want the recovery observation %s + 5m = %s", next, commit, want)
+		}
+		x.advance(5*time.Minute + time.Second)
+		x.drain()
+		if got := x.phase(run2); got != "done" || x.ctl.count("drop:"+role1) != 1 {
+			t.Fatalf("run 2 = %s with %d drops after the delay, want done with 1", got, x.ctl.count("drop:"+role1))
+		}
+	})
+}
+
+// A recovery that comes late, once the delivered credential is due for an extension
+// (inside its retry window), still runs the extend step first: the credential is
+// extended before the overlap wait starts, instead of the wait quietly pushing the
+// run toward the credential's expiry.
+func TestRotationPublishedRecoveryStillRunsTheExtendStepFirst(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		req := x.request(rotPasswordKey, rotUsernameKey)
+		req.RevocationDelaySeconds = 300
+		rot, err := x.svc.Create(tctx(t), x.actor, x.scope, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		x.cycle(rot.ID)
+		role1 := x.lastRun(rot.ID, "candidate_handle")
+		x.advance(24*time.Hour + time.Minute)
+		armed := false
+		x.exec.Now = func() time.Time {
+			at := x.now()
+			if armed {
+				armed = false
+				x.advance(40 * time.Hour) // the executor is away until run 2 is due for an extension
+			}
+			return at
+		}
+		x.exec.Revisions.PublishProbe = &rotPublishProbe{onBaseline: func() {
+			x.exec.Revisions.PublishProbe = nil
+			armed = true
+		}}
+		x.drain()
+		run2 := x.openRunID(rot.ID)
+		if x.snapshots() != 2 {
+			t.Fatalf("%d revisions, want 2: the second publish did not commit", x.snapshots())
+		}
+		role2 := x.lastRun(rot.ID, "candidate_handle")
+		if x.ctl.count("extend:"+role2) != 1 {
+			t.Fatalf("the late recovery did not extend the delivered credential first (%d extends, run %s)", x.ctl.count("extend:"+role2), x.phase(run2))
+		}
+		if got := x.phase(run2); got != "overlap" {
+			t.Fatalf("run 2 = %s (%s), want overlap after the extend", got, x.lastRun(rot.ID, "last_error"))
+		}
+		if n := x.ctl.count("drop:" + role1); n != 0 {
+			t.Fatalf("the superseded role was dropped %d times before the overlap wait", n)
+		}
+	})
+}
+
 // A replacement run that publishes AFTER the extend's supersession check is not
 // seen by that check, so the extend proceeds; the replacement's revoke read must
 // then count the extend as uncertain (its VALID UNTIL is only a lower bound) and

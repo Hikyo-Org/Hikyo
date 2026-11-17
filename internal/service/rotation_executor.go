@@ -871,9 +871,13 @@ func (e *RotationExecutor) followState(ctx context.Context, run store.RotationRu
 		return nil
 	}
 	// An ambiguous commit that did commit: the publish kept this claim, so settle
-	// into the overlap wait and release it.
+	// into the overlap wait and release it. The deadline comes from this
+	// observation, which is after the commit, not from the one the commit hook
+	// stored before it.
+	now := e.now()
 	return e.settleDrop(ctx, run, store.RotationSettle{
-		Now: e.now(), FromPhases: []string{"published"}, Phase: "overlap", NextAttempt: cur.NextAttemptAt,
+		Now: now, FromPhases: []string{"published"}, Phase: "overlap",
+		NextAttempt: now.Add(time.Duration(cur.RevocationDelaySeconds) * time.Second),
 	})
 }
 
@@ -1102,9 +1106,10 @@ func (e *RotationExecutor) publish(ctx context.Context, provider dynamic.Provide
 			interval := time.Duration(run.IntervalSeconds) * time.Second
 			delay := time.Duration(run.RevocationDelaySeconds) * time.Second
 			// Everything but the commit itself is done: this is the latest time the
-			// callback can stamp, so the deadline stored here (the fallback if the
-			// settle after the commit never runs) is within one commit of the real
-			// commit instead of a whole staging pass before it.
+			// callback can stamp. The deadline stored here is only the claim time of
+			// the `published` phase: it can precede the commit by the commit latency,
+			// so a run recovered in `published` re-establishes its overlap from its
+			// own later observation (see revoke) instead of revoking on it.
 			committedAt = store.CanonTime(e.now())
 			if committedAt.Before(now) {
 				committedAt = now
@@ -1324,6 +1329,19 @@ func (e *RotationExecutor) revoke(ctx context.Context, run store.RotationRun) er
 		if handled, err := e.extendDelivered(ctx, run, from); handled || err != nil {
 			return err
 		}
+	}
+	if run.Phase == "published" {
+		// The settle into overlap did not happen (a crash, or a lease that lapsed
+		// during the publish). The deadline stored with `published` was read before
+		// the commit, so it can be earlier than the commit plus the delay by the
+		// commit latency. Nothing is revoked on it: this observation is after the
+		// commit, so the overlap is established from it and revoke waits it out. It
+		// follows the extend step: a delivered credential due for extension is
+		// extended, or halts by name, before the wait is started.
+		return e.settleDrop(ctx, run, store.RotationSettle{
+			Now: now, FromPhases: []string{"published"}, Phase: "overlap",
+			NextAttempt: now.Add(time.Duration(run.RevocationDelaySeconds) * time.Second),
+		})
 	}
 	role, err := e.Runtime.LoadSupersededRole(ctx, run, now)
 	if errors.Is(err, store.ErrNotFound) {

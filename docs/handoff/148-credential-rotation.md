@@ -304,7 +304,8 @@ transaction. It is never stored, not even sealed. Order:
 4. **`published`.** ONE transaction: re-authorize the full Gate, stage the new
    value(s) (`Values.stage`/`Declare`), `Revisions.PublishPlanned` with the staged
    version ids, write `published_revision`, set `phase=published` and
-   `next_attempt_at = now + revocation_delay_seconds`, set the rotation's
+   `next_attempt_at = now + revocation_delay_seconds` (the claim time of `published`
+   only: recovery re-establishes the overlap, see note 38), set the rotation's
    `next_run_at = P + interval` (`P` = the commit time), OUTCOME(publish success). A
    schema-validation failure is a definite failure: the fenced claim write to `failed`
    first, then drop the candidate.
@@ -381,6 +382,7 @@ transaction. It is never stored, not even sealed. Order:
 | After OUTCOME(mint), before publish tx | `minted` | fenced claim write to `failed` (committed), then drop candidate |
 | Publish tx commit ambiguous | row lock may still be held | fenced claim write waits: zero rows means `published`, continue; one row means roll back |
 | Publish tx still in flight when a takeover worker looks (delayed commit) | plain read says `minted`, publish holds the row lock | takeover's claim write blocks on the lock; after the commit it matches zero rows and the run continues as `published`, no `DropRole`; after a rollback it matches one row and rolls back |
+| Death or lease lapse between the publish commit and the overlap settle | `published`, deadline stored before the commit | claimed once that deadline is due; extend check, then `overlap` with now(recovery) + delay (never revoked on the stored value); one extra delay at worst |
 | After publish, before drop | `published` / `overlap` / `revoking` | resume, restore assertion, idempotent drop |
 | Keys serve the superseded value again before the drop (restore or manual publish) | `revoking`, assertion fails | `revoke_refused` (`published_versions_changed`), no drop, loud |
 | During `DropRole` | `revoking`, effect INTENT only | re-probe `RoleStatus`, settle |
@@ -706,8 +708,11 @@ re-probes the provider; no effect is ever repeated blindly.
 - The publish runs through `PublishPlanned` with the executor's hooks (begin, stage,
   commit) in one transaction; `published_revision` is stamped in that transaction.
 - The overlap phase is entered by a follow-up settle. A lease that lapses between the
-  publish commit and that settle leaves the run in `published`, which waits exactly like
-  `overlap`; both are revoked at the same time.
+  publish commit and that settle leaves the run in `published`. The deadline stored with
+  it was read before the commit, so recovery does not revoke on it: a claimed
+  `published` run first gets its extend check, then settles into `overlap` with
+  now(recovery) + `revocation_delay_seconds` (an observation after the commit) and is
+  revoked only after that (note 38).
 - Claim: `FOR UPDATE SKIP LOCKED` on PostgreSQL (a takeover skips a row held by an
   open publish transaction), the writer lock on SQLite. A per-organisation cap bounds
   concurrent runs. The lease term is 2 minutes.
@@ -978,14 +983,28 @@ Round 4 review additions (CodeRabbit threads on PR #1426):
     back instead of committing, and it anchors the overlap deadline stored with the
     `published` phase. The settle into `overlap` after the commit reads the clock again
     and anchors the deadline there, never earlier than the hook's read, so consumers keep
-    the whole revocation delay after the credential is durable. If the process dies
-    between the commit and that settle, the stored deadline (the hook's read) is within
-    one commit of the real commit. Tests: `TestRotationOverlapDeadlineFollowsPublicationTime`,
+    the whole revocation delay after the credential is durable. If that settle does not
+    happen (a crash, or a lease that lapsed during a slow commit), the run stays
+    `published` with the hook's deadline, which was read BEFORE the commit and so can be
+    earlier than commit + delay by the commit latency. Recovery therefore never revokes
+    on it: a claimed run in `published` is settled into `overlap` with
+    now(recovery) + `RevocationDelaySeconds`, an observation after the commit, and only
+    that overlap deadline gates the revoke. `followState` (an ambiguous commit that did
+    commit) does the same. The cost is one extra delay on that rare path, and the
+    branch follows the extend step, so a credential due for extension is extended (or the
+    rotation halts by name) before the wait starts. Limit: the fresh delay is not clamped
+    to the credential's VALID UNTIL. The maximum delay (`domain.MaxRevocationDelay`, 7
+    days) can exceed the extend margin (12 hours), so an executor down from the commit
+    until close to the extend due time can carry the run past its own VALID UNTIL before
+    it is claimed again; delays up to 12 hours cannot. Tests:
+    `TestRotationOverlapDeadlineFollowsPublicationTime`,
     `TestRotationOverlapDeadlineCountsWorkAfterTheLockRefresh`,
     `TestRotationPublishBudgetRechecksAtCommit` (the clock jumps past the budget after
-    the stage check) and `TestRotationOverlapDeadlineIsCommitTimePlusDelayAfterLateWork`;
-    the harness has no hook between the commit and the settle, so the post-commit read
-    itself is not separately exercised.
+    the stage check) `TestRotationOverlapDeadlineIsCommitTimePlusDelayAfterLateWork` and
+    `TestRotationPublishedRecoveryWaitsAFullDelayAfterTheCommit` (the clock moves 20
+    minutes between the hook's read and the commit, the settle is lost, and no revoke may
+    happen before commit + delay). The harness has no hook between the commit and the
+    settle, so the post-commit read itself is not separately exercised.
 
 39. Extend intent ordering. `extendDelivered` records its INTENT before the
     `LaterPublished` check, so a replacement run that publishes after that check (and so
