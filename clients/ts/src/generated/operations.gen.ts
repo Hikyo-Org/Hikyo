@@ -293,6 +293,7 @@ import {
   oauth2Callback,
   oauth2Start,
   oidcCallback,
+  oidcLifecycle,
   oidcStart,
   pairRemote,
   passkeyLoginFinish,
@@ -727,6 +728,7 @@ import type {
   Oauth2CallbackData,
   Oauth2StartData,
   OidcCallbackData,
+  OidcLifecycleData,
   OidcStartData,
   PairRemoteData,
   PasskeyLoginFinishData,
@@ -1712,6 +1714,7 @@ export const deleteServiceAccountOp: BodylessOperation<DeleteServiceAccountData>
 export const deleteSshCaOp: BodylessOperation<DeleteSshCaData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteSshCa, [204]);
 export const establishCredentialOp: BodylessOperation<EstablishCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(establishCredential, [204]);
 export const logoutOp: BodylessOperation<LogoutData> = /* @__PURE__ */ new GeneratedBodylessOperation(logout, [204]);
+export const oidcLifecycleOp: BodylessOperation<OidcLifecycleData> = /* @__PURE__ */ new GeneratedBodylessOperation(oidcLifecycle, [204]);
 export const removeRemoteOp: BodylessOperation<RemoveRemoteData> = /* @__PURE__ */ new GeneratedBodylessOperation(removeRemote, [204]);
 export const reportDeliveryTargetOp: BodylessOperation<ReportDeliveryTargetData> = /* @__PURE__ */ new GeneratedBodylessOperation(reportDeliveryTarget, [204]);
 export const reportFileTargetOp: BodylessOperation<ReportFileTargetData> = /* @__PURE__ */ new GeneratedBodylessOperation(reportFileTarget, [204]);
