@@ -146,7 +146,7 @@ type RotationStateRequest struct {
 	RotationID         string
 	ExpectedGeneration int64
 	// Abandon, on a delete only, closes the rotation's unsettled runs as
-	// quarantine instead of refusing (#148, S2). The wire flag is S2b.
+	// quarantine instead of refusing (#148, S2); the wire flag is --abandon.
 	Abandon bool
 }
 
@@ -555,6 +555,147 @@ func (s *CredentialRotations) Resume(ctx context.Context, actor Actor, scope dom
 // the S2 contract).
 func (s *CredentialRotations) Delete(ctx context.Context, actor Actor, scope domain.Scope, req RotationStateRequest) (RotationView, error) {
 	return s.transition(ctx, actor, scope, req, rotationActionDeleted)
+}
+
+// RunNowRequest asks for a run now. ExpectedGeneration 0 means "the current
+// generation". SkipOverlap makes the run revoke the superseded credential right
+// after the publish (a revocation delay of zero for this run only).
+type RunNowRequest struct {
+	RotationID         string
+	ExpectedGeneration int64
+	SkipOverlap        bool
+}
+
+// RunNowResult names the run the executor will start; it does not exist until
+// the executor picks the request up, so a run list shows it only then.
+type RunNowResult struct {
+	RotationID  string
+	RunID       string
+	SkipOverlap bool
+}
+
+var (
+	// ErrRotationRunInFlight refuses a run-now while the rotation has an unsettled run.
+	ErrRotationRunInFlight = &rotationRefusal{"the rotation has a run in flight; let it finish first", domain.ErrConflict}
+	// ErrRotationRunPending refuses a second run-now while one waits for the executor.
+	ErrRotationRunPending = &rotationRefusal{"a run was already requested and has not started yet", domain.ErrConflict}
+)
+
+// RunNow requests a run outside the schedule. It is the same human act as
+// resume, so a signed-in person consumes the publish ceremony over the rotation's
+// keys, but it executes nothing: the request makes the rotation due, and the
+// executor starts the run through its normal path with the recorded authority,
+// the pre-publish Gate and the overlap, exactly as a scheduled run. A manual run
+// bypasses neither.
+func (s *CredentialRotations) RunNow(ctx context.Context, actor Actor, scope domain.Scope, req RunNowRequest) (RunNowResult, error) {
+	if err := requireRotationEnv(scope, "run-now", req.RotationID); err != nil {
+		return RunNowResult{}, err
+	}
+	now := store.CanonTime(s.now())
+	var out RunNowResult
+	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		caller, proof, err := authorize(ctx, az, actor, authz.OpRotationRunNow, scope, now)
+		if err != nil {
+			return err
+		}
+		if err := requireRotationHuman(caller); err != nil {
+			return err
+		}
+		cur, err := r.Rotations().Get(ctx, proof, req.RotationID)
+		if err != nil {
+			return err
+		}
+		if req.ExpectedGeneration != 0 && req.ExpectedGeneration != cur.Generation {
+			return ErrRotationStale
+		}
+		if cur.State != store.RotationStateActive {
+			return fmt.Errorf("%w: only an active rotation can run now (state is %s)", domain.ErrConflict, cur.State)
+		}
+		open, err := r.Rotations().CountOpenRuns(ctx, proof, cur.ID)
+		if err != nil {
+			return err
+		}
+		if open > 0 {
+			return ErrRotationRunInFlight
+		}
+		// Refused above before the ceremony is consumed, so a refusal costs no reauth.
+		if err := s.requireRotationCeremony(ctx, az, caller, scope, cur.KeyID, cur.UsernameKeyID); err != nil {
+			return err
+		}
+		runID, err := newID("rrn")
+		if err != nil {
+			return err
+		}
+		if _, err := r.Rotations().RequestRun(ctx, proof, store.RotationRunRequest{RotationID: cur.ID, RunID: runID, SkipOverlap: req.SkipOverlap, ExpectedGeneration: cur.Generation, At: now}); err != nil {
+			switch {
+			case errors.Is(err, store.ErrRotationRunPending):
+				return ErrRotationRunPending
+			case errors.Is(err, store.ErrConflict):
+				return ErrRotationStale
+			}
+			return err
+		}
+		ev, err := domainEvent(ctx, audit.EventRotationRunNow, caller.Principal, audit.Object{Type: "rotation", ID: cur.ID}, audit.Payload{"run_id": runID, "skip_overlap": req.SkipOverlap})
+		if err != nil {
+			return err
+		}
+		if err := r.Audit().InsertTenant(ctx, proof, ev); err != nil {
+			return err
+		}
+		out = RunNowResult{RotationID: cur.ID, RunID: runID, SkipOverlap: req.SkipOverlap}
+		return nil
+	})
+	return out, err
+}
+
+// RotationRunsRequest is one page of a rotation's runs, newest first; After is
+// the last run id of the previous page.
+type RotationRunsRequest struct {
+	RotationID string
+	After      string
+	Limit      int
+}
+
+// RotationRunsPage is one page of runs; NextAfter is empty on the last page.
+type RotationRunsPage struct {
+	Items     []store.RotationRunRecord
+	NextAfter string
+}
+
+// Runs lists a rotation's runs: phase, trigger, revision and the fixed-word code
+// of the last failure. It carries no secret, role handle or provider detail.
+func (s *CredentialRotations) Runs(ctx context.Context, actor Actor, scope domain.Scope, req RotationRunsRequest) (RotationRunsPage, error) {
+	if err := requireRotationEnv(scope, "runs", req.RotationID); err != nil {
+		return RotationRunsPage{}, err
+	}
+	limit := req.Limit
+	if limit == 0 {
+		limit = RotationListDefaultLimit
+	}
+	if limit < 0 || limit > RotationListMaxLimit {
+		return RotationRunsPage{}, fmt.Errorf("%w: limit must be between 1 and %d", domain.ErrInvalid, RotationListMaxLimit)
+	}
+	var out RotationRunsPage
+	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
+		_, proof, err := authorize(ctx, az, actor, authz.OpRotationRuns, scope, s.now())
+		if err != nil {
+			return err
+		}
+		if _, err := r.Rotations().Get(ctx, proof, req.RotationID); err != nil {
+			return err
+		}
+		rows, err := r.Rotations().ListRuns(ctx, proof, store.RotationRunQuery{RotationID: req.RotationID, After: req.After, Limit: limit + 1})
+		if err != nil {
+			return err
+		}
+		if len(rows) > limit {
+			rows = rows[:limit]
+			out.NextAfter = rows[limit-1].ID
+		}
+		out.Items = rows
+		return nil
+	})
+	return out, err
 }
 
 func rotationActionOperation(action rotationAction) (authz.Operation, bool) {
