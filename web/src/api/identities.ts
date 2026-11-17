@@ -690,7 +690,10 @@ export type FederationPreset = {
   readonly id: IssuerPlatform;
   readonly label: string;
   readonly issuer: string;
+  /** Seeded into the subject field; empty when the subject must come from a real token. */
   readonly subject: string;
+  /** Placeholder shown in the subject field when `subject` is empty. */
+  readonly subjectHint?: string;
   readonly audience: string;
   /**
    * The claims this platform's bindings MUST pin, which the server refuses a
@@ -734,7 +737,7 @@ const FORGEJO_PRESET: FederationPreset = {
   audience: '',
   claims: [
     { claim: 'repository', label: 'Repository', kind: 'string' },
-    { claim: 'event_name', label: 'Event name', kind: 'event' },
+    { claim: 'event_name', label: 'Event name', kind: 'event', defaultValue: 'push' },
   ],
 };
 
@@ -742,12 +745,16 @@ const GITHUB_ACTIONS_PRESET: FederationPreset = {
   id: 'github-actions',
   label: 'GitHub Actions',
   issuer: 'https://token.actions.githubusercontent.com',
-  subject: 'repo:owner/repository:ref:refs/heads/main',
+  // GitHub's subject format varies (repositories created, renamed or transferred
+  // after 2026-07-15 use the immutable form), so the operator copies it from a
+  // real token rather than editing a guess.
+  subject: '',
+  subjectHint: 'copy sub from a real token, e.g. repo:owner/repository:ref:refs/heads/main',
   audience: '',
   claims: [
     { claim: 'repository_id', label: 'Repository id', kind: 'id' },
     { claim: 'repository_owner_id', label: 'Repository owner id', kind: 'id' },
-    { claim: 'event_name', label: 'Event name', kind: 'event' },
+    { claim: 'event_name', label: 'Event name', kind: 'event', defaultValue: 'push' },
     { claim: 'ref_protected', label: 'Ref protected', kind: 'string', defaultValue: 'true' },
     { claim: 'runner_environment', label: 'Runner environment', kind: 'string', defaultValue: 'github-hosted' },
     { claim: 'job_workflow_ref', label: 'Job workflow ref', kind: 'string' },

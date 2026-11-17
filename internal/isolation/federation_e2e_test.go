@@ -997,8 +997,8 @@ func TestFederationRequiresImmutableIdentifiers(t *testing.T) {
 			Issuer: r.idp.Issuer(), Subject: github.Subject, Audience: hikyoAudience,
 			RequiredClaims: append(pinsWithout(pinsOf(t, github), "repository_id"),
 				service.ClaimPin{Claim: "repository_id", Number: &numericID}),
-		}); !errors.Is(err, service.ErrBindingClaims) {
-		t.Fatalf("github binding pinning a numeric repository_id = %v, want ErrBindingClaims", err)
+		}); !errors.Is(err, service.ErrBindingPinKind) {
+		t.Fatalf("github binding pinning a numeric repository_id = %v, want ErrBindingPinKind", err)
 	}
 	// Both ids plus event_name: accepted, and it authenticates.
 	if _, err := r.fed.CreateBinding(t.Context(), service.LocalPrincipal(identAdmin),

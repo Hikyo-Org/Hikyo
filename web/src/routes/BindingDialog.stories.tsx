@@ -99,6 +99,8 @@ export const GitHubActions: Story = {
   play: async ({ canvas }) => {
     await userEvent.click(canvas.getByRole('button', { name: 'GitHub Actions' }));
     await expect(canvas.getByLabelText('Issuer')).toHaveValue('https://token.actions.githubusercontent.com');
+    // The subject is copied from a real token, never edited from a guess.
+    await expect(canvas.getByLabelText('Subject, matched byte-for-byte')).toHaveValue('');
     await expect(canvas.getByLabelText('Repository id (repository_id)')).toHaveAttribute('inputmode', 'numeric');
     await expect(canvas.getByLabelText('Event name')).toHaveValue('push');
     await expect(canvas.getByLabelText('Ref protected (ref_protected)')).toHaveValue('true');

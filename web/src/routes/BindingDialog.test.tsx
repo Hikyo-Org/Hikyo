@@ -61,8 +61,8 @@ it('runs a mint-purpose ceremony before replacing a historical-only binding', as
 
 it.each([
   { pin: { claim: 'ref_protected', string_value: 'true' }, expected: '"claim":"ref_protected","string_value":"true"' },
-  { pin: { claim: 'ref_protected', bool_value: true }, expected: '"claim":"ref_protected","bool_value":true' },
-])('preserves the predecessor scalar type without silently converting it', async ({ pin, expected }) => {
+  { pin: { claim: 'ref_protected', bool_value: true }, expected: '"claim":"ref_protected","string_value":"true"' },
+])('re-pins a required claim as the string GitHub emits ($expected)', async ({ pin, expected }) => {
   const fetchMock = vi.fn((..._args: Parameters<typeof fetch>) => Promise.resolve(
     new Response(JSON.stringify({ code: 'refused', message: 'fixture refusal' }), {
       status: 422, headers: { 'Content-Type': 'application/json' },

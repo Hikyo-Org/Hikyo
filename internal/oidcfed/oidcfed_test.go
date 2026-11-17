@@ -294,7 +294,7 @@ func TestNonStringRequiredPins(t *testing.T) {
 	if got := NonStringRequiredPins(domain.IssuerGitHubActions, pinned); !slices.Equal(got, want) {
 		t.Fatalf("non-string = %v, want %v", got, want)
 	}
-	if got := NonStringRequiredPins(domain.IssuerKubernetes, mustClaims(`{"/kubernetes.io/serviceaccount/uid":7}`)); len(got) != 1 {
-		t.Fatalf("kubernetes numeric uid = %v, want one refusal", got)
+	if got := NonStringRequiredPins(domain.IssuerKubernetes, mustClaims(`{"/kubernetes.io/serviceaccount/uid":7}`)); !slices.Equal(got, []string{KubernetesServiceAccountUID}) {
+		t.Fatalf("kubernetes numeric uid = %v, want [%s]", got, KubernetesServiceAccountUID)
 	}
 }

@@ -32,8 +32,8 @@ func TestCheckBindingAgainstIssuerGitHubPins(t *testing.T) {
 		"ref_protected": strings.Replace(full, `"ref_protected":"true"`, `"ref_protected":true`, 1),
 	} {
 		err := checkBindingAgainstIssuer(issuer, "hikyo://x", want)
-		if !errors.Is(err, ErrBindingClaims) || !strings.Contains(err.Error(), name) {
-			t.Errorf("non-string %s = %v, want ErrBindingClaims naming the claim", name, err)
+		if !errors.Is(err, ErrBindingPinKind) || !strings.Contains(err.Error(), name) {
+			t.Errorf("non-string %s = %v, want ErrBindingPinKind naming the claim", name, err)
 		}
 	}
 }

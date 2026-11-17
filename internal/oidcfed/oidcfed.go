@@ -876,19 +876,12 @@ func ValidatePointer(name string) error {
 // sets once during a migration and never removes, and the ADR does not offer one.
 //
 //   - github-actions exposes both immutable ids (as decimal strings), so both
-//     are required, plus
-//     `event_name` for the pull-request rule. Three more are required so a
-//     binding narrows which runs receive its credentials, after the Nov 2026
-//     "wfx-loot" campaign used stolen accounts to push throwaway workflows,
-//     injected jobs and postinstall hooks that dumped secrets and OIDC tokens:
-//     `ref_protected` (a run on an unprotected branch is distinguishable),
-//     `runner_environment` (github-hosted versus self-hosted) and
-//     `job_workflow_ref` (which workflow file, and ref, the job runs from).
-//     Presence is required, not a particular value: an operator may
-//     deliberately pin "false" or "self-hosted". `job_workflow_sha` is NOT
-//     required because for a same-repository workflow it changes every commit.
-//     This cannot stop a compromised job reading secrets it was given; it only
-//     narrows which runs are given them.
+//     are required, plus `event_name` for the pull-request rule, plus
+//     `ref_protected`, `runner_environment` and `job_workflow_ref`, which narrow
+//     which runs are given the credential (see the ADR's 2026-11-17 amendment).
+//     Presence is required, not a value: "false" or "self-hosted" is a
+//     deliberate pin. `job_workflow_sha` is not required because it changes on
+//     every commit for a same-repository workflow.
 //   - kubernetes exposes the ServiceAccount UID, nested — required through its
 //     JSON Pointer. A recreated ServiceAccount with the same name has a
 //     different UID, which is precisely what this closes.
