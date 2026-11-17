@@ -3818,9 +3818,9 @@ var registry = map[EventType]TypeSpec{
 			"error_code": {Kind: KindString},
 			// revision is the catalogue revision a publish outcome produced.
 			"revision": {Kind: KindInt},
-			// not_converged_consumers is the revoke outcome's count of adapter
+			// not_converged_adapter_targets is the revoke outcome's count of adapter
 			// targets still on the superseded revision (#148, S2b-1).
-			"not_converged_consumers": {Kind: KindInt},
+			"not_converged_adapter_targets": {Kind: KindInt},
 		},
 	},
 	EventRotationQuarantined: {

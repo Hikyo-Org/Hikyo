@@ -141,17 +141,17 @@ type RotationRunQuery struct {
 
 // RotationRunRecord is one run's operator-visible metadata. It carries no role
 // handle, candidate or provider detail: ErrorCode is the fixed-word code of the
-// last failure. NotConvergedConsumers is nil until a revoke decided.
+// last failure. NotConvergedAdapterTargets is nil until a revoke decided.
 type RotationRunRecord struct {
-	ID                     string
-	Trigger                string
-	Phase                  string
-	PublishedRevision      int64
-	RevocationDelaySeconds int64
-	StartedAt              string
-	PhaseAt                string
-	ErrorCode              string
-	NotConvergedConsumers  *int64
+	ID                         string
+	Trigger                    string
+	Phase                      string
+	PublishedRevision          int64
+	RevocationDelaySeconds     int64
+	StartedAt                  string
+	PhaseAt                    string
+	ErrorCode                  string
+	NotConvergedAdapterTargets *int64
 }
 
 // RotationReader is the read side.
@@ -180,7 +180,7 @@ type RotationRepo interface {
 	// with a request already waiting is ErrRotationRunPending. The open-run check
 	// is the service's: it counts again after this write, which holds the row the
 	// executor locks to start a run, and rolls the request back if one opened.
-	RequestRun(ctx context.Context, p authz.Proof, m RotationRunRequest) (RotationRecord, error)
+	RequestRun(ctx context.Context, p authz.Proof, m RotationRunRequest) error
 	// PauseForProvider pauses every active rotation that mints from the provider,
 	// in the proof's project, and returns them as paused. It is the provider
 	// delete and credential revoke cascade: a rotation never stays active against
@@ -496,26 +496,26 @@ func (r rotationQueries) CountOpenRuns(ctx context.Context, p authz.Proof, rotat
 	return r.queries.countOpenRuns(ctx, chain, rotationID)
 }
 
-func (r rotationQueries) RequestRun(ctx context.Context, p authz.Proof, m RotationRunRequest) (RotationRecord, error) {
+func (r rotationQueries) RequestRun(ctx context.Context, p authz.Proof, m RotationRunRequest) error {
 	chain, err := r.envChain(p, authz.StoreRotationsRequestRun)
 	if err != nil {
-		return RotationRecord{}, err
+		return err
 	}
 	rows, err := r.queries.requestRun(ctx, chain, m)
 	if err != nil {
-		return RotationRecord{}, err
+		return err
 	}
-	if rows != 1 {
-		pending, err := r.queries.manualPending(ctx, chain, m.RotationID)
-		if err != nil {
-			return RotationRecord{}, err
-		}
-		if pending {
-			return RotationRecord{}, ErrRotationRunPending
-		}
-		return RotationRecord{}, ErrConflict
+	if rows == 1 {
+		return nil
 	}
-	return r.get(ctx, chain, m.RotationID)
+	pending, err := r.queries.manualPending(ctx, chain, m.RotationID)
+	if err != nil {
+		return err
+	}
+	if pending {
+		return ErrRotationRunPending
+	}
+	return ErrConflict
 }
 
 func (r rotationQueries) ListRuns(ctx context.Context, p authz.Proof, q RotationRunQuery) ([]RotationRunRecord, error) {
@@ -1111,8 +1111,8 @@ func (q sqliteRotationQueries) listRuns(ctx context.Context, chain domain.Scope,
 		if err := normalizeStoredTimes(&rec.StartedAt, &rec.PhaseAt); err != nil {
 			return nil, err
 		}
-		if r.NotConvergedConsumers.Valid {
-			rec.NotConvergedConsumers = &r.NotConvergedConsumers.Int64
+		if r.NotConvergedAdapterTargets.Valid {
+			rec.NotConvergedAdapterTargets = &r.NotConvergedAdapterTargets.Int64
 		}
 		out = append(out, rec)
 	}
@@ -1143,8 +1143,8 @@ func (q pgRotationQueries) listRuns(ctx context.Context, chain domain.Scope, lq 
 		if err := normalizeStoredTimes(&rec.StartedAt, &rec.PhaseAt); err != nil {
 			return nil, err
 		}
-		if r.NotConvergedConsumers.Valid {
-			rec.NotConvergedConsumers = &r.NotConvergedConsumers.Int64
+		if r.NotConvergedAdapterTargets.Valid {
+			rec.NotConvergedAdapterTargets = &r.NotConvergedAdapterTargets.Int64
 		}
 		out = append(out, rec)
 	}

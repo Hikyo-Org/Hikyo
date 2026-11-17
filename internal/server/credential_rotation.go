@@ -160,6 +160,7 @@ func (a *API) RunRotationNow(ctx context.Context, req apigen.RunRotationNowReque
 	if req.Body != nil {
 		run.ExpectedGeneration = expectedGeneration(req.Body.ExpectedGeneration)
 		run.SkipOverlap = req.Body.SkipOverlap != nil && *req.Body.SkipOverlap
+		run.ConfirmDestructive = req.Body.ConfirmDestructive
 	}
 	got, err := a.CredentialRotations.RunNow(ctx, service.Bearer(bearer(ctx)), dynamicEnvScope(req.Org, req.Project, req.Environment), run)
 	if err != nil {
@@ -192,7 +193,7 @@ func (a *API) ListRotationRuns(ctx context.Context, req apigen.ListRotationRunsR
 		}
 		run := apigen.RotationRun{
 			Id: apigen.ID(row.ID), Trigger: apigen.RotationRunTrigger(row.Trigger), Phase: apigen.RotationRunPhase(row.Phase),
-			RevocationDelaySeconds: row.RevocationDelaySeconds, StartedAt: started, PhaseAt: phaseAt, NotConvergedConsumers: row.NotConvergedConsumers,
+			RevocationDelaySeconds: row.RevocationDelaySeconds, StartedAt: started, PhaseAt: phaseAt, NotConvergedAdapterTargets: row.NotConvergedAdapterTargets,
 		}
 		if row.PublishedRevision != 0 {
 			run.PublishedRevision = &row.PublishedRevision

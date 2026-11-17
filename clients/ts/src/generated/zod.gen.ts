@@ -779,6 +779,7 @@ export const zRotationStateRequest = z.object({
 });
 
 export const zRunRotationNowRequest = z.object({
+    confirm_destructive: z.boolean(),
     expected_generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullish(),
     skip_overlap: z.boolean().optional().default(false)
 });
@@ -814,7 +815,7 @@ export const zRotationRun = z.object({
     started_at: zTimestamp,
     phase_at: zTimestamp,
     error_code: z.string().nullish(),
-    not_converged_consumers: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullish()
+    not_converged_adapter_targets: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullish()
 });
 
 export const zRotationRunList = z.object({

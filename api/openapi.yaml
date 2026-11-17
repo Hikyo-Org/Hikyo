@@ -14663,21 +14663,27 @@ paths:
         start; the run exists once the executor picks it up (list it with the
         runs route). The run is a manual-trigger run through the executor's
         normal path: the same pre-publish gate, recorded authority and overlap as a
-        scheduled one, so a manual run bypasses none of them. The caller must be a
-        signed-in person and consume the publish reauthentication window over the
-        rotation's keys, as resume does. A rotation that is not active, has a run
-        in flight, or already has a request waiting is refused. `skip_overlap`
-        gives this run a revocation delay of zero: the superseded credential is
-        revoked right after the new one is published, so a consumer that has not
-        yet picked up the new credential loses access. The revoke outcome row
-        records `not_converged_consumers`, the adapter targets still behind the
-        published revision.
+        scheduled one, so a manual run bypasses none of them. Run-now is resume's
+        equivalent: the caller must be a signed-in person who holds edit, publish
+        and reveal on both rotation keys and consume the publish reauthentication
+        window over them. `confirm_destructive` must be true on every request, and
+        a request without it is refused by name. Only an active rotation with no
+        run in flight and no request already waiting is accepted; a paused, halted
+        or deleted rotation is refused. The request makes the rotation due now, so
+        it also overrides a retry backoff (the attempt cap and the retry deadline
+        still apply). `skip_overlap` gives this run a revocation delay of zero: the
+        superseded credential is revoked right after the new one is published, so a
+        consumer that has not yet picked up the new credential loses access. The
+        revoke outcome row records `not_converged_adapter_targets`, the adapter
+        (sync) targets still behind the published revision; machine principals that
+        read the keys directly are not counted, so a zero does not prove that
+        machine consumers are unaffected.
       x-hikyo-class: tenant
       x-hikyo-operation: rotation.run_now
-      x-hikyo-formula: [publish@environment]
+      x-hikyo-formula: [edit@environment, publish@environment, reveal@environment]
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 18
-      requestBody: {required: false, content: {application/json: {schema: {$ref: "#/components/schemas/RunRotationNowRequest"}}}}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/RunRotationNowRequest"}}}}
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -14701,9 +14707,10 @@ paths:
       summary: List a rotation's runs, newest first.
       description: |
         Metadata only: phase, trigger, published revision and the fixed-word code
-        of the last failure. No credential, role name or provider detail is
-        returned. `not_converged_consumers` is the count recorded when the run
-        decided to revoke its superseded credential, null until then. Paged
+        of the last failure. No credential, password or provider detail is
+        returned; a run id is public metadata. `not_converged_adapter_targets` is the count of adapter (sync) targets recorded when the run
+        decided to revoke its superseded credential, null until then; machine principals that read the keys
+        directly are not counted. Paged
         (`limit`, default 100, at most 500; `after` continues from `next_after`).
       x-hikyo-class: tenant
       x-hikyo-operation: rotation.runs
@@ -18406,7 +18413,15 @@ components:
     RunRotationNowRequest:
       type: object
       additionalProperties: false
+      required: [confirm_destructive]
       properties:
+        confirm_destructive:
+          type: boolean
+          description: |
+            The run-now confirmation, required on every request. It must be true: the
+            run publishes a new credential now, off the schedule, and with
+            `skip_overlap` revokes the superseded one at once. False or absent is
+            refused by name.
         expected_generation: {type: [integer, "null"], format: int64, minimum: 1, description: The generation the caller last read. Omitted or null means the current generation.}
         skip_overlap: {type: boolean, default: false, description: "Revoke the superseded credential right after this run publishes the new one (a revocation delay of zero for this run only)."}
 
@@ -18437,7 +18452,7 @@ components:
         started_at: {$ref: "#/components/schemas/Timestamp"}
         phase_at: {$ref: "#/components/schemas/Timestamp"}
         error_code: {type: [string, "null"], description: "The fixed-word code of the last failure, if any. Never provider detail."}
-        not_converged_consumers: {type: [integer, "null"], format: int64, minimum: 0, description: "Adapter targets still behind the published revision when the run decided to revoke the superseded credential. Null until then."}
+        not_converged_adapter_targets: {type: [integer, "null"], format: int64, minimum: 0, description: "Adapter (sync) targets that mirror either rotation key and had not converged to the published revision when the run decided to revoke the superseded credential. Machine principals that read the keys directly are not counted. Null until then."}
 
     RotationRunList:
       type: object

@@ -6180,15 +6180,21 @@ export const resumeRotation = <ThrowOnError extends boolean = false>(options: Op
  * start; the run exists once the executor picks it up (list it with the
  * runs route). The run is a manual-trigger run through the executor's
  * normal path: the same pre-publish gate, recorded authority and overlap as a
- * scheduled one, so a manual run bypasses none of them. The caller must be a
- * signed-in person and consume the publish reauthentication window over the
- * rotation's keys, as resume does. A rotation that is not active, has a run
- * in flight, or already has a request waiting is refused. `skip_overlap`
- * gives this run a revocation delay of zero: the superseded credential is
- * revoked right after the new one is published, so a consumer that has not
- * yet picked up the new credential loses access. The revoke outcome row
- * records `not_converged_consumers`, the adapter targets still behind the
- * published revision.
+ * scheduled one, so a manual run bypasses none of them. Run-now is resume's
+ * equivalent: the caller must be a signed-in person who holds edit, publish
+ * and reveal on both rotation keys and consume the publish reauthentication
+ * window over them. `confirm_destructive` must be true on every request, and
+ * a request without it is refused by name. Only an active rotation with no
+ * run in flight and no request already waiting is accepted; a paused, halted
+ * or deleted rotation is refused. The request makes the rotation due now, so
+ * it also overrides a retry backoff (the attempt cap and the retry deadline
+ * still apply). `skip_overlap` gives this run a revocation delay of zero: the
+ * superseded credential is revoked right after the new one is published, so a
+ * consumer that has not yet picked up the new credential loses access. The
+ * revoke outcome row records `not_converged_adapter_targets`, the adapter
+ * (sync) targets still behind the published revision; machine principals that
+ * read the keys directly are not counted, so a zero does not prove that
+ * machine consumers are unaffected.
  *
  */
 export const runRotationNow = <ThrowOnError extends boolean = false>(options: Options<RunRotationNowData, ThrowOnError>): RequestResult<RunRotationNowResponses, RunRotationNowErrors, ThrowOnError> => (options.client ?? client).post<RunRotationNowResponses, RunRotationNowErrors, ThrowOnError>({
@@ -6205,9 +6211,10 @@ export const runRotationNow = <ThrowOnError extends boolean = false>(options: Op
  * List a rotation's runs, newest first.
  *
  * Metadata only: phase, trigger, published revision and the fixed-word code
- * of the last failure. No credential, role name or provider detail is
- * returned. `not_converged_consumers` is the count recorded when the run
- * decided to revoke its superseded credential, null until then. Paged
+ * of the last failure. No credential, password or provider detail is
+ * returned; a run id is public metadata. `not_converged_adapter_targets` is the count of adapter (sync) targets recorded when the run
+ * decided to revoke its superseded credential, null until then; machine principals that read the keys
+ * directly are not counted. Paged
  * (`limit`, default 100, at most 500; `after` continues from `next_after`).
  *
  */

@@ -866,8 +866,8 @@ type RotationRtNotConvergedParams struct {
 }
 
 // The adapter targets that mirror either of the rotation's keys and have not
-// converged to the run's published revision: the consumers that may still hold
-// the superseded credential. Tombstoned targets receive nothing.
+// converged to the run's published revision: the adapter targets that may still
+// hold the superseded credential. Tombstoned targets receive nothing.
 func (q *Queries) RotationRtNotConverged(ctx context.Context, arg RotationRtNotConvergedParams) (int64, error) {
 	row := q.db.QueryRow(ctx, rotationRtNotConverged,
 		arg.ChainOrg,
@@ -1057,26 +1057,26 @@ func (q *Queries) RotationRtSetNextRun(ctx context.Context, arg RotationRtSetNex
 }
 
 const rotationRtSettleRun = `-- name: RotationRtSettleRun :execrows
-UPDATE rotation_runs SET phase=$1,phase_at=$2,last_error=$3,next_attempt_at=$4,candidate_valid_until=COALESCE($5,candidate_valid_until),revoke_not_before_at=COALESCE($6,revoke_not_before_at),published_revision=COALESCE($7,published_revision),not_converged_consumers=COALESCE($8,not_converged_consumers),lease_owner=CASE WHEN $9::bigint=1 THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN $9::bigint=1 THEN lease_expires_at ELSE NULL END WHERE id=$10 AND org_id=$11 AND project_id=$12 AND environment_id=$13 AND lease_owner=$14 AND lease_expires_at>$2 AND lease_claim_token=$15 AND phase = ANY($16::text[])
+UPDATE rotation_runs SET phase=$1,phase_at=$2,last_error=$3,next_attempt_at=$4,candidate_valid_until=COALESCE($5,candidate_valid_until),revoke_not_before_at=COALESCE($6,revoke_not_before_at),published_revision=COALESCE($7,published_revision),not_converged_adapter_targets=COALESCE($8,not_converged_adapter_targets),lease_owner=CASE WHEN $9::bigint=1 THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN $9::bigint=1 THEN lease_expires_at ELSE NULL END WHERE id=$10 AND org_id=$11 AND project_id=$12 AND environment_id=$13 AND lease_owner=$14 AND lease_expires_at>$2 AND lease_claim_token=$15 AND phase = ANY($16::text[])
 `
 
 type RotationRtSettleRunParams struct {
-	Phase                 string
-	Now                   pgtype.Timestamptz
-	LastError             pgtype.Text
-	NextAttemptAt         pgtype.Timestamptz
-	ValidUntilAt          pgtype.Timestamptz
-	RevokeNotBeforeAt     pgtype.Timestamptz
-	PublishedRevision     pgtype.Int8
-	NotConvergedConsumers pgtype.Int8
-	KeepLease             int64
-	ID                    string
-	ChainOrg              string
-	ChainProject          string
-	ChainEnv              string
-	Worker                pgtype.Text
-	ClaimToken            int64
-	FromPhases            []string
+	Phase                      string
+	Now                        pgtype.Timestamptz
+	LastError                  pgtype.Text
+	NextAttemptAt              pgtype.Timestamptz
+	ValidUntilAt               pgtype.Timestamptz
+	RevokeNotBeforeAt          pgtype.Timestamptz
+	PublishedRevision          pgtype.Int8
+	NotConvergedAdapterTargets pgtype.Int8
+	KeepLease                  int64
+	ID                         string
+	ChainOrg                   string
+	ChainProject               string
+	ChainEnv                   string
+	Worker                     pgtype.Text
+	ClaimToken                 int64
+	FromPhases                 []string
 }
 
 // The one settling write. It names the phases it may leave, so it is both the
@@ -1092,7 +1092,7 @@ func (q *Queries) RotationRtSettleRun(ctx context.Context, arg RotationRtSettleR
 		arg.ValidUntilAt,
 		arg.RevokeNotBeforeAt,
 		arg.PublishedRevision,
-		arg.NotConvergedConsumers,
+		arg.NotConvergedAdapterTargets,
 		arg.KeepLease,
 		arg.ID,
 		arg.ChainOrg,

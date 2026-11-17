@@ -1443,29 +1443,29 @@ type RotationKeyClaim struct {
 }
 
 type RotationRun struct {
-	ID                     string
-	OrgID                  string
-	ProjectID              string
-	EnvironmentID          string
-	RotationID             string
-	Generation             int64
-	RunTrigger             string
-	Phase                  string
-	CandidateHandle        string
-	SupersededHandle       pgtype.Text
-	CandidateValidUntil    pgtype.Timestamptz
-	PublishedRevision      pgtype.Int8
-	RevocationDelaySeconds int64
-	StartedAt              pgtype.Timestamptz
-	PhaseAt                pgtype.Timestamptz
-	LeaseOwner             pgtype.Text
-	LeaseExpiresAt         pgtype.Timestamptz
-	LeaseClaimToken        int64
-	AttemptCount           int64
-	NextAttemptAt          pgtype.Timestamptz
-	LastError              pgtype.Text
-	RevokeNotBeforeAt      pgtype.Timestamptz
-	NotConvergedConsumers  pgtype.Int8
+	ID                         string
+	OrgID                      string
+	ProjectID                  string
+	EnvironmentID              string
+	RotationID                 string
+	Generation                 int64
+	RunTrigger                 string
+	Phase                      string
+	CandidateHandle            string
+	SupersededHandle           pgtype.Text
+	CandidateValidUntil        pgtype.Timestamptz
+	PublishedRevision          pgtype.Int8
+	RevocationDelaySeconds     int64
+	StartedAt                  pgtype.Timestamptz
+	PhaseAt                    pgtype.Timestamptz
+	LeaseOwner                 pgtype.Text
+	LeaseExpiresAt             pgtype.Timestamptz
+	LeaseClaimToken            int64
+	AttemptCount               int64
+	NextAttemptAt              pgtype.Timestamptz
+	LastError                  pgtype.Text
+	RevokeNotBeforeAt          pgtype.Timestamptz
+	NotConvergedAdapterTargets pgtype.Int8
 }
 
 type Rule struct {

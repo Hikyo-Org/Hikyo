@@ -208,7 +208,7 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
-  - target: $['components']['schemas']['RotationRun']['properties']['published_revision','error_code','not_converged_consumers']
+  - target: $['components']['schemas']['RotationRun']['properties']['published_revision','error_code','not_converged_adapter_targets']
     update:
       x-omitempty: false
       x-omitzero: true

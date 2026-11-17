@@ -9,8 +9,10 @@
 -- rather than a rebuild: rotations is not written by any shipped release.
 ALTER TABLE rotations ADD COLUMN manual_run_id TEXT;
 ALTER TABLE rotations ADD COLUMN manual_skip_overlap INTEGER NOT NULL DEFAULT 0 CHECK (manual_skip_overlap IN (0, 1));
--- The consumers still on the superseded revision when the run revoked it (#148,
--- S2b-1): adapter targets mirroring the rotation's keys whose converged revision
--- is behind the run's published revision, counted just before the revoke. NULL
--- until a revoke decided; not a live reading afterwards.
-ALTER TABLE rotation_runs ADD COLUMN not_converged_consumers INTEGER;
+-- The adapter (sync) targets still on the superseded revision when the run
+-- revoked it (#148, S2b-1): non-deleted targets mirroring either rotation key
+-- whose converged revision is behind the run's published revision, counted just
+-- before the revoke. Machine principals that read the keys directly are not
+-- counted: no per-principal delivery record exists. NULL until a revoke decided;
+-- not a live reading afterwards.
+ALTER TABLE rotation_runs ADD COLUMN not_converged_adapter_targets INTEGER;

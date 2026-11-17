@@ -728,7 +728,7 @@ const (
 	OpRotationDelete  Operation = "rotation.delete"
 	// OpRotationRunNow asks for a run now (#148, S2b-1): it requests the run, the
 	// executor drives it through the same Gate and authority as a scheduled one.
-	// publish@env plus a publish ceremony over the rotation's keys.
+	// edit, publish and reveal at env (resume's formula) plus a publish ceremony.
 	OpRotationRunNow Operation = "rotation.run_now"
 	// OpRotationRuns lists a rotation's runs (read@env, a bare read).
 	OpRotationRuns Operation = "rotation.runs"
@@ -5542,7 +5542,14 @@ var operationTable = map[Operation]opSpec{
 	},
 	OpRotationRunNow: {
 		class: ClassTenant, level: domain.LevelEnv,
-		formula: Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
+		// Run-now is resume's equivalent, so it needs resume's formula (edit,
+		// publish and reveal): the per-key checks on both rotation keys run under
+		// this operation, so a denial is recorded as a rotation.run_now denial.
+		formula: Formula{
+			{Cap: domain.CapEdit, At: domain.LevelEnv},
+			{Cap: domain.CapPublish, At: domain.LevelEnv},
+			{Cap: domain.CapReveal, At: domain.LevelEnv},
+		},
 		// Run-now consumes the publish reauthentication window over the rotation's
 		// keys after the grant passes; its refusal is a reachable 403.
 		postGrantForbidden: true,

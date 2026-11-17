@@ -940,6 +940,14 @@ export type RotationStateRequest = {
 
 export type RunRotationNowRequest = {
     /**
+     * The run-now confirmation, required on every request. It must be true: the
+     * run publishes a new credential now, off the schedule, and with
+     * `skip_overlap` revokes the superseded one at once. False or absent is
+     * refused by name.
+     *
+     */
+    confirm_destructive: boolean;
+    /**
      * The generation the caller last read. Omitted or null means the current generation.
      */
     expected_generation?: number | null;
@@ -979,9 +987,9 @@ export type RotationRun = {
      */
     error_code?: string | null;
     /**
-     * Adapter targets still behind the published revision when the run decided to revoke the superseded credential. Null until then.
+     * Adapter (sync) targets that mirror either rotation key and had not converged to the published revision when the run decided to revoke the superseded credential. Machine principals that read the keys directly are not counted. Null until then.
      */
-    not_converged_consumers?: number | null;
+    not_converged_adapter_targets?: number | null;
 };
 
 export type RotationRunList = {
@@ -34094,7 +34102,7 @@ export type ResumeRotationResponses = {
 export type ResumeRotationResponse = ResumeRotationResponses[keyof ResumeRotationResponses];
 
 export type RunRotationNowData = {
-    body?: RunRotationNowRequest;
+    body: RunRotationNowRequest;
     path: {
         /**
          * Organisation identifier.

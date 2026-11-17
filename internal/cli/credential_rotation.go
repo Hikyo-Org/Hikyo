@@ -49,8 +49,8 @@ func rotationRunsTable(list apigen.RotationRunList) Table {
 		if r.ErrorCode != nil {
 			code = *r.ErrorCode
 		}
-		if r.NotConvergedConsumers != nil {
-			converged = strconv.FormatInt(*r.NotConvergedConsumers, 10)
+		if r.NotConvergedAdapterTargets != nil {
+			converged = strconv.FormatInt(*r.NotConvergedAdapterTargets, 10)
 		}
 		rows = append(rows, []string{
 			string(r.Id), string(r.Trigger), string(r.Phase), revision,
@@ -59,8 +59,8 @@ func rotationRunsTable(list apigen.RotationRunList) Table {
 		})
 	}
 	return Table{
-		// Metadata only: no role name, candidate or provider detail is returned.
-		Columns: []string{"RUN", "TRIGGER", "PHASE", "REVISION", "REVOCATION DELAY", "STARTED", "PHASE AT", "ERROR", "NOT CONVERGED"},
+		// Metadata only: no password, candidate or provider detail is returned.
+		Columns: []string{"RUN", "TRIGGER", "PHASE", "REVISION", "REVOCATION DELAY", "STARTED", "PHASE AT", "ERROR", "NOT CONVERGED TARGETS"},
 		Rows:    rows,
 		JSON:    list,
 	}
@@ -84,7 +84,7 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 		}
 		if sub == "run-now" {
 			fs.BoolVar(&skipOverlap, "skip-overlap", false, "revoke the superseded credential right after the new one is published, with no overlap")
-			fs.BoolVar(&confirmDestructive, "confirm-destructive", false, "confirm --skip-overlap: a consumer that has not picked up the new credential loses access")
+			fs.BoolVar(&confirmDestructive, "confirm-destructive", false, "required: confirm the run publishes a new credential now; with --skip-overlap a consumer that has not picked it up loses access")
 		}
 		if sub == "delete" {
 			fs.BoolVar(&abandon, "abandon", false, "close the rotation's unsettled runs instead of refusing; nothing already delivered is revoked")
@@ -234,10 +234,10 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 		if id == "" {
 			return failf(ExitUsage, "rotation run-now requires a rotation id")
 		}
-		if skipOverlap && !confirmDestructive {
-			return failf(ExitUsage, "rotation run-now --skip-overlap revokes the superseded credential right after the new one is published, so a consumer that has not picked up the new credential loses access; pass --confirm-destructive to proceed")
+		if !confirmDestructive {
+			return failf(ExitUsage, "rotation run-now publishes a new credential now, outside the schedule (with --skip-overlap it also revokes the superseded one at once, so a consumer that has not picked up the new credential loses access); pass --confirm-destructive to proceed")
 		}
-		var body apigen.RunRotationNowRequest
+		body := apigen.RunRotationNowRequest{ConfirmDestructive: true}
 		if expectedGeneration != 0 {
 			body.ExpectedGeneration = &expectedGeneration
 		}

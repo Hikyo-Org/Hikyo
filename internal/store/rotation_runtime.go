@@ -137,7 +137,7 @@ type RotationSettle struct {
 	RevokeNotBefore time.Time
 	// PublishedRevision, when non-zero, records the revision this run published.
 	PublishedRevision int64
-	// NotConverged, when set, records the consumers still on the superseded
+	// NotConverged, when set, records the adapter targets still on the superseded
 	// revision at the revoke decision (#148, S2b-1).
 	NotConverged *int64
 	// KeepLease leaves the lease held, for a settle that is followed by a
@@ -237,8 +237,8 @@ func mapNoRows(err error) error {
 }
 
 // NotConverged counts the adapter targets that mirror the run's keys and have
-// not converged to the run's published revision: the consumers that may still
-// hold the superseded credential (#148, S2b-1). Machine principals reading the
+// not converged to the run's published revision: the adapter targets that may
+// still hold the superseded credential (#148, S2b-1). Machine principals reading the
 // keys directly are not counted: no per-principal delivery is recorded.
 func (r *RotationRuntime) NotConverged(ctx context.Context, run RotationRun) (int64, error) {
 	return rotationRead(ctx, r, func(q rotationRuntimeQueries) (int64, error) { return q.notConverged(ctx, run) })
@@ -266,7 +266,8 @@ const RotationOrgLeaseCap = 4
 // already leased to the worker, parks the rotation's next_run_at at the
 // pre-publish deadline and writes the INTENT effect. The candidate handle is
 // therefore durable before the provider is touched. started is false when the
-// rotation was taken, paused, or already running.
+// rotation was taken, paused, already running, or a run-now request arrived
+// since the selection (the next sweep re-selects it as a manual run).
 func (r *RotationRuntime) StartRun(ctx context.Context, d DueRotation, s StartRun) (RotationRun, bool, error) {
 	var out RotationRun
 	started := false

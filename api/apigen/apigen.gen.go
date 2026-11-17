@@ -10899,8 +10899,8 @@ type RotationRun struct {
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id ID `json:"id"`
 
-	// NotConvergedConsumers Adapter targets still behind the published revision when the run decided to revoke the superseded credential. Null until then.
-	NotConvergedConsumers *int64 `json:"not_converged_consumers,omitzero"`
+	// NotConvergedAdapterTargets Adapter (sync) targets that mirror either rotation key and had not converged to the published revision when the run decided to revoke the superseded credential. Machine principals that read the keys directly are not counted. Null until then.
+	NotConvergedAdapterTargets *int64 `json:"not_converged_adapter_targets,omitzero"`
 
 	// Phase The run's state-machine phase. `quarantine` and `failed` are terminal; `done` is a settled run.
 	Phase RotationRunPhase `json:"phase"`
@@ -11056,6 +11056,12 @@ type RuleWhere struct {
 
 // RunRotationNowRequest defines model for RunRotationNowRequest.
 type RunRotationNowRequest struct {
+	// ConfirmDestructive The run-now confirmation, required on every request. It must be true: the
+	// run publishes a new credential now, off the schedule, and with
+	// `skip_overlap` revokes the superseded one at once. False or absent is
+	// refused by name.
+	ConfirmDestructive bool `json:"confirm_destructive"`
+
 	// ExpectedGeneration The generation the caller last read. Omitted or null means the current generation.
 	ExpectedGeneration *int64 `json:"expected_generation,omitzero"`
 
@@ -97053,13 +97059,10 @@ func (sh *strictHandler) RunRotationNow(w http.ResponseWriter, r *http.Request, 
 
 	var body RunRotationNowJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		if !errors.Is(err, io.EOF) {
-			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-			return
-		}
-	} else {
-		request.Body = &body
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
 	}
+	request.Body = &body
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.RunRotationNow(ctx, request.(RunRotationNowRequestObject))

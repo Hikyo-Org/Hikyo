@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -26,8 +27,13 @@ type rotationWire struct {
 func (w *rotationWire) handler(t *testing.T) http.Handler {
 	t.Helper()
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		line := r.Method + " " + r.URL.RequestURI()
+		if r.Method == http.MethodPost {
+			body, _ := io.ReadAll(r.Body)
+			line += " " + string(body)
+		}
 		w.mu.Lock()
-		w.seen = append(w.seen, r.Method+" "+r.URL.RequestURI())
+		w.seen = append(w.seen, line)
 		w.mu.Unlock()
 		rw.Header().Set("Content-Type", "application/json")
 		switch {
@@ -36,7 +42,7 @@ func (w *rotationWire) handler(t *testing.T) http.Handler {
 			_ = jsonwire.Encode(rw, apigen.RotationRunList{
 				Items: []apigen.RotationRun{{
 					Id: "rrn_70", Trigger: apigen.RotationRunTriggerManual, Phase: apigen.RotationRunPhaseDone,
-					PublishedRevision: &revision, NotConvergedConsumers: &converged, ErrorCode: &code, RevocationDelaySeconds: 3600,
+					PublishedRevision: &revision, NotConvergedAdapterTargets: &converged, ErrorCode: &code, RevocationDelaySeconds: 3600,
 					StartedAt: time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC), PhaseAt: time.Date(2030, 1, 2, 4, 4, 5, 0, time.UTC),
 				}},
 				NextAfter: &[]string{"rrn_69"}[0],
@@ -60,20 +66,38 @@ func (w *rotationWire) take() []string {
 	return out
 }
 
-// run-now --skip-overlap revokes at once, so the CLI refuses it without the
-// explicit confirmation, before any request that could consume a ceremony.
-func TestRotationRunNowSkipOverlapNeedsConfirmation(t *testing.T) {
+// run-now publishes a new credential off the schedule, so the CLI refuses every
+// run-now without the explicit confirmation, before any request that could
+// consume a ceremony; the server enforces the same field.
+func TestRotationRunNowNeedsConfirmation(t *testing.T) {
+	for _, extra := range [][]string{nil, {"--skip-overlap"}} {
+		var wire rotationWire
+		ios, _, stderr := definitionsTestIO(t, wire.handler(t))
+		args := append(append([]string{"rotation", "run-now", "rot_70"}, extra...), rotationScope...)
+		if code := cli.Run(t.Context(), ios, args); code != cli.ExitUsage {
+			t.Fatalf("%v: exit %d, want usage; stderr=%s", extra, code, stderr)
+		}
+		if !strings.Contains(stderr.String(), "--confirm-destructive") {
+			t.Fatalf("%v: stderr = %q", extra, stderr)
+		}
+		if seen := wire.take(); len(seen) != 0 {
+			t.Fatalf("%v: requests before the refusal: %v", extra, seen)
+		}
+	}
+}
+
+// The confirmation travels in the body as confirm_destructive, next to skip_overlap.
+func TestRotationRunNowSendsTheConfirmation(t *testing.T) {
 	var wire rotationWire
 	ios, _, stderr := definitionsTestIO(t, wire.handler(t))
-	args := append([]string{"rotation", "run-now", "rot_70", "--skip-overlap"}, rotationScope...)
-	if code := cli.Run(t.Context(), ios, args); code != cli.ExitUsage {
-		t.Fatalf("exit %d, want usage; stderr=%s", code, stderr)
+	args := append([]string{"rotation", "run-now", "rot_70", "--confirm-destructive", "--skip-overlap"}, rotationScope...)
+	if code := cli.Run(t.Context(), ios, args); code != cli.ExitOK {
+		t.Fatalf("exit %d; stderr=%s", code, stderr)
 	}
-	if !strings.Contains(stderr.String(), "--confirm-destructive") {
-		t.Fatalf("stderr = %q", stderr)
-	}
-	if seen := wire.take(); len(seen) != 0 {
-		t.Fatalf("requests before the refusal: %v", seen)
+	seen := wire.take()
+	if len(seen) != 1 || !strings.HasPrefix(seen[0], "POST "+rotationBase+"/run-now ") ||
+		!strings.Contains(seen[0], `"confirm_destructive":true`) || !strings.Contains(seen[0], `"skip_overlap":true`) {
+		t.Fatalf("requests = %v", seen)
 	}
 }
 

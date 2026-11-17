@@ -560,10 +560,13 @@ func (s *CredentialRotations) Delete(ctx context.Context, actor Actor, scope dom
 // RunNowRequest asks for a run now. ExpectedGeneration 0 means "the current
 // generation". SkipOverlap makes the run revoke the superseded credential right
 // after the publish (a revocation delay of zero for this run only).
+// ConfirmDestructive must be true on every request: a run-now publishes a new
+// credential off the schedule, and a skipped overlap revokes the old one at once.
 type RunNowRequest struct {
 	RotationID         string
 	ExpectedGeneration int64
 	SkipOverlap        bool
+	ConfirmDestructive bool
 }
 
 // RunNowResult names the run the executor will start; it does not exist until
@@ -577,16 +580,21 @@ type RunNowResult struct {
 var (
 	// ErrRotationRunInFlight refuses a run-now while the rotation has an unsettled run.
 	ErrRotationRunInFlight = &rotationRefusal{"the rotation has a run in flight; let it finish first", domain.ErrConflict}
+	// ErrRotationRunNowUnconfirmed refuses a run-now that did not confirm itself.
+	ErrRotationRunNowUnconfirmed = &rotationRefusal{"a run-now publishes a new credential outside the schedule, and with skip-overlap revokes the superseded one at once; confirm it with confirm_destructive", domain.ErrConflict}
 	// ErrRotationRunPending refuses a second run-now while one waits for the executor.
 	ErrRotationRunPending = &rotationRefusal{"a run was already requested and has not started yet", domain.ErrConflict}
 )
 
-// RunNow requests a run outside the schedule. It is the same human act as
-// resume, so a signed-in person consumes the publish ceremony over the rotation's
-// keys, but it executes nothing: the request makes the rotation due, and the
-// executor starts the run through its normal path with the recorded authority,
-// the pre-publish Gate and the overlap, exactly as a scheduled run. A manual run
-// bypasses neither.
+// RunNow requests a run outside the schedule. It is resume's equivalent: a
+// signed-in person who holds edit, publish and reveal on both keys, under this
+// operation, and who consumes the publish ceremony over them, so a publisher
+// without reveal cannot start one. It executes nothing: the request makes the
+// rotation due now, and the executor starts the run through its normal path with
+// the recorded authority, the pre-publish Gate and the overlap, exactly as a
+// scheduled run. A manual run bypasses none of them. Because it resets the next
+// run time to now it also overrides a retry backoff; the attempt cap and the
+// retry deadline still apply.
 func (s *CredentialRotations) RunNow(ctx context.Context, actor Actor, scope domain.Scope, req RunNowRequest) (RunNowResult, error) {
 	if err := requireRotationEnv(scope, "run-now", req.RotationID); err != nil {
 		return RunNowResult{}, err
@@ -601,6 +609,9 @@ func (s *CredentialRotations) RunNow(ctx context.Context, actor Actor, scope dom
 		if err := requireRotationHuman(caller); err != nil {
 			return err
 		}
+		if !req.ConfirmDestructive {
+			return ErrRotationRunNowUnconfirmed
+		}
 		cur, err := r.Rotations().Get(ctx, proof, req.RotationID)
 		if err != nil {
 			return err
@@ -611,6 +622,11 @@ func (s *CredentialRotations) RunNow(ctx context.Context, actor Actor, scope dom
 		if cur.State != store.RotationStateActive {
 			return fmt.Errorf("%w: only an active rotation can run now (state is %s)", domain.ErrConflict, cur.State)
 		}
+		for _, id := range []string{cur.KeyID, cur.UsernameKeyID} {
+			if _, err := az.AuthorizeKey(ctx, caller, authz.OpRotationRunNow, scope, authz.KeyByID(id)); err != nil {
+				return err
+			}
+		}
 		open, err := r.Rotations().CountOpenRuns(ctx, proof, cur.ID)
 		if err != nil {
 			return err
@@ -618,7 +634,8 @@ func (s *CredentialRotations) RunNow(ctx context.Context, actor Actor, scope dom
 		if open > 0 {
 			return ErrRotationRunInFlight
 		}
-		// Refused above before the ceremony is consumed, so a refusal costs no reauth.
+		// The ceremony is consumed inside this transaction, so any refusal below,
+		// the pending-request one included, rolls the consumption back with it.
 		if err := s.requireRotationCeremony(ctx, az, caller, scope, cur.KeyID, cur.UsernameKeyID); err != nil {
 			return err
 		}
@@ -626,7 +643,7 @@ func (s *CredentialRotations) RunNow(ctx context.Context, actor Actor, scope dom
 		if err != nil {
 			return err
 		}
-		if _, err := r.Rotations().RequestRun(ctx, proof, store.RotationRunRequest{RotationID: cur.ID, RunID: runID, SkipOverlap: req.SkipOverlap, ExpectedGeneration: cur.Generation, At: now}); err != nil {
+		if err := r.Rotations().RequestRun(ctx, proof, store.RotationRunRequest{RotationID: cur.ID, RunID: runID, SkipOverlap: req.SkipOverlap, ExpectedGeneration: cur.Generation, At: now}); err != nil {
 			switch {
 			case errors.Is(err, store.ErrRotationRunPending):
 				return ErrRotationRunPending
@@ -635,10 +652,13 @@ func (s *CredentialRotations) RunNow(ctx context.Context, actor Actor, scope dom
 			}
 			return err
 		}
-		// The UPDATE above holds the rotation row, which the executor locks to start
-		// a run, so a run that started before it is committed and visible here. Without
-		// this re-check a run that opened after the first count would leave the request
-		// pending until its next scheduled start; the refusal rolls the request back.
+		// A run the executor started between the first count and this write is
+		// caught here: the write transaction is serializable (retried on a
+		// serialization failure on PostgreSQL, BEGIN IMMEDIATE on SQLite), and the
+		// UPDATE above holds the row the executor locks to start a run, so the
+		// recount sees any run that committed first. Without it that run would leave
+		// the request pending until the next scheduled start; the refusal rolls the
+		// request back.
 		if open, err := r.Rotations().CountOpenRuns(ctx, proof, cur.ID); err != nil {
 			return err
 		} else if open > 0 {
@@ -779,6 +799,11 @@ func (s *CredentialRotations) transition(ctx context.Context, actor Actor, scope
 			if open > 0 {
 				if !req.Abandon {
 					return fmt.Errorf("%w: the rotation has a run in flight; let it finish or abandon it", domain.ErrConflict)
+				}
+				// Abandoning quarantines runs by hand, a standing-delegation decision
+				// like create, resume and run-now, so only a signed-in person makes it.
+				if err := requireRotationHuman(caller); err != nil {
+					return err
 				}
 				// Abandon closes every unsettled run, loudly. A run before its
 				// publish becomes quarantine and keeps its candidate for the

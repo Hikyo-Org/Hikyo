@@ -606,7 +606,8 @@ func (e *RotationExecutor) startRun(ctx context.Context, worker string, d store.
 		return false, e.deferDue(ctx, d, now, "start", err)
 	}
 	if !ok {
-		// Another worker took the rotation, or it was paused or already running.
+		// Another worker took the rotation, or it was paused or already running, or
+		// a run-now request arrived since the selection and the next sweep picks it up.
 		return true, nil
 	}
 	return true, e.mint(attributed(ctx, d.AuthorityPrincipalID, runID), started, intent.EffectID)
@@ -1430,7 +1431,7 @@ func (e *RotationExecutor) revoke(ctx context.Context, run store.RotationRun) er
 		}
 		return err
 	}
-	// The consumers still behind the published revision, read before the drop: the
+	// The adapter targets still behind the published revision, read before the drop: the
 	// report a run that skips its overlap owes. A failed read leaves it out; the
 	// revoke does not wait on a report.
 	notConverged := e.notConverged(ctx, run)
@@ -1445,7 +1446,7 @@ func (e *RotationExecutor) revoke(ctx context.Context, run store.RotationRun) er
 	finish := func(result audit.Outcome, code, phase string, next time.Time) error {
 		var extra audit.Payload
 		if notConverged != nil {
-			extra = audit.Payload{"not_converged_consumers": *notConverged}
+			extra = audit.Payload{"not_converged_adapter_targets": *notConverged}
 		}
 		closed, err := e.outcomeWith(run, intent.EffectID, "revoke", result, code, now, extra)
 		if err != nil {
@@ -1482,7 +1483,7 @@ func (e *RotationExecutor) notConverged(ctx context.Context, run store.RotationR
 	}
 	n, err := e.Runtime.NotConverged(ctx, run)
 	if err != nil {
-		e.warn("rotation revoke could not count unconverged consumers", run, "revoke", err)
+		e.warn("rotation revoke could not count unconverged adapter targets", run, "revoke", err)
 		return nil
 	}
 	return &n

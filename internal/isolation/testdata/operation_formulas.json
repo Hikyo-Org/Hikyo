@@ -2012,7 +2012,9 @@
     "class": "tenant",
     "level": "environment",
     "formula": [
-      "publish@environment"
+      "edit@environment",
+      "publish@environment",
+      "reveal@environment"
     ],
     "post_grant_forbidden": true
   },

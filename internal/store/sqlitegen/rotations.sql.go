@@ -793,7 +793,7 @@ func (q *Queries) RotationListAll(ctx context.Context, arg RotationListAllParams
 }
 
 const rotationListRuns = `-- name: RotationListRuns :many
-SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_consumers FROM rotation_runs WHERE rotation_id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 ORDER BY id DESC LIMIT ?5
+SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_adapter_targets FROM rotation_runs WHERE rotation_id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 ORDER BY id DESC LIMIT ?5
 `
 
 type RotationListRunsParams struct {
@@ -805,15 +805,15 @@ type RotationListRunsParams struct {
 }
 
 type RotationListRunsRow struct {
-	ID                     string
-	RunTrigger             string
-	Phase                  string
-	PublishedRevision      sql.NullInt64
-	RevocationDelaySeconds int64
-	StartedAt              string
-	PhaseAt                string
-	LastError              sql.NullString
-	NotConvergedConsumers  sql.NullInt64
+	ID                         string
+	RunTrigger                 string
+	Phase                      string
+	PublishedRevision          sql.NullInt64
+	RevocationDelaySeconds     int64
+	StartedAt                  string
+	PhaseAt                    string
+	LastError                  sql.NullString
+	NotConvergedAdapterTargets sql.NullInt64
 }
 
 // A page of a rotation's runs, newest first. Run ids are time-ordered (UUIDv7); a
@@ -845,7 +845,7 @@ func (q *Queries) RotationListRuns(ctx context.Context, arg RotationListRunsPara
 			&i.StartedAt,
 			&i.PhaseAt,
 			&i.LastError,
-			&i.NotConvergedConsumers,
+			&i.NotConvergedAdapterTargets,
 		); err != nil {
 			return nil, err
 		}
@@ -861,7 +861,7 @@ func (q *Queries) RotationListRuns(ctx context.Context, arg RotationListRunsPara
 }
 
 const rotationListRunsAfter = `-- name: RotationListRunsAfter :many
-SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_consumers FROM rotation_runs WHERE rotation_id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND id < ?5 ORDER BY id DESC LIMIT ?6
+SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_adapter_targets FROM rotation_runs WHERE rotation_id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND id < ?5 ORDER BY id DESC LIMIT ?6
 `
 
 type RotationListRunsAfterParams struct {
@@ -874,15 +874,15 @@ type RotationListRunsAfterParams struct {
 }
 
 type RotationListRunsAfterRow struct {
-	ID                     string
-	RunTrigger             string
-	Phase                  string
-	PublishedRevision      sql.NullInt64
-	RevocationDelaySeconds int64
-	StartedAt              string
-	PhaseAt                string
-	LastError              sql.NullString
-	NotConvergedConsumers  sql.NullInt64
+	ID                         string
+	RunTrigger                 string
+	Phase                      string
+	PublishedRevision          sql.NullInt64
+	RevocationDelaySeconds     int64
+	StartedAt                  string
+	PhaseAt                    string
+	LastError                  sql.NullString
+	NotConvergedAdapterTargets sql.NullInt64
 }
 
 func (q *Queries) RotationListRunsAfter(ctx context.Context, arg RotationListRunsAfterParams) ([]RotationListRunsAfterRow, error) {
@@ -910,7 +910,7 @@ func (q *Queries) RotationListRunsAfter(ctx context.Context, arg RotationListRun
 			&i.StartedAt,
 			&i.PhaseAt,
 			&i.LastError,
-			&i.NotConvergedConsumers,
+			&i.NotConvergedAdapterTargets,
 		); err != nil {
 			return nil, err
 		}
@@ -950,7 +950,7 @@ func (q *Queries) RotationManualPending(ctx context.Context, arg RotationManualP
 }
 
 const rotationPauseActive = `-- name: RotationPauseActive :execrows
-UPDATE rotations SET state='paused',next_run_at=NULL,generation=generation+1,updated_at=?1 WHERE id=?2 AND org_id=?3 AND project_id=?4 AND state='active'
+UPDATE rotations SET state='paused',next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=0,generation=generation+1,updated_at=?1 WHERE id=?2 AND org_id=?3 AND project_id=?4 AND state='active'
 `
 
 type RotationPauseActiveParams struct {
