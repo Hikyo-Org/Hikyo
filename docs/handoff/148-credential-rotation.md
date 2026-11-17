@@ -15,7 +15,9 @@ the session that ran the reviews, not kept in this file.
 - `mvp-boundary.md` §4.1 "Arbitrary third-party rotation": flipped **In for exactly
   one provider, PostgreSQL**; every other provider keeps the per-provider trigger.
 - `api-cli-surface.md`: declared amendment adding the closed `rotation` verb family
-  (`create|list|show|pause|resume|run-now|delete`, `runs`) and its API paths.
+  (`create|list|show|pause|resume|release-hold|run-now|delete`, `runs`) and its API paths.
+- `audit-events` (`rotation.configured`): the `action` enum gains `hold_released` (S2b-2);
+  no new event type.
 - `system-architecture.md` § Jobs: a third domain-specific outbox in the dynamic
   outbox pattern; no generic queue, no `SiteScheduler` growth.
 - `docs/spec/ops-catalogue.md` § Scheduled credential rotation (#148): the four bounds.
@@ -194,8 +196,10 @@ decision 13). Never a `SystemProof`, never a scheduler site.
    `paused` or a `halted` rotation and runs the same full authorization for both. This is
    the S2 `Gate` shape in miniature.
 5. **CAS.** `pause`, `resume`, `delete` carry `expected_generation`; a stale value is
-   `409`. Every mutation increments `generation`.
-6. **Audit.** Only `rotation.configured` (`action`: `created|paused|resumed|deleted`;
+   `409`. Every mutation increments `generation`, **except `release-hold` and the restore
+   hold itself** (S2b-2: an in-flight run asserts the generation it started under; see
+   "S2b-2 as built"). The pre-00094 fallback pause of a restore does bump it.
+6. **Audit.** Only `rotation.configured` (`action`: `created|paused|resumed|deleted`, plus `hold_released` from S2b-2;
    plus `environment_id` on every action, the optional `reason` of a cascade pause
    (`provider_deleted`, `provider_credential_revoked`, `environment_protected`,
    `approval_policy_enabled`) and the `credential_expires_at` in force) is registered in S1. **Divergence from the brief:** the run events are *specified*
@@ -571,7 +575,9 @@ start at `D + 1s` is refused as `retries_exhausted`.
 
 ### Run-now (S2)
 
-Superseded by "S2b-1 as built" (the Run-now subsection): `OpRotationRunNow` takes resume's
+Superseded by "S2b-1 as built" (the Run-now subsection) and, for who may call it, by
+"S2b-2 as built" (run-now is key-aware: the formula is authorized on both keys, not only
+environment-wide): `OpRotationRunNow` takes resume's
 formula (`edit`, `publish` and `reveal` at the environment, environment-wide), a
 `PurposePublish` ceremony over both keys and a required `confirm_destructive` body field
 (CLI `--confirm-destructive`) on every request. `--skip-overlap` snapshots
@@ -695,6 +701,10 @@ operator e2e (`k8se2e`) asserting a rollout after rotation.
    uniform not-found. An environment-wide second person can resume such a creator's
    rotation as long as the creator still holds the formula on both keys through the rules.
    Making resume, pause and delete key-aware for narrowed creators is on the S2 checklist.
+   **Superseded by "S2b-2 as built" (Key-aware pause, resume, delete, run-now):** all four
+   verbs, and release-hold, now authorize the operation on both stored keys; pause and
+   delete keep their `publish` formula but a one-key holder is refused. The outer
+   environment-level step described here no longer decides.
 
 ## S2a as built (executor)
 
@@ -1172,29 +1182,57 @@ Done; see "S2b-2 as built". S2b-2 must ship in the same release as S2a and S2b-1
 `hikyo_rotation_gauges_known`. All label-free, from one `RotationRtGauges` read (instance
 scope, one series each; the conformance bound registry pins `MaxSeries: 1`). Overdue means an
 active, unheld rotation more than `RotationOverdueGrace` (15 minutes) past `next_run_at` with
-no run open; expiring means a delivered credential inside `RotationExpiringWithin` (6 hours)
-of `credential_expires_at`, for any state but deleted. `hikyo doctor` has one `rotation`
+no run open, measured from the first due time (`rotations.deferred_from`, set only when a
+datastore fault defers the start, cleared by every real schedule write) so a deferral cannot
+hide it; expiring means a delivered credential whose `credential_expires_at` is in the next
+`RotationExpiringWithin` (6 hours) and not yet past, for any state but deleted. A lapsed
+credential is not counted (it halts or overdues its rotation instead); a separate "expired"
+gauge was left out as unneeded. The counts are read once per scrape, by the metrics
+collector; the audited retention health read (doctor) reads them with a 2 second bound.
+A partial index (`rotation_runs_env_published`, migration 00094) backs the expiring
+subquery. Doctor reports counts only and names no tenant or rotation id, a deliberate
+deviation from listing the affected ids: it tells the operator to run `hikyo rotation list`
+(halted, held, overdue) and `hikyo rotation runs <rotation>` (quarantined, refused, unknown
+outcome). **Flag for owner sign-off.** `hikyo doctor` has one `rotation`
 finding fed by `RetentionHealth` (new optional fields, omitted when unmeasured, so doctor
 says `unknown`, never ok).
 
 ### Key-aware pause, resume, delete, run-now
 
-`authorizeRotationKeys` reads the rotation under `rotation.inspect` (read is never
-key-narrowed), then authorizes the operation on both stored keys. An environment-wide holder
-passes both keys, so nothing narrows for them; a key-narrowed holder passes exactly when they
-pass for each key, like the create that made the rotation.
-**Deviation:** a caller without `read` is denied under `rotation.inspect`, not under the
-operation. The alternative is a rotation-key target inside authz (costlier).
-Denials stay under the operation itself because the per-key step names it.
-`TestRotationTransitionsAreKeyAware` pins the allowed and refused cases.
+`authorizeRotationKeys` authorizes the operation on both stored keys. An environment-wide
+holder passes both keys, so nothing narrows for them; a key-narrowed holder passes exactly
+when they pass for each key, like the create that made the rotation. The rotation is looked
+up under a proof chosen without recording a denial (`CallerHolds`): the operation's own
+environment-wide proof when held (so a publisher without read can pause), else the inspect
+proof (how a key-narrowed holder finds the keys), else the operation itself is authorized so
+the refusal is recorded under it. Every refusal, an absent rotation included, answers the same
+not-found, and no denial lands under `rotation.inspect` any more.
+**Remaining deviation:** a person who holds the operation only through key-narrowed rules and
+lacks read cannot look the rotation up, so they are refused (denied under the operation).
+Options: (A) accept, as built; (B) an authz primitive that resolves a rotation's keys inside
+authz (a new registry concept, not a wider `SiteScheduler`); (C) require read for key-narrowed
+rules. Recommendation: A. Also: a key-narrowed holder cannot pause or delete a rotation whose
+key was deleted (the key lookup answers not-found); an environment-wide holder can.
+`TestRotationTransitionsAreKeyAware` and `TestRotationTransitionLookupNeedsNoRead` pin it.
 
 ### Restore hold
 
 - Migration 00094 adds `rotations.restore_hold` (both engines). `CompleteRestore` calls
   `HoldRestoredRotations`: every non-deleted rotation, paused and halted included, is held.
   The closure runs against the archive's schema before migrations, so it probes the table
-  and the column; an archive from migrations 00091 to 00093 (pre-release builds only, no
-  tagged release has the table) has no column, so its active rotations are paused.
+  and the column; an archive from migrations 00091 to 00093 (nightly tags such as
+  `v1.1.0-nightly.20261111` already contain 00091; no stable release does) has no column,
+  so only its **active** rotations are paused, and that pause bumps the generation. Its
+  paused and halted rotations restore **unheld**, exactly as they were. The hold also clears
+  a queued run-now (`manual_run_id`, `manual_skip_overlap`), so releasing never fires a
+  skip-overlap revoke of a role still serving; the rotation stays due, so the first run
+  after release is an ordinary scheduled one. Delete clears the hold in the same write
+  (`RotationSetState`), so no reader sees a deleted rotation held.
+- Audit: a restore writes one instance event, `restore.completed`, for the whole act. The
+  hold is not a per-rotation decision (it applies to every non-deleted rotation, by the local
+  host authority), so it adds no per-rotation row; each release is audited
+  (`rotation.configured`, `hold_released`) and the held state is visible in `show`, `list`
+  and the gauge. If an owner wants a per-rotation restore row, that is a follow-up.
 - A held rotation is a non-active one to the executor (projected into the run's
   `RotationState`): no start, no pre-publish step, no extend; a run past its publish
   continues to its revoke and a candidate drop continues. The stored `state` is unchanged,
@@ -1205,18 +1243,30 @@ Denials stay under the operation itself because the per-key step names it.
   it), the publish ceremony, an optional generation compare-and-set, audited as
   `rotation.configured` with `action: hold_released` (no new event type). It lifts the hold
   only. It does not resume, does not drop a superseded role, does not touch a run and does
-  not bump the generation (an in-flight run asserts the generation it started under).
+  not bump the generation (an in-flight run asserts the generation it started under). Before
+  the ceremony is consumed it preflights what resume does (provider can mint, keys exist and
+  fit, the recorded authority still holds the formula on both keys), refusing with the same
+  named errors, so a release never hands the executor a rotation whose first Gate halts it.
+  A run recovered while the rotation is held records `rotation_held` (not `rotation_paused`).
 - `rotation show`, `list` and `runs` print a `RESTORE HOLD` line on stderr with the
   `credential_expires_at` deadline; the JSON carries `restore_hold`.
 - Observed: a hold that outlasts the delivered credential's window makes the first run after
   release halt (`retries_exhausted`); the operator resumes after checking the credential.
+- API: `restore_hold` is a **required** field of the `CredentialRotation` response, so a
+  revision 19 SDK talking to a revision 18 server fails to parse the rotation. Accepted:
+  rotations have not shipped in a stable release and the nightlies that carry them move with
+  the server; making it optional would hide a held rotation from an old client.
+- Run records gain `credential_valid_until` (additive, optional): for `revoke_refused` the
+  superseded role's expiry, for quarantine the candidate's. `rotation runs` and `rotation
+  show` print an `ATTENTION` line per such run. The run-level release action stays unbuilt.
 - Tests: `TestRotationRestoreHold`, `TestRotationRestoreHoldFallbackPausesWithoutTheColumn`,
   `TestRotationReleaseLeavesARefusedRunAlone` (the run-level hold stays untouched).
 
 ### Incident containment
 
-A contained principal loads no grants, so the rotation's Gate (`RecordedPrincipalHolds`)
-refuses at its next start and halts the rotation; a release of the principal never resumes it
+A contained principal loads no grants, so a Gate that runs while the principal is contained
+(`RecordedPrincipalHolds`) refuses at the rotation's next start and halts it. Containment
+does not stop a run already past its Gate or a revoke in flight; a release of the principal never resumes it
 (`TestRotationHaltsWhenItsAuthorityIsContained`). That is containment through the existing
 seam. **Stopped, owner decision needed:** listing a principal's rotations as ledger items and
 pausing them through an owner function. What is settled: the ledger vocabulary is code-level
@@ -1247,6 +1297,17 @@ Options for the operator's view of that hold after a restore:
 - C. A separate human acknowledgement that extends the superseded role.
 - Recommendation: A for this release, B as a follow-up if operators ask. C hands the
   operator a way to keep a role the instance can no longer account for.
+
+### Open owner decision: restored in-flight runs may drop a role consumers already fetched
+
+(Security review round 1, M2; no code changed.) `recoverInFlight` and the failed/quarantine
+reconciler drop provider roles while a rotation is held. Scenario: the archive was taken while
+a run was `minting` or `minted`; the live instance then published that run's candidate and
+consumers fetched it. After the restore the archive says the run never published, so recovery
+rolls it back and `DROP ROLE IF EXISTS` kills a credential consumers already hold, with no
+restore assertion guarding the drop. Options: (A) keep as built and document the risk;
+(B) skip pre-publish candidate drops while the rotation is held, leaving the role to expire at
+its `VALID UNTIL` (costs a lingering unused role). Recommendation: B.
 
 ### Judgment calls
 

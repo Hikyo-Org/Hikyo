@@ -14,10 +14,13 @@ time.
 Creating or resuming a rotation arms it: once its first run is due, the server
 mints, publishes and later revokes credentials on its own, with no person
 present. Read [How a run executes](#how-a-run-executes) before you create one.
-Operator controls for an incident (pausing and deleting with run awareness, a
-loud status for a held revoke) are still being completed, so deploy this release
-together with its follow-up slice and watch `hikyo rotation show`, `hikyo rotation
-list` (state and halt reason) and the audit log while rotations are enabled.
+Pausing, deleting and run-now are run aware, and `hikyo rotation show` and
+`hikyo rotation runs` print an `ATTENTION` line on stderr for every run that still
+owes a provider role, with the time that role lapses on its own. One operator
+action is not built yet: a run held at `revoke_refused`, or closed as quarantine,
+has no release command. Its role expires at the time the line prints, or you drop
+it at the provider. Watch `hikyo rotation list` (state and halt reason), `hikyo
+doctor` and the audit log while rotations are enabled.
 :::
 
 ## What a rotation records
@@ -256,7 +259,10 @@ not prove that machine consumers are unaffected.
 its trigger (`schedule` or `manual`), phase, published revision, revocation delay,
 timestamps, the `not_converged_adapter_targets` count and, for a failed step, a
 fixed-word error code. It never shows a password, handle or provider message; a run
-id is public metadata. A page holds up to `--limit` runs (1 to 500, default 100); when more
+id is public metadata. For a run held at `revoke_refused` or closed as quarantine,
+the run carries `credential_valid_until`: when the role it still owes a drop (the
+superseded role, or the candidate) expires on its own; the CLI repeats it in the
+`ATTENTION` line. A page holds up to `--limit` runs (1 to 500, default 100); when more
 follow, the CLI prints the `--after` value that continues the list. It needs only
 **read** on the environment.
 
@@ -289,7 +295,12 @@ without a window, and the rotation halts; resume it once the credential is check
 A run held at `revoke_refused` because the keys served other values stays held
 until the old role expires, as above. An archive written before migration 00094
 has no hold column; its active rotations come back paused instead, and you resume
-them by hand.
+them by hand (that pause advances the rotation's generation, unlike a hold). Its
+paused and halted rotations come back exactly as they were, **not held**, because
+there is nothing to hold them with; check them before you resume one. A contained
+authority principal is not a restore hold: its rotation halts at the next start
+because a contained principal loads no grants, and releasing the principal does not
+resume it.
 
 ## Monitoring
 
@@ -305,11 +316,15 @@ could not be measured.
 | `hikyo_rotation_halted` | rotations the system halted |
 | `hikyo_rotation_restore_held` | rotations a restore holds, not yet released (alert on > 0) |
 | `hikyo_rotation_overdue` | active rotations more than 15 minutes past their next run with no run open |
-| `hikyo_rotation_credentials_expiring` | rotations whose delivered credential expires within 6 hours |
+| `hikyo_rotation_credentials_expiring` | rotations whose delivered credential expires within the next 6 hours (lapsed credentials are not counted) |
 | `hikyo_rotation_gauges_known` | 1 when the counts above were measured; they are omitted otherwise, not when zero |
 
-`hikyo doctor` warns when any count is above zero and points at
-`hikyo rotation list` and `hikyo rotation runs`.
+`hikyo doctor` warns when any count is above zero. It reports counts only, never
+tenant or rotation ids, so it tells you where to look: `hikyo rotation list` shows
+halted, held and overdue rotations, and `hikyo rotation runs <rotation>` shows
+quarantined, refused and unknown-outcome runs. A held rotation's run-now request is
+dropped by the restore, so the first run after a release is an ordinary scheduled
+one, never a skip-overlap run.
 
 ## API
 
