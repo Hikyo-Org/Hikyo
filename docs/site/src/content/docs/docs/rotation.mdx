@@ -16,7 +16,8 @@ mints, publishes and later revokes credentials on its own, with no person
 present. Read [How a run executes](#how-a-run-executes) before you create one.
 Pausing, deleting and run-now are run aware, and `hikyo rotation show` and
 `hikyo rotation runs` print an `ATTENTION` line on stderr for every run that still
-owes a provider role, with the time that role lapses on its own. One operator
+owes a provider role, with the time that role lapses on its own (when an extend of
+it is unsettled, the time is a lower bound and the line says so). One operator
 action is not built yet: a run held at `revoke_refused`, or closed as quarantine,
 has no release command. Its role expires at the time the line prints, or you drop
 it at the provider. Watch `hikyo rotation list` (state and halt reason), `hikyo
@@ -260,9 +261,13 @@ its trigger (`schedule` or `manual`), phase, published revision, revocation dela
 timestamps, the `not_converged_adapter_targets` count and, for a failed step, a
 fixed-word error code. It never shows a password, handle or provider message; a run
 id is public metadata. For a run held at `revoke_refused` or closed as quarantine,
-the run carries `credential_valid_until`: when the role it still owes a drop (the
-superseded role, or the candidate) expires on its own; the CLI repeats it in the
-`ATTENTION` line. A page holds up to `--limit` runs (1 to 500, default 100); when more
+the run carries `credential_valid_until`: when the role it still owes a drop expires
+on its own. That is the superseded role once the run has published (the new credential
+is then the one in use and is never named), or the candidate of a run that never
+published. When an extend of that role has no settled outcome, the run also carries
+`credential_valid_until_lower_bound: true`: the role may outlive the time shown. The
+CLI repeats both in the `ATTENTION` line, and `hikyo rotation show` checks every page
+of runs. A page holds up to `--limit` runs (1 to 500, default 100); when more
 follow, the CLI prints the `--after` value that continues the list. It needs only
 **read** on the environment.
 

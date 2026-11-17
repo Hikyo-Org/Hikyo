@@ -1202,18 +1202,28 @@ says `unknown`, never ok).
 `authorizeRotationKeys` authorizes the operation on both stored keys. An environment-wide
 holder passes both keys, so nothing narrows for them; a key-narrowed holder passes exactly
 when they pass for each key, like the create that made the rotation. The rotation is looked
-up under a proof chosen without recording a denial (`CallerHolds`): the operation's own
-environment-wide proof when held (so a publisher without read can pause), else the inspect
-proof (how a key-narrowed holder finds the keys), else the operation itself is authorized so
-the refusal is recorded under it. Every refusal, an absent rotation included, answers the same
-not-found, and no denial lands under `rotation.inspect` any more.
+up under a proof chosen by the same evaluation `Authorize` makes, member rules included
+(round 2: the round-1 choice used `CallerHolds`, which reads grants only, so a person whose
+read and operation come only from member rules got not-found with no audit row). The probe is
+`TxAuthorizer.AuthorizeUnrecorded`, one new exported authz method (shared `CallerHolds` is
+unchanged, it has other callers): it runs `Authorize` and, on a refusal, discards the denial it
+captured. The order is the operation's own environment-wide proof when held (so a publisher
+without read can pause), else the inspect proof (how a key-narrowed holder finds the keys),
+else the operation itself is authorized so the refusal is recorded once under it. Every
+refusal, an absent rotation included, answers the same not-found and is recorded the same
+way (one denial under the operation, none under `rotation.inspect`): a caller who reached the
+rotation through inspect only is recorded under the operation whether the rotation is absent
+or one of its keys refuses them, so neither the answer nor the audit trail is an existence
+oracle. A caller who holds the operation environment-wide passes both keys, so a key refusal
+cannot occur for them and there is nothing to tell apart.
 **Remaining deviation:** a person who holds the operation only through key-narrowed rules and
 lacks read cannot look the rotation up, so they are refused (denied under the operation).
 Options: (A) accept, as built; (B) an authz primitive that resolves a rotation's keys inside
 authz (a new registry concept, not a wider `SiteScheduler`); (C) require read for key-narrowed
 rules. Recommendation: A. Also: a key-narrowed holder cannot pause or delete a rotation whose
 key was deleted (the key lookup answers not-found); an environment-wide holder can.
-`TestRotationTransitionsAreKeyAware` and `TestRotationTransitionLookupNeedsNoRead` pin it.
+`TestRotationTransitionsAreKeyAware`, `TestRotationTransitionLookupNeedsNoRead`,
+`TestRotationRuleOnlyMemberTransitions` and `TestRotationReaderRefusalIsIndistinguishable` pin it.
 
 ### Restore hold
 
@@ -1243,10 +1253,15 @@ key was deleted (the key lookup answers not-found); an environment-wide holder c
   it), the publish ceremony, an optional generation compare-and-set, audited as
   `rotation.configured` with `action: hold_released` (no new event type). It lifts the hold
   only. It does not resume, does not drop a superseded role, does not touch a run and does
-  not bump the generation (an in-flight run asserts the generation it started under). Before
-  the ceremony is consumed it preflights what resume does (provider can mint, keys exist and
-  fit, the recorded authority still holds the formula on both keys), refusing with the same
-  named errors, so a release never hands the executor a rotation whose first Gate halts it.
+  not bump the generation (an in-flight run asserts the generation it started under). For an
+  **active** held rotation, before the ceremony is consumed it runs the Gate's whole check
+  set (`requireRotationStartable`: environment unattended, provider active with a credential,
+  keys present and fitting, the recorded authority holding the formula on both keys, no
+  draft staged by the authority), refusing with the Gate's named errors, so a release never
+  hands the executor a rotation whose first Gate halts it. A **paused or halted** held
+  rotation is released without that preflight: release only lifts the hold, and resume
+  re-runs every check, so a provider that was revoked cannot trap the hold. Denials of the
+  authority check are recorded under `rotation.release_hold`, not `rotation.resume`.
   A run recovered while the rotation is held records `rotation_held` (not `rotation_paused`).
 - `rotation show`, `list` and `runs` print a `RESTORE HOLD` line on stderr with the
   `credential_expires_at` deadline; the JSON carries `restore_hold`.
@@ -1256,11 +1271,39 @@ key was deleted (the key lookup answers not-found); an environment-wide holder c
   revision 19 SDK talking to a revision 18 server fails to parse the rotation. Accepted:
   rotations have not shipped in a stable release and the nightlies that carry them move with
   the server; making it optional would hide a held rotation from an old client.
-- Run records gain `credential_valid_until` (additive, optional): for `revoke_refused` the
-  superseded role's expiry, for quarantine the candidate's. `rotation runs` and `rotation
-  show` print an `ATTENTION` line per such run. The run-level release action stays unbuilt.
+- Run records gain `credential_valid_until` (additive, optional): the expiry of the role the
+  run still owes a drop, and `credential_valid_until_lower_bound` (true only when set). For
+  `revoke_refused` and for a quarantine run that published, that is the superseded role's
+  expiry, found by chain and handle (so it survives a recreated rotation); the candidate is
+  then the serving credential and is never named. For a quarantine run that never published
+  it is the candidate's expiry. The flag is true when an `extend` of that role has an open
+  or unknown outcome: the recorded time is then a lower bound, the role may outlive it, and
+  the CLI says "at least ... and possibly longer". The expiry is resolved per owed run
+  (extra reads, only for those phases), which keeps `RotationListRuns` a single-table query
+  the predicate analyzer proves, so its `instance-scoped` annotation is gone. `rotation runs`
+  and `rotation show` print an `ATTENTION` line per such run; `show` pages through every
+  run and warns on stderr, without failing, when the runs cannot be read or the history
+  exceeds 20 pages of 500. The run-level release action stays unbuilt.
 - Tests: `TestRotationRestoreHold`, `TestRotationRestoreHoldFallbackPausesWithoutTheColumn`,
   `TestRotationReleaseLeavesARefusedRunAlone` (the run-level hold stays untouched).
+
+### Review round 2 (as built)
+
+- Publish rollback records `rotation_held` (a distinct sentinel, `errRotationHeld`) when the
+  Gate refused because a restore holds the rotation, and `rotation_paused` for a pause.
+- The doctor's rotation gauges are read through the `RotationGauger` interface, so a test
+  pins that `OperationalHealth` reads them once and within the 2 second bound.
+- **Rebuild note (migration 00094).** Round 1 edited migration 00094 in place (it adds
+  `rotations.deferred_from`). A development or preview database that applied the earlier
+  version of 00094 lacks that column and **must be rebuilt**; no stable release carries the
+  migration, so nothing shipped is affected.
+- `release_hold` storeOps gained the approval-policy and pending-list reads the Gate's checks
+  use for an active rotation.
+- Tests: `internal/isolation/rotation_round3_test.go`, the CLI `credential_rotation_owed_test.go`
+  and the server `TestRotationRunBodyMapsTheExpiry`.
+- Not covered over HTTP: wire ids must match `^[a-z]{2,8}_[0-9a-fA-F-]{36}$`, which the
+  isolation fixtures' short ids do not, so the transport leg of the human-only test uses
+  absent well-formed ids (status 404 or 403) and the service leg proves the refusal.
 
 ### Incident containment
 
