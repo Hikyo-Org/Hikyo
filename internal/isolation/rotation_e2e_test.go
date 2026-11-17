@@ -542,7 +542,7 @@ func runRotationRefusesMachine(t *testing.T, db *store.DB) {
 // credential is refused at admission, before any grant is consulted. The service
 // checks the class itself only where a ceremony is consumed (create, resume).
 func TestRotationOperationsAdmitHumanSessionOnly(t *testing.T) {
-	for _, op := range []string{"rotation.create", "rotation.inspect", "rotation.pause", "rotation.resume", "rotation.delete"} {
+	for _, op := range []string{"rotation.create", "rotation.inspect", "rotation.pause", "rotation.resume", "rotation.delete", "rotation.run_now", "rotation.runs"} {
 		human, described := api.AuthorizationOperationAdmitsArtifact(op, api.ArtifactHumanSession)
 		if !described || !human {
 			t.Errorf("%s: human session admitted = %v (described %v)", op, human, described)
