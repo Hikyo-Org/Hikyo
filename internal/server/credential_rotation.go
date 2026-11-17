@@ -156,11 +156,12 @@ func (a *API) DeleteRotation(ctx context.Context, req apigen.DeleteRotationReque
 }
 
 func (a *API) RunRotationNow(ctx context.Context, req apigen.RunRotationNowRequestObject) (apigen.RunRotationNowResponseObject, error) {
-	run := service.RunNowRequest{RotationID: string(req.Rotation)}
-	if req.Body != nil {
-		run.ExpectedGeneration = expectedGeneration(req.Body.ExpectedGeneration)
-		run.SkipOverlap = req.Body.SkipOverlap != nil && *req.Body.SkipOverlap
-		run.ConfirmDestructive = req.Body.ConfirmDestructive
+	// The body is required, so the strict handler never passes a nil one.
+	run := service.RunNowRequest{
+		RotationID:         string(req.Rotation),
+		ExpectedGeneration: expectedGeneration(req.Body.ExpectedGeneration),
+		SkipOverlap:        req.Body.SkipOverlap != nil && *req.Body.SkipOverlap,
+		ConfirmDestructive: req.Body.ConfirmDestructive,
 	}
 	got, err := a.CredentialRotations.RunNow(ctx, service.Bearer(bearer(ctx)), dynamicEnvScope(req.Org, req.Project, req.Environment), run)
 	if err != nil {

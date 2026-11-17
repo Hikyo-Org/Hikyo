@@ -1,6 +1,7 @@
 package isolation
 
 import (
+	"context"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -8,9 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
 // Run-now and run inspection (#148, slice S2b-1). The request is a row on the
@@ -347,12 +350,19 @@ func runRotationRunNowRefusedUnlessActive(t *testing.T, db *store.DB) {
 	}
 }
 
-// Run-now authorizes both keys under its own operation, like resume: a person
-// whose formula covers only one of the rotation's keys is refused, and the
-// refusal leaves no request behind.
-func TestRotationRunNowChecksBothKeys(t *testing.T) { forEngines(t, runRotationRunNowChecksBothKeys) }
+// Run-now needs the resume formula environment-wide, and its refusal is recorded
+// under rotation.run_now. Access held only through key-narrowed rules, even for
+// all four capabilities on both rotation keys, never reaches an operation that
+// passes no key, so that person is refused at the environment check. That also
+// makes a per-key AuthorizeKey after it unable to deny: whoever passes the
+// environment check passes it on each rotation key too (the key-aware check can
+// only be wider, as the key-narrowed holder shows). If the authorizer ever gains a
+// narrowing rule this test fails, and RunNow must then authorize both keys again.
+func TestRotationRunNowKeyChecksAddNothing(t *testing.T) {
+	forEngines(t, runRotationRunNowKeyChecksAddNothing)
+}
 
-func runRotationRunNowChecksBothKeys(t *testing.T, db *store.DB) {
+func runRotationRunNowKeyChecksAddNothing(t *testing.T, db *store.DB) {
 	ctx := tctx(t)
 	x := newRotExec(t, db)
 	rot := x.create(rotPasswordKey, rotUsernameKey)
@@ -362,16 +372,50 @@ func runRotationRunNowChecksBothKeys(t *testing.T, db *store.DB) {
 	for _, c := range []domain.Capability{domain.CapRead, domain.CapEdit, domain.CapPublish, domain.CapReveal} {
 		if _, err := rules.Create(ctx, service.LocalPrincipal(orgAdmin), service.RuleSpec{
 			Target: rotNarrow, Capability: c, Org: orgA,
-			Where: whereIn(envMode, envs, domain.AxisOnly, domain.RuleKeyItem{KeyID: rotPasswordKey}),
+			Where: whereIn(envMode, envs, domain.AxisOnly, domain.RuleKeyItem{KeyID: rotPasswordKey}, domain.RuleKeyItem{KeyID: rotUsernameKey}),
 		}); err != nil {
 			t.Fatalf("create %s rule: %v", c, err)
 		}
 	}
+	rotationHuman(t, db, "usr_rot_noreveal", "read", "edit", "publish")
+
+	// The key-narrowed holder is refused with the uniform not-found, the denial is
+	// recorded under rotation.run_now, and nothing is requested.
 	if _, err := x.runNow(x.session(rotNarrow, true), rot.ID, false); !errors.Is(err, domain.ErrNotFound) {
-		t.Fatalf("run-now by a person holding only the password key = %v", err)
+		t.Fatalf("run-now by a key-narrowed holder = %v", err)
+	}
+	if n := queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE outcome='denied' AND actor_id='`+string(rotNarrow)+`' AND payload LIKE '%rotation.run_now%'`); n == 0 {
+		t.Fatal("no denial was recorded under rotation.run_now")
 	}
 	if got := x.manualRequest(rot.ID); got != "" {
 		t.Fatalf("a refused run-now left request %q", got)
+	}
+
+	// Whoever passes the environment check passes it for each rotation key.
+	for _, p := range []domain.PrincipalID{alice, rotNarrow, "usr_rot_noreveal", rotPublisher} {
+		caller := authz.Identity{Principal: p, Class: domain.ClassHuman}
+		var envErr error
+		keyErrs := map[string]error{}
+		if err := tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+			_, envErr = az.Authorize(ctx, caller, authz.OpRotationRunNow, x.scope)
+			for _, id := range []string{rotPasswordKey, rotUsernameKey} {
+				_, keyErrs[id] = az.AuthorizeKey(ctx, caller, authz.OpRotationRunNow, x.scope, authz.KeyByID(id))
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if p == alice && envErr != nil {
+			t.Fatalf("alice refused at the environment: %v", envErr)
+		}
+		if p != alice && !errors.Is(envErr, domain.ErrNotFound) {
+			t.Fatalf("%s at the environment = %v, want not-found", p, envErr)
+		}
+		for id, err := range keyErrs {
+			if envErr == nil && err != nil {
+				t.Fatalf("%s passes the environment but not %s (%v): a per-key check now narrows, restore it in RunNow", p, id, err)
+			}
+		}
 	}
 }
 
@@ -486,12 +530,19 @@ func TestRotationAbandonIsHumanOnly(t *testing.T) { forEngines(t, runRotationAba
 func runRotationAbandonIsHumanOnly(t *testing.T, db *store.DB) {
 	x := newRotExec(t, db)
 	rot := x.create(rotPasswordKey, rotUsernameKey)
+	local := service.LocalPrincipal(alice)
+	// Nothing in flight: the flag alone is refused to a non-human.
+	if _, err := x.svc.Delete(tctx(t), local, x.scope, service.RotationStateRequest{RotationID: rot.ID, Abandon: true}); !errors.Is(err, service.ErrRotationHumanOnly) {
+		t.Fatalf("abandon with nothing in flight by a non-human = %v", err)
+	}
+	if x.state(rot.ID).State != store.RotationStateActive {
+		t.Fatal("a refused abandon changed the rotation")
+	}
 	x.advance(24*time.Hour + time.Minute)
 	x.drain()
 	if x.openRunID(rot.ID) == "" {
 		t.Fatal("no run in flight to abandon")
 	}
-	local := service.LocalPrincipal(alice)
 	if _, err := x.svc.Delete(tctx(t), local, x.scope, service.RotationStateRequest{RotationID: rot.ID, Abandon: true}); !errors.Is(err, service.ErrRotationHumanOnly) {
 		t.Fatalf("abandon by a non-human = %v", err)
 	}

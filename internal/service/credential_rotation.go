@@ -587,9 +587,13 @@ var (
 )
 
 // RunNow requests a run outside the schedule. It is resume's equivalent: a
-// signed-in person who holds edit, publish and reveal on both keys, under this
-// operation, and who consumes the publish ceremony over them, so a publisher
-// without reveal cannot start one. It executes nothing: the request makes the
+// signed-in person who holds edit, publish and reveal environment-wide, under this
+// operation (a denial is recorded as rotation.run_now), and who consumes the
+// publish ceremony over both keys, so a publisher without reveal cannot start one.
+// There is no per-key check after the environment one: a key-narrowed rule never
+// satisfies an operation that passes no key, and an environment-wide holder of the
+// formula passes it for every key, so a per-key AuthorizeKey could never deny here
+// (TestRotationRunNowKeyChecksAddNothing pins that). It executes nothing: the request makes the
 // rotation due now, and the executor starts the run through its normal path with
 // the recorded authority, the pre-publish Gate and the overlap, exactly as a
 // scheduled run. A manual run bypasses none of them. Because it resets the next
@@ -621,11 +625,6 @@ func (s *CredentialRotations) RunNow(ctx context.Context, actor Actor, scope dom
 		}
 		if cur.State != store.RotationStateActive {
 			return fmt.Errorf("%w: only an active rotation can run now (state is %s)", domain.ErrConflict, cur.State)
-		}
-		for _, id := range []string{cur.KeyID, cur.UsernameKeyID} {
-			if _, err := az.AuthorizeKey(ctx, caller, authz.OpRotationRunNow, scope, authz.KeyByID(id)); err != nil {
-				return err
-			}
 		}
 		open, err := r.Rotations().CountOpenRuns(ctx, proof, cur.ID)
 		if err != nil {
@@ -789,6 +788,14 @@ func (s *CredentialRotations) transition(ctx context.Context, actor Actor, scope
 			}
 			next.NextRunAt = rotationResumeNext(now, time.Duration(cur.IntervalSeconds)*time.Second, time.Duration(cur.RevocationDelaySeconds)*time.Second, delivered)
 		case rotationActionDeleted:
+			// Abandoning closes runs by hand, a standing-delegation decision like
+			// create, resume and run-now, so only a signed-in person may ask for it,
+			// whether or not a run is in flight.
+			if req.Abandon {
+				if err := requireRotationHuman(caller); err != nil {
+					return err
+				}
+			}
 			if cur.State == store.RotationStateDisabled {
 				return fmt.Errorf("%w: the rotation is already deleted", domain.ErrConflict)
 			}
@@ -799,11 +806,6 @@ func (s *CredentialRotations) transition(ctx context.Context, actor Actor, scope
 			if open > 0 {
 				if !req.Abandon {
 					return fmt.Errorf("%w: the rotation has a run in flight; let it finish or abandon it", domain.ErrConflict)
-				}
-				// Abandoning quarantines runs by hand, a standing-delegation decision
-				// like create, resume and run-now, so only a signed-in person makes it.
-				if err := requireRotationHuman(caller); err != nil {
-					return err
 				}
 				// Abandon closes every unsettled run, loudly. A run before its
 				// publish becomes quarantine and keeps its candidate for the

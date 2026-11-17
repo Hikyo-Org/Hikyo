@@ -942,8 +942,9 @@ export type RunRotationNowRequest = {
     /**
      * The run-now confirmation, required on every request. It must be true: the
      * run publishes a new credential now, off the schedule, and with
-     * `skip_overlap` revokes the superseded one at once. False or absent is
-     * refused by name.
+     * `skip_overlap` revokes the superseded one at once. A body without it,
+     * or with false, is refused by name; a request with no body at all is a
+     * plain bad request.
      *
      */
     confirm_destructive: boolean;

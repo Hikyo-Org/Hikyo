@@ -6182,9 +6182,10 @@ export const resumeRotation = <ThrowOnError extends boolean = false>(options: Op
  * normal path: the same pre-publish gate, recorded authority and overlap as a
  * scheduled one, so a manual run bypasses none of them. Run-now is resume's
  * equivalent: the caller must be a signed-in person who holds edit, publish
- * and reveal on both rotation keys and consume the publish reauthentication
- * window over them. `confirm_destructive` must be true on every request, and
- * a request without it is refused by name. Only an active rotation with no
+ * and reveal on the environment itself (access held only through key-narrowed
+ * rules does not reach it) and consume the publish reauthentication window
+ * over both rotation keys. `confirm_destructive` must be true on every
+ * request, and a body without it, or with false, is refused by name. Only an active rotation with no
  * run in flight and no request already waiting is accepted; a paused, halted
  * or deleted rotation is refused. The request makes the rotation due now, so
  * it also overrides a retry backoff (the attempt cap and the retry deadline

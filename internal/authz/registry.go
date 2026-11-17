@@ -5543,8 +5543,9 @@ var operationTable = map[Operation]opSpec{
 	OpRotationRunNow: {
 		class: ClassTenant, level: domain.LevelEnv,
 		// Run-now is resume's equivalent, so it needs resume's formula (edit,
-		// publish and reveal): the per-key checks on both rotation keys run under
-		// this operation, so a denial is recorded as a rotation.run_now denial.
+		// publish and reveal) environment-wide: a denial is recorded as a
+		// rotation.run_now denial. A key-narrowed rule never satisfies it, because
+		// the operation passes no key.
 		formula: Formula{
 			{Cap: domain.CapEdit, At: domain.LevelEnv},
 			{Cap: domain.CapPublish, At: domain.LevelEnv},
