@@ -1,0 +1,119 @@
+package cli_test
+
+import (
+	"net/http"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/cli"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
+)
+
+func owedRun(id string, phase apigen.RotationRunPhase, until time.Time, lowerBound bool) apigen.RotationRun {
+	run := apigen.RotationRun{
+		Id: id, Trigger: apigen.RotationRunTriggerSchedule, Phase: phase,
+		StartedAt: time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC), PhaseAt: time.Date(2030, 1, 2, 4, 4, 5, 0, time.UTC),
+	}
+	if !until.IsZero() {
+		run.CredentialValidUntil = &until
+	}
+	if lowerBound {
+		run.CredentialValidUntilLowerBound = &lowerBound
+	}
+	return run
+}
+
+// show names every owed run across pages, with the lower-bound wording when an
+// extend is unsettled, and stays silent about runs that owe nothing.
+func TestRotationShowPagesThroughOwedRuns(t *testing.T) {
+	until := time.Date(2030, 2, 3, 4, 5, 6, 0, time.UTC)
+	var runCalls []string
+	ios, _, stderr := definitionsTestIO(t, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == rotationBase:
+			_ = jsonwire.Encode(rw, apigen.CredentialRotation{Id: "rot_70", State: "active"})
+		case r.URL.Path == rotationBase+"/runs":
+			runCalls = append(runCalls, r.URL.RawQuery)
+			if r.URL.Query().Get("after") == "" {
+				next := "rrn_2"
+				_ = jsonwire.Encode(rw, apigen.RotationRunList{
+					Items:     []apigen.RotationRun{owedRun("rrn_1", apigen.RotationRunPhaseDone, time.Time{}, false), owedRun("rrn_2", apigen.RotationRunPhaseRevokeRefused, until, false)},
+					NextAfter: &next,
+				})
+				return
+			}
+			_ = jsonwire.Encode(rw, apigen.RotationRunList{Items: []apigen.RotationRun{
+				owedRun("rrn_3", apigen.RotationRunPhaseQuarantine, until, true),
+				owedRun("rrn_4", apigen.RotationRunPhaseQuarantine, time.Time{}, false),
+			}})
+		default:
+			http.NotFound(rw, r)
+		}
+	}))
+	args := append([]string{"rotation", "show", "rot_70"}, rotationScope...)
+	if code := cli.Run(t.Context(), ios, args); code != cli.ExitOK {
+		t.Fatalf("exit %d; stderr=%s", code, stderr)
+	}
+	if len(runCalls) != 2 || !strings.Contains(runCalls[1], "after=rrn_2") {
+		t.Fatalf("runs requests = %v", runCalls)
+	}
+	out := stderr.String()
+	for _, want := range []string{
+		"ATTENTION: run rrn_2 is revoke_refused",
+		"stays valid until 2030-02-03T04:05:06Z)",
+		"ATTENTION: run rrn_3 is quarantine",
+		"stays valid at least until 2030-02-03T04:05:06Z, and possibly longer",
+		"ATTENTION: run rrn_4 is quarantine and a provider role it owes a drop is still live (no recorded expiry)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stderr lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "rrn_1") {
+		t.Errorf("a settled run was reported:\n%s", out)
+	}
+}
+
+// A failure of only the runs read warns on stderr and never fails the show.
+func TestRotationShowWarnsWhenRunsCannotBeRead(t *testing.T) {
+	ios, stdout, stderr := definitionsTestIO(t, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == rotationBase {
+			_ = jsonwire.Encode(rw, apigen.CredentialRotation{Id: "rot_70", State: "active"})
+			return
+		}
+		http.Error(rw, "boom", http.StatusInternalServerError)
+	}))
+	args := append([]string{"rotation", "show", "rot_70"}, rotationScope...)
+	if code := cli.Run(t.Context(), ios, args); code != cli.ExitOK {
+		t.Fatalf("show failed on a runs error: exit %d; stderr=%s", code, stderr)
+	}
+	if !strings.Contains(stderr.String(), "WARNING: the runs could not be read") || !strings.Contains(stdout.String(), "rot_70") {
+		t.Fatalf("stdout=%q stderr=%q", stdout, stderr)
+	}
+}
+
+// A history longer than the page bound says so rather than implying it was all checked.
+func TestRotationShowSaysWhenTheRunHistoryIsTruncated(t *testing.T) {
+	calls := 0
+	ios, _, stderr := definitionsTestIO(t, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == rotationBase {
+			_ = jsonwire.Encode(rw, apigen.CredentialRotation{Id: "rot_70", State: "active"})
+			return
+		}
+		calls++
+		next := "rrn_more"
+		_ = jsonwire.Encode(rw, apigen.RotationRunList{Items: []apigen.RotationRun{}, NextAfter: &next})
+	}))
+	args := append([]string{"rotation", "show", "rot_70"}, rotationScope...)
+	if code := cli.Run(t.Context(), ios, args); code != cli.ExitOK {
+		t.Fatalf("exit %d; stderr=%s", code, stderr)
+	}
+	if calls != 20 || !strings.Contains(stderr.String(), "only the newest 10000 runs were checked") {
+		t.Fatalf("calls=%d stderr=%q", calls, stderr)
+	}
+}

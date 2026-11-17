@@ -34,6 +34,7 @@
   "AuthorizePublishKeys": "func(ctx context.Context, caller Identity, scope domain.Scope, ids []string) (Proof, error)",
   "AuthorizeRule": "func(ctx context.Context, caller Identity, op Operation, scope domain.Scope, target domain.Rule) (Proof, error)",
   "AuthorizeRuleList": "func(ctx context.Context, caller Identity, scope domain.Scope) (Proof, error)",
+  "AuthorizeUnrecorded": "func(ctx context.Context, caller Identity, op Operation, scope domain.Scope) (Proof, error)",
   "BindRemotePairedConnection": "func(ctx context.Context, c RemotePairedConnection) error",
   "BindSessionToOAuth2Provider": "func(ctx context.Context, sessionID, providerID string) (bool, error)",
   "BindSessionToSAMLProvider": "func(ctx context.Context, sessionID, providerID string) (bool, error)",

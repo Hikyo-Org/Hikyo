@@ -218,6 +218,12 @@ func requireRotationHuman(caller authz.Identity) error {
 	return nil
 }
 
+// isRotationRefusal reports an authorization refusal (as opposed to a fault): the
+// uniform not-found or the grant-class refusal.
+func isRotationRefusal(err error) bool {
+	return errors.Is(err, domain.ErrNotFound) || errors.Is(err, domain.ErrUnauthorized)
+}
+
 // authorizeRotationKeys is the outer authorization of pause, resume, delete,
 // run-now and release-hold. The operation is authorized on BOTH stored keys as
 // individual keys, so a person who holds its formula through key-narrowed member
@@ -225,12 +231,16 @@ func requireRotationHuman(caller authz.Identity) error {
 // an environment-wide holder passes both keys, so nothing narrows for them.
 //
 // The rotation is looked up under whichever proof the caller can actually mint,
-// chosen without recording a denial (CallerHolds): the operation's own
-// environment-wide proof when they hold it (so a publisher without read can still
-// pause), else the inspect proof (read is never key-narrowed, and it is how a
-// key-narrowed holder finds the keys), else neither, and then the operation itself
-// is authorized so the refusal is recorded under it. Every denial, including a
-// missing rotation, answers the same uniform not-found.
+// decided by the same evaluation Authorize makes (member rules included), with
+// no denial recorded for a probe: the operation's own environment-wide proof when
+// they hold it (so a publisher without read can still pause), else the inspect
+// proof (read is never key-narrowed, and it is how a key-narrowed holder finds the
+// keys), else neither, and then the operation itself is authorized so the refusal
+// is recorded, once, under it. Every denial, including a missing rotation, answers
+// the same uniform not-found, and is recorded the same way: a caller who reaches the
+// rotation through inspect only is recorded under the operation whether the rotation
+// is absent or its key refuses them, so neither the answer nor the audit trail
+// tells an existing rotation from an absent one.
 //
 // shortcut: a person who holds the operation only through key-narrowed rules AND
 // lacks read cannot look the rotation up (their keys are unknown until it is
@@ -241,34 +251,32 @@ func authorizeRotationKeys(ctx context.Context, r store.Repos, az *authz.TxAutho
 		return
 	}
 	az.SetClock(now)
-	var lookup authz.Proof
-	holdsOp, err := az.CallerHolds(ctx, caller, op, scope)
-	if err != nil {
-		return
+	lookup, err := az.AuthorizeUnrecorded(ctx, caller, op, scope)
+	viaInspect := false
+	if err != nil && isRotationRefusal(err) {
+		lookup, err = az.AuthorizeUnrecorded(ctx, caller, authz.OpRotationInspect, scope)
+		viaInspect = true
 	}
-	switch {
-	case holdsOp:
-		lookup, err = az.Authorize(ctx, caller, op, scope)
-	default:
-		var holdsRead bool
-		if holdsRead, err = az.CallerHolds(ctx, caller, authz.OpRotationInspect, scope); err != nil {
+	if err != nil {
+		if !isRotationRefusal(err) {
 			return
 		}
-		if holdsRead {
-			lookup, err = az.Authorize(ctx, caller, authz.OpRotationInspect, scope)
-		} else {
-			// Refused under the real operation; Authorize records the denial.
-			_, err = az.Authorize(ctx, caller, op, scope)
+		// Neither probe passed: the refusal is recorded under the real operation.
+		if _, err = az.Authorize(ctx, caller, op, scope); err == nil {
+			err = domain.ErrNotFound
 		}
-	}
-	if err != nil {
-		return
-	}
-	if lookup == nil {
-		err = domain.ErrNotFound
 		return
 	}
 	if cur, err = r.Rotations().Get(ctx, lookup, rotationID); err != nil {
+		if viaInspect && errors.Is(err, domain.ErrNotFound) {
+			// The caller does not hold the operation environment-wide and the
+			// rotation is absent: record the refusal under the operation, as the
+			// same caller probing an existing rotation is recorded on its key, so
+			// the audit trail does not tell the two apart either.
+			if _, err = az.Authorize(ctx, caller, op, scope); err == nil {
+				err = domain.ErrNotFound
+			}
+		}
 		return
 	}
 	if proof, err = az.AuthorizeKey(ctx, caller, op, scope, authz.KeyByID(cur.KeyID)); err != nil {
@@ -932,7 +940,9 @@ func (s *CredentialRotations) transition(ctx context.Context, actor Actor, scope
 // every run and every provider role stay as they are, so releasing never drops a
 // superseded role early and never resumes a paused or halted rotation. A run held
 // for its superseded role (published_versions_changed) is not released by this; it
-// ends only on its own exits.
+// ends only on its own exits. An active rotation is released only if the executor's
+// first Gate would pass it now (the same checks, one implementation); a paused or
+// halted one is released without them, since resume re-checks everything.
 func (s *CredentialRotations) ReleaseHold(ctx context.Context, actor Actor, scope domain.Scope, req RotationStateRequest) (RotationView, error) {
 	if err := requireRotationEnv(scope, "release-hold", req.RotationID); err != nil {
 		return RotationView{}, err
@@ -956,9 +966,15 @@ func (s *CredentialRotations) ReleaseHold(ctx context.Context, actor Actor, scop
 		if !cur.RestoreHold {
 			return ErrRotationNotHeld
 		}
-		// Before the ceremony is consumed: a refusal here must not burn it.
-		if err := s.requireRotationRunnable(ctx, r, az, proof, caller, scope, cur); err != nil {
-			return err
+		// Before the ceremony is consumed: a refusal here must not burn it. Only an
+		// active rotation is checked, and by the Gate's own checks: it is the one
+		// the executor would start. A paused or halted one stays inert until resume,
+		// which re-checks everything, so it can always be released (and the restore
+		// count can reach zero) even when its provider or keys are gone.
+		if cur.State == store.RotationStateActive {
+			if err := requireRotationStartable(ctx, r, az, proof, caller, domain.PrincipalID(cur.AuthorityPrincipalID), authz.OpRotationReleaseHold, scope, cur, true); err != nil {
+				return err
+			}
 		}
 		if err := s.requireRotationCeremony(ctx, az, caller, scope, cur.KeyID, cur.UsernameKeyID); err != nil {
 			return err
@@ -979,30 +995,38 @@ func (s *CredentialRotations) ReleaseHold(ctx context.Context, actor Actor, scop
 	return out, err
 }
 
-// requireRotationRunnable is what resume and release-hold share: the provider can
-// still mint, the keys still exist and fit, and the recorded authority principal
-// still holds the resume formula on both keys. A restore that left the authority
-// unreconciled or without its grants fails here with the named refusal, so neither
-// verb hands the executor a rotation whose first Gate would halt it.
-func (s *CredentialRotations) requireRotationRunnable(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, proof authz.Proof, caller authz.Identity, scope domain.Scope, rec store.RotationRecord) error {
+// requireRotationStartable is the one set of checks that decides whether a run
+// could start: the environment still runs unattended, the provider can still mint,
+// the keys still exist and fit, the recorded authority principal still holds op's
+// formula (resume's: edit, publish and reveal) on both keys, and, when drafts is
+// set, that principal holds no draft on either key. The executor's Gate, resume and
+// an active rotation's release-hold all call it, so a verb that re-arms a rotation
+// can never accept one the Gate would halt. actor is who a denial is recorded
+// against; op is the operation the refusal is recorded under.
+func requireRotationStartable(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, proof authz.Proof, actor authz.Identity, authority domain.PrincipalID, op authz.Operation, scope domain.Scope, rec store.RotationRecord, drafts bool) error {
+	if err := requireUnattendedEnvironment(ctx, r, az, proof, scope); err != nil {
+		return err
+	}
 	if err := requireRotationProvider(ctx, r, proof, rec.ProviderID); err != nil {
 		return err
 	}
 	if err := requireRotationKeys(ctx, r, proof, rec.KeyID, rec.UsernameKeyID, true); err != nil {
 		return err
 	}
-	authority := domain.PrincipalID(rec.AuthorityPrincipalID)
 	for _, id := range []string{rec.KeyID, rec.UsernameKeyID} {
-		// The caller stays the actor of a denial here; AuthorityID names the
-		// recorded principal. No identity is synthesized for the authority.
+		// The actor stays the actor of a denial; AuthorityID names the recorded
+		// principal. No identity is synthesized for the authority.
 		key := authz.KeyByID(id)
-		holds, err := az.RecordedPrincipalHolds(ctx, caller, authority, authz.OpRotationResume, scope, &key)
+		holds, err := az.RecordedPrincipalHolds(ctx, actor, authority, op, scope, &key)
 		if err != nil {
 			return err
 		}
 		if !holds {
 			return ErrRotationAuthorityLost
 		}
+	}
+	if drafts {
+		return requireNoAuthorityDraft(ctx, r, proof, string(authority), rec.KeyID, rec.UsernameKeyID)
 	}
 	return nil
 }
@@ -1019,13 +1043,7 @@ func (s *CredentialRotations) authorizeResume(ctx context.Context, r store.Repos
 	if err := requireRotationHuman(caller); err != nil {
 		return err
 	}
-	if err := requireUnattendedEnvironment(ctx, r, az, proof, scope); err != nil {
-		return err
-	}
-	if err := s.requireRotationRunnable(ctx, r, az, proof, caller, scope, rec); err != nil {
-		return err
-	}
-	if err := requireNoAuthorityDraft(ctx, r, proof, rec.AuthorityPrincipalID, rec.KeyID, rec.UsernameKeyID); err != nil {
+	if err := requireRotationStartable(ctx, r, az, proof, caller, domain.PrincipalID(rec.AuthorityPrincipalID), authz.OpRotationResume, scope, rec, true); err != nil {
 		return err
 	}
 	return s.requireRotationCeremony(ctx, az, caller, scope, rec.KeyID, rec.UsernameKeyID)

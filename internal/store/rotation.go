@@ -159,10 +159,16 @@ type RotationRunRecord struct {
 	PhaseAt                    string
 	ErrorCode                  string
 	NotConvergedAdapterTargets *int64
-	// CredentialValidUntil is, for a revoke_refused run, when the superseded role it
-	// could not drop lapses on its own and, for a quarantine run, when its candidate
-	// role does. Empty for every other phase or when no expiry was recorded.
+	// CredentialValidUntil is when the role a revoke_refused or quarantine run still
+	// owes a drop lapses on its own: the superseded role's for a run that published
+	// (its candidate is the serving credential and must never be dropped by hand),
+	// the candidate's for a run that never did. Empty for every other phase or when no
+	// expiry was recorded.
 	CredentialValidUntil string
+	// CredentialValidUntilLowerBound reports that an extend of that role has an
+	// open or unknown outcome, so the role may outlive CredentialValidUntil: the
+	// recorded expiry is "at least", not a fact.
+	CredentialValidUntilLowerBound bool
 }
 
 // RotationReader is the read side.
@@ -268,6 +274,10 @@ type rotationStoreQueries interface {
 	releaseHold(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) (int64, error)
 	manualPending(ctx context.Context, chain domain.Scope, rotationID string) (bool, error)
 	listRuns(ctx context.Context, chain domain.Scope, q RotationRunQuery) ([]RotationRunRecord, error)
+	// mintedExpiry is the recorded VALID UNTIL of the role a handle names, read from
+	// the run that minted it under the chain (never the rotation, so a recreated
+	// rotation finds its predecessor's role), and whether an extend of it is unsettled.
+	mintedExpiry(ctx context.Context, chain domain.Scope, handle string) (until string, uncertain bool, err error)
 	credentialExpiry(ctx context.Context, chain domain.Scope, keyID string) (string, error)
 	// credentialExpiries returns the delivered-credential expiry per key, from the
 	// latest published run of each key, in one read.
@@ -1129,17 +1139,27 @@ func (q pgRotationQueries) manualPending(ctx context.Context, chain domain.Scope
 	return n > 0, err
 }
 
-// runCredentialValidUntil picks the expiry an operator needs for a run that still
-// owes a role drop: the superseded role's for revoke_refused, the candidate's for
-// quarantine.
-func runCredentialValidUntil(phase, candidate, superseded string) string {
-	switch phase {
-	case "revoke_refused":
-		return superseded
-	case "quarantine":
-		return candidate
+// resolveRunExpiry fills the expiry of the role a revoke_refused or quarantine run
+// still owes a drop: the candidate's when the run never published, else the
+// superseded role's (a published run's candidate is the serving credential, so an
+// operator is never pointed at it).
+func resolveRunExpiry(ctx context.Context, q rotationStoreQueries, chain domain.Scope, rec *RotationRunRecord, candidateUntil, supersededHandle string) error {
+	if rec.Phase != "revoke_refused" && rec.Phase != "quarantine" {
+		return nil
 	}
-	return ""
+	if rec.PublishedRevision == 0 {
+		rec.CredentialValidUntil = candidateUntil
+		return nil
+	}
+	if supersededHandle == "" {
+		return nil
+	}
+	until, uncertain, err := q.mintedExpiry(ctx, chain, supersededHandle)
+	if err != nil {
+		return err
+	}
+	rec.CredentialValidUntil, rec.CredentialValidUntilLowerBound = until, uncertain
+	return nil
 }
 
 func (q sqliteRotationQueries) listRuns(ctx context.Context, chain domain.Scope, lq RotationRunQuery) ([]RotationRunRecord, error) {
@@ -1160,7 +1180,9 @@ func (q sqliteRotationQueries) listRuns(ctx context.Context, chain domain.Scope,
 	out := make([]RotationRunRecord, 0, len(rows))
 	for _, r := range rows {
 		rec := RotationRunRecord{ID: r.ID, Trigger: r.RunTrigger, Phase: r.Phase, PublishedRevision: r.PublishedRevision.Int64, RevocationDelaySeconds: r.RevocationDelaySeconds, StartedAt: r.StartedAt, PhaseAt: r.PhaseAt, ErrorCode: r.LastError.String}
-		rec.CredentialValidUntil = runCredentialValidUntil(r.Phase, r.CandidateValidUntil.String, r.SupersededValidUntil.String)
+		if err := resolveRunExpiry(ctx, q, chain, &rec, r.CandidateValidUntil.String, r.SupersededHandle.String); err != nil {
+			return nil, err
+		}
 		if err := normalizeStoredTimes(&rec.StartedAt, &rec.PhaseAt, &rec.CredentialValidUntil); err != nil {
 			return nil, err
 		}
@@ -1193,7 +1215,9 @@ func (q pgRotationQueries) listRuns(ctx context.Context, chain domain.Scope, lq 
 	out := make([]RotationRunRecord, 0, len(rows))
 	for _, r := range rows {
 		rec := RotationRunRecord{ID: r.ID, Trigger: r.RunTrigger, Phase: r.Phase, PublishedRevision: r.PublishedRevision.Int64, RevocationDelaySeconds: r.RevocationDelaySeconds, StartedAt: pgStoredStamp(r.StartedAt), PhaseAt: pgStoredStamp(r.PhaseAt), ErrorCode: r.LastError.String}
-		rec.CredentialValidUntil = runCredentialValidUntil(r.Phase, pgStoredStamp(r.CandidateValidUntil), pgStoredStamp(r.SupersededValidUntil))
+		if err := resolveRunExpiry(ctx, q, chain, &rec, pgStoredStamp(r.CandidateValidUntil), r.SupersededHandle.String); err != nil {
+			return nil, err
+		}
 		if err := normalizeStoredTimes(&rec.StartedAt, &rec.PhaseAt, &rec.CredentialValidUntil); err != nil {
 			return nil, err
 		}
@@ -1203,4 +1227,28 @@ func (q pgRotationQueries) listRuns(ctx context.Context, chain domain.Scope, lq 
 		out = append(out, rec)
 	}
 	return out, nil
+}
+
+func (q sqliteRotationQueries) mintedExpiry(ctx context.Context, chain domain.Scope, handle string) (string, bool, error) {
+	minter, err := q.q.RotationRunMinterByHandle(ctx, sqlitegen.RotationRunMinterByHandleParams{Handle: handle, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	if isNoRows(err) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	n, err := q.q.RotationRunExtendUncertain(ctx, sqlitegen.RotationRunExtendUncertainParams{RunID: minter.ID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	return minter.CandidateValidUntil.String, n > 0, err
+}
+
+func (q pgRotationQueries) mintedExpiry(ctx context.Context, chain domain.Scope, handle string) (string, bool, error) {
+	minter, err := q.q.RotationRunMinterByHandle(ctx, pggen.RotationRunMinterByHandleParams{Handle: handle, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	if isNoRows(err) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	n, err := q.q.RotationRunExtendUncertain(ctx, pggen.RotationRunExtendUncertainParams{RunID: minter.ID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	return pgStoredStamp(minter.CandidateValidUntil), n > 0, err
 }

@@ -109,6 +109,25 @@ func (a *TxAuthorizer) Authorize(ctx context.Context, caller Identity, op Operat
 	}
 }
 
+// AuthorizeUnrecorded is Authorize with its denial left out of the audit: the
+// same evaluation, the same proof, the same error, and nothing captured when it
+// refuses. It exists for a caller that must pick, before it knows what to ask
+// for, between two operations the caller may hold (a rotation verb is looked up
+// under the verb itself or under inspect), and must decide from exactly the
+// evaluation Authorize makes, member rules included, so the two cannot disagree.
+//
+// It is not a way to refuse quietly: a caller that gets a refusal from every
+// probe MUST then call Authorize for the operation it was really asked to do, so
+// the refusal is recorded under it. Nothing else may use it.
+func (a *TxAuthorizer) AuthorizeUnrecorded(ctx context.Context, caller Identity, op Operation, scope domain.Scope) (Proof, error) {
+	denials, captureErr := len(a.denials), a.captureErr
+	proof, err := a.Authorize(ctx, caller, op, scope)
+	if err != nil {
+		a.denials, a.captureErr = a.denials[:denials], captureErr
+	}
+	return proof, err
+}
+
 // AuthorizeDEKRotation authorizes the instance-level rotation capability and,
 // for a project DEK, also proves that the addressed project currently exists.
 // Project key creation happens outside the transaction, so this check must run

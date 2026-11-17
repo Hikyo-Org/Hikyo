@@ -5565,14 +5565,16 @@ var operationTable = map[Operation]opSpec{
 		class: ClassTenant, level: domain.LevelEnv,
 		// Releasing the hold lets a restored rotation mint again, so it needs
 		// resume's formula, authorized on both stored keys, and consumes the
-		// publish reauthentication window over them.
+		// publish reauthentication window over them. For an active rotation it first
+		// runs the Gate's own checks (unattended environment, provider, keys, the
+		// recorded authority, no authority draft), hence those store reads.
 		formula: Formula{
 			{Cap: domain.CapEdit, At: domain.LevelEnv},
 			{Cap: domain.CapPublish, At: domain.LevelEnv},
 			{Cap: domain.CapReveal, At: domain.LevelEnv},
 		},
 		postGrantForbidden: true,
-		storeOps:           map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsReleaseHold: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreAuditTenantInsert: true},
+		storeOps:           map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsReleaseHold: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StorePendingListForOwnerInEnvironment: true, StoreAuditTenantInsert: true},
 		events:             []audit.EventType{audit.EventRotationConfigured},
 	},
 	OpRotationRuns: {

@@ -110,8 +110,15 @@ type Retention struct {
 	Backup BackupPolicy
 	// PKI, when set, supplies the private-PKI health counts (#154).
 	PKI *store.PKIRuntime
-	// Rotation, when set, supplies the scheduled-rotation health counts (#148).
-	Rotation *store.RotationRuntime
+	// Rotation, when set, supplies the scheduled-rotation health counts (#148) to the
+	// audited health read only; /metrics scrapes them through its own collector.
+	Rotation RotationGauger
+}
+
+// RotationGauger reads the aggregate scheduled-rotation counts; *store.RotationRuntime
+// is the one implementation, an interface only so the bound on the read can be pinned.
+type RotationGauger interface {
+	Gauges(ctx context.Context, now time.Time) (store.RotationGauges, error)
 }
 
 func (s *Retention) now() time.Time {

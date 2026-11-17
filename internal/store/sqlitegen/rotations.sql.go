@@ -805,14 +805,14 @@ func (q *Queries) RotationListAll(ctx context.Context, arg RotationListAllParams
 }
 
 const rotationListRuns = `-- name: RotationListRuns :many
-SELECT r.id,r.run_trigger,r.phase,r.published_revision,r.revocation_delay_seconds,r.started_at,r.phase_at,r.last_error,r.not_converged_adapter_targets,r.candidate_valid_until,(SELECT s.candidate_valid_until FROM rotation_runs s WHERE s.rotation_id=r.rotation_id AND s.org_id=?1 AND s.project_id=?2 AND s.environment_id=?3 AND s.candidate_handle=r.superseded_handle ORDER BY s.id DESC LIMIT 1) AS superseded_valid_until FROM rotation_runs r WHERE r.rotation_id=?4 AND r.org_id=?1 AND r.project_id=?2 AND r.environment_id=?3 ORDER BY r.id DESC LIMIT ?5
+SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_adapter_targets,candidate_valid_until,superseded_handle FROM rotation_runs WHERE rotation_id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 ORDER BY id DESC LIMIT ?5
 `
 
 type RotationListRunsParams struct {
+	RotationID   string
 	ChainOrg     string
 	ChainProject string
 	ChainEnv     string
-	RotationID   string
 	PageLimit    int64
 }
 
@@ -827,7 +827,7 @@ type RotationListRunsRow struct {
 	LastError                  sql.NullString
 	NotConvergedAdapterTargets sql.NullInt64
 	CandidateValidUntil        sql.NullString
-	SupersededValidUntil       sql.NullString
+	SupersededHandle           sql.NullString
 }
 
 // A page of a rotation's runs, newest first. Run ids are time-ordered (UUIDv7); a
@@ -835,16 +835,14 @@ type RotationListRunsRow struct {
 // after the request, so id order is start order. The cursor is the last run id of the
 // previous page. Only operator-visible metadata: no handle, no candidate, no
 // provider detail beyond the fixed-word last_error code.
-// candidate_valid_until and superseded_valid_until let a revoke_refused or quarantine run say when the
-// role it still owes a drop lapses on its own (the superseded role's expiry is the run that delivered it).
-// hikyo:reason The run list reads one rotation's runs under the org, project and environment chain; the superseded_valid_until subquery is pinned to the same chain on every column and reads only the run that delivered the superseded role.
-// hikyo:instance-scoped
+// candidate_valid_until and superseded_handle let a run that still owes a role drop say when that role
+// lapses on its own; the superseded role's expiry is read per owed run (RotationRunMinterByHandle).
 func (q *Queries) RotationListRuns(ctx context.Context, arg RotationListRunsParams) ([]RotationListRunsRow, error) {
 	rows, err := q.db.QueryContext(ctx, rotationListRuns,
+		arg.RotationID,
 		arg.ChainOrg,
 		arg.ChainProject,
 		arg.ChainEnv,
-		arg.RotationID,
 		arg.PageLimit,
 	)
 	if err != nil {
@@ -865,7 +863,7 @@ func (q *Queries) RotationListRuns(ctx context.Context, arg RotationListRunsPara
 			&i.LastError,
 			&i.NotConvergedAdapterTargets,
 			&i.CandidateValidUntil,
-			&i.SupersededValidUntil,
+			&i.SupersededHandle,
 		); err != nil {
 			return nil, err
 		}
@@ -881,14 +879,14 @@ func (q *Queries) RotationListRuns(ctx context.Context, arg RotationListRunsPara
 }
 
 const rotationListRunsAfter = `-- name: RotationListRunsAfter :many
-SELECT r.id,r.run_trigger,r.phase,r.published_revision,r.revocation_delay_seconds,r.started_at,r.phase_at,r.last_error,r.not_converged_adapter_targets,r.candidate_valid_until,(SELECT s.candidate_valid_until FROM rotation_runs s WHERE s.rotation_id=r.rotation_id AND s.org_id=?1 AND s.project_id=?2 AND s.environment_id=?3 AND s.candidate_handle=r.superseded_handle ORDER BY s.id DESC LIMIT 1) AS superseded_valid_until FROM rotation_runs r WHERE r.rotation_id=?4 AND r.org_id=?1 AND r.project_id=?2 AND r.environment_id=?3 AND r.id < ?5 ORDER BY r.id DESC LIMIT ?6
+SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_adapter_targets,candidate_valid_until,superseded_handle FROM rotation_runs WHERE rotation_id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND id < ?5 ORDER BY id DESC LIMIT ?6
 `
 
 type RotationListRunsAfterParams struct {
+	RotationID   string
 	ChainOrg     string
 	ChainProject string
 	ChainEnv     string
-	RotationID   string
 	AfterID      string
 	PageLimit    int64
 }
@@ -904,17 +902,15 @@ type RotationListRunsAfterRow struct {
 	LastError                  sql.NullString
 	NotConvergedAdapterTargets sql.NullInt64
 	CandidateValidUntil        sql.NullString
-	SupersededValidUntil       sql.NullString
+	SupersededHandle           sql.NullString
 }
 
-// hikyo:reason The run list reads one rotation's runs under the org, project and environment chain; the superseded_valid_until subquery is pinned to the same chain on every column and reads only the run that delivered the superseded role.
-// hikyo:instance-scoped
 func (q *Queries) RotationListRunsAfter(ctx context.Context, arg RotationListRunsAfterParams) ([]RotationListRunsAfterRow, error) {
 	rows, err := q.db.QueryContext(ctx, rotationListRunsAfter,
+		arg.RotationID,
 		arg.ChainOrg,
 		arg.ChainProject,
 		arg.ChainEnv,
-		arg.RotationID,
 		arg.AfterID,
 		arg.PageLimit,
 	)
@@ -936,7 +932,7 @@ func (q *Queries) RotationListRunsAfter(ctx context.Context, arg RotationListRun
 			&i.LastError,
 			&i.NotConvergedAdapterTargets,
 			&i.CandidateValidUntil,
-			&i.SupersededValidUntil,
+			&i.SupersededHandle,
 		); err != nil {
 			return nil, err
 		}
@@ -1187,6 +1183,61 @@ func (q *Queries) RotationRequestRun(ctx context.Context, arg RotationRequestRun
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const rotationRunExtendUncertain = `-- name: RotationRunExtendUncertain :one
+SELECT COUNT(*) FROM rotation_effects WHERE run_id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND kind='extend' AND (outcome IS NULL OR outcome='unknown')
+`
+
+type RotationRunExtendUncertainParams struct {
+	RunID        string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+// Extends of a run whose outcome is open or unknown: its recorded VALID UNTIL is then only a lower bound.
+func (q *Queries) RotationRunExtendUncertain(ctx context.Context, arg RotationRunExtendUncertainParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, rotationRunExtendUncertain,
+		arg.RunID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const rotationRunMinterByHandle = `-- name: RotationRunMinterByHandle :one
+SELECT id,candidate_valid_until FROM rotation_runs WHERE candidate_handle=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 ORDER BY id DESC LIMIT 1
+`
+
+type RotationRunMinterByHandleParams struct {
+	Handle       string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+type RotationRunMinterByHandleRow struct {
+	ID                  string
+	CandidateValidUntil sql.NullString
+}
+
+// The run that minted a role, by its handle, under the chain: the same lookup the executor makes for a
+// superseded role (chain and handle only, never the rotation, so a recreated rotation finds it too).
+// Its candidate_valid_until is that role's recorded VALID UNTIL.
+func (q *Queries) RotationRunMinterByHandle(ctx context.Context, arg RotationRunMinterByHandleParams) (RotationRunMinterByHandleRow, error) {
+	row := q.db.QueryRowContext(ctx, rotationRunMinterByHandle,
+		arg.Handle,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+	)
+	var i RotationRunMinterByHandleRow
+	err := row.Scan(&i.ID, &i.CandidateValidUntil)
+	return i, err
 }
 
 const rotationSetState = `-- name: RotationSetState :execrows

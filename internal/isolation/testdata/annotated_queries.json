@@ -3372,20 +3372,6 @@
   },
   {
     "engine": "postgres",
-    "name": "RotationListRuns",
-    "annotation": "instance-scoped",
-    "hash": "fcd424dfc6ac1f28d3d8eab416f384ed6c32e006643a31956da8a688908ea21e",
-    "reason": "The run list reads one rotation's runs under the org, project and environment chain; the superseded_valid_until subquery is pinned to the same chain on every column and reads only the run that delivered the superseded role."
-  },
-  {
-    "engine": "postgres",
-    "name": "RotationListRunsAfter",
-    "annotation": "instance-scoped",
-    "hash": "1e8df0508b795f391cbab4adc2362bef426e6ca28046d71ca7c277f024e8fb3c",
-    "reason": "The run list reads one rotation's runs under the org, project and environment chain; the superseded_valid_until subquery is pinned to the same chain on every column and reads only the run that delivered the superseded role."
-  },
-  {
-    "engine": "postgres",
     "name": "RotationProviderLiveRuns",
     "annotation": "instance-scoped",
     "hash": "7090b5799fb0d6fe925a3287c8fed95516753f96d52a1c324ab9f8646b39ac27",
@@ -7178,20 +7164,6 @@
     "name": "RotateSessionFactors",
     "annotation": "authn-resolution",
     "hash": "7b657d72d590c757f8ff97a6ce19a015d434dedd618878fc2eef6ee31d5e63c5"
-  },
-  {
-    "engine": "sqlite",
-    "name": "RotationListRuns",
-    "annotation": "instance-scoped",
-    "hash": "fcd424dfc6ac1f28d3d8eab416f384ed6c32e006643a31956da8a688908ea21e",
-    "reason": "The run list reads one rotation's runs under the org, project and environment chain; the superseded_valid_until subquery is pinned to the same chain on every column and reads only the run that delivered the superseded role."
-  },
-  {
-    "engine": "sqlite",
-    "name": "RotationListRunsAfter",
-    "annotation": "instance-scoped",
-    "hash": "1e8df0508b795f391cbab4adc2362bef426e6ca28046d71ca7c277f024e8fb3c",
-    "reason": "The run list reads one rotation's runs under the org, project and environment chain; the superseded_valid_until subquery is pinned to the same chain on every column and reads only the run that delivered the superseded role."
   },
   {
     "engine": "sqlite",

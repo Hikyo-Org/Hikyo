@@ -138,17 +138,23 @@ SELECT COUNT(*) FROM rotations WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.ar
 -- after the request, so id order is start order. The cursor is the last run id of the
 -- previous page. Only operator-visible metadata: no handle, no candidate, no
 -- provider detail beyond the fixed-word last_error code.
--- candidate_valid_until and superseded_valid_until let a revoke_refused or quarantine run say when the
--- role it still owes a drop lapses on its own (the superseded role's expiry is the run that delivered it).
--- hikyo:reason The run list reads one rotation's runs under the org, project and environment chain; the superseded_valid_until subquery is pinned to the same chain on every column and reads only the run that delivered the superseded role.
--- hikyo:instance-scoped
+-- candidate_valid_until and superseded_handle let a run that still owes a role drop say when that role
+-- lapses on its own; the superseded role's expiry is read per owed run (RotationRunMinterByHandle).
 -- name: RotationListRuns :many
-SELECT r.id,r.run_trigger,r.phase,r.published_revision,r.revocation_delay_seconds,r.started_at,r.phase_at,r.last_error,r.not_converged_adapter_targets,r.candidate_valid_until,(SELECT s.candidate_valid_until FROM rotation_runs s WHERE s.rotation_id=r.rotation_id AND s.org_id=sqlc.arg(chain_org) AND s.project_id=sqlc.arg(chain_project) AND s.environment_id=sqlc.arg(chain_env) AND s.candidate_handle=r.superseded_handle ORDER BY s.id DESC LIMIT 1) AS superseded_valid_until FROM rotation_runs r WHERE r.rotation_id=sqlc.arg(rotation_id) AND r.org_id=sqlc.arg(chain_org) AND r.project_id=sqlc.arg(chain_project) AND r.environment_id=sqlc.arg(chain_env) ORDER BY r.id DESC LIMIT sqlc.arg(page_limit);
+SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_adapter_targets,candidate_valid_until,superseded_handle FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) ORDER BY id DESC LIMIT sqlc.arg(page_limit);
 
--- hikyo:reason The run list reads one rotation's runs under the org, project and environment chain; the superseded_valid_until subquery is pinned to the same chain on every column and reads only the run that delivered the superseded role.
--- hikyo:instance-scoped
 -- name: RotationListRunsAfter :many
-SELECT r.id,r.run_trigger,r.phase,r.published_revision,r.revocation_delay_seconds,r.started_at,r.phase_at,r.last_error,r.not_converged_adapter_targets,r.candidate_valid_until,(SELECT s.candidate_valid_until FROM rotation_runs s WHERE s.rotation_id=r.rotation_id AND s.org_id=sqlc.arg(chain_org) AND s.project_id=sqlc.arg(chain_project) AND s.environment_id=sqlc.arg(chain_env) AND s.candidate_handle=r.superseded_handle ORDER BY s.id DESC LIMIT 1) AS superseded_valid_until FROM rotation_runs r WHERE r.rotation_id=sqlc.arg(rotation_id) AND r.org_id=sqlc.arg(chain_org) AND r.project_id=sqlc.arg(chain_project) AND r.environment_id=sqlc.arg(chain_env) AND r.id < sqlc.arg(after_id) ORDER BY r.id DESC LIMIT sqlc.arg(page_limit);
+SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_adapter_targets,candidate_valid_until,superseded_handle FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND id < sqlc.arg(after_id) ORDER BY id DESC LIMIT sqlc.arg(page_limit);
+
+-- The run that minted a role, by its handle, under the chain: the same lookup the executor makes for a
+-- superseded role (chain and handle only, never the rotation, so a recreated rotation finds it too).
+-- Its candidate_valid_until is that role's recorded VALID UNTIL.
+-- name: RotationRunMinterByHandle :one
+SELECT id,candidate_valid_until FROM rotation_runs WHERE candidate_handle=sqlc.arg(handle) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) ORDER BY id DESC LIMIT 1;
+
+-- Extends of a run whose outcome is open or unknown: its recorded VALID UNTIL is then only a lower bound.
+-- name: RotationRunExtendUncertain :one
+SELECT COUNT(*) FROM rotation_effects WHERE run_id=sqlc.arg(run_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND kind='extend' AND (outcome IS NULL OR outcome='unknown');
 
 -- Clears the restore hold of one rotation. The generation is not bumped: a run in
 -- flight asserts the generation it started under, and a release must not

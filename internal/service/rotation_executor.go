@@ -131,6 +131,8 @@ func rotationErrClass(err error) string {
 		return "provider_ambiguous"
 	case errors.Is(err, errRotationBudget):
 		return "publish_budget"
+	case errors.Is(err, errRotationHeld):
+		return "rotation_held"
 	case errors.Is(err, errRotationInactive):
 		return "rotation_inactive"
 	case errors.Is(err, ErrRotationAuthorityLost):
@@ -189,7 +191,10 @@ const (
 
 var (
 	errRotationInactive = errors.New("service: the rotation is no longer active at the generation this run started under")
-	errRotationBudget   = errors.New("service: the run exceeded its publish budget")
+	// errRotationHeld is errRotationInactive for a rotation a restore holds, so
+	// every inactive check still applies and a record can name the hold itself.
+	errRotationHeld   = fmt.Errorf("%w: a restore holds it", errRotationInactive)
+	errRotationBudget = errors.New("service: the run exceeded its publish budget")
 )
 
 // RunRotationSweep does one unit of executor work and reports whether it did any.
@@ -425,32 +430,13 @@ func (e *RotationExecutor) gateWithin(ctx context.Context, r store.Repos, az *au
 	if err != nil {
 		return err
 	}
-	if rec.State != store.RotationStateActive || rec.RestoreHold || (check.generation != anyGeneration && rec.Generation != check.generation) {
+	switch {
+	case rec.State == store.RotationStateActive && rec.RestoreHold:
+		return errRotationHeld
+	case rec.State != store.RotationStateActive || (check.generation != anyGeneration && rec.Generation != check.generation):
 		return errRotationInactive
 	}
-	if err := requireUnattendedEnvironment(ctx, r, az, proof, scope); err != nil {
-		return err
-	}
-	if err := requireRotationProvider(ctx, r, proof, rec.ProviderID); err != nil {
-		return err
-	}
-	if err := requireRotationKeys(ctx, r, proof, rec.KeyID, rec.UsernameKeyID, true); err != nil {
-		return err
-	}
-	for _, id := range []string{rec.KeyID, rec.UsernameKeyID} {
-		key := authz.KeyByID(id)
-		holds, err := az.RecordedPrincipalHolds(ctx, caller, caller.Principal, authz.OpRotationResume, scope, &key)
-		if err != nil {
-			return err
-		}
-		if !holds {
-			return ErrRotationAuthorityLost
-		}
-	}
-	if check.drafts {
-		return requireNoAuthorityDraft(ctx, r, proof, rec.AuthorityPrincipalID, rec.KeyID, rec.UsernameKeyID)
-	}
-	return nil
+	return requireRotationStartable(ctx, r, az, proof, caller, caller.Principal, authz.OpRotationResume, scope, rec, check.drafts)
 }
 
 // gate runs gateWithin in its own transaction, as the recorded authority: before
@@ -1188,6 +1174,8 @@ func (e *RotationExecutor) rollbackAfterPublishError(ctx context.Context, provid
 	switch {
 	case errors.Is(cause, errRotationBudget):
 		code = rotCodeBudget
+	case errors.Is(cause, errRotationHeld):
+		code = rotCodeHeld
 	case errors.Is(cause, errRotationInactive):
 		code = rotCodePaused
 	default:

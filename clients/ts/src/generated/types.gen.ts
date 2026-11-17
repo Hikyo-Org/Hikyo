@@ -996,9 +996,13 @@ export type RotationRun = {
      */
     not_converged_adapter_targets?: number | null;
     /**
-     * For a revoke_refused run, when the superseded role it could not drop expires on its own; for a quarantine run, when its candidate role does. Null for every other phase, or when no expiry was recorded.
+     * For a revoke_refused or quarantine run that published, when the superseded role it still owes a drop expires on its own (its candidate is the serving credential and is never named here); for a quarantine run that never published, when its candidate role does. Null for every other phase, or when no expiry was recorded. A lower bound when credential_valid_until_lower_bound is true.
      */
     credential_valid_until?: string | null;
+    /**
+     * True when an extend of that role has an open or unknown outcome, so the role may stay valid past credential_valid_until: read the time as "at least until". Absent otherwise.
+     */
+    credential_valid_until_lower_bound?: boolean;
 };
 
 export type RotationRunList = {

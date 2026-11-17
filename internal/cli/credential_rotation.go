@@ -191,11 +191,9 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 			return err
 		}
 		noteRestoreHold(ios, out)
-		var runs apigen.RotationRunList
-		if err := client.Do(ctx, http.MethodGet, base+"/"+url.PathEscape(id)+"/runs", nil, &runs); err != nil {
-			return err
-		}
-		noteOwedRuns(ios, runs)
+		// The rotation itself was read; a failure of the runs read only costs the
+		// owed-drop warnings, so it is reported and never fails the show.
+		noteAllOwedRuns(ctx, client, ios, base+"/"+url.PathEscape(id)+"/runs")
 		return one(out)
 	case "create":
 		if provider == "" || key == "" || usernameKey == "" || interval == "" || delay == "" {
@@ -353,6 +351,34 @@ func noteCredentialExpiry(ios IO, r apigen.CredentialRotation, verb string) {
 		r.Id, verb, r.CredentialExpiresAt.UTC().Format(time.RFC3339))
 }
 
+// maxOwedRunPages bounds how far show reads back through a rotation's runs.
+const maxOwedRunPages = 20
+
+// noteAllOwedRuns pages through a rotation's runs and notes every one that still
+// owes a role drop. It never fails its caller: an unreadable page, or a history
+// longer than maxOwedRunPages pages, is said on stderr instead, so the operator
+// knows the warnings above may be incomplete.
+func noteAllOwedRuns(ctx context.Context, client *Client, ios IO, runsPath string) {
+	after := ""
+	for range maxOwedRunPages {
+		target := runsPath + "?limit=500"
+		if after != "" {
+			target += "&after=" + url.QueryEscape(after)
+		}
+		var page apigen.RotationRunList
+		if err := client.Do(ctx, http.MethodGet, target, nil, &page); err != nil {
+			_, _ = fmt.Fprintf(ios.Stderr, "WARNING: the runs could not be read (%v); run `hikyo rotation runs` to check for roles still owed a drop\n", err)
+			return
+		}
+		noteOwedRuns(ios, page)
+		if page.NextAfter == nil {
+			return
+		}
+		after = *page.NextAfter
+	}
+	_, _ = fmt.Fprintf(ios.Stderr, "WARNING: only the newest %d runs were checked for roles still owed a drop; page through `hikyo rotation runs` for older ones\n", maxOwedRunPages*500)
+}
+
 // noteOwedRuns says loudly, on stderr, which runs still owe a role drop and until
 // when that role stays valid: a revoke_refused run could not drop the superseded
 // role and a quarantine run holds a candidate that may still be live. Hikyo has no
@@ -366,6 +392,10 @@ func noteOwedRuns(ios IO, runs apigen.RotationRunList) {
 		until := "no recorded expiry"
 		if r.CredentialValidUntil != nil {
 			until = "stays valid until " + r.CredentialValidUntil.UTC().Format(time.RFC3339)
+			if r.CredentialValidUntilLowerBound != nil && *r.CredentialValidUntilLowerBound {
+				// An unsettled extend means the role may outlive the recorded time.
+				until = "stays valid at least until " + r.CredentialValidUntil.UTC().Format(time.RFC3339) + ", and possibly longer: an extend of it is unsettled"
+			}
 		}
 		_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: run %s is %s and a provider role it owes a drop is still live (%s); drop it at the provider if that is too late\n", r.Id, r.Phase, until)
 	}
