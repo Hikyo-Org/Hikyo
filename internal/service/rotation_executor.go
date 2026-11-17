@@ -1653,6 +1653,17 @@ func (e *RotationExecutor) extendDelivered(ctx context.Context, run store.Rotati
 			e.warn("rotation extend gate failed", run, "extend", err)
 			return skip(backoff)
 		}
+		// The gate authorizes before it reads the rotation, so a held rotation whose
+		// authority is also refused arrives here as a definite halt. The hold blocks the
+		// halt itself, so settling the run at "never" would strand the delivered
+		// credential: classify the hold first and keep the run due like the held branch.
+		restoreHeld, herr := e.Runtime.RestoreHeld(ctx, run)
+		if herr != nil {
+			return failed(herr)
+		}
+		if restoreHeld {
+			return skip(now)
+		}
 		next := rotationNever
 		if held {
 			// The halt is on record: the held run's own revoke follows at once.

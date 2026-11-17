@@ -147,6 +147,10 @@ func (q pgRotationRuntimeQueries) laterPublished(ctx context.Context, c domain.S
 	return q.q.RotationRtLaterPublished(ctx, pggen.RotationRtLaterPublishedParams{ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env), KeyID: keyID, Revision: pgtype.Int8{Int64: revision, Valid: true}})
 }
 
+func (q pgRotationRuntimeQueries) restoreHeld(ctx context.Context, c domain.Scope, rotationID string) (int64, error) {
+	return q.q.RotationRtRestoreHeld(ctx, pggen.RotationRtRestoreHeldParams{RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env)})
+}
+
 func (q pgRotationRuntimeQueries) providerMaterial(ctx context.Context, run RotationRun, now time.Time) (LeaseProviderMaterial, error) {
 	c, err := q.q.RotationRtLoadProviderMaterial(ctx, pggen.RotationRtLoadProviderMaterialParams{RunID: run.ID, ChainOrg: run.OrgID, ChainProject: run.ProjectID, ChainEnv: run.EnvironmentID, Worker: pgText(run.LeaseOwner), Now: pgRequiredTime(now), ClaimToken: run.ClaimToken})
 	return LeaseProviderMaterial{Kind: c.Kind, Origin: c.Origin, TLSMode: c.TlsMode, GrantRole: c.GrantRole, CredentialOwnerID: c.ID, CredentialCiphertext: append([]byte(nil), c.AdminCredentialCiphertext...)}, err
@@ -305,6 +309,10 @@ func (q sqliteRotationRuntimeQueries) publishedEntries(ctx context.Context, c do
 
 func (q sqliteRotationRuntimeQueries) laterPublished(ctx context.Context, c domain.Scope, keyID string, revision int64) (int64, error) {
 	return q.q.RotationRtLaterPublished(ctx, sqlitegen.RotationRtLaterPublishedParams{ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env), KeyID: keyID, Revision: sql.NullInt64{Int64: revision, Valid: true}})
+}
+
+func (q sqliteRotationRuntimeQueries) restoreHeld(ctx context.Context, c domain.Scope, rotationID string) (int64, error) {
+	return q.q.RotationRtRestoreHeld(ctx, sqlitegen.RotationRtRestoreHeldParams{RotationID: rotationID, ChainOrg: string(c.Org), ChainProject: string(c.Project), ChainEnv: string(c.Env)})
 }
 
 func (q sqliteRotationRuntimeQueries) providerMaterial(ctx context.Context, run RotationRun, now time.Time) (LeaseProviderMaterial, error) {

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/dynamic"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
@@ -125,4 +126,98 @@ func runRotationHoldDuringAClaimedRun(t *testing.T, db *store.DB, exhausted bool
 	if got := queryString(t, db, `SELECT COALESCE(halt_reason, '') FROM rotations WHERE id='`+rot.ID+`'`); got != "" {
 		t.Fatalf("a held rotation carries halt reason %q", got)
 	}
+}
+
+// A restore hold that commits after the publish transaction's begin check but
+// before its commit must not let the publish stand: on PostgreSQL the
+// transaction runs SERIALIZABLE and the hold lands while it is open, so the
+// publish must roll back whole (no revision), the run must settle as held
+// (rotation_held, a failed attempt) and the rotation must not halt. SQLite
+// writes one transaction at a time (BEGIN IMMEDIATE), so no hold can land
+// inside a publish there; the begin check already refuses a hold that was
+// committed before it.
+func TestRotationHoldDuringThePublishTransactionRollsItBack(t *testing.T) {
+	db := seededDB(t, openPostgres)
+	x := newRotExec(t, db)
+	rot := x.create(rotPasswordKey, rotUsernameKey)
+	held := false
+	x.exec.Revisions.PublishProbe = &rotPublishProbe{onBaseline: func() {
+		if !held {
+			held = true
+			holdRestored(t, db)
+		}
+	}}
+	x.advance(24*time.Hour + time.Minute)
+	x.drain()
+	if !held {
+		t.Fatal("the hold never landed inside the publish transaction")
+	}
+	if n := x.publishedRuns(rot.ID); n != 0 {
+		t.Fatalf("%d runs published for a rotation held during the publish (phases %q)", n, x.runPhases(rot.ID))
+	}
+	if x.snapshots() != 0 {
+		t.Fatalf("%d revisions were committed under a restore hold", x.snapshots())
+	}
+	after := x.state(rot.ID)
+	if after.State != store.RotationStateActive || !after.RestoreHold {
+		t.Fatalf("rotation is %s (held %v), want active and held", after.State, after.RestoreHold)
+	}
+	if got := x.runPhases(rot.ID); got != "failed," {
+		t.Fatalf("run phases = %q, want the run failed", got)
+	}
+	if got := x.lastRun(rot.ID, "last_error"); got != "rotation_held" {
+		t.Fatalf("the run failed with %q, want rotation_held", got)
+	}
+	if n := x.halts("retries_exhausted") + x.halts("gate_failed") + x.halts("authority_lost"); n != 0 {
+		t.Fatalf("%d halts for a held rotation", n)
+	}
+}
+
+// A restore hold that lands between an extend's claim and its Gate, while the
+// recorded authority has also lost its access, must still leave the settled run
+// due: the authorization refusal is a definite halt reason, but the hold blocks the
+// halt itself, so parking the run at "never" would leave the delivered credential to
+// lapse with nothing to extend it after the hold is released.
+func TestRotationExtendHeldAndAuthorityRefusedStaysDueAfterRelease(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		rot := x.create(rotPasswordKey, rotUsernameKey)
+		run := x.cycle(rot.ID)
+		role := x.lastRun(rot.ID, "candidate_handle")
+		x.ctl.set(func() { x.ctl.createErr = dynamic.ErrUnreachable })
+		due := mustParseStamp(t, queryString(t, db, "SELECT "+stampText(db, "next_attempt_at")+" FROM rotation_runs WHERE id='"+run+"'"))
+		if d := due.Sub(x.now()); d > 0 {
+			x.advance(d + time.Second)
+		}
+		var restore func()
+		x.exec.AfterExtendSupersessionCheck = func() {
+			x.exec.AfterExtendSupersessionCheck = nil
+			execRaw(t, db, `UPDATE rotations SET restore_hold=TRUE WHERE id='`+rot.ID+`'`)
+			restore = x.parkAuthority()
+		}
+		if _, err := x.sweep(x.worker); err != nil {
+			t.Fatalf("sweep: %v", err)
+		}
+		if restore == nil {
+			t.Fatal("the extend never reached its supersession check")
+		}
+		if got := x.state(rot.ID); got.State != store.RotationStateActive || !got.RestoreHold {
+			t.Fatalf("rotation = %s hold=%v, want active and held", got.State, got.RestoreHold)
+		}
+		if n := x.ctl.count("extend:" + role); n != 0 {
+			t.Fatalf("a held rotation's credential was extended %d times", n)
+		}
+
+		restore()
+		execRaw(t, db, `UPDATE rotations SET restore_hold=FALSE WHERE id='`+rot.ID+`'`)
+		for i := 0; i < 3 && x.ctl.count("extend:"+role) == 0; i++ {
+			x.advance(5 * time.Minute)
+			if _, err := x.sweep(x.worker); err != nil {
+				t.Fatalf("sweep after the release: %v", err)
+			}
+		}
+		if n := x.ctl.count("extend:" + role); n != 1 {
+			t.Fatalf("after the release the delivered credential was extended %d times, want 1 (run %s next attempt %s)", n, x.phase(run), queryString(t, db, "SELECT "+stampText(db, "next_attempt_at")+" FROM rotation_runs WHERE id='"+run+"'"))
+		}
+	})
 }

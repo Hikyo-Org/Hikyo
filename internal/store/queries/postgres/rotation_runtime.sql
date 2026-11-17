@@ -145,6 +145,12 @@ SELECT id FROM value_entries WHERE org_id=sqlc.arg(chain_org) AND project_id=sql
 -- name: RotationRtPublishedEntries :many
 SELECT DISTINCT se.value_entry_id FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id JOIN snapshots sn ON sn.org_id=ru.org_id AND sn.project_id=ru.project_id AND sn.environment_id=ru.environment_id AND sn.revision=ru.published_revision JOIN snapshot_entries se ON se.snapshot_id=sn.id AND se.org_id=sn.org_id AND se.project_id=sn.project_id AND se.environment_id=sn.environment_id WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env) AND se.key_id=sqlc.arg(key_id) AND (ro.key_id=sqlc.arg(key_id) OR ro.username_key_id=sqlc.arg(key_id)) AND ru.published_revision>=sqlc.arg(from_revision);
 
+-- Whether a restore holds the rotation. A held rotation's claim, schedule and halt
+-- writes are all refused, so the executor reads this to keep a run due instead of
+-- parking it when a refusal it cannot act on (a halt) would otherwise end it.
+-- name: RotationRtRestoreHeld :one
+SELECT COUNT(*) FROM rotations WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND restore_hold=TRUE;
+
 -- Whether a later run published for the key: the delivered credential of this run
 -- is superseded and must not be extended.
 -- name: RotationRtLaterPublished :one

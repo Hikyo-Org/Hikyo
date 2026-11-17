@@ -1117,6 +1117,32 @@ func (q *Queries) RotationRtPublishedEntries(ctx context.Context, arg RotationRt
 	return items, nil
 }
 
+const rotationRtRestoreHeld = `-- name: RotationRtRestoreHeld :one
+SELECT COUNT(*) FROM rotations WHERE id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND restore_hold=1
+`
+
+type RotationRtRestoreHeldParams struct {
+	RotationID   string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+// Whether a restore holds the rotation. A held rotation's claim, schedule and halt
+// writes are all refused, so the executor reads this to keep a run due instead of
+// parking it when a refusal it cannot act on (a halt) would otherwise end it.
+func (q *Queries) RotationRtRestoreHeld(ctx context.Context, arg RotationRtRestoreHeldParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, rotationRtRestoreHeld,
+		arg.RotationID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const rotationRtSetNextRun = `-- name: RotationRtSetNextRun :execrows
 UPDATE rotations SET deferred_from=NULL,next_run_at=?1,updated_at=?2 WHERE id=?3 AND org_id=?4 AND project_id=?5 AND environment_id=?6 AND state='active' AND restore_hold=0
 `

@@ -213,6 +213,7 @@ type rotationRuntimeQueries interface {
 	currentEntry(ctx context.Context, chain domain.Scope, keyID string) (string, error)
 	publishedEntries(ctx context.Context, chain domain.Scope, keyID string, fromRevision int64) ([]string, error)
 	laterPublished(ctx context.Context, chain domain.Scope, keyID string, revision int64) (int64, error)
+	restoreHeld(ctx context.Context, chain domain.Scope, rotationID string) (int64, error)
 	providerMaterial(ctx context.Context, run RotationRun, now time.Time) (LeaseProviderMaterial, error)
 	supersededRole(ctx context.Context, run RotationRun, now time.Time) (SupersededRole, error)
 	openRunCount(ctx context.Context, chain domain.Scope, rotationID string) (int64, error)
@@ -608,6 +609,16 @@ func (r *RotationRuntime) PublishedAt(ctx context.Context, run RotationRun) (tim
 func (r *RotationRuntime) LaterPublished(ctx context.Context, run RotationRun) (bool, error) {
 	n, err := rotationRead(ctx, r, func(q rotationRuntimeQueries) (int64, error) {
 		return q.laterPublished(ctx, run.Chain(), run.KeyID, run.PublishedRevision)
+	})
+	return n > 0, err
+}
+
+// RestoreHeld reports whether a restore holds the run's rotation right now. The
+// run was loaded at its claim, so its own rotation state cannot show a hold that
+// landed afterwards.
+func (r *RotationRuntime) RestoreHeld(ctx context.Context, run RotationRun) (bool, error) {
+	n, err := rotationRead(ctx, r, func(q rotationRuntimeQueries) (int64, error) {
+		return q.restoreHeld(ctx, run.Chain(), run.RotationID)
 	})
 	return n > 0, err
 }

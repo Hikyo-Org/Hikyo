@@ -1061,6 +1061,12 @@ func (r rotationQueries) RecordRunPublish(ctx context.Context, p authz.Proof, re
 	// Zero rows is correct: the rotation was paused or deleted while the run was
 	// in flight. The publish still stands, so the run still revokes; only the
 	// schedule is not re-armed.
+	// This write is also the publish's guard against a restore hold that lands after
+	// the begin check: the schedule write targets only an active, unheld row, so under
+	// PG serializable a concurrent hold on that row conflicts with it and the publish
+	// transaction aborts (the run then settles as held), while sqlite's single write
+	// connection cannot interleave a hold at all.
+	// TestRotationHoldDuringThePublishTransactionRollsItBack fails without it.
 	_, err = rt.setNextRun(ctx, chain, run.RotationID, rec.NextRunAt, rec.Now)
 	return err
 }

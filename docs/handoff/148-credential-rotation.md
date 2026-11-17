@@ -1386,6 +1386,33 @@ key was deleted (the key lookup answers not-found); an environment-wide holder c
   `TestRotationHoldDuringAClaimedRunLeavesTheRotationAlone` (retry and would-halt cases) failed
   before the fix.
 
+### Review round 5 (as built)
+
+- **Hold landing between stage and commit of a publish (not reproducible; guard documented).**
+  The begin callback checks the hold, and the commit callback checks only authorization, but the
+  commit's last write is the schedule write on the rotation row, which targets an active, unheld
+  row. Under PG serializable a hold that lands after the begin check conflicts with that write, the
+  publish transaction aborts, and the run settles as held (`rotation_held`), not halted; sqlite's
+  single write connection cannot interleave a hold. A negative control (removing that write) made
+  the new test publish a held rotation, so the guard is real but was incidental: it is now named in
+  `RecordRunPublish`, and `TestRotationHoldDuringThePublishTransactionRollsItBack` (PG, hold
+  landing at the baseline read) pins it. No separate hold read was added: the existing write
+  already is the serialization guard, and the pause and delete publish behavior is untouched.
+- **Extend gate: hold classified before the halt reason (confirmed, fixed).** The gate authorizes
+  before it reads the rotation, so a held rotation whose recorded authority was also refused came
+  back as a definite halt reason. The hold blocks the halt UPDATE (round 4), but the done run was
+  still settled at year 9000 and a release never re-arms it, so the delivered credential was never
+  extended. `extendDelivered` now reads the hold (`RotationRuntime.RestoreHeld`, new query
+  `RotationRtRestoreHeld` on both engines) before choosing `next` for a definite refusal and keeps
+  the run due like the `errRotationHeld` branch. `TestRotationExtendHeldAndAuthorityRefusedStaysDueAfterRelease`
+  failed before the fix on both engines (`next_attempt_at` 9000-01-01, 0 extends after release).
+  Siblings audited: the other `rotationNever` writers are hold independent (a superseded or
+  window-spent credential, a failed run's finished drop) or unreachable for a held rotation (the
+  claim skips held rotations, so a claimed run's state is never the held state); the pre-start gate
+  in `startRun` halts a held rotation's due row, which the hold also blocks, leaving the row due
+  for the release. Residual window: a hold landing between the new read and the settle can still
+  park that one run at "never"; the next cycle's publish supersedes its credential.
+
 ### Incident containment
 
 A contained principal loads no grants, so a Gate that runs while the principal is contained
