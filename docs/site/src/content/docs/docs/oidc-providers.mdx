@@ -62,14 +62,15 @@ Create the client in the provider first (each section below), then:
 9. Choose **Configure provider**. Hikyo fetches and validates the discovery
    document on save.
 
-Hikyo can create OIDC providers only in the panel. The CLI manages existing
-ones:
+The CLI cannot create OIDC providers; use the panel or the HTTP API
+(`PUT /api/v1/instance/oidc-providers/{slug}`). The CLI manages existing ones:
 
 ```sh
 hikyo instance-config provider list
 hikyo instance-config provider update auth0 --kind oidc --display-name "Auth0" \
   --client-secret-file ./auth0-client-secret
-hikyo instance-config provider disable auth0 --kind oidc
+hikyo instance-config provider update auth0 --kind oidc --enabled=false \
+  --client-secret-file ./auth0-client-secret
 ```
 
 An OIDC update re-sends the client secret, so the command reads it from the file
@@ -168,14 +169,16 @@ Multi-factor assurance (optional): after multi-factor sign-in, Auth0 adds `mfa`
 to `amr`. Silent authentication and token refresh omit `amr`. Do not copy
 Auth0's step-up template: it only enables multi-factor authentication when
 `acr_values` is present, which Hikyo never sends. Require it for every sign-in
-through the tenant's policy or an unconditional post-login Action instead. Then
+through the tenant's policy or an unconditional post-login Action that sets
+`allowRememberBrowser: false` instead. Then
 check a decoded test token, and only then consider `{"amr_sets":[["mfa"]]}`. Also
 check in your console whether your plan includes the factors you need: Auth0's
 Free plan lists no Pro MFA factors.
 
 Keeping users in sync: use Auth0's **Outbound SCIM** Event Stream Action
 template, which sends `POST`, `PUT` and `DELETE` on `/Users`, to Hikyo's
-[SCIM endpoint](/docs/scim/). See [Auth0's
+[SCIM endpoint](/docs/scim/). Check that Event Streams are available in your
+tenant. See [Auth0's
 guide](https://auth0.com/docs/customize/events/send-outbound-scim).
 
 ### Okta
@@ -205,8 +208,8 @@ guide: [OIDC app integration](https://help.okta.com/oie/en-us/content/topics/app
 
 Required settings:
 
-- Neither issuer has a trailing slash. Do not mix the org server and a custom
-  authorization server.
+- Use the org server unless you already run a custom authorization server.
+  Neither issuer has a trailing slash. Do not mix the two.
 - A custom authorization server needs an access policy. On a new org, the
   `default` server has none, so add one.
 - With a custom domain, Okta's issuer mode (Okta URL, Custom URL or Dynamic)
@@ -236,9 +239,11 @@ managed login. Official guide: [App clients](https://docs.aws.amazon.com/cognito
    This type generates a client secret.
 3. Enter a name and set **Return URL** to the callback URL, then choose
    **Create app client**.
-4. On the app client, allow the `openid`, `email` and `profile` scopes and give
+4. On the pool's **Domain** tab, create a domain and choose managed login as
+   the branding version. Hikyo's reauthentication needs managed login.
+5. On the app client, allow the `openid`, `email` and `profile` scopes and give
    it read access to the `email` and `email_verified` attributes.
-5. Copy the Client ID and Client secret from the app client's details. Check in
+6. Copy the Client ID and Client secret from the app client's details. Check in
    your console where your version shows them.
 
 | Hikyo field | Value |
@@ -320,13 +325,15 @@ push to Hikyo. Remove users in Hikyo yourself.
 
 Needs an authentik instance. Steps follow authentik 2026.8.
 
-1. Open **Applications → Applications** and choose **New Application**. Choose
-   the provider type **OAuth2/OIDC**, then **Create Application**.
-2. Set **Client Type** to **Confidential**. The **Client ID** and **Client
+1. Open **Applications → Applications** and choose **New Application**. Enter
+   a **Name** and a **Slug**. The slug becomes part of the issuer URL.
+2. Choose the provider type **OAuth2/OIDC**.
+3. Set **Client Type** to **Confidential**. The **Client ID** and **Client
    Secret** are generated in the form. Copy them.
-3. Add the callback URL to **Redirect URIs/Origins (RegEx)** in strict mode. If
+4. Add the callback URL to **Redirect URIs/Origins (RegEx)** in strict mode. If
    you leave it empty, authentik saves the first redirect URI it sees.
-4. Select a **Signing Key**.
+5. Select a **Signing Key**.
+6. Choose **Create Application**.
 
 | Hikyo field | Value |
 | --- | --- |
@@ -353,8 +360,8 @@ Multi-factor assurance (optional): `acr` is always
 for a password, `mfa` after an authenticator-validation stage, `user` for
 passwordless WebAuthn and `sc` for a certificate. Check a decoded test token,
 and only then consider `{"amr_sets":[["mfa"]]}`. These values include none of
-`hwk`, `swk` or `otp`, so check whether disclosure reauthentication can use
-this provider.
+`hwk`, `swk` or `otp`, so Hikyo refuses disclosure reauthentication through
+authentik. Use a local authenticator or passkey for it.
 
 Keeping users in sync: authentik's built-in SCIM 2.0 provider pushes every
 change and runs a full sync hourly. Create a binding and credential as described
@@ -412,7 +419,8 @@ console, so the client lives in YAML. The provider also needs `hmac_secret` and
    authelia crypto hash generate pbkdf2 --variant sha512 --random --random.length 72 --random.charset rfc3986
    ```
 
-2. Add the client and a claims policy to the configuration:
+2. Add the client and a claims policy to the configuration. The example uses
+   the slug `authelia`; replace the redirect URI with your own callback URL.
 
    ```yaml
    identity_providers:
@@ -468,15 +476,19 @@ source.
 
 A provider can tell Hikyo when its user directory deletes or bans a user.
 Without this, an upstream deletion changes nothing in Hikyo until the person
-next fails to sign in. Select the **Clerk** lifecycle profile, paste the
-webhook signing secret (`whsec_...`) from your Clerk webhook endpoint into the
-write-only field, and register the **Lifecycle endpoint URL** shown in the
-provider editor as that endpoint. Subscribe it to `user.deleted` and
-`user.updated`. The URL has the form
-`https://hikyo.example.com/api/v1/auth/oidc/work/lifecycle`.
+next fails to sign in. Set it up after the Clerk provider works for sign-in:
 
-In Clerk, open **Webhooks → Add Endpoint** to create the endpoint and copy its
-**Signing Secret**.
+1. Build the endpoint URL from your origin and the provider's slug:
+   `https://hikyo.example.com/api/v1/auth/oidc/<slug>/lifecycle`.
+2. In Clerk, open **Webhooks → Add Endpoint**, enter that URL, subscribe it to
+   `user.deleted` and `user.updated`, and create it. Copy its **Signing
+   Secret** (`whsec_...`).
+3. In Hikyo, choose **Reconfigure** on the provider. Set **Directory lifecycle
+   events** to **Clerk**, paste the signing secret into **Lifecycle signing
+   secret**, enter the client secret again, and save.
+4. Check that the **Lifecycle endpoint URL** the editor now shows matches the
+   URL you gave Clerk. Send a test event from Clerk's endpoint page; Hikyo
+   answers `204`.
 
 From the CLI, with the secret in a private regular file:
 
@@ -494,7 +506,9 @@ secret.
 Hikyo verifies the [Standard Webhooks](https://www.standardwebhooks.com/)
 signature, including a five-minute timestamp window, before reading the body.
 Clerk's `svix-*` headers are accepted. After a valid signature every event is
-answered `204`, so a sender cannot learn which users exist. An invalid signature,
+answered `204`, so a sender cannot learn which users exist. The one exception is
+a provider changed between verification and the write, which is answered with a
+retryable `503` so Clerk redelivers the event. An invalid signature,
 a stale timestamp, an unknown slug, a disabled provider and a provider with no
 lifecycle profile all get the same refusal.
 
