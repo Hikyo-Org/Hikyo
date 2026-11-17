@@ -938,6 +938,60 @@ export type RotationStateRequest = {
     expected_generation?: number | null;
 };
 
+export type RunRotationNowRequest = {
+    /**
+     * The generation the caller last read. Omitted or null means the current generation.
+     */
+    expected_generation?: number | null;
+    /**
+     * Revoke the superseded credential right after this run publishes the new one (a revocation delay of zero for this run only).
+     */
+    skip_overlap?: boolean;
+};
+
+export type RotationRunRequested = {
+    rotation_id: Id;
+    run_id: Id;
+    skip_overlap: boolean;
+};
+
+/**
+ * The run's state-machine phase. `quarantine` and `failed` are terminal; `done` is a settled run.
+ */
+export type RotationRunPhase = 'minting' | 'minted' | 'staged' | 'published' | 'overlap' | 'revoking' | 'revoke_refused' | 'done' | 'quarantine' | 'failed';
+
+export type RotationRun = {
+    id: Id;
+    trigger: 'schedule' | 'manual';
+    phase: RotationRunPhase;
+    /**
+     * The catalogue revision this run published. Null until it publishes.
+     */
+    published_revision?: number | null;
+    /**
+     * The overlap this run snapshotted; zero for a run that skipped it.
+     */
+    revocation_delay_seconds: number;
+    started_at: Timestamp;
+    phase_at: Timestamp;
+    /**
+     * The fixed-word code of the last failure, if any. Never provider detail.
+     */
+    error_code?: string | null;
+    /**
+     * Adapter targets still behind the published revision when the run decided to revoke the superseded credential. Null until then.
+     */
+    not_converged_consumers?: number | null;
+};
+
+export type RotationRunList = {
+    items: Array<RotationRun>;
+    /**
+     * Pass as `after` to read the next page. Absent on the last page.
+     */
+    next_after?: string;
+};
+
 export type MintLeaseRequest = {
     provider_id: Id;
     /**
@@ -33763,6 +33817,10 @@ export type DeleteRotationData = {
          * The generation the caller last read. A different current generation is a conflict.
          */
         expected_generation?: number;
+        /**
+         * Close the rotation's unsettled runs instead of refusing the delete. Off by default.
+         */
+        abandon?: boolean;
     };
     url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}';
 };
@@ -34034,6 +34092,167 @@ export type ResumeRotationResponses = {
 };
 
 export type ResumeRotationResponse = ResumeRotationResponses[keyof ResumeRotationResponses];
+
+export type RunRotationNowData = {
+    body?: RunRotationNowRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        rotation: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/run-now';
+};
+
+export type RunRotationNowErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type RunRotationNowError = RunRotationNowErrors[keyof RunRotationNowErrors];
+
+export type RunRotationNowResponses = {
+    /**
+     * Run requested.
+     */
+    202: RotationRunRequested;
+};
+
+export type RunRotationNowResponse = RunRotationNowResponses[keyof RunRotationNowResponses];
+
+export type ListRotationRunsData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        rotation: Id;
+    };
+    query?: {
+        /**
+         * Maximum runs on this page, newest first.
+         */
+        limit?: number;
+        /**
+         * The `next_after` a previous page returned. Absent reads the first page.
+         */
+        after?: string;
+    };
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/runs';
+};
+
+export type ListRotationRunsErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListRotationRunsError = ListRotationRunsErrors[keyof ListRotationRunsErrors];
+
+export type ListRotationRunsResponses = {
+    /**
+     * Run list.
+     */
+    200: RotationRunList;
+};
+
+export type ListRotationRunsResponse = ListRotationRunsResponses[keyof ListRotationRunsResponses];
 
 export type ListSshCasData = {
     body?: never;

@@ -60,6 +60,14 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
+  - target: $['paths']['/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}']['delete']['parameters'][1]
+    update:
+      x-omitempty: false
+      x-omitzero: true
+  - target: $['paths']['/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/runs']['get']['parameters'][0,1]
+    update:
+      x-omitempty: false
+      x-omitzero: true
   - target: $['paths']['/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile}']['delete']['parameters'][0]
     update:
       x-omitempty: false
@@ -193,6 +201,18 @@ actions:
       x-omitempty: false
       x-omitzero: true
   - target: $['components']['schemas']['RotationStateRequest']['properties']['expected_generation']
+    update:
+      x-omitempty: false
+      x-omitzero: true
+  - target: $['components']['schemas']['RunRotationNowRequest']['properties']['expected_generation','skip_overlap']
+    update:
+      x-omitempty: false
+      x-omitzero: true
+  - target: $['components']['schemas']['RotationRun']['properties']['published_revision','error_code','not_converged_consumers']
+    update:
+      x-omitempty: false
+      x-omitzero: true
+  - target: $['components']['schemas']['RotationRunList']['properties']['next_after']
     update:
       x-omitempty: false
       x-omitzero: true

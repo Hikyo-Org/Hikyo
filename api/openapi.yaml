@@ -14550,7 +14550,11 @@ paths:
       summary: Disable a rotation; the row stays as history.
       description: |
         Soft delete: the rotation moves to `disabled` and frees its keys. A
-        rotation with a run in flight is refused. `expected_generation`, when
+        rotation with a run in flight is refused unless `abandon` is true.
+        `abandon` closes every unsettled run as quarantine (or done, for a
+        published run that owes no revoke) and records a row for each; it
+        revokes nothing, so a role a run may still hold is kept for the
+        executor to settle. `expected_generation`, when
         given, must equal the rotation's current generation. The credential
         already delivered into the keys stays valid until
         `credential_expires_at`; deleting does not revoke it.
@@ -14561,6 +14565,11 @@ paths:
       x-hikyo-min-revision: 17
       parameters:
         - $ref: "#/components/parameters/ExpectedGeneration"
+        - name: abandon
+          in: query
+          required: false
+          description: Close the rotation's unsettled runs instead of refusing the delete. Off by default.
+          schema: {type: boolean, default: false}
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -14637,6 +14646,88 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/run-now:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/RotationID"
+    post:
+      operationId: runRotationNow
+      tags: [rotation]
+      summary: Request a rotation run now, outside its schedule.
+      description: |
+        Records the request and answers with the id of the run the executor will
+        start; the run exists once the executor picks it up (list it with the
+        runs route). The run is a manual-trigger run through the executor's
+        normal path: the same pre-publish gate, recorded authority and overlap as a
+        scheduled one, so a manual run bypasses none of them. The caller must be a
+        signed-in person and consume the publish reauthentication window over the
+        rotation's keys, as resume does. A rotation that is not active, has a run
+        in flight, or already has a request waiting is refused. `skip_overlap`
+        gives this run a revocation delay of zero: the superseded credential is
+        revoked right after the new one is published, so a consumer that has not
+        yet picked up the new credential loses access. The revoke outcome row
+        records `not_converged_consumers`, the adapter targets still behind the
+        published revision.
+      x-hikyo-class: tenant
+      x-hikyo-operation: rotation.run_now
+      x-hikyo-formula: [publish@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 18
+      requestBody: {required: false, content: {application/json: {schema: {$ref: "#/components/schemas/RunRotationNowRequest"}}}}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "202": {description: Run requested., content: {application/json: {schema: {$ref: "#/components/schemas/RotationRunRequested"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/runs:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/RotationID"
+    get:
+      operationId: listRotationRuns
+      tags: [rotation]
+      summary: List a rotation's runs, newest first.
+      description: |
+        Metadata only: phase, trigger, published revision and the fixed-word code
+        of the last failure. No credential, role name or provider detail is
+        returned. `not_converged_consumers` is the count recorded when the run
+        decided to revoke its superseded credential, null until then. Paged
+        (`limit`, default 100, at most 500; `after` continues from `next_after`).
+      x-hikyo-class: tenant
+      x-hikyo-operation: rotation.runs
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 18
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Maximum runs on this page, newest first.
+          schema: {type: integer, minimum: 1, maximum: 500, default: 100}
+        - name: after
+          in: query
+          required: false
+          description: The `next_after` a previous page returned. Absent reads the first page.
+          schema: {type: string, maxLength: 128}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: Run list., content: {application/json: {schema: {$ref: "#/components/schemas/RotationRunList"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/Internal"}
 
   /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas:
@@ -18311,6 +18402,50 @@ components:
       additionalProperties: false
       properties:
         expected_generation: {type: [integer, "null"], format: int64, minimum: 1, description: The generation the caller last read. Omitted or null means the current generation.}
+
+    RunRotationNowRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        expected_generation: {type: [integer, "null"], format: int64, minimum: 1, description: The generation the caller last read. Omitted or null means the current generation.}
+        skip_overlap: {type: boolean, default: false, description: "Revoke the superseded credential right after this run publishes the new one (a revocation delay of zero for this run only)."}
+
+    RotationRunRequested:
+      type: object
+      additionalProperties: false
+      required: [rotation_id, run_id, skip_overlap]
+      properties:
+        rotation_id: {$ref: "#/components/schemas/ID"}
+        run_id: {$ref: "#/components/schemas/ID"}
+        skip_overlap: {type: boolean}
+
+    RotationRunPhase:
+      type: string
+      description: The run's state-machine phase. `quarantine` and `failed` are terminal; `done` is a settled run.
+      enum: [minting, minted, staged, published, overlap, revoking, revoke_refused, done, quarantine, failed]
+
+    RotationRun:
+      type: object
+      additionalProperties: false
+      required: [id, trigger, phase, revocation_delay_seconds, started_at, phase_at]
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        trigger: {type: string, enum: [schedule, manual]}
+        phase: {$ref: "#/components/schemas/RotationRunPhase"}
+        published_revision: {type: [integer, "null"], format: int64, description: The catalogue revision this run published. Null until it publishes.}
+        revocation_delay_seconds: {type: integer, format: int64, minimum: 0, description: The overlap this run snapshotted; zero for a run that skipped it.}
+        started_at: {$ref: "#/components/schemas/Timestamp"}
+        phase_at: {$ref: "#/components/schemas/Timestamp"}
+        error_code: {type: [string, "null"], description: "The fixed-word code of the last failure, if any. Never provider detail."}
+        not_converged_consumers: {type: [integer, "null"], format: int64, minimum: 0, description: "Adapter targets still behind the published revision when the run decided to revoke the superseded credential. Null until then."}
+
+    RotationRunList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/RotationRun"}}
+        next_after: {type: string, maxLength: 128, description: "Pass as `after` to read the next page. Absent on the last page."}
 
     MintLeaseRequest:
       type: object

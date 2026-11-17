@@ -778,6 +778,50 @@ export const zRotationStateRequest = z.object({
     expected_generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullish()
 });
 
+export const zRunRotationNowRequest = z.object({
+    expected_generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullish(),
+    skip_overlap: z.boolean().optional().default(false)
+});
+
+export const zRotationRunRequested = z.object({
+    rotation_id: zId,
+    run_id: zId,
+    skip_overlap: z.boolean()
+});
+
+/**
+ * The run's state-machine phase. `quarantine` and `failed` are terminal; `done` is a settled run.
+ */
+export const zRotationRunPhase = z.enum([
+    'minting',
+    'minted',
+    'staged',
+    'published',
+    'overlap',
+    'revoking',
+    'revoke_refused',
+    'done',
+    'quarantine',
+    'failed'
+]);
+
+export const zRotationRun = z.object({
+    id: zId,
+    trigger: z.enum(['schedule', 'manual']),
+    phase: zRotationRunPhase,
+    published_revision: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullish(),
+    revocation_delay_seconds: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    started_at: zTimestamp,
+    phase_at: zTimestamp,
+    error_code: z.string().nullish(),
+    not_converged_consumers: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullish()
+});
+
+export const zRotationRunList = z.object({
+    items: z.array(zRotationRun),
+    next_after: z.string().max(128).optional()
+});
+
 export const zMintLeaseRequest = z.object({
     provider_id: zId,
     max_ttl_seconds: z.coerce.bigint().gte(BigInt(1)).lte(BigInt(9223372036))
@@ -9624,7 +9668,8 @@ export const zDeleteRotationPath = z.object({
 });
 
 export const zDeleteRotationQuery = z.object({
-    expected_generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional()
+    expected_generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    abandon: z.boolean().optional().default(false)
 });
 
 /**
@@ -9671,6 +9716,37 @@ export const zResumeRotationPath = z.object({
  * Rotation after the change.
  */
 export const zResumeRotationResponse = zCredentialRotation;
+
+export const zRunRotationNowBody = zRunRotationNowRequest;
+
+export const zRunRotationNowPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    rotation: zId
+});
+
+/**
+ * Run requested.
+ */
+export const zRunRotationNowResponse = zRotationRunRequested;
+
+export const zListRotationRunsPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    rotation: zId
+});
+
+export const zListRotationRunsQuery = z.object({
+    limit: z.int().gte(1).lte(500).optional().default(100),
+    after: z.string().max(128).optional()
+});
+
+/**
+ * Run list.
+ */
+export const zListRotationRunsResponse = zRotationRunList;
 
 export const zListSshCasPath = z.object({
     org: zId,
