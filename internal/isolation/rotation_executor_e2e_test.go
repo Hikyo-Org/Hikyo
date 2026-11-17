@@ -1362,6 +1362,10 @@ func runRotationExecutorAuditLifecycle(t *testing.T, engine store.Engine) *store
 	x := newRotExec(t, db)
 	rot := x.create(rotPasswordKey, rotUsernameKey)
 	x.cycle(rot.ID)
+	// rotation.run_now: requested while no run is open, then started by the drain.
+	if _, err := x.runNow(x.actor, rot.ID, false); err != nil {
+		t.Fatalf("rotation run-now: %v", err)
+	}
 	x.advance(24 * time.Hour)
 	x.drain()
 	if _, err := x.svc.Delete(tctx(t), x.actor, x.scope, service.RotationStateRequest{RotationID: rot.ID, Abandon: true}); err != nil {
