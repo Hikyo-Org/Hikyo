@@ -739,8 +739,52 @@ type RotationRunsRequest struct {
 
 // RotationRunsPage is one page of runs; NextAfter is empty on the last page.
 type RotationRunsPage struct {
-	Items     []store.RotationRunRecord
+	Items     []RotationRunView
 	NextAfter string
+}
+
+// RotationRunView is one run's metadata with its stamps parsed, so a transport
+// maps it without reaching the datastore's record type. CredentialValidUntil is
+// the zero time when the run owes no drop or no expiry was recorded; the
+// lower-bound flag is only ever true with an expiry.
+type RotationRunView struct {
+	ID                             string
+	Trigger                        string
+	Phase                          string
+	PublishedRevision              int64
+	RevocationDelaySeconds         int64
+	StartedAt                      time.Time
+	PhaseAt                        time.Time
+	ErrorCode                      string
+	NotConvergedAdapterTargets     *int64
+	CredentialValidUntil           time.Time
+	CredentialValidUntilLowerBound bool
+}
+
+// rotationRunView parses a stored run's stamps; a malformed one fails the read.
+func rotationRunView(row store.RotationRunRecord) (RotationRunView, error) {
+	started, err := time.Parse(time.RFC3339Nano, row.StartedAt)
+	if err != nil {
+		return RotationRunView{}, fmt.Errorf("service: parse run started_at: %w", err)
+	}
+	phaseAt, err := time.Parse(time.RFC3339Nano, row.PhaseAt)
+	if err != nil {
+		return RotationRunView{}, fmt.Errorf("service: parse run phase_at: %w", err)
+	}
+	view := RotationRunView{
+		ID: row.ID, Trigger: row.Trigger, Phase: row.Phase, PublishedRevision: row.PublishedRevision,
+		RevocationDelaySeconds: row.RevocationDelaySeconds, StartedAt: started, PhaseAt: phaseAt,
+		ErrorCode: row.ErrorCode, NotConvergedAdapterTargets: row.NotConvergedAdapterTargets,
+	}
+	if row.CredentialValidUntil != "" {
+		until, err := time.Parse(time.RFC3339Nano, row.CredentialValidUntil)
+		if err != nil {
+			return RotationRunView{}, fmt.Errorf("service: parse run credential_valid_until: %w", err)
+		}
+		view.CredentialValidUntil = until
+		view.CredentialValidUntilLowerBound = row.CredentialValidUntilLowerBound
+	}
+	return view, nil
 }
 
 // Runs lists a rotation's runs: phase, trigger, revision and the fixed-word code
@@ -773,7 +817,14 @@ func (s *CredentialRotations) Runs(ctx context.Context, actor Actor, scope domai
 			rows = rows[:limit]
 			out.NextAfter = rows[limit-1].ID
 		}
-		out.Items = rows
+		out.Items = make([]RotationRunView, 0, len(rows))
+		for _, row := range rows {
+			view, err := rotationRunView(row)
+			if err != nil {
+				return err
+			}
+			out.Items = append(out.Items, view)
+		}
 		return nil
 	})
 	return out, err

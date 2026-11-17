@@ -7,7 +7,6 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/service"
-	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
 // Scheduled credential rotation configuration (#148, slice S1). The handlers
@@ -203,11 +202,7 @@ func (a *API) ListRotationRuns(ctx context.Context, req apigen.ListRotationRunsR
 	}
 	out := apigen.RotationRunList{Items: []apigen.RotationRun{}}
 	for _, row := range got.Items {
-		run, err := rotationRunBody(row)
-		if err != nil {
-			return nil, err
-		}
-		out.Items = append(out.Items, run)
+		out.Items = append(out.Items, rotationRunBody(row))
 	}
 	if got.NextAfter != "" {
 		out.NextAfter = &got.NextAfter
@@ -215,20 +210,12 @@ func (a *API) ListRotationRuns(ctx context.Context, req apigen.ListRotationRunsR
 	return apigen.ListRotationRuns200JSONResponse(out), nil
 }
 
-// rotationRunBody maps a stored run onto its wire shape; the lower-bound flag
+// rotationRunBody maps a run's view onto its wire shape; the lower-bound flag
 // is only ever sent with an expiry, and only when true.
-func rotationRunBody(row store.RotationRunRecord) (apigen.RotationRun, error) {
-	started, err := time.Parse(time.RFC3339Nano, row.StartedAt)
-	if err != nil {
-		return apigen.RotationRun{}, fmt.Errorf("server: parse run started_at: %w", err)
-	}
-	phaseAt, err := time.Parse(time.RFC3339Nano, row.PhaseAt)
-	if err != nil {
-		return apigen.RotationRun{}, fmt.Errorf("server: parse run phase_at: %w", err)
-	}
+func rotationRunBody(row service.RotationRunView) apigen.RotationRun {
 	run := apigen.RotationRun{
 		Id: apigen.ID(row.ID), Trigger: apigen.RotationRunTrigger(row.Trigger), Phase: apigen.RotationRunPhase(row.Phase),
-		RevocationDelaySeconds: row.RevocationDelaySeconds, StartedAt: started, PhaseAt: phaseAt, NotConvergedAdapterTargets: row.NotConvergedAdapterTargets,
+		RevocationDelaySeconds: row.RevocationDelaySeconds, StartedAt: row.StartedAt, PhaseAt: row.PhaseAt, NotConvergedAdapterTargets: row.NotConvergedAdapterTargets,
 	}
 	if row.PublishedRevision != 0 {
 		run.PublishedRevision = &row.PublishedRevision
@@ -236,15 +223,11 @@ func rotationRunBody(row store.RotationRunRecord) (apigen.RotationRun, error) {
 	if row.ErrorCode != "" {
 		run.ErrorCode = &row.ErrorCode
 	}
-	if row.CredentialValidUntil != "" {
-		until, err := time.Parse(time.RFC3339Nano, row.CredentialValidUntil)
-		if err != nil {
-			return apigen.RotationRun{}, fmt.Errorf("server: parse run credential_valid_until: %w", err)
-		}
-		run.CredentialValidUntil = &until
+	if !row.CredentialValidUntil.IsZero() {
+		run.CredentialValidUntil = &row.CredentialValidUntil
 		if row.CredentialValidUntilLowerBound {
 			run.CredentialValidUntilLowerBound = &row.CredentialValidUntilLowerBound
 		}
 	}
-	return run, nil
+	return run
 }

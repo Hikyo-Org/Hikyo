@@ -160,7 +160,10 @@ func runRotationRunValidUntil(t *testing.T, db *store.DB) {
 		}
 		for _, r := range page.Items {
 			if r.ID == run {
-				return r.CredentialValidUntil, r.CredentialValidUntilLowerBound
+				if r.CredentialValidUntil.IsZero() {
+					return "", r.CredentialValidUntilLowerBound
+				}
+				return r.CredentialValidUntil.Format(time.RFC3339Nano), r.CredentialValidUntilLowerBound
 			}
 		}
 		t.Fatalf("run %s not listed", run)
@@ -239,8 +242,8 @@ func runRotationRunValidUntilAfterRecreate(t *testing.T, db *store.DB) {
 	if err != nil || len(page.Items) == 0 {
 		t.Fatalf("runs = %+v, %v", page, err)
 	}
-	if got := page.Items[0].CredentialValidUntil; got == "" || !mustParseStamp(t, got).Equal(mustParseStamp(t, first)) {
-		t.Fatalf("a recreated rotation's refused run names %q, want its predecessor's role expiry %q", got, first)
+	if got := page.Items[0].CredentialValidUntil; got.IsZero() || !got.Equal(mustParseStamp(t, first)) {
+		t.Fatalf("a recreated rotation's refused run names %v, want its predecessor's role expiry %q", got, first)
 	}
 }
 
