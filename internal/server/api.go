@@ -68,6 +68,7 @@ type AuthService interface {
 	AuthMethods(ctx context.Context) ([]service.AuthMethodProvider, bool, error)
 	OIDCStart(ctx context.Context, slug, purpose, intent, signupOrg, environmentID, presented, proof string, browser bool) (service.OIDCStartResult, error)
 	OIDCCallback(ctx context.Context, slug, code, state, iss, idpError, bindingCookie, presented string) (service.OIDCCallbackResult, error)
+	OIDCLifecycle(ctx context.Context, slug string, header http.Header, body []byte) error
 	ListIdentities(ctx context.Context, presented string) ([]authnIdentity, error)
 	UnlinkIdentity(ctx context.Context, presented, identityID, proof string) (service.LoginResult, error)
 	EnrolPasskeyStart(ctx context.Context, presented, password, code string) ([]byte, error)
@@ -935,6 +936,27 @@ func (a *API) validateAgainstContractWith(
 				return
 			}
 			r.Body = io.NopCloser(bytes.NewReader(raw))
+		} else if operation.ID == "oidcLifecycle" && r.Body != nil {
+			// A directory lifecycle event is read raw and bounded, and its
+			// signature is verified by the service BEFORE the body is parsed, so
+			// contract validation must not decode (and answer for) a body that
+			// has not yet proved who sent it. Path and headers are still checked.
+			raw, err := io.ReadAll(http.MaxBytesReader(rootResponseWriter(w), r.Body, service.MaxLifecycleBodyBytes))
+			if err != nil {
+				writeError(w, wirePolicyForCode(apigen.ErrorCodeBadRequest), "")
+				return
+			}
+			r.Body = io.NopCloser(bytes.NewReader(raw))
+			validated, err := match.ValidateWithoutBody()
+			if err != nil {
+				a.writeValidationError(w, err)
+				return
+			}
+			request := validated.Request()
+			if a.requireCurrentRuntime(w, request) {
+				next.ServeHTTP(w, request)
+			}
+			return
 		} else if r.Body != nil {
 			limit := int64(MaxRequestBytes)
 			if chromeImageUpload[operation.ID] {

@@ -326,6 +326,7 @@
   "StampCredentialEstablish": "func(ctx context.Context, sessionID, identityID string, expires time.Time) error",
   "StrandedRevealPrincipals": "func(ctx context.Context, org, project, env string) ([]domain.PrincipalID, error)",
   "SweepExpiredWorkspaceHandoffs": "func(ctx context.Context, before time.Time) (int64, error)",
+  "SweepSessionsForPrincipalAndIssuer": "func(ctx context.Context, principalID, issuer string) (int64, error)",
   "SweepSessionsForProvider": "func(ctx context.Context, providerID string) (int64, error)",
   "SweepSessionsForSAMLProvider": "func(ctx context.Context, providerID string) (int64, error)",
   "SweepSessionsForWebAuthnCredential": "func(ctx context.Context, credentialID string) (int64, error)",

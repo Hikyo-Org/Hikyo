@@ -269,6 +269,7 @@ operations:
 
   oidcStart:                   {webui: login}
   oidcCallback:                {exception: identity-protocol}
+  oidcLifecycle:               {exception: identity-protocol}
   samlStart:                   {webui: login}
   samlACS:                     {exception: identity-protocol}
   samlMetadata:                {exception: identity-protocol}

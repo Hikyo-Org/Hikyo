@@ -243,11 +243,12 @@ var ResolutionSurfaceWriters = map[string]bool{
 	"ClaimFederatedAuthority":         true,
 	"StampCredentialEstablish":        true,
 
-	"ConsumeOIDCTransaction":    true,
-	"CreateExternalIdentity":    true,
-	"DeleteExternalIdentity":    true,
-	"DeleteSessionsForProvider": true,
-	"CreateReauthWindow":        true,
+	"ConsumeOIDCTransaction":              true,
+	"CreateExternalIdentity":              true,
+	"DeleteExternalIdentity":              true,
+	"DeleteSessionsForPrincipalAndIssuer": true,
+	"DeleteSessionsForProvider":           true,
+	"CreateReauthWindow":                  true,
 	// The Phase-C mint guard: a no-op CAS write that locks the pinned provider
 	// row so a concurrent reconfigure serializes behind it (A4 TOCTOU). It is a
 	// proof-free write on the resolution surface for the same reason the other

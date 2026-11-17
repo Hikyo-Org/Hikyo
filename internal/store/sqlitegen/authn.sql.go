@@ -510,6 +510,35 @@ func (q *Queries) DeleteSessionsForPrincipal(ctx context.Context, principalID st
 	return err
 }
 
+const deleteSessionsForPrincipalAndIssuer = `-- name: DeleteSessionsForPrincipalAndIssuer :execrows
+DELETE FROM sessions WHERE sessions.principal_id = ?1
+AND (sessions.provider_id IN (SELECT p.id FROM oidc_providers p WHERE p.kind = 'oidc' AND p.issuer = ?2)
+ OR sessions.id IN (SELECT e.session_id FROM credential_establish_evidence e
+  JOIN external_identities i ON i.id = e.identity_id
+  WHERE i.kind = 'oidc' AND i.issuer = ?2))
+`
+
+type DeleteSessionsForPrincipalAndIssuerParams struct {
+	PrincipalID string
+	Issuer      string
+}
+
+// The directory-lifecycle sweep (human-auth ADR, 2026-11-17 amendment, f): one
+// principal's sessions that were minted through ANY oidc provider row carrying
+// the given issuer, plus those a credential-establishment stamp ties to an oidc
+// identity of that issuer. Sessions minted by other methods survive, so a
+// password session on the same account is not touched. reauth_windows cascade
+// from the session. Run BEFORE the identity row is removed: the evidence join
+// needs it.
+// hikyo:authn-resolution
+func (q *Queries) DeleteSessionsForPrincipalAndIssuer(ctx context.Context, arg DeleteSessionsForPrincipalAndIssuerParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteSessionsForPrincipalAndIssuer, arg.PrincipalID, arg.Issuer)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteSessionsForProvider = `-- name: DeleteSessionsForProvider :execrows
 DELETE FROM sessions WHERE sessions.provider_id = ?1
 OR sessions.id IN (SELECT e.session_id FROM credential_establish_evidence e
@@ -797,7 +826,8 @@ const getEnabledProviderByIssuer = `-- name: GetEnabledProviderByIssuer :one
 
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
        redirect_uri, assurance_policy, enabled, dek_version, row_version,
-       created_at, updated_at
+       created_at, updated_at,
+       lifecycle_profile, lifecycle_secret
 FROM oidc_providers WHERE kind = ? AND issuer = ? AND enabled = 1
 `
 
@@ -831,6 +861,8 @@ func (q *Queries) GetEnabledProviderByIssuer(ctx context.Context, arg GetEnabled
 		&i.RowVersion,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LifecycleProfile,
+		&i.LifecycleSecret,
 	)
 	return i, err
 }
@@ -838,7 +870,8 @@ func (q *Queries) GetEnabledProviderByIssuer(ctx context.Context, arg GetEnabled
 const getEnabledProviderBySlug = `-- name: GetEnabledProviderBySlug :one
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
        redirect_uri, assurance_policy, enabled, dek_version, row_version,
-       created_at, updated_at
+       created_at, updated_at,
+       lifecycle_profile, lifecycle_secret
 FROM oidc_providers WHERE slug = ? AND enabled = 1
 `
 
@@ -864,6 +897,8 @@ func (q *Queries) GetEnabledProviderBySlug(ctx context.Context, slug string) (Oi
 		&i.RowVersion,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LifecycleProfile,
+		&i.LifecycleSecret,
 	)
 	return i, err
 }
@@ -1136,7 +1171,8 @@ func (q *Queries) GetPrincipalKind(ctx context.Context, id string) (string, erro
 const getProviderForCallback = `-- name: GetProviderForCallback :one
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
        redirect_uri, assurance_policy, enabled, dek_version, row_version,
-       created_at, updated_at
+       created_at, updated_at,
+       lifecycle_profile, lifecycle_secret
 FROM oidc_providers WHERE id = ?
 `
 
@@ -1162,6 +1198,8 @@ func (q *Queries) GetProviderForCallback(ctx context.Context, id string) (OidcPr
 		&i.RowVersion,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LifecycleProfile,
+		&i.LifecycleSecret,
 	)
 	return i, err
 }
@@ -2172,6 +2210,46 @@ func (q *Queries) ListOauth2ProvidersForReencrypt(ctx context.Context, arg ListO
 	return items, nil
 }
 
+const listOidcLifecycleSecretsForReencrypt = `-- name: ListOidcLifecycleSecretsForReencrypt :many
+SELECT id, lifecycle_secret FROM oidc_providers WHERE lifecycle_secret IS NOT NULL AND id > ? ORDER BY id LIMIT ?
+`
+
+type ListOidcLifecycleSecretsForReencryptParams struct {
+	ID    string
+	Limit int64
+}
+
+type ListOidcLifecycleSecretsForReencryptRow struct {
+	ID              string
+	LifecycleSecret []byte
+}
+
+// The lifecycle secret carries its own sealed record (the envelope header names
+// the DEK version), so the reseal CASes on the old ciphertext like remotes do.
+// hikyo:authn-resolution
+func (q *Queries) ListOidcLifecycleSecretsForReencrypt(ctx context.Context, arg ListOidcLifecycleSecretsForReencryptParams) ([]ListOidcLifecycleSecretsForReencryptRow, error) {
+	rows, err := q.db.QueryContext(ctx, listOidcLifecycleSecretsForReencrypt, arg.ID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOidcLifecycleSecretsForReencryptRow
+	for rows.Next() {
+		var i ListOidcLifecycleSecretsForReencryptRow
+		if err := rows.Scan(&i.ID, &i.LifecycleSecret); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOidcProvidersForReencrypt = `-- name: ListOidcProvidersForReencrypt :many
 SELECT id, client_secret, dek_version, row_version FROM oidc_providers WHERE id > ? ORDER BY id LIMIT ?
 `
@@ -2707,6 +2785,25 @@ func (q *Queries) ReencryptOauth2Provider(ctx context.Context, arg ReencryptOaut
 		arg.ID,
 		arg.RowVersion,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const reencryptOidcLifecycleSecret = `-- name: ReencryptOidcLifecycleSecret :execrows
+UPDATE oidc_providers SET lifecycle_secret=?1 WHERE id=?2 AND lifecycle_secret=?3
+`
+
+type ReencryptOidcLifecycleSecretParams struct {
+	NewCt []byte
+	ID    string
+	OldCt []byte
+}
+
+// hikyo:authn-resolution
+func (q *Queries) ReencryptOidcLifecycleSecret(ctx context.Context, arg ReencryptOidcLifecycleSecretParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, reencryptOidcLifecycleSecret, arg.NewCt, arg.ID, arg.OldCt)
 	if err != nil {
 		return 0, err
 	}

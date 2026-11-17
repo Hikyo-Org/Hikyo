@@ -370,7 +370,8 @@ WHERE account_id = $2 AND consumed_at IS NULL;
 -- name: GetEnabledProviderByIssuer :one
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
        redirect_uri, assurance_policy, enabled, dek_version, row_version,
-       created_at, updated_at
+       created_at, updated_at,
+       lifecycle_profile, lifecycle_secret
 FROM oidc_providers WHERE kind = $1 AND issuer = $2 AND enabled = 1;
 
 -- The recorded provider a callback exchanges at (A11): loaded by the id the
@@ -379,7 +380,8 @@ FROM oidc_providers WHERE kind = $1 AND issuer = $2 AND enabled = 1;
 -- name: GetProviderForCallback :one
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
        redirect_uri, assurance_policy, enabled, dek_version, row_version,
-       created_at, updated_at
+       created_at, updated_at,
+       lifecycle_profile, lifecycle_secret
 FROM oidc_providers WHERE id = $1;
 
 -- hikyo:authn-resolution
@@ -459,6 +461,21 @@ OR sessions.id IN (SELECT e.session_id FROM credential_establish_evidence e
  JOIN external_identities i ON i.id = e.identity_id
  WHERE i.kind = 'oidc' AND i.provider_id = sqlc.narg(provider_id));
 
+-- The directory-lifecycle sweep (human-auth ADR, 2026-11-17 amendment, f): one
+-- principal's sessions that were minted through ANY oidc provider row carrying
+-- the given issuer, plus those a credential-establishment stamp ties to an oidc
+-- identity of that issuer. Sessions minted by other methods survive, so a
+-- password session on the same account is not touched. reauth_windows cascade
+-- from the session. Run BEFORE the identity row is removed: the evidence join
+-- needs it.
+-- hikyo:authn-resolution
+-- name: DeleteSessionsForPrincipalAndIssuer :execrows
+DELETE FROM sessions WHERE sessions.principal_id = sqlc.arg(principal_id)
+AND (sessions.provider_id IN (SELECT p.id FROM oidc_providers p WHERE p.kind = 'oidc' AND p.issuer = sqlc.arg(issuer))
+ OR sessions.id IN (SELECT e.session_id FROM credential_establish_evidence e
+  JOIN external_identities i ON i.id = e.identity_id
+  WHERE i.kind = 'oidc' AND i.issuer = sqlc.arg(issuer)));
+
 -- A FRESH CEREMONY SUPERSEDES THE PAIR'S PREVIOUS WINDOW (#58).
 --
 -- The table holds AT MOST ONE window per (session, environment) and that
@@ -511,7 +528,8 @@ ON CONFLICT (session_id, environment_id) DO UPDATE SET
 -- name: GetEnabledProviderBySlug :one
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
        redirect_uri, assurance_policy, enabled, dek_version, row_version,
-       created_at, updated_at
+       created_at, updated_at,
+       lifecycle_profile, lifecycle_secret
 FROM oidc_providers WHERE slug = $1 AND enabled = 1;
 
 -- Reauth-window consumption at disclosure (#54, human-auth ADR - Reauthentication).
@@ -874,6 +892,15 @@ SELECT id, client_secret, dek_version, row_version FROM oidc_providers WHERE id 
 -- hikyo:authn-resolution
 -- name: ReencryptOidcProvider :execrows
 UPDATE oidc_providers SET client_secret=sqlc.arg(ct), dek_version=sqlc.arg(dek_version), row_version=row_version+1 WHERE id=sqlc.arg(id) AND row_version=sqlc.arg(row_version);
+
+-- The lifecycle secret carries its own sealed record (the envelope header names
+-- the DEK version), so the reseal CASes on the old ciphertext like remotes do.
+-- hikyo:authn-resolution
+-- name: ListOidcLifecycleSecretsForReencrypt :many
+SELECT id, lifecycle_secret FROM oidc_providers WHERE lifecycle_secret IS NOT NULL AND id > sqlc.arg(cursor) ORDER BY id LIMIT sqlc.arg(page_limit);
+-- hikyo:authn-resolution
+-- name: ReencryptOidcLifecycleSecret :execrows
+UPDATE oidc_providers SET lifecycle_secret=sqlc.arg(new_ct) WHERE id=sqlc.arg(id) AND lifecycle_secret=sqlc.arg(old_ct);
 
 -- hikyo:authn-resolution
 -- name: ListOauth2ProvidersForReencrypt :many

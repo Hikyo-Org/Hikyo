@@ -1300,6 +1300,8 @@ const (
 	StoreReencryptPairingInvites           StoreOp = "reencrypt.ReencryptPairingInvites"
 	StoreReencryptListPairingExchanges     StoreOp = "reencrypt.ListPairingExchangesForReencrypt"
 	StoreReencryptPairingExchanges         StoreOp = "reencrypt.ReencryptPairingExchanges"
+	StoreReencryptListOidcLifecycleSecrets StoreOp = "reencrypt.ListOidcLifecycleSecretsForReencrypt"
+	StoreReencryptOidcLifecycleSecret      StoreOp = "reencrypt.ReencryptOidcLifecycleSecret"
 	StoreReencryptListRemotes              StoreOp = "reencrypt.ListRemotesForReencrypt"
 	StoreReencryptRemote                   StoreOp = "reencrypt.ReencryptRemote"
 	StoreReencryptListPkiIssuers           StoreOp = "reencrypt.ListPkiIssuersForReencrypt"
@@ -3849,6 +3851,7 @@ var operationTable = map[Operation]opSpec{
 			StoreReencryptListTotpCreds: true, StoreReencryptTotpCred: true,
 			StoreReencryptListRecoveryCodes: true, StoreReencryptRecoveryCodes: true,
 			StoreReencryptListOidcProviders: true, StoreReencryptOidcProvider: true,
+			StoreReencryptListOidcLifecycleSecrets: true, StoreReencryptOidcLifecycleSecret: true,
 			StoreReencryptListOauth2Providers: true, StoreReencryptOauth2Provider: true,
 			StoreReencryptListSamlKeys: true, StoreReencryptSamlKey: true,
 			StoreReencryptListSelfConfigSeedInputs: true, StoreReencryptSelfConfigSeedInput: true,

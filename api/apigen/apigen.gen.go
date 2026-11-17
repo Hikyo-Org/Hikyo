@@ -2315,6 +2315,24 @@ func (e Oauth2StartRequestIntent) Valid() bool {
 	}
 }
 
+// Defines values for OidcLifecycleProfile.
+const (
+	OidcLifecycleProfileClerk       OidcLifecycleProfile = "clerk"
+	OidcLifecycleProfileLessThannil OidcLifecycleProfile = "<nil>"
+)
+
+// Valid indicates whether the value is a known member of the OidcLifecycleProfile enum.
+func (e OidcLifecycleProfile) Valid() bool {
+	switch e {
+	case OidcLifecycleProfileClerk:
+		return true
+	case OidcLifecycleProfileLessThannil:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OidcStartRequestIntent.
 const (
 	OidcStartRequestIntentSignIn OidcStartRequestIntent = "sign-in"
@@ -9311,6 +9329,10 @@ type OfflineDeliveryRecord struct {
 	SnapshotReceipt string `json:"snapshot_receipt"`
 }
 
+// OidcLifecycleProfile The directory lifecycle dialect, a closed set; null means the provider
+// takes no lifecycle events.
+type OidcLifecycleProfile string
+
 // OidcProvider defines model for OidcProvider.
 type OidcProvider struct {
 	AssurancePolicy *string `json:"assurance_policy,omitzero"`
@@ -9318,10 +9340,20 @@ type OidcProvider struct {
 	DisplayName     string  `json:"display_name"`
 	Enabled         bool    `json:"enabled"`
 	Issuer          string  `json:"issuer"`
-	RedirectUri     string  `json:"redirect_uri"`
-	RowVersion      int64   `json:"row_version"`
-	Scopes          string  `json:"scopes"`
-	Slug            string  `json:"slug"`
+
+	// LifecycleProfile The directory lifecycle dialect, a closed set; null means the provider
+	// takes no lifecycle events.
+	LifecycleProfile *OidcLifecycleProfile `json:"lifecycle_profile,omitzero"`
+
+	// LifecycleSecretSet Whether a lifecycle signing secret is stored. The secret itself never leaves the server.
+	LifecycleSecretSet bool `json:"lifecycle_secret_set"`
+
+	// LifecycleUri The endpoint to register at the directory.
+	LifecycleUri string `json:"lifecycle_uri"`
+	RedirectUri  string `json:"redirect_uri"`
+	RowVersion   int64  `json:"row_version"`
+	Scopes       string `json:"scopes"`
+	Slug         string `json:"slug"`
 }
 
 // OidcProviderInput defines model for OidcProviderInput.
@@ -9337,6 +9369,16 @@ type OidcProviderInput struct {
 
 	// Issuer Byte-exact, immutable after create (A3).
 	Issuer string `json:"issuer"`
+
+	// LifecycleProfile The directory lifecycle dialect, a closed set; null means the provider
+	// takes no lifecycle events.
+	LifecycleProfile *OidcLifecycleProfile `json:"lifecycle_profile,omitzero"`
+
+	// LifecycleSecret The directory's webhook signing secret (`whsec_...`), envelope-encrypted
+	// at rest under its own field binding and never returned. Required with a
+	// `lifecycle_profile` on create; on reconfigure, absent or empty keeps the
+	// stored secret. Setting, rotating or clearing it sweeps no sessions.
+	LifecycleSecret *string `json:"lifecycle_secret,omitzero"`
 
 	// RowVersion Required for reconfiguration and omitted for create. A stale or deleted row returns 409.
 	RowVersion *int64 `json:"row_version,omitzero"`
@@ -15762,6 +15804,9 @@ type ServerInterface interface {
 	// OidcCallback Complete an OIDC transaction from the IdP redirect.
 	// (GET /api/v1/auth/oidc/{provider}/callback)
 	OidcCallback(w http.ResponseWriter, r *http.Request, provider ProviderSlug, params OidcCallbackParams)
+	// OidcLifecycle Receive a signed directory lifecycle event for an OIDC provider.
+	// (POST /api/v1/auth/oidc/{provider}/lifecycle)
+	OidcLifecycle(w http.ResponseWriter, r *http.Request, provider ProviderSlug)
 	// OidcStart Begin an OIDC transaction (login, link, reauth or claim).
 	// (POST /api/v1/auth/oidc/{provider}/start)
 	OidcStart(w http.ResponseWriter, r *http.Request, provider ProviderSlug)
@@ -17154,6 +17199,12 @@ func (_ Unimplemented) Oauth2Start(w http.ResponseWriter, r *http.Request, provi
 // OidcCallback Complete an OIDC transaction from the IdP redirect.
 // (GET /api/v1/auth/oidc/{provider}/callback)
 func (_ Unimplemented) OidcCallback(w http.ResponseWriter, r *http.Request, provider ProviderSlug, params OidcCallbackParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// OidcLifecycle Receive a signed directory lifecycle event for an OIDC provider.
+// (POST /api/v1/auth/oidc/{provider}/lifecycle)
+func (_ Unimplemented) OidcLifecycle(w http.ResponseWriter, r *http.Request, provider ProviderSlug) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -20250,6 +20301,32 @@ func (siw *ServerInterfaceWrapper) OidcCallback(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.OidcCallback(w, r, provider, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OidcLifecycle operation middleware
+func (siw *ServerInterfaceWrapper) OidcLifecycle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "provider" -------------
+	var provider ProviderSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", chi.URLParam(r, "provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OidcLifecycle(w, r, provider)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -36346,6 +36423,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/api/v1/auth/oidc/{provider}/callback", wrapper.OidcCallback)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/oidc/{provider}/lifecycle", wrapper.OidcLifecycle)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/auth/oidc/{provider}/start", wrapper.OidcStart)
 	})
 	r.Group(func(r chi.Router) {
@@ -40548,6 +40628,82 @@ func (response OidcCallback500JSONResponse) VisitOidcCallbackResponse(w http.Res
 type OidcCallback503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response OidcCallback503JSONResponse) VisitOidcCallbackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OidcLifecycleRequestObject struct {
+	Provider    ProviderSlug `json:"provider"`
+	ContentType string
+	Body        io.Reader
+}
+
+type OidcLifecycleResponseObject interface {
+	VisitOidcLifecycleResponse(w http.ResponseWriter) error
+}
+
+type OidcLifecycle204Response struct {
+}
+
+func (response OidcLifecycle204Response) VisitOidcLifecycleResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type OidcLifecycle401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response OidcLifecycle401JSONResponse) VisitOidcLifecycleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OidcLifecycle429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response OidcLifecycle429JSONResponse) VisitOidcLifecycleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OidcLifecycle500JSONResponse struct{ InternalJSONResponse }
+
+func (response OidcLifecycle500JSONResponse) VisitOidcLifecycleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OidcLifecycle503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response OidcLifecycle503JSONResponse) VisitOidcLifecycleResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -87078,6 +87234,9 @@ type StrictServerInterface interface {
 	// OidcCallback Complete an OIDC transaction from the IdP redirect.
 	// (GET /api/v1/auth/oidc/{provider}/callback)
 	OidcCallback(ctx context.Context, request OidcCallbackRequestObject) (OidcCallbackResponseObject, error)
+	// OidcLifecycle Receive a signed directory lifecycle event for an OIDC provider.
+	// (POST /api/v1/auth/oidc/{provider}/lifecycle)
+	OidcLifecycle(ctx context.Context, request OidcLifecycleRequestObject) (OidcLifecycleResponseObject, error)
 	// OidcStart Begin an OIDC transaction (login, link, reauth or claim).
 	// (POST /api/v1/auth/oidc/{provider}/start)
 	OidcStart(ctx context.Context, request OidcStartRequestObject) (OidcStartResponseObject, error)
@@ -89126,6 +89285,35 @@ func (sh *strictHandler) OidcCallback(w http.ResponseWriter, r *http.Request, pr
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(OidcCallbackResponseObject); ok {
 		if err := validResponse.VisitOidcCallbackResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// OidcLifecycle operation middleware
+func (sh *strictHandler) OidcLifecycle(w http.ResponseWriter, r *http.Request, provider ProviderSlug) {
+	var request OidcLifecycleRequestObject
+
+	request.Provider = provider
+	request.ContentType = r.Header.Get("Content-Type")
+
+	request.Body = r.Body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.OidcLifecycle(ctx, request.(OidcLifecycleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "OidcLifecycle")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(OidcLifecycleResponseObject); ok {
+		if err := validResponse.VisitOidcLifecycleResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

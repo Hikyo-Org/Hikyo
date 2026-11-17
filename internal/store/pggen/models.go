@@ -972,21 +972,23 @@ type OfflineRecord struct {
 }
 
 type OidcProvider struct {
-	ID              string
-	Slug            string
-	DisplayName     string
-	Kind            string
-	Issuer          string
-	ClientID        string
-	ClientSecret    []byte
-	Scopes          string
-	RedirectUri     string
-	AssurancePolicy pgtype.Text
-	Enabled         int64
-	DekVersion      int64
-	RowVersion      int64
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
+	ID               string
+	Slug             string
+	DisplayName      string
+	Kind             string
+	Issuer           string
+	ClientID         string
+	ClientSecret     []byte
+	Scopes           string
+	RedirectUri      string
+	AssurancePolicy  pgtype.Text
+	Enabled          int64
+	DekVersion       int64
+	RowVersion       int64
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	LifecycleProfile pgtype.Text
+	LifecycleSecret  []byte
 }
 
 type OidcTransaction struct {
