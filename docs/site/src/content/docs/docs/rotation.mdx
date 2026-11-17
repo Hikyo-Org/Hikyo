@@ -179,7 +179,7 @@ hikyo rotation pause rot_0198... --env production
 hikyo rotation resume rot_0198... --env production
 hikyo rotation delete rot_0198... --env production
 hikyo rotation delete rot_0198... --env production --abandon
-hikyo rotation run-now rot_0198... --env production
+hikyo rotation run-now rot_0198... --env production --confirm-destructive
 hikyo rotation runs rot_0198... --env production
 ```
 
@@ -195,16 +195,23 @@ otherwise lapse first. Delete disables the rotation and keeps it as history; it
 frees the keys for another rotation.
 
 Delete is refused while a run is in flight. `--abandon` closes every unsettled run
-instead, loudly: a run that has not published is rolled back, and a run that still
-owes a revoke keeps its revoke obligation and is dropped when its delay ends. Each
-closed run is audited (see [Audit](#audit)).
+instead, loudly, and only a signed-in person may use it. A run that has not
+published is quarantined with its candidate role: nothing is revoked at that
+moment, and the candidate reconciler drops the candidate later once it confirms
+the role is gone. A run that still owes a revoke keeps its revoke obligation and
+is dropped when its delay ends. Each closed run is audited (see
+[Audit](#audit)).
 
 ## Run now
 
 `hikyo rotation run-now` asks for a run outside the schedule. It is a person's act
-like `resume`: you must be signed in, hold **publish** on the environment and
-consume the publish ceremony over both keys. Machine credentials and the local
-principal are refused. It runs nothing itself: it records the request and makes
+like `resume`: you must be signed in, hold **edit**, **publish** and **reveal** on
+the environment and on both keys, and consume the publish ceremony over both keys,
+so a publisher without reveal cannot start a run. Machine credentials and the
+local principal are refused. Every run-now must carry `--confirm-destructive`
+(the API field `confirm_destructive`, which the server enforces): the run
+publishes a new credential now, off the schedule. Without it the request is
+refused by name. It runs nothing itself: it records the request and makes
 the rotation due, and the executor starts the run through the same path as a
 scheduled one, with the recorded authority principal, the pre-publish gate, the
 overlap and the revoke safety check. A manual run bypasses none of them. The result
@@ -212,36 +219,41 @@ names the run id; `hikyo rotation runs` shows the run once the executor has star
 it.
 
 - The rotation must be active, with no run in flight and no earlier request still
-  waiting. Pausing, resuming, deleting or halting a rotation drops a request that
-  has not started.
+  waiting; a paused, halted or deleted rotation is refused. Pausing (by you or by
+  the system), resuming, deleting or halting a rotation drops a request that has
+  not started.
+- The request resets the next run time to now, so it also overrides a retry
+  backoff after a failed run. The attempt cap and the retry deadline still apply.
 - After the run publishes, the next scheduled run is one interval later.
 - `--skip-overlap` revokes the superseded credential right after the new one is
   published, with no overlap (the delay is zero for that run only; the rotation's
   own delay is untouched). A consumer that has not yet picked up the new credential
-  loses access, so the CLI requires `--confirm-destructive` with it.
+  loses access.
 
-### Consumers that may not have converged
+### Adapter targets that may not have converged
 
-A run that revokes a credential records `not_converged_consumers`, the number of
-delivery targets that may still hold the superseded credential at that moment. It
-is written to the revoke outcome audit event and shown by `hikyo rotation runs`,
-for every run, not only skip-overlap ones; a run that revoked nothing (the first
-run, with no superseded role) shows none.
+A run that revokes a credential records `not_converged_adapter_targets`, the number
+of adapter (sync) targets that may still hold the superseded credential at that
+moment. It is written to the revoke outcome audit event and shown by
+`hikyo rotation runs` (the `NOT CONVERGED TARGETS` column), for every run that
+revokes, not only skip-overlap ones; a run that revoked nothing (the first run, with
+no superseded role) shows none. The run-now response lists no consumers, because
+nothing has been revoked yet when it answers.
 
-The count is the live (not deleted) delivery targets that carry either rotation key
-and have not converged to the run's published revision. It is computed just before
-the provider drop. It does **not** count machine principals or other clients that
-read the keys directly: Hikyo keeps no per-client record of what each one last
-read, so a zero means "no delivery target is known to be behind", not "no consumer
-is behind".
+The count is the adapter (sync) targets, not deleted, that mirror either rotation
+key and have not converged to the run's published revision. It is computed just
+before the provider drop. It does **not** count machine principals or other clients
+that read the keys directly: Hikyo keeps no per-client record of what each one last
+read. A zero therefore means "no adapter target is known to be behind", and does
+not prove that machine consumers are unaffected.
 
 ## Inspect runs
 
 `hikyo rotation runs <rotation>` lists a rotation's runs, newest first: the run id,
 its trigger (`schedule` or `manual`), phase, published revision, revocation delay,
-timestamps, the `not_converged_consumers` count and, for a failed step, a
-fixed-word error code. It never shows a role name, handle, password or provider
-message. A page holds up to `--limit` runs (1 to 500, default 100); when more
+timestamps, the `not_converged_adapter_targets` count and, for a failed step, a
+fixed-word error code. It never shows a password, handle or provider message; a run
+id is public metadata. A page holds up to `--limit` runs (1 to 500, default 100); when more
 follow, the CLI prints the `--after` value that continues the list. It needs only
 **read** on the environment.
 
@@ -253,8 +265,9 @@ The routes live under
 the response carries `next_after` while more follow) and `POST` on the
 collection, `GET` and `DELETE` on
 `/{rotation}`, and `POST` on `/{rotation}/pause`, `/{rotation}/resume` and
-`/{rotation}/run-now` (body: optional `expected_generation` and `skip_overlap`;
-answers `202` with the requested `run_id`), and `GET` on `/{rotation}/runs` (with
+`/{rotation}/run-now` (body: the required `confirm_destructive`, which must be true,
+and the optional `expected_generation` and `skip_overlap`; answers `202` with the
+requested `run_id`), and `GET` on `/{rotation}/runs` (with
 `limit` and `after`). `DELETE` takes the optional `expected_generation` and
 `abandon` query parameters. They require a human session. See the [HTTP API](/docs/http-api/).
 
@@ -268,10 +281,10 @@ closed (`rotation.quarantined` for a run that still owes a role, otherwise a
 rotation's authority and the run id as the correlation id, with origin `system`;
 the abandon events are authored by the operator who deleted the rotation, with
 the run id as the correlation id. `rotation.configured` records each create, pause, resume and delete with its
-`action` and the environment, and `rotation.run_now` records each run-now request
-with the requested `run_id` and `skip_overlap`, and a pause the system caused (provider deleted or
+`action` and the environment, and a pause the system caused (provider deleted or
 credential revoked, environment protected, approval policy enabled) with its
-`reason`. Reads are not audited events. Audit payloads carry identifiers and
+`reason`. `rotation.run_now` records each run-now request with the requested
+`run_id` and `skip_overlap`. Reads are not audited events. Audit payloads carry identifiers and
 schedule values only, never a credential.
 
 The events cover tracked effects only. When a worker loses its claim on a run
