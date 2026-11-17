@@ -206,12 +206,14 @@ is dropped when its delay ends. Each closed run is audited (see
 
 `hikyo rotation run-now` asks for a run outside the schedule. It is a person's act
 like `resume`: you must be signed in, hold **edit**, **publish** and **reveal** on
-the environment and on both keys, and consume the publish ceremony over both keys,
-so a publisher without reveal cannot start a run. Machine credentials and the
+the environment itself, and consume the publish ceremony over both keys, so a
+publisher without reveal cannot start a run. Like `resume`, it needs those grants
+environment-wide: access held only through key-narrowed rules, which is enough to
+create a rotation, cannot run it now or resume it. Machine credentials and the
 local principal are refused. Every run-now must carry `--confirm-destructive`
 (the API field `confirm_destructive`, which the server enforces): the run
-publishes a new credential now, off the schedule. Without it the request is
-refused by name. It runs nothing itself: it records the request and makes
+publishes a new credential now, off the schedule. A body without it, or
+with `false`, is refused by name. It runs nothing itself: it records the request and makes
 the rotation due, and the executor starts the run through the same path as a
 scheduled one, with the recorded authority principal, the pre-publish gate, the
 overlap and the revoke safety check. A manual run bypasses none of them. The result

@@ -568,13 +568,14 @@ start at `D + 1s` is refused as `retries_exhausted`.
 
 ### Run-now (S2)
 
-`OpRotationRunNow` requires `publish@env` plus a `PurposePublish` ceremony (unit = the
-rotation's key ids) and `--confirm-destructive`. `--skip-overlap` snapshots
-`revocation_delay_seconds = 0` for that run only; the response lists consumers that
-may still hold the superseded credential (machine principals with `read@env` whose
-last delivery `issued_at` precedes the publish, and adapter targets whose
-`converged_revision < published_revision`). Event `rotation.run_now` carries
-`skip_overlap`.
+Superseded by "S2b-1 as built" (the Run-now subsection): `OpRotationRunNow` takes resume's
+formula (`edit`, `publish` and `reveal` at the environment, environment-wide), a
+`PurposePublish` ceremony over both keys and a required `confirm_destructive` body field
+(CLI `--confirm-destructive`) on every request. `--skip-overlap` snapshots
+`revocation_delay_seconds = 0` for that run only. The response lists no consumers; the revoke
+outcome carries `not_converged_adapter_targets` (adapter targets only; the machine-principal
+part is an open owner decision, options A to D). Event `rotation.run_now` carries `run_id`
+and `skip_overlap`.
 
 ### Audit events specified for S2 (not registered in S1)
 
@@ -1077,15 +1078,19 @@ and `rotation_runs.not_converged_adapter_targets`. API revision 18 (additive).
 - `OpRotationRunNow` (resume's formula: `edit`, `publish` and `reveal` at the environment,
   `postGrantForbidden`, wire route `POST .../rotations/{rotation}/run-now`, 202 with the
   pre-generated `run_id`). The service authorizes, requires a human session and the body's
-  `confirm_destructive: true` (a named refusal, enforced server-side on every request),
-  checks generation and active state (a paused, halted or deleted rotation is refused), runs
-  `AuthorizeKey` on both keys under the run-now operation (so a publisher without reveal is
-  refused), checks there is no open run, consumes the publish ceremony over both keys, then
+  `confirm_destructive: true` (a body without it, or with false, gets the named refusal, enforced server-side on every request; no body at all is a plain 400),
+  checks generation and active state (a paused, halted or deleted rotation is refused), checks
+  there is no open run, consumes the publish ceremony over both keys, then
   writes the request (`manual_run_id`, `manual_skip_overlap`, `next_run_at = now`) and the
   `rotation.run_now` audit row (`run_id`, `skip_overlap`) in one transaction. A request that
   is already pending is refused by the store write, after the ceremony; the refusal rolls the
   whole transaction back, the ceremony consumption included, so it costs no reauth. It starts
-  nothing and holds no provider handle. The request resets `next_run_at` to now, so it also
+  nothing and holds no provider handle. There is no per-key `AuthorizeKey` after the
+  environment check: a key-narrowed rule never satisfies an operation that passes no key and an
+  environment-wide holder passes for every key, so it could never deny. Like resume, run-now
+  therefore needs the formula environment-wide: a principal who could create a rotation through
+  key-narrowed rules can neither run it now nor resume it (S2b-2 makes these key-aware).
+  `TestRotationRunNowKeyChecksAddNothing` pins the equivalence. The request resets `next_run_at` to now, so it also
   overrides a retry backoff; the attempt cap and the retry deadline still apply.
 - The executor's due read exposes the request; `startRun` uses the pre-generated id with
   trigger `manual` through the same Gate, window and attempts checks as a scheduled run.
