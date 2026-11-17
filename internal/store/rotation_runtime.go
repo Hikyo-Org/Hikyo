@@ -501,8 +501,11 @@ func (r *RotationRuntime) Settle(ctx context.Context, run RotationRun, s Rotatio
 		if s.DueIfHeld {
 			// Read last, in the transaction that wrote the settle and tried the halt: under
 			// PG serializable a hold committed after this transaction began conflicts with
-			// the halt write (an error the executor retries), and one committed before it
-			// is seen here, so the held decision and the halt always agree.
+			// the halt write and fails the transaction (dbTransaction does not retry it: the
+			// error goes to the sweep, and the run is reclaimed after the release and the
+			// lease term, when staleEffect closes the open extend INTENT as unknown), and
+			// one committed before it is seen here, so the held decision and the halt
+			// always agree.
 			held, err := q.restoreHeld(ctx, chain, run.RotationID)
 			if err != nil || held == 0 {
 				return err

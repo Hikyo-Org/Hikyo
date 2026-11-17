@@ -635,7 +635,7 @@ var (
 	ErrRotationRunInFlight = &rotationRefusal{"the rotation has a run in flight; let it finish first", domain.ErrConflict}
 	// ErrRotationRunNowUnconfirmed refuses a run-now that did not confirm itself.
 	ErrRotationRunNowUnconfirmed = &rotationRefusal{"a run-now publishes a new credential outside the schedule, and with skip-overlap revokes the superseded one at once; confirm it with confirm_destructive", domain.ErrConflict}
-	// ErrRotationRestoreHeld refuses to start or re-arm a rotation a restore holds.
+	// ErrRotationRestoreHeld refuses to start, re-arm, delete or abandon a rotation a restore holds.
 	ErrRotationRestoreHeld = &rotationRefusal{"the rotation is held after a restore; reconcile its grants and provider credential, then release it with release-hold", domain.ErrConflict}
 	// ErrRotationNotHeld refuses a release of a rotation no restore holds.
 	ErrRotationNotHeld = &rotationRefusal{"the rotation is not held by a restore", domain.ErrConflict}
@@ -901,6 +901,13 @@ func (s *CredentialRotations) transition(ctx context.Context, actor Actor, scope
 			}
 			if cur.State == store.RotationStateDisabled {
 				return fmt.Errorf("%w: the rotation is already deleted", domain.ErrConflict)
+			}
+			// A delete disables the row, which clears the hold, and an abandon turns
+			// minting and minted runs into quarantine. The reconciler would then
+			// find the rotation unheld and drop a candidate the live instance may
+			// have published. Only the human release of the hold lifts it.
+			if cur.RestoreHold {
+				return ErrRotationRestoreHeld
 			}
 			open, err := r.Rotations().CountOpenRuns(ctx, proof, cur.ID)
 			if err != nil {

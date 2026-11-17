@@ -64,9 +64,10 @@ func runRotationRestoreHoldClearsQueuedRunNow(t *testing.T, db *store.DB) {
 	}
 }
 
-// Deleting a held rotation clears its hold in the same write, so every reader
-// (show, list --include-disabled, the gauge) sees a deleted rotation, never a
-// held one, and release-hold refuses it as deleted.
+// A held rotation refuses delete until it is released (round 6), and the delete
+// that follows leaves no hold behind, so every reader (show, list
+// --include-disabled, the gauge) sees a deleted rotation, never a held one, and
+// release-hold refuses it as deleted.
 func TestRotationDeleteClearsRestoreHold(t *testing.T) {
 	forEngines(t, runRotationDeleteClearsRestoreHold)
 }
@@ -78,6 +79,12 @@ func runRotationDeleteClearsRestoreHold(t *testing.T, db *store.DB) {
 	human := func() service.Actor { return x.session(alice, true) }
 	if got := x.state(rot.ID); !got.RestoreHold {
 		t.Fatal("setup: the rotation is not held")
+	}
+	if _, err := x.svc.Delete(tctx(t), human(), x.scope, service.RotationStateRequest{RotationID: rot.ID}); !errors.Is(err, service.ErrRotationRestoreHeld) {
+		t.Fatalf("delete while held = %v, want ErrRotationRestoreHeld", err)
+	}
+	if _, err := x.svc.ReleaseHold(tctx(t), human(), x.scope, service.RotationStateRequest{RotationID: rot.ID}); err != nil {
+		t.Fatalf("release: %v", err)
 	}
 	if _, err := x.svc.Delete(tctx(t), human(), x.scope, service.RotationStateRequest{RotationID: rot.ID}); err != nil {
 		t.Fatalf("delete: %v", err)

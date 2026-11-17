@@ -51,6 +51,12 @@ type RotationExecutor struct {
 	// halting settle. A test lands the hold there to prove the settle decides on the
 	// hold at write time. nil in production.
 	AfterExtendHoldRead func()
+	// BeforeHeldRead is a conformance seam: it runs immediately before the
+	// executor's own restore-hold read at a candidate-drop or recovery site
+	// (recover, reconcile:entry, reconcile:predrop, drop_orphan, drop_candidate),
+	// so a test lands a hold after the claim and proves the read is the guard.
+	// Production leaves it nil.
+	BeforeHeldRead func(site string)
 	// Log receives the executor's operational faults as redacted error classes,
 	// never the cause text. nil logs to the default logger.
 	Log *slog.Logger
@@ -932,7 +938,7 @@ func (e *RotationExecutor) dropOrphan(ctx context.Context, provider dynamic.Prov
 	if cur.PublishedRevision != 0 || (cur.Phase != "failed" && cur.Phase != "quarantine") {
 		return nil
 	}
-	if held, err := e.Runtime.RestoreHeld(ctx, run); err != nil || held {
+	if held, err := e.heldRead(ctx, run, "drop_orphan"); err != nil || held {
 		// A held rotation drops no candidate (see leaveCandidateHeld); the role expires.
 		return err
 	}
@@ -948,7 +954,7 @@ func (e *RotationExecutor) dropOrphan(ctx context.Context, provider dynamic.Prov
 // INTENT recorded, and records the outcome: a confirmed drop settles the run; a
 // definite failure leaves it to the reconciler; an unknown outcome quarantines it.
 func (e *RotationExecutor) dropCandidate(ctx context.Context, provider dynamic.Provider, run store.RotationRun, effectID string) error {
-	if held, err := e.Runtime.RestoreHeld(ctx, run); err != nil {
+	if held, err := e.heldRead(ctx, run, "drop_candidate"); err != nil {
 		return err
 	} else if held {
 		return e.leaveCandidateHeld(ctx, run, []string{"failed"}, "failed", effectID)
@@ -989,8 +995,8 @@ func (e *RotationExecutor) dropCandidate(ctx context.Context, provider dynamic.P
 // publish and consumers fetched, and a drop would kill that credential with no
 // restore assertion to guard it. The INTENT is closed as a failure (the provider
 // was never called) and the run is left due; the claim skips its held rotation, so
-// the reconciler revisits it after release-hold. The unused role lingers until then
-// and is bounded by its VALID UNTIL.
+// the reconciler revisits it after release-hold. The role lingers until then,
+// bounded by its VALID UNTIL, and the release lets the executor drop it.
 func (e *RotationExecutor) leaveCandidateHeld(ctx context.Context, run store.RotationRun, from []string, phase, effectID string) error {
 	now := e.now()
 	closed, err := e.outcome(run, effectID, "drop_candidate", audit.OutcomeFailure, rotCodeHeld, now)
@@ -998,6 +1004,24 @@ func (e *RotationExecutor) leaveCandidateHeld(ctx context.Context, run store.Rot
 		return err
 	}
 	return e.settleDrop(ctx, run, store.RotationSettle{Now: now, FromPhases: from, Phase: phase, LastError: run.LastError, NextAttempt: now, Close: closed})
+}
+
+// heldRead is the executor's own restore-hold read at a recovery or drop site.
+func (e *RotationExecutor) heldRead(ctx context.Context, run store.RotationRun, site string) (bool, error) {
+	if e.BeforeHeldRead != nil {
+		e.BeforeHeldRead(site)
+	}
+	return e.Runtime.RestoreHeld(ctx, run)
+}
+
+// yieldHeldRun hands back a claimed run whose rotation a restore hold reached
+// after the claim, before the step touched anything: the lease is released and the
+// run stays due in its own phase, so the claim (which skips held rotations) takes
+// it again after release-hold instead of after the lease term. The claim already
+// counted this visit in attempt_count; that is one bump per hold landing in the
+// claim window, only sizes the backoff, and stays bounded.
+func (e *RotationExecutor) yieldHeldRun(ctx context.Context, run store.RotationRun) error {
+	return e.settleDrop(ctx, run, store.RotationSettle{Now: e.now(), FromPhases: []string{run.Phase}, Phase: run.Phase, LastError: run.LastError, NextAttempt: e.now()})
 }
 
 func (e *RotationExecutor) settleDrop(ctx context.Context, run store.RotationRun, s store.RotationSettle) error {
@@ -1018,8 +1042,10 @@ func (e *RotationExecutor) recoverInFlight(ctx context.Context, run store.Rotati
 	// A rotation a restore holds recovers nothing (see leaveCandidateHeld): the run and
 	// its role are left as they are until release-hold. The claim already skips such
 	// a rotation; this read covers a hold that landed after the claim.
-	if held, err := e.Runtime.RestoreHeld(ctx, run); err != nil || held {
+	if held, err := e.heldRead(ctx, run, "recover"); err != nil {
 		return err
+	} else if held {
+		return e.yieldHeldRun(ctx, run)
 	}
 	code := rotCodeInterrupted
 	if run.RotationState != "active" {
@@ -1291,8 +1317,10 @@ func roleExpired(validUntil time.Time, extendUncertain bool, now time.Time) bool
 // a revoked admin credential or an unreachable provider cannot hold the run (and
 // with it the provider and environment) forever.
 func (e *RotationExecutor) reconcileCandidate(ctx context.Context, run store.RotationRun) error {
-	if held, err := e.Runtime.RestoreHeld(ctx, run); err != nil || held {
+	if held, err := e.heldRead(ctx, run, "reconcile:entry"); err != nil {
 		return err
+	} else if held {
+		return e.yieldHeldRun(ctx, run)
 	}
 	now := e.now()
 	expired := roleExpired(run.CandidateValidUntil, false, now)
@@ -1324,7 +1352,7 @@ func (e *RotationExecutor) reconcileCandidate(ctx context.Context, run store.Rot
 		}
 		return err
 	}
-	if held, err := e.Runtime.RestoreHeld(ctx, run); err != nil {
+	if held, err := e.heldRead(ctx, run, "reconcile:predrop"); err != nil {
 		return err
 	} else if held {
 		return e.leaveCandidateHeld(ctx, run, []string{run.Phase}, run.Phase, intent.EffectID)

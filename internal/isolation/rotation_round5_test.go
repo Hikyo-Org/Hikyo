@@ -160,5 +160,8 @@ func TestRotationHoldDuringARunSkipsTheRollbackDrop(t *testing.T) {
 		if x.effects("drop_candidate", "success") != 1 {
 			t.Fatalf("the lingering candidate was not dropped after the release (phases %q)", x.runPhases(rot.ID))
 		}
+		if n := x.ctl.count("drop:"); n != 1 {
+			t.Fatalf("%d DROP ROLE calls in all, want exactly the one after the release", n)
+		}
 	})
 }
