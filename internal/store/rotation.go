@@ -1120,13 +1120,16 @@ func (q sqliteRotationQueries) listRuns(ctx context.Context, chain domain.Scope,
 }
 
 func (q pgRotationQueries) listRuns(ctx context.Context, chain domain.Scope, lq RotationRunQuery) ([]RotationRunRecord, error) {
+	pageLimit, err := checkedPGInt32(int64(lq.Limit))
+	if err != nil {
+		return nil, err
+	}
 	var rows []pggen.RotationListRunsRow
-	var err error
 	if lq.After == "" {
-		rows, err = q.q.RotationListRuns(ctx, pggen.RotationListRunsParams{RotationID: lq.RotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), PageLimit: int32(lq.Limit)})
+		rows, err = q.q.RotationListRuns(ctx, pggen.RotationListRunsParams{RotationID: lq.RotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), PageLimit: pageLimit})
 	} else {
 		var after []pggen.RotationListRunsAfterRow
-		after, err = q.q.RotationListRunsAfter(ctx, pggen.RotationListRunsAfterParams{RotationID: lq.RotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), AfterID: lq.After, PageLimit: int32(lq.Limit)})
+		after, err = q.q.RotationListRunsAfter(ctx, pggen.RotationListRunsAfterParams{RotationID: lq.RotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), AfterID: lq.After, PageLimit: pageLimit})
 		for _, r := range after {
 			rows = append(rows, pggen.RotationListRunsRow(r))
 		}
