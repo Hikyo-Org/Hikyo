@@ -672,9 +672,10 @@ func (r *Resolver) DeleteSessionsForProvider(ctx context.Context, providerID str
 // DeleteSessionsForPrincipalAndIssuer sweeps one principal's sessions minted
 // through any oidc provider row carrying the issuer (and those a
 // credential-establishment stamp ties to an oidc identity of that issuer),
-// returning the count for the audit event. Other sessions of the principal
+// returning their ids (the count is the audit figure, and the ids let the caller
+// revoke the developer credentials minted from them). Other sessions of the principal
 // survive. Call it before the identity row is removed: the evidence join needs it.
-func (r *Resolver) DeleteSessionsForPrincipalAndIssuer(ctx context.Context, principalID, issuer string) (int64, error) {
+func (r *Resolver) DeleteSessionsForPrincipalAndIssuer(ctx context.Context, principalID, issuer string) ([]string, error) {
 	if r.sq != nil {
 		return r.sq.DeleteSessionsForPrincipalAndIssuer(ctx, sqlitegen.DeleteSessionsForPrincipalAndIssuerParams{PrincipalID: principalID, Issuer: issuer})
 	}

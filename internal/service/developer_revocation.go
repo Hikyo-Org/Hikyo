@@ -46,11 +46,13 @@ func revokeDeveloperScope(ctx context.Context, az *authz.TxAuthorizer, actor, au
 	return recordDeveloperRevocations(ctx, az, actor, cause, rows)
 }
 
-// revokeDeveloperScopeBySystem is revokeDeveloperScope for a mutation no Hikyo
-// principal performed (an external directory's lifecycle event): each
-// invalidation is recorded with the system actor.
-func revokeDeveloperScopeBySystem(ctx context.Context, az *authz.TxAuthorizer, authority domain.PrincipalID, cause string, now time.Time) error {
-	rows, err := az.RevokeDeveloperCredentials(ctx, authority, domain.Scope{}, "", now)
+// revokeDeveloperBySessionsBySystem revokes the developer credentials minted
+// from the swept sessions or through the issuer's providers, for a mutation no
+// Hikyo principal performed (an external directory's lifecycle event). Each
+// invalidation is recorded with the system actor. Credentials minted from other
+// sessions of the account (a password session) are left alone.
+func revokeDeveloperBySessionsBySystem(ctx context.Context, az *authz.TxAuthorizer, authority domain.PrincipalID, sessionIDs, providerIDs []string, cause string, now time.Time) error {
+	rows, err := az.RevokeDeveloperCredentialsForSessions(ctx, authority, sessionIDs, providerIDs, now)
 	if err != nil {
 		return err
 	}

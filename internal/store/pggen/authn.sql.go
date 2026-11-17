@@ -511,12 +511,13 @@ func (q *Queries) DeleteSessionsForPrincipal(ctx context.Context, principalID st
 	return err
 }
 
-const deleteSessionsForPrincipalAndIssuer = `-- name: DeleteSessionsForPrincipalAndIssuer :execrows
+const deleteSessionsForPrincipalAndIssuer = `-- name: DeleteSessionsForPrincipalAndIssuer :many
 DELETE FROM sessions WHERE sessions.principal_id = $1
 AND (sessions.provider_id IN (SELECT p.id FROM oidc_providers p WHERE p.kind = 'oidc' AND p.issuer = $2)
  OR sessions.id IN (SELECT e.session_id FROM credential_establish_evidence e
   JOIN external_identities i ON i.id = e.identity_id
   WHERE i.kind = 'oidc' AND i.issuer = $2))
+RETURNING sessions.id
 `
 
 type DeleteSessionsForPrincipalAndIssuerParams struct {
@@ -532,12 +533,24 @@ type DeleteSessionsForPrincipalAndIssuerParams struct {
 // from the session. Run BEFORE the identity row is removed: the evidence join
 // needs it.
 // hikyo:authn-resolution
-func (q *Queries) DeleteSessionsForPrincipalAndIssuer(ctx context.Context, arg DeleteSessionsForPrincipalAndIssuerParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteSessionsForPrincipalAndIssuer, arg.PrincipalID, arg.Issuer)
+func (q *Queries) DeleteSessionsForPrincipalAndIssuer(ctx context.Context, arg DeleteSessionsForPrincipalAndIssuerParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, deleteSessionsForPrincipalAndIssuer, arg.PrincipalID, arg.Issuer)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return result.RowsAffected(), nil
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const deleteSessionsForProvider = `-- name: DeleteSessionsForProvider :execrows

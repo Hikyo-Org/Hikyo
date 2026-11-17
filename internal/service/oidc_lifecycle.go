@@ -27,6 +27,10 @@ import (
 // signature is checked. Directory user events are a few KiB.
 const MaxLifecycleBodyBytes = 64 << 10
 
+// ErrLifecycleRetry reports a verified event that raced a provider change; the
+// sender should redeliver.
+var ErrLifecycleRetry = errors.New("service: provider changed while handling a lifecycle event")
+
 const (
 	lifecycleUserDeleted = "user.deleted"
 	lifecycleUserUpdated = "user.updated"
@@ -134,7 +138,9 @@ func (s *Auth) OIDCLifecycle(ctx context.Context, slug string, header http.Heade
 			return err
 		}
 		if cause != "" {
-			return domain.ErrUnauthenticated
+			// The signature already verified, so a 401 would drop a genuine event
+			// and break "204 or retryable"; the directory redelivers on 503.
+			return ErrLifecycleRetry
 		}
 		return s.applyDirectoryEvent(ctx, az, prov, event.Data.ID, banned)
 	})
@@ -181,20 +187,39 @@ func (s *Auth) applyDirectoryEvent(ctx context.Context, az *authz.TxAuthorizer, 
 	if err != nil {
 		return err
 	}
+	// Developer credentials minted from a swept session, or through any provider
+	// row of this issuer, die with it; ones minted from other sessions survive.
+	providers, err := az.ListProviders(ctx)
+	if err != nil {
+		return err
+	}
+	var providerIDs []string
+	for _, p := range providers {
+		if p.Kind == OIDCKind && p.Issuer == prov.Issuer {
+			providerIDs = append(providerIDs, p.ID)
+		}
+	}
+	cause := "directory-" + lifecycleUserDeleted
 	if ban {
-		if swept == 0 {
+		cause = "directory-banned"
+	}
+	if err := revokeDeveloperBySessionsBySystem(ctx, az, account.PrincipalID, swept, providerIDs, cause, s.now()); err != nil {
+		return err
+	}
+	if ban {
+		if len(swept) == 0 {
 			return nil
 		}
 		return recordSystemEvent(ctx, az, audit.EventSessionsSweptByDirectory, audit.Object{Type: "external_identity", ID: identity.ID},
 			audit.Payload{"account_id": account.ID, "identity_id": identity.ID, "provider_id": prov.ID,
-				"lifecycle_event": "user.updated.banned", "sessions_swept": int(swept)})
+				"lifecycle_event": "user.updated.banned", "sessions_swept": len(swept)})
 	}
 	if err := removeIdentityLink(ctx, az, account, identity.ID, true, s.now()); err != nil {
 		return err
 	}
 	if err := recordSystemEvent(ctx, az, audit.EventIdentityUnlinkedByDirectory, audit.Object{Type: "external_identity", ID: identity.ID},
 		audit.Payload{"kind": identity.Kind, "account_id": account.ID, "identity_id": identity.ID, "provider_id": prov.ID,
-			"lifecycle_event": lifecycleUserDeleted, "sessions_swept": int(swept)}); err != nil {
+			"lifecycle_event": lifecycleUserDeleted, "sessions_swept": len(swept)}); err != nil {
 		return err
 	}
 	// An account left with no login credential is in the same state as an
@@ -202,6 +227,12 @@ func (s *Auth) applyDirectoryEvent(ctx context.Context, az *authz.TxAuthorizer, 
 	// does not apply: the identity no longer exists upstream.
 	switch err := s.assertLoginCredential(ctx, az, account.ID, ""); {
 	case errors.Is(err, ErrLastCredential):
+		// assertLoginCredential's passkey floor treats one passkey as none;
+		// here any passkey is still a way in.
+		passkeys, err := az.WebAuthnCredentialsForAccount(ctx, account.ID)
+		if err != nil || len(passkeys) > 0 {
+			return err
+		}
 		return recordSystemEvent(ctx, az, audit.EventAccountNoLoginCredential, audit.Object{Type: "account", ID: account.ID},
 			audit.Payload{"account_id": account.ID, "cause": "directory-user-deleted"})
 	default:

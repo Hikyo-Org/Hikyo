@@ -468,12 +468,13 @@ OR sessions.id IN (SELECT e.session_id FROM credential_establish_evidence e
 -- from the session. Run BEFORE the identity row is removed: the evidence join
 -- needs it.
 -- hikyo:authn-resolution
--- name: DeleteSessionsForPrincipalAndIssuer :execrows
+-- name: DeleteSessionsForPrincipalAndIssuer :many
 DELETE FROM sessions WHERE sessions.principal_id = sqlc.arg(principal_id)
 AND (sessions.provider_id IN (SELECT p.id FROM oidc_providers p WHERE p.kind = 'oidc' AND p.issuer = sqlc.arg(issuer))
  OR sessions.id IN (SELECT e.session_id FROM credential_establish_evidence e
   JOIN external_identities i ON i.id = e.identity_id
-  WHERE i.kind = 'oidc' AND i.issuer = sqlc.arg(issuer)));
+  WHERE i.kind = 'oidc' AND i.issuer = sqlc.arg(issuer)))
+RETURNING sessions.id;
 
 -- A FRESH CEREMONY SUPERSEDES THE PAIR'S PREVIOUS WINDOW (#58).
 --

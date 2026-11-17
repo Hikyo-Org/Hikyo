@@ -1078,7 +1078,7 @@
     "engine": "postgres",
     "name": "DeleteSessionsForPrincipalAndIssuer",
     "annotation": "authn-resolution",
-    "hash": "51e92bdc4c972c6f9d3973641abd3c3bbcbee4b81210adf5cf7e8b488909ae01"
+    "hash": "69fca0a295d1c353bb17503141d645c6454837039c1c87b7b86b7fdd125109fb"
   },
   {
     "engine": "postgres",
@@ -4886,7 +4886,7 @@
     "engine": "sqlite",
     "name": "DeleteSessionsForPrincipalAndIssuer",
     "annotation": "authn-resolution",
-    "hash": "51e92bdc4c972c6f9d3973641abd3c3bbcbee4b81210adf5cf7e8b488909ae01"
+    "hash": "69fca0a295d1c353bb17503141d645c6454837039c1c87b7b86b7fdd125109fb"
   },
   {
     "engine": "sqlite",

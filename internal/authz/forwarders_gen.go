@@ -1328,8 +1328,9 @@ func (a *TxAuthorizer) SweepExpiredWorkspaceHandoffs(ctx context.Context, before
 // through any oidc provider row carrying the issuer, and those a
 // credential-establishment stamp ties to an oidc identity of that issuer.
 // Directory lifecycle events use it (human-auth ADR, 2026-11-17); sessions
-// minted by other methods survive. Call it before the identity is removed.
-func (a *TxAuthorizer) SweepSessionsForPrincipalAndIssuer(ctx context.Context, principalID, issuer string) (int64, error) {
+// minted by other methods survive. It returns the swept session ids. Call it
+// before the identity is removed.
+func (a *TxAuthorizer) SweepSessionsForPrincipalAndIssuer(ctx context.Context, principalID, issuer string) ([]string, error) {
 	return a.r.DeleteSessionsForPrincipalAndIssuer(ctx, principalID, issuer)
 }
 
