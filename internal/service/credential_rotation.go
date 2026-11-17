@@ -217,6 +217,29 @@ func requireRotationHuman(caller authz.Identity) error {
 	return nil
 }
 
+// authorizeRotationKeys is the outer authorization of pause, resume, delete and
+// run-now. The rotation is read under the inspect operation (read is never
+// key-narrowed), then the operation is authorized on BOTH stored keys as
+// individual keys, so a person who holds its formula through key-narrowed member
+// rules passes exactly when they pass for each key, like the create that made it.
+// An environment-wide holder passes both keys, so nothing narrows for them. A
+// denial on either key is recorded under the operation itself and answers the
+// uniform not-found; a caller without read is refused at the inspect step.
+func authorizeRotationKeys(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, actor Actor, op authz.Operation, scope domain.Scope, rotationID string, now time.Time) (caller authz.Identity, proof authz.Proof, cur store.RotationRecord, err error) {
+	var readProof authz.Proof
+	if caller, readProof, err = authorize(ctx, az, actor, authz.OpRotationInspect, scope, now); err != nil {
+		return
+	}
+	if cur, err = r.Rotations().Get(ctx, readProof, rotationID); err != nil {
+		return
+	}
+	if proof, err = az.AuthorizeKey(ctx, caller, op, scope, authz.KeyByID(cur.KeyID)); err != nil {
+		return
+	}
+	_, err = az.AuthorizeKey(ctx, caller, op, scope, authz.KeyByID(cur.UsernameKeyID))
+	return
+}
+
 // requireUnattendedEnvironment refuses an environment whose publishes cannot run
 // unattended: a protected one (a per-publish ceremony) or one covered by an
 // approval policy (the publish becomes an approval request). Lifting either
@@ -533,15 +556,16 @@ func (s *CredentialRotations) Get(ctx context.Context, actor Actor, scope domain
 // Pause stops scheduling. S1 has no run, so nothing is in flight to finish; in
 // S2 a pause rolls an unpublished run back and lets a published one finish, so
 // revocation is never stranded. The credential already delivered stays valid
-// until the expiry the view names. Pause needs publish on the environment, not a
-// key-aware check, because it only ever reduces what the rotation does.
+// until the expiry the view names. Pause needs publish on the environment, checked
+// on both stored keys (authorizeRotationKeys), like every other transition.
 func (s *CredentialRotations) Pause(ctx context.Context, actor Actor, scope domain.Scope, req RotationStateRequest) (RotationView, error) {
 	return s.transition(ctx, actor, scope, req, rotationActionPaused)
 }
 
 // Resume re-arms a paused or halted rotation and recomputes its next run from
 // now. It is a human act like create: the caller must hold the create formula on
-// both keys and consume the publish ceremony, and the recorded authority principal
+// both keys (key-narrowed member rules apply) and consume the publish ceremony,
+// and the recorded authority principal
 // must still hold that formula too, so a rotation never resumes into a guaranteed
 // halt and never lets a publish-only caller launder another person's authority.
 // Every check runs under the resume operation, so a denial is recorded as one.
@@ -587,13 +611,10 @@ var (
 )
 
 // RunNow requests a run outside the schedule. It is resume's equivalent: a
-// signed-in person who holds edit, publish and reveal environment-wide, under this
-// operation (a denial is recorded as rotation.run_now), and who consumes the
-// publish ceremony over both keys, so a publisher without reveal cannot start one.
-// There is no per-key check after the environment one: a key-narrowed rule never
-// satisfies an operation that passes no key, and an environment-wide holder of the
-// formula passes it for every key, so a per-key AuthorizeKey could never deny here
-// (TestRotationRunNowKeyChecksAddNothing pins that). It executes nothing: the request makes the
+// signed-in person who holds edit, publish and reveal on both stored keys, under
+// this operation (a denial is recorded as rotation.run_now; key-narrowed member
+// rules apply), and who consumes the publish ceremony over both keys, so a
+// publisher without reveal cannot start one. It executes nothing: the request makes the
 // rotation due now, and the executor starts the run through its normal path with
 // the recorded authority, the pre-publish Gate and the overlap, exactly as a
 // scheduled run. A manual run bypasses none of them. Because it resets the next
@@ -606,7 +627,7 @@ func (s *CredentialRotations) RunNow(ctx context.Context, actor Actor, scope dom
 	now := store.CanonTime(s.now())
 	var out RunNowResult
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, proof, err := authorize(ctx, az, actor, authz.OpRotationRunNow, scope, now)
+		caller, proof, cur, err := authorizeRotationKeys(ctx, r, az, actor, authz.OpRotationRunNow, scope, req.RotationID, now)
 		if err != nil {
 			return err
 		}
@@ -615,10 +636,6 @@ func (s *CredentialRotations) RunNow(ctx context.Context, actor Actor, scope dom
 		}
 		if !req.ConfirmDestructive {
 			return ErrRotationRunNowUnconfirmed
-		}
-		cur, err := r.Rotations().Get(ctx, proof, req.RotationID)
-		if err != nil {
-			return err
 		}
 		if req.ExpectedGeneration != 0 && req.ExpectedGeneration != cur.Generation {
 			return ErrRotationStale
@@ -749,11 +766,7 @@ func (s *CredentialRotations) transition(ctx context.Context, actor Actor, scope
 	now := store.CanonTime(s.now())
 	var out RotationView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, proof, err := authorize(ctx, az, actor, op, scope, now)
-		if err != nil {
-			return err
-		}
-		cur, err := r.Rotations().Get(ctx, proof, req.RotationID)
+		caller, proof, cur, err := authorizeRotationKeys(ctx, r, az, actor, op, scope, req.RotationID, now)
 		if err != nil {
 			return err
 		}
@@ -869,9 +882,8 @@ func (s *CredentialRotations) transition(ctx context.Context, actor Actor, scope
 // resumes; the environment still runs unattended; the provider can still mint;
 // the keys still exist and are fit to receive the credential (a missing key is
 // its own refusal, because per-key authorization of a missing key reads as
-// not-found); the CALLER holds the resume formula (edit, publish and reveal at
-// the environment) on both keys; the recorded authority principal still holds it
-// too; the authority holds no draft on either key; and the publish ceremony is
+// not-found); the recorded authority principal still holds the resume formula
+// (edit, publish and reveal at the environment) on both keys; the authority holds no draft on either key; and the publish ceremony is
 // consumed.
 func (s *CredentialRotations) authorizeResume(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, proof authz.Proof, caller authz.Identity, scope domain.Scope, rec store.RotationRecord) error {
 	if err := requireRotationHuman(caller); err != nil {
@@ -888,9 +900,6 @@ func (s *CredentialRotations) authorizeResume(ctx context.Context, r store.Repos
 	}
 	authority := domain.PrincipalID(rec.AuthorityPrincipalID)
 	for _, id := range []string{rec.KeyID, rec.UsernameKeyID} {
-		if _, err := az.AuthorizeKey(ctx, caller, authz.OpRotationResume, scope, authz.KeyByID(id)); err != nil {
-			return err
-		}
 		// The caller stays the actor of a denial here; AuthorityID names the
 		// recorded principal. No identity is synthesized for the authority.
 		key := authz.KeyByID(id)
