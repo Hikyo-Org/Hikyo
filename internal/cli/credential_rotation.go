@@ -292,11 +292,14 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 		}
 		// A held rotation is the first thing the runs list must say: none of the
 		// runs below it will start another until the hold is released.
+		// Reading the hold is secondary: when it fails the runs still render, and
+		// the operator is told the hold status is unknown.
 		var cur apigen.CredentialRotation
 		if err := client.Do(ctx, http.MethodGet, base+"/"+url.PathEscape(id), nil, &cur); err != nil {
-			return err
+			_, _ = fmt.Fprintf(ios.Stderr, "WARNING: the rotation could not be read (%v), so its restore hold status is unknown; run `hikyo rotation show %s` to check it\n", err, id)
+		} else {
+			noteRestoreHold(ios, cur)
 		}
-		noteRestoreHold(ios, cur)
 		noteOwedRuns(ios, out)
 		if err := Render(ios.Stdout, f, rotationRunsTable(out)); err != nil {
 			return err
@@ -387,9 +390,10 @@ func noteAllOwedRuns(ctx context.Context, client *Client, ios IO, runsPath strin
 // when that role stays valid: a revoke_refused run could not drop the superseded
 // role and a quarantine run holds a candidate that may still be live. Hikyo has no
 // operator action that releases either; the role lapses at the time printed unless
-// the operator drops it at the provider. The exception is a run refused as
-// published_versions_changed: a restore may have put the role back in service, so
-// it is not to be dropped until the keys have moved off it.
+// the operator drops it at the provider, after checking that neither key serves it
+// (a revision restore can put it back). A run refused as published_versions_changed
+// is the case where a restore already did: it is not to be dropped until the keys
+// have moved off it.
 func noteOwedRuns(ios IO, runs apigen.RotationRunList) {
 	for _, r := range runs.Items {
 		if r.Phase != apigen.RotationRunPhaseRevokeRefused && r.Phase != apigen.RotationRunPhaseQuarantine {
@@ -409,7 +413,7 @@ func noteOwedRuns(ios IO, runs apigen.RotationRunList) {
 			_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: run %s is %s (%s): a restore put an earlier value back, so the keys may be serving the role it owes a drop again (%s); do NOT drop it at the provider until the keys have moved off it\n", r.Id, r.Phase, versionsChangedCode, until)
 			continue
 		}
-		_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: run %s is %s and a provider role it owes a drop is still live (%s); drop it at the provider if that is too late\n", r.Id, r.Phase, until)
+		_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: run %s is %s and a provider role it owes a drop is still live (%s); before you drop it at the provider, check that neither key serves that role, because a revision restore can put it back\n", r.Id, r.Phase, until)
 	}
 }
 

@@ -508,13 +508,13 @@ func runRotationReleaseHoldRefusesNonSessions(t *testing.T, db *store.DB) {
 		body, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		got := resp.Status + " " + string(body)
-		if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusForbidden {
-			t.Fatalf("release-hold over HTTP = %s", got)
+		if resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("release-hold over HTTP = %s, want the uniform not-found", got)
 		}
 		if want == "" {
 			want = got
 		} else if got != want {
-			t.Logf("transport answers differ by credential class: %q vs %q", want, got)
+			t.Fatalf("transport answers differ by credential class: %q vs %q", want, got)
 		}
 	}
 }

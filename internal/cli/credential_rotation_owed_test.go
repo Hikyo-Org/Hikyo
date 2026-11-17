@@ -66,7 +66,7 @@ func TestRotationShowPagesThroughOwedRuns(t *testing.T) {
 		"stays valid until 2030-02-03T04:05:06Z)",
 		"ATTENTION: run rrn_3 is quarantine",
 		"stays valid at least until 2030-02-03T04:05:06Z, and possibly longer",
-		"ATTENTION: run rrn_4 is quarantine and a provider role it owes a drop is still live (no recorded expiry)",
+		"ATTENTION: run rrn_4 is quarantine and a provider role it owes a drop is still live (no recorded expiry); before you drop it at the provider, check that neither key serves that role",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("stderr lacks %q:\n%s", want, out)
@@ -119,7 +119,8 @@ func TestRotationShowSaysWhenTheRunHistoryIsTruncated(t *testing.T) {
 }
 
 // A run refused because a restore put the superseded role back in service must
-// not tell the operator to drop it; every other refusal keeps the drop advice.
+// not tell the operator to drop it; every other refusal may be dropped, but only
+// after checking that neither key serves the role.
 func TestRotationOwedRunRestoredRoleIsNotToBeDropped(t *testing.T) {
 	until := time.Date(2030, 2, 3, 4, 5, 6, 0, time.UTC)
 	withCode := func(id string, phase apigen.RotationRunPhase, code string) apigen.RotationRun {
@@ -157,14 +158,41 @@ func TestRotationOwedRunRestoredRoleIsNotToBeDropped(t *testing.T) {
 	}
 	for _, id := range []string{"rrn_restored", "rrn_restored_q"} {
 		line := lines[id]
-		if !strings.Contains(line, "do NOT drop it at the provider until the keys have moved off it") || !strings.Contains(line, "may be serving") || strings.Contains(line, "drop it at the provider if that is too late") {
+		if !strings.Contains(line, "do NOT drop it at the provider until the keys have moved off it") || !strings.Contains(line, "may be serving") || strings.Contains(line, "before you drop it") {
 			t.Errorf("%s: a restored role is advised wrongly: %q", id, line)
 		}
 	}
 	for _, id := range []string{"rrn_objects", "rrn_down"} {
 		line := lines[id]
-		if !strings.Contains(line, "drop it at the provider if that is too late") || strings.Contains(line, "do NOT") {
-			t.Errorf("%s: an ordinary refusal lost its drop advice: %q", id, line)
+		if !strings.Contains(line, "before you drop it at the provider, check that neither key serves that role, because a revision restore can put it back") || strings.Contains(line, "do NOT") {
+			t.Errorf("%s: an ordinary refusal lost its drop advice or its key check: %q", id, line)
+		}
+	}
+}
+
+// The hold status is a second read; when only it fails the runs still render
+// and the operator is told the hold status is unknown.
+func TestRotationRunsRenderWhenTheHoldStatusCannotBeRead(t *testing.T) {
+	ios, stdout, stderr := definitionsTestIO(t, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == rotationBase+"/runs" {
+			_ = jsonwire.Encode(rw, apigen.RotationRunList{Items: []apigen.RotationRun{
+				owedRun("rrn_owed", apigen.RotationRunPhaseRevokeRefused, time.Date(2030, 2, 3, 4, 5, 6, 0, time.UTC), false),
+			}})
+			return
+		}
+		http.Error(rw, "boom", http.StatusInternalServerError)
+	}))
+	args := append([]string{"rotation", "runs", "rot_70"}, rotationScope...)
+	if code := cli.Run(t.Context(), ios, args); code != cli.ExitOK {
+		t.Fatalf("runs failed on a hold-status error: exit %d; stderr=%s", code, stderr)
+	}
+	if !strings.Contains(stdout.String(), "rrn_owed") {
+		t.Errorf("the runs were discarded: stdout=%q", stdout)
+	}
+	for _, want := range []string{"WARNING: the rotation could not be read", "restore hold status is unknown", "ATTENTION: run rrn_owed"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("stderr lacks %q: %q", want, stderr)
 		}
 	}
 }
