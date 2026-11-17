@@ -17,7 +17,7 @@ require (
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467
 	github.com/descope/virtualwebauthn v1.0.5
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
-	github.com/emersion/go-smtp v0.25.1
+	github.com/emersion/go-smtp v0.26.0
 	github.com/getkin/kin-openapi v0.153.0
 	github.com/getsops/sops/v3 v3.13.3
 	github.com/go-chi/chi/v5 v5.5.0
@@ -30,16 +30,16 @@ require (
 	github.com/google/jsonschema-go v0.4.3
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/vault/api v1.23.0
-	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/klauspost/compress v1.20.4
 	github.com/mattermost/xml-roundtrip-validator v0.1.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
-	github.com/oapi-codegen/runtime v1.8.0
+	github.com/oapi-codegen/runtime v1.9.0
 	github.com/oasdiff/oasdiff v1.35.0
 	github.com/oasdiff/yaml v0.1.3
 	github.com/openbao/openbao/api/v2 v2.7.1
 	github.com/pquerna/otp v1.5.0
-	github.com/pressly/goose/v3 v3.30.0
+	github.com/pressly/goose/v3 v3.30.1
 	github.com/prometheus/client_golang v1.25.0
 	github.com/rivo/uniseg v0.4.7
 	github.com/russellhaering/gosaml2 v0.12.0
@@ -50,13 +50,13 @@ require (
 	github.com/secure-systems-lab/go-securesystemslib v0.11.1
 	github.com/sethvargo/go-diceware v0.6.0
 	github.com/sigstore/protobuf-specs v0.5.2
-	github.com/sigstore/rekor v1.6.0
+	github.com/sigstore/rekor v1.6.1
 	github.com/sigstore/sigstore v1.11.3
 	github.com/sigstore/sigstore-go v1.4.0
 	github.com/theupdateframework/go-tuf/v2 v2.4.2
 	github.com/transparency-dev/merkle v0.0.2
 	github.com/wneessen/go-mail v0.8.2
-	golang.org/x/crypto v0.58.0
+	golang.org/x/crypto v0.59.0
 	golang.org/x/image v0.48.0
 	golang.org/x/net v0.62.0
 	golang.org/x/oauth2 v0.38.0
@@ -215,7 +215,7 @@ require (
 	github.com/lib/pq v1.12.3 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
-	github.com/mfridman/interpolate v0.0.2 // indirect
+	github.com/mfridman/interpolate v0.2.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
