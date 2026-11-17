@@ -564,8 +564,10 @@ scheduled credential rotation:
   every rotation it brings back: a held rotation starts no run and cannot be
   resumed or run now until release-hold (a person's act with resume's access
   and publish ceremony), and show, list and runs say so, with the time the
-  delivered credential lapses. release-hold changes nothing else; it never
-  drops a superseded role.
+  delivered credential lapses. A held rotation also refuses delete and
+  delete --abandon: release it first. release-hold changes nothing else; it
+  never drops a superseded role, but it does let the executor drop lingering
+  unpublished candidate roles; check hikyo rotation runs first.
 
 ssh certificates:
   hikyo ssh-ca create <name> --env E [--algorithm ed25519|ecdsa-p256|rsa-3072]

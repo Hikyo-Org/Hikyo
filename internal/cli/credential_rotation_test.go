@@ -197,4 +197,7 @@ func TestRotationReleaseHoldPostsToItsRoute(t *testing.T) {
 	if strings.Contains(stderr.String(), "RESTORE HOLD") {
 		t.Errorf("hold notice after release: %q", stderr)
 	}
+	if !strings.Contains(stderr.String(), "may now drop lingering unpublished candidate roles") {
+		t.Errorf("release says nothing of the candidate drops: %q", stderr)
+	}
 }

@@ -1421,9 +1421,11 @@ key was deleted (the key lookup answers not-found); an environment-wide holder c
   `rotationNever` (extend parks, skips and halts alike). `RotationRuntime.Settle` then reads the
   hold last, in the transaction that wrote the settle and tried the halt, and leaves the run due
   now (`RotationRtDueRun`, both engines) when the rotation is held. Under PG serializable a hold
-  committed after the transaction began conflicts with the halt write (an error the executor
-  retries) and one committed before it is seen by the read, so the held decision and the halt agree;
-  sqlite has one writer. The earlier read stays as the fast path. The run stays due, the claim
+  committed after the transaction began conflicts with the halt write and fails the transaction
+  (`dbTransaction` has no retry, so the executor does not retry it: the error goes to the sweep, the
+  run is reclaimed after the release plus the lease term, and `staleEffect` then closes the open
+  extend INTENT as unknown, the safe direction) and one committed before it is seen by the read, so
+  the held decision and the halt agree; sqlite has one writer. The earlier read stays as the fast path. The run stays due, the claim
   skips the held rotation, and a release re-evaluates the gate. A nested SELECT inside the settle
   UPDATE was tried first and refused by the SQL predicate analyzer, hence the in-transaction read.
   `TestRotationExtendHoldLandingAfterTheHoldReadStaysDueAfterRelease` (seam `AfterExtendHoldRead`)
@@ -1444,6 +1446,45 @@ key was deleted (the key lookup answers not-found); an environment-wide holder c
   `TestRotationHeldRotationDoesNotReconcileCandidates` and
   `TestRotationHoldDuringARunSkipsTheRollbackDrop`, each failing before the change on both
   engines. The residual window is a hold landing between the final read and the provider call.
+
+### Review round 6 (as built)
+
+- **Delete and abandon refused while held (owner decision to confirm, default A).** `RotationSetState`
+  clears `restore_hold` when the state becomes `disabled`, and `delete --abandon` turns minting and
+  minted runs into quarantine in the same transaction, so the reconciler (its claim has no state
+  filter) found the rotation unheld and dropped a candidate the live instance may have published,
+  which undid decision B. A plain delete also succeeded when only unpublished failed or quarantine
+  runs existed (`CountOpenRuns` ignores them). The service now refuses both with
+  `ErrRotationRestoreHeld` ("release it with release-hold") before it counts or abandons anything,
+  so nothing changes: no state, no run, no audit row. Pause stays allowed while held; delete and
+  abandon are refused until release. The clear on disable stays and is now unreachable for a held
+  row. Tests: `TestRotationDeleteRefusedWhileRestoreHeld` (delete and abandon, run left minting),
+  `TestRotationDeleteSucceedsAfterRelease`, `TestRotationPauseAllowedWhileRestoreHeld` and
+  `TestRotationDisabledRowNeverKeepsAHold`, the first two failing before the change on both engines.
+  **Owner decision, flagged:** A (built): refuse until `release-hold`. B: keep the hold through
+  the delete and let `release-hold` accept a deleted rotation (needs the claim to filter on state or
+  the release to settle the runs, and a hold on a disabled row, so a larger change). Reversal of A
+  is the one `cur.RestoreHold` check in the delete branch.
+- **Release triggers the candidate drops (docs, CLI).** After `release-hold` the held runs are due
+  at once and the executor rolls back or reconciles them, dropping an unpublished candidate the live
+  instance may have published. The earlier wording that the unused role "lingers until release and
+  expires at its VALID UNTIL" (option B above) is superseded by: the role is left untouched until
+  release, and the release lets the executor drop it. `rotation.mdx`, the release-hold CLI help
+  and its golden, the post-release stderr line, the OpenAPI descriptions of delete and release-hold
+  and the ADR banner say so; `rotation runs` is the check before releasing.
+- **Hold landing after the claim, each in-executor read pinned.** A seam
+  `RotationExecutor.BeforeHeldRead(site)` runs before every executor hold read (`recover`,
+  `reconcile:entry`, `reconcile:predrop`, `drop_orphan`, `drop_candidate`). Tests land the hold at
+  each site and assert no `DROP ROLE`; removing any one read turns its test red (checked by
+  mutation on both engines). `TestRotationHoldDuringARunSkipsTheRollbackDrop` also asserts exactly
+  one drop after the release.
+- **Lease on the early returns.** `recoverInFlight` and `reconcileCandidate` returned on a hold
+  that landed after the claim and kept the lease until its term. They now call `yieldHeldRun`: the
+  fenced settle keeps the phase, releases the lease and leaves the run due, so the claim, which
+  skips the held rotation, takes it again right after the release. The claim's `attempt_count`
+  bump for that visit stays (it only sizes the backoff); it is one per hold landing in the claim
+  window, so it is bounded and left as is. Removing the yield turns the release-immediately
+  assertion red.
 
 ### Owner decisions on S2b-2 (resolved)
 
@@ -1504,8 +1545,9 @@ candidate and consumers fetched it. After the restore the archive says the run n
 published, so recovery used to roll it back and `DROP ROLE IF EXISTS` killed a credential
 consumers already hold, with no restore assertion guarding the drop. Built as option B: while a
 rotation is restore-held, no `DROP ROLE` is issued for a candidate that never published.
-See "Review round 5" for the mechanism. An unpublished candidate role lingers until
-`release-hold` and is bounded by its `VALID UNTIL`. Revokes of the superseded role are
+See "Review round 5" for the mechanism. An unpublished candidate role is left untouched
+until `release-hold`, and the release is what lets the executor drop it (round 6; this replaces
+the earlier "expires at its `VALID UNTIL`" wording). Delete and abandon are refused while held. Revokes of the superseded role are
 unchanged (the restore assertion guards them) and runs past their publish still finish.
 
 ### Judgment calls

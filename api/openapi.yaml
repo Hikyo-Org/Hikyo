@@ -14554,7 +14554,10 @@ paths:
         `abandon` closes every unsettled run as quarantine (or done, for a
         published run that owes no revoke) and records a row for each; it
         revokes nothing, so a role a run may still hold is kept for the
-        executor to settle. `expected_generation`, when
+        executor to settle. A rotation a restore holds refuses the delete,
+        `abandon` included, with a conflict until `release-hold`: the delete
+        would clear the hold and let the executor drop a candidate role the
+        live instance may have published. `expected_generation`, when
         given, must equal the rotation's current generation. The credential
         already delivered into the keys stays valid until
         `credential_expires_at`; deleting does not revoke it.
@@ -14666,7 +14669,10 @@ paths:
         the publish reauthentication window over them. It changes nothing else: the
         state, the schedule, every run and every provider role stay as they are, so
         it never drops a superseded role early and never resumes a paused or halted
-        rotation. `expected_generation`, when given, must equal the rotation's
+        rotation. It does let the executor settle what the hold left alone: the
+        runs held before their publish are rolled back or reconciled and their
+        unpublished candidate roles dropped, so read the rotation's runs first.
+        `expected_generation`, when given, must equal the rotation's
         current generation. A rotation that is not held, or is deleted, is refused.
       x-hikyo-class: tenant
       x-hikyo-operation: rotation.release_hold

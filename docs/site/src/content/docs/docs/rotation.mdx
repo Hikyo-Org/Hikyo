@@ -290,9 +290,13 @@ does no pre-publish step and extends nothing, and `rotation resume` and
 continues to its revoke, because that only removes a role the instance has
 already replaced. A run found in flight that never published is left alone too:
 the archive may not know a publish the live instance made, so Hikyo issues no
-`DROP ROLE` for its candidate while the hold stands. That unused role lingers
-until you release the hold, when the normal rollback and drop happen; it is
-bounded by its own `VALID UNTIL` either way. `rotation show`, `rotation list` and `rotation runs` print a
+`DROP ROLE` for its candidate while the hold stands, and the role stays at the
+provider. **Releasing the hold ends that:** the executor then rolls the run back or
+reconciles it and drops the candidate, so read `rotation runs` before you
+release. A hold also refuses `rotation delete`, `--abandon` included, with a
+conflict: a delete would clear the hold and let the executor drop a candidate
+the live instance may have published. Release first, then delete. `rotation pause`
+stays allowed. `rotation show`, `rotation list` and `rotation runs` print a
 `RESTORE HOLD` line on stderr, and the JSON carries `restore_hold`. The delivered
 credential keeps lapsing at its `credential_expires_at`, which is the deadline:
 reconcile the rotation before then.
@@ -306,8 +310,13 @@ hikyo rotation release-hold <rotation> --env E [--expected-generation N]
 
 It needs what resume needs (edit, publish and reveal, on both keys, so a
 key-narrowed operator can run it) and the publish ceremony, and it is audited as a `rotation.configured`
-event with `action` `hold_released`. It lifts the hold and nothing else: it does
-not resume a paused or halted rotation, drop a superseded role, or touch a run.
+event with `action` `hold_released`. It lifts the hold and writes nothing else: it
+does not resume a paused or halted rotation or drop a superseded role. The
+executor, though, takes the held runs up again at once: a run found minting or
+minted is rolled back, and a failed run with an unconfirmed candidate is
+reconciled, each by a `DROP ROLE` for the unpublished candidate. If the live
+instance published that candidate and consumers fetched it, the drop ends their
+access, so compare `rotation runs` with the live instance before you release.
 A hold that outlasts the delivered credential leaves the first run after release
 without a window, and the rotation halts; resume it once the credential is checked.
 A run held at `revoke_refused` because the keys served other values stays held

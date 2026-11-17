@@ -241,6 +241,9 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 			noteCredentialExpiry(ios, out, "paused")
 		}
 		noteRestoreHold(ios, out)
+		if sub == "release-hold" {
+			_, _ = fmt.Fprintln(ios.Stderr, "released: the executor may now drop lingering unpublished candidate roles; check `hikyo rotation runs` first next time")
+		}
 		return one(out)
 	case "run-now":
 		id := flags.positional()
