@@ -187,7 +187,7 @@ export function OidcProvidersPanel() {
           >
             <Glyph name="plus" /> add identity provider
           </Button>
-          <code className="instance-cli">$ hikyo oidc-provider put</code>
+          <code className="instance-cli">$ hikyo instance-config provider list</code>
         </div>
       ) : null}
 
