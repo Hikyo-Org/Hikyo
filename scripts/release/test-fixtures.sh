@@ -1,5 +1,9 @@
 #!/bin/sh
 set -eu
+# sign-bundle.sh refuses to sign with core dumps enabled. Like the ceremonies,
+# disable them here instead of relying on the runner default (nonzero on ubuntu-26.04).
+# shellcheck disable=SC3045
+ulimit -c 0
 
 : "${COSIGN_BIN:=cosign}"
 
