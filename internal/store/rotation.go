@@ -164,8 +164,11 @@ type RotationRepo interface {
 	RecordRunPublish(ctx context.Context, p authz.Proof, rec RotationPublishRecord) error
 	// AbandonOpenRuns closes every unsettled run of the rotation (quarantine, or
 	// done for a published run that owes no revoke) and returns exactly the runs
-	// that statement changed, so the service's audit rows match them one to one.
-	AbandonOpenRuns(ctx context.Context, p authz.Proof, rotationID string, at time.Time) ([]AbandonedRun, error)
+	// that statement changed, so the service's audit rows match them one to one. A
+	// run still in phase published owes a revoke only after delay from at: its
+	// stored deadline was read before the publish committed, so it is replaced by
+	// at plus the rotation's revocation delay (an observation after the commit).
+	AbandonOpenRuns(ctx context.Context, p authz.Proof, rotationID string, at time.Time, delay time.Duration) ([]AbandonedRun, error)
 	// ProviderLiveRuns counts runs on a provider that may still hold a live role
 	// or owe a revoke, so a provider delete can refuse.
 	ProviderLiveRuns(ctx context.Context, p authz.Proof, providerID string) (int64, error)
@@ -216,7 +219,7 @@ type rotationStoreQueries interface {
 	activeInEnvironment(ctx context.Context, chain domain.Scope, environmentID string) ([]RotationRecord, error)
 	activeInProject(ctx context.Context, chain domain.Scope) ([]RotationRecord, error)
 	pauseActive(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) (int64, error)
-	abandonRuns(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) ([]AbandonedRun, error)
+	abandonRuns(ctx context.Context, chain domain.Scope, rotationID string, at, publishedDue time.Time) ([]AbandonedRun, error)
 	providerLiveRuns(ctx context.Context, chain domain.Scope, providerID string) (int64, error)
 	runtime() rotationRuntimeQueries
 }
@@ -938,12 +941,12 @@ func (r rotationQueries) RecordRunPublish(ctx context.Context, p authz.Proof, re
 	return err
 }
 
-func (r rotationQueries) AbandonOpenRuns(ctx context.Context, p authz.Proof, rotationID string, at time.Time) ([]AbandonedRun, error) {
+func (r rotationQueries) AbandonOpenRuns(ctx context.Context, p authz.Proof, rotationID string, at time.Time, delay time.Duration) ([]AbandonedRun, error) {
 	chain, err := r.envChain(p, authz.StoreRotationsAbandonOpenRuns)
 	if err != nil {
 		return nil, err
 	}
-	return r.queries.abandonRuns(ctx, chain, rotationID, at)
+	return r.queries.abandonRuns(ctx, chain, rotationID, at, at.Add(delay))
 }
 
 func (r rotationQueries) ProviderLiveRuns(ctx context.Context, p authz.Proof, providerID string) (int64, error) {
@@ -954,8 +957,8 @@ func (r rotationQueries) ProviderLiveRuns(ctx context.Context, p authz.Proof, pr
 	return r.queries.providerLiveRuns(ctx, chain, providerID)
 }
 
-func (q sqliteRotationQueries) abandonRuns(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) ([]AbandonedRun, error) {
-	rows, err := q.q.RotationAbandonOpenRuns(ctx, sqlitegen.RotationAbandonOpenRunsParams{At: fixedStamp(at), RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+func (q sqliteRotationQueries) abandonRuns(ctx context.Context, chain domain.Scope, rotationID string, at, publishedDue time.Time) ([]AbandonedRun, error) {
+	rows, err := q.q.RotationAbandonOpenRuns(ctx, sqlitegen.RotationAbandonOpenRunsParams{At: fixedStamp(at), PublishedDueAt: fixedStamp(publishedDue), RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
 	if err != nil {
 		return nil, err
 	}
@@ -964,8 +967,8 @@ func (q sqliteRotationQueries) abandonRuns(ctx context.Context, chain domain.Sco
 	})
 }
 
-func (q pgRotationQueries) abandonRuns(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) ([]AbandonedRun, error) {
-	rows, err := q.q.RotationAbandonOpenRuns(ctx, pggen.RotationAbandonOpenRunsParams{At: pgRequiredTime(at), RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+func (q pgRotationQueries) abandonRuns(ctx context.Context, chain domain.Scope, rotationID string, at, publishedDue time.Time) ([]AbandonedRun, error) {
+	rows, err := q.q.RotationAbandonOpenRuns(ctx, pggen.RotationAbandonOpenRunsParams{At: pgRequiredTime(at), PublishedDueAt: pgRequiredTime(publishedDue), RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
 	if err != nil {
 		return nil, err
 	}

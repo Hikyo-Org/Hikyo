@@ -246,6 +246,70 @@ func TestRotationPublishedRecoveryWaitsAFullDelayAfterTheCommit(t *testing.T) {
 	})
 }
 
+// `rotation delete --abandon` after the publish committed but before the overlap
+// settle leaves the run quarantined with the deadline stored before the commit
+// unless the abandon replaces it: the revoke-obligation loop must wait the full
+// delay after the commit, measured at the abandon (an observation after it).
+func TestRotationAbandonOfAPublishedRunWaitsAFullDelayAfterTheCommit(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		req := x.request(rotPasswordKey, rotUsernameKey)
+		req.RevocationDelaySeconds = 300
+		req.IntervalSeconds = 3600 // keeps the fake clock inside the fixture session's 48 hours
+		rot, err := x.svc.Create(tctx(t), x.actor, x.scope, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		x.cycle(rot.ID)
+		role1 := x.lastRun(rot.ID, "candidate_handle")
+		x.advance(time.Hour + time.Minute)
+		// The clock moves three minutes between the hook's deadline read and the
+		// commit: the lease (two minutes) lapses, so the settle into overlap is
+		// skipped, and the stored deadline is two minutes short of commit + delay.
+		armed := false
+		x.exec.Now = func() time.Time {
+			at := x.now()
+			if armed {
+				armed = false
+				x.advance(3 * time.Minute)
+			}
+			return at
+		}
+		x.exec.Revisions.PublishProbe = &rotPublishProbe{onBaseline: func() {
+			x.exec.Revisions.PublishProbe = nil
+			armed = true
+		}}
+		x.drain()
+		run2 := x.openRunID(rot.ID)
+		if got := x.phase(run2); got != "published" {
+			t.Fatalf("run 2 = %s (%s), want published: the settle must be skipped", got, x.lastRun(rot.ID, "last_error"))
+		}
+		commit := x.now()
+		x.svc.Now = x.now // the abandon time must follow the executor's clock
+		if _, err := x.svc.Delete(tctx(t), x.actor, x.scope, service.RotationStateRequest{RotationID: rot.ID, Abandon: true}); err != nil {
+			t.Fatal(err)
+		}
+		if got := x.phase(run2); got != "quarantine" {
+			t.Fatalf("run 2 = %s, want quarantine", got)
+		}
+		next := mustParseStamp(t, queryString(t, db, "SELECT "+stampText(db, "next_attempt_at")+" FROM rotation_runs WHERE id='"+run2+"'"))
+		if want := commit.Add(5 * time.Minute); !next.Equal(want) {
+			t.Fatalf("quarantine deadline = %s, want the abandon observation %s + 5m = %s", next, commit, want)
+		}
+		// Past the deadline stored before the commit, before commit + delay.
+		x.advance(4 * time.Minute)
+		x.drain()
+		if n := x.ctl.count("drop:" + role1); n != 0 {
+			t.Fatalf("the superseded role was dropped %d times before the delay after the commit", n)
+		}
+		x.advance(2 * time.Minute)
+		x.drain()
+		if n := x.ctl.count("drop:" + role1); n != 1 {
+			t.Fatalf("%d drops of the superseded role after the delay, want 1", n)
+		}
+	})
+}
+
 // A recovery that comes late, once the delivered credential is due for an extension
 // (inside its retry window), still runs the extend step first: the credential is
 // extended before the overlap wait starts, instead of the wait quietly pushing the

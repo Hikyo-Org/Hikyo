@@ -12,15 +12,16 @@ import (
 )
 
 const rotationAbandonOpenRuns = `-- name: RotationAbandonOpenRuns :many
-UPDATE rotation_runs SET phase=CASE WHEN published_revision IS NOT NULL AND superseded_handle IS NULL THEN 'done' ELSE 'quarantine' END,phase_at=$1,last_error='abandoned',next_attempt_at=CASE WHEN published_revision IS NULL THEN $1 ELSE next_attempt_at END,lease_owner=CASE WHEN published_revision IS NULL THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN published_revision IS NULL AND lease_owner IS NOT NULL THEN $1 ELSE NULL END,lease_claim_token=lease_claim_token+1 WHERE rotation_id=$2 AND org_id=$3 AND project_id=$4 AND environment_id=$5 AND phase NOT IN ('done','quarantine','failed') RETURNING id,phase,candidate_handle,superseded_handle
+UPDATE rotation_runs SET phase=CASE WHEN published_revision IS NOT NULL AND superseded_handle IS NULL THEN 'done' ELSE 'quarantine' END,phase_at=$1,last_error='abandoned',next_attempt_at=CASE WHEN published_revision IS NULL THEN $1 WHEN phase='published' AND superseded_handle IS NOT NULL THEN $2 ELSE next_attempt_at END,lease_owner=CASE WHEN published_revision IS NULL THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN published_revision IS NULL AND lease_owner IS NOT NULL THEN $1 ELSE NULL END,lease_claim_token=lease_claim_token+1 WHERE rotation_id=$3 AND org_id=$4 AND project_id=$5 AND environment_id=$6 AND phase NOT IN ('done','quarantine','failed') RETURNING id,phase,candidate_handle,superseded_handle
 `
 
 type RotationAbandonOpenRunsParams struct {
-	At           pgtype.Timestamptz
-	RotationID   string
-	ChainOrg     string
-	ChainProject string
-	ChainEnv     string
+	At             pgtype.Timestamptz
+	PublishedDueAt pgtype.Timestamptz
+	RotationID     string
+	ChainOrg       string
+	ChainProject   string
+	ChainEnv       string
 }
 
 type RotationAbandonOpenRunsRow struct {
@@ -38,7 +39,10 @@ type RotationAbandonOpenRunsRow struct {
 // reconciler wait for that call to finish before it probes and drops the candidate.
 // A pre-publish run nobody held has no lease to keep and is claimable at once. A
 // published run that owes a revoke becomes quarantine and keeps its overlap deadline (the
-// revoke-obligation loop drops the superseded role after it). A published run with
+// revoke-obligation loop drops the superseded role after it), except a run still in
+// phase published: its stored deadline was read before the publish committed, so
+// it takes published_due_at, the abandon time plus the revocation delay, an observation
+// after the commit. A published run with
 // no superseded role owes nothing, so it settles straight to done; left in
 // quarantine it would hold its provider and environment forever. RETURNING is the
 // list of the rows this statement actually changed, so the audit rows the caller
@@ -46,6 +50,7 @@ type RotationAbandonOpenRunsRow struct {
 func (q *Queries) RotationAbandonOpenRuns(ctx context.Context, arg RotationAbandonOpenRunsParams) ([]RotationAbandonOpenRunsRow, error) {
 	rows, err := q.db.Query(ctx, rotationAbandonOpenRuns,
 		arg.At,
+		arg.PublishedDueAt,
 		arg.RotationID,
 		arg.ChainOrg,
 		arg.ChainProject,

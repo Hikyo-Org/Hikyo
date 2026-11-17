@@ -388,7 +388,7 @@ transaction. It is never stored, not even sealed. Order:
 | During `DropRole` | `revoking`, effect INTENT only | re-probe `RoleStatus`, settle |
 | Fence-losing worker after `CreateRole` (multi-node takeover) | candidate role exists, run `failed` or `quarantine` | candidate reconciler re-probes `RoleStatus(candidate_handle)` and drops it (below) |
 | Key restored after the restore assertion but before the drop (TOCTOU) | `revoking`, assertion passed | the drop proceeds; the window is the span between the assertion read and the provider call, bounded by one provider deadline, and is accepted: a restore stages a new revision, and the role was already past its overlap |
-| Run abandoned past publish (`--abandon`) | `quarantine`, `published_revision` set, superseded role may be live | revoke-obligation loop drops `superseded_handle` after the overlap deadline (below) |
+| Run abandoned past publish (`--abandon`) | `quarantine`, `published_revision` set, superseded role may be live | revoke-obligation loop drops `superseded_handle` after the overlap deadline (below); a run abandoned while still `published` gets abandon time + delay (note 38) |
 
 **`superseded_handle` is derived across rotations.** The role being superseded is the
 delivered handle (the candidate) of the latest run with `published_revision IS NOT NULL`
@@ -426,7 +426,7 @@ machinery. Which component owes what, per post-publish case:
 | --- | --- | --- | --- |
 | Normal | `done` | stays live, it is the delivered value | the executor's `revoking` step drops it |
 | Provider refuses the drop (`2BP01`) or the restore assertion fails | `revoke_refused`, non-terminal | stays live | executor retries with backoff, never `done` |
-| `rotation delete --abandon` past publish | `quarantine` | stays live until its `VALID UNTIL`; nothing revokes it | revoke-obligation loop drops it once the overlap deadline (`published + revocation_delay_seconds`) has passed |
+| `rotation delete --abandon` past publish | `quarantine` | stays live until its `VALID UNTIL`; nothing revokes it | revoke-obligation loop drops it once the overlap deadline (`published + revocation_delay_seconds`; abandon time + delay for a run still in `published`, note 38) has passed |
 | Provider unreachable for a long time | stays `revoking` (never `failed`) | stays live | executor retries; the failure is loud |
 | Rotation deleted (soft) with the run already `done` | `done` | stays live until `VALID UNTIL` | nothing owed |
 | Environment or provider delete | refused while the obligation is unsettled | n/a | the loop settles it first, then the delete proceeds |
@@ -990,8 +990,16 @@ Round 4 review additions (CodeRabbit threads on PR #1426):
     on it: a claimed run in `published` is settled into `overlap` with
     now(recovery) + `RevocationDelaySeconds`, an observation after the commit, and only
     that overlap deadline gates the revoke. `followState` (an ambiguous commit that did
-    commit) does the same. The cost is one extra delay on that rare path, and the
-    branch follows the extend step, so a credential due for extension is extended (or the
+    commit) does the same. The cost is one extra delay on that rare path.
+    `rotation delete --abandon` of a run still in `published` gets the same treatment in SQL: the abandon statement sets
+    its `next_attempt_at` to the abandon time plus the rotation's revocation delay
+    (`published_due_at`, computed in Go and passed to both engines), because the quarantined
+    run's revoke-obligation loop would otherwise drop the superseded role at the
+    pre-commit value (`TestRotationAbandonOfAPublishedRunWaitsAFullDelayAfterTheCommit`).
+    The rotation's delay is fixed at creation and copied to each run, so it is the run's
+    delay; a run abandoned from `overlap` or later keeps its (post-commit) deadline. No
+    other path reads a published run's stored deadline except the claim: extend and the
+    restore hold use the current clock. The recovery branch follows the extend step, so a credential due for extension is extended (or the
     rotation halts by name) before the wait starts. Limit: the fresh delay is not clamped
     to the credential's VALID UNTIL. The maximum delay (`domain.MaxRevocationDelay`, 7
     days) can exceed the extend margin (12 hours), so an executor down from the commit

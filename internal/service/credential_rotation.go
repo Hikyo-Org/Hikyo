@@ -638,7 +638,13 @@ func (s *CredentialRotations) transition(ctx context.Context, actor Actor, scope
 				// settle; a published run that owes no revoke settles to done.
 				// Nothing here revokes a delivered credential. The audit rows are
 				// written for exactly the runs the abandon statement changed.
-				abandoned, err := r.Rotations().AbandonOpenRuns(ctx, proof, cur.ID, now)
+				// The abandon time is read inside the transaction attempt, not taken
+				// from the request's start: a retry after a conflict with an in-flight
+				// publish must observe a time after that publish committed, because a
+				// run still in `published` is given this time plus the delay as its
+				// overlap deadline.
+				abandonAt := store.CanonTime(s.now())
+				abandoned, err := r.Rotations().AbandonOpenRuns(ctx, proof, cur.ID, abandonAt, time.Duration(cur.RevocationDelaySeconds)*time.Second)
 				if err != nil {
 					return err
 				}
