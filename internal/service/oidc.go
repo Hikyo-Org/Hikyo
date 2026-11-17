@@ -409,13 +409,13 @@ func validateLifecycle(in ProviderInput) error {
 //
 // fence:delegated: returns the sealed secret and its instance DEK version to
 // the Put transaction, which fences before writing.
-func (s *Providers) sealLifecycle(providerID, secret string) ([]byte, int64, error) {
+func (s *Providers) sealLifecycle(providerID, secret string) ([]byte, uint32, error) {
 	sealer := s.Keyring.ForInstance()
 	sealed, err := sealer.SealField(providerLifecycleAAD(providerID), []byte(secret))
 	if err != nil {
 		return nil, 0, err
 	}
-	return sealed, int64(sealer.Version()), nil
+	return sealed, sealer.Version(), nil
 }
 
 // Put creates a provider or reconfigures an existing one. The issuer is
@@ -527,12 +527,12 @@ func (s *Providers) create(ctx context.Context, r store.Repos, az *authz.TxAutho
 		if in.LifecycleSecret == "" {
 			return fmt.Errorf("%w: lifecycle_profile needs a lifecycle_secret", domain.ErrInvalid)
 		}
-		var lifecycleDEK int64
+		var lifecycleDEK uint32
 		lifecycleSealed, lifecycleDEK, err = s.sealLifecycle(id, in.LifecycleSecret)
 		if err != nil {
 			return err
 		}
-		if err := fenceInstanceVersion(ctx, r, p, uint32(lifecycleDEK)); err != nil {
+		if err := fenceInstanceVersion(ctx, r, p, lifecycleDEK); err != nil {
 			return err
 		}
 	}
@@ -576,7 +576,7 @@ func (s *Providers) update(ctx context.Context, r store.Repos, az *authz.TxAutho
 	}
 	// Lifecycle fields are not login-path material (ADR 2026-11-17 a): a write
 	// that changes only them sweeps nothing. Anything else keeps sweeping.
-	sweep := !(lifecycleChanged && s.loginPathUnchanged(existing, in))
+	sweep := !lifecycleChanged || !s.loginPathUnchanged(existing, in)
 	upd := authz.ProviderUpdate{
 		ID: existing.ID, DisplayName: in.DisplayName, ClientID: in.ClientID, ClientSecret: sealed,
 		Scopes: in.Scopes, RedirectURI: s.redirectURI(existing.Slug),
@@ -639,7 +639,7 @@ func (s *Providers) lifecycleForUpdate(ctx context.Context, r store.Repos, p aut
 	if err != nil {
 		return nil, false, err
 	}
-	if err := fenceInstanceVersion(ctx, r, p, uint32(dek)); err != nil {
+	if err := fenceInstanceVersion(ctx, r, p, dek); err != nil {
 		return nil, false, err
 	}
 	return sealed, true, nil
