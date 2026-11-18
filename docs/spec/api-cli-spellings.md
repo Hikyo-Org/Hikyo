@@ -230,7 +230,11 @@ sentence dictates on its face.
 The default runtime dir (`/run/hikyo/<slug>` or `$XDG_RUNTIME_DIR/hikyo/<slug>`)
 MUST be tmpfs-backed on Linux (`compose.IsTmpfs`) or `render` refuses; an
 **explicit** `runtime_dir` is the operator's call — `doctor` reports
-`runtime_not_tmpfs` but the renderer does not block. (Orchestrator disposition.)
+`runtime_not_tmpfs` but the renderer does not block. Independently of tmpfs, every
+runtime dir (default or explicit) must pass the Unix custody check: owned by the
+effective uid, parent owned by that uid or root and not group/other-writable
+without the sticky bit. The renderer refuses otherwise and `doctor` reports
+`runtime_dir_custody`. (Orchestrator disposition.)
 
 ### Exit codes
 
