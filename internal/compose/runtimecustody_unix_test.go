@@ -98,7 +98,7 @@ func TestWriteFileFsyncRootRefusesExistingTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	planted := filepath.Join(dir, "api.env")
 	if err := os.WriteFile(planted, []byte("planted"), 0o666); err != nil {
 		t.Fatal(err)
