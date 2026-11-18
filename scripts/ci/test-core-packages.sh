@@ -50,7 +50,13 @@ if [[ "$mode" == pool ]]; then
   xargs go test -count=1 <"$work/concurrent" || status=1
 else
   # Run lint even if app failed, preserving useful coverage on red runs.
-  go test -count=1 "$app_package" || status=1
+  # internal/app's packaged-binary tests link cmd/hikyo or a signed coordinator
+  # about ten times (~20 s each), which together with the rest crossed Go's 10 m
+  # package alarm. -skip and -run take the same pattern, so every test runs
+  # exactly once; a renamed test falls into the first invocation, never out.
+  packaged='Packaged|^TestActualDefaultDevCLIStartsAndRestarts$'
+  go test -count=1 -skip "$packaged" "$app_package" || status=1
+  go test -count=1 -run "$packaged" "$app_package" || status=1
   go test -count=1 "$lint_package" || status=1
 fi
 exit "$status"
