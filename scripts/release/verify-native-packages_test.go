@@ -3,10 +3,14 @@ package main
 import (
 	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"crypto/sha1"
 	"encoding/hex"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/sassoftware/go-rpmutils"
 )
 
 func TestInspectTarRejectsInstallHook(t *testing.T) {
@@ -152,6 +156,113 @@ func TestRPMMetadataRejectsCapabilitiesAndUnsafeFlags(t *testing.T) {
 	}
 }
 
+type fakeRPMFile struct {
+	rpmutils.FileInfo
+	name  string
+	mode  int
+	flags int
+}
+
+func (f fakeRPMFile) Name() string { return f.name }
+func (f fakeRPMFile) Mode() int    { return f.mode }
+func (f fakeRPMFile) Flags() int   { return f.flags }
+
+func TestValidateRPMHeaderFilesRejectsHeaderOnlyEntries(t *testing.T) {
+	t.Parallel()
+
+	inspection := newTarInspection()
+	inspection.files[binaryPath] = true
+	inspection.files[licensePath] = true
+	good := []rpmutils.FileInfo{
+		fakeRPMFile{name: "/" + binaryPath, mode: 0o100755},
+		fakeRPMFile{name: "/" + licensePath, mode: 0o100644, flags: rpmutils.RPMFILE_LICENSE},
+	}
+	if err := validateRPMHeaderFiles(good, inspection); err != nil {
+		t.Fatalf("genuine header file table refused: %v", err)
+	}
+	ghost := append(append([]rpmutils.FileInfo{}, good...), fakeRPMFile{name: "/etc/passwd", mode: 0o100644, flags: rpmutils.RPMFILE_GHOST})
+	for name, files := range map[string][]rpmutils.FileInfo{
+		"header-only ghost":       ghost,
+		"ghost flag on payload":   {good[0], fakeRPMFile{name: "/" + licensePath, mode: 0o100644, flags: rpmutils.RPMFILE_GHOST}},
+		"same count, other path":  {good[0], fakeRPMFile{name: "/etc/passwd", mode: 0o100644}},
+		"duplicate entry":         {good[0], good[0]},
+		"unsafe path":             {good[0], fakeRPMFile{name: "/usr/share/doc/../../etc/passwd", mode: 0o100644}},
+		"symlink at allowed path": {good[0], fakeRPMFile{name: "/" + licensePath, mode: 0o120777}},
+		"missing header entry":    good[:1],
+	} {
+		if err := validateRPMHeaderFiles(files, inspection); err == nil {
+			t.Errorf("%s: header file table accepted", name)
+		}
+	}
+}
+
+func gzipText(t *testing.T, text string) []byte {
+	t.Helper()
+	var out bytes.Buffer
+	zw := gzip.NewWriter(&out)
+	if _, err := zw.Write([]byte(text)); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return out.Bytes()
+}
+
+func TestVerifyMTreeMatchesPackageEntries(t *testing.T) {
+	t.Parallel()
+
+	inspection := newTarInspection()
+	inspection.dirs["usr"] = true
+	inspection.dirs["usr/bin"] = true
+	inspection.files[binaryPath] = true
+	const header = "#mtree\n./.PKGINFO time=1.0 mode=644 size=1 type=file md5digest=aa sha256digest=bb\n./usr/ time=-62135596800.0 mode=755 type=dir\n"
+	const bin = "./usr/bin/ time=1.0 mode=755 type=dir\n./usr/bin/hikyo time=1.0 mode=755 size=3 type=file\n"
+	if err := verifyMTree(gzipText(t, header+bin), inspection); err != nil {
+		t.Fatalf("genuine .MTREE refused: %v", err)
+	}
+	if err := verifyMTree(gzipText(t, "#mtree\n/set type=file\n"+header[7:]+bin), inspection); err != nil {
+		t.Fatalf(".MTREE with /set refused: %v", err)
+	}
+	for name, text := range map[string]string{
+		"extra path":       header + bin + "./etc/passwd time=1.0 mode=644 type=file\n",
+		"missing path":     header,
+		"duplicate path":   header + bin + bin,
+		"absolute path":    header + bin + "/etc/passwd type=file\n",
+		"relative path":    header + bin + "etc type=dir\n",
+		"backslash escape": header + bin + "./usr/bin/hik\\171o type=file\n",
+		"unknown keyword":  header + "./usr/bin/ type=dir uid=0\n./usr/bin/hikyo type=file\n",
+		"unknown command":  header + bin + "/remove\n",
+		"unsafe path":      header + bin + "./usr/../etc/passwd type=file\n",
+	} {
+		if err := verifyMTree(gzipText(t, text), inspection); err == nil {
+			t.Errorf("%s: .MTREE accepted", name)
+		}
+	}
+	if err := verifyMTree([]byte("#mtree\n"+header[7:]+bin), inspection); err == nil {
+		t.Error("uncompressed .MTREE accepted")
+	}
+	if err := verifyMTree(gzipText(t, header+bin+"#"+strings.Repeat("x", maxMTreeSize)), inspection); err == nil {
+		t.Error("oversized .MTREE accepted")
+	}
+}
+
+func TestFirstForbiddenFieldRejectsRelationships(t *testing.T) {
+	t.Parallel()
+
+	if _, found := firstForbiddenField(parseFields([]byte("Package: hikyo\nDepends: libc6\n")), "Conflicts", "Replaces", "Breaks"); found {
+		t.Fatal("benign Debian control refused")
+	}
+	for _, name := range []string{"Conflicts", "replaces", "BREAKS"} {
+		if _, found := firstForbiddenField(parseFields([]byte("Package: hikyo\n"+name+": other\n")), "Conflicts", "Replaces", "Breaks"); !found {
+			t.Errorf("Debian %s relationship accepted", name)
+		}
+	}
+	if _, found := firstForbiddenField(parseEquals([]byte("pkgname = hikyo\nreplaces = other\n")), "replaces", "conflict"); !found {
+		t.Error("replaces relationship accepted")
+	}
+}
+
 func TestInspectDebControlRejectsMaintainerScript(t *testing.T) {
 	t.Parallel()
 
@@ -174,6 +285,7 @@ func TestForbiddenRPMScriptTagsRejectsEveryExecutableClass(t *testing.T) {
 		5066, 5067, 5076, 5077,
 		5103, 5104, 5105, 5106,
 		5109,
+		1054, 1090, // Conflicts and Obsoletes make rpm remove other packages.
 	} {
 		got, found := firstForbiddenRPMHook(func(candidate int) bool { return candidate == tag })
 		if !found || got != tag {
