@@ -245,6 +245,9 @@ func verifyAPK(filename string, id identity) (payload, error) {
 	if field, found := firstForbiddenField(fields, "replaces", "replaces_priority"); found {
 		return payload{}, fmt.Errorf("APK declares forbidden package relationship %q", field)
 	}
+	if dependency, found := firstAPKConflict(pkginfo); found {
+		return payload{}, fmt.Errorf("APK declares forbidden conflict %q", dependency)
+	}
 	return finishPayload(inspection)
 }
 
@@ -274,10 +277,12 @@ func verifyArch(filename string, id identity) (payload, error) {
 	if field, found := firstForbiddenField(fields, "replaces", "conflict"); found {
 		return payload{}, fmt.Errorf("Arch .PKGINFO declares forbidden package relationship %q", field)
 	}
-	if mtree, ok := inspection.metadata[".MTREE"]; ok {
-		if err := verifyMTree(mtree, inspection); err != nil {
-			return payload{}, err
-		}
+	mtree, ok := inspection.metadata[".MTREE"]
+	if !ok {
+		return payload{}, errors.New("Arch package has no .MTREE")
+	}
+	if err := verifyMTree(mtree, inspection); err != nil {
+		return payload{}, err
 	}
 	return finishPayload(inspection)
 }
@@ -302,6 +307,10 @@ func verifyRPM(filename string, id identity) (payload, error) {
 	}
 	if tag, found := firstForbiddenRPMHook(rpm.Header.HasTag); found {
 		return payload{}, fmt.Errorf("RPM contains forbidden side-effect tag %d", tag)
+	}
+	nameCount, err := validateRPMNameTable(rpm.Header)
+	if err != nil {
+		return payload{}, err
 	}
 	reader, err := rpm.PayloadReaderExtended()
 	if err != nil {
@@ -360,6 +369,9 @@ func verifyRPM(filename string, id identity) (payload, error) {
 	if err != nil {
 		return payload{}, err
 	}
+	if len(headerFiles) != nameCount {
+		return payload{}, fmt.Errorf("RPM header resolves %d files from %d file names", len(headerFiles), nameCount)
+	}
 	if err := validateRPMHeaderFiles(headerFiles, inspection); err != nil {
 		return payload{}, err
 	}
@@ -381,7 +393,37 @@ func forbiddenRPMScriptTags() []int {
 		rpmutils.FILECAPS,
 		// Package relationships that make rpm remove or refuse other packages.
 		rpmutils.CONFLICTNAME, rpmutils.OBSOLETENAME,
+		// go-rpmutils prefers OLDFILENAMES over BASENAMES/DIRNAMES without comparing
+		// them, while rpm prefers the latter; nFPM never writes this obsolete tag.
+		rpmutils.OLDFILENAMES,
 	}
+}
+
+// validateRPMNameTable requires the BASENAMES/DIRINDEXES/DIRNAMES file name
+// table to be consistent, so that the file list go-rpmutils resolves is the one
+// rpm acts on. It returns the number of file names.
+func validateRPMNameTable(header *rpmutils.RpmHeader) (int, error) {
+	baseNames, err := header.GetStrings(rpmutils.BASENAMES)
+	if err != nil {
+		return 0, fmt.Errorf("read RPM base names: %w", err)
+	}
+	dirIndexes, err := header.GetUint32s(rpmutils.DIRINDEXES)
+	if err != nil {
+		return 0, fmt.Errorf("read RPM directory indexes: %w", err)
+	}
+	dirNames, err := header.GetStrings(rpmutils.DIRNAMES)
+	if err != nil {
+		return 0, fmt.Errorf("read RPM directory names: %w", err)
+	}
+	if len(baseNames) != len(dirIndexes) {
+		return 0, fmt.Errorf("RPM header has %d base names but %d directory indexes", len(baseNames), len(dirIndexes))
+	}
+	for _, index := range dirIndexes {
+		if int64(index) >= int64(len(dirNames)) {
+			return 0, fmt.Errorf("RPM directory index %d is out of range", index)
+		}
+	}
+	return len(baseNames), nil
 }
 
 // validateRPMHeaderFiles requires the header file table to list exactly the
@@ -737,10 +779,23 @@ func firstForbiddenField(fields map[string]string, names ...string) (string, boo
 	return "", false
 }
 
+// firstAPKConflict reports the first "depend = !name" line, which apk treats as
+// a conflict. parseEquals keeps only the last value of repeated keys.
+func firstAPKConflict(data []byte) (string, bool) {
+	for _, line := range strings.Split(string(data), "\n") {
+		key, value, ok := strings.Cut(line, "=")
+		if value = strings.TrimSpace(value); ok && strings.TrimSpace(key) == "depend" && strings.HasPrefix(value, "!") {
+			return value, true
+		}
+	}
+	return "", false
+}
+
 // maxMTreeSize bounds the decompressed .MTREE; the genuine one is a few hundred bytes.
 const maxMTreeSize = 1 << 20
 
-// mtreeKeywords are the keywords nFPM writes; libarchive honours others.
+// mtreeKeywords are the keywords nFPM writes; libarchive honours others. nFPM
+// never writes /set or /unset, so those lines are refused as non-path entries.
 var mtreeKeywords = map[string]bool{"time": true, "mode": true, "size": true, "type": true, "link": true, "md5digest": true, "sha256digest": true}
 
 // verifyMTree requires the .MTREE path list, which pacman uses as the package
@@ -770,7 +825,7 @@ func verifyMTree(data []byte, inspection *tarInspection) error {
 	seen := make(map[string]bool, len(want))
 	for _, line := range strings.Split(string(text), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) == 0 || strings.HasPrefix(fields[0], "#") || fields[0] == "/set" || fields[0] == "/unset" {
+		if len(fields) == 0 || strings.HasPrefix(fields[0], "#") {
 			continue
 		}
 		if strings.Contains(line, "\\") || !strings.HasPrefix(fields[0], "./") {
