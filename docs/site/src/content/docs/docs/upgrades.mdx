@@ -16,6 +16,17 @@ rotations in each environment (`hikyo rotation list --env <env>`) and pause any
 you do not want to start, then resume them deliberately. See
 [Scheduled credential rotation](/docs/rotation/).
 
+## Dynamic provider and SSH CA upgrade notes
+
+Dynamic secrets providers whose origin names several hosts (for example
+`postgres://u@h1,h2:5432/app`) stop working after this upgrade: creating,
+probing, renewing and revoking through them is refused. Before upgrading, list
+providers (`hikyo dynamic-provider list --env <env>`), revoke the leases of any
+multi-host provider, and recreate it with a single-host origin. SSH CA rotation
+now refuses a key the CA has used before; restore runbooks must rotate to a new
+key. See [Dynamic secrets](/docs/dynamic-secrets/) and
+[SSH certificates](/docs/ssh-certificates/).
+
 ## Social sign-in upgrade notes
 
 When upgrading across migration `00057_social_signin`, existing sessions survive

@@ -79,7 +79,7 @@ func validateProviderOrigin(origin string) error {
 	if u.Hostname() == "" {
 		return fmt.Errorf("%w: origin must carry a host", domain.ErrInvalid)
 	}
-	if strings.Contains(u.Host, ",") {
+	if strings.Contains(u.Host, ",") || (strings.Contains(u.Hostname(), ":") && !strings.HasPrefix(u.Host, "[")) {
 		return fmt.Errorf("%w: origin must name exactly one host", domain.ErrInvalid)
 	}
 	if strings.Trim(u.Path, "/") == "" {
