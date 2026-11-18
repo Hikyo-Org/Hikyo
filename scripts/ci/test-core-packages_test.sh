@@ -29,12 +29,21 @@ elif [[ "$1" == test && "$2" == -count=1 ]]; then
   if [[ "$*" == *internal/app* ]]; then
     # Two app invocations split one pattern: -skip it, then -run it, so every test runs once.
     case $(($(wc -l <"$CORE_TEST_CALLS"))) in
-      1) [[ "$#" == 3 && "$1" == -skip && -n "$2" ]] || exit 91; printf '%s\n' "$2" >"$CORE_TEST_PATTERN" ;;
-      2) [[ "$#" == 3 && "$1" == -run && "$2" == "$(cat "$CORE_TEST_PATTERN")" ]] || exit 91 ;;
+      1)
+        [[ "$#" == 3 && "$1" == -skip ]] || exit 91
+        # The pattern must pick both packaged alternatives and leave ordinary tests.
+        for name in TestAutomaticUpgradePackagedNightlyRoute TestActualDefaultDevCLIStartsAndRestarts; do
+          grep -Eq -- "$2" <<<"$name" || exit 91
+        done
+        ! grep -Eq -- "$2" <<<TestActualDefaultDevCLIStartsAndRestartsTwice || exit 91
+        ! grep -Eq -- "$2" <<<TestUnattendedEnrollment || exit 91
+        printf '%s\n' "$2" >"$CORE_TEST_PATTERN"
+        call=app-skip ;;
+      2) [[ "$#" == 3 && "$1" == -run && "$2" == "$(cat "$CORE_TEST_PATTERN")" ]] || exit 91; call=app-run ;;
       *) exit 91 ;;
     esac
     printf '%s\n' "$3" >>"$CORE_TEST_EXECUTED"
-    [[ "$CORE_TEST_FAIL" != app ]] || exit 92
+    [[ "$CORE_TEST_FAIL" != "$call" ]] || exit 92
   elif [[ "$*" == *internal/lint* ]]; then
     [[ "$#" == 1 && $(wc -l <"$CORE_TEST_CALLS") -eq 3 ]] || exit 95
     printf '%s\n' "$@" >>"$CORE_TEST_EXECUTED"
@@ -61,7 +70,7 @@ printf '%s\n' example/internal/service example/cmd/hikyo >"$work/expected-pool"
 printf '%s\n' example/internal/app example/internal/app example/internal/lint >"$work/expected-serial"
 # The frozen test_core step passes no mode; it must select the pool.
 for mode in '' pool serial; do
-  for failure in '' concurrent app lint; do
+  for failure in '' concurrent app-skip app-run lint; do
     rm -f "$CORE_TEST_PREPARED"
     : >"$CORE_TEST_EXECUTED"
     : >"$CORE_TEST_CALLS"
@@ -72,7 +81,7 @@ for mode in '' pool serial; do
     # A failure injected into the other mode's packages never runs there.
     failing=''
     case "${mode:-pool}:$failure" in
-      pool:concurrent | serial:app | serial:lint) failing=1 ;;
+      pool:concurrent | serial:app-skip | serial:app-run | serial:lint) failing=1 ;;
     esac
     if [[ -z "$failing" ]]; then [[ "$result" == 0 ]]; else [[ "$result" != 0 ]]; fi
     cmp "$expected" "$CORE_TEST_EXECUTED"
