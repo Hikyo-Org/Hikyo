@@ -433,6 +433,7 @@ var wireRegistry = map[string]wireEntry{
 	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/{revision}/rollback":               {Class: ClassTenant, Ops: []Operation{OpRevisionRestore, OpRevisionRestoreHistory, OpRevisionRestoreCurrent}, Events: []audit.EventType{audit.EventRevisionRestoreStaged, audit.EventValueStaged}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations":                                   {Class: ClassTenant, Ops: []Operation{OpRotationCreate}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/pause":                  {Class: ClassTenant, Ops: []Operation{OpRotationPause}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/release-hold":           {Class: ClassTenant, Ops: []Operation{OpRotationReleaseHold}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume":                 {Class: ClassTenant, Ops: []Operation{OpRotationResume}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/run-now":                {Class: ClassTenant, Ops: []Operation{OpRotationRunNow}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas":                                     {Class: ClassTenant, Ops: []Operation{OpSSHCAConfigure}},

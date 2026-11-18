@@ -342,11 +342,11 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		versions = append(versions, 88)
 	}
 	// 00089 (principal containment), 00090 (incident ledger), 00091 (credential
-	// rotation), 00092 (rotation revoke deadline) 00093 (rotation manual run) and 00094 (OIDC lifecycle)
-	// are on both engines.
-	versions = append(versions, 89, 90, 91, 92, 93, 94)
+	// rotation), 00092 (rotation revoke deadline), 00093 (rotation manual run),
+	// 00094 (rotation restore hold) and 00095 (OIDC lifecycle) are on both engines.
+	versions = append(versions, 89, 90, 91, 92, 93, 94, 95)
 	if len(current.Entries) != len(legacy.Entries)+len(versions) || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 87 (88 on PostgreSQL), then 89, 90, 91, 92, 93 and 94 only")
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 87 (88 on PostgreSQL), then 89, 90, 91, 92, 93, 94 and 95 only")
 	}
 	for i, version := range versions {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
@@ -462,7 +462,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"SELECT COUNT(*) FROM pki_profiles",
 		"SELECT COUNT(*) FROM pki_profile_bindings",
 		"SELECT COUNT(*) FROM pki_certificates",
-		// 00094 (OIDC lifecycle): no profile or sealed signing secret may be
+		// 00095 (OIDC lifecycle): no profile or sealed signing secret may be
 		// discarded by the reversal below.
 		"SELECT COUNT(*) FROM oidc_providers WHERE lifecycle_profile IS NOT NULL OR lifecycle_secret IS NOT NULL",
 	} {
@@ -476,11 +476,11 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate, PKI, temporary-access, file-target, member-access-rule or manual-pairing evidence", query, err)
 		}
 	}
-	// Reverse 00094 only after proving no lifecycle profile is configured. The
+	// Reverse 00095 only after proving no lifecycle profile is configured. The
 	// secret's CHECK names the profile column, so it goes first.
 	drillExec(t, db, "ALTER TABLE oidc_providers DROP COLUMN lifecycle_secret")
 	drillExec(t, db, "ALTER TABLE oidc_providers DROP COLUMN lifecycle_profile")
-	// Reverse 00091 (and with it 00092 and 00093, whose columns live on these tables) only
+	// Reverse 00091 (and with it 00092 to 00094, whose columns live on these tables) only
 	// after proving no rotation is configured. Effects, runs and key claims
 	// reference rotations, so they go first.
 	drillExec(t, db, "DROP TABLE rotation_key_claims")

@@ -89,7 +89,13 @@ var SpecYAML []byte
 // list, show, pause, resume and delete. Execution arrives in a later slice.
 // Revision 18 adds run-now and the runs list of a rotation, and the delete's
 // `abandon` flag (#148).
-const Revision = 18
+// Revision 19 adds the scheduled-rotation health counts to the retention health
+// read, the `restore_hold` flag of a rotation, its `release-hold` route and the
+// `credential_valid_until` of a revoke_refused or quarantine run with its
+// `credential_valid_until_lower_bound` flag (#148).
+// Revision 20 adds the OIDC provider's directory lifecycle settings (profile,
+// write-only signing secret, endpoint URL) and the signed lifecycle event route.
+const Revision = 20
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
 // explicitly does not plan one.

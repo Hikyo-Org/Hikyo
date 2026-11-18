@@ -3809,7 +3809,7 @@ var registry = map[EventType]TypeSpec{
 	// environment protected, approval policy enabled) records each rotation it
 	// pauses with reason set (#148).
 	EventRotationConfigured: adapterLifecycleEvent(Schema{
-		"action":                   {Kind: KindString, Required: true, Enum: []string{"created", "paused", "resumed", "deleted", "halted"}},
+		"action":                   {Kind: KindString, Required: true, Enum: []string{"created", "paused", "resumed", "deleted", "halted", "hold_released"}},
 		"rotation_id":              {Kind: KindString, Required: true},
 		"provider_id":              {Kind: KindString, Required: true},
 		"key_id":                   {Kind: KindString, Required: true},

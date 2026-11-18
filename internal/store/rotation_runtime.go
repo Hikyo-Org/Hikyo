@@ -140,6 +140,11 @@ type RotationSettle struct {
 	// NotConverged, when set, records the adapter targets still on the superseded
 	// revision at the revoke decision (#148, S2b-1).
 	NotConverged *int64
+	// DueIfHeld leaves the run due now, instead of at NextAttempt, when a restore holds
+	// the rotation inside the settle's own transaction. It is for a settle that parks a
+	// run at "never": the decision is made with the halt write, so a hold landing after
+	// the caller last read the rotation cannot strand the run.
+	DueIfHeld bool
 	// KeepLease leaves the lease held, for a settle that is followed by a
 	// provider call in the same claim.
 	KeepLease bool
@@ -190,11 +195,14 @@ type SupersededRole struct {
 }
 
 type rotationRuntimeQueries interface {
+	gauges(ctx context.Context, now time.Time) (RotationGauges, error)
 	dueRotation(ctx context.Context, now time.Time) (DueRotation, error)
 	lockDueRotation(ctx context.Context, d DueRotation, now time.Time) (DueRotation, error)
 	latestPublished(ctx context.Context, chain domain.Scope, keyID string) (handle string, validUntil time.Time, err error)
 	insertRun(ctx context.Context, d DueRotation, s StartRun, superseded string) error
 	setNextRun(ctx context.Context, chain domain.Scope, rotationID string, next, now time.Time) (int64, error)
+	// deferNextRun is setNextRun for a deferral: it keeps the first due time in deferred_from.
+	deferNextRun(ctx context.Context, chain domain.Scope, rotationID string, next, now time.Time) (int64, error)
 	haltRotation(ctx context.Context, chain domain.Scope, rotationID, reason string, now time.Time) (int64, error)
 	insertEffect(ctx context.Context, chain domain.Scope, runID string, e RotationEffectIntent, at time.Time) error
 	closeEffect(ctx context.Context, chain domain.Scope, runID string, o RotationEffectOutcome, at time.Time) error
@@ -210,6 +218,8 @@ type rotationRuntimeQueries interface {
 	currentEntry(ctx context.Context, chain domain.Scope, keyID string) (string, error)
 	publishedEntries(ctx context.Context, chain domain.Scope, keyID string, fromRevision int64) ([]string, error)
 	laterPublished(ctx context.Context, chain domain.Scope, keyID string, revision int64) (int64, error)
+	restoreHeld(ctx context.Context, chain domain.Scope, rotationID string) (int64, error)
+	dueRun(ctx context.Context, run RotationRun, now time.Time) error
 	providerMaterial(ctx context.Context, run RotationRun, now time.Time) (LeaseProviderMaterial, error)
 	supersededRole(ctx context.Context, run RotationRun, now time.Time) (SupersededRole, error)
 	openRunCount(ctx context.Context, chain domain.Scope, rotationID string) (int64, error)
@@ -483,8 +493,24 @@ func (r *RotationRuntime) Settle(ctx context.Context, run RotationRun, s Rotatio
 				return err
 			}
 			if halted == 1 && s.HaltAudit != nil {
-				return q.insertAudit(ctx, chain, run.AuthorityPrincipalID, run.RotationID, run.ID, *s.HaltAudit, s.Now)
+				if err := q.insertAudit(ctx, chain, run.AuthorityPrincipalID, run.RotationID, run.ID, *s.HaltAudit, s.Now); err != nil {
+					return err
+				}
 			}
+		}
+		if s.DueIfHeld {
+			// Read last, in the transaction that wrote the settle and tried the halt: under
+			// PG serializable a hold committed after this transaction began conflicts with
+			// the halt write and fails the transaction (dbTransaction does not retry it: the
+			// error goes to the sweep, and the run is reclaimed after the release and the
+			// lease term, when staleEffect closes the open extend INTENT as unknown), and
+			// one committed before it is seen here, so the held decision and the halt
+			// always agree.
+			held, err := q.restoreHeld(ctx, chain, run.RotationID)
+			if err != nil || held == 0 {
+				return err
+			}
+			return q.dueRun(ctx, run, s.Now)
 		}
 		return nil
 	})
@@ -512,7 +538,7 @@ func (r *RotationRuntime) HaltRotation(ctx context.Context, d DueRotation, reaso
 // longer active) is correct.
 func (r *RotationRuntime) DeferRotation(ctx context.Context, d DueRotation, next, now time.Time) error {
 	return r.transaction(ctx, func(q rotationRuntimeQueries) error {
-		_, err := q.setNextRun(ctx, d.Chain(), d.ID, next, now)
+		_, err := q.deferNextRun(ctx, d.Chain(), d.ID, next, now)
 		return err
 	})
 }
@@ -609,6 +635,16 @@ func (r *RotationRuntime) LaterPublished(ctx context.Context, run RotationRun) (
 	return n > 0, err
 }
 
+// RestoreHeld reports whether a restore holds the run's rotation right now. The
+// run was loaded at its claim, so its own rotation state cannot show a hold that
+// landed afterwards.
+func (r *RotationRuntime) RestoreHeld(ctx context.Context, run RotationRun) (bool, error) {
+	n, err := rotationRead(ctx, r, func(q rotationRuntimeQueries) (int64, error) {
+		return q.restoreHeld(ctx, run.Chain(), run.RotationID)
+	})
+	return n > 0, err
+}
+
 // RestoreAssertion is crash-safety rule 7. For both keys the value entry
 // currently served must be one a run of the key published at or after this run's
 // revision, compared by entry id with no secret read. A key with no served entry
@@ -637,4 +673,45 @@ func (r *RotationRuntime) RestoreAssertion(ctx context.Context, run RotationRun)
 		}
 		return true, nil
 	})
+}
+
+// RotationOverdueGrace is how long an active rotation may sit due with no run
+// started before it counts as overdue. A legitimate retry backoff schedules its
+// next attempt in the future, so only a stalled or starved executor trips it.
+const RotationOverdueGrace = 15 * time.Minute
+
+// RotationExpiringWithin is the horizon of the approaching-expiry count: a
+// rotation's delivered credential that expires inside it should have been extended
+// already (the extend step starts at twice the retry window), so one still inside
+// it needs an operator.
+const RotationExpiringWithin = 6 * time.Hour
+
+// RotationGauges are the label-free instance-wide counts /metrics and doctor read.
+// They carry no tenant identity.
+type RotationGauges struct {
+	// Quarantined is runs closed as quarantine: an abandoned run whose candidate or
+	// superseded role is still owed a drop.
+	Quarantined int64
+	// RevokeRefused is runs whose superseded role could not be dropped (it owns
+	// objects, or the restore assertion refused it).
+	RevokeRefused int64
+	// UnknownOutcome is runs not yet done or failed that recorded an effect whose
+	// outcome is unknown: a possibly live credential exists.
+	UnknownOutcome int64
+	// Halted is rotations stopped by a failed gate or an exhausted retry window.
+	Halted int64
+	// RestoreHeld is rotations a restore held and no operator has released yet.
+	RestoreHeld int64
+	// Overdue is active rotations due for longer than RotationOverdueGrace with no
+	// run open.
+	Overdue int64
+	// Expiring is rotations (not deleted) whose delivered credential expires within
+	// RotationExpiringWithin from now. A credential already past its expiry is not
+	// counted: a lapsed credential halts or overdues its rotation instead.
+	Expiring int64
+}
+
+// Gauges is a proof-free scrape-time system read, like DynamicRuntime.Gauges.
+func (r *RotationRuntime) Gauges(ctx context.Context, now time.Time) (RotationGauges, error) {
+	return rotationRead(ctx, r, func(q rotationRuntimeQueries) (RotationGauges, error) { return q.gauges(ctx, now) })
 }

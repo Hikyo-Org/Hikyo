@@ -610,7 +610,9 @@ func compatibleType(queryName, name, sqlite, postgres string) bool {
 		if (queryName == "AdapterWorkerLoadExecutionQuery" || queryName == "AdapterWorkerLoadActivationQuery") && (name == "AllowPersonalToken" || name == "VariableProtected" || name == "VariableHidden" || name == "VariableExpand") {
 			return sqlite == "int64" && postgres == "int32" // SQL CASE projections return exactly 0 or 1
 		}
-		return sqlite == "int64" && postgres == "bool"
+		// pki_issuers.restore_hold is INTEGER on both engines (int32 on postgres);
+		// rotations.restore_hold is BOOLEAN there. Same field name, two shapes.
+		return sqlite == "int64" && (postgres == "bool" || name == "RestoreHold" && postgres == "int32")
 	}
 	if isTimestampContractField(name) || timestampQueryFields[queryName][name] {
 		return (sqlite == "string" || sqlite == "sql.NullString" || sqlite == "interface{}") && postgres == "pgtype.Timestamptz"
@@ -640,6 +642,7 @@ var booleanContractFields = map[string]bool{
 	"LocalEnabled": true,                            // registration_policies.local_enabled (#606): sqlite INTEGER, postgres BOOLEAN
 	"Bypassed":     true,                            // access_requests.bypassed (#152): sqlite INTEGER, postgres BOOLEAN
 	"SkipOverlap":  true, "ManualSkipOverlap": true, // rotations.manual_skip_overlap (#148): sqlite INTEGER, postgres BOOLEAN
+	"RestoreHold": true, "RotationRestoreHold": true, // rotations.restore_hold (#148): sqlite INTEGER, postgres BOOLEAN
 	"AllowPersonalToken": true, "VariableProtected": true, "VariableHidden": true, "VariableExpand": true,
 }
 

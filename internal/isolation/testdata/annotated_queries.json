@@ -1710,6 +1710,12 @@
   },
   {
     "engine": "postgres",
+    "name": "HoldRestoredRotations",
+    "annotation": "authn-resolution",
+    "hash": "5de08a9ed962448d61e3bc085b5a90df1385c549378ceec1e6d1f60137c031f2"
+  },
+  {
+    "engine": "postgres",
     "name": "InsertAccessGrant",
     "annotation": "authn-resolution",
     "hash": "f577672c33b3e0c1eaab66675e4733c8d0009222648c6728a8c80650d9cfa139"
@@ -2782,6 +2788,12 @@
   },
   {
     "engine": "postgres",
+    "name": "PauseRestoredRotations",
+    "annotation": "authn-resolution",
+    "hash": "16e422bff1a8d14dc2d346557f393de946c80a12b52fc6c4eb6b677efae07d37"
+  },
+  {
+    "engine": "postgres",
     "name": "PeekDeveloperCredentialPolicy",
     "annotation": "authn-resolution",
     "hash": "215b8fffffdcf42ed3e18f9ebc336316dc35b02401b1c53cb1e4c4657f449929",
@@ -3387,15 +3399,22 @@
     "engine": "postgres",
     "name": "RotationRtClaimDueRun",
     "annotation": "instance-scoped",
-    "hash": "a86cb7f280d4326ce9c71715a203c4563e5382707d88143e93b06cb949b926cc",
-    "reason": "RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension."
+    "hash": "20ac23e94c0d54d284cda7c8db68d32ab81172943caaea748d9c6ba911eebdc7",
+    "reason": "RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only; the in-flight and reconciler selections skip a rotation a restore holds, because the archive may not know a publish the live instance made and a drop would kill a credential consumers fetched), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension."
   },
   {
     "engine": "postgres",
     "name": "RotationRtDueRotation",
     "annotation": "instance-scoped",
-    "hash": "d5214e9c7f74b073ce927bbb9719a3fb2fe66f4a2d917ba65676bac1e1316299",
+    "hash": "cb750408f1c71f116a5394b34fdce7abbf6e25d44f400f49a680af29490ae997",
     "reason": "RotationRuntime closed scheduler picks one due rotation across tenants under the per-org concurrency cap; the run is then created under the recorded authority's proof and binds the selected immutable chain."
+  },
+  {
+    "engine": "postgres",
+    "name": "RotationRtGauges",
+    "annotation": "instance-scoped",
+    "hash": "ca8eae0a4256a54fc5ff9c4d284b862774b25d74526f0c797a1a11e3207e9c26",
+    "reason": "RotationRuntime metrics scrape and doctor read only instance-wide counts of rotations and runs that need an operator through the closed runtime boundary; no tenant identity leaves it."
   },
   {
     "engine": "postgres",
@@ -5518,6 +5537,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "HoldRestoredRotations",
+    "annotation": "authn-resolution",
+    "hash": "a1f65352d1b9dac758f35f0a33b32d4005f761f4605b73b18905a2aa23d79975"
+  },
+  {
+    "engine": "sqlite",
     "name": "InsertAccessGrant",
     "annotation": "authn-resolution",
     "hash": "8ce5844cf2ba36359e3856f77f705229b730bb136e4ea2f424769dd80159b18c"
@@ -6590,6 +6615,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "PauseRestoredRotations",
+    "annotation": "authn-resolution",
+    "hash": "16e422bff1a8d14dc2d346557f393de946c80a12b52fc6c4eb6b677efae07d37"
+  },
+  {
+    "engine": "sqlite",
     "name": "PeekDeveloperCredentialPolicy",
     "annotation": "authn-resolution",
     "hash": "215b8fffffdcf42ed3e18f9ebc336316dc35b02401b1c53cb1e4c4657f449929",
@@ -7181,15 +7212,22 @@
     "engine": "sqlite",
     "name": "RotationRtClaimDueRun",
     "annotation": "instance-scoped",
-    "hash": "8140b87b222c6ad3267315f3c07cb2f9ce2ad77cf5c22e59dbd9aa9c2b952be3",
-    "reason": "RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension."
+    "hash": "b5fd5d5b839c2421f0a6fee2112102b02d78d7d3156693fd6986ae3398f2df0a",
+    "reason": "RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only; the in-flight and reconciler selections skip a rotation a restore holds, because the archive may not know a publish the live instance made and a drop would kill a credential consumers fetched), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension."
   },
   {
     "engine": "sqlite",
     "name": "RotationRtDueRotation",
     "annotation": "instance-scoped",
-    "hash": "d5214e9c7f74b073ce927bbb9719a3fb2fe66f4a2d917ba65676bac1e1316299",
+    "hash": "a485fef6d95e79e71b3e4111e8b2024e0241917e019d82b398ca8fb64e1de054",
     "reason": "RotationRuntime closed scheduler picks one due rotation across tenants under the per-org concurrency cap; the run is then created under the recorded authority's proof and binds the selected immutable chain."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RotationRtGauges",
+    "annotation": "instance-scoped",
+    "hash": "11cd0b8ccf06359b50501520c9651c1c099683f76fb7ec0904f47e14639f81d3",
+    "reason": "RotationRuntime metrics scrape and doctor read only instance-wide counts of rotations and runs that need an operator through the closed runtime boundary; no tenant identity leaves it."
   },
   {
     "engine": "sqlite",

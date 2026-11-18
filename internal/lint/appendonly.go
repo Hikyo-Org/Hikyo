@@ -446,6 +446,10 @@ var ResolutionSurfaceWriters = map[string]bool{
 	// #154: a restore can resurrect certificates revoked after the backup,
 	// so the same local-host restore act holds every restored CA issuer.
 	"HoldRestoredPKIIssuers": true,
+	// #148: a restore holds every restored rotation (or, for an archive that has
+	// no hold column yet, pauses the active ones) in the same local-host restore act.
+	"HoldRestoredRotations":  true,
+	"PauseRestoredRotations": true,
 	"ReconcilePrincipal":     true,
 	// #73 section 9.1: the reconciliation commit drops restored `scim` origins
 	// and any grant row they were the last hold on, in the same act.

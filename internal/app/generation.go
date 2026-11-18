@@ -158,7 +158,8 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		diagnostics.Volume = postgresStorage.Read
 	}
 	pkiRuntime := store.NewPKIRuntime(db)
-	retentionSvc := &service.Retention{DB: db, PKI: pkiRuntime, AuditPolicy: store.AuditRetentionPolicy{AccessDays: cfg.AuditAccessRetainDays, SecurityDays: cfg.AuditSecurityRetainDays}, Backup: backupPolicy(cfg), Diagnostics: diagnostics}
+	rotationRuntime := store.NewRotationRuntime(db)
+	retentionSvc := &service.Retention{DB: db, PKI: pkiRuntime, Rotation: rotationRuntime, AuditPolicy: store.AuditRetentionPolicy{AccessDays: cfg.AuditAccessRetainDays, SecurityDays: cfg.AuditSecurityRetainDays}, Backup: backupPolicy(cfg), Diagnostics: diagnostics}
 	backupSvc := &service.Backup{DB: db, Options: backup.Options{Recipients: cfg.BackupRecipients}}
 	approvalsSvc := &service.Approvals{DB: db, Auth: authSvc, Keyring: kr}
 	accessSvc := &service.Access{DB: db, Auth: authSvc}
@@ -202,7 +203,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		ProviderFactory: newDynamicFactory(cfg.DynamicEgressPolicy), LeaseDeadline: dynamicProviderDeadline,
 	}
 	rotationExecutor := &service.RotationExecutor{
-		DB: db, Runtime: store.NewRotationRuntime(db), Keyring: kr,
+		DB: db, Runtime: rotationRuntime, Keyring: kr,
 		ProviderFactory: newDynamicFactory(cfg.DynamicEgressPolicy), ProviderDeadline: dynamicProviderDeadline, Log: log,
 	}
 	sshService := &service.SSH{DB: db, Auth: authSvc, Keyring: kr, Budget: budget, Runtime: store.NewSSHRuntime(db)}
@@ -241,6 +242,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	metrics.SetTransitSource(transitGaugeSource{runtime: transitRuntime, log: log})
 	pkiService := &service.PKI{DB: db, Auth: authSvc, Keyring: kr, Budget: budget, Runtime: pkiRuntime}
 	metrics.SetPKISource(pkiGaugeSource{runtime: pkiRuntime, log: log})
+	metrics.SetRotationSource(rotationGaugeSource{runtime: rotationRuntime, log: log})
 	// The hierarchy, value, and revision services are named here so the read-only
 	// MCP tools (#629) map onto the SAME instances the REST surface uses: one
 	// keyring, one budget, one authorization path.

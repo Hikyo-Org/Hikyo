@@ -1436,6 +1436,22 @@ func (q *Queries) HoldRestoredPKIIssuers(ctx context.Context) error {
 	return err
 }
 
+const holdRestoredRotations = `-- name: HoldRestoredRotations :exec
+UPDATE rotations SET restore_hold = TRUE, manual_run_id = NULL, manual_skip_overlap = FALSE, updated_at = $1 WHERE state <> 'disabled'
+`
+
+// A restore brings back rotations whose grants, provider credentials and served
+// keys are not reconciled yet, so every restored rotation is held: it starts no
+// run and takes no pre-publish step until an operator releases it with
+// `hikyo rotation release-hold` (#148, decision 9). A run-now queued before the
+// backup is cleared so it cannot fire on release (a skip-overlap request would
+// revoke a role still serving). A disabled rotation never runs again and is not held.
+// hikyo:authn-resolution
+func (q *Queries) HoldRestoredRotations(ctx context.Context, updatedAt pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, holdRestoredRotations, updatedAt)
+	return err
+}
+
 const insertAccount = `-- name: InsertAccount :exec
 INSERT INTO accounts (id, principal_id, username, display_name, created_at)
 VALUES ($1, $2, $3, $4, $5)
@@ -2583,6 +2599,20 @@ func (q *Queries) MaxKnownCredentialEpoch(ctx context.Context) (interface{}, err
 	var max_epoch interface{}
 	err := row.Scan(&max_epoch)
 	return max_epoch, err
+}
+
+const pauseRestoredRotations = `-- name: PauseRestoredRotations :exec
+UPDATE rotations SET state = 'paused', next_run_at = NULL, generation = generation + 1, updated_at = $1 WHERE state = 'active'
+`
+
+// The fallback for an archive written before the restore_hold column existed
+// (migrations 00091 to 00093): the closure runs against the archive's own schema,
+// so it can only use the columns that archive has. Every active rotation is
+// paused, which is a state the operator must resume by hand.
+// hikyo:authn-resolution
+func (q *Queries) PauseRestoredRotations(ctx context.Context, updatedAt pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, pauseRestoredRotations, updatedAt)
+	return err
 }
 
 const postLegacyMaxCredentialEpoch = `-- name: PostLegacyMaxCredentialEpoch :one

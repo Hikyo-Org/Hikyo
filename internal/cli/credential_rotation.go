@@ -67,7 +67,7 @@ func rotationRunsTable(list apigen.RotationRunList) Table {
 }
 
 func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
-	sub, rest, err := subverb("rotation", args, "create", "list", "show", "pause", "resume", "delete", "run-now", "runs")
+	sub, rest, err := subverb("rotation", args, "create", "list", "show", "pause", "resume", "release-hold", "delete", "run-now", "runs")
 	if err != nil {
 		return err
 	}
@@ -101,7 +101,7 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 			fs.StringVar(&interval, "interval", "", "time between rotations, 1h to 90d, e.g. 30d")
 			fs.StringVar(&delay, "revocation-delay", "", "how long the superseded credential stays valid, 5m to 7d, e.g. 1d")
 		}
-		if sub == "pause" || sub == "resume" || sub == "delete" || sub == "run-now" {
+		if sub == "pause" || sub == "resume" || sub == "release-hold" || sub == "delete" || sub == "run-now" {
 			fs.Int64Var(&expectedGeneration, "expected-generation", 0, "fail unless the rotation is at this generation (0 = current)")
 		}
 	})
@@ -174,6 +174,9 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 		if err := Render(ios.Stdout, f, credentialRotationTable(out)); err != nil {
 			return err
 		}
+		for _, r := range out.Items {
+			noteRestoreHold(ios, r)
+		}
 		if out.NextAfter != nil {
 			_, _ = fmt.Fprintf(ios.Stderr, "more rotations follow; continue with --after %s\n", *out.NextAfter)
 		}
@@ -187,6 +190,10 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 		if err := client.Do(ctx, http.MethodGet, base+"/"+url.PathEscape(id), nil, &out); err != nil {
 			return err
 		}
+		noteRestoreHold(ios, out)
+		// The rotation itself was read; a failure of the runs read only costs the
+		// owed-drop warnings, so it is reported and never fails the show.
+		noteAllOwedRuns(ctx, client, ios, base+"/"+url.PathEscape(id)+"/runs")
 		return one(out)
 	case "create":
 		if provider == "" || key == "" || usernameKey == "" || interval == "" || delay == "" {
@@ -210,7 +217,7 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 			return err
 		}
 		return one(out)
-	case "pause", "resume":
+	case "pause", "resume", "release-hold":
 		id := flags.positional()
 		if id == "" {
 			return failf(ExitUsage, "rotation %s requires a rotation id", sub)
@@ -221,8 +228,8 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 		}
 		var out apigen.CredentialRotation
 		act := func() error { return client.Do(ctx, http.MethodPost, base+"/"+url.PathEscape(id)+"/"+sub, body, &out) }
-		if sub == "resume" {
-			// Resume is a human act like create.
+		if sub == "resume" || sub == "release-hold" {
+			// Resume and release-hold are human acts like create.
 			err = withRevealCeremony(ctx, client, st, ios, artifact, projectPath, []string{env}, disclosure{purpose: "publish", keys: keysOf(id)}, act)
 		} else {
 			err = act()
@@ -232,6 +239,10 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 		}
 		if sub == "pause" {
 			noteCredentialExpiry(ios, out, "paused")
+		}
+		noteRestoreHold(ios, out)
+		if sub == "release-hold" {
+			_, _ = fmt.Fprintln(ios.Stderr, "released: the executor may now drop lingering unpublished candidate roles; check `hikyo rotation runs` first next time")
 		}
 		return one(out)
 	case "run-now":
@@ -282,6 +293,17 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 		if err := client.Do(ctx, http.MethodGet, target, nil, &out); err != nil {
 			return err
 		}
+		// A held rotation is the first thing the runs list must say: none of the
+		// runs below it will start another until the hold is released.
+		// Reading the hold is secondary: when it fails the runs still render, and
+		// the operator is told the hold status is unknown.
+		var cur apigen.CredentialRotation
+		if err := client.Do(ctx, http.MethodGet, base+"/"+url.PathEscape(id), nil, &cur); err != nil {
+			_, _ = fmt.Fprintf(ios.Stderr, "WARNING: the rotation could not be read (%v), so its restore hold status is unknown; run `hikyo rotation show %s` to check it\n", err, id)
+		} else {
+			noteRestoreHold(ios, cur)
+		}
+		noteOwedRuns(ios, out)
 		if err := Render(ios.Stdout, f, rotationRunsTable(out)); err != nil {
 			return err
 		}
@@ -333,4 +355,81 @@ func noteCredentialExpiry(ios IO, r apigen.CredentialRotation, verb string) {
 	}
 	_, _ = fmt.Fprintf(ios.Stderr, "rotation %s %s; the credential already delivered stays valid until %s\n",
 		r.Id, verb, r.CredentialExpiresAt.UTC().Format(time.RFC3339))
+}
+
+// versionsChangedCode is the run error code of a drop the executor refuses because
+// a restore may have put the superseded role back into service.
+const versionsChangedCode = "published_versions_changed"
+
+// maxOwedRunPages bounds how far show reads back through a rotation's runs.
+const maxOwedRunPages = 20
+
+// noteAllOwedRuns pages through a rotation's runs and notes every one that still
+// owes a role drop. It never fails its caller: an unreadable page, or a history
+// longer than maxOwedRunPages pages, is said on stderr instead, so the operator
+// knows the warnings above may be incomplete.
+func noteAllOwedRuns(ctx context.Context, client *Client, ios IO, runsPath string) {
+	after := ""
+	for range maxOwedRunPages {
+		target := runsPath + "?limit=500"
+		if after != "" {
+			target += "&after=" + url.QueryEscape(after)
+		}
+		var page apigen.RotationRunList
+		if err := client.Do(ctx, http.MethodGet, target, nil, &page); err != nil {
+			_, _ = fmt.Fprintf(ios.Stderr, "WARNING: the runs could not be read (%v); run `hikyo rotation runs` to check for roles still owed a drop\n", err)
+			return
+		}
+		noteOwedRuns(ios, page)
+		if page.NextAfter == nil {
+			return
+		}
+		after = *page.NextAfter
+	}
+	_, _ = fmt.Fprintf(ios.Stderr, "WARNING: only the newest %d runs were checked for roles still owed a drop; page through `hikyo rotation runs` for older ones\n", maxOwedRunPages*500)
+}
+
+// noteOwedRuns says loudly, on stderr, which runs still owe a role drop and until
+// when that role stays valid: a revoke_refused run could not drop the superseded
+// role and a quarantine run holds a candidate that may still be live. Hikyo has no
+// operator action that releases either; the role lapses at the time printed unless
+// the operator drops it at the provider, after checking that neither key serves it
+// (a revision restore can put it back). A run refused as published_versions_changed
+// is the case where a restore already did: it is not to be dropped until the keys
+// have moved off it.
+func noteOwedRuns(ios IO, runs apigen.RotationRunList) {
+	for _, r := range runs.Items {
+		if r.Phase != apigen.RotationRunPhaseRevokeRefused && r.Phase != apigen.RotationRunPhaseQuarantine {
+			continue
+		}
+		until := "no recorded expiry"
+		if r.CredentialValidUntil != nil {
+			until = "stays valid until " + r.CredentialValidUntil.UTC().Format(time.RFC3339)
+			if r.CredentialValidUntilLowerBound != nil && *r.CredentialValidUntilLowerBound {
+				// An unsettled extend means the role may outlive the recorded time.
+				until = "stays valid at least until " + r.CredentialValidUntil.UTC().Format(time.RFC3339) + ", and possibly longer: an extend of it is unsettled"
+			}
+		}
+		if r.ErrorCode != nil && *r.ErrorCode == versionsChangedCode {
+			// A restore put an older value back, so the keys may be serving this very
+			// role again: dropping it now would cut off the consumers.
+			_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: run %s is %s (%s): a restore put an earlier value back, so the keys may be serving the role it owes a drop again (%s); do NOT drop it at the provider until the keys have moved off it\n", r.Id, r.Phase, versionsChangedCode, until)
+			continue
+		}
+		_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: run %s is %s and a provider role it owes a drop is still live (%s); before you drop it at the provider, check that neither key serves that role, because a revision restore can put it back\n", r.Id, r.Phase, until)
+	}
+}
+
+// noteRestoreHold says loudly, on stderr, that a restore holds the rotation: it
+// starts no run until released, and the credential already delivered keeps lapsing
+// at the time printed, so the operator has until then.
+func noteRestoreHold(ios IO, r apigen.CredentialRotation) {
+	if !r.RestoreHold {
+		return
+	}
+	until := "no recorded expiry"
+	if r.CredentialExpiresAt != nil {
+		until = "the delivered credential lapses at " + r.CredentialExpiresAt.UTC().Format(time.RFC3339)
+	}
+	_, _ = fmt.Fprintf(ios.Stderr, "RESTORE HOLD: rotation %s is held after a restore and starts no run (%s); reconcile its grants and provider credential, then run: hikyo rotation release-hold %s\n", r.Id, until, r.Id)
 }

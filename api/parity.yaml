@@ -488,6 +488,7 @@ operations:
   deleteRotation:              {issue: 148}
   pauseRotation:               {issue: 148}
   resumeRotation:              {issue: 148}
+  releaseRotationHold:         {issue: 148}
   runRotationNow:              {issue: 148}
   listRotationRuns:            {issue: 148}
 

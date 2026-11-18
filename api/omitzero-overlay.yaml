@@ -208,7 +208,7 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
-  - target: $['components']['schemas']['RotationRun']['properties']['published_revision','error_code','not_converged_adapter_targets']
+  - target: $['components']['schemas']['RotationRun']['properties']['published_revision','error_code','not_converged_adapter_targets','credential_valid_until','credential_valid_until_lower_bound']
     update:
       x-omitempty: false
       x-omitzero: true
@@ -688,7 +688,7 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
-  - target: $['components']['schemas']['RetentionHealth']['properties']['diagnostics','pki_certificates_unknown','pki_issuers_on_hold']
+  - target: $['components']['schemas']['RetentionHealth']['properties']['diagnostics','pki_certificates_unknown','pki_issuers_on_hold','rotation_runs_quarantined','rotation_runs_unknown_outcome','rotation_runs_revoke_refused','rotation_halted','rotation_restore_held','rotation_overdue','rotation_credentials_expiring']
     update:
       x-omitempty: false
       x-omitzero: true

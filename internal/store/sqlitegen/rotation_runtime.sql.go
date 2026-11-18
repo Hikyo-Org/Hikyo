@@ -41,14 +41,15 @@ func (q *Queries) RotationRtAssertRun(ctx context.Context, arg RotationRtAssertR
 }
 
 const rotationRtClaimDueRun = `-- name: RotationRtClaimDueRun :one
-SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.revoke_not_before_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds AS rotation_delay_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.generation AS rotation_generation
+SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.revoke_not_before_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds AS rotation_delay_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.restore_hold AS rotation_restore_hold,ro.generation AS rotation_generation
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
  WHERE ru.next_attempt_at<=?1
  AND (ru.lease_owner IS NULL OR ru.lease_expires_at IS NULL OR ru.lease_expires_at<=CAST(?2 AS TEXT))
- AND (ru.phase IN ('minting','minted','published','overlap','revoking','revoke_refused')
-  OR (ru.phase IN ('failed','quarantine') AND ru.published_revision IS NULL AND NOT EXISTS (SELECT 1 FROM rotation_effects ef WHERE ef.run_id=ru.id AND ef.kind='drop_candidate' AND ef.outcome='success'))
+ AND (ru.phase IN ('published','overlap','revoking','revoke_refused')
+  OR (ru.phase IN ('minting','minted') AND ro.restore_hold=0)
+  OR (ru.phase IN ('failed','quarantine') AND ru.published_revision IS NULL AND ro.restore_hold=0 AND NOT EXISTS (SELECT 1 FROM rotation_effects ef WHERE ef.run_id=ru.id AND ef.kind='drop_candidate' AND ef.outcome='success'))
   OR (ru.phase IN ('failed','quarantine') AND ru.published_revision IS NOT NULL AND ru.superseded_handle IS NOT NULL AND NOT EXISTS (SELECT 1 FROM rotation_effects ef WHERE ef.run_id=ru.id AND ef.kind='revoke' AND ef.outcome='success'))
-  OR (ru.phase='done' AND ru.candidate_valid_until IS NOT NULL AND ro.state='active'))
+  OR (ru.phase='done' AND ru.candidate_valid_until IS NOT NULL AND ro.state='active' AND ro.restore_hold=0))
  AND (SELECT COUNT(*) FROM rotation_runs x WHERE x.org_id=ru.org_id AND x.lease_owner IS NOT NULL AND x.lease_expires_at>?1) < 4
  ORDER BY ru.next_attempt_at,ru.id LIMIT 1
 `
@@ -86,13 +87,14 @@ type RotationRtClaimDueRunRow struct {
 	RotationDelaySeconds   int64
 	AuthorityPrincipalID   string
 	RotationState          string
+	RotationRestoreHold    int64
 	RotationGeneration     int64
 }
 
 // The lease cut is now minus one provider deadline: a run is taken over only that
 // long after its lease expired, so a provider call the old worker started inside
 // its lease has finished or timed out before the takeover's rollback drops.
-// hikyo:reason RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension.
+// hikyo:reason RotationRuntime closed scheduler claims one due run across tenants under the per-org concurrency cap; writes bind the selected immutable chain and the claim token. Selections: an in-flight run, a pre-publish run whose candidate is not confirmed dropped (the candidate reconciler, published_revision IS NULL only; the in-flight and reconciler selections skip a rotation a restore holds, because the archive may not know a publish the live instance made and a drop would kill a credential consumers fetched), a post-publish run that still owes the revoke of its superseded role (the revoke-obligation loop), and a settled run whose delivered credential is due an extension.
 // hikyo:instance-scoped
 func (q *Queries) RotationRtClaimDueRun(ctx context.Context, arg RotationRtClaimDueRunParams) (RotationRtClaimDueRunRow, error) {
 	row := q.db.QueryRowContext(ctx, rotationRtClaimDueRun, arg.Now, arg.LeaseCut)
@@ -125,6 +127,7 @@ func (q *Queries) RotationRtClaimDueRun(ctx context.Context, arg RotationRtClaim
 		&i.RotationDelaySeconds,
 		&i.AuthorityPrincipalID,
 		&i.RotationState,
+		&i.RotationRestoreHold,
 		&i.RotationGeneration,
 	)
 	return i, err
@@ -258,11 +261,43 @@ func (q *Queries) RotationRtCycleStart(ctx context.Context, arg RotationRtCycleS
 	return started_at, err
 }
 
+const rotationRtDeferNextRun = `-- name: RotationRtDeferNextRun :execrows
+UPDATE rotations SET next_run_at=?1,deferred_from=COALESCE(deferred_from,next_run_at),updated_at=?2 WHERE id=?3 AND org_id=?4 AND project_id=?5 AND environment_id=?6 AND state='active' AND restore_hold=0
+`
+
+type RotationRtDeferNextRunParams struct {
+	NextRunAt    sql.NullString
+	Now          string
+	RotationID   string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+// A datastore fault that keeps failing a rotation's start pushes next_run_at out so it
+// yields the head of the queue. The first due time of that wait is kept in deferred_from,
+// which only a real schedule write clears, so the overdue gauge measures from the time the
+// rotation first came due and a stuck rotation cannot defer its way out of it.
+func (q *Queries) RotationRtDeferNextRun(ctx context.Context, arg RotationRtDeferNextRunParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, rotationRtDeferNextRun,
+		arg.NextRunAt,
+		arg.Now,
+		arg.RotationID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const rotationRtDueRotation = `-- name: RotationRtDueRotation :one
 
 SELECT ro.id,ro.org_id,ro.project_id,ro.environment_id,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds,ro.authority_principal_id,ro.generation,ro.manual_run_id,ro.manual_skip_overlap
  FROM rotations ro
- WHERE ro.state='active' AND ro.next_run_at<=?1
+ WHERE ro.state='active' AND ro.restore_hold=0 AND ro.next_run_at<=?1
  AND NOT EXISTS (SELECT 1 FROM rotation_runs op WHERE op.rotation_id=ro.id AND op.phase NOT IN ('done','quarantine','failed'))
  AND (SELECT COUNT(*) FROM rotation_runs x WHERE x.org_id=ro.org_id AND x.lease_owner IS NOT NULL AND x.lease_expires_at>?1) < 4
  ORDER BY ro.next_run_at,ro.id LIMIT 1
@@ -317,6 +352,35 @@ func (q *Queries) RotationRtDueRotation(ctx context.Context, now sql.NullString)
 	return i, err
 }
 
+const rotationRtDueRun = `-- name: RotationRtDueRun :execrows
+UPDATE rotation_runs SET next_attempt_at=?1 WHERE id=?2 AND org_id=?3 AND project_id=?4 AND environment_id=?5
+`
+
+type RotationRtDueRunParams struct {
+	Now          string
+	ID           string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+// Leaves a settled run due now. Run inside the settle's own transaction, after a
+// settle that would park the run at "never" met a rotation a restore holds: the
+// claim skips a held rotation and a release never re-arms a parked run.
+func (q *Queries) RotationRtDueRun(ctx context.Context, arg RotationRtDueRunParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, rotationRtDueRun,
+		arg.Now,
+		arg.ID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const rotationRtFailedAttempts = `-- name: RotationRtFailedAttempts :one
 SELECT COUNT(*) FROM rotation_runs WHERE rotation_id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND generation=?5 AND phase IN ('failed','quarantine') AND published_revision IS NULL AND (last_error IS NULL OR last_error<>'infrastructure_unavailable') AND started_at>?6
 `
@@ -348,8 +412,60 @@ func (q *Queries) RotationRtFailedAttempts(ctx context.Context, arg RotationRtFa
 	return count, err
 }
 
+const rotationRtGauges = `-- name: RotationRtGauges :one
+SELECT
+ (SELECT COUNT(*) FROM rotation_runs WHERE phase='quarantine') AS quarantined,
+ (SELECT COUNT(*) FROM rotation_runs WHERE phase='revoke_refused') AS revoke_refused,
+ (SELECT COUNT(*) FROM rotation_runs ru WHERE ru.phase NOT IN ('done','failed') AND EXISTS (SELECT 1 FROM rotation_effects ef WHERE ef.run_id=ru.id AND ef.outcome='unknown')) AS unknown_outcome,
+ (SELECT COUNT(*) FROM rotations WHERE state='halted') AS halted,
+ (SELECT COUNT(*) FROM rotations WHERE state<>'disabled' AND restore_hold=1) AS restore_held,
+ (SELECT COUNT(*) FROM rotations ro WHERE ro.state='active' AND ro.restore_hold=0 AND COALESCE(ro.deferred_from,ro.next_run_at)<CAST(?1 AS TEXT) AND NOT EXISTS (SELECT 1 FROM rotation_runs op WHERE op.rotation_id=ro.id AND op.phase NOT IN ('done','quarantine','failed'))) AS overdue,
+ (SELECT COUNT(*) FROM rotations ro WHERE ro.state<>'disabled' AND (SELECT ru.candidate_valid_until FROM rotation_runs ru JOIN rotations r2 ON r2.org_id=ru.org_id AND r2.project_id=ru.project_id AND r2.environment_id=ru.environment_id AND r2.id=ru.rotation_id WHERE ru.org_id=ro.org_id AND ru.project_id=ro.project_id AND ru.environment_id=ro.environment_id AND (r2.key_id=ro.key_id OR r2.username_key_id=ro.key_id) AND ru.published_revision IS NOT NULL ORDER BY ru.published_revision DESC,ru.id DESC LIMIT 1)>CAST(?2 AS TEXT) AND (SELECT ru.candidate_valid_until FROM rotation_runs ru JOIN rotations r2 ON r2.org_id=ru.org_id AND r2.project_id=ru.project_id AND r2.environment_id=ru.environment_id AND r2.id=ru.rotation_id WHERE ru.org_id=ro.org_id AND ru.project_id=ro.project_id AND ru.environment_id=ro.environment_id AND (r2.key_id=ro.key_id OR r2.username_key_id=ro.key_id) AND ru.published_revision IS NOT NULL ORDER BY ru.published_revision DESC,ru.id DESC LIMIT 1)<CAST(?3 AS TEXT)) AS expiring
+`
+
+type RotationRtGaugesParams struct {
+	OverdueAt  string
+	NowAt      string
+	ExpiringAt string
+}
+
+type RotationRtGaugesRow struct {
+	Quarantined    int64
+	RevokeRefused  int64
+	UnknownOutcome int64
+	Halted         int64
+	RestoreHeld    int64
+	Overdue        int64
+	Expiring       int64
+}
+
+// The instance-wide counts /metrics and doctor read, so an operator hears about a
+// rotation that needs them without opening each one. quarantined and revoke_refused
+// are runs that still owe a revoke or hold a possibly live role; unknown_outcome is
+// the runs that are not settled and recorded an effect as unknown; halted is the
+// rotations a failed gate or an exhausted retry window stopped; overdue is the
+// active rotations nothing has started although they came due before the grace;
+// expiring is the rotations (not deleted) whose delivered credential expires after now and
+// before the horizon (a lapsed credential is not counted), derived the way credential_expires_at is for the rotation's password key.
+// hikyo:reason RotationRuntime metrics scrape and doctor read only instance-wide counts of rotations and runs that need an operator through the closed runtime boundary; no tenant identity leaves it.
+// hikyo:instance-scoped
+func (q *Queries) RotationRtGauges(ctx context.Context, arg RotationRtGaugesParams) (RotationRtGaugesRow, error) {
+	row := q.db.QueryRowContext(ctx, rotationRtGauges, arg.OverdueAt, arg.NowAt, arg.ExpiringAt)
+	var i RotationRtGaugesRow
+	err := row.Scan(
+		&i.Quarantined,
+		&i.RevokeRefused,
+		&i.UnknownOutcome,
+		&i.Halted,
+		&i.RestoreHeld,
+		&i.Overdue,
+		&i.Expiring,
+	)
+	return i, err
+}
+
 const rotationRtGetRun = `-- name: RotationRtGetRun :one
-SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.revoke_not_before_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds AS rotation_delay_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.generation AS rotation_generation
+SELECT ru.id,ru.org_id,ru.project_id,ru.environment_id,ru.rotation_id,ru.generation AS run_generation,ru.run_trigger,ru.phase,ru.candidate_handle,ru.superseded_handle,ru.candidate_valid_until AS candidate_valid_until_at,ru.revoke_not_before_at,ru.published_revision,ru.revocation_delay_seconds,ru.started_at,ru.phase_at,ru.next_attempt_at,ru.attempt_count,ru.last_error,ru.lease_claim_token,ro.provider_id,ro.key_id,ro.username_key_id,ro.interval_seconds,ro.revocation_delay_seconds AS rotation_delay_seconds,ro.authority_principal_id,ro.state AS rotation_state,ro.restore_hold AS rotation_restore_hold,ro.generation AS rotation_generation
  FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id AND ro.project_id=ru.project_id AND ro.environment_id=ru.environment_id AND ro.id=ru.rotation_id
  WHERE ru.id=?1 AND ru.org_id=?2 AND ru.project_id=?3 AND ru.environment_id=?4
 `
@@ -389,6 +505,7 @@ type RotationRtGetRunRow struct {
 	RotationDelaySeconds   int64
 	AuthorityPrincipalID   string
 	RotationState          string
+	RotationRestoreHold    int64
 	RotationGeneration     int64
 }
 
@@ -428,13 +545,14 @@ func (q *Queries) RotationRtGetRun(ctx context.Context, arg RotationRtGetRunPara
 		&i.RotationDelaySeconds,
 		&i.AuthorityPrincipalID,
 		&i.RotationState,
+		&i.RotationRestoreHold,
 		&i.RotationGeneration,
 	)
 	return i, err
 }
 
 const rotationRtHaltRotation = `-- name: RotationRtHaltRotation :execrows
-UPDATE rotations SET state='halted',halt_reason=?1,next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=0,generation=generation+1,updated_at=?2 WHERE id=?3 AND org_id=?4 AND project_id=?5 AND environment_id=?6 AND state='active'
+UPDATE rotations SET deferred_from=NULL,state='halted',halt_reason=?1,next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=0,generation=generation+1,updated_at=?2 WHERE id=?3 AND org_id=?4 AND project_id=?5 AND environment_id=?6 AND state='active' AND restore_hold=0
 `
 
 type RotationRtHaltRotationParams struct {
@@ -801,7 +919,7 @@ func (q *Queries) RotationRtLoadSupersededRole(ctx context.Context, arg Rotation
 }
 
 const rotationRtLockDueRotation = `-- name: RotationRtLockDueRotation :one
-SELECT id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,generation,manual_run_id,manual_skip_overlap FROM rotations WHERE id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND state='active' AND generation=?5 AND next_run_at<=?6
+SELECT id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,generation,manual_run_id,manual_skip_overlap FROM rotations WHERE id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND state='active' AND restore_hold=0 AND generation=?5 AND next_run_at<=?6
 `
 
 type RotationRtLockDueRotationParams struct {
@@ -1029,8 +1147,34 @@ func (q *Queries) RotationRtPublishedEntries(ctx context.Context, arg RotationRt
 	return items, nil
 }
 
+const rotationRtRestoreHeld = `-- name: RotationRtRestoreHeld :one
+SELECT COUNT(*) FROM rotations WHERE id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND restore_hold=1
+`
+
+type RotationRtRestoreHeldParams struct {
+	RotationID   string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+// Whether a restore holds the rotation. A held rotation's claim, schedule and halt
+// writes are all refused, so the executor reads this to keep a run due instead of
+// parking it when a refusal it cannot act on (a halt) would otherwise end it.
+func (q *Queries) RotationRtRestoreHeld(ctx context.Context, arg RotationRtRestoreHeldParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, rotationRtRestoreHeld,
+		arg.RotationID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const rotationRtSetNextRun = `-- name: RotationRtSetNextRun :execrows
-UPDATE rotations SET next_run_at=?1,updated_at=?2 WHERE id=?3 AND org_id=?4 AND project_id=?5 AND environment_id=?6 AND state='active'
+UPDATE rotations SET deferred_from=NULL,next_run_at=?1,updated_at=?2 WHERE id=?3 AND org_id=?4 AND project_id=?5 AND environment_id=?6 AND state='active' AND restore_hold=0
 `
 
 type RotationRtSetNextRunParams struct {
@@ -1043,7 +1187,9 @@ type RotationRtSetNextRunParams struct {
 }
 
 // The schedule moves, never the generation: the run that is in flight asserts the
-// generation it started under, so a schedule write must not invalidate it.
+// generation it started under, so a schedule write must not invalidate it. A rotation
+// a restore holds is not moved at all (here, by a deferral or by a halt): the hold can
+// land after the run was claimed, and releasing it must find the rotation as it was.
 func (q *Queries) RotationRtSetNextRun(ctx context.Context, arg RotationRtSetNextRunParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, rotationRtSetNextRun,
 		arg.NextRunAt,

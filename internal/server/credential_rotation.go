@@ -40,6 +40,7 @@ func credentialRotationResponse(v service.RotationView) (apigen.CredentialRotati
 		AuthorityPrincipalId:   apigen.ID(v.AuthorityPrincipalID),
 		CreatedBy:              apigen.ID(v.CreatedBy),
 		State:                  apigen.CredentialRotationState(v.State),
+		RestoreHold:            v.RestoreHold,
 		NextRunAt:              next,
 		CredentialExpiresAt:    expires,
 		Generation:             v.Generation,
@@ -142,6 +143,23 @@ func (a *API) ResumeRotation(ctx context.Context, req apigen.ResumeRotationReque
 	return apigen.ResumeRotation200JSONResponse(resp), nil
 }
 
+func (a *API) ReleaseRotationHold(ctx context.Context, req apigen.ReleaseRotationHoldRequestObject) (apigen.ReleaseRotationHoldResponseObject, error) {
+	var expected *int64
+	if req.Body != nil {
+		expected = req.Body.ExpectedGeneration
+	}
+	view, err := a.CredentialRotations.ReleaseHold(ctx, service.Bearer(bearer(ctx)), dynamicEnvScope(req.Org, req.Project, req.Environment),
+		service.RotationStateRequest{RotationID: string(req.Rotation), ExpectedGeneration: expectedGeneration(expected)})
+	if err != nil {
+		return nil, err
+	}
+	resp, err := credentialRotationResponse(view)
+	if err != nil {
+		return nil, err
+	}
+	return apigen.ReleaseRotationHold200JSONResponse(resp), nil
+}
+
 func (a *API) DeleteRotation(ctx context.Context, req apigen.DeleteRotationRequestObject) (apigen.DeleteRotationResponseObject, error) {
 	view, err := a.CredentialRotations.Delete(ctx, service.Bearer(bearer(ctx)), dynamicEnvScope(req.Org, req.Project, req.Environment),
 		service.RotationStateRequest{RotationID: string(req.Rotation), ExpectedGeneration: expectedGeneration(req.Params.ExpectedGeneration), Abandon: req.Params.Abandon != nil && *req.Params.Abandon})
@@ -184,28 +202,32 @@ func (a *API) ListRotationRuns(ctx context.Context, req apigen.ListRotationRunsR
 	}
 	out := apigen.RotationRunList{Items: []apigen.RotationRun{}}
 	for _, row := range got.Items {
-		started, err := time.Parse(time.RFC3339Nano, row.StartedAt)
-		if err != nil {
-			return nil, fmt.Errorf("server: parse run started_at: %w", err)
-		}
-		phaseAt, err := time.Parse(time.RFC3339Nano, row.PhaseAt)
-		if err != nil {
-			return nil, fmt.Errorf("server: parse run phase_at: %w", err)
-		}
-		run := apigen.RotationRun{
-			Id: apigen.ID(row.ID), Trigger: apigen.RotationRunTrigger(row.Trigger), Phase: apigen.RotationRunPhase(row.Phase),
-			RevocationDelaySeconds: row.RevocationDelaySeconds, StartedAt: started, PhaseAt: phaseAt, NotConvergedAdapterTargets: row.NotConvergedAdapterTargets,
-		}
-		if row.PublishedRevision != 0 {
-			run.PublishedRevision = &row.PublishedRevision
-		}
-		if row.ErrorCode != "" {
-			run.ErrorCode = &row.ErrorCode
-		}
-		out.Items = append(out.Items, run)
+		out.Items = append(out.Items, rotationRunBody(row))
 	}
 	if got.NextAfter != "" {
 		out.NextAfter = &got.NextAfter
 	}
 	return apigen.ListRotationRuns200JSONResponse(out), nil
+}
+
+// rotationRunBody maps a run's view onto its wire shape; the lower-bound flag
+// is only ever sent with an expiry, and only when true.
+func rotationRunBody(row service.RotationRunView) apigen.RotationRun {
+	run := apigen.RotationRun{
+		Id: apigen.ID(row.ID), Trigger: apigen.RotationRunTrigger(row.Trigger), Phase: apigen.RotationRunPhase(row.Phase),
+		RevocationDelaySeconds: row.RevocationDelaySeconds, StartedAt: row.StartedAt, PhaseAt: row.PhaseAt, NotConvergedAdapterTargets: row.NotConvergedAdapterTargets,
+	}
+	if row.PublishedRevision != 0 {
+		run.PublishedRevision = &row.PublishedRevision
+	}
+	if row.ErrorCode != "" {
+		run.ErrorCode = &row.ErrorCode
+	}
+	if !row.CredentialValidUntil.IsZero() {
+		run.CredentialValidUntil = &row.CredentialValidUntil
+		if row.CredentialValidUntilLowerBound {
+			run.CredentialValidUntilLowerBound = &row.CredentialValidUntilLowerBound
+		}
+	}
+	return run
 }

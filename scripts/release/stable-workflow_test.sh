@@ -114,8 +114,10 @@ set -eu
 case "$*" in
   *' run -p 2 ./scripts/ci/source-proof --repository owner/repo --mode main --commit '*)
     args=$*
-    [ "${args##* --commit }" = "$FIXTURE_COMMIT --authority-commit $FIXTURE_COMMIT" ]
-    [ "$FIXTURE_MODE" != red-ci ]
+    class=${args##* --failure-class }
+    [ "${args##* --commit }" = "$FIXTURE_COMMIT --authority-commit $FIXTURE_COMMIT --failure-class $class" ]
+    # Red CI is the verifier's definite "no", reported through the class file.
+    if [ "$FIXTURE_MODE" = red-ci ]; then printf 'not-green\n' >"$class"; exit 1; fi
     exit 0 ;;
   'run ./scripts/release/stable verify '*) ;;
   'run ./scripts/release/stable prepare '*)

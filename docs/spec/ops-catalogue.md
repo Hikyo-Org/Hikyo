@@ -43,6 +43,8 @@ configuration bounds validated at create time; each hit is a named refusal
 | Maximum rotation interval | 90 days | fixed |
 | Minimum revocation delay | 5 minutes | fixed |
 | Maximum revocation delay | 7 days | fixed |
+| Overdue grace (a due rotation with no run counts as overdue after it) | 15 minutes | fixed |
+| Credential expiry horizon (a delivered credential counts as expiring inside it) | 6 hours | fixed |
 
 ## SAML (defaults fixed in [saml-sp.md](../adr/saml-sp.md); catalogued here as tunable entries)
 
