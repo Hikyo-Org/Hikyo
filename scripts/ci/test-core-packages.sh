@@ -2,7 +2,7 @@
 # Keep the app's database-drop checks out of concurrent package migrations:
 # DROP DATABASE waits for the shared PostgreSQL checkpoint/fsync queue.
 # Run repository analysis separately: its cross-platform compiler loads must
-# not compete with all runtime suites for CPU and memory. Every package runs once.
+# not compete with all runtime suites for CPU and memory. Every test runs once.
 # Only internal/lint needs the compiled lint matrix; internal/boundary just runs
 # `go list -json` (no export data) and internal/isolation is sharded elsewhere,
 # so the pool skips the multi-minute prepare-lint-cache compile.
