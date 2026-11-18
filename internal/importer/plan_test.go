@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -882,6 +883,42 @@ func TestArtifactsRejectTrailingDocumentsAndDuplicateMembers(t *testing.T) {
 	wantCode(t, err, CodeDuplicateKey)
 	if !strings.Contains(strings.ToLower(err.Error()), `"source_identity"`) {
 		t.Fatalf("case-variant duplicate refusal does not name source_identity: %v", err)
+	}
+}
+
+func TestParseRefusesDuplicateEnvironmentTargets(t *testing.T) {
+	plan, err := planFrom(t, "k8s-multi.yaml", state(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	template := plan.Template
+	template.Environments = append(slices.Clone(template.Environments), template.Environments[0])
+	raw, err := Encode(template)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = ParseTemplate(raw)
+	wantCode(t, err, CodeMalformed)
+	if !strings.Contains(err.Error(), "already mapped") {
+		t.Errorf("duplicate template target refusal does not say so: %v", err)
+	}
+
+	for name, mutate := range map[string]func(*Manifest){
+		"existing": func(m *Manifest) { m.Target.Environments = []string{"prod", "prod"} },
+		"created":  func(m *Manifest) { m.Target.CreatedEnvironments = []string{"new", "new"} },
+	} {
+		manifest := plan.Manifest
+		mutate(&manifest)
+		raw, err := Encode(manifest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = ParseManifest(raw)
+		wantCode(t, err, CodeMalformed)
+		if !strings.Contains(err.Error(), "already mapped") {
+			t.Errorf("%s: duplicate manifest target refusal does not say so: %v", name, err)
+		}
 	}
 }
 
