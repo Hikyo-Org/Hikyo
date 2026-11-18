@@ -26,9 +26,12 @@ const predecessor = (value: bigint): MachineCredential => ({
   issuer: 'https://token.actions.githubusercontent.com',
   subject: 'repo:owner/repo:ref:refs/heads/main', audience: 'hikyo',
   required_claims: [
-    { claim: 'repository_id', number_value: 42n },
-    { claim: 'repository_owner_id', number_value: 7n },
+    { claim: 'repository_id', string_value: '42' },
+    { claim: 'repository_owner_id', string_value: '7' },
     { claim: 'event_name', string_value: 'push' },
+    { claim: 'ref_protected', string_value: 'true' },
+    { claim: 'runner_environment', string_value: 'github-hosted' },
+    { claim: 'job_workflow_ref', string_value: 'owner/repo/.github/workflows/x.yml@refs/heads/main' },
     { claim: 'custom_id', number_value: value },
   ],
 });
@@ -57,9 +60,9 @@ it('runs a mint-purpose ceremony before replacing a historical-only binding', as
 });
 
 it.each([
-  { pin: { claim: 'repository_id', string_value: '42' }, expected: '"claim":"repository_id","string_value":"42"' },
-  { pin: { claim: 'repository_id', bool_value: true }, expected: '"claim":"repository_id","bool_value":true' },
-])('preserves the predecessor scalar type without silently converting it', async ({ pin, expected }) => {
+  { pin: { claim: 'ref_protected', string_value: 'true' }, expected: '"claim":"ref_protected","string_value":"true"' },
+  { pin: { claim: 'ref_protected', bool_value: true }, expected: '"claim":"ref_protected","string_value":"true"' },
+])('re-pins a required claim as the string GitHub emits ($expected)', async ({ pin, expected }) => {
   const fetchMock = vi.fn((..._args: Parameters<typeof fetch>) => Promise.resolve(
     new Response(JSON.stringify({ code: 'refused', message: 'fixture refusal' }), {
       status: 422, headers: { 'Content-Type': 'application/json' },
@@ -78,6 +81,56 @@ it.each([
     const request = fetchMock.mock.calls[0]?.[0];
     if (!(request instanceof Request)) throw new Error('binding request missing');
     expect(await request.clone().text()).toContain(expected);
+  } finally { await view.unmount(); }
+});
+
+it('re-pins a legacy numeric GitHub id as the string GitHub emits', async () => {
+  const fetchMock = vi.fn((..._args: Parameters<typeof fetch>) => Promise.resolve(
+    new Response(JSON.stringify({ code: 'refused', message: 'fixture refusal' }), {
+      status: 422, headers: { 'Content-Type': 'application/json' },
+    }),
+  ));
+  vi.stubGlobal('fetch', fetchMock);
+  const base = predecessor(7n);
+  const legacy = {
+    ...base,
+    required_claims: (base.required_claims ?? []).map((pin) =>
+      pin.claim === 'repository_id' ? { claim: 'repository_id', number_value: 42n } : pin),
+  };
+  const view = await renderForm(
+    <BindingDialog project={{ org: 'acme', project: 'payments' }} accounts={[account]} initial={account}
+      replaces={legacy} reachFor={() => []} onClose={() => {}} onCreated={() => {}} />,
+  );
+  try {
+    await submitReplacement(view.container);
+    const request = fetchMock.mock.calls[0]?.[0];
+    if (!(request instanceof Request)) throw new Error('binding request missing');
+    expect(await request.clone().text()).toContain('"claim":"repository_id","string_value":"42"');
+  } finally { await view.unmount(); }
+});
+
+it('replaces a legacy id past 2^53 exactly, because preset fields pin strings', async () => {
+  const fetchMock = vi.fn((..._args: Parameters<typeof fetch>) => Promise.resolve(
+    new Response(JSON.stringify({ code: 'refused', message: 'fixture refusal' }), {
+      status: 422, headers: { 'Content-Type': 'application/json' },
+    }),
+  ));
+  vi.stubGlobal('fetch', fetchMock);
+  const base = predecessor(7n);
+  const legacy = {
+    ...base,
+    required_claims: (base.required_claims ?? []).map((pin) =>
+      pin.claim === 'repository_id' ? { claim: 'repository_id', number_value: 9007199254740993n } : pin),
+  };
+  const view = await renderForm(
+    <BindingDialog project={{ org: 'acme', project: 'payments' }} accounts={[account]} initial={account}
+      replaces={legacy} reachFor={() => []} onClose={() => {}} onCreated={() => {}} />,
+  );
+  try {
+    await submitReplacement(view.container);
+    const request = fetchMock.mock.calls[0]?.[0];
+    if (!(request instanceof Request)) throw new Error('binding request missing');
+    expect(await request.clone().text()).toContain('"claim":"repository_id","string_value":"9007199254740993"');
   } finally { await view.unmount(); }
 });
 

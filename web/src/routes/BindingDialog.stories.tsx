@@ -39,9 +39,12 @@ const predecessor: MachineCredential = {
   subject: 'repo:acme/gateway:ref:refs/heads/main',
   audience: 'hikyo',
   required_claims: [
-    { claim: 'repository_id', number_value: 987654321n },
-    { claim: 'repository_owner_id', number_value: 4242n },
+    { claim: 'repository_id', string_value: '987654321' },
+    { claim: 'repository_owner_id', string_value: '4242' },
     { claim: 'event_name', string_value: 'push' },
+    { claim: 'ref_protected', string_value: 'true' },
+    { claim: 'runner_environment', string_value: 'github-hosted' },
+    { claim: 'job_workflow_ref', string_value: 'acme/gateway/.github/workflows/deploy.yml@refs/heads/main' },
     { claim: 'ref', string_value: 'refs/heads/main' },
   ],
   created_at: '2026-08-12T00:00:00Z',
@@ -91,13 +94,18 @@ export const Default: Story = {
   },
 };
 
-// The GitHub Actions preset: two immutable numeric ids and the event pin.
+// The GitHub Actions preset: two immutable ids, the event pin and the run-narrowing pins, all strings.
 export const GitHubActions: Story = {
   play: async ({ canvas }) => {
     await userEvent.click(canvas.getByRole('button', { name: 'GitHub Actions' }));
     await expect(canvas.getByLabelText('Issuer')).toHaveValue('https://token.actions.githubusercontent.com');
+    // The subject is copied from a real token, never edited from a guess.
+    await expect(canvas.getByLabelText('Subject, matched byte-for-byte')).toHaveValue('');
     await expect(canvas.getByLabelText('Repository id (repository_id)')).toHaveAttribute('inputmode', 'numeric');
     await expect(canvas.getByLabelText('Event name')).toHaveValue('push');
+    await expect(canvas.getByLabelText('Ref protected (ref_protected)')).toHaveValue('true');
+    await expect(canvas.getByLabelText('Runner environment (runner_environment)')).toHaveValue('github-hosted');
+    await expect(canvas.getByLabelText('Job workflow ref (job_workflow_ref)')).toHaveValue('');
   },
 };
 

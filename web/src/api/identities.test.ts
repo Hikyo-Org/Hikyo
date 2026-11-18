@@ -11,7 +11,6 @@ import {
   grantSubmittable,
   grantWideningReach,
   lastUsedLabel,
-  parseClaimNumber,
   postStateReach,
   pullRequestRefusal,
   scopeOf,
@@ -242,35 +241,6 @@ describe('grantableFor', () => {
     expect(grantableFor(reporting, 'report-delivery-status', false).map((s) => s.id)).toEqual([
       'env_prod',
     ]);
-  });
-});
-
-describe('parseClaimNumber', () => {
-  // An immutable repository id is what stops a renamed-and-reused path
-  // inheriting a production binding. Every case below is a way `Number()`
-  // silently binds the wrong repository.
-  it('takes a plain integer', () => {
-    expect(parseClaimNumber('4242')).toBe(4242);
-    expect(parseClaimNumber(' 4242 ')).toBe(4242);
-    expect(parseClaimNumber('-7')).toBe(-7);
-  });
-
-  it('refuses an empty field rather than binding repository 0', () => {
-    expect(parseClaimNumber('')).toBeNull();
-    expect(parseClaimNumber('   ')).toBeNull();
-  });
-
-  it('refuses anything that is not digits', () => {
-    expect(parseClaimNumber('1e3')).toBeNull();
-    expect(parseClaimNumber('4242.7')).toBeNull();
-    expect(parseClaimNumber('0x10')).toBeNull();
-    expect(parseClaimNumber('42abc')).toBeNull();
-  });
-
-  it('refuses a value past the range JSON carries exactly', () => {
-    // 2^53 + 1 rounds to 2^53, a DIFFERENT, existing repository id.
-    expect(parseClaimNumber('9007199254740993')).toBeNull();
-    expect(parseClaimNumber('9007199254740991')).toBe(9_007_199_254_740_991);
   });
 });
 

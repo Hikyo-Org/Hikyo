@@ -4008,9 +4008,11 @@ export type UpdateFederationIssuerRequest = {
  * value. Exactly one of `string_value`, `number_value` or `bool_value` is
  * set, and that is what makes "a string is never folded to a number" true
  * at the wire boundary rather than only inside the validator:
- * `repository_id: 123` and `repository_id: "123"` are two different
- * requests that cannot be mistaken for one another, and a 64-bit repository
- * id survives without passing through a float.
+ * `run_attempt: 1` and `run_attempt: "1"` are two different requests that
+ * cannot be mistaken for one another, and a 64-bit integer survives without
+ * passing through a float. A platform's required pins are JSON strings,
+ * because the issuer emits them as strings (GitHub's `repository_id` is
+ * `"74"`); a required pin of another kind is refused at creation.
  *
  * A pin naming none or several values is refused rather than resolved by
  * precedence.
@@ -4047,11 +4049,15 @@ export type CreateBindingRequest = {
      */
     audience: string;
     /**
-     * Every pinned claim, all of which validation requires. A Forgejo or
-     * GitHub Actions binding MUST pin `event_name`: `pull_request_target`
-     * carries the ordinary ref-form subject — the default branch's subject,
-     * the one a production binding names — so the protection comes from the
-     * pinned event, never from the subject's shape.
+     * Every pinned claim, all of which validation requires. A GitHub
+     * Actions binding MUST pin `repository_id`, `repository_owner_id`,
+     * `event_name`, `ref_protected`, `runner_environment` and
+     * `job_workflow_ref`, each as a string; a Kubernetes binding MUST pin
+     * `/kubernetes.io/serviceaccount/uid` as a string. `event_name` matters
+     * because `pull_request_target` carries the ordinary ref-form subject —
+     * the default branch's subject, the one a production binding names — so
+     * the protection comes from the pinned event, never from the subject's
+     * shape.
      *
      */
     required_claims: Array<FederatedClaimPin>;

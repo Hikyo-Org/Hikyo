@@ -651,9 +651,12 @@ test.describe('machine access', () => {
     // `push` is not a refusal.
     await expect(dialog.getByRole('alert')).toHaveCount(0);
 
-    // A numeric pin is refused BEFORE the request when it is not a whole number
-    // the issuer could have minted: an empty field would bind repository 0, and
-    // anything past 2^53 rounds to a neighbouring repository id.
+    // GitHub's subject is copied from a real token, so the preset leaves it empty.
+    await expect(dialog.getByLabel('Subject, matched byte-for-byte')).toHaveValue('');
+    await dialog.getByLabel('Subject, matched byte-for-byte').fill('repo:acme/gateway:ref:refs/heads/main');
+
+    // An id is refused BEFORE the request when it is not digits: GitHub emits
+    // it as a decimal string, and a typo would bind somebody else's repository.
     await dialog.getByLabel(/Repository id \(repository_id\)/).fill('4242.7');
     await dialog.getByLabel(/Repository owner id/).fill('99');
     await dialog.getByLabel('Audience').fill(seed.machine.audience);

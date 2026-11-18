@@ -548,24 +548,6 @@ export function grantSubmittable(
   return grantableFor(scope, capability, machineReveal).some((s) => s.id === environment);
 }
 
-/**
- * parseClaimNumber turns a typed int64 pin into a number, or refuses.
- *
- * `Number()` is not usable here and the failures are not cosmetic: an empty
- * field becomes 0, which is a valid-looking repository id nobody owns; `1e3`
- * and `4242.7` are accepted; and anything past 2^53 silently rounds to a
- * NEIGHBOURING repository id, which would bind a production service account to
- * whatever repository happens to hold that number. Digits only, and inside the
- * range JSON can carry losslessly.
- */
-export function parseClaimNumber(raw: string): number | null {
-  if (!/^-?[0-9]+$/.test(raw.trim())) {
-    return null;
-  }
-  const value = Number(raw.trim());
-  return Number.isSafeInteger(value) ? value : null;
-}
-
 /** isoDay renders an instant as the calendar day, which is all these surfaces show. */
 export function isoDay(timestamp: string): string {
   return timestamp.slice(0, 10);
@@ -698,14 +680,20 @@ type IssuerPlatform = 'kubernetes' | 'forgejo' | 'github-actions';
 type ClaimField = {
   readonly claim: string;
   readonly label: string;
-  readonly kind: 'string' | 'number' | 'event';
+  /** `id` is a decimal id (digits only) that the issuer emits, and the binding pins, as a string. */
+  readonly kind: 'string' | 'id' | 'event';
+  /** Prefilled in a new binding; the operator may change it. */
+  readonly defaultValue?: string;
 };
 
 export type FederationPreset = {
   readonly id: IssuerPlatform;
   readonly label: string;
   readonly issuer: string;
+  /** Seeded into the subject field; empty when the subject must come from a real token. */
   readonly subject: string;
+  /** Placeholder shown in the subject field when `subject` is empty. */
+  readonly subjectHint?: string;
   readonly audience: string;
   /**
    * The claims this platform's bindings MUST pin, which the server refuses a
@@ -723,8 +711,12 @@ export type FederationPreset = {
  * Kubernetes pins the ServiceAccount UID through its JSON Pointer, a
  * recreated ServiceAccount with the same name has a different UID, which is
  * precisely what the pin closes. The two CI platforms must pin `event_name`,
- * and GitHub Actions additionally pins the numeric repository ids, because a
- * renamed-and-reused repository path would otherwise inherit the binding.
+ * and GitHub Actions additionally pins the repository ids, because a
+ * renamed-and-reused repository path would otherwise inherit the binding, plus
+ * `ref_protected`, `runner_environment` and `job_workflow_ref`, which narrow
+ * which runs are given the binding's credentials. GitHub emits every one of
+ * these as a JSON string ("74", "true"), and the server refuses a required pin
+ * of any other kind, so every field here is pinned as a string.
  */
 export const KUBERNETES_PRESET: FederationPreset = {
   id: 'kubernetes',
@@ -745,7 +737,7 @@ const FORGEJO_PRESET: FederationPreset = {
   audience: '',
   claims: [
     { claim: 'repository', label: 'Repository', kind: 'string' },
-    { claim: 'event_name', label: 'Event name', kind: 'event' },
+    { claim: 'event_name', label: 'Event name', kind: 'event', defaultValue: 'push' },
   ],
 };
 
@@ -753,12 +745,19 @@ const GITHUB_ACTIONS_PRESET: FederationPreset = {
   id: 'github-actions',
   label: 'GitHub Actions',
   issuer: 'https://token.actions.githubusercontent.com',
-  subject: 'repo:owner/repository:ref:refs/heads/main',
+  // GitHub's subject format varies (repositories created, renamed or transferred
+  // after 2026-07-15 use the immutable form), so the operator copies it from a
+  // real token rather than editing a guess.
+  subject: '',
+  subjectHint: 'copy sub from a real token, e.g. repo:owner/repository:ref:refs/heads/main',
   audience: '',
   claims: [
-    { claim: 'repository_id', label: 'Repository id', kind: 'number' },
-    { claim: 'repository_owner_id', label: 'Repository owner id', kind: 'number' },
-    { claim: 'event_name', label: 'Event name', kind: 'event' },
+    { claim: 'repository_id', label: 'Repository id', kind: 'id' },
+    { claim: 'repository_owner_id', label: 'Repository owner id', kind: 'id' },
+    { claim: 'event_name', label: 'Event name', kind: 'event', defaultValue: 'push' },
+    { claim: 'ref_protected', label: 'Ref protected', kind: 'string', defaultValue: 'true' },
+    { claim: 'runner_environment', label: 'Runner environment', kind: 'string', defaultValue: 'github-hosted' },
+    { claim: 'job_workflow_ref', label: 'Job workflow ref', kind: 'string' },
   ],
 };
 

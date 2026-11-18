@@ -875,8 +875,13 @@ func ValidatePointer(name string) error {
 // There is deliberately NO override flag. An override is the thing an operator
 // sets once during a migration and never removes, and the ADR does not offer one.
 //
-//   - github-actions exposes both numeric ids, so both are required, plus
-//     `event_name` for the pull-request rule.
+//   - github-actions exposes both immutable ids (as decimal strings), so both
+//     are required, plus `event_name` for the pull-request rule, plus
+//     `ref_protected`, `runner_environment` and `job_workflow_ref`, which narrow
+//     which runs are given the credential (see the ADR's 2026-11-17 amendment).
+//     Presence is required, not a value: "false" or "self-hosted" is a
+//     deliberate pin. `job_workflow_sha` is not required because it changes on
+//     every commit for a same-repository workflow.
 //   - kubernetes exposes the ServiceAccount UID, nested — required through its
 //     JSON Pointer. A recreated ServiceAccount with the same name has a
 //     different UID, which is precisely what this closes.
@@ -886,8 +891,11 @@ func ValidatePointer(name string) error {
 // inherit an existing machine principal, so creation and validation refuse the
 // issuer until it exposes an immutable identifier.
 var RequiredPins = map[domain.IssuerType][]string{
-	domain.IssuerGitHubActions: {"repository_id", "repository_owner_id", EventNameClaim},
-	domain.IssuerKubernetes:    {KubernetesServiceAccountUID},
+	domain.IssuerGitHubActions: {
+		"repository_id", "repository_owner_id", EventNameClaim,
+		"ref_protected", "runner_environment", "job_workflow_ref",
+	},
+	domain.IssuerKubernetes: {KubernetesServiceAccountUID},
 }
 
 // KubernetesServiceAccountUID is where a projected ServiceAccount token carries
@@ -905,6 +913,24 @@ func MissingRequiredPins(t domain.IssuerType, pinned map[string]jsontext.Value) 
 	}
 	slices.Sort(missing)
 	return missing
+}
+
+// NonStringRequiredPins returns the required pins of this issuer type that the
+// binding pins as something other than a JSON string, sorted. Every required
+// pin is a string on the wire: GitHub emits `repository_id`, `repository_owner_id`
+// and `ref_protected` as JSON strings ("74", "false"), and the Kubernetes UID is
+// a string. Pinning a number or boolean would never match a real token, and
+// sameJSONScalar never folds kinds, so such a binding would be dead on arrival.
+// Creation-time only; stored bindings are not re-checked.
+func NonStringRequiredPins(t domain.IssuerType, pinned map[string]jsontext.Value) []string {
+	var wrong []string
+	for _, name := range RequiredPins[t] {
+		if raw, ok := pinned[name]; ok && !strings.HasPrefix(strings.TrimSpace(string(raw)), `"`) {
+			wrong = append(wrong, name)
+		}
+	}
+	slices.Sort(wrong)
+	return wrong
 }
 
 // isJSONScalar reports whether a raw value is a string, number, boolean or
@@ -927,9 +953,10 @@ func isJSONScalar(v jsontext.Value) bool {
 // trimming and nothing else.
 //
 // A string is never folded to a number and a number is never folded to a
-// string: the GitHub Actions claim `repository_id` is the numeric `123` and the
-// value `"123"` is a different claim value, so treating them as equal would let
-// a binding written one way be satisfied by a token the other. It also means
+// string: the number `123` and the string `"123"` are different claim values,
+// so treating them as equal would let a binding written one way be satisfied by
+// a token the other. GitHub emits `repository_id` as the string "74", so a
+// numeric pin never matches it. It also means
 // `1` and `1.0` do not match — accepted, because every issuer in the closed set
 // emits integers, and normalising numerics would reintroduce the folding this
 // rule exists to forbid.

@@ -89,10 +89,14 @@ var (
 	ErrBindingClaims = fmt.Errorf("%w: service: a binding must pin at least one claim, each a string, integer or boolean", domain.ErrInvalid)
 	// ErrBindingImmutableID refuses a binding that does not pin the immutable
 	// identifiers its platform exposes. It is its own refusal because the remedy
-	// is specific: pin the numeric id, not the name — a renamed-and-reused
+	// is specific: pin the immutable id, not the name — a renamed-and-reused
 	// repository path or a recreated ServiceAccount otherwise inherits the
 	// binding.
 	ErrBindingImmutableID = fmt.Errorf("%w: service: a binding must pin the immutable identifiers this issuer exposes", domain.ErrInvalid)
+	// ErrBindingPinKind refuses a required pin of a JSON kind the issuer never
+	// emits for that claim: byte-exact comparison never folds kinds, so such a
+	// binding could never match a real token.
+	ErrBindingPinKind = fmt.Errorf("%w: service: a required pin must have the JSON kind the issuer emits", domain.ErrInvalid)
 	// ErrBindingEventName refuses a CI binding that does not pin `event_name`.
 	// This is the load-bearing refusal of the whole CI story: without the pin,
 	// a `pull_request_target` token carries the ordinary ref-form subject a
@@ -1038,6 +1042,12 @@ func checkBindingAgainstIssuer(issuer authz.FederationIssuer, audience, claimsJS
 	if missing := oidcfed.MissingRequiredPins(issuer.Type, pinned); len(missing) > 0 {
 		return fmt.Errorf("%w: %s requires %s", ErrBindingImmutableID,
 			issuer.Type, strings.Join(missing, ", "))
+	}
+	// A required pin must be a JSON string: these issuers emit the claim as one,
+	// and a number or boolean pin would never match a real token.
+	if wrong := oidcfed.NonStringRequiredPins(issuer.Type, pinned); len(wrong) > 0 {
+		return fmt.Errorf("%w: %s emits %s as a string, so pin it as a string (name=value), not a number or boolean",
+			ErrBindingPinKind, issuer.Type, strings.Join(wrong, ", "))
 	}
 	return nil
 }
