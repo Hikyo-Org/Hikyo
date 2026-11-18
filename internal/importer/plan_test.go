@@ -904,6 +904,16 @@ func TestParseRefusesDuplicateEnvironmentTargets(t *testing.T) {
 		t.Errorf("duplicate template target refusal does not say so: %v", err)
 	}
 
+	// A created name equal to a mapped existing target is claimed once, as in the wizard.
+	twin := template.Environments[0]
+	twin.Create = !twin.Create
+	template.Environments = append(slices.Clone(plan.Template.Environments), twin)
+	if raw, err = Encode(template); err != nil {
+		t.Fatal(err)
+	}
+	_, err = ParseTemplate(raw)
+	wantCode(t, err, CodeMalformed)
+
 	for name, mutate := range map[string]func(*Manifest){
 		"existing": func(m *Manifest) { m.Target.Environments = []string{"prod", "prod"} },
 		"created":  func(m *Manifest) { m.Target.CreatedEnvironments = []string{"new", "new"} },

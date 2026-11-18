@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"runtime"
 	"testing"
 	"time"
 
@@ -68,12 +69,20 @@ func TestSCIMAttributePatchScalesLinearly(t *testing.T) {
 	}
 	patch = append(patch, UserPatchMergeAttributes{Attributes: map[string]any{"ATTR0": nil, "attr1": "again"}})
 
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
 	start := time.Now()
 	got, err := ReduceUserPatch(DesiredUser{}, patch)
+	elapsed := time.Since(start)
+	runtime.ReadMemStats(&after)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if elapsed := time.Since(start); elapsed > 5*time.Second {
+	// Deterministic guard: a clone per command allocates gigabytes here.
+	if allocated := after.TotalAlloc - before.TotalAlloc; allocated > 256<<20 {
+		t.Fatalf("%d-command patch allocated %d bytes; merge is no longer linear", commands, allocated)
+	}
+	if elapsed > 5*time.Second {
 		t.Fatalf("%d-command patch took %s; merge is no longer linear", commands, elapsed)
 	}
 	if _, ok := got.Attributes["Attr0"]; ok || len(got.Attributes) != commands-1 || got.Attributes["Attr1"] != "again" {
