@@ -17,6 +17,7 @@ import {
   settledRuns,
 } from '../../testkit/rotations.ts';
 import { MAX_RUN_PAGES } from '../../api/rotations.ts';
+import { ReadOnlyContext } from '../../ui/ReadOnlyContext.ts';
 import { RotationsPanel } from './Rotations.tsx';
 
 afterEach(() => {
@@ -548,6 +549,34 @@ it('falls back to the ids when the key catalogue cannot be read', async () => {
   try {
     await settleTask();
     expect(container.querySelector(`[data-rotation="${ROTATION}"]`)?.textContent).toContain('key_123e4567-e89b-12d3-a456-426614174101');
+  } finally {
+    await unmount();
+  }
+});
+
+it('keeps browsing controls usable in the read-only demo', async () => {
+  stub({
+    ...keysRoute,
+    [listPath(PROD)]: (url) => (url.searchParams.get('after') === null
+      ? Response.json({ items: [rotationList().items[0]], next_after: ROTATION })
+      : Response.json({ items: [rotationList().items[1]] })),
+    [runsPath(PROD, ROTATION)]: () => Response.json(owedRuns),
+  });
+  const { container, unmount } = await renderForm(
+    <ReadOnlyContext value={true}>
+      <RotationsPanel org={ORG} project={PRJ} environments={environments} environmentsRead="ready" providers={providers} />
+    </ReadOnlyContext>,
+  );
+  try {
+    await settleTask();
+    expect(buttonNamed(container, 'Show runs of DATABASE_PASSWORD').disabled).toBe(false);
+    expect(buttonNamed(container, 'Load more rotations').disabled).toBe(false);
+    await act(async () => buttonNamed(container, 'Load more rotations').click());
+    await settleTask();
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(2);
+    await act(async () => buttonNamed(container, 'Show runs of DATABASE_PASSWORD').click());
+    await settleTask();
+    expect(container.querySelectorAll('[data-run]').length).toBeGreaterThan(0);
   } finally {
     await unmount();
   }

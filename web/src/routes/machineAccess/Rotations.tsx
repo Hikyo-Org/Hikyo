@@ -242,6 +242,7 @@ function RotationList({
                         <Button
                           type="button"
                           variant="quiet"
+                          readOnlySafe
                           aria-expanded={open}
                           aria-controls={open ? `runs-${rotation.id}` : undefined}
                           aria-label={`${open ? 'Hide' : 'Show'} runs of ${label}`}
@@ -295,7 +296,7 @@ function RotationList({
           would clear the error and show a stale list as current. A failed next page can be retried. */}
       {query.hasNextPage && !(query.isError && !query.isFetchNextPageError) ? (
         <div className="actions">
-          <Button type="button" disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>
+          <Button type="button" readOnlySafe disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>
             Load more rotations
           </Button>
         </div>
