@@ -426,7 +426,7 @@ func openRuntimeRoot(runtimeDir string, create bool) (*os.Root, error) {
 		return nil, fmt.Errorf("compose: lstat runtime dir %s: %w", runtimeDir, err)
 	}
 	if !info.IsDir() {
-		return nil, fmt.Errorf("compose: runtime dir %s is not a directory; refusing", runtimeDir)
+		return nil, fmt.Errorf("%w: runtime dir %s is not a directory", ErrRuntimeCustody, runtimeDir)
 	}
 	root, err := parent.OpenRoot(base)
 	if err != nil {
@@ -439,7 +439,7 @@ func openRuntimeRoot(runtimeDir string, create bool) (*os.Root, error) {
 	}
 	if !os.SameFile(info, st) {
 		_ = root.Close()
-		return nil, fmt.Errorf("compose: runtime dir %s was swapped while opening; refusing", runtimeDir)
+		return nil, fmt.Errorf("%w: runtime dir %s was swapped while opening", ErrRuntimeCustody, runtimeDir)
 	}
 	pinfo, err := parent.Stat(".")
 	if err != nil {
@@ -453,17 +453,27 @@ func openRuntimeRoot(runtimeDir string, create bool) (*os.Root, error) {
 	return root, nil
 }
 
+// ErrRuntimeCustody marks a runtime dir another user could control (foreign
+// owner, unsafe parent, non-directory or swapped entry); render refuses it.
+var ErrRuntimeCustody = errors.New("compose: runtime dir custody refused")
+
 // RuntimeDirCustody reports why runtimeDir would be refused for custody
 // reasons (foreign owner, unsafe parent), or nil. A missing dir is not a
 // custody failure; doctor uses this read-only form of the openRuntimeRoot check.
 func RuntimeDirCustody(runtimeDir string) error {
 	info, err := os.Lstat(runtimeDir)
-	if err != nil || !info.IsDir() {
+	if errors.Is(err, os.ErrNotExist) {
 		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("compose: lstat runtime dir %s: %w", runtimeDir, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%w: runtime dir %s is not a directory", ErrRuntimeCustody, runtimeDir)
 	}
 	pinfo, err := os.Stat(filepath.Dir(runtimeDir))
 	if err != nil {
-		return nil
+		return fmt.Errorf("compose: stat runtime dir parent: %w", err)
 	}
 	return checkRuntimeCustody(runtimeDir, info, pinfo)
 }

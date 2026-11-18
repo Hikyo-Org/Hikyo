@@ -41,13 +41,13 @@ var effectiveUID = os.Geteuid
 func checkRuntimeCustody(runtimeDir string, dir, parent os.FileInfo) error {
 	euid := effectiveUID()
 	if uid, _ := ownerOf(dir); uid != euid {
-		return fmt.Errorf("compose: runtime dir %s is owned by uid %d, not the effective uid %d; refusing", runtimeDir, uid, euid)
+		return fmt.Errorf("%w: runtime dir %s is owned by uid %d, not the effective uid %d", ErrRuntimeCustody, runtimeDir, uid, euid)
 	}
 	if uid, _ := ownerOf(parent); uid != euid && uid != 0 {
-		return fmt.Errorf("compose: parent of runtime dir %s is owned by uid %d, not the effective uid %d or root; refusing", runtimeDir, uid, euid)
+		return fmt.Errorf("%w: parent of runtime dir %s is owned by uid %d, not the effective uid %d or root", ErrRuntimeCustody, runtimeDir, uid, euid)
 	}
 	if m := parent.Mode(); m&0o022 != 0 && m&os.ModeSticky == 0 {
-		return fmt.Errorf("compose: parent of runtime dir %s is writable by group or other without the sticky bit; refusing", runtimeDir)
+		return fmt.Errorf("%w: parent of runtime dir %s is writable by group or other without the sticky bit", ErrRuntimeCustody, runtimeDir)
 	}
 	return nil
 }
