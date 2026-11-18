@@ -84,7 +84,9 @@ runtime directory, which must be tmpfs: `RuntimeDirectory=` under systemd or
 running `hikyo`, and its parent must be owned by that user or root and not
 writable by group or other unless sticky (as `/dev/shm` is); otherwise
 `hikyo` refuses to use it rather than render plaintext where another user
-could pre-create or swap the directory. Durable mode-`0700` state contains local
+could pre-create or swap the directory. A shared parent such as a
+group-writable mount or a Kubernetes `emptyDir` used by a non-root user needs
+the sticky bit (`chmod +t`). Durable mode-`0700` state contains local
 keys, stamps, an encrypted snapshot, cursor, and offline audit records; it is
 not a backup, and the local stamp/snapshot keys should not be backed up.
 

@@ -47,20 +47,24 @@ type CursorBinding struct {
 	// TargetLoaderAcks is each target's acknowledge_loader_control set (targets
 	// with none are omitted). Removing an acknowledgement must invalidate the
 	// cursor: a "current" answer would otherwise skip the render-time refusal and
-	// let an already-published generation be applied. A cursor written before
-	// this member existed reads as no acknowledgements.
+	// let an already-published generation be applied.
 	TargetLoaderAcks map[string][]string `json:"target_loader_acks,omitempty"`
+	// LoaderAcksBound marks a binding that carries TargetLoaderAcks. A cursor
+	// written before the member existed lacks it and is never eligible, so an
+	// acknowledgement removed across an upgrade still forces a full fetch.
+	LoaderAcksBound bool `json:"loader_acks_bound,omitempty"`
 }
 
 // canonical returns a copy with the projection and every key-id list sorted and
 // deduplicated, so equality is order- and duplicate-invariant.
 func (b CursorBinding) canonical() CursorBinding {
 	out := CursorBinding{
-		CredentialID:   b.CredentialID,
-		Environment:    b.Environment,
-		ConfigOnly:     b.ConfigOnly,
-		PinnedRevision: b.PinnedRevision,
-		Projection:     crypto.CanonicalStringSet(b.Projection),
+		CredentialID:    b.CredentialID,
+		Environment:     b.Environment,
+		ConfigOnly:      b.ConfigOnly,
+		PinnedRevision:  b.PinnedRevision,
+		Projection:      crypto.CanonicalStringSet(b.Projection),
+		LoaderAcksBound: b.LoaderAcksBound,
 	}
 	if b.TargetKeyIDs != nil {
 		out.TargetKeyIDs = make(map[string][]string, len(b.TargetKeyIDs))

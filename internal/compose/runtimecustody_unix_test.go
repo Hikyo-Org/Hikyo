@@ -49,8 +49,8 @@ func TestRuntimeCustodyRefusesForeignOwnedRuntimeDir(t *testing.T) {
 	if err := rl.Recover(runtime); err == nil || !strings.Contains(err.Error(), "owned by uid") {
 		t.Errorf("Recover err=%v, want foreign-owner refusal", err)
 	}
-	if err := RuntimeDirCustody(runtime); err == nil {
-		t.Error("RuntimeDirCustody accepted a foreign-owned runtime dir")
+	if err := RuntimeDirCustody(runtime); !errors.Is(err, ErrRuntimeCustody) {
+		t.Errorf("RuntimeDirCustody err=%v, want ErrRuntimeCustody", err)
 	}
 }
 
@@ -89,6 +89,23 @@ func TestRuntimeCustodyMissingDirIsNotAFailure(t *testing.T) {
 	root, entries, err := openRuntimeEntries(missing)
 	if err != nil || root != nil || entries != nil {
 		t.Fatalf("openRuntimeEntries(missing) = %v %v %v", root, entries, err)
+	}
+}
+
+func TestRuntimeDirCustodyReportsNonDirectory(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(t.TempDir(), link); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{file, link} {
+		if err := RuntimeDirCustody(p); !errors.Is(err, ErrRuntimeCustody) {
+			t.Errorf("RuntimeDirCustody(%s) = %v, want ErrRuntimeCustody", p, err)
+		}
 	}
 }
 
@@ -146,7 +163,7 @@ func TestCheckRuntimeCustodyOwners(t *testing.T) {
 		switch {
 		case tc.want == "" && err != nil:
 			t.Errorf("%s: refused: %v", name, err)
-		case tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)):
+		case tc.want != "" && (!errors.Is(err, ErrRuntimeCustody) || !strings.Contains(err.Error(), tc.want)):
 			t.Errorf("%s: err=%v, want %q", name, err, tc.want)
 		}
 	}

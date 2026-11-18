@@ -570,6 +570,7 @@ func (s *composeStack) localCursorBinding() compose.CursorBinding {
 		ConfigOnly:       s.configOnly,
 		TargetKeyIDs:     targetKeyIDs(s.cfg),
 		TargetLoaderAcks: targetLoaderAcks(s.cfg),
+		LoaderAcksBound:  true,
 	}
 }
 

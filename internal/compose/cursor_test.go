@@ -127,6 +127,25 @@ func TestEligibleCursorLoaderAckChange(t *testing.T) {
 	}
 }
 
+// TestEligibleCursorLegacyBindingWithoutAckMarker: a cursor saved before the
+// binding carried loader acknowledgements is never eligible, even when the
+// current config has none, because its acknowledgements at save time are unknown.
+func TestEligibleCursorLegacyBindingWithoutAckMarker(t *testing.T) {
+	_, runtime := cursorSetup(t)
+	cs, binding, current := buildEligible(t, runtime)
+	want := binding
+	want.LoaderAcksBound = true
+	cs.Binding = binding
+	cs.Binding.LoaderAcksBound = false
+	if _, ok := EligibleCursor(&cs, want, current, runtime); ok {
+		t.Fatal("legacy cursor without the acknowledgement marker should be ineligible")
+	}
+	cs.Binding.LoaderAcksBound = true
+	if _, ok := EligibleCursor(&cs, want, current, runtime); !ok {
+		t.Fatal("marked cursor with matching acknowledgements should be eligible")
+	}
+}
+
 func TestEligibleCursorGenerationTests(t *testing.T) {
 	_, runtime := cursorSetup(t)
 	cs, binding, current := buildEligible(t, runtime)
