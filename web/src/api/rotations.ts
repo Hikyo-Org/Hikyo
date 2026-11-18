@@ -120,7 +120,7 @@ export function rotationRefusalText(error: unknown, what: 'rotations' | 'runs'):
 // ---- Safety wording ------------------------------------------------------
 //
 // These sentences are the CLI's, word for word (internal/cli/credential_rotation.go,
-// noteOwedRuns and noteRestoreHold) and the user docs' (rotation.mdx). An operator
+// noteOwedRuns, noteOwedSummary, noteRestoreHold and haltReasonSentence) and the user docs' (rotation.mdx). An operator
 // reads the same instruction in the terminal and in the browser, so a change to
 // one is a change to all three. Times are RFC 3339 UTC, as the CLI prints them.
 
@@ -166,4 +166,55 @@ export function restoreHoldText(rotation: Rotation): string {
       ? 'no recorded expiry'
       : `the delivered credential lapses at ${rfc3339(rotation.credential_expires_at)}`;
   return `RESTORE HOLD: rotation ${rotation.id} is held after a restore and starts no run (${until}); reconcile its grants and provider credential, then run: ${releaseHoldCommand(rotation)}`;
+}
+
+/** The halt reasons the server writes, as fixed words; `unknown` is a halt it did not name. */
+const HALT_SENTENCES: Record<string, string> = {
+  retries_exhausted: 'the retry window ran out before a run could publish or extend the credential',
+  authority_lost:
+    'the recorded person no longer holds the access the rotation needs, or one of its keys or its environment is gone',
+  gate_failed: 'a pre-publish gate refused: the environment became protected, a key changed or a draft appeared',
+};
+
+/** haltCause is `halted (word): sentence`, the part of the CLI's HALTED line that names the cause. */
+export function haltCause(rotation: Rotation): string {
+  const given = rotation.halt_reason ?? 'unknown';
+  const known = given in HALT_SENTENCES;
+  // A word this client does not know is printed quoted and never interpreted.
+  const word = known || given === 'unknown' ? given : JSON.stringify(given);
+  const why = HALT_SENTENCES[given] ?? 'the server recorded a reason this client does not know';
+  return `halted (${word}): ${why}`;
+}
+
+/** haltReasonText is the CLI's whole HALTED line for a halted rotation. */
+export function haltReasonText(rotation: Rotation): string {
+  return `HALTED: rotation ${rotation.id} is ${haltCause(rotation)}; it starts no run and does not extend the delivered credential until a person resumes it: hikyo rotation resume ${rotation.id}`;
+}
+
+/** Whether a rotation has a run that still owes a provider role a drop (the server counts them). */
+export function owesDropSummary(rotation: Rotation): boolean {
+  return rotation.owed_drop_runs > 0n;
+}
+
+/** Whether a restore refused any of those drops: the keys may serve the role again. */
+export function owedVersionsChanged(rotation: Rotation): boolean {
+  return rotation.owed_drop_runs_versions_changed > 0n;
+}
+
+/**
+ * owedSummaryText is the rotation-level ATTENTION line. It counts the runs
+ * `owesDrop` marks and points at the run list instead of repeating each run's
+ * sentence. It never says to drop: when a restore refused any of them the keys may be
+ * serving the role again, and it says not to drop it until they have moved off it.
+ */
+export function owedSummaryText(rotation: Rotation): string {
+  if (owedVersionsChanged(rotation)) {
+    return `ATTENTION: rotation ${rotation.id} has ${String(rotation.owed_drop_runs)} run(s) that owe a provider role a drop, ${String(rotation.owed_drop_runs_versions_changed)} of them refused after a restore (${VERSIONS_CHANGED_CODE}): the keys may be serving that role again, so do NOT drop it at the provider until the keys have moved off it; read: hikyo rotation runs ${rotation.id}`;
+  }
+  return `ATTENTION: rotation ${rotation.id} has ${String(rotation.owed_drop_runs)} run(s) that owe a provider role a drop and the role is still live; read before you act: hikyo rotation runs ${rotation.id}`;
+}
+
+/** The badge on a rotation row that owes a drop: text, with the restore case never saying drop. */
+export function owedBadgeText(rotation: Rotation): string {
+  return owedVersionsChanged(rotation) ? 'Do not drop: restore' : 'Owes a drop';
 }

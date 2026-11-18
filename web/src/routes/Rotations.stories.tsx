@@ -7,6 +7,7 @@ import { ORG, PRJ, PROD, STAGING } from '../testkit/ids.ts';
 import { dynamicProvider } from '../testkit/machineAccess.ts';
 import {
   haltedRotation,
+  HALTED_ROTATION,
   HELD_ROTATION,
   owedRuns,
   ROTATION,
@@ -72,6 +73,31 @@ export const Populated: Story = {
   },
 };
 
+// S4: a halted rotation says why, in the CLI's words, on the notice and on its row.
+export const HaltedWithReason: Story = {
+  play: async ({ canvas }) => {
+    const table = await canvas.findByRole('table', { name: /credential rotations/ });
+    const row = within(table).getByText(HALTED_ROTATION).closest('tr')!;
+    await expect(within(row).getByText('Halt reason', { selector: 'dt' })).toBeVisible();
+    await expect(within(row).getByText(/^\(retries_exhausted\): the retry window ran out/)).toBeVisible();
+    await expect(canvas.getByText(/is halted \(retries_exhausted\): the retry window ran out/)).toBeVisible();
+  },
+};
+
+// S4: a rotation that owes a drop says so in words. When a restore refused one of them the
+// badge and line say not to drop it, and no row anywhere reads "drop it" for that case.
+export const OwedDropSummary: Story = {
+  play: async ({ canvas }) => {
+    const table = await canvas.findByRole('table', { name: /credential rotations/ });
+    const row = within(table).getByText(ROTATION).closest('tr')!;
+    await expect(within(row).getByText('Do not drop: restore')).toBeVisible();
+    await expect(within(row).queryByText('Owes a drop')).toBeNull();
+    await expect(within(row).getByText(/do NOT drop it at the provider until the keys have moved off it/)).toBeVisible();
+    await expect(within(row).getByText('Last run', { selector: 'dt' })).toBeVisible();
+    await expect(within(table).queryAllByText(/^ATTENTION: rotation /)).toHaveLength(1);
+  },
+};
+
 export const RestoreHold: Story = {
   play: async ({ canvas }) => {
     const alert = await canvas.findByText(/^RESTORE HOLD: rotation /);
@@ -97,7 +123,15 @@ export const RunTimelineWithOwedDrops: Story = {
 };
 
 export const SettledRuns: Story = {
-  parameters: { app: { responses: [keys, list(rotationList().items), runs(ROTATION, settledRuns)] } },
+  parameters: {
+    app: {
+      responses: [
+        keys,
+        list(rotationList().items.map((r) => ({ ...r, owed_drop_runs: 0, owed_drop_runs_versions_changed: 0 }))),
+        runs(ROTATION, settledRuns),
+      ],
+    },
+  },
   play: async ({ canvas }) => {
     await userEvent.click(await canvas.findByRole('button', { name: 'Show runs of DATABASE_PASSWORD' }));
     await expect(await canvas.findByRole('table', { name: /Runs of this rotation/ })).toBeVisible();

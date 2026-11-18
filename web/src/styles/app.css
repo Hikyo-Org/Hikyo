@@ -4018,6 +4018,13 @@ fieldset.field > legend {
   overflow-wrap: anywhere;
 }
 
+/* The halt reason and the owed-drop ATTENTION line are sentences that carry a
+   rotation id and a command: like an identifier they wrap anywhere, so the
+   sentence never sets the cell's minimum width and pushes the table sideways. */
+.rotations__table .rotations__note {
+  overflow-wrap: anywhere;
+}
+
 /* A key name never splits mid-word in the column layout: a bare `.kv dd` has
    `overflow-wrap: anywhere`, and even `break-word` lets Blink narrow the first
    column below REPORTING_PASSWORD. `normal` gives the column its longest name's

@@ -6,7 +6,11 @@ import { expect, it } from 'vitest';
 
 import { ApiError } from './client.ts';
 import {
+  haltCause,
+  haltReasonText,
+  owedBadgeText,
   owedRunText,
+  owedSummaryText,
   owesDrop,
   releaseHoldCommand,
   restoreHoldText,
@@ -70,6 +74,13 @@ it('keeps the CLI wording this page repeats', () => {
     'the delivered credential lapses at ',
     'is held after a restore and starts no run',
     'reconcile its grants and provider credential, then run: hikyo rotation release-hold',
+    'the retry window ran out before a run could publish or extend the credential',
+    'the recorded person no longer holds the access the rotation needs, or one of its keys or its environment is gone',
+    'a pre-publish gate refused: the environment became protected, a key changed or a draft appeared',
+    'the server recorded a reason this client does not know',
+    'it starts no run and does not extend the delivered credential until a person resumes it: hikyo rotation resume',
+    'run(s) that owe a provider role a drop, %d of them refused after a restore (%s): the keys may be serving that role again, so do NOT drop it at the provider until the keys have moved off it; read: hikyo rotation runs',
+    'run(s) that owe a provider role a drop and the role is still live; read before you act: hikyo rotation runs',
   ]) {
     expect(source).toContain(fragment);
   }
@@ -85,4 +96,29 @@ it('words a refused read without naming a cause it does not know', () => {
 it('keeps fixtures honest: they parse through the contract', () => {
   expect(zCredentialRotation.parse(haltedRotation()).state).toBe('halted');
   expect(zRotationRun.array().parse(settledRuns.items)).toHaveLength(2);
+});
+
+const [activeRotation] = zCredentialRotation.array().parse(rotationList().items);
+const halted = zCredentialRotation.parse(haltedRotation());
+
+it('words a halt as the CLI does: fixed words, an unknown one quoted', () => {
+  expect(haltReasonText(halted)).toBe(
+    `HALTED: rotation ${halted.id} is halted (retries_exhausted): the retry window ran out before a run could publish or extend the credential; it starts no run and does not extend the delivered credential until a person resumes it: hikyo rotation resume ${halted.id}`,
+  );
+  expect(haltCause({ ...halted, halt_reason: 'authority_lost' })).toContain('(authority_lost): the recorded person no longer holds');
+  expect(haltCause({ ...halted, halt_reason: 'gate_failed' })).toContain('(gate_failed): a pre-publish gate refused');
+  expect(haltCause({ ...halted, halt_reason: undefined })).toBe('halted (unknown): the server recorded a reason this client does not know');
+  expect(haltCause({ ...halted, halt_reason: 'password=hunter2' })).toBe('halted ("password=hunter2"): the server recorded a reason this client does not know');
+});
+
+it('words the owed-drop summary as the CLI does, and says drop only when no restore refused one', () => {
+  expect(owedSummaryText(activeRotation!)).toBe(
+    `ATTENTION: rotation ${activeRotation!.id} has 3 run(s) that owe a provider role a drop, 1 of them refused after a restore (published_versions_changed): the keys may be serving that role again, so do NOT drop it at the provider until the keys have moved off it; read: hikyo rotation runs ${activeRotation!.id}`,
+  );
+  expect(owedBadgeText(activeRotation!)).toBe('Do not drop: restore');
+  const plain = { ...activeRotation!, owed_drop_runs: 2n, owed_drop_runs_versions_changed: 0n };
+  expect(owedSummaryText(plain)).toBe(
+    `ATTENTION: rotation ${plain.id} has 2 run(s) that owe a provider role a drop and the role is still live; read before you act: hikyo rotation runs ${plain.id}`,
+  );
+  expect(owedBadgeText(plain)).toBe('Owes a drop');
 });

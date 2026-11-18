@@ -86,6 +86,70 @@ it('lists each rotation with its keys, provider, state, schedule and expiry', as
   }
 });
 
+it('names why a rotation halted, in the CLI sentence, on the notice and on the row', async () => {
+  stub({ ...keysRoute, [listPath(PROD)]: () => Response.json({ items: [...rotationList().items, haltedRotation()] }) });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    const notice = container.querySelector('.notice')?.textContent ?? '';
+    expect(notice).toContain(`Rotation ${HALTED_ROTATION} is halted (retries_exhausted): the retry window ran out before a run could publish or extend the credential.`);
+    const row = container.querySelector(`[data-rotation="${HALTED_ROTATION}"]`)!;
+    expect(row.textContent).toContain('Halt reason');
+    expect(row.textContent).toContain('(retries_exhausted): the retry window ran out');
+    expect(row.textContent).toContain('Last run');
+    expect(row.textContent).toContain('failed (retries_exhausted)');
+    // No owed drop: no attention line or badge on this row.
+    expect(row.textContent).not.toContain('Owes a drop');
+    expect(row.textContent).not.toContain('ATTENTION');
+  } finally {
+    await unmount();
+  }
+});
+
+it('reads a halt it cannot name as unknown, and quotes a word it does not know', async () => {
+  const unknown = { ...haltedRotation(), halt_reason: 'unknown' };
+  const future = { ...haltedRotation(), id: 'rot_123e4567-e89b-12d3-a456-426614174299', halt_reason: 'solar_flare' };
+  stub({ ...keysRoute, [listPath(PROD)]: () => Response.json({ items: [unknown, future] }) });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    const notice = container.querySelector('.notice')?.textContent ?? '';
+    expect(notice).toContain(`Rotation ${HALTED_ROTATION} is halted (unknown): the server recorded a reason this client does not know.`);
+    expect(notice).toContain('is halted ("solar_flare"): the server recorded a reason this client does not know.');
+  } finally {
+    await unmount();
+  }
+});
+
+it('flags a rotation that owes a drop in words, and never says drop when a restore refused one', async () => {
+  const plain = { ...rotationList().items[0]!, id: 'rot_123e4567-e89b-12d3-a456-426614174298', owed_drop_runs: 1, owed_drop_runs_versions_changed: 0 };
+  stub({ ...keysRoute, [listPath(PROD)]: () => Response.json({ items: [...rotationList().items, plain] }) });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    const restore = container.querySelector(`[data-rotation="${ROTATION}"]`)!.textContent ?? '';
+    expect(restore).toContain('Do not drop: restore');
+    expect(restore).not.toContain('Owes a drop');
+    expect(restore).toContain('3 run(s) that owe a provider role a drop, 1 of them refused after a restore (published_versions_changed)');
+    expect(restore).toContain('do NOT drop it at the provider until the keys have moved off it');
+    expect(restore).toContain(`hikyo rotation runs ${ROTATION}`);
+    expect(restore).toContain('Last run');
+    expect(restore).toContain('revoke_refused (published_versions_changed)');
+    const owed = container.querySelector(`[data-rotation="${plain.id}"]`)!.textContent ?? '';
+    expect(owed).toContain('Owes a drop');
+    expect(owed).toContain('1 run(s) that owe a provider role a drop and the role is still live; read before you act');
+    expect(owed).not.toContain('do NOT drop');
+    // A rotation with nothing owed has neither badge nor line, and the page offers no act.
+    const held = container.querySelector(`[data-rotation="${HELD_ROTATION}"]`)!.textContent ?? '';
+    expect(held).not.toContain('Owes a drop');
+    expect(held).not.toContain('Do not drop');
+    expect(held).not.toContain('ATTENTION');
+    expect([...container.querySelectorAll('button')].map((b) => b.textContent).join(' ')).not.toMatch(/release|resume|pause|delete|run now|drop it/i);
+  } finally {
+    await unmount();
+  }
+});
+
 it('is loud about a restore hold and names the command that releases it', async () => {
   stub({ ...keysRoute, [listPath(PROD)]: () => Response.json(rotationList()) });
   const { container, unmount } = await mount();
@@ -142,9 +206,10 @@ it('shows the run timeline with an ATTENTION line for each run that owes a drop'
 });
 
 it('says a rotation with no owed drop and no runs has not run yet', async () => {
+  const settledList = rotationList().items.map((r) => ({ ...r, owed_drop_runs: 0, owed_drop_runs_versions_changed: 0 }));
   stub({
     ...keysRoute,
-    [listPath(PROD)]: () => Response.json(rotationList()),
+    [listPath(PROD)]: () => Response.json({ items: settledList }),
     [runsPath(PROD, ROTATION)]: () => Response.json(settledRuns),
     [runsPath(PROD, HELD_ROTATION)]: () => Response.json({ items: [] }),
   });

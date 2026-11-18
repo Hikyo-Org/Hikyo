@@ -226,6 +226,13 @@ test.describe('machine access', () => {
       await expect(table.getByRole('row')).toHaveCount(4);
       await expect(table.getByRole('row').filter({ hasText: 'REPORTING_PASSWORD' })).toContainText('Restore hold');
       await expect(table.getByRole('row').filter({ hasText: 'halted' })).toBeVisible();
+      // S4: the halted row says why in words, and the owed-drop row is flagged in words that
+      // never say to drop when a restore refused one.
+      await expect(table.getByRole('row').filter({ hasText: 'ANALYTICS_PASSWORD' })).toContainText('(retries_exhausted): the retry window ran out');
+      const owingRow = table.getByRole('row').filter({ hasText: 'DATABASE_PASSWORD' });
+      await expect(owingRow).toContainText('Do not drop: restore');
+      await expect(owingRow).toContainText('do NOT drop it at the provider until the keys have moved off it');
+      await expect(owingRow).not.toContainText('Owes a drop');
 
       // The hold is a role="alert" that names the command, and offers no button for it.
       const hold = page.getByRole('alert').filter({ hasText: 'RESTORE HOLD' });

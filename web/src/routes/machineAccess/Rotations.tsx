@@ -3,9 +3,13 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useProjectKeys } from '../../api/adapters.ts';
 import type { DynamicProvider } from '../../api/dynamic.ts';
 import {
+  haltCause,
   MAX_RUN_PAGES,
+  owedBadgeText,
   owedRunText,
+  owedSummaryText,
   owesDrop,
+  owesDropSummary,
   restoreHoldText,
   VERSIONS_CHANGED_CODE,
   rotationRefusalText,
@@ -173,6 +177,12 @@ function RotationList({
           the server stopped {halted.length === 1 ? 'it' : 'them'} and starts no run until a person
           resumes {halted.length === 1 ? 'it' : 'them'} with <code>hikyo rotation resume</code>. A
           halted rotation does not extend the credential already delivered.
+          {halted.map((rotation) => (
+            <span key={`cause-${rotation.id}`}>
+              {' '}
+              Rotation {rotation.id} is {haltCause(rotation)}.
+            </span>
+          ))}
           {halted
             .filter((rotation) => rotation.restore_hold)
             .map((rotation) => (
@@ -204,6 +214,8 @@ function RotationList({
                 const isHeld = rotation.restore_hold && rotation.state !== 'disabled';
                 const label = keyName(rotation.key_id) ?? rotation.id;
                 const open = selected === rotation.id;
+                // A deleted rotation can still owe a drop: the role stays live, so the CLI warns for it too.
+                const owed = owesDropSummary(rotation);
                 return (
                   <tr key={rotation.id} data-rotation={rotation.id}>
                     <th scope="row">
@@ -237,6 +249,27 @@ function RotationList({
                           {' '}
                           <Badge tone="danger">Restore hold</Badge>
                         </>
+                      ) : null}
+                      {owed ? (
+                        <>
+                          {' '}
+                          {/* A restore may have put the role back: the badge must not say to drop it. */}
+                          <Badge tone="danger">{owedBadgeText(rotation)}</Badge>
+                        </>
+                      ) : null}
+                      {rotation.state === 'halted' || owed ? (
+                        <Facts>
+                          {rotation.state === 'halted' ? (
+                            <Fact label="Halt reason">
+                              <span className="rotations__note">{haltCause(rotation).replace(/^halted /, '')}</span>
+                            </Fact>
+                          ) : null}
+                          {owed ? (
+                            <Fact label="Attention">
+                              <span className="rotations__note">{owedSummaryText(rotation)}</span>
+                            </Fact>
+                          ) : null}
+                        </Facts>
                       ) : null}
                       <div className="rotations__runs">
                         <Button
@@ -272,6 +305,25 @@ function RotationList({
                         </Fact>
                         <Fact label="Created by">
                           <span className="mono rotations__id">{rotation.created_by}</span>
+                        </Fact>
+                        <Fact label="Last run">
+                          {rotation.last_run === undefined ? (
+                            'No run yet'
+                          ) : (
+                            <>
+                              <span className="mono rotations__id">{rotation.last_run.id}</span>{' '}
+                              {rotation.last_run.phase}
+                              {rotation.last_run.error_code === undefined || rotation.last_run.error_code === null ? (
+                                ''
+                              ) : (
+                                <>
+                                  {' '}
+                                  (<span className="mono rotations__id">{rotation.last_run.error_code}</span>)
+                                </>
+                              )}
+                              , {formatWhen(rotation.last_run.phase_at)}
+                            </>
+                          )}
                         </Fact>
                         <Fact label="Generation">{String(rotation.generation)}</Fact>
                         <Fact label="Created">{formatWhen(rotation.created_at)}</Fact>

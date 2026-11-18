@@ -55,6 +55,12 @@ export const rotationKeys = {
   ],
 } satisfies z.input<typeof zKeyList>;
 
+export const VERSIONS_CHANGED_RUN = 'rrn_123e4567-e89b-12d3-a456-426614174311';
+export const REFUSED_RUN = 'rrn_123e4567-e89b-12d3-a456-426614174312';
+export const QUARANTINED_RUN = 'rrn_123e4567-e89b-12d3-a456-426614174313';
+const SETTLED_RUN = 'rrn_123e4567-e89b-12d3-a456-426614174314';
+const FAILED_RUN = 'rrn_123e4567-e89b-12d3-a456-426614174315';
+
 const rotation = (
   id: string,
   environment: string,
@@ -71,6 +77,8 @@ const rotation = (
   authority_principal_id: OPERATOR,
   created_by: OPERATOR,
   state: 'active',
+  owed_drop_runs: 0,
+  owed_drop_runs_versions_changed: 0,
   restore_hold: false,
   next_run_at: '2099-01-01T00:00:00Z',
   credential_expires_at: '2099-01-31T00:00:00Z',
@@ -84,8 +92,19 @@ const rotation = (
 export const rotationList = (environment: string = PROD) =>
   ({
     items: [
-      rotation(ROTATION, environment, [PASSWORD_KEY, USERNAME_KEY], {}),
+      // The same three owed drops `owedRuns` lists, one of them refused after a restore.
+      rotation(ROTATION, environment, [PASSWORD_KEY, USERNAME_KEY], {
+        owed_drop_runs: 3,
+        owed_drop_runs_versions_changed: 1,
+        last_run: {
+          id: VERSIONS_CHANGED_RUN,
+          phase: 'revoke_refused',
+          error_code: 'published_versions_changed',
+          phase_at: '2026-10-20T02:05:00Z',
+        },
+      }),
       rotation(HELD_ROTATION, environment, [OTHER_PASSWORD_KEY, OTHER_USERNAME_KEY], {
+        last_run: { id: SETTLED_RUN, phase: 'done', phase_at: '2026-10-20T02:05:00Z' },
         restore_hold: true,
         interval_seconds: 7 * 86_400,
         revocation_delay_seconds: 3_600,
@@ -96,6 +115,8 @@ export const rotationList = (environment: string = PROD) =>
 export const haltedRotation = (environment: string = PROD) =>
   rotation(HALTED_ROTATION, environment, [HALTED_PASSWORD_KEY, HALTED_USERNAME_KEY], {
     state: 'halted',
+    halt_reason: 'retries_exhausted',
+    last_run: { id: FAILED_RUN, phase: 'failed', error_code: 'retries_exhausted', phase_at: '2026-10-20T02:05:00Z' },
     next_run_at: null,
     interval_seconds: 3_600,
     revocation_delay_seconds: 300,
@@ -117,10 +138,6 @@ const run = (n: number, overrides: Partial<WireRun>): WireRun => ({
   phase_at: `2026-10-${String(21 - n).padStart(2, '0')}T02:05:00Z`,
   ...overrides,
 });
-
-export const VERSIONS_CHANGED_RUN = 'rrn_123e4567-e89b-12d3-a456-426614174311';
-export const REFUSED_RUN = 'rrn_123e4567-e89b-12d3-a456-426614174312';
-export const QUARANTINED_RUN = 'rrn_123e4567-e89b-12d3-a456-426614174313';
 
 /**
  * A timeline that owes three drops, newest first: a drop the executor refused
