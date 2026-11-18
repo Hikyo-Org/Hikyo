@@ -524,6 +524,13 @@ func runApprovalEdges(t *testing.T, db *store.DB) {
 			t.Fatalf("refused declare left %d value rows in %s, want 0", n, env)
 		}
 	}
+	// A covered AND protected destination refuses on the approval gate before
+	// it asks for (or consumes) a ceremony or a machine confirmation.
+	execRaw(t, db, "UPDATE environments SET protected = TRUE WHERE id = '"+string(declareCovered.Env)+"'")
+	if _, _, err := values.Declare(ctx, service.LocalPrincipal(alice), projectScope,
+		[]string{string(declareCovered.Env)}, "EDGE_DECLARE", "overwrite"); !errors.Is(err, service.ErrApprovalRequired) {
+		t.Fatalf("declare into a covered protected destination = %v, want approval required", err)
+	}
 }
 
 func TestApprovalEdges(t *testing.T) {

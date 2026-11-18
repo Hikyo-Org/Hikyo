@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -350,5 +352,72 @@ func TestClipboardRequiresExplicitReveal(t *testing.T) {
 	}
 	if len(*seen) != 0 {
 		t.Fatal("implicit reveal contacted server")
+	}
+}
+
+// declareCeremonyServer answers `values declare` with the server's uniform 403
+// until the TOTP ceremony has opened the window, then 200.
+func declareCeremonyServer(t *testing.T, window apigen.RevealWindow) (http.Handler, *[]string) {
+	t.Helper()
+	inner, seen := ceremonyServer(t, window)
+	opened := false
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/values/declare") {
+			inner.ServeHTTP(w, r)
+			if strings.HasSuffix(r.URL.Path, "/auth/reauth/totp") {
+				opened = true
+			}
+			return
+		}
+		*seen = append(*seen, r.Method+" "+r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		if !opened {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"error":{"code":"forbidden","message":"not permitted"}}`))
+			return
+		}
+		_ = jsonwire.Encode(w, apigen.ValueList{})
+	}), seen
+}
+
+func declareArgs(t *testing.T) []string {
+	t.Helper()
+	file := filepath.Join(t.TempDir(), "value")
+	if err := os.WriteFile(file, []byte("declared"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return []string{"values", "declare", "DATABASE_PASSWORD", "--envs", "env_70", "--value-file", file,
+		"--instance", "local", "--org", "org_70", "--project", "prj_70"}
+}
+
+// A publish ceremony authorizes publish, not reveal: the built-in publisher
+// and maintainer roles have no reveal, and a protected declare must still
+// reach them (the server starts the ceremony on read alone).
+func TestPublishCeremonyProceedsWithoutRevealPermission(t *testing.T) {
+	handler, seen := declareCeremonyServer(t, apigen.RevealWindow{
+		CanReveal: false, Protected: true, EffectiveWindowSeconds: 300, TotpOffered: true})
+	ios, _, stderr := definitionsTestIO(t, handler)
+	prompts := 0
+	ios.ReadPassword = func(string) (string, error) { prompts++; return "123456", nil }
+	if code := cli.Run(t.Context(), ios, declareArgs(t)); code != cli.ExitOK {
+		t.Fatalf("exit %d, want ok; stderr=%s", code, stderr.String())
+	}
+	if prompts != 1 {
+		t.Fatalf("prompted %d times, want once; calls=%v", prompts, *seen)
+	}
+}
+
+// Declare owes the ceremony only on a protected environment: an unprotected one
+// hands the server's refusal back without prompting.
+func TestDeclareSkipsCeremonyOnUnprotectedEnvironment(t *testing.T) {
+	handler, _ := declareCeremonyServer(t, apigen.RevealWindow{
+		CanReveal: true, Protected: false, EffectiveWindowSeconds: 300, TotpOffered: true})
+	ios, _, stderr := definitionsTestIO(t, handler)
+	ios.ReadPassword = func(string) (string, error) {
+		t.Fatal("an unprotected declare must not prompt for a ceremony")
+		return "", nil
+	}
+	if code := cli.Run(t.Context(), ios, declareArgs(t)); code != cli.ExitRefused {
+		t.Fatalf("exit %d, want refused; stderr=%s", code, stderr.String())
 	}
 }

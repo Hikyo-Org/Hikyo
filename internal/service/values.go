@@ -769,6 +769,15 @@ func (s *Values) declare(ctx context.Context, actor Actor, scope domain.Scope, e
 				return declareWriteResult{}, err
 			}
 			if settings.Protected {
+				// The approval gate in republish would refuse a covered environment
+				// anyway; check it first so no ceremony is asked for, or consumed.
+				publishProof, err := az.Authorize(ctx, caller, authz.OpValuePublish, envScope)
+				if err != nil {
+					return declareWriteResult{}, err
+				}
+				if err := refuseCoveredEnvironment(ctx, r, publishProof, envScope.Env); err != nil {
+					return declareWriteResult{}, err
+				}
 				if skipsCeremony(caller) {
 					return declareWriteResult{}, ProtectedDestinationRefusal(envScope.Env)
 				}

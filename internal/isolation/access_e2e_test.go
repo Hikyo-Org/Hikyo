@@ -776,11 +776,14 @@ func TestAccessQueueSelfApprovalAffordance(t *testing.T) {
 // environment policy takes precedence: a disabled one shuts access off, and a
 // stricter one's terms replace the pinned policy's.
 func TestAccessVoteRefusesSupersededPolicy(t *testing.T) {
-	variants := map[string]func(in *service.AccessPolicyInput){
-		"disabled": func(in *service.AccessPolicyInput) { in.Enabled = false },
-		"stricter": func(in *service.AccessPolicyInput) { in.MinApprovals = 2 },
+	variants := map[string]struct {
+		tighten func(in *service.AccessPolicyInput)
+		cause   string
+	}{
+		"disabled": {func(in *service.AccessPolicyInput) { in.Enabled = false }, "policy_disabled"},
+		"stricter": {func(in *service.AccessPolicyInput) { in.MinApprovals = 2 }, "policy_changed"},
 	}
-	for name, tighten := range variants {
+	for name, variant := range variants {
 		t.Run(name, func(t *testing.T) {
 			forEngines(t, func(t *testing.T, db *store.DB) {
 				h := newAccessHarness(t, db)
@@ -792,7 +795,7 @@ func TestAccessVoteRefusesSupersededPolicy(t *testing.T) {
 				}
 				id := h.request("read")
 				envPolicy := h.policy(nil, custodian)
-				tighten(&envPolicy)
+				variant.tighten(&envPolicy)
 				if _, err := h.access.CreatePolicy(t.Context(), admin, h.proj, envPolicy); err != nil {
 					t.Fatalf("create environment policy: %v", err)
 				}
@@ -813,6 +816,9 @@ func TestAccessVoteRefusesSupersededPolicy(t *testing.T) {
 				}
 				if n := h.liveRows(id); n != 0 {
 					t.Fatalf("%d grant rows written for a superseded policy", n)
+				}
+				if got := queryString(t, db, "SELECT invalidated_cause FROM access_requests WHERE id = '"+id+"'"); got != variant.cause {
+					t.Fatalf("invalidated cause = %s, want %s", got, variant.cause)
 				}
 			})
 		})
