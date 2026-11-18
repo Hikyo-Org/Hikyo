@@ -533,10 +533,7 @@ func (s *Auth) reauthTOTP(ctx context.Context, presented string, intent ReauthIn
 		if len(windowEnvironments) == 0 {
 			return ErrReauthWindowClosed
 		}
-		confirmed, err = az.ConfirmedTOTP(ctx, account.ID)
-		if errors.Is(err, domain.ErrNotFound) {
-			return ErrNoTOTPFactor
-		}
+		confirmed, err = liveConfirmedTOTP(ctx, az, account.ID)
 		return err
 	})
 	if err != nil {
@@ -573,9 +570,7 @@ func (s *Auth) reauthTOTP(ctx context.Context, presented string, intent ReauthIn
 		if err != nil {
 			return err
 		}
-		if _, err := az.ConfirmedTOTP(ctx, account.ID); errors.Is(err, domain.ErrNotFound) {
-			return ErrNoTOTPFactor
-		} else if err != nil {
+		if _, err := liveConfirmedTOTP(ctx, az, account.ID); err != nil {
 			return err
 		}
 		windowEnvironments = windowEnvironments[:0]
