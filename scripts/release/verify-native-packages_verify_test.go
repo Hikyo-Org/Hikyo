@@ -90,10 +90,17 @@ func gzipBytes(t *testing.T, data []byte) []byte {
 func TestVerifyDebRefusesRelationships(t *testing.T) {
 	t.Parallel()
 
-	const base = "Package: hikyo\nVersion: 1.2.3\nArchitecture: amd64\nMaintainer: A <a@example.com>\nDescription: x\n more\n"
+	// The control file goreleaser v2.17.1 writes for an amd64 nightly.
+	const base = "Package: hikyo\nVersion: 1.2.3\nSection: \nPriority: optional\nArchitecture: amd64\nArchitecture-Variant: amd64v1\nMaintainer: A <a@example.com>\nInstalled-Size: 1\nHomepage: https://example.com/\nDescription: x\n more\n"
 	if _, err := verifyDeb(debPackage(t, base), testIdentity); err != nil {
 		t.Fatalf("genuine Debian package refused: %v", err)
 	}
+	wrongVariant := strings.Replace(base, "amd64v1", "arm64", 1)
+	_, err := verifyDeb(debPackage(t, wrongVariant), testIdentity)
+	wantError(t, err, "Architecture-Variant")
+	continued := strings.Replace(base, "Priority: optional\n", "Priority: optional\n Provides: openssh-server\n", 1)
+	_, err = verifyDeb(debPackage(t, continued), testIdentity)
+	wantError(t, err, "not in the allowlist")
 	for _, field := range []string{"Conflicts", "Replaces", "Breaks", "Provides", "Pre-Depends", "Depends", "provides"} {
 		_, err := verifyDeb(debPackage(t, base+field+": openssh-server\n"), testIdentity)
 		wantError(t, err, "not in the allowlist")
@@ -247,12 +254,13 @@ func genuineRPMFiles() []rpmFile {
 // replaces or adds header entries after the file table is generated.
 func rpmPackage(t *testing.T, files []rpmFile, override ...rpmEntry) string {
 	t.Helper()
-	return rpmPackageWithDuplicates(t, files, nil, override...)
+	return rpmPackageWithDuplicates(t, files, nil, nil, override...)
 }
 
 // rpmPackageWithDuplicates also appends duplicates to the header index after the
-// regular entries, repeating tags the way a crafted package could.
-func rpmPackageWithDuplicates(t *testing.T, files []rpmFile, duplicates []rpmEntry, override ...rpmEntry) string {
+// regular entries, repeating tags the way a crafted package could, and puts sig
+// in the signature header.
+func rpmPackageWithDuplicates(t *testing.T, files []rpmFile, sig, duplicates []rpmEntry, override ...rpmEntry) string {
 	t.Helper()
 	var bases, dirs, users, digests, links []string
 	var dirIndexes, sizes, modes, flags, mtimes []uint32
@@ -301,7 +309,10 @@ func rpmPackageWithDuplicates(t *testing.T, files []rpmFile, duplicates []rpmEnt
 	ordered = append(ordered, duplicates...)
 	lead := make([]byte, 96)
 	binary.BigEndian.PutUint32(lead, 0xedabeedb)
-	data := append(lead, rpmHeaderBytes(nil)...)
+	data := append(lead, rpmHeaderBytes(sig)...)
+	for len(data)%8 != 0 {
+		data = append(data, 0)
+	}
 	data = append(data, rpmHeaderBytes(ordered)...)
 	data = append(data, payloadData.Bytes()...)
 	return writeTemp(t, "hikyo.rpm", data)
@@ -358,13 +369,16 @@ func TestVerifyRPMRefusesDuplicateTagsAndMalformedHeaders(t *testing.T) {
 		"NAME":      rpmStrings(rpmutils.NAME, "hikyo"),
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := verifyRPM(rpmPackageWithDuplicates(t, files, []rpmEntry{dup}), id)
+			_, err := verifyRPM(rpmPackageWithDuplicates(t, files, nil, []rpmEntry{dup}), id)
 			wantError(t, err, "repeats tag")
 		})
 	}
+	sigSize := rpmUint32s(1000, 1) // RPMSIGTAG_SIZE
+	_, err := verifyRPM(rpmPackageWithDuplicates(t, files, []rpmEntry{sigSize, sigSize}, nil), id)
+	wantError(t, err, "repeats tag")
 
 	// A short FILEMODES array makes go-rpmutils panic; verifyRPM must report it.
-	_, err := verifyRPM(rpmPackage(t, files, rpmUint32s(rpmutils.FILEMODES, 0o040755)), id)
+	_, err = verifyRPM(rpmPackage(t, files, rpmUint32s(rpmutils.FILEMODES, 0o040755)), id)
 	wantError(t, err, "malformed RPM header")
 }
 
