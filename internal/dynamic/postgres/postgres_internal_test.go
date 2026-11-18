@@ -41,6 +41,20 @@ func TestCanonicalDSNRejectsUnsafeOrigins(t *testing.T) {
 	}
 }
 
+func TestCanonicalDSNRejectsMultiHostOrigins(t *testing.T) {
+	for _, origin := range []string{
+		"postgres://u@h1:5432,h2:5432/db",
+		"postgres://u@h1,h2:5432/db",
+	} {
+		if _, _, err := canonicalDSN(origin, "pw"); err == nil {
+			t.Errorf("canonicalDSN(%q) accepted a multi-host origin", origin)
+		}
+		if _, err := New(Config{Origin: origin, Password: "pw", Deadline: time.Second}); err == nil {
+			t.Errorf("New(%q) accepted a multi-host origin", origin)
+		}
+	}
+}
+
 func TestCanonicalDSNForcesVerifyFull(t *testing.T) {
 	dsn, host, err := canonicalDSN("postgres://admin@db.example:5432/app", "s3cret")
 	if err != nil {
