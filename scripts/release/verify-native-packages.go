@@ -210,6 +210,9 @@ func verifyDeb(filename string, id identity) (payload, error) {
 	if fields["Package"] != "hikyo" || fields["Version"] != id.version || fields["Architecture"] != id.arch {
 		return payload{}, fmt.Errorf("Debian identity mismatch: Package=%q Version=%q Architecture=%q", fields["Package"], fields["Version"], fields["Architecture"])
 	}
+	if field, found := firstForbiddenField(fields, "Conflicts", "Replaces", "Breaks"); found {
+		return payload{}, fmt.Errorf("Debian control declares forbidden package relationship %q", field)
+	}
 	dataTar, err := ungzip(data)
 	if err != nil {
 		return payload{}, fmt.Errorf("read Debian data archive: %w", err)
@@ -239,6 +242,9 @@ func verifyAPK(filename string, id identity) (payload, error) {
 	if fields["pkgname"] != "hikyo" || fields["pkgver"] != id.version || fields["arch"] != id.arch {
 		return payload{}, fmt.Errorf("APK identity mismatch: pkgname=%q pkgver=%q arch=%q", fields["pkgname"], fields["pkgver"], fields["arch"])
 	}
+	if field, found := firstForbiddenField(fields, "replaces", "replaces_priority"); found {
+		return payload{}, fmt.Errorf("APK declares forbidden package relationship %q", field)
+	}
 	return finishPayload(inspection)
 }
 
@@ -264,6 +270,14 @@ func verifyArch(filename string, id identity) (payload, error) {
 	fields := parseEquals(pkginfo)
 	if fields["pkgname"] != "hikyo" || fields["pkgver"] != id.version || fields["arch"] != id.arch {
 		return payload{}, fmt.Errorf("Arch identity mismatch: pkgname=%q pkgver=%q arch=%q", fields["pkgname"], fields["pkgver"], fields["arch"])
+	}
+	if field, found := firstForbiddenField(fields, "replaces", "conflict"); found {
+		return payload{}, fmt.Errorf("Arch .PKGINFO declares forbidden package relationship %q", field)
+	}
+	if mtree, ok := inspection.metadata[".MTREE"]; ok {
+		if err := verifyMTree(mtree, inspection); err != nil {
+			return payload{}, err
+		}
 	}
 	return finishPayload(inspection)
 }
@@ -340,6 +354,15 @@ func verifyRPM(filename string, id identity) (payload, error) {
 			return payload{}, fmt.Errorf("unexpected RPM payload type for %q", entry)
 		}
 	}
+	// The payload loop walks only CPIO records; rpm also acts on header-only
+	// entries (for example %ghost files, which "rpm -e" removes).
+	headerFiles, err := rpm.Header.GetFiles()
+	if err != nil {
+		return payload{}, err
+	}
+	if err := validateRPMHeaderFiles(headerFiles, inspection); err != nil {
+		return payload{}, err
+	}
 	return finishPayload(inspection)
 }
 
@@ -356,7 +379,44 @@ func forbiddenRPMScriptTags() []int {
 		5103, 5104, 5105, 5106, // Pre/post-untransaction scripts and interpreters.
 		5109, // Native sysusers metadata creates accounts during installation.
 		rpmutils.FILECAPS,
+		// Package relationships that make rpm remove or refuse other packages.
+		rpmutils.CONFLICTNAME, rpmutils.OBSOLETENAME,
 	}
+}
+
+// validateRPMHeaderFiles requires the header file table to list exactly the
+// entries the payload loop already validated: nothing header-only, no ghosts.
+func validateRPMHeaderFiles(files []rpmutils.FileInfo, inspection *tarInspection) error {
+	if len(files) != len(inspection.dirs)+len(inspection.files) {
+		return fmt.Errorf("RPM header lists %d files, payload has %d", len(files), len(inspection.dirs)+len(inspection.files))
+	}
+	seen := make(map[string]bool, len(files))
+	for _, file := range files {
+		entry, err := cleanArchivePath(file.Name())
+		if err != nil {
+			return err
+		}
+		if seen[entry] {
+			return fmt.Errorf("RPM header lists %q twice", entry)
+		}
+		seen[entry] = true
+		switch file.Mode() & 0o170000 {
+		case 0o040000:
+			if !allowedPayloadDirectory(entry) || !inspection.dirs[entry] || file.Flags() != 0 {
+				return fmt.Errorf("unexpected RPM header directory %q", entry)
+			}
+		case 0o100000:
+			if entry != binaryPath && entry != licensePath || !inspection.files[entry] {
+				return fmt.Errorf("unexpected RPM header file %q", entry)
+			}
+			if err := validateRPMFileFlags(entry, file.Flags()); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unexpected RPM header file type for %q", entry)
+		}
+	}
+	return nil
 }
 
 func validateRPMFileFlags(entry string, flags int) error {
@@ -663,6 +723,77 @@ func allowedPayloadDirectory(entry string) bool {
 	default:
 		return false
 	}
+}
+
+// firstForbiddenField reports the first name present in fields, ignoring case.
+func firstForbiddenField(fields map[string]string, names ...string) (string, bool) {
+	for _, name := range names {
+		for key := range fields {
+			if strings.EqualFold(key, name) {
+				return key, true
+			}
+		}
+	}
+	return "", false
+}
+
+// maxMTreeSize bounds the decompressed .MTREE; the genuine one is a few hundred bytes.
+const maxMTreeSize = 1 << 20
+
+// mtreeKeywords are the keywords nFPM writes; libarchive honours others.
+var mtreeKeywords = map[string]bool{"time": true, "mode": true, "size": true, "type": true, "link": true, "md5digest": true, "sha256digest": true}
+
+// verifyMTree requires the .MTREE path list, which pacman uses as the package
+// file list, to equal the tar entries plus .PKGINFO.
+func verifyMTree(data []byte, inspection *tarInspection) error {
+	zr, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("Arch .MTREE is not gzip data: %w", err)
+	}
+	defer func() { _ = zr.Close() }()
+	text, err := io.ReadAll(io.LimitReader(zr, maxMTreeSize+1))
+	if err != nil {
+		return fmt.Errorf("read Arch .MTREE: %w", err)
+	}
+	if len(text) > maxMTreeSize {
+		return errors.New("Arch .MTREE is too large")
+	}
+	want := map[string]bool{".PKGINFO": true}
+	for entry := range inspection.files {
+		want[entry] = true
+	}
+	for entry := range inspection.dirs {
+		if entry != "." {
+			want[entry] = true
+		}
+	}
+	seen := make(map[string]bool, len(want))
+	for _, line := range strings.Split(string(text), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || strings.HasPrefix(fields[0], "#") || fields[0] == "/set" || fields[0] == "/unset" {
+			continue
+		}
+		if strings.Contains(line, "\\") || !strings.HasPrefix(fields[0], "./") {
+			return fmt.Errorf("Arch .MTREE line %q is not a plain ./ path entry", line)
+		}
+		for _, keyword := range fields[1:] {
+			if key, _, _ := strings.Cut(keyword, "="); !mtreeKeywords[key] {
+				return fmt.Errorf("Arch .MTREE has unsupported keyword %q", keyword)
+			}
+		}
+		entry, err := cleanArchivePath(fields[0])
+		if err != nil {
+			return err
+		}
+		if !want[entry] || seen[entry] {
+			return fmt.Errorf("Arch .MTREE lists unexpected or duplicate path %q", entry)
+		}
+		seen[entry] = true
+	}
+	if len(seen) != len(want) {
+		return errors.New("Arch .MTREE does not list exactly the package entries")
+	}
+	return nil
 }
 
 func parseFields(data []byte) map[string]string {
