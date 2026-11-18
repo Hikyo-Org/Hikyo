@@ -220,11 +220,11 @@ func (d *Destination) Current() (State, error) {
 		return st, err
 	}
 	st.Generation = gen
-	stamp, err := d.gen.ReadFile(path.Join(gen, completeName))
+	stamp, err := d.readGenText(path.Join(gen, completeName))
 	if err != nil {
 		return st, fmt.Errorf("filesync: current generation %s is incomplete: %w", gen, err)
 	}
-	st.Stamp = strings.TrimSpace(string(stamp))
+	st.Stamp = stamp
 	st.Files, err = d.generationFiles(gen)
 	return st, err
 }
@@ -383,11 +383,12 @@ func (d *Destination) Publish(ctx context.Context, plan Plan, probe Probe) (Resu
 				}
 				return res, d.collect(oldGen, prior)
 			}
-			if !errors.Is(err, fs.ErrNotExist) {
+			if !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, ErrForeign) {
 				return res, err
 			}
-			// Legacy generations have no durable predecessor. Republish the
-			// same content once, preserving this known current as predecessor.
+			// Legacy generations have no durable predecessor, and a planted
+			// non-regular one is no predecessor either. Republish the same
+			// content once, preserving this known current as predecessor.
 		}
 	}
 
@@ -414,6 +415,10 @@ func (d *Destination) Publish(ctx context.Context, plan Plan, probe Probe) (Resu
 	if plan.Policy.OnRemoved == RemovedRetain {
 		for _, name := range removed {
 			if err := d.retain(oldGen, name); err != nil {
+				// Like a staging failure: a staged .complete generation would
+				// survive recover() and never be collected, leaking plaintext
+				// on every poll.
+				_ = d.gen.RemoveAll(newGen)
 				return res, err
 			}
 			res.Retained = append(res.Retained, name)
@@ -438,25 +443,15 @@ func (d *Destination) Publish(ctx context.Context, plan Plan, probe Probe) (Resu
 }
 
 func (d *Destination) predecessor(current string) (string, error) {
-	name := path.Join(current, previousName)
-	info, err := d.gen.Lstat(name)
+	_, raw, err := d.readGenFile(path.Join(current, previousName))
 	if err != nil {
 		return "", err
 	}
-	if !info.Mode().IsRegular() || info.Size() > 64 {
+	if len(raw) > 64 {
 		return "", errors.New("filesync: invalid predecessor metadata")
 	}
-	file, err := d.gen.Open(name)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-	raw, err := io.ReadAll(io.LimitReader(file, 65))
-	if err != nil {
-		return "", err
-	}
 	prior := strings.TrimSpace(string(raw))
-	if len(raw) > 64 || (prior != "" && (!genGrammar.MatchString(prior) || prior == current)) {
+	if prior != "" && (!genGrammar.MatchString(prior) || prior == current) {
 		return "", errors.New("filesync: invalid predecessor generation")
 	}
 	return prior, nil
@@ -658,11 +653,14 @@ func (d *Destination) generationFiles(gen string) ([]string, error) {
 // the bytes identical but changes the stamp, and reusing the generation would
 // leave a .complete that Intact can never match again.
 func (d *Destination) generationMatches(gen string, plan Plan) (bool, error) {
-	stamp, err := d.gen.ReadFile(path.Join(gen, completeName))
+	stamp, err := d.readGenText(path.Join(gen, completeName))
+	if errors.Is(err, ErrForeign) {
+		return false, nil
+	}
 	if err != nil {
 		return false, fmt.Errorf("filesync: generation %s is incomplete: %w", gen, err)
 	}
-	if strings.TrimSpace(string(stamp)) != plan.Stamp {
+	if stamp != plan.Stamp {
 		return false, nil
 	}
 	names, err := d.generationFiles(gen)
@@ -674,6 +672,11 @@ func (d *Destination) generationMatches(gen string, plan Plan) (bool, error) {
 	}
 	for _, f := range plan.Files {
 		fi, got, err := d.readGenFile(path.Join(gen, f.Name))
+		if errors.Is(err, ErrForeign) {
+			// A planted symlink or hard link: not our generation, so publish a
+			// fresh one; collect then removes this one through the pinned root.
+			return false, nil
+		}
 		if err != nil {
 			return false, err
 		}
@@ -926,7 +929,7 @@ func (d *Destination) readGenFile(name string) (fs.FileInfo, []byte, error) {
 	if !before.Mode().IsRegular() {
 		return nil, nil, fmt.Errorf("%w: %s in .hikyo-gen is not a regular file", ErrForeign, name)
 	}
-	f, err := d.gen.Open(name)
+	f, err := d.gen.OpenFile(name, readFlags, 0)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -940,6 +943,12 @@ func (d *Destination) readGenFile(name string) (fs.FileInfo, []byte, error) {
 	}
 	content, err := io.ReadAll(f)
 	return fi, content, err
+}
+
+// readGenText is readGenFile for a small marker file, trimmed.
+func (d *Destination) readGenText(name string) (string, error) {
+	_, raw, err := d.readGenFile(name)
+	return strings.TrimSpace(string(raw)), err
 }
 
 func (d *Destination) readDir(root *os.Root, name string) ([]fs.DirEntry, error) {
