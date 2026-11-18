@@ -310,7 +310,11 @@ func TestPreauthenticationRefusalsAreBoundedAndSecretFree(t *testing.T) {
 					}
 				}
 				var queries atomic.Int64
-				sink, restore := countCredentialReads(service.NewRefusalSignals(db), &queries)
+				// The exact count below must not depend on the 100 ms production
+				// deadline, which a loaded CI PostgreSQL can overrun and drop a sample.
+				signals := service.NewRefusalSignals(db)
+				signals.Deadline = 10 * time.Second
+				sink, restore := countCredentialReads(signals, &queries)
 				defer restore()
 				handler := server.New(&server.API{Auth: authService(t, db), Orgs: &service.Orgs{DB: db}, Admission: limiter, Refusals: sink}, nil)
 				token, _, err := crypto.NewArtifact(kind)
@@ -333,7 +337,7 @@ func TestPreauthenticationRefusalsAreBoundedAndSecretFree(t *testing.T) {
 					t.Fatal(err)
 				}
 				if state.Counts[admissionStage]-before.Counts[admissionStage] != refused || len(state.Samples)-len(before.Samples) != refused {
-					t.Fatalf("admission signal = %+v after %+v, want one sample per refusal", state, before)
+					t.Fatalf("admission signal = %+v after %+v, want one sample per refusal (accounting health %+v)", state, before, signals.RefusalHealth())
 				}
 				for i, count := range state.Counts {
 					if i == admissionStage {
