@@ -87,7 +87,8 @@ decision 13). Never a `SystemProof`, never a scheduler site.
   already halts the rotation
 - [x] S2b-2 run-level `published_versions_changed` hold release: option A (status only, as
   built), accepted as recommended
-- [ ] S3 SPA status surface, parity flip
+- [x] S3 SPA status surface (merged); parity flip of the mutating rows to #1440 and the
+  halt reason and owed-drop summary in S4 (below)
 
 ## Decisions taken in S1 (divergences from the issue handoff flagged)
 
@@ -1598,19 +1599,69 @@ unchanged (the restore assertion guards them) and runs past their publish still 
 - The audit coverage test lacked a `rotation.run_now` emitter (a gap from S2b-1); the
   executor audit lifecycle now issues one run-now.
 
-## S3 as built (browser status surface): open owner decisions
+## S3 as built (browser status surface): owner decisions (resolved in S4)
 
-- **`halt_reason` is not on the wire (open owner decision).** The server stores a
-  halt reason (migration 00091) but neither `CredentialRotation` nor any CLI output
-  carries it, although this handoff expected `show` and `list` to. The S3 tab and the
-  user docs therefore say a rotation is halted and not why. Options: A) add
-  `halt_reason` (fixed words) to `CredentialRotation` and the CLI, recommended;
-  B) keep it audit-only and leave the docs as corrected.
-- **No last result or owed-drop summary on the list.** An owed drop appears only after
-  a rotation's runs are opened. Option: a `last_run` or `owes_drop` summary on
-  `CredentialRotation`.
-- The six mutating rotation rows in `api/parity.yaml` stay `{issue: 148}`; the owner
-  decides their parity class.
+- **`halt_reason` was not on the wire.** Resolved, option A: S4 adds it as fixed words to
+  `CredentialRotation`, `hikyo rotation list` and `show`, and the browser.
+- **No last result or owed-drop summary on the list.** Resolved, option A: S4 adds
+  `last_run` and the owed-drop counts to `CredentialRotation`.
+- The six mutating rotation rows in `api/parity.yaml` now point at #1440, "Management
+  WebUI for scheduled credential rotation", which carries the management surface.
+
+## S4 as built (halt reason, last run and owed-drop summary)
+
+API revision stays 20: it is the in-flight revision, shared with the OIDC lifecycle
+settings, so `api/spec.go` appends a sentence to the revision 20 comment and no revision
+is cut. Additive only: every new `CredentialRotation` property is a response
+property, and `halt_reason` is an open enum (`x-extensible-enum`), so the freeze check
+needs no allowance. No migration: the `halt_reason` column (migration 00091) existed.
+
+- **`halt_reason`.** A fixed word, `retries_exhausted`, `authority_lost`, `gate_failed`
+  (the words the executor writes) or `unknown`. The store keeps the raw column text;
+  `service.rotationHaltWord` maps anything else (NULL, a legacy value, free text) to
+  `unknown`, and a rotation that is not halted carries none, so no provider text or
+  secret can reach the wire. The CLI prints a `HALT REASON` column, and a `HALTED` line
+  on stderr with a sentence per word. The browser puts the same sentence in the halted
+  notice and on the row. A word a client does not know is printed quoted, not
+  interpreted. The sentences live in three places; a web test keeps the browser equal to the CLI source:
+  `haltReasonSentence` (`internal/cli/credential_rotation.go`), `HALT_SENTENCES`
+  (`web/src/api/rotations.ts`) and `rotation.mdx`.
+- **`last_run`.** The newest run of the rotation by id (id, phase, `error_code`,
+  `phase_at`), absent when it never ran. `RotationLastRuns` reads it for a whole page
+  in one window query (`ROW_NUMBER() OVER (PARTITION BY rotation_id ORDER BY id DESC)`),
+  reviewed pin in `internal/lint/testdata/reviewed_pins.json`.
+- **Owed-drop definition (single source).** A run owes a drop iff its `phase` is
+  `revoke_refused` or `quarantine`, whatever its error code. It lives in
+  `RotationOwedDropCounts` (both engine query files, one grouped aggregate per page),
+  and agrees with the CLI `noteOwedRuns` (`internal/cli/credential_rotation.go`), the
+  browser `owesDrop` (`web/src/api/rotations.ts`) and the
+  `hikyo_rotation_runs_{quarantined,revoke_refused}` gauges. An isolation test checks that
+  the summary equals the count of the runs list on both engines, including a deleted rotation
+  and a restore hold.
+- **`owed_drop_runs` and `owed_drop_runs_versions_changed`.** Two counts, never a boolean.
+  The second is the subset refused as `published_versions_changed`: the keys may serve
+  that role again, so no surface says to drop it. The CLI rotation-level `ATTENTION` line,
+  `owedSummaryText` and the row badge read "do NOT drop" and "Do not drop: restore"
+  whenever the second count is above zero, and otherwise point at
+  `hikyo rotation runs <rotation>` without repeating the per-run text. The S3 strings
+  (`owedRunText`, `restoreHoldText`, `noteOwedRuns`, `noteRestoreHold`) are unchanged.
+  The browser stays status only: no mutating button.
+- **No N+1.** `get` and `List` in `internal/store/rotation.go` fill the summary with the
+  two page-wide queries after the page's rotation rows, on SQLite and PostgreSQL.
+- **Parity.** `createRotation`, `deleteRotation`, `pauseRotation`, `resumeRotation`,
+  `releaseRotationHold` and `runRotationNow` are `{issue: 1440}` in `api/parity.yaml`;
+  `check-parity-issues.sh` accepts it (#1440 open). `listRotations`, `showRotation` and
+  `listRotationRuns` stay `webui: machine-access`.
+
+### Review rounds (S4)
+
+- Round 1: pending. Independent Standards and Spec reviews run after this slice.
+
+### Left after S4
+
+- The management WebUI for the mutating verbs is #1440.
+- Containment ledger B is still not built (see "Incident containment").
+- Remaining owner items from earlier slices are unchanged; S4 opened none.
 
 ## S2 checklist (carried forward from review)
 
