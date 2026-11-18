@@ -23,17 +23,28 @@ func credentialRotationTable(list apigen.CredentialRotationList) Table {
 		if r.CredentialExpiresAt != nil {
 			expires = r.CredentialExpiresAt.UTC().Format(time.RFC3339)
 		}
+		halt := "-"
+		if r.HaltReason != nil {
+			halt = *r.HaltReason
+		}
+		last := "-"
+		if r.LastRun != nil {
+			last = string(r.LastRun.Phase)
+			if r.LastRun.ErrorCode != nil {
+				last += " (" + *r.LastRun.ErrorCode + ")"
+			}
+		}
 		rows = append(rows, []string{
-			string(r.Id), string(r.State), string(r.ProviderId), string(r.KeyId), string(r.UsernameKeyId),
+			string(r.Id), string(r.State), halt, string(r.ProviderId), string(r.KeyId), string(r.UsernameKeyId),
 			(time.Duration(r.IntervalSeconds) * time.Second).String(),
 			(time.Duration(r.RevocationDelaySeconds) * time.Second).String(),
-			next, expires, strconv.FormatInt(r.Generation, 10),
+			next, expires, strconv.FormatInt(r.Generation, 10), last, strconv.FormatInt(r.OwedDropRuns, 10),
 		})
 	}
 	return Table{
 		// No credential column: this record holds configuration only; no password
 		// or role handle is stored or returned.
-		Columns: []string{"ID", "STATE", "PROVIDER", "KEY", "USERNAME KEY", "INTERVAL", "REVOCATION DELAY", "NEXT RUN", "CREDENTIAL EXPIRES", "GENERATION"},
+		Columns: []string{"ID", "STATE", "HALT REASON", "PROVIDER", "KEY", "USERNAME KEY", "INTERVAL", "REVOCATION DELAY", "NEXT RUN", "CREDENTIAL EXPIRES", "GENERATION", "LAST RUN", "OWED DROPS"},
 		Rows:    rows,
 		JSON:    list,
 	}
@@ -176,6 +187,8 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 		}
 		for _, r := range out.Items {
 			noteRestoreHold(ios, r)
+			noteHalted(ios, r)
+			noteOwedSummary(ios, r)
 		}
 		if out.NextAfter != nil {
 			_, _ = fmt.Fprintf(ios.Stderr, "more rotations follow; continue with --after %s\n", *out.NextAfter)
@@ -191,6 +204,8 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 			return err
 		}
 		noteRestoreHold(ios, out)
+		noteHalted(ios, out)
+		noteOwedSummary(ios, out)
 		// The rotation itself was read; a failure of the runs read only costs the
 		// owed-drop warnings, so it is reported and never fails the show.
 		noteAllOwedRuns(ctx, client, ios, base+"/"+url.PathEscape(id)+"/runs")
@@ -418,6 +433,55 @@ func noteOwedRuns(ios IO, runs apigen.RotationRunList) {
 		}
 		_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: run %s is %s and a provider role it owes a drop is still live (%s); before you drop it at the provider, check that neither key serves that role, because a revision restore can put it back\n", r.Id, r.Phase, until)
 	}
+}
+
+// haltReasonSentence says in words why a halted rotation stopped. The sentences are
+// the browser's (web/src/api/rotations.ts, haltReasonText) and the user docs'
+// (rotation.mdx), word for word. The reason is one of the server's fixed words; any
+// other value reads as unknown here and is printed quoted, never interpreted.
+func haltReasonSentence(reason string) string {
+	switch reason {
+	case "retries_exhausted":
+		return "the retry window ran out before a run could publish or extend the credential"
+	case "authority_lost":
+		return "the recorded person no longer holds the access the rotation needs, or one of its keys or its environment is gone"
+	case "gate_failed":
+		return "a pre-publish gate refused: the environment became protected, a key changed or a draft appeared"
+	}
+	return "the server recorded a reason this client does not know"
+}
+
+// noteHalted says, on stderr, that the server halted the rotation and why.
+func noteHalted(ios IO, r apigen.CredentialRotation) {
+	if r.State != apigen.CredentialRotationStateHalted {
+		return
+	}
+	word := "unknown"
+	if r.HaltReason != nil {
+		word = *r.HaltReason
+	}
+	switch word {
+	case "retries_exhausted", "authority_lost", "gate_failed", "unknown":
+	default:
+		word = strconv.Quote(word)
+	}
+	_, _ = fmt.Fprintf(ios.Stderr, "HALTED: rotation %s is halted (%s): %s; it starts no run and does not extend the delivered credential until a person resumes it: hikyo rotation resume %s\n", r.Id, word, haltReasonSentence(word), r.Id)
+}
+
+// noteOwedSummary is the rotation-level ATTENTION line: some of its runs still owe a
+// provider role a drop. It counts the runs noteOwedRuns warns about, by the same
+// phases, and points at the per-run lines instead of repeating them. It never says to
+// drop: when a restore refused any of them (published_versions_changed) the keys may
+// be serving that role again, and it says not to drop it until they have moved off it.
+func noteOwedSummary(ios IO, r apigen.CredentialRotation) {
+	if r.OwedDropRuns <= 0 {
+		return
+	}
+	if r.OwedDropRunsVersionsChanged > 0 {
+		_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: rotation %s has %d run(s) that owe a provider role a drop, %d of them refused after a restore (%s): the keys may be serving that role again, so do NOT drop it at the provider until the keys have moved off it; read: hikyo rotation runs %s\n", r.Id, r.OwedDropRuns, r.OwedDropRunsVersionsChanged, versionsChangedCode, r.Id)
+		return
+	}
+	_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: rotation %s has %d run(s) that owe a provider role a drop and the role is still live; read before you act: hikyo rotation runs %s\n", r.Id, r.OwedDropRuns, r.Id)
 }
 
 // noteRestoreHold says loudly, on stderr, that a restore holds the rotation: it

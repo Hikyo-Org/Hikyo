@@ -854,6 +854,21 @@
       "tests": [
         "internal/isolation/rotation_cascade_e2e_test.go:TestRotationCredentialExpiryMatchesEitherKeyRole"
       ]
+    },
+    "RotationLastRuns": {
+      "authority": "Verified rotation-list project chain binds org, project and environment on the one table read. Runs of the requested rotation ids only; one derived table ranks each rotation's runs by id and the outer predicate keeps rank one, so a rotation reads its newest run and never the run history. Reads an id, a phase, a fixed-word error code and a time only.",
+      "sql_hash": {
+        "postgres": "1ef50fb035b1dfe10b117cbf6ff564af49737981d294d136d59d838b35989999",
+        "sqlite": "ca2efda3e097dc12549158a35c60d2c50f7786673e298a3dedd60eb19c562ad2"
+      },
+      "api_hash": {
+        "postgres": "f040b8f1e7a0f3c602f03870996f63891300e7829696503411bbaf3b32d7e3d5",
+        "sqlite": "70628b41ff84234e901706df4ced218b06d432376373f9ffad8a036ccca7b641"
+      },
+      "tests": [
+        "internal/isolation/rotation_summary_test.go:TestRotationLastRunsQueryIsBounded",
+        "internal/isolation/rotation_summary_test.go:TestRotationSummaryCountsOwedDropsAndLastRun"
+      ]
     }
   },
   "protocols": {

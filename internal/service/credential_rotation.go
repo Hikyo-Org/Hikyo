@@ -127,6 +127,56 @@ func purgeEnvironmentRotations(ctx context.Context, r store.Repos, proof authz.P
 // lapses, when a run has published one.
 type RotationView struct {
 	store.RotationRecord
+	// HaltReason is why a halted rotation stopped, as one of the fixed words
+	// (retries_exhausted, authority_lost, gate_failed, or unknown for any stored
+	// value that is not one of them); empty unless the state is halted. Never the
+	// stored text itself: an archive can carry anything in that column.
+	HaltReason string
+	// LastRunSummary is the rotation's newest run with its stamp parsed, nil when it
+	// has never run. The owed-drop counts are the record's OwedDropRuns and
+	// OwedDropRunsVersionsChanged.
+	LastRunSummary *RotationLastRunView
+}
+
+// RotationLastRunView is the newest run of a rotation: metadata only, the fixed-word
+// error code the runs list carries, and no role handle.
+type RotationLastRunView struct {
+	ID        string
+	Phase     string
+	ErrorCode string
+	PhaseAt   time.Time
+}
+
+// newRotationView is the one place a stored record becomes the view a transport
+// reads, so the halt reason is never passed on raw and the stamps are parsed once.
+func newRotationView(rec store.RotationRecord) (RotationView, error) {
+	view := RotationView{RotationRecord: rec, HaltReason: rotationHaltWord(rec.State, rec.RawHaltReason)}
+	if rec.LastRun != nil {
+		phaseAt, err := time.Parse(time.RFC3339Nano, rec.LastRun.PhaseAt)
+		if err != nil {
+			return RotationView{}, fmt.Errorf("service: parse rotation last run phase_at: %w", err)
+		}
+		view.LastRunSummary = &RotationLastRunView{ID: rec.LastRun.ID, Phase: rec.LastRun.Phase, ErrorCode: rec.LastRun.ErrorCode, PhaseAt: phaseAt}
+	}
+	return view, nil
+}
+
+// RotationHaltUnknown is the halt reason of a halted rotation whose stored reason is
+// not one of the words the executor writes (an empty or legacy value).
+const RotationHaltUnknown = "unknown"
+
+// rotationHaltWord maps the stored halt reason to the fixed words the wire, the CLI
+// and the browser use. The reason is read only for a halted rotation: every state
+// change clears it, and a column that disagrees with the state is not believed.
+func rotationHaltWord(state, stored string) string {
+	if state != store.RotationStateHalted {
+		return ""
+	}
+	switch stored {
+	case rotHaltExhausted, rotHaltAuthority, rotHaltGate:
+		return stored
+	}
+	return RotationHaltUnknown
 }
 
 // CreateRotationRequest configures one rotation. The keys must already exist;
@@ -438,7 +488,9 @@ func (s *CredentialRotations) Create(ctx context.Context, actor Actor, scope dom
 		if err != nil {
 			return err
 		}
-		out = RotationView{RotationRecord: record}
+		if out, err = newRotationView(record); err != nil {
+			return err
+		}
 		return insertRotationConfigured(ctx, r, proof, caller.Principal, rotationActionCreated, "", record)
 	})
 	return out, err
@@ -557,7 +609,11 @@ func (s *CredentialRotations) List(ctx context.Context, actor Actor, scope domai
 		}
 		out.Items = make([]RotationView, 0, len(rows))
 		for _, row := range rows {
-			out.Items = append(out.Items, RotationView{RotationRecord: row})
+			view, err := newRotationView(row)
+			if err != nil {
+				return err
+			}
+			out.Items = append(out.Items, view)
 		}
 		return nil
 	})
@@ -576,7 +632,10 @@ func (s *CredentialRotations) Get(ctx context.Context, actor Actor, scope domain
 			return err
 		}
 		rec, err := r.Rotations().Get(ctx, proof, rotationID)
-		out = RotationView{RotationRecord: rec}
+		if err != nil {
+			return err
+		}
+		out, err = newRotationView(rec)
 		return err
 	})
 	return out, err
@@ -968,7 +1027,9 @@ func (s *CredentialRotations) transition(ctx context.Context, actor Actor, scope
 			}
 			return err
 		}
-		out = RotationView{RotationRecord: rec}
+		if out, err = newRotationView(rec); err != nil {
+			return err
+		}
 		return insertRotationConfigured(ctx, r, proof, caller.Principal, action, "", rec)
 	})
 	return out, err
@@ -1030,7 +1091,9 @@ func (s *CredentialRotations) ReleaseHold(ctx context.Context, actor Actor, scop
 		if err != nil {
 			return err
 		}
-		out = RotationView{RotationRecord: rec}
+		if out, err = newRotationView(rec); err != nil {
+			return err
+		}
 		return insertRotationConfigured(ctx, r, proof, caller.Principal, rotationActionHoldReleased, "", rec)
 	})
 	return out, err

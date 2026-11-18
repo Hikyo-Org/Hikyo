@@ -398,7 +398,7 @@ func (q *Queries) RotationCredentialExpiry(ctx context.Context, arg RotationCred
 }
 
 const rotationGet = `-- name: RotationGet :one
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4
 `
 
 type RotationGetParams struct {
@@ -424,6 +424,7 @@ type RotationGetRow struct {
 	CreatedAt              string
 	UpdatedAt              string
 	RestoreHold            int64
+	HaltReason             sql.NullString
 }
 
 func (q *Queries) RotationGet(ctx context.Context, arg RotationGetParams) (RotationGetRow, error) {
@@ -450,12 +451,84 @@ func (q *Queries) RotationGet(ctx context.Context, arg RotationGetParams) (Rotat
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.RestoreHold,
+		&i.HaltReason,
 	)
 	return i, err
 }
 
+const rotationLastRuns = `-- name: RotationLastRuns :many
+SELECT rotation_id AS rotation_id,id AS id,phase AS phase,last_error AS last_error,phase_at AS phase_at FROM (
+ SELECT ru.rotation_id AS rotation_id,ru.id AS id,ru.phase AS phase,ru.last_error AS last_error,ru.phase_at AS phase_at,ROW_NUMBER() OVER (PARTITION BY ru.rotation_id ORDER BY ru.id DESC) AS ordinal
+ FROM rotation_runs ru
+ WHERE ru.org_id=?1 AND ru.project_id=?2 AND ru.environment_id=?3 AND ru.rotation_id IN (/*SLICE:rotation_ids*/?)
+ ) ranked WHERE ordinal=1 ORDER BY rotation_id
+`
+
+type RotationLastRunsParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	RotationIds  []string
+}
+
+type RotationLastRunsRow struct {
+	RotationID string
+	ID         string
+	Phase      string
+	LastError  sql.NullString
+	PhaseAt    string
+}
+
+// The newest run of each rotation of a page (the top row of its runs list, by id), and
+// the count of runs that still owe a provider role a drop. One query each for the whole page,
+// never one per rotation. A run owes a drop in exactly the phases the CLI ATTENTION lines, the
+// web notice and the hikyo_rotation_runs_{quarantined,revoke_refused} gauges count:
+// revoke_refused and quarantine, whatever their error code. versions_changed is the part of
+// that count a restore refused (published_versions_changed): its role may be served again.
+func (q *Queries) RotationLastRuns(ctx context.Context, arg RotationLastRunsParams) ([]RotationLastRunsRow, error) {
+	query := rotationLastRuns
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.ChainOrg)
+	queryParams = append(queryParams, arg.ChainProject)
+	queryParams = append(queryParams, arg.ChainEnv)
+	if len(arg.RotationIds) > 0 {
+		for _, v := range arg.RotationIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:rotation_ids*/?", strings.Repeat(",?", len(arg.RotationIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:rotation_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RotationLastRunsRow
+	for rows.Next() {
+		var i RotationLastRunsRow
+		if err := rows.Scan(
+			&i.RotationID,
+			&i.ID,
+			&i.Phase,
+			&i.LastError,
+			&i.PhaseAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const rotationList = `-- name: RotationList :many
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=?1 AND project_id=?2 AND environment_id=?3 AND state<>'disabled' AND id > ?4 ORDER BY id LIMIT ?5
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE org_id=?1 AND project_id=?2 AND environment_id=?3 AND state<>'disabled' AND id > ?4 ORDER BY id LIMIT ?5
 `
 
 type RotationListParams struct {
@@ -482,6 +555,7 @@ type RotationListRow struct {
 	CreatedAt              string
 	UpdatedAt              string
 	RestoreHold            int64
+	HaltReason             sql.NullString
 }
 
 func (q *Queries) RotationList(ctx context.Context, arg RotationListParams) ([]RotationListRow, error) {
@@ -515,6 +589,7 @@ func (q *Queries) RotationList(ctx context.Context, arg RotationListParams) ([]R
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.RestoreHold,
+			&i.HaltReason,
 		); err != nil {
 			return nil, err
 		}
@@ -530,7 +605,7 @@ func (q *Queries) RotationList(ctx context.Context, arg RotationListParams) ([]R
 }
 
 const rotationListActiveByProvider = `-- name: RotationListActiveByProvider :many
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=?1 AND project_id=?2 AND provider_id=?3 AND state='active' ORDER BY id
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE org_id=?1 AND project_id=?2 AND provider_id=?3 AND state='active' ORDER BY id
 `
 
 type RotationListActiveByProviderParams struct {
@@ -555,6 +630,7 @@ type RotationListActiveByProviderRow struct {
 	CreatedAt              string
 	UpdatedAt              string
 	RestoreHold            int64
+	HaltReason             sql.NullString
 }
 
 func (q *Queries) RotationListActiveByProvider(ctx context.Context, arg RotationListActiveByProviderParams) ([]RotationListActiveByProviderRow, error) {
@@ -582,6 +658,7 @@ func (q *Queries) RotationListActiveByProvider(ctx context.Context, arg Rotation
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.RestoreHold,
+			&i.HaltReason,
 		); err != nil {
 			return nil, err
 		}
@@ -597,7 +674,7 @@ func (q *Queries) RotationListActiveByProvider(ctx context.Context, arg Rotation
 }
 
 const rotationListActiveInEnvironment = `-- name: RotationListActiveInEnvironment :many
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=?1 AND project_id=?2 AND environment_id=?3 AND state='active' ORDER BY id
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE org_id=?1 AND project_id=?2 AND environment_id=?3 AND state='active' ORDER BY id
 `
 
 type RotationListActiveInEnvironmentParams struct {
@@ -622,6 +699,7 @@ type RotationListActiveInEnvironmentRow struct {
 	CreatedAt              string
 	UpdatedAt              string
 	RestoreHold            int64
+	HaltReason             sql.NullString
 }
 
 func (q *Queries) RotationListActiveInEnvironment(ctx context.Context, arg RotationListActiveInEnvironmentParams) ([]RotationListActiveInEnvironmentRow, error) {
@@ -649,6 +727,7 @@ func (q *Queries) RotationListActiveInEnvironment(ctx context.Context, arg Rotat
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.RestoreHold,
+			&i.HaltReason,
 		); err != nil {
 			return nil, err
 		}
@@ -664,7 +743,7 @@ func (q *Queries) RotationListActiveInEnvironment(ctx context.Context, arg Rotat
 }
 
 const rotationListActiveInProject = `-- name: RotationListActiveInProject :many
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=?1 AND project_id=?2 AND state='active' ORDER BY id
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE org_id=?1 AND project_id=?2 AND state='active' ORDER BY id
 `
 
 type RotationListActiveInProjectParams struct {
@@ -688,6 +767,7 @@ type RotationListActiveInProjectRow struct {
 	CreatedAt              string
 	UpdatedAt              string
 	RestoreHold            int64
+	HaltReason             sql.NullString
 }
 
 func (q *Queries) RotationListActiveInProject(ctx context.Context, arg RotationListActiveInProjectParams) ([]RotationListActiveInProjectRow, error) {
@@ -715,6 +795,7 @@ func (q *Queries) RotationListActiveInProject(ctx context.Context, arg RotationL
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.RestoreHold,
+			&i.HaltReason,
 		); err != nil {
 			return nil, err
 		}
@@ -730,7 +811,7 @@ func (q *Queries) RotationListActiveInProject(ctx context.Context, arg RotationL
 }
 
 const rotationListAll = `-- name: RotationListAll :many
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=?1 AND project_id=?2 AND environment_id=?3 AND id > ?4 ORDER BY id LIMIT ?5
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE org_id=?1 AND project_id=?2 AND environment_id=?3 AND id > ?4 ORDER BY id LIMIT ?5
 `
 
 type RotationListAllParams struct {
@@ -757,6 +838,7 @@ type RotationListAllRow struct {
 	CreatedAt              string
 	UpdatedAt              string
 	RestoreHold            int64
+	HaltReason             sql.NullString
 }
 
 func (q *Queries) RotationListAll(ctx context.Context, arg RotationListAllParams) ([]RotationListAllRow, error) {
@@ -790,6 +872,7 @@ func (q *Queries) RotationListAll(ctx context.Context, arg RotationListAllParams
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.RestoreHold,
+			&i.HaltReason,
 		); err != nil {
 			return nil, err
 		}
@@ -969,6 +1052,61 @@ func (q *Queries) RotationManualPending(ctx context.Context, arg RotationManualP
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const rotationOwedDropCounts = `-- name: RotationOwedDropCounts :many
+SELECT rotation_id AS rotation_id,COUNT(*) AS owed,COUNT(CASE WHEN last_error='published_versions_changed' THEN 1 END) AS versions_changed FROM rotation_runs
+WHERE org_id=?1 AND project_id=?2 AND environment_id=?3 AND rotation_id IN (/*SLICE:rotation_ids*/?) AND phase IN ('revoke_refused','quarantine')
+GROUP BY rotation_id ORDER BY rotation_id
+`
+
+type RotationOwedDropCountsParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	RotationIds  []string
+}
+
+type RotationOwedDropCountsRow struct {
+	RotationID      string
+	Owed            int64
+	VersionsChanged int64
+}
+
+func (q *Queries) RotationOwedDropCounts(ctx context.Context, arg RotationOwedDropCountsParams) ([]RotationOwedDropCountsRow, error) {
+	query := rotationOwedDropCounts
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.ChainOrg)
+	queryParams = append(queryParams, arg.ChainProject)
+	queryParams = append(queryParams, arg.ChainEnv)
+	if len(arg.RotationIds) > 0 {
+		for _, v := range arg.RotationIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:rotation_ids*/?", strings.Repeat(",?", len(arg.RotationIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:rotation_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RotationOwedDropCountsRow
+	for rows.Next() {
+		var i RotationOwedDropCountsRow
+		if err := rows.Scan(&i.RotationID, &i.Owed, &i.VersionsChanged); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const rotationPauseActive = `-- name: RotationPauseActive :execrows
