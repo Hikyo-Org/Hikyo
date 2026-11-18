@@ -92,6 +92,41 @@ func TestEligibleCursorBindingMismatches(t *testing.T) {
 	}
 }
 
+// TestEligibleCursorLoaderAckChange: adding, changing or removing a target's
+// loader-control acknowledgement invalidates the cursor; an empty list and a
+// missing member (a pre-existing cursor.json) are the same binding.
+func TestEligibleCursorLoaderAckChange(t *testing.T) {
+	_, runtime := cursorSetup(t)
+	cs, binding, current := buildEligible(t, runtime)
+	acked := binding
+	acked.TargetLoaderAcks = map[string][]string{"api": {"LD_PRELOAD"}}
+	cs.Binding = acked
+	if _, ok := EligibleCursor(&cs, acked, current, runtime); !ok {
+		t.Fatal("matching acknowledgements should be eligible")
+	}
+	for name, want := range map[string]map[string][]string{
+		"removed": nil,
+		"emptied": {"api": {}},
+		"changed": {"api": {"LD_LIBRARY_PATH"}},
+		"extra":   {"api": {"LD_PRELOAD", "LD_LIBRARY_PATH"}},
+	} {
+		w := binding
+		w.TargetLoaderAcks = want
+		if _, ok := EligibleCursor(&cs, w, current, runtime); ok {
+			t.Errorf("ack %s should invalidate", name)
+		}
+	}
+	cs.Binding = binding
+	if _, ok := EligibleCursor(&cs, acked, current, runtime); ok {
+		t.Error("ack added should invalidate")
+	}
+	empty := binding
+	empty.TargetLoaderAcks = map[string][]string{"api": {}}
+	if _, ok := EligibleCursor(&cs, empty, current, runtime); !ok {
+		t.Error("empty ack list should equal a missing member")
+	}
+}
+
 func TestEligibleCursorGenerationTests(t *testing.T) {
 	_, runtime := cursorSetup(t)
 	cs, binding, current := buildEligible(t, runtime)

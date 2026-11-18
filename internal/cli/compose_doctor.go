@@ -125,6 +125,7 @@ func composeDoctorGather(ctx context.Context, ios IO, st *State, flags commonFla
 	if runtimeResolved {
 		in.RuntimeDir = stack.runtimeDir
 		in.RuntimeTmpfs = doctorRuntimeTmpfs(stack.runtimeDir)
+		in.RuntimeCustody = compose.RuntimeDirCustody(stack.runtimeDir)
 	}
 
 	// Server agreement: feed compose.Doctor the per-target server stamps it needs

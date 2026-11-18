@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1099,6 +1101,72 @@ func TestComposeRenderCursorFailureLeavesPublishedGenerationPendingApply(t *test
 	}
 	if present, complete := compose.GenerationState(runtimeDir, stamps["api"]); !present || !complete {
 		t.Fatalf("published generation present=%v complete=%v after cursor failure", present, complete)
+	}
+}
+
+// TestComposeSyncRefusesPendingLoaderControlGenerationAfterAckRemoval: a
+// generation carrying LD_PRELOAD was published under an acknowledgement but
+// never applied. Removing the acknowledgement must make the saved cursor
+// ineligible, so sync re-fetches, refuses at render, and never reaches Docker
+// even though the server would otherwise answer "current".
+func TestComposeSyncRefusesPendingLoaderControlGenerationAfterAckRemoval(t *testing.T) {
+	body := func(current bool) string {
+		return deliveryJSON(t, apigen.DeliveryResponse{
+			ChangeToken: "v1:t1", CredentialId: "cred_1", Current: current, Cursor: "v1:c1",
+			IssuedAt: time.Now().UTC(), SnapshotExpiresAt: time.Now().UTC().Add(7 * 24 * time.Hour),
+			SchemaRevision: 1,
+			Keys: []apigen.DeliveredKey{{
+				KeyId: "key_1", Name: "LD_PRELOAD", Classification: apigen.KeyClassificationConfig,
+				Presence: apigen.DeliveredKeyPresenceSet, Value: strPtr("/tmp/x.so"),
+			}},
+		})
+	}
+	server := newRevisionAwareFixtureServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if !strings.HasSuffix(r.URL.Path, "/delivery") {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(body(r.URL.Query().Get("cursor") == "v1:c1")))
+	}))
+	var configPath string
+	ios, projectDir, stateDir := syncSecurityFixtureServer(t, server, func(path string) {
+		configPath = path
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw = []byte(strings.Replace(string(raw), "keys: [key_1]\n", "keys: [key_1]\n    acknowledge_loader_control: [LD_PRELOAD]\n", 1))
+		if err := os.WriteFile(path, raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !applyPendingExists(stateDir) {
+		t.Fatal("precondition: seed render must leave the generation pending apply")
+	}
+	published, err := compose.CurrentStamps(projectDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The operator removes the acknowledgement.
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(strings.Replace(string(raw), "    acknowledge_loader_control: [LD_PRELOAD]\n", "", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code := Run(t.Context(), ios, []string{"compose", "sync"}); code != ExitRefused {
+		t.Fatalf("sync exit=%d, want ExitRefused; stderr=%v", code, ios.Stderr)
+	}
+	if strings.Contains(fmt.Sprint(ios.Stderr), "fixture-docker-apply") {
+		t.Fatal("Docker applied a loader-control generation whose acknowledgement was removed")
+	}
+	if !applyPendingExists(stateDir) {
+		t.Fatal("refused sync cleared the pending marker")
+	}
+	if after, err := compose.CurrentStamps(projectDir); err != nil || !maps.Equal(after, published) {
+		t.Fatalf("stamps changed across refused sync: %v err=%v", after, err)
 	}
 }
 
