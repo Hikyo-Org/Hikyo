@@ -221,9 +221,6 @@ func TestVerifyMTreeMatchesPackageEntries(t *testing.T) {
 	if err := verifyMTree(gzipText(t, header+bin), inspection); err != nil {
 		t.Fatalf("genuine .MTREE refused: %v", err)
 	}
-	if err := verifyMTree(gzipText(t, "#mtree\n/set type=file\n"+header[7:]+bin), inspection); err != nil {
-		t.Fatalf(".MTREE with /set refused: %v", err)
-	}
 	for name, text := range map[string]string{
 		"extra path":       header + bin + "./etc/passwd time=1.0 mode=644 type=file\n",
 		"missing path":     header,
@@ -233,6 +230,8 @@ func TestVerifyMTreeMatchesPackageEntries(t *testing.T) {
 		"backslash escape": header + bin + "./usr/bin/hik\\171o type=file\n",
 		"unknown keyword":  header + "./usr/bin/ type=dir uid=0\n./usr/bin/hikyo type=file\n",
 		"unknown command":  header + bin + "/remove\n",
+		"set command":      "#mtree\n/set uid=0 gname=wheel\n" + header[7:] + bin,
+		"unset command":    header + bin + "/unset all\n",
 		"unsafe path":      header + bin + "./usr/../etc/passwd type=file\n",
 	} {
 		if err := verifyMTree(gzipText(t, text), inspection); err == nil {
@@ -286,6 +285,7 @@ func TestForbiddenRPMScriptTagsRejectsEveryExecutableClass(t *testing.T) {
 		5103, 5104, 5105, 5106,
 		5109,
 		1054, 1090, // Conflicts and Obsoletes make rpm remove other packages.
+		1027, // OLDFILENAMES shadows BASENAMES/DIRNAMES in go-rpmutils but not in rpm.
 	} {
 		got, found := firstForbiddenRPMHook(func(candidate int) bool { return candidate == tag })
 		if !found || got != tag {
