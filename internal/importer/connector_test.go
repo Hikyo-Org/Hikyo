@@ -307,7 +307,13 @@ func TestSOPSVaultKeyIsPinnedToTheOperatorsVaultAddr(t *testing.T) {
 			}
 
 			_, err := Run(t.Context(), sopsSource, Input{Path: "vault.json", Data: []byte(file)})
-			wantCode(t, err, CodeDecrypt)
+			wantCode(t, err, CodeDecrypt, "hvs.operator-token")
+			// The refusal must tell the operator why a Vault key was not tried.
+			for _, hint := range []string{"VAULT_ADDR", "SOPS_HC_VAULT_ALLOWLIST"} {
+				if !strings.Contains(err.Error(), hint) {
+					t.Fatalf("refusal lacks the %s hint: %v", hint, err)
+				}
+			}
 			if got := hits.Load() > 0; got != tc.wantHits {
 				t.Fatalf("Vault requests received = %d, want contact = %v", hits.Load(), tc.wantHits)
 			}
