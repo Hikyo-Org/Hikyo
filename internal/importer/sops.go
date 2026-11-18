@@ -335,7 +335,9 @@ func sopsDecrypt(ctx context.Context, in Input, format formats.Format) ([]byte, 
 			// service's response body, a file fragment, or a MAC comparison
 			// rendering both macs — none of which belongs on stderr.
 			return nil, failure(sopsSource, CodeDecrypt, in.Path,
-				"decryption failed: no ambient key (age, GPG, KMS) opened this file, or its integrity check did not hold")
+				"decryption failed: no ambient key (age, GPG, KMS) opened this file, or its integrity check did not hold. "+
+					"A Vault Transit key is contacted only at VAULT_ADDR; if the file names another Vault address, "+
+					"set VAULT_ADDR to it or allow it in SOPS_HC_VAULT_ALLOWLIST")
 		}
 		return got.plain, nil
 	}
