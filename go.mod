@@ -53,6 +53,7 @@ require (
 	github.com/sigstore/rekor v1.6.1
 	github.com/sigstore/sigstore v1.11.3
 	github.com/sigstore/sigstore-go v1.4.0
+	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1
 	github.com/theupdateframework/go-tuf/v2 v2.4.2
 	github.com/transparency-dev/merkle v0.0.2
 	github.com/wneessen/go-mail v0.8.2

@@ -812,7 +812,7 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
-  - target: $['components']['schemas']['OidcProviderInput']['properties']['assurance_policy','row_version']
+  - target: $['components']['schemas']['OidcProviderInput']['properties']['assurance_policy','lifecycle_profile','lifecycle_secret','row_version']
     update:
       x-omitempty: false
       x-omitzero: true
@@ -820,7 +820,7 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
-  - target: $['components']['schemas']['OidcProvider']['properties']['assurance_policy']
+  - target: $['components']['schemas']['OidcProvider']['properties']['assurance_policy','lifecycle_profile']
     update:
       x-omitempty: false
       x-omitzero: true

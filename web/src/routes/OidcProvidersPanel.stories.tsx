@@ -22,6 +22,9 @@ const providers = {
       scopes: 'openid profile email',
       redirect_uri: 'https://hikyo.example/api/v1/auth/oidc/okta/callback',
       assurance_policy: '{"acr":["phr"]}',
+      lifecycle_profile: 'clerk',
+      lifecycle_secret_set: true,
+      lifecycle_uri: 'https://hikyo.example/api/v1/auth/oidc/okta/lifecycle',
       enabled: true,
       row_version: 1,
     },
@@ -33,6 +36,9 @@ const providers = {
       scopes: 'openid',
       redirect_uri: 'https://hikyo.example/api/v1/auth/oidc/legacy-adfs/callback',
       assurance_policy: null,
+      lifecycle_profile: null,
+      lifecycle_secret_set: false,
+      lifecycle_uri: 'https://hikyo.example/api/v1/auth/oidc/legacy-adfs/lifecycle',
       enabled: false,
       row_version: 1,
     },
@@ -111,6 +117,20 @@ export const Reconfiguring: Story = {
     // The primary act leads the row, Cancel follows.
     await expect(panel.getByRole('button', { name: 'Save provider' }).nextElementSibling).toBe(
       panel.getByRole('button', { name: 'Cancel' }),
+    );
+  },
+};
+
+// A provider with a lifecycle profile shows the write-only secret field and
+// the endpoint URL to register with the directory.
+export const LifecycleConfigured: Story = {
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Reconfigure Okta' }));
+    const panel = within(await canvas.findByRole('complementary', { name: 'Reconfigure Okta' }));
+    await expect(panel.getByLabelText('Directory lifecycle events')).toHaveValue('clerk');
+    await expect(panel.getByLabelText('Lifecycle signing secret')).toHaveValue('');
+    await expect(panel.getByLabelText('Lifecycle endpoint URL')).toHaveValue(
+      'https://hikyo.example/api/v1/auth/oidc/okta/lifecycle',
     );
   },
 };

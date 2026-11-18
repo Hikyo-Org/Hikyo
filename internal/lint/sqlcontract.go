@@ -55,6 +55,7 @@ var approvedParameterNames = map[string]map[string]string{
 	"GetProject":                           aliases("ID", "ProjectID"),
 	"ListCredentialsBeyondCeiling":         aliases("ExpiresAt", "Ceiling"),
 	"ListOauth2ProvidersForReencrypt":      aliases("ID", "Cursor", "Limit", "PageLimit"),
+	"ListOidcLifecycleSecretsForReencrypt": aliases("ID", "Cursor", "Limit", "PageLimit"),
 	"ListOidcProvidersForReencrypt":        aliases("ID", "Cursor", "Limit", "PageLimit"),
 	"ListPasswordCredsForReencrypt":        aliases("AccountID", "Cursor", "Limit", "PageLimit"),
 	"ListPendingForReencrypt":              aliases("ID", "Cursor", "Limit", "PageLimit"),

@@ -10,21 +10,23 @@
 INSERT INTO oidc_providers
     (id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
      redirect_uri, assurance_policy, enabled, dek_version, row_version,
-     created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 1, $13, $14);
+     created_at, updated_at, lifecycle_profile, lifecycle_secret)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 1, $13, $14, $15, $16);
 
 -- hikyo:authn-resolution
 -- name: GetOIDCProviderBySlug :one
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
        redirect_uri, assurance_policy, enabled, dek_version, row_version,
-       created_at, updated_at
+       created_at, updated_at,
+       lifecycle_profile, lifecycle_secret
 FROM oidc_providers WHERE slug = $1;
 
 -- hikyo:authn-resolution
 -- name: ListOIDCProviders :many
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
        redirect_uri, assurance_policy, enabled, dek_version, row_version,
-       created_at, updated_at
+       created_at, updated_at,
+       lifecycle_profile, lifecycle_secret
 FROM oidc_providers ORDER BY slug;
 
 -- The issuer is never in the SET list: it is immutable after create (A3), so a
@@ -35,8 +37,9 @@ FROM oidc_providers ORDER BY slug;
 UPDATE oidc_providers
 SET display_name = $1, client_id = $2, client_secret = $3, scopes = $4,
     redirect_uri = $5, assurance_policy = $6, enabled = $7,
-    dek_version = $8, row_version = row_version + 1, updated_at = $9
-WHERE id = $10 AND row_version = $11;
+    dek_version = $8, row_version = row_version + 1, updated_at = $9,
+    lifecycle_profile = $10, lifecycle_secret = $11
+WHERE id = $12 AND row_version = $13;
 
 -- Locks the provider row inside the delete tx so a concurrent Phase-C mint
 -- guard serializes behind it. Taken BEFORE the session sweep so the sweep runs

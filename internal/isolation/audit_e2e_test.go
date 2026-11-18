@@ -430,6 +430,10 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		}); err != nil {
 			t.Fatalf("lower effective window: %v", err)
 		}
+
+		// Directory lifecycle events: a ban, then a delete of an account's last
+		// credential, so the three directory audit events are emitted by code.
+		runOIDCDirectoryLifecycle(t, db, auth, boot.PrincipalID)
 	})
 
 	t.Run("every_registered_type_is_actually_emitted", func(t *testing.T) {

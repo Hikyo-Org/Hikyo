@@ -10,21 +10,23 @@
 INSERT INTO oidc_providers
     (id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
      redirect_uri, assurance_policy, enabled, dek_version, row_version,
-     created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?);
+     created_at, updated_at, lifecycle_profile, lifecycle_secret)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?);
 
 -- hikyo:authn-resolution
 -- name: GetOIDCProviderBySlug :one
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
        redirect_uri, assurance_policy, enabled, dek_version, row_version,
-       created_at, updated_at
+       created_at, updated_at,
+       lifecycle_profile, lifecycle_secret
 FROM oidc_providers WHERE slug = ?;
 
 -- hikyo:authn-resolution
 -- name: ListOIDCProviders :many
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
        redirect_uri, assurance_policy, enabled, dek_version, row_version,
-       created_at, updated_at
+       created_at, updated_at,
+       lifecycle_profile, lifecycle_secret
 FROM oidc_providers ORDER BY slug;
 
 -- The issuer is never in the SET list: it is immutable after create (A3), so a
@@ -35,7 +37,8 @@ FROM oidc_providers ORDER BY slug;
 UPDATE oidc_providers
 SET display_name = ?, client_id = ?, client_secret = ?, scopes = ?,
     redirect_uri = ?, assurance_policy = ?, enabled = ?,
-    dek_version = ?, row_version = row_version + 1, updated_at = ?
+    dek_version = ?, row_version = row_version + 1, updated_at = ?,
+    lifecycle_profile = ?, lifecycle_secret = ?
 WHERE id = ? AND row_version = ?;
 
 -- Structural twin of the postgres lock: BEGIN IMMEDIATE already holds the

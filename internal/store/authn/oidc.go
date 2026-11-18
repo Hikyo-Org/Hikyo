@@ -42,6 +42,9 @@ type OIDCProvider struct {
 	Enabled         bool
 	DEKVersion      int64
 	RowVersion      int64
+	// LifecycleProfile and LifecycleSecret (sealed) are both nil or both set.
+	LifecycleProfile *string
+	LifecycleSecret  []byte
 }
 
 func sqliteProvider(row sqlitegen.OidcProvider) OIDCProvider {
@@ -51,6 +54,7 @@ func sqliteProvider(row sqlitegen.OidcProvider) OIDCProvider {
 		Scopes: row.Scopes, RedirectURI: row.RedirectUri,
 		AssurancePolicy: nullStringPtr(row.AssurancePolicy),
 		Enabled:         row.Enabled == 1, DEKVersion: row.DekVersion, RowVersion: row.RowVersion,
+		LifecycleProfile: nullStringPtr(row.LifecycleProfile), LifecycleSecret: row.LifecycleSecret,
 	}
 }
 
@@ -61,6 +65,7 @@ func pgProvider(row pggen.OidcProvider) OIDCProvider {
 		Scopes: row.Scopes, RedirectURI: row.RedirectUri,
 		AssurancePolicy: pgTextPtr(row.AssurancePolicy),
 		Enabled:         row.Enabled == 1, DEKVersion: row.DekVersion, RowVersion: row.RowVersion,
+		LifecycleProfile: pgTextPtr(row.LifecycleProfile), LifecycleSecret: row.LifecycleSecret,
 	}
 }
 
@@ -115,6 +120,9 @@ type NewProvider struct {
 	DEKVersion      int64
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+	// LifecycleProfile and LifecycleSecret (sealed) are both nil or both set.
+	LifecycleProfile *string
+	LifecycleSecret  []byte
 }
 
 // ProviderUpdate is the provider reconfigure carrier. The issuer is absent: it
@@ -131,6 +139,9 @@ type ProviderUpdate struct {
 	DEKVersion      int64
 	RowVersion      int64
 	UpdatedAt       time.Time
+	// LifecycleProfile and LifecycleSecret (sealed) are both nil or both set.
+	LifecycleProfile *string
+	LifecycleSecret  []byte
 }
 
 func boolInt(b bool) int64 {
@@ -149,6 +160,7 @@ func (r *Resolver) CreateProvider(ctx context.Context, n NewProvider) error {
 			AssurancePolicy: ptrNullString(n.AssurancePolicy),
 			Enabled:         boolInt(n.Enabled), DekVersion: n.DEKVersion,
 			CreatedAt: encodeTime(n.CreatedAt), UpdatedAt: encodeTime(n.UpdatedAt),
+			LifecycleProfile: ptrNullString(n.LifecycleProfile), LifecycleSecret: n.LifecycleSecret,
 		})
 	}
 	return r.pg.CreateOIDCProvider(ctx, pggen.CreateOIDCProviderParams{
@@ -157,6 +169,7 @@ func (r *Resolver) CreateProvider(ctx context.Context, n NewProvider) error {
 		AssurancePolicy: ptrPgTextIn(n.AssurancePolicy),
 		Enabled:         boolInt(n.Enabled), DekVersion: n.DEKVersion,
 		CreatedAt: pgTimestamp(n.CreatedAt), UpdatedAt: pgTimestamp(n.UpdatedAt),
+		LifecycleProfile: ptrPgTextIn(n.LifecycleProfile), LifecycleSecret: n.LifecycleSecret,
 	})
 }
 
@@ -211,6 +224,7 @@ func (r *Resolver) UpdateProvider(ctx context.Context, u ProviderUpdate) (bool, 
 			AssurancePolicy: ptrNullString(u.AssurancePolicy),
 			Enabled:         boolInt(u.Enabled), DekVersion: u.DEKVersion, UpdatedAt: encodeTime(u.UpdatedAt),
 			ID: u.ID, RowVersion: u.RowVersion,
+			LifecycleProfile: ptrNullString(u.LifecycleProfile), LifecycleSecret: u.LifecycleSecret,
 		})
 		return n == 1, err
 	}
@@ -220,6 +234,7 @@ func (r *Resolver) UpdateProvider(ctx context.Context, u ProviderUpdate) (bool, 
 		AssurancePolicy: ptrPgTextIn(u.AssurancePolicy),
 		Enabled:         boolInt(u.Enabled), DekVersion: u.DEKVersion, UpdatedAt: pgTimestamp(u.UpdatedAt),
 		ID: u.ID, RowVersion: u.RowVersion,
+		LifecycleProfile: ptrPgTextIn(u.LifecycleProfile), LifecycleSecret: u.LifecycleSecret,
 	})
 	return n == 1, err
 }
@@ -652,6 +667,19 @@ func (r *Resolver) DeleteSessionsForProvider(ctx context.Context, providerID str
 		return r.sq.DeleteSessionsForProvider(ctx, sql.NullString{String: providerID, Valid: true})
 	}
 	return r.pg.DeleteSessionsForProvider(ctx, pgText(providerID))
+}
+
+// DeleteSessionsForPrincipalAndIssuer sweeps one principal's sessions minted
+// through any oidc provider row carrying the issuer (and those a
+// credential-establishment stamp ties to an oidc identity of that issuer),
+// returning their ids (the count is the audit figure, and the ids let the caller
+// revoke the developer credentials minted from them). Other sessions of the principal
+// survive. Call it before the identity row is removed: the evidence join needs it.
+func (r *Resolver) DeleteSessionsForPrincipalAndIssuer(ctx context.Context, principalID, issuer string) ([]string, error) {
+	if r.sq != nil {
+		return r.sq.DeleteSessionsForPrincipalAndIssuer(ctx, sqlitegen.DeleteSessionsForPrincipalAndIssuerParams{PrincipalID: principalID, Issuer: issuer})
+	}
+	return r.pg.DeleteSessionsForPrincipalAndIssuer(ctx, pggen.DeleteSessionsForPrincipalAndIssuerParams{PrincipalID: principalID, Issuer: issuer})
 }
 
 // NewReauthWindow is the reauth-window insert carrier. OIDC reauth opens one

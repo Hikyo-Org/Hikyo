@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -333,6 +334,48 @@ func providerViewWire(v service.ProviderView) apigen.OidcProvider {
 		Slug: v.Slug, DisplayName: v.DisplayName, Issuer: v.Issuer, ClientId: v.ClientID,
 		Scopes: v.Scopes, RedirectUri: v.RedirectURI,
 		AssurancePolicy: v.AssurancePolicy, Enabled: v.Enabled, RowVersion: v.RowVersion,
+		LifecycleProfile: lifecycleProfileWire(v.LifecycleProfile), LifecycleSecretSet: v.LifecycleSecretSet,
+		LifecycleUri: v.LifecycleURI,
+	}
+}
+
+func lifecycleProfileWire(p *string) *apigen.OidcLifecycleProfile {
+	if p == nil {
+		return nil
+	}
+	profile := apigen.OidcLifecycleProfile(*p)
+	return &profile
+}
+
+// OidcLifecycle hands a directory lifecycle event to the service as raw bytes.
+// Every refusal before signature verification is the uniform 401, whatever its
+// cause; a verified event is a 204, whatever it did.
+func (a *API) OidcLifecycle(ctx context.Context, req apigen.OidcLifecycleRequestObject) (apigen.OidcLifecycleResponseObject, error) {
+	var body []byte
+	if req.Body != nil {
+		var err error
+		if body, err = io.ReadAll(io.LimitReader(req.Body, service.MaxLifecycleBodyBytes+1)); err != nil || len(body) > service.MaxLifecycleBodyBytes {
+			return apigen.OidcLifecycle401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
+		}
+	}
+	var header http.Header
+	if r := requestFrom(ctx); r != nil {
+		header = r.Header
+	}
+	err := a.Auth.OIDCLifecycle(ctx, string(req.Provider), header, body)
+	if err == nil {
+		return apigen.OidcLifecycle204Response{}, nil
+	}
+	switch policy := wireErrorFor(err); policy.code {
+	case apigen.ErrorCodeServiceUnavailable:
+		return apigen.OidcLifecycle503JSONResponse{ServiceUnavailableJSONResponse: apigen.ServiceUnavailableJSONResponse{Body: wirePolicyForCode(apigen.ErrorCodeServiceUnavailable).bodyWithDetail(""), Headers: apigen.ServiceUnavailableResponseHeaders{RetryAfter: 2}}}, nil
+	case apigen.ErrorCodeTooManyRequests:
+		return apigen.OidcLifecycle429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}, nil
+	case apigen.ErrorCodeInternal:
+		a.fault(ctx, "oidc lifecycle", err)
+		return apigen.OidcLifecycle500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
+	default:
+		return apigen.OidcLifecycle401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
 	}
 }
 
@@ -364,6 +407,7 @@ func (a *API) PutOidcProvider(ctx context.Context, req apigen.PutOidcProviderReq
 		DisplayName: req.Body.DisplayName, Issuer: req.Body.Issuer, ClientID: req.Body.ClientId,
 		ClientSecret: req.Body.ClientSecret, Scopes: req.Body.Scopes,
 		AssurancePolicy: req.Body.AssurancePolicy, Enabled: req.Body.Enabled,
+		LifecycleProfile: lifecycleProfileIn(req.Body.LifecycleProfile), LifecycleSecret: strDeref(req.Body.LifecycleSecret),
 		CreateOnly: req.Body.RowVersion == nil, ExpectedRowVersion: req.Body.RowVersion,
 	}
 	v, err := a.Providers.Put(ctx, service.Bearer(bearer(ctx)), string(req.Slug), in)
@@ -379,6 +423,14 @@ func (a *API) DeleteOidcProvider(ctx context.Context, req apigen.DeleteOidcProvi
 		return nil, err
 	}
 	return apigen.DeleteOidcProvider204Response{}, nil
+}
+
+func lifecycleProfileIn(p *apigen.OidcLifecycleProfile) *string {
+	if p == nil {
+		return nil
+	}
+	profile := string(*p)
+	return &profile
 }
 
 func strDeref(p *string) string {

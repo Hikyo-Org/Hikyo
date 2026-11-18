@@ -4038,6 +4038,13 @@ export const zIdentityUnlinkRequest = z.object({
     proof: z.string().max(1024)
 });
 
+/**
+ * The directory lifecycle dialect, a closed set; null means the provider
+ * takes no lifecycle events.
+ *
+ */
+export const zOidcLifecycleProfile = z.enum(['clerk']).nullable();
+
 export const zOidcProviderInput = z.object({
     display_name: z.string().max(256),
     issuer: z.string().max(2048),
@@ -4045,6 +4052,8 @@ export const zOidcProviderInput = z.object({
     client_secret: z.string().max(4096),
     scopes: z.string().max(1024),
     assurance_policy: z.string().max(4096).nullish(),
+    lifecycle_profile: zOidcLifecycleProfile.optional(),
+    lifecycle_secret: z.string().max(4096).optional(),
     enabled: z.boolean(),
     row_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional()
 });
@@ -4067,6 +4076,9 @@ export const zOidcProvider = z.object({
     scopes: z.string(),
     redirect_uri: z.string(),
     assurance_policy: z.string().nullish(),
+    lifecycle_profile: zOidcLifecycleProfile.optional(),
+    lifecycle_secret_set: z.boolean(),
+    lifecycle_uri: z.string(),
     enabled: z.boolean(),
     row_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
 });
@@ -7280,6 +7292,17 @@ export const zOidcCallbackQuery = z.object({
  * The minted or rotated session.
  */
 export const zOidcCallbackResponse = zLoginResult;
+
+export const zOidcLifecycleBody = z.string();
+
+export const zOidcLifecyclePath = z.object({
+    provider: z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9-]{0,63}$/)
+});
+
+/**
+ * The event verified and was handled or ignored.
+ */
+export const zOidcLifecycleResponse = z.void();
 
 export const zOauth2StartBody = zOauth2StartRequest;
 

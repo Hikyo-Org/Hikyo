@@ -48,6 +48,7 @@
     "configuration-rollouts",
     "---Identity providers---",
     "social-signin",
+    "oidc-providers",
     "signup-mail",
     "saml",
     "scim",

@@ -696,6 +696,8 @@ github.com/sqlc-dev/doubleclick v1.0.0 h1:2/OApfQ2eLgcfa/Fqs8WSMA6atH0G8j9hHbQIg
 github.com/sqlc-dev/doubleclick v1.0.0/go.mod h1:ODHRroSrk/rr5neRHlWMSRijqOak8YmNaO3VAZCNl5Y=
 github.com/sqlc-dev/sqlc v1.31.1 h1:+V+BjBJfFNPX/RFfL8eiZD9jk9lVJUEGGllWvnYNqbc=
 github.com/sqlc-dev/sqlc v1.31.1/go.mod h1:6ZPww/Jd3G6MzJeW6NrqizjL+52vYNaaXP9yMeJ/Nao=
+github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 h1:uOfcYT+3QungH6tIGSVCR/Y3KJmgJiHcojJbMTPDZAI=
+github.com/standard-webhooks/standard-webhooks/libraries v0.0.1/go.mod h1:L1MQhA6x4dn9r007T033lsaZMv9EmBAdXyU/+EF40fo=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.4.0/go.mod h1:YvHI0jy2hoMjB+UWwv71VJQ9isScKT/TqJzVSSt89Yw=
 github.com/stretchr/objx v0.5.0/go.mod h1:Yh+to48EsGEfYuaHDzXPcE3xhTkx73EhmCGUpEOglKo=

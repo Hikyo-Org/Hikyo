@@ -502,6 +502,7 @@ var pinnedContractSurface = map[string]bool{
 	"POST /api/v1/auth/login/challenge/{challenge}/webauthn/finish":                            true,
 	"POST /api/v1/auth/login/challenge/{challenge}/webauthn/start":                             true,
 	"POST /api/v1/auth/logout":                                                                 true,
+	"POST /api/v1/auth/oidc/{provider}/lifecycle":                                              true,
 	"POST /api/v1/auth/oidc/{provider}/start":                                                  true,
 	"POST /api/v1/auth/oauth2/{provider}/start":                                                true,
 	"POST /api/v1/auth/recovery-codes/regenerate":                                              true,

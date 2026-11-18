@@ -178,6 +178,10 @@ func (s stubAuth) OIDCCallback(ctx context.Context, slug, code, state, iss, idpE
 	return service.OIDCCallbackResult{}, domain.ErrUnauthenticated
 }
 
+func (s stubAuth) OIDCLifecycle(context.Context, string, http.Header, []byte) error {
+	return domain.ErrUnauthenticated
+}
+
 func (s stubAuth) OAuth2Start(ctx context.Context, slug, purpose, intent, signupOrg, environmentID, presented, proof string, browser bool) (service.OIDCStartResult, error) {
 	return s.OIDCStart(ctx, slug, purpose, intent, signupOrg, environmentID, presented, proof, browser)
 }

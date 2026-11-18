@@ -5853,6 +5853,51 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/auth/oidc/{provider}/lifecycle:
+    parameters:
+      - $ref: "#/components/parameters/ProviderSlug"
+    post:
+      operationId: oidcLifecycle
+      tags: [auth]
+      summary: Receive a signed directory lifecycle event for an OIDC provider.
+      description: |
+        The webhook endpoint of an external user directory that is also the
+        provider's OIDC issuer (human-auth ADR, 2026-11-17 amendment). The body
+        is read raw, bounded, and verified by the Standard Webhooks library
+        against the provider's lifecycle signing secret BEFORE it is parsed; the
+        `clerk` profile also accepts Svix's `svix-*` header names. A slug that is
+        unknown, disabled or has no lifecycle profile, and any body that fails
+        verification (signature, headers, timestamp tolerance), is the same
+        uniform 401. Once the signature verifies, every outcome is 204: an
+        unknown subject, an ignored event type, a replay and a malformed body
+        alike. `user.deleted` unlinks the identity and ends its sessions;
+        `user.updated` with `banned: true` ends its sessions and keeps the link;
+        every other event, including a `locked` user, changes nothing.
+      security: []
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [none]
+      x-hikyo-min-revision: 20
+      requestBody:
+        required: true
+        content:
+          "*/*":
+            schema:
+              type: string
+              format: binary
+      responses:
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204":
+          description: The event verified and was handled or ignored.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /api/v1/auth/oauth2/{provider}/start:
     parameters:
       - $ref: "#/components/parameters/ProviderSlug"
@@ -6800,7 +6845,8 @@ paths:
         The issuer is immutable after create (A3): a changed issuer is refused.
         Discovery is re-run and the document's issuer must byte-equal the
         configured one. A reconfigure sweeps every session authenticated through
-        the provider (A4).
+        the provider (A4), except one that changes only the lifecycle profile or
+        secret, which are not login-path material.
       x-hikyo-class: instance
       x-hikyo-operation: oidc-provider.put
       x-hikyo-formula: [instance-config@instance]
@@ -24795,6 +24841,16 @@ components:
           type: [string, "null"]
           maxLength: 4096
           description: JSON `{acr_values[], amr_sets[][]}`; absent means single-factor.
+        lifecycle_profile:
+          $ref: "#/components/schemas/OidcLifecycleProfile"
+        lifecycle_secret:
+          type: string
+          maxLength: 4096
+          description: |
+            The directory's webhook signing secret (`whsec_...`), envelope-encrypted
+            at rest under its own field binding and never returned. Required with a
+            `lifecycle_profile` on create; on reconfigure, absent or empty keeps the
+            stored secret. Setting, rotating or clearing it sweeps no sessions.
         enabled:
           type: boolean
         row_version:
@@ -24802,6 +24858,13 @@ components:
           format: int64
           minimum: 1
           description: Required for reconfiguration and omitted for create. A stale or deleted row returns 409.
+
+    OidcLifecycleProfile:
+      type: [string, "null"]
+      enum: [clerk, null]
+      description: |
+        The directory lifecycle dialect, a closed set; null means the provider
+        takes no lifecycle events.
 
     Oauth2ProviderInput:
       type: object
@@ -24823,7 +24886,7 @@ components:
     OidcProvider:
       type: object
       additionalProperties: false
-      required: [slug, display_name, issuer, client_id, scopes, redirect_uri, enabled, row_version]
+      required: [slug, display_name, issuer, client_id, scopes, redirect_uri, lifecycle_secret_set, lifecycle_uri, enabled, row_version]
       properties:
         slug:
           type: string
@@ -24839,6 +24902,14 @@ components:
           type: string
         assurance_policy:
           type: [string, "null"]
+        lifecycle_profile:
+          $ref: "#/components/schemas/OidcLifecycleProfile"
+        lifecycle_secret_set:
+          type: boolean
+          description: Whether a lifecycle signing secret is stored. The secret itself never leaves the server.
+        lifecycle_uri:
+          type: string
+          description: The endpoint to register at the directory.
         enabled:
           type: boolean
         row_version:

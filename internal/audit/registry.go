@@ -134,6 +134,13 @@ const (
 	// bound to or removed from an account - account-security mutations both.
 	EventIdentityLinked   EventType = "auth.identity_linked"
 	EventIdentityUnlinked EventType = "auth.identity_unlinked"
+	// auth.identity_unlinked_by_directory, auth.sessions_swept_by_directory and
+	// auth.account_no_login_credential record the directory lifecycle events of
+	// an OIDC provider (human-auth ADR, 2026-11-17 amendment). They carry a
+	// system actor: the directory, not a Hikyo principal, caused them.
+	EventIdentityUnlinkedByDirectory EventType = "auth.identity_unlinked_by_directory"
+	EventSessionsSweptByDirectory    EventType = "auth.sessions_swept_by_directory"
+	EventAccountNoLoginCredential    EventType = "auth.account_no_login_credential"
 	// auth.provider_changed records a provider configuration change and the
 	// count of federated sessions it swept (A3/A4). auth.provider_read records
 	// the instance-scoped provider reads (audit-model default-deny refuses
@@ -1461,6 +1468,43 @@ var registry = map[EventType]TypeSpec{
 			"account_id":             {Kind: KindString, Required: true},
 			"identity_id":            {Kind: KindString, Required: true},
 			"authorizing_credential": {Kind: KindString, Required: true},
+		},
+	},
+	EventIdentityUnlinkedByDirectory: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"kind":            {Kind: KindString, Required: true},
+			"account_id":      {Kind: KindString, Required: true},
+			"identity_id":     {Kind: KindString, Required: true},
+			"provider_id":     {Kind: KindString, Required: true},
+			"lifecycle_event": {Kind: KindString, Required: true, Enum: []string{"user.deleted"}},
+			"sessions_swept":  {Kind: KindInt, Required: true},
+		},
+	},
+	EventSessionsSweptByDirectory: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"account_id":      {Kind: KindString, Required: true},
+			"identity_id":     {Kind: KindString, Required: true},
+			"provider_id":     {Kind: KindString, Required: true},
+			"lifecycle_event": {Kind: KindString, Required: true, Enum: []string{"user.updated.banned"}},
+			"sessions_swept":  {Kind: KindInt, Required: true},
+		},
+	},
+	EventAccountNoLoginCredential: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"account_id": {Kind: KindString, Required: true},
+			"cause":      {Kind: KindString, Required: true, Enum: []string{"directory-user-deleted"}},
 		},
 	},
 

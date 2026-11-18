@@ -755,7 +755,7 @@
     "engine": "postgres",
     "name": "CreateOIDCProvider",
     "annotation": "authn-resolution",
-    "hash": "60126692e17ab926b179e3764af5115e0c0c2e140d7841552e6e050bcde79c43"
+    "hash": "d283c6be7bb0264c184a764ce8824eccf0395343c7ab21ec8113cc5f38dedc94"
   },
   {
     "engine": "postgres",
@@ -1076,6 +1076,12 @@
   },
   {
     "engine": "postgres",
+    "name": "DeleteSessionsForPrincipalAndIssuer",
+    "annotation": "authn-resolution",
+    "hash": "69fca0a295d1c353bb17503141d645c6454837039c1c87b7b86b7fdd125109fb"
+  },
+  {
+    "engine": "postgres",
     "name": "DeleteSessionsForProvider",
     "annotation": "authn-resolution",
     "hash": "1fd4371a5b9f2587ff3fe06cf970fd74dfac4f0646dfc08f5ec67c15aaf3b699"
@@ -1303,13 +1309,13 @@
     "engine": "postgres",
     "name": "GetEnabledProviderByIssuer",
     "annotation": "authn-resolution",
-    "hash": "f6ead29fea22c802d532e3b2bdd0dfa28feb442e4a0940453bca1c2bd4a9174d"
+    "hash": "6e1dd92735185b2f1ddf7e2ceff4760648244d335e688064bb1f2aff37db5b23"
   },
   {
     "engine": "postgres",
     "name": "GetEnabledProviderBySlug",
     "annotation": "authn-resolution",
-    "hash": "22f5e0ab3ca2af9d045c25b323687ae5952aaaa66dfe16480480767c49fcc537"
+    "hash": "8a4c6c15fa40840a992dc226f447c119fc1056c822243fdea06e9cf0684f87ac"
   },
   {
     "engine": "postgres",
@@ -1392,7 +1398,7 @@
     "engine": "postgres",
     "name": "GetOIDCProviderBySlug",
     "annotation": "authn-resolution",
-    "hash": "b66498471767d6825ae3c10138ca67e0cc10367b97eb434b6603262cf03884c6"
+    "hash": "8e199e9c45f40bbcf41e2e8c233b569b4c897202198e2e21fd21eff79929ff8a"
   },
   {
     "engine": "postgres",
@@ -1480,7 +1486,7 @@
     "engine": "postgres",
     "name": "GetProviderForCallback",
     "annotation": "authn-resolution",
-    "hash": "dd0c5490aee6dfd7f8c6a951b033faf7cecf384e9830a56b0924ada8517f614e"
+    "hash": "370acad3c14f7cd7f943d5f30128486a5b761d1007401accf172ec1ab4e67d5d"
   },
   {
     "engine": "postgres",
@@ -2187,13 +2193,19 @@
     "engine": "postgres",
     "name": "ListOIDCProviders",
     "annotation": "authn-resolution",
-    "hash": "f56ab37022bf6a6cbbeb747e17f235d27d52c8c9be2ae05d49aa879750882ff1"
+    "hash": "c251facee757a89a9e338a6793954093c8c807e086b578c120f294475def765f"
   },
   {
     "engine": "postgres",
     "name": "ListOauth2ProvidersForReencrypt",
     "annotation": "authn-resolution",
     "hash": "b8aae00f48de609ac97da867cd07b17dbe8adfea5a7c6d8f785d69161594223a"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListOidcLifecycleSecretsForReencrypt",
+    "annotation": "authn-resolution",
+    "hash": "f01467800b8dbdf62d6ed929ed52ff43f57350b4517f765bca8cfad50b6cecb4"
   },
   {
     "engine": "postgres",
@@ -3146,6 +3158,12 @@
   },
   {
     "engine": "postgres",
+    "name": "ReencryptOidcLifecycleSecret",
+    "annotation": "authn-resolution",
+    "hash": "97af6f84b7faa3f0898cc68760d1bdf67ea3b959ffe059df1fc3ee0558ae2b1e"
+  },
+  {
+    "engine": "postgres",
     "name": "ReencryptOidcProvider",
     "annotation": "authn-resolution",
     "hash": "ff887e781c1235ae95a34ab24b21c652782611032382c5a97bfa441d2c02b74d"
@@ -3788,7 +3806,7 @@
     "engine": "postgres",
     "name": "UpdateOIDCProviderCAS",
     "annotation": "authn-resolution",
-    "hash": "dce489c076a53d2dd9fe37fcf21c1222daa861e5d14726a819610f7dde6f97ab"
+    "hash": "ee8d895149012b7587e91d9cf4bcaf698b87e9f435e8b0193122a747425e604c"
   },
   {
     "engine": "postgres",
@@ -4564,7 +4582,7 @@
     "engine": "sqlite",
     "name": "CreateOIDCProvider",
     "annotation": "authn-resolution",
-    "hash": "0e6cee4d1dbde7b6320270e1a40081342a2db85269679fff17d0e5789ce7f8c1"
+    "hash": "239be5d882bade4e418fbc2aca948b45756ac2906fe8172a32609fea54472ccc"
   },
   {
     "engine": "sqlite",
@@ -4885,6 +4903,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "DeleteSessionsForPrincipalAndIssuer",
+    "annotation": "authn-resolution",
+    "hash": "69fca0a295d1c353bb17503141d645c6454837039c1c87b7b86b7fdd125109fb"
+  },
+  {
+    "engine": "sqlite",
     "name": "DeleteSessionsForProvider",
     "annotation": "authn-resolution",
     "hash": "1fd4371a5b9f2587ff3fe06cf970fd74dfac4f0646dfc08f5ec67c15aaf3b699"
@@ -5112,13 +5136,13 @@
     "engine": "sqlite",
     "name": "GetEnabledProviderByIssuer",
     "annotation": "authn-resolution",
-    "hash": "64b64f24eb8efc4e7c7ab8d07c61a995fc1b9e223699eeeca12fb13023e454a4"
+    "hash": "e492200ba587beb80e46dc0ec3eec11463b934374f0dc65e78eb25d9b76e93e3"
   },
   {
     "engine": "sqlite",
     "name": "GetEnabledProviderBySlug",
     "annotation": "authn-resolution",
-    "hash": "0918227ccff9a73bdd237417945b9025e8d56e8e07e106c7ae2549de1a7aa963"
+    "hash": "fc8c9f3dbd1d9aeb169a78c937307c461dcd0a4c6450ee6f264fedfc0006cd30"
   },
   {
     "engine": "sqlite",
@@ -5201,7 +5225,7 @@
     "engine": "sqlite",
     "name": "GetOIDCProviderBySlug",
     "annotation": "authn-resolution",
-    "hash": "269c40d6785a85cd15f79517706927a8cd40f13fe3f77efcda91e97f23cf5f5c"
+    "hash": "e76fa122fa1555822538fafa37f98f4967608dd0f86d64192f58ec0e2878c7db"
   },
   {
     "engine": "sqlite",
@@ -5289,7 +5313,7 @@
     "engine": "sqlite",
     "name": "GetProviderForCallback",
     "annotation": "authn-resolution",
-    "hash": "8ace8d4c9dc0156a7f195a05b7469b3f5e93022ce87fe510293b962dc189c7c1"
+    "hash": "fa5a804c639f7f00eaeaedf29ef35ecb4acb55b1619804bd564c826077951d6e"
   },
   {
     "engine": "sqlite",
@@ -5996,13 +6020,19 @@
     "engine": "sqlite",
     "name": "ListOIDCProviders",
     "annotation": "authn-resolution",
-    "hash": "f56ab37022bf6a6cbbeb747e17f235d27d52c8c9be2ae05d49aa879750882ff1"
+    "hash": "c251facee757a89a9e338a6793954093c8c807e086b578c120f294475def765f"
   },
   {
     "engine": "sqlite",
     "name": "ListOauth2ProvidersForReencrypt",
     "annotation": "authn-resolution",
     "hash": "511371aa5b69d480da6dc4e7a3b82d558063f3658d0c4a7c7516f3d68c9b7f77"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListOidcLifecycleSecretsForReencrypt",
+    "annotation": "authn-resolution",
+    "hash": "5e80383319ddfd047e0d4a783ea39ce871773a8f5637272a36cb8731300d2d50"
   },
   {
     "engine": "sqlite",
@@ -6955,6 +6985,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "ReencryptOidcLifecycleSecret",
+    "annotation": "authn-resolution",
+    "hash": "97af6f84b7faa3f0898cc68760d1bdf67ea3b959ffe059df1fc3ee0558ae2b1e"
+  },
+  {
+    "engine": "sqlite",
     "name": "ReencryptOidcProvider",
     "annotation": "authn-resolution",
     "hash": "ff887e781c1235ae95a34ab24b21c652782611032382c5a97bfa441d2c02b74d"
@@ -7583,7 +7619,7 @@
     "engine": "sqlite",
     "name": "UpdateOIDCProviderCAS",
     "annotation": "authn-resolution",
-    "hash": "b361b0a041aab4120d32539d44cc155afd91133e390ac8a5662c7e347932c242"
+    "hash": "a4d48c98485f8eb6abcf0b09e39f521e0ddd8e3f581367925538e34edb0abf56"
   },
   {
     "engine": "sqlite",

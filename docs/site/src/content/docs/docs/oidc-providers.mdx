@@ -1,0 +1,556 @@
+---
+title: Other OIDC providers
+description: Step-by-step setup of Clerk, Auth0, Okta, Amazon Cognito, Keycloak, authentik, ZITADEL and Authelia as OpenID Connect sign-in providers, plus Clerk directory lifecycle events.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/oidc-providers.mdx
+---
+
+Any standards-compliant OpenID Connect (OIDC) provider works in **Instance
+settings → Identity providers**. Hikyo needs the provider's issuer URL, a client
+ID and a client secret, and the provider needs Hikyo's callback URL. The
+provider's OpenID configuration must be reachable from the Hikyo host, and the
+issuer it reports must match the one you enter exactly.
+
+This page covers four hosted providers (Clerk, Auth0, Okta, Amazon Cognito) and
+four self-hosted ones (Keycloak, authentik, ZITADEL, Authelia). For Google,
+Microsoft Entra and GitHub, see [Social sign-in](/docs/social-signin/). Signing
+in does not admit new accounts: that still takes an invitation or an active
+[registration policy](/docs/social-signin/#open-registration-deliberately).
+
+## Before you start
+
+Do these once.
+
+1. Set the effective `HIKYO_EXTERNAL_ORIGIN` to the instance's stable HTTPS
+   hostname. After managed configuration adoption, change and apply the managed
+   value through [Hikyo configuration](/docs/managed-configuration/).
+2. Choose a slug, such as `auth0`. It uses lowercase letters, digits and
+   hyphens, appears in the callback URL and cannot change.
+3. Build the callback URL from your origin and slug. Register it exactly in the
+   provider.
+
+   ```text
+   https://hikyo.example.com/api/v1/auth/oidc/auth0/callback
+   ```
+
+4. Use separate provider clients for independent Hikyo installations.
+
+## Add the provider in Hikyo
+
+Create the client in the provider first (each section below), then:
+
+1. Open **Instance settings → Identity providers** and choose **add identity
+   provider**. Provider administration requires the instance configuration
+   capability and the requested fresh authentication.
+2. Enter **Slug** and **Display name**. The display name labels the sign-in
+   button.
+3. Find the exact issuer. Open `<issuer>/.well-known/openid-configuration` from
+   a machine that can reach the provider, and copy its `issuer` value byte for
+   byte, including any trailing slash. Paste it into **Issuer URL**. The issuer
+   cannot be changed after creation, because linked identities are keyed by it.
+4. Enter **Client ID** and **Client secret**. The secret is write-only: Hikyo
+   never displays it, so enter it again on every save.
+5. Set **Scopes** to `openid profile email`. The field starts with only
+   `openid`.
+6. Leave **Assurance policy (JSON, optional)** empty unless the provider
+   section tells you otherwise. See the next section.
+7. Leave **Directory lifecycle events** on **None** unless you use Clerk. See
+   [Directory lifecycle events (Clerk)](#directory-lifecycle-events-clerk).
+8. Tick **Enabled (advertised on the sign-in page)** to show a "Continue with"
+   button for this provider. Disabling or deleting a provider removes the button
+   and ends every session that authenticated through it. Local password and
+   second-factor sign-in is not affected.
+9. Choose **Configure provider**. Hikyo fetches and validates the discovery
+   document on save.
+
+The CLI cannot create OIDC providers; use the panel or the HTTP API
+(`PUT /api/v1/instance/oidc-providers/{slug}`). The CLI manages existing ones:
+
+```sh
+hikyo instance-config provider list
+hikyo instance-config provider update auth0 --kind oidc --display-name "Auth0" \
+  --client-secret-file ./auth0-client-secret
+hikyo instance-config provider update auth0 --kind oidc --enabled=false \
+  --client-secret-file ./auth0-client-secret
+```
+
+An OIDC update re-sends the client secret, so the command reads it from the file
+or prompts for it.
+
+### Multi-factor assurance
+
+An assurance policy tells Hikyo which ID-token values prove multi-factor
+sign-in. Hikyo never sends `acr_values`, so assurance rests on an `amr` value
+that the provider emits because its own sign-in policy requires multi-factor
+authentication. The policy shape is:
+
+```json
+{"amr_sets":[["mfa"]]}
+```
+
+Every listed value in one set must appear in the token's `amr`. Before you set a
+policy, sign in with a test account that used multi-factor authentication,
+decode its ID token and confirm the `amr` values. Do not paste tokens into logs
+or support messages.
+
+<Callout type="info" title="Reauthentication needs more than the policy">
+  Reauthenticating for protected disclosure also needs an `amr` value of `hwk`,
+  `swk` or `otp`, and an `auth_time` no more than five minutes old. `mfa` alone
+  is refused. If the provider's token cannot meet this, leave the policy unset
+  and use a local authenticator or passkey for disclosure.
+</Callout>
+
+## Hosted providers
+
+### Clerk
+
+Needs a Clerk application. Official guide: [Clerk as an OIDC
+provider](https://clerk.com/docs/guides/configure/auth-strategies/oauth/single-sign-on).
+
+1. In the Clerk Dashboard, open **OAuth applications** and choose **Add
+   application**, then **Create OAuth application**.
+2. Enter a **Name** and **Scopes** that include `openid profile email`, then
+   choose **Add**.
+3. Copy the **Client Secret** from the modal. Clerk shows it once.
+4. On the application's settings page, copy the **Client ID** from
+   **Application credentials**.
+5. Paste the callback URL into **Redirect URIs**.
+
+| Hikyo field | Value |
+| --- | --- |
+| Issuer URL | Your Frontend API URL, with no trailing slash. Development: `https://<slug>.clerk.accounts.dev`. Production: `https://clerk.<your-domain>` |
+| Client ID, Client secret | From the steps above |
+| Scopes | `openid profile email` |
+
+Required settings:
+
+- Development and production instances have different issuers. Create one Hikyo
+  provider for each.
+- New Clerk instances require PKCE by default. On an existing instance, turn it
+  on under **Settings → Authorization security**.
+- Clerk returns `email` and `email_verified` according to the granted scopes.
+  Sign-up needs `email_verified` as a JSON boolean `true`. Check this in a
+  decoded test token.
+
+Multi-factor assurance (optional): leave the policy unset. Clerk's discovery
+document lists no `acr`, `amr` or `auth_time` claims.
+
+Keeping users in sync: Clerk pushes lifecycle events to Hikyo. See
+[Directory lifecycle events (Clerk)](#directory-lifecycle-events-clerk).
+
+### Auth0
+
+Needs an Auth0 tenant. Official guide: [Register a Regular Web
+Application](https://auth0.com/docs/get-started/auth0-overview/create-applications/regular-web-apps).
+
+1. In the Auth0 Dashboard, open **Applications → Applications** and choose
+   **Create Application**.
+2. Choose **Regular Web Applications**, then **Create**.
+3. Open **Settings → Basic Information**. Copy the **Client ID**, and choose
+   **Reveal** to copy the **Client Secret**.
+4. Under **Application URIs**, paste the callback URL into **Allowed Callback
+   URLs**, then save.
+
+| Hikyo field | Value |
+| --- | --- |
+| Issuer URL | `https://<tenant>.<region>.auth0.com/`, with the trailing slash |
+| Client ID, Client secret | From **Settings → Basic Information** |
+| Scopes | `openid profile email` |
+
+Required settings:
+
+- The issuer ends in `/`. Without it, discovery reports a mismatch.
+- With a custom domain, tokens carry the custom domain's issuer, such as
+  `https://login.example.com/`. Copy it from that domain's discovery document.
+- Keep the application's signing algorithm on RS256 under **Advanced Settings →
+  OAuth**. Hikyo refuses HS256.
+- The `email` scope puts a boolean `email_verified` in the ID token.
+
+Multi-factor assurance (optional): after multi-factor sign-in, Auth0 adds `mfa`
+to `amr`. Silent authentication and token refresh omit `amr`. Do not copy
+Auth0's step-up template: it only enables multi-factor authentication when
+`acr_values` is present, which Hikyo never sends. Require it for every sign-in
+through the tenant's policy or an unconditional post-login Action that sets
+`allowRememberBrowser: false` instead. Then
+check a decoded test token, and only then consider `{"amr_sets":[["mfa"]]}`. Also
+check in your console whether your plan includes the factors you need: Auth0's
+Free plan lists no Pro MFA factors.
+
+Keeping users in sync: use Auth0's **Outbound SCIM** Event Stream Action
+template, which sends `POST`, `PUT` and `DELETE` on `/Users`, to Hikyo's
+[SCIM endpoint](/docs/scim/). Check that Event Streams are available in your
+tenant. See [Auth0's
+guide](https://auth0.com/docs/customize/events/send-outbound-scim).
+
+### Okta
+
+Needs an Okta Workforce org. Integrator Free works for this guide. Official
+guide: [OIDC app integration](https://help.okta.com/oie/en-us/content/topics/apps/apps_app_integration_wizard_oidc.htm).
+
+1. In the Admin Console, open **Applications and Resources → Applications** and
+   choose **Create App Integration**.
+2. Choose **Classic experience**, then **OIDC - OpenID Connect**, then **Web
+   Application**, then **Next**. If you need SCIM provisioning, use the **Okta
+   Integration Wizard** instead; see Keeping users in sync below.
+3. Set the grant type to Authorization Code. Paste the callback URL into
+   **Sign-in redirect URIs**.
+4. Set **Assignments**. Users who are not assigned cannot sign in. Choose
+   **Save**.
+5. On the **General** tab, copy the Client ID from **Client Credentials**.
+   Choose **Client authentication: Client secret**, then **Save**, to generate
+   and copy the secret.
+
+| Hikyo field | Value |
+| --- | --- |
+| Issuer URL, org server | `https://<org>.okta.com` |
+| Issuer URL, custom server | `https://<org>.okta.com/oauth2/<id>`, for example `/oauth2/default` |
+| Client ID, Client secret | From **Client Credentials** |
+| Scopes | `openid profile email` |
+
+Required settings:
+
+- Use the org server unless you already run a custom authorization server.
+  Neither issuer has a trailing slash. Do not mix the two.
+- A custom authorization server needs an access policy. On a new org, the
+  `default` server has none, so add one.
+- With a custom domain, Okta's issuer mode (Okta URL, Custom URL or Dynamic)
+  decides the issuer. Copy it from discovery.
+- `email_verified` is a boolean. Okta's documentation disagrees on whether the
+  ID token is thin or fat, so check a decoded test token for `email` and
+  `email_verified`.
+
+Multi-factor assurance (optional): require multi-factor authentication in the
+application's sign-in policy. Okta's `amr` examples include `mfa`. Check a
+decoded test token, and only then consider `{"amr_sets":[["mfa"]]}`.
+
+Keeping users in sync: Okta can push SCIM 2.0 (create, update, deactivate) to
+Hikyo's [SCIM endpoint](/docs/scim/), but not from an app created through the
+Classic experience. Build the app with the Okta Integration Wizard, or add a
+separate SCIM template app. Check in your console whether your plan includes
+Lifecycle Management.
+
+### Amazon Cognito
+
+Needs an Amazon Cognito user pool. Use the Essentials plan, which supports
+managed login. Official guide: [App clients](https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-settings-client-apps.html).
+
+1. In the AWS console, open **Amazon Cognito → User Pools** and create or
+   select a pool.
+2. Create an app client with **Application type: Traditional web application**.
+   This type generates a client secret.
+3. Enter a name and set **Return URL** to the callback URL, then choose
+   **Create app client**.
+4. On the pool's **Domain** tab, create a domain and choose managed login as
+   the branding version. Hikyo's reauthentication needs managed login.
+5. On the app client, allow the `openid`, `email` and `profile` scopes and give
+   it read access to the `email` and `email_verified` attributes.
+6. Copy the Client ID and Client secret from the app client's details. Check in
+   your console where your version shows them.
+
+| Hikyo field | Value |
+| --- | --- |
+| Issuer URL | `https://cognito-idp.<region>.amazonaws.com/<poolId>`, or `https://issuer-cognito-idp.<region>.amazonaws.com/<poolId>`. Use the one the pool's discovery document returns |
+| Client ID, Client secret | From the app client |
+| Scopes | `openid profile email` |
+
+Required settings:
+
+- The issuer has no trailing slash. A custom domain changes the authorize and
+  token hosts, not the issuer.
+- Cognito accepts PKCE S256 only.
+- With the `email` scope, the ID token carries a boolean `email_verified`.
+- Reauthentication with `prompt=login` works only with managed login, not the
+  classic hosted UI.
+
+Multi-factor assurance (optional): leave the policy unset. Cognito's `acr` and
+`amr` claims are still rolling out, so check a decoded test token first. Only if
+it shows `mfa` with pool MFA set to Required, consider
+`{"amr_sets":[["mfa"]]}`.
+
+Keeping users in sync: Cognito has no SCIM push and no delete trigger. Remove
+users in Hikyo yourself, or build your own pipeline: CloudTrail management
+events to EventBridge to a Lambda function that calls Hikyo's SCIM API.
+
+## Self-hosted providers
+
+For every self-hosted provider, the Hikyo host must reach the provider's public
+issuer URL directly. Hikyo refuses ID tokens signed with HS256 or EdDSA; it
+accepts RS256, RS384, RS512, ES256, ES384, ES512, PS256, PS384 and PS512.
+
+### Keycloak
+
+Needs a Keycloak realm. Steps follow Keycloak 26.8.
+
+1. Open **Clients → Create client**. Keep **Client type** at OpenID Connect and
+   enter a **Client ID**. Choose **Next**.
+2. Under **Capability config**, turn **Client authentication** on and leave
+   **Standard flow** on. Set **PKCE Method** to **S256**.
+3. Under **Login settings**, paste the callback URL into **Valid redirect
+   URIs**. Matching is exact and case-sensitive. Save.
+4. Open the **Credentials** tab. The **Client Authenticator** is **Client ID and
+   Secret**. Copy the secret.
+
+| Hikyo field | Value |
+| --- | --- |
+| Issuer URL | `https://<host>/realms/<realm>`. Open **Realm settings → General → Endpoints → OpenID Endpoint Configuration** to see it |
+| Client ID, Client secret | The client's ID and its **Credentials** tab secret |
+| Scopes | `openid profile email` |
+
+Required settings:
+
+- Set Keycloak's `hostname` option to the full public URL so the issuer stays
+  fixed. Do not combine `hostname-strict=false` with proxy headers.
+- If `http-relative-path` is set, such as the legacy `/auth`, it becomes part of
+  the issuer path.
+- The built-in `email verified` mapper emits `email_verified` as a boolean.
+
+Multi-factor assurance (optional): Keycloak's `acr` is `1` or `0` unless the
+client requests a level, so use `amr` only.
+
+1. Duplicate the built-in browser flow, because built-in flows cannot be
+   modified. Set **Authenticator Reference** to `pwd` on the password form and
+   `otp` on the OTP form, with a short **Authenticator Reference Max Age**.
+   Bind the new flow.
+2. Add the **Authentication Method Reference (AMR)** mapper to the client's
+   `<client>-dedicated` scope.
+3. Check a decoded test token, and only then consider
+   `{"amr_sets":[["pwd","otp"]]}`.
+
+The mapper reads factors completed across the whole SSO session, which is why
+the max age matters.
+
+Keeping users in sync: Keycloak's SCIM support is inbound only, so it does not
+push to Hikyo. Remove users in Hikyo yourself.
+
+### authentik
+
+Needs an authentik instance. Steps follow authentik 2026.8.
+
+1. Open **Applications → Applications** and choose **New Application**. Enter
+   a **Name** and a **Slug**. The slug becomes part of the issuer URL.
+2. Choose the provider type **OAuth2/OIDC**.
+3. Set **Client Type** to **Confidential**. The **Client ID** and **Client
+   Secret** are generated in the form. Copy them.
+4. Add the callback URL to **Redirect URIs/Origins (RegEx)** in strict mode. If
+   you leave it empty, authentik saves the first redirect URI it sees.
+5. Select a **Signing Key**.
+6. Choose **Create Application**.
+
+| Hikyo field | Value |
+| --- | --- |
+| Issuer URL | `https://<host>/application/o/<application-slug>/`, with the trailing slash |
+| Client ID, Client secret | Generated in the provider form |
+| Scopes | `openid profile email` |
+
+Required settings:
+
+- Select a signing key. Without one, authentik signs with HS256, which Hikyo
+  refuses.
+- Keep the default **Issuer mode**, where each provider has its own issuer. The
+  global mode sets an issuer that does not match discovery.
+- Since authentik 2025.10, the default email mapping returns `"email_verified":
+  false`, so sign-up is refused. Replace it with a custom Scope Mapping for the
+  `email` scope, following authentik's guide to verifying email addresses. If
+  the value comes from a user attribute, store it as a real Boolean. A string
+  such as `"true"` is refused, and `bool("false")` is true in Python, so do not
+  coerce it.
+- Do not let a WAF or bot protection challenge the discovery and JWKS endpoints.
+
+Multi-factor assurance (optional): `acr` is always
+`goauthentik.io/providers/oauth2/default`, so use `amr` only. It carries `pwd`
+for a password, `mfa` after an authenticator-validation stage, `user` for
+passwordless WebAuthn and `sc` for a certificate. Check a decoded test token,
+and only then consider `{"amr_sets":[["mfa"]]}`. These values include none of
+`hwk`, `swk` or `otp`, so Hikyo refuses disclosure reauthentication through
+authentik. Use a local authenticator or passkey for it.
+
+Keeping users in sync: authentik's built-in SCIM 2.0 provider pushes every
+change and runs a full sync hourly. Create a binding and credential as described
+in [SCIM provisioning](/docs/scim/), then enter Hikyo's SCIM base URL and token
+in authentik's SCIM provider.
+
+### ZITADEL
+
+Needs a ZITADEL instance. Steps follow ZITADEL v4.20.
+
+1. Open your project and choose **+** under **Applications**. Enter a name and
+   choose the type **Web**.
+2. For the authentication method, choose **Code** or **Post**. Do not choose
+   **PKCE**, which means no client secret.
+3. Paste the callback URL into **Redirect URIs**. A non-HTTPS URI needs
+   Development Mode.
+4. Copy the **Client ID** and **Client Secret**. ZITADEL shows them once.
+5. Under **Token Settings**, turn on **Include user's profile info in the ID
+   Token**.
+
+| Hikyo field | Value |
+| --- | --- |
+| Issuer URL | `https://<ExternalDomain>`, with the port if it is not 443 |
+| Client ID, Client secret | From step 4 |
+| Scopes | `openid profile email` |
+
+Required settings:
+
+- Turn on the ID-token profile setting from step 5. Without it, `email` and
+  `email_verified` do not reach the ID token with the code flow.
+- ZITADEL picks the instance from the `Host` header. A proxy must keep `Host`,
+  and Hikyo must call the public domain, or ZITADEL answers "Instance not
+  found".
+- The console labels above come from earlier console versions. Check them in
+  your console.
+
+Multi-factor assurance (optional): `acr` is undocumented, so use `amr` only. It
+carries `pwd`, `otp` for any one-time code, `user` for a passkey or U2F, and
+`mfa` when two or more factors were used. Check a decoded test token, and only
+then consider `{"amr_sets":[["mfa"]]}`.
+
+Keeping users in sync: ZITADEL's SCIM is inbound only, so it does not push to
+Hikyo. Remove users in Hikyo yourself.
+
+### Authelia
+
+Needs Authelia with a configuration file you control. Authelia has no admin
+console, so the client lives in YAML. The provider also needs `hmac_secret` and
+`jwks`, with at least one RS256 RSA key.
+
+1. Generate a client secret. The digest goes in Authelia and the plaintext goes
+   in Hikyo.
+
+   ```sh
+   authelia crypto hash generate pbkdf2 --variant sha512 --random --random.length 72 --random.charset rfc3986
+   ```
+
+2. Add the client and a claims policy to the configuration. The example uses
+   the slug `authelia`; replace the redirect URI with your own callback URL.
+
+   ```yaml
+   identity_providers:
+     oidc:
+       claims_policies:
+         hikyo:
+           id_token: ['email', 'email_verified', 'name', 'preferred_username']
+       clients:
+         - client_id: 'hikyo'
+           client_name: 'Hikyo'
+           client_secret: '$pbkdf2-sha512$...'
+           public: false
+           authorization_policy: 'two_factor'
+           claims_policy: 'hikyo'
+           require_pkce: true
+           pkce_challenge_method: 'S256'
+           redirect_uris: ['https://hikyo.example.com/api/v1/auth/oidc/authelia/callback']
+           scopes: ['openid', 'profile', 'email']
+           response_types: ['code']
+           grant_types: ['authorization_code']
+           token_endpoint_auth_method: 'client_secret_basic'
+           id_token_signed_response_alg: 'RS256'
+   ```
+
+3. Restart Authelia.
+
+| Hikyo field | Value |
+| --- | --- |
+| Issuer URL | The Authelia root URL, such as `https://auth.example.com` |
+| Client ID, Client secret | `hikyo` and the plaintext secret from step 1 |
+| Scopes | `openid profile email` |
+
+Required settings:
+
+- The claims policy is required. Without `claims_policies.<name>.id_token`,
+  Authelia sends scope claims to UserInfo only, so `email` and `email_verified`
+  are missing from the ID token.
+- Authelia documents `email_verified` as a boolean that is "assumed true for the
+  time being". Keep that in mind when choosing registration domains.
+- Authelia builds the issuer from `X-Forwarded-Proto` and `Host`. Hikyo must
+  call it through the proxy, not Authelia's own port.
+
+Multi-factor assurance (optional): leave the policy unset. After a
+password-only reauthentication, the session can keep the second-factor flags
+from the earlier sign-in, so the ID token can claim `mfa` without a fresh second
+factor. Test a `prompt=login` reauthentication before relying on `amr` here.
+
+Keeping users in sync: Authelia has no SCIM and no outbound provisioning. Users
+live in its file or LDAP backend, so remove them in Hikyo yourself or from that
+source.
+
+## Directory lifecycle events (Clerk)
+
+A provider can tell Hikyo when its user directory deletes or bans a user.
+Without this, an upstream deletion changes nothing in Hikyo until the person
+next fails to sign in. Set it up after the Clerk provider works for sign-in:
+
+1. Build the endpoint URL from your origin and the provider's slug:
+   `https://hikyo.example.com/api/v1/auth/oidc/<slug>/lifecycle`.
+2. In Clerk, open **Webhooks → Add Endpoint**, enter that URL, subscribe it to
+   `user.deleted` and `user.updated`, and create it. Copy its **Signing
+   Secret** (`whsec_...`).
+3. In Hikyo, choose **Reconfigure** on the provider. Set **Directory lifecycle
+   events** to **Clerk**, paste the signing secret into **Lifecycle signing
+   secret**, enter the client secret again, and save.
+4. Check that the **Lifecycle endpoint URL** the editor now shows matches the
+   URL you gave Clerk. Send a test event from Clerk's endpoint page; Hikyo
+   answers `204`.
+
+From the CLI, with the secret in a private regular file:
+
+```sh
+hikyo instance-config provider update work --kind oidc \
+  --lifecycle-profile clerk --lifecycle-secret-file ./clerk-signing-secret
+```
+
+Like any other provider update, the command also prompts for the provider's
+client secret.
+
+Use `--lifecycle-profile none` to stop accepting events and discard the stored
+secret.
+
+Hikyo verifies the [Standard Webhooks](https://www.standardwebhooks.com/)
+signature, including a five-minute timestamp window, before reading the body.
+Clerk's `svix-*` headers are accepted. After a valid signature every event is
+answered `204`, so a sender cannot learn which users exist. The one exception is
+a provider changed between verification and the write, which is answered with a
+retryable `503` so Clerk redelivers the event. An invalid signature,
+a stale timestamp, an unknown slug, a disabled provider and a provider with no
+lifecycle profile all get the same refusal.
+
+| Event | Effect in Hikyo |
+| --- | --- |
+| `user.deleted` | Unlinks the identity whose subject equals the deleted user's ID, ends that account's sessions that came through this issuer, and revokes the developer credentials minted from those sessions or through this issuer's providers. The change is audited with a system actor. Deleting the last sign-in credential is allowed, and the account is flagged `auth.account_no_login_credential`. |
+| `user.updated` with `banned: true` | Ends that account's sessions that came through this issuer and revokes the developer credentials minted from those sessions or through this issuer's providers. The link stays, so unbanning upstream restores sign-in. |
+| `user.updated` with `locked: true`, and every other event | Ignored. A lock is temporary upstream and does not end Hikyo sessions. |
+
+Password and passkey sessions, and local credentials, are never touched, so an
+account that also has a local credential keeps working. The one exception is a
+password session carrying a credential-establishment stamp for this issuer's
+identity: it came through the issuer, so it ends with the others, along with the
+developer credentials minted from it.
+
+Setting, rotating or clearing the lifecycle secret ends no sessions. A disabled
+provider refuses events; Clerk eventually disables an endpoint that keeps
+failing. Re-enabling the provider does not replay missed events, so after a
+restore or an outage an operator must revalidate the directory against Hikyo:
+unlink identities of users deleted upstream and review banned users.
+
+## Troubleshooting
+
+**Issuer mismatch.** The error shows the issuer the provider reported. Copy it
+exactly, including any trailing slash, and check the proxy or `hostname`
+setting if it is not the public URL you expected. An issuer cannot be edited
+after creation, so delete the provider and create it again with the right value.
+
+**Signing algorithm refused.** Hikyo accepts RS256, RS384, RS512, ES256, ES384,
+ES512, PS256, PS384 and PS512. Switch the provider's ID-token signing to one of
+them: for example, select a signing key in authentik, keep RS256 in Auth0, or
+set `id_token_signed_response_alg: 'RS256'` in Authelia.
+
+**Sign-up refused for a missing `email_verified`.** Hikyo admits an unknown
+OIDC identity only with a nonempty string `email` and a JSON boolean `true`
+`email_verified`. A missing claim, `false` or the string `"true"` refuses it.
+Decode a test token, check the claim and the provider's scope or mapping
+settings, and see [Open registration
+deliberately](/docs/social-signin/#open-registration-deliberately).
+
+**Discovery unreachable.** The Hikyo host, not your browser, fetches
+`<issuer>/.well-known/openid-configuration` and the signing keys. Test them
+with `curl` from that host. A reverse proxy, a WAF or bot protection that
+challenges these requests, or a proxy that drops the `Host` header, makes
+discovery fail.

@@ -1,6 +1,6 @@
 ---
 title: Social sign-in and registration
-description: Configure Google, tenant-specific Microsoft Entra and GitHub sign-in, and explicitly admit new accounts.
+description: Configure Google, tenant-specific Microsoft Entra, GitHub or another OpenID Connect provider for sign-in, and explicitly admit new accounts.
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/social-signin.mdx
 ---
 
@@ -138,6 +138,13 @@ primary verified address from GitHub's email endpoint. Existing-identity sign-in
 does not fetch an address to find an account. Callback tokens are discarded
 after use. GitHub's upstream two-factor state does not establish Hikyo disclosure
 assurance; use a local authenticator or passkey for that operation.
+
+## Any other OIDC provider
+
+Any standards-compliant OpenID Connect provider works in **Instance settings →
+Identity providers**. For step-by-step setup of Clerk, Auth0, Okta, Amazon
+Cognito, Keycloak, authentik, ZITADEL and Authelia, and for Clerk's directory
+lifecycle events, see [Other OIDC providers](/docs/oidc-providers/).
 
 ## Claim an invitation with a provider
 

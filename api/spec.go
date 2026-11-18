@@ -93,7 +93,9 @@ var SpecYAML []byte
 // read, the `restore_hold` flag of a rotation, its `release-hold` route and the
 // `credential_valid_until` of a revoke_refused or quarantine run with its
 // `credential_valid_until_lower_bound` flag (#148).
-const Revision = 19
+// Revision 20 adds the OIDC provider's directory lifecycle settings (profile,
+// write-only signing secret, endpoint URL) and the signed lifecycle event route.
+const Revision = 20
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
 // explicitly does not plan one.

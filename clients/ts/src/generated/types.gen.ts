@@ -5561,12 +5561,28 @@ export type OidcProviderInput = {
      * JSON `{acr_values[], amr_sets[][]}`; absent means single-factor.
      */
     assurance_policy?: string | null;
+    lifecycle_profile?: OidcLifecycleProfile;
+    /**
+     * The directory's webhook signing secret (`whsec_...`), envelope-encrypted
+     * at rest under its own field binding and never returned. Required with a
+     * `lifecycle_profile` on create; on reconfigure, absent or empty keeps the
+     * stored secret. Setting, rotating or clearing it sweeps no sessions.
+     *
+     */
+    lifecycle_secret?: string;
     enabled: boolean;
     /**
      * Required for reconfiguration and omitted for create. A stale or deleted row returns 409.
      */
     row_version?: number;
 };
+
+/**
+ * The directory lifecycle dialect, a closed set; null means the provider
+ * takes no lifecycle events.
+ *
+ */
+export type OidcLifecycleProfile = 'clerk' | null;
 
 export type Oauth2ProviderInput = {
     profile: 'github';
@@ -5589,6 +5605,15 @@ export type OidcProvider = {
     scopes: string;
     redirect_uri: string;
     assurance_policy?: string | null;
+    lifecycle_profile?: OidcLifecycleProfile;
+    /**
+     * Whether a lifecycle signing secret is stored. The secret itself never leaves the server.
+     */
+    lifecycle_secret_set: boolean;
+    /**
+     * The endpoint to register at the directory.
+     */
+    lifecycle_uri: string;
     enabled: boolean;
     row_version: number;
 };
@@ -17859,6 +17884,60 @@ export type OidcCallbackResponses = {
 };
 
 export type OidcCallbackResponse = OidcCallbackResponses[keyof OidcCallbackResponses];
+
+export type OidcLifecycleData = {
+    body: Blob | File;
+    path: {
+        /**
+         * Identity-provider slug.
+         */
+        provider: string;
+    };
+    query?: never;
+    url: '/api/v1/auth/oidc/{provider}/lifecycle';
+};
+
+export type OidcLifecycleErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type OidcLifecycleError = OidcLifecycleErrors[keyof OidcLifecycleErrors];
+
+export type OidcLifecycleResponses = {
+    /**
+     * The event verified and was handled or ignored.
+     */
+    204: void;
+};
+
+export type OidcLifecycleResponse = OidcLifecycleResponses[keyof OidcLifecycleResponses];
 
 export type Oauth2StartData = {
     body: Oauth2StartRequest;

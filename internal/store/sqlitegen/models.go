@@ -970,21 +970,23 @@ type OfflineRecord struct {
 }
 
 type OidcProvider struct {
-	ID              string
-	Slug            string
-	DisplayName     string
-	Kind            string
-	Issuer          string
-	ClientID        string
-	ClientSecret    []byte
-	Scopes          string
-	RedirectUri     string
-	AssurancePolicy sql.NullString
-	Enabled         int64
-	DekVersion      int64
-	RowVersion      int64
-	CreatedAt       string
-	UpdatedAt       string
+	ID               string
+	Slug             string
+	DisplayName      string
+	Kind             string
+	Issuer           string
+	ClientID         string
+	ClientSecret     []byte
+	Scopes           string
+	RedirectUri      string
+	AssurancePolicy  sql.NullString
+	Enabled          int64
+	DekVersion       int64
+	RowVersion       int64
+	CreatedAt        string
+	UpdatedAt        string
+	LifecycleProfile sql.NullString
+	LifecycleSecret  []byte
 }
 
 type OidcTransaction struct {
