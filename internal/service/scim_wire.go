@@ -803,28 +803,38 @@ func (s *SCIM) renderUser(ctx context.Context, r store.Repos, c scimContext, row
 	return out, nil
 }
 
-// mergeAttributes applies a PATCH delta: a present key assigns, a NIL value
-// clears, an absent key leaves the stored value alone. Attribute names are
-// case-insensitive, including stored names from an earlier request.
-func mergeAttributes(stored, delta map[string]any) map[string]any {
-	out := map[string]any{}
-	for k, v := range stored {
-		out[k] = v
-	}
+// mergeAttributes applies a PATCH delta to attrs in place: a present key
+// assigns, a NIL value clears, an absent key leaves the stored value alone.
+// Attribute names are case-insensitive, including stored names from an earlier
+// request. index maps each canonical name to its stored spellings and is kept
+// in step with attrs, so a patch with many commands pays one O(len(attrs))
+// build (newAttributeIndex) instead of a scan per delta key.
+func mergeAttributes(attrs map[string]any, index map[string][]string, delta map[string]any) {
 	for k, v := range delta {
+		canonical := scimAttributeName(k)
 		storedKey := k
-		for existing := range out {
-			if strings.EqualFold(existing, k) {
-				storedKey = existing
-				delete(out, existing)
+		if spellings := index[canonical]; len(spellings) > 0 {
+			storedKey = spellings[0]
+			for _, existing := range spellings {
+				delete(attrs, existing)
 			}
+			delete(index, canonical)
 		}
 		if v == nil {
 			continue
 		}
-		out[storedKey] = v
+		attrs[storedKey] = v
+		index[canonical] = []string{storedKey}
 	}
-	return out
+}
+
+func newAttributeIndex(attrs map[string]any) map[string][]string {
+	index := make(map[string][]string, len(attrs))
+	for k := range attrs {
+		canonical := scimAttributeName(k)
+		index[canonical] = append(index[canonical], k)
+	}
+	return index
 }
 
 // changedAttributeNames diffs two attribute maps and returns the top-level

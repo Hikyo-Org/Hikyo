@@ -47,6 +47,7 @@ func (UserPatchMergeAttributes) userPatchCommand() {}
 func ReduceUserPatch(current DesiredUser, commands []UserPatchCommand) (DesiredUser, error) {
 	next := current
 	next.Attributes = cloneAttributes(current.Attributes)
+	var index map[string][]string // built on the first merge, then maintained in place
 	for _, command := range commands {
 		switch command := command.(type) {
 		case UserPatchSetUserName:
@@ -61,7 +62,13 @@ func ReduceUserPatch(current DesiredUser, commands []UserPatchCommand) (DesiredU
 			if err := checkSCIMAttributeNames(command.Attributes, 0); err != nil {
 				return DesiredUser{}, err
 			}
-			next.Attributes = mergeAttributes(next.Attributes, command.Attributes)
+			if next.Attributes == nil {
+				next.Attributes = map[string]any{}
+			}
+			if index == nil {
+				index = newAttributeIndex(next.Attributes)
+			}
+			mergeAttributes(next.Attributes, index, command.Attributes)
 		default:
 			return DesiredUser{}, fmt.Errorf("service: unknown SCIM user patch command %T", command)
 		}
