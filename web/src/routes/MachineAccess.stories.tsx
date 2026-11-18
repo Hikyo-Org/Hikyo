@@ -21,6 +21,7 @@ import type { MockRoute } from '../../.storybook/withApp.tsx';
 import { ORG, PRJ, PROD, STAGING } from '../testkit/ids.ts';
 import { target } from '../testkit/deliveryTargets.ts';
 import { dynamicProvider } from '../testkit/machineAccess.ts';
+import { HELD_ROTATION, rotationKeys, rotationList } from '../testkit/rotations.ts';
 import { MachineAccessPage } from './MachineAccess.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -492,6 +493,26 @@ export const SshTab: Story = {
       await expect(card?.querySelector('table')).not.toBeNull();
     }
     await expect(await canvas.findByText(/no ssh ca in this environment yet/i)).toBeVisible();
+  },
+};
+
+// The Rotations tab, opened from the URL: status only, with the loud restore
+// hold naming the CLI command that lifts it.
+export const RotationsTab: Story = {
+  parameters: {
+    app: app(
+      [
+        { url: `${BASE}/keys`, body: rotationKeys },
+        { url: `${BASE}/environments/${PROD}/rotations`, body: rotationList() },
+        ...populatedResponses,
+      ],
+      `${PATH}?tab=rotations`,
+    ),
+  },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('tab', { name: 'Rotations' })).toHaveAttribute('aria-selected', 'true');
+    await expect(await canvas.findByRole('heading', { name: 'Rotations', level: 2 })).toBeVisible();
+    await expect(await canvas.findByText(new RegExp(`hikyo rotation release-hold ${HELD_ROTATION}`))).toBeVisible();
   },
 };
 

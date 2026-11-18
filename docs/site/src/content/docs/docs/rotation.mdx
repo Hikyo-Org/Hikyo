@@ -285,6 +285,35 @@ check that neither key serves that role (and reassign what it owns, for
 follow, the CLI prints the `--after` value that continues the list. It needs only
 **read** on the environment.
 
+## In the browser
+
+**Machine access** has a **Rotations** tab that shows an environment's rotations
+and the runs of one of them. It is status only: creating, pausing, resuming,
+running and deleting a rotation, and lifting a restore hold, are `hikyo rotation`
+commands, and the tab has no button for any of them. It needs **read** on the
+environment, and a person who lacks it sees the same refusal the API gives, not a
+guess about what exists.
+
+The list shows each rotation's keys, provider, interval and overlap, its state as
+a word (`active`, `paused`, `halted` or `disabled`), the next run, and when the
+delivered credential expires. A halted rotation is flagged; the tab does not show
+why it halted, because the rotation record carries no reason, so use the audit
+trail. A rotation held after a restore gets a `RESTORE HOLD` alert with the exact
+`hikyo rotation release-hold <rotation>` command, and its next run reads "held: no
+run starts". Deleted rotations are listed only when you tick **Include deleted
+rotations**.
+
+**Show runs** opens the timeline of one rotation, newest first: phase, trigger,
+start and last change, the published revision, the overlap, the fixed-word error
+code, and `credential_valid_until` (read "At least" as the
+`credential_valid_until_lower_bound` caveat, the role may outlive the time shown).
+The tab reads every page, up to the same bound as `hikyo rotation show`, and warns
+when history remains beyond it. A run that owes a provider drop (`revoke_refused`
+or quarantine) gets the same `ATTENTION` text the CLI prints, including **do NOT
+drop it** while the keys may serve the role again (`published_versions_changed`).
+The `not_converged_adapter_targets` count covers adapter (sync) targets only, as
+described above; it does not prove that other machine consumers are unaffected.
+
 ## After a restore
 
 A restore can bring back a rotation whose provider grants, or whose delivered

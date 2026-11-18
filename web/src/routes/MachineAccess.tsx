@@ -19,6 +19,7 @@ import {
 import { useCertificates } from '../api/pki.ts';
 import { CertificatesTab, certificateCount } from './CertificatesTab.tsx';
 import { DeliveryTargetsPanel } from './DeliveryTargets.tsx';
+import { RotationsPanel } from './machineAccess/Rotations.tsx';
 import { SSHCertificatesPanel } from './SSHCertificates.tsx';
 import { ApiError } from '../api/client.ts';
 import { gateSystemScope } from './SystemScope.tsx';
@@ -94,7 +95,15 @@ import {
 
  */
 
-type Tab = 'accounts' | 'federation' | 'kubernetes' | 'providers' | 'leases' | 'ssh' | 'certificates';
+type Tab =
+  | 'accounts'
+  | 'federation'
+  | 'kubernetes'
+  | 'providers'
+  | 'leases'
+  | 'ssh'
+  | 'certificates'
+  | 'rotations';
 
 /** The route's one-at-a-time dialog selector (not the `ui/Dialog` atom). */
 type DialogState =
@@ -115,6 +124,7 @@ const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
   { id: 'leases', label: 'Leases' },
   { id: 'ssh', label: 'SSH certificates' },
   { id: 'certificates', label: 'Certificates' },
+  { id: 'rotations', label: 'Rotations' },
 ];
 
 /**
@@ -318,9 +328,9 @@ export function MachineAccessPage() {
     mintableProviders.length > 0 &&
     environments.length > 0;
 
-  // SSH objects are read per environment inside the SSH tab; a project-wide
-  // count would need a fan-out of new reads, so that tab carries none.
-  const tabCount: Record<Exclude<Tab, 'ssh'>, number | 'unknown'> = {
+  // SSH objects and rotations are read per environment inside their tabs; a
+  // project-wide count would need a fan-out of new reads, so those tabs carry none.
+  const tabCount: Record<Exclude<Tab, 'ssh' | 'rotations'>, number | 'unknown'> = {
     accounts: accountsQuery.isSuccess ? accounts.length : 'unknown',
     // Unknown is rendered as unknown: "Federation (0)" on a failed listing
     // reads as "there are none", which is the one thing it does not know.
@@ -338,7 +348,7 @@ export function MachineAccessPage() {
   const countedTabs: readonly TabItem<Tab>[] = TABS.map((entry) => ({
     id: entry.id,
     label: entry.label,
-    ...(entry.id === 'ssh' ? {} : { count: tabCount[entry.id] }),
+    ...(entry.id === 'ssh' || entry.id === 'rotations' ? {} : { count: tabCount[entry.id] }),
   }));
 
   const doRevoke = (account: ServiceAccount, credential: MachineCredential) => {
@@ -829,6 +839,14 @@ export function MachineAccessPage() {
                 : [{ id: auth.identity.principal.id, label: 'me' }]),
               ...accounts.map((account) => ({ id: account.principal_id, label: account.name })),
             ]}
+          />
+        ) : null}
+        {tab === 'rotations' ? (
+          <RotationsPanel
+            org={project.org}
+            project={project.project}
+            environments={environments.map((environment) => ({ id: environment.id, name: environment.name }))}
+            providers={providers}
           />
         ) : null}
       </TabPanel>

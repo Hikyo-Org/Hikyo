@@ -357,7 +357,7 @@ test('read-only details and filters work while management actions stay disabled'
   await page.getByRole('button', { name: /payments-api/ }).click();
   await expect(page.getByText('hik_demo_only', { exact: false }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
-  for (const name of ['Federation', 'Kubernetes targets', 'Providers', 'Leases', 'SSH certificates', 'Certificates']) {
+  for (const name of ['Federation', 'Kubernetes targets', 'Providers', 'Leases', 'SSH certificates', 'Certificates', 'Rotations']) {
     await page.getByRole('tab', { name: new RegExp(`^${name}`) }).click();
     await expect(page.getByRole('main').getByText(/^Loading/)).toHaveCount(0);
     await expect(page.getByRole('main').locator('.alert')).toHaveCount(0);

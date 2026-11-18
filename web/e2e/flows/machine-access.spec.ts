@@ -18,6 +18,14 @@ import {
 import { test } from '../fixtures/passkey.ts';
 import { surfacesForFlow } from '../registry.ts';
 import { registerAwsAdapterFlows } from './aws-adapters.flows.ts';
+import {
+  HELD_ROTATION,
+  haltedRotation,
+  owedRuns,
+  rotationKeys,
+  rotationList,
+  ROTATION,
+} from '../../src/testkit/rotations.ts';
 
 const COLOR_SCHEMES: readonly ['dark', 'light'] = ['dark', 'light'];
 
@@ -91,9 +99,9 @@ test.describe('machine access', () => {
     await expect(page.getByRole('heading', { name: 'Machine access', level: 1 })).toBeVisible();
   });
 
-  test('the inventory has seven tabs, and every one of them says what it holds', async () => {
+  test('the inventory has eight tabs, and every one of them says what it holds', async () => {
     const tabs = page.getByRole('tab');
-    await expect(tabs).toHaveCount(7);
+    await expect(tabs).toHaveCount(8);
     // The count is a `.tab__count` badge beside the label; the comma only
     // exists in the ACCESSIBLE NAME (a visually-hidden ", "), so the visible
     // text concatenates as "Service accounts3" while the name reads
@@ -106,6 +114,8 @@ test.describe('machine access', () => {
     // SSH objects are per environment, so the tab carries no project count.
     await expect(tabs.nth(5)).toHaveText('SSH certificates');
     await expect(tabs.nth(6)).toHaveAccessibleName(/Certificates, 0/);
+    // Rotations are per environment too: no project count either.
+    await expect(tabs.nth(7)).toHaveText('Rotations');
     await expect(tabs.nth(0).locator('.tab__count')).toHaveText('3');
 
     // The policy strip: the per-project opt-in is stated, not offered as a
@@ -164,6 +174,89 @@ test.describe('machine access', () => {
     await expect(
       page.getByText('Configure a provider with a credential first', { exact: false }),
     ).toBeVisible();
+  });
+
+  test('the Rotations tab reads the real server: an environment with no rotation says so, in words', async () => {
+    await page.getByRole('tab', { name: 'Rotations' }).click();
+    await expect(page.getByRole('heading', { name: 'Rotations', level: 2 })).toBeVisible();
+    await expect(page.getByLabel('Environment')).toBeVisible();
+    const empty = page.getByRole('status').filter({ hasText: 'No rotations in this environment yet' });
+    await expect(empty).toContainText('hikyo rotation create');
+    await expectStatusIsTextAndAria(page, empty);
+    // Status only: the tab offers no act on a rotation.
+    await expect(page.getByRole('button', { name: /release|pause|resume|delete|run now/i })).toHaveCount(0);
+  });
+
+  test('the Rotations tab says what the API answered to a caller who may not read the environment', async () => {
+    await page.route('**/environments/*/rotations*', (route) =>
+      route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not found' }) }),
+    );
+    try {
+      await page.getByRole('tab', { name: 'Rotations' }).click();
+      const refusal = page.getByRole('alert').filter({ hasText: 'Listing them needs read on this environment.' });
+      await expectStatusIsTextAndAria(page, refusal);
+      await expect(page.getByRole('table')).toHaveCount(0);
+    } finally {
+      await page.unroute('**/environments/*/rotations*');
+    }
+  });
+
+  // No PostgreSQL provider or dynamic-secrets fake runs in the dev instance, so
+  // the states that need a real rotation are answered at the network boundary
+  // with bodies built from the generated response schemas (testkit/rotations.ts).
+  // What is asserted is the page's reading of them: the wording, the roles and
+  // the absence of any act, never the server's rotation behaviour (the Go tests own that).
+  test('the Rotations tab shows a restore hold loudly and the run timeline carries the ATTENTION wording', async () => {
+    const json = (body: unknown) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    const keysPattern = '**/projects/*/keys*';
+    await page.route(keysPattern, (route) => route.fulfill(json(rotationKeys)));
+    await page.route('**/environments/*/rotations?*', (route) =>
+      route.fulfill(json({ items: [...rotationList().items, haltedRotation()] })),
+    );
+    await page.route('**/environments/*/rotations', (route) =>
+      route.fulfill(json({ items: [...rotationList().items, haltedRotation()] })),
+    );
+    await page.route('**/rotations/*/runs*', (route) =>
+      route.fulfill(json(route.request().url().includes(ROTATION) ? owedRuns : { items: [] })),
+    );
+    try {
+      await page.getByRole('tab', { name: 'Rotations' }).click();
+
+      const table = page.getByRole('table', { name: /credential rotations/ });
+      await expect(table.getByRole('row')).toHaveCount(4);
+      await expect(table.getByRole('row').filter({ hasText: 'REPORTING_PASSWORD' })).toContainText('Restore hold');
+      await expect(table.getByRole('row').filter({ hasText: 'halted' })).toBeVisible();
+
+      // The hold is a role="alert" that names the command, and offers no button for it.
+      const hold = page.getByRole('alert').filter({ hasText: 'RESTORE HOLD' });
+      await expect(hold).toContainText(`hikyo rotation release-hold ${HELD_ROTATION}`);
+      await expectStatusIsTextAndAria(page, hold);
+      await expect(page.getByRole('button', { name: /release/i })).toHaveCount(0);
+
+      // The run timeline: three runs owe a drop, each in the CLI's words.
+      await page.getByRole('button', { name: 'Runs of rotation DATABASE_PASSWORD' }).first().click();
+      const attention = page.getByRole('alert').filter({ hasText: 'ATTENTION: run ' });
+      await expect(attention).toHaveCount(3);
+      await expect(attention.first()).toContainText('(published_versions_changed)');
+      await expect(attention.first()).toContainText('do NOT drop it at the provider until the keys have moved off it');
+      await expect(attention.nth(1)).toContainText('stays valid at least until 2026-10-29T12:30:45Z, and possibly longer');
+      await expect(attention.nth(2)).toContainText('no recorded expiry');
+      await expectStatusIsTextAndAria(page, attention.first());
+      const runs = page.getByRole('table', { name: /Runs of this rotation/ });
+      await expect(runs.getByText('Owes a drop')).toHaveCount(3);
+
+      // Keyboard: the scrollable runs region is reachable, so a narrow screen can read every column.
+      const region = page.getByRole('region', { name: 'Run history of DATABASE_PASSWORD' });
+      await region.focus();
+      await expect(region).toBeFocused();
+      // The page never scrolls sideways, at the desktop or the mobile width.
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    } finally {
+      await page.unroute('**/rotations/*/runs*');
+      await page.unroute('**/environments/*/rotations');
+      await page.unroute('**/environments/*/rotations?*');
+      await page.unroute(keysPattern);
+    }
   });
 
   test('runs an SSH CA end to end: create, profile, display-once issue, revoke, teardown', async ({}, testInfo) => {
