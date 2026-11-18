@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/sha1" // #nosec G505 -- APK-TOOLS defines this checksum metadata format.
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -206,12 +207,12 @@ func verifyDeb(filename string, id identity) (payload, error) {
 	if err != nil {
 		return payload{}, err
 	}
-	fields := parseFields(control)
+	fields, err := parseFieldsAllowlist(control, ":", debFields, false)
+	if err != nil {
+		return payload{}, fmt.Errorf("Debian control: %w", err)
+	}
 	if fields["Package"] != "hikyo" || fields["Version"] != id.version || fields["Architecture"] != id.arch {
 		return payload{}, fmt.Errorf("Debian identity mismatch: Package=%q Version=%q Architecture=%q", fields["Package"], fields["Version"], fields["Architecture"])
-	}
-	if field, found := firstForbiddenField(fields, "Conflicts", "Replaces", "Breaks"); found {
-		return payload{}, fmt.Errorf("Debian control declares forbidden package relationship %q", field)
 	}
 	dataTar, err := ungzip(data)
 	if err != nil {
@@ -238,15 +239,12 @@ func verifyAPK(filename string, id identity) (payload, error) {
 	if !ok {
 		return payload{}, errors.New("APK has no .PKGINFO")
 	}
-	fields := parseEquals(pkginfo)
+	fields, err := parseFieldsAllowlist(pkginfo, " = ", apkFields, false)
+	if err != nil {
+		return payload{}, fmt.Errorf("APK .PKGINFO: %w", err)
+	}
 	if fields["pkgname"] != "hikyo" || fields["pkgver"] != id.version || fields["arch"] != id.arch {
 		return payload{}, fmt.Errorf("APK identity mismatch: pkgname=%q pkgver=%q arch=%q", fields["pkgname"], fields["pkgver"], fields["arch"])
-	}
-	if field, found := firstForbiddenField(fields, "replaces", "replaces_priority"); found {
-		return payload{}, fmt.Errorf("APK declares forbidden package relationship %q", field)
-	}
-	if dependency, found := firstAPKConflict(pkginfo); found {
-		return payload{}, fmt.Errorf("APK declares forbidden conflict %q", dependency)
 	}
 	return finishPayload(inspection)
 }
@@ -270,12 +268,12 @@ func verifyArch(filename string, id identity) (payload, error) {
 	if !ok {
 		return payload{}, errors.New("Arch package has no .PKGINFO")
 	}
-	fields := parseEquals(pkginfo)
+	fields, err := parseFieldsAllowlist(pkginfo, " = ", archFields, true)
+	if err != nil {
+		return payload{}, fmt.Errorf("Arch .PKGINFO: %w", err)
+	}
 	if fields["pkgname"] != "hikyo" || fields["pkgver"] != id.version || fields["arch"] != id.arch {
 		return payload{}, fmt.Errorf("Arch identity mismatch: pkgname=%q pkgver=%q arch=%q", fields["pkgname"], fields["pkgver"], fields["arch"])
-	}
-	if field, found := firstForbiddenField(fields, "replaces", "conflict"); found {
-		return payload{}, fmt.Errorf("Arch .PKGINFO declares forbidden package relationship %q", field)
 	}
 	mtree, ok := inspection.metadata[".MTREE"]
 	if !ok {
@@ -287,7 +285,14 @@ func verifyArch(filename string, id identity) (payload, error) {
 	return finishPayload(inspection)
 }
 
-func verifyRPM(filename string, id identity) (payload, error) {
+func verifyRPM(filename string, id identity) (got payload, err error) {
+	// go-rpmutils indexes parallel header arrays and data offsets without bounds
+	// checks, so a crafted header panics instead of returning an error.
+	defer func() {
+		if r := recover(); r != nil {
+			got, err = payload{}, fmt.Errorf("malformed RPM header: %v", r)
+		}
+	}()
 	f, err := os.Open(filename)
 	if err != nil {
 		return payload{}, err
@@ -295,6 +300,9 @@ func verifyRPM(filename string, id identity) (payload, error) {
 	defer f.Close()
 	rpm, err := rpmutils.ReadRpm(f)
 	if err != nil {
+		return payload{}, err
+	}
+	if err := refuseDuplicateRPMTags(f, rpm.Header.GetRange()); err != nil {
 		return payload{}, err
 	}
 	nevra, err := rpm.Header.GetNEVRA()
@@ -308,8 +316,7 @@ func verifyRPM(filename string, id identity) (payload, error) {
 	if tag, found := firstForbiddenRPMHook(rpm.Header.HasTag); found {
 		return payload{}, fmt.Errorf("RPM contains forbidden side-effect tag %d", tag)
 	}
-	nameCount, err := validateRPMNameTable(rpm.Header)
-	if err != nil {
+	if err := validateRPMNameTable(rpm.Header); err != nil {
 		return payload{}, err
 	}
 	reader, err := rpm.PayloadReaderExtended()
@@ -369,9 +376,6 @@ func verifyRPM(filename string, id identity) (payload, error) {
 	if err != nil {
 		return payload{}, err
 	}
-	if len(headerFiles) != nameCount {
-		return payload{}, fmt.Errorf("RPM header resolves %d files from %d file names", len(headerFiles), nameCount)
-	}
 	if err := validateRPMHeaderFiles(headerFiles, inspection); err != nil {
 		return payload{}, err
 	}
@@ -399,31 +403,79 @@ func forbiddenRPMScriptTags() []int {
 	}
 }
 
+// refuseDuplicateRPMTags requires every tag number to occur once in the
+// signature and general headers. go-rpmutils keeps the last duplicate while rpm
+// may act on another copy, so a duplicated BASENAMES or NAME could show this
+// verifier a clean file table. The general header spans [r.Start, r.End) and the
+// signature header [96, r.Start); rpmpack builds its index from a map, so genuine
+// packages never repeat a tag.
+func refuseDuplicateRPMTags(f io.ReaderAt, r rpmutils.HeaderRange) error {
+	for _, header := range []struct {
+		name       string
+		start, end int
+	}{{"signature", 96, r.Start}, {"general", r.Start, r.End}} {
+		name := header.name
+		raw := make([]byte, header.end-header.start)
+		if _, err := f.ReadAt(raw, int64(header.start)); err != nil {
+			return fmt.Errorf("read RPM %s header: %w", name, err)
+		}
+		// Intro: magic, reserved, index count, data size; then 16-byte entries
+		// (tag, type, offset, count), all big-endian.
+		if len(raw) < 16 {
+			return fmt.Errorf("RPM %s header is truncated", name)
+		}
+		count := uint64(binary.BigEndian.Uint32(raw[8:12]))
+		if 16+count*16 > uint64(len(raw)) {
+			return fmt.Errorf("RPM %s header index is truncated", name)
+		}
+		seen := make(map[uint32]bool, count)
+		for i := uint64(0); i < count; i++ {
+			tag := binary.BigEndian.Uint32(raw[16+i*16:])
+			if seen[tag] {
+				return fmt.Errorf("RPM %s header repeats tag %d", name, tag)
+			}
+			seen[tag] = true
+		}
+	}
+	return nil
+}
+
 // validateRPMNameTable requires the BASENAMES/DIRINDEXES/DIRNAMES file name
-// table to be consistent, so that the file list go-rpmutils resolves is the one
-// rpm acts on. It returns the number of file names.
-func validateRPMNameTable(header *rpmutils.RpmHeader) (int, error) {
+// table to be consistent and canonical, so that the file list go-rpmutils
+// resolves is the one rpm acts on. go-rpmutils joins names with path.Join, which
+// would hide a dirname such as "/x/../usr/bin/" from cleanArchivePath.
+func validateRPMNameTable(header *rpmutils.RpmHeader) error {
 	baseNames, err := header.GetStrings(rpmutils.BASENAMES)
 	if err != nil {
-		return 0, fmt.Errorf("read RPM base names: %w", err)
+		return fmt.Errorf("read RPM base names: %w", err)
 	}
 	dirIndexes, err := header.GetUint32s(rpmutils.DIRINDEXES)
 	if err != nil {
-		return 0, fmt.Errorf("read RPM directory indexes: %w", err)
+		return fmt.Errorf("read RPM directory indexes: %w", err)
 	}
 	dirNames, err := header.GetStrings(rpmutils.DIRNAMES)
 	if err != nil {
-		return 0, fmt.Errorf("read RPM directory names: %w", err)
+		return fmt.Errorf("read RPM directory names: %w", err)
 	}
 	if len(baseNames) != len(dirIndexes) {
-		return 0, fmt.Errorf("RPM header has %d base names but %d directory indexes", len(baseNames), len(dirIndexes))
+		return fmt.Errorf("RPM header has %d base names but %d directory indexes", len(baseNames), len(dirIndexes))
 	}
 	for _, index := range dirIndexes {
 		if int64(index) >= int64(len(dirNames)) {
-			return 0, fmt.Errorf("RPM directory index %d is out of range", index)
+			return fmt.Errorf("RPM directory index %d is out of range", index)
 		}
 	}
-	return len(baseNames), nil
+	for _, dir := range dirNames {
+		if dir != "/" && (!strings.HasPrefix(dir, "/") || dir != path.Clean(dir)+"/") {
+			return fmt.Errorf("RPM directory name %q is not canonical", dir)
+		}
+	}
+	for _, base := range baseNames {
+		if base == "" || base == "." || base == ".." || strings.Contains(base, "/") {
+			return fmt.Errorf("RPM base name %q is not a single path element", base)
+		}
+	}
+	return nil
 }
 
 // validateRPMHeaderFiles requires the header file table to list exactly the
@@ -767,30 +819,6 @@ func allowedPayloadDirectory(entry string) bool {
 	}
 }
 
-// firstForbiddenField reports the first name present in fields, ignoring case.
-func firstForbiddenField(fields map[string]string, names ...string) (string, bool) {
-	for _, name := range names {
-		for key := range fields {
-			if strings.EqualFold(key, name) {
-				return key, true
-			}
-		}
-	}
-	return "", false
-}
-
-// firstAPKConflict reports the first "depend = !name" line, which apk treats as
-// a conflict. parseEquals keeps only the last value of repeated keys.
-func firstAPKConflict(data []byte) (string, bool) {
-	for _, line := range strings.Split(string(data), "\n") {
-		key, value, ok := strings.Cut(line, "=")
-		if value = strings.TrimSpace(value); ok && strings.TrimSpace(key) == "depend" && strings.HasPrefix(value, "!") {
-			return value, true
-		}
-	}
-	return "", false
-}
-
 // maxMTreeSize bounds the decompressed .MTREE; the genuine one is a few hundred bytes.
 const maxMTreeSize = 1 << 20
 
@@ -851,29 +879,53 @@ func verifyMTree(data []byte, inspection *tarInspection) error {
 	return nil
 }
 
-func parseFields(data []byte) map[string]string {
-	fields := make(map[string]string)
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
-			continue
-		}
-		key, value, ok := strings.Cut(line, ":")
-		if ok {
-			fields[strings.TrimSpace(key)] = strings.TrimSpace(value)
-		}
+// Metadata keys nFPM v2.47.0 writes for this repository's nfpms config (no
+// dependencies, relationships, scripts or config files). Everything else is
+// refused: the package managers act on keys such as Provides, Pre-Depends,
+// provides, backup, install_if and space-separated "!name" depend items.
+var (
+	debFields  = fieldSet("Package", "Version", "Section", "Priority", "Architecture", "Maintainer", "Installed-Size", "Homepage", "Description")
+	apkFields  = fieldSet("pkgname", "pkgver", "arch", "size", "pkgdesc", "url", "maintainer", "license", "datahash")
+	archFields = fieldSet("pkgname", "pkgbase", "pkgver", "arch", "size", "pkgdesc", "url", "builddate", "packager", "license")
+)
+
+func fieldSet(names ...string) map[string]bool {
+	set := make(map[string]bool, len(names))
+	for _, name := range names {
+		set[name] = true
 	}
-	return fields
+	return set
 }
 
-func parseEquals(data []byte) map[string]string {
+// parseFieldsAllowlist parses "key<sep>value" metadata lines and refuses any key
+// outside allowed (exact case), repeated key, or line without the separator.
+// Debian control continuation lines are skipped; comments are skipped when
+// comments is set (Arch .PKGINFO starts with "# Generated by nfpm").
+func parseFieldsAllowlist(data []byte, sep string, allowed map[string]bool, comments bool) (map[string]string, error) {
 	fields := make(map[string]string)
-	for _, line := range strings.Split(string(data), "\n") {
-		key, value, ok := strings.Cut(line, "=")
-		if ok {
-			fields[strings.TrimSpace(key)] = strings.TrimSpace(value)
+	for _, line := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
+		if sep == ":" && len(fields) > 0 && (strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t")) {
+			continue
 		}
+		if comments && strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, sep)
+		if !ok {
+			return nil, fmt.Errorf("malformed line %q", line)
+		}
+		if !allowed[key] {
+			return nil, fmt.Errorf("field %q is not in the allowlist", key)
+		}
+		if _, dup := fields[key]; dup {
+			return nil, fmt.Errorf("field %q is repeated", key)
+		}
+		if sep == ":" {
+			value = strings.TrimSpace(value)
+		}
+		fields[key] = value
 	}
-	return fields
+	return fields, nil
 }
 
 func mapKeys(values map[string][]byte) []string {
