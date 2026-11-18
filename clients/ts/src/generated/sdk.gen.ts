@@ -6139,8 +6139,10 @@ export const showRotation = <ThrowOnError extends boolean = false>(options: Opti
  * `expected_generation`, when given, must equal the rotation's current
  * generation, so a stale client cannot overwrite a newer change. The
  * credential already delivered into the keys stays valid until
- * `credential_expires_at`; pausing does not revoke it. Pause needs
- * publish on the environment, not per-key access.
+ * `credential_expires_at`; pausing does not revoke it. The caller needs
+ * publish on both of the rotation's keys: on the environment, or through rules
+ * narrowed to those keys, which also need `read` on the environment (the
+ * rotation cannot be looked up without it).
  *
  */
 export const pauseRotation = <ThrowOnError extends boolean = false>(options: Options<PauseRotationData, ThrowOnError>): RequestResult<PauseRotationResponses, PauseRotationErrors, ThrowOnError> => (options.client ?? client).post<PauseRotationResponses, PauseRotationErrors, ThrowOnError>({
@@ -6160,7 +6162,8 @@ export const pauseRotation = <ThrowOnError extends boolean = false>(options: Opt
  * generation, so a stale client cannot overwrite a newer change. Resume is
  * a human act like create, and it re-runs the whole authorization whether the
  * rotation was paused or halted: the caller must hold edit, publish and
- * reveal on both keys and consume the publish reauthentication window over
+ * reveal on both keys (through rules narrowed to those keys only with `read` on the
+ * environment) and consume the publish reauthentication window over
  * them, the recorded authority principal must still hold the same access, the
  * environment must still run unattended, the provider must still be able to
  * mint, and both keys must still exist. Each refusal is named.
@@ -6182,7 +6185,8 @@ export const resumeRotation = <ThrowOnError extends boolean = false>(options: Op
  * A restore holds every rotation it brings back: a held rotation starts no
  * run and takes no pre-publish step until an operator reconciles grants and
  * provider credentials and releases it. The release is a human act with
- * resume's authorization (edit, publish and reveal on both keys) and consumes
+ * resume's authorization (edit, publish and reveal on both keys, with `read` on the
+ * environment when that access comes only from key-narrowed rules) and consumes
  * the publish reauthentication window over them. It changes nothing else: the
  * state, the schedule, every run and every provider role stay as they are, so
  * it never drops a superseded role early and never resumes a paused or halted
@@ -6212,9 +6216,9 @@ export const releaseRotationHold = <ThrowOnError extends boolean = false>(option
  * normal path: the same pre-publish gate, recorded authority and overlap as a
  * scheduled one, so a manual run bypasses none of them. Run-now is resume's
  * equivalent: the caller must be a signed-in person who holds edit, publish
- * and reveal on the environment itself (access held only through key-narrowed
- * rules does not reach it) and consume the publish reauthentication window
- * over both rotation keys. `confirm_destructive` must be true on every
+ * and reveal on both rotation keys (on the environment, or through rules narrowed
+ * to those keys, which also need `read` on the environment) and consume the
+ * publish reauthentication window over both rotation keys. `confirm_destructive` must be true on every
  * request, and a body without it, or with false, is refused by name. Only an active rotation with no
  * run in flight and no request already waiting is accepted; a paused, halted
  * or deleted rotation is refused. The request makes the rotation due now, so

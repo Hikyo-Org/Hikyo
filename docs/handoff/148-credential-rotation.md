@@ -1550,6 +1550,45 @@ until `release-hold`, and the release is what lets the executor drop it (round 6
 the earlier "expires at its `VALID UNTIL`" wording). Delete and abandon are refused while held. Revokes of the superseded role are
 unchanged (the restore assertion guards them) and runs past their publish still finish.
 
+### Review round 7 (as built)
+
+- **Hold committed during a provider call (CodeRabbit thread 4607573921, no code change).**
+  `reconcileCandidate`, `dropCandidate` and `dropOrphan` read the hold once and then call the
+  provider. A hold landing between that read and the call is unobserved, but no path was found where
+  a role consumers already fetched is dropped. The hold is set only by `HoldRestoredRotations`
+  inside `CompleteRestore`'s transaction, and a restore targets an empty SQLite path or an empty
+  PostgreSQL database with the server stopped (`store.ErrTargetNotEmpty` refuses anything else;
+  `RestoreDestination` serves no repositories), so the hold commits with the rows it covers, before
+  any worker can claim a restored run. A worker of the pre-restore instance reads and fences the old
+  database and its settles never reach the restored one. After the commit the hold clears only by a
+  human `release-hold` or by a disable, which round 6 refuses while held. The post-claim reads
+  (`BeforeHeldRead` sites) are defence in depth for the synthetic case that the tests build by
+  landing a hold in a live database. No cheap exclusion that spans the provider call is needed;
+  a lease-fence advance in the restore would protect a database no worker reads.
+- **Held published run waited for its revoke deadline (CodeRabbit outside-diff, real, narrow).**
+  While held, `overlapSettle` dropped the candidate validity from the wake, so a published run
+  slept until `RevokeNotBefore`; after `release-hold` (which changes no schedule) it had no
+  window if the candidate lapsed before that deadline, and keeping the expiry in the wake would
+  re-claim at once, because `rotationOverlapWake` clamps an extension time that has passed to
+  now. `overlapWakeFor` now keeps the candidate validity in the wake while held, and a wake that
+  has already passed is pushed five minutes ahead (never past the deadline), so the run is polled
+  and not spun. `ReleaseHold` is unchanged: it still flips only the flag. The documented rule
+  stays: when the cycle window is spent (deadline later than `VALID UNTIL` minus the window), the
+  first run after release halts the rotation with `retries_exhausted` before the credential
+  lapses; the docs now say so for the post-publish case. Test
+  `TestRotationHeldPublishedRunIsWokenBeforeItsCredentialExpires` failed before the change
+  (run not woken before the credential expiry) and passes on both engines.
+- **Key-narrowed transitions need environment read (CodeRabbit outside-diff, docs).** True for
+  holders whose publish/edit/reveal comes only from rules narrowed to the keys: the rotation is
+  looked up under `rotation.inspect` (environment `read`), so without `read` the answer is the
+  uniform not-found with one denial under the operation. A `read` rule narrowed to the keys is
+  enough, because read applies to the whole environment, so the earlier claim that a key-narrowed
+  `read` rule never reaches the environment was wrong in the other direction: read ignores key
+  limits. `TestRotationKeyNarrowedTransitionsNeedEnvironmentRead` pins both. The rotation page and
+  the OpenAPI text for pause, resume, run-now and release-hold now say it (the stale "Pause needs
+  publish on the environment, not per-key access" and the run-now "access held only through
+  key-narrowed rules does not reach it" sentences are gone).
+
 ### Judgment calls
 
 - Generation is not bumped on release.

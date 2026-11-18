@@ -71,11 +71,15 @@ requires the recorded authority principal to still hold it (including through a 
 narrowed to those keys); if that authority was lost, `resume` refuses with a named
 error rather than rescheduling, and the denial is recorded against the person who
 asked, so a person who can only publish cannot re-arm someone else's delegation. A
-person whose access to the keys comes only from key-narrowed rules can create,
-run now, resume, pause and delete a rotation as long as the rules cover both keys;
-a rule that covers only one of them refuses every one of those, and the refusal is
-recorded under the operation. Listing and showing rotations needs `read` on the
-environment, which a key-narrowed rule never narrows.
+person whose access to the keys comes only from key-narrowed rules can create a
+rotation as long as the rules cover both keys. Such a person can run now, resume,
+pause, delete and release a hold only when they also hold `read` on the environment,
+because the rotation cannot be looked up without it (a `read` rule narrowed to those
+keys is enough: read applies to the whole environment); without `read` those
+transitions are refused under the operation. A rule that covers only one key refuses
+every one of them, and the refusal is recorded under the operation. Someone who holds
+the operation on the whole environment needs no extra `read`. Listing and showing
+rotations needs `read` on the environment, which a key-narrowed rule never narrows.
 
 A rotation publishes unattended, so it is refused, by name, in an environment that
 is **protected** (its publishes need a ceremony each time) or covered by an
@@ -86,7 +90,8 @@ A key can be driven by one live rotation at a time, whichever role (password or
 username) it plays. A key that belongs to a **key group** is refused: the
 rotation would publish a value the group does not own. A key with a **pending
 authority draft** (a staged change on either key) is also refused at create and
-resume; clear or publish the draft first. Pause and delete need `publish` on both keys; list and
+resume; clear or publish the draft first. Pause and delete need `publish` on both keys (and
+`read` on the environment when that access comes only from key-narrowed rules); list and
 show need `read` on the environment.
 
 ## Providers, keys and environments
@@ -309,7 +314,8 @@ hikyo rotation release-hold <rotation> --env E [--expected-generation N]
 ```
 
 It needs what resume needs (edit, publish and reveal, on both keys, so a
-key-narrowed operator can run it) and the publish ceremony, and it is audited as a `rotation.configured`
+key-narrowed operator can run it, provided they also hold `read` on the environment)
+and the publish ceremony, and it is audited as a `rotation.configured`
 event with `action` `hold_released`. It lifts the hold and writes nothing else: it
 does not resume a paused or halted rotation or drop a superseded role. The
 executor, though, takes the held runs up again at once: a run found minting or
@@ -319,6 +325,14 @@ instance published that candidate and consumers fetched it, the drop ends their
 access, so compare `rotation runs` with the live instance before you release.
 A hold that outlasts the delivered credential leaves the first run after release
 without a window, and the rotation halts; resume it once the credential is checked.
+This holds for a run already past its publish too. While the hold stands the run waits
+in its overlap and the executor looks at it again every five minutes, so it does not
+spin; it still revokes the superseded role at its deadline. If the release comes after
+the point where the run's window is spent (the credential would be extended too late
+to be renewed before it lapses), the first run after release halts the rotation with
+`retries_exhausted` instead of extending, and the credential lapses at its
+`credential_expires_at` as stated above. A release that comes sooner finds the run
+still due, and the rotation extends it as usual.
 A run held at `revoke_refused` because the keys served other values stays held
 until the old role expires, as above. An archive written before migration 00094
 has no hold column; its active rotations come back paused instead, and you resume
