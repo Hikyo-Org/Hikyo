@@ -223,6 +223,8 @@ function RotationList({
                           ) : (
                             <>
                               {minter.kind} <span className="mono machine__origin" title={minter.origin}>{minter.origin}</span>
+                              <br />
+                              <span className="mono rotations__id">{rotation.provider_id}</span>
                             </>
                           )}
                         </Fact>
@@ -289,7 +291,9 @@ function RotationList({
             : 'No rotations in this environment yet. Create one with hikyo rotation create.'}
         </p>
       ) : null}
-      {query.hasNextPage ? (
+      {/* A refetch that failed leaves the old pages and their cursor: a page added after them
+          would clear the error and show a stale list as current. A failed next page can be retried. */}
+      {query.hasNextPage && !(query.isError && !query.isFetchNextPageError) ? (
         <div className="actions">
           <Button type="button" disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>
             Load more rotations
@@ -311,10 +315,13 @@ function RotationList({
  */
 function RunTimeline({ env, rotation, name }: { env: EnvironmentRef; rotation: Rotation; name: string }) {
   const query = useRotationRuns(env, rotation.id);
-  const { hasNextPage, isFetching, isFetchNextPageError, fetchNextPage } = query;
+  const { hasNextPage, isFetching, isError, fetchNextPage } = query;
   const pages = query.data?.pages.length ?? 0;
   const runs = useMemo(() => query.data?.pages.flatMap((page) => page.items) ?? [], [query.data]);
-  const reading = hasNextPage && pages < MAX_RUN_PAGES && !isFetchNextPageError;
+  // Any error stops the reading: a failed later page leaves older runs unread, and a failed
+  // refetch of a reopened timeline leaves `hasNextPage` true from the old pages, so reading
+  // on would continue from a stale cursor and clear the error with a newer run still missing.
+  const reading = hasNextPage && pages < MAX_RUN_PAGES && !isError;
   // Ask for the next page only while nothing is fetching, of any kind. A reopened
   // timeline refetches its cached first pages, and `fetchNextPage` would cancel that
   // refetch and read on from a stale cursor, hiding a newer run for good. `pages` is a

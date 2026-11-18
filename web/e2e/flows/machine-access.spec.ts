@@ -265,6 +265,15 @@ test.describe('machine access', () => {
         expect(await scroller.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+      // A key name never splits mid-word to fit a narrow column.
+      const splitNames = await page.evaluate(() =>
+        [...document.querySelectorAll('.rotations__table .kv bdi')].filter((name) => {
+          const range = document.createRange();
+          range.selectNodeContents(name);
+          return range.getClientRects().length > 1;
+        }).map((name) => name.textContent),
+      );
+      expect(splitNames).toEqual([]);
       // The restore hold badge is inside the page's width, not pushed off an edge by a sideways scroll.
       const badge = await table.getByText('Restore hold', { exact: true }).boundingBox();
       const width = await page.evaluate(() => document.documentElement.clientWidth);

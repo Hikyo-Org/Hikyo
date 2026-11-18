@@ -177,6 +177,12 @@ export const DesktopNoSideScroll: Story = {
     await userEvent.click(await canvas.findByRole('button', { name: 'Show runs of DATABASE_PASSWORD' }));
     await canvas.findByRole('table', { name: /Runs of this rotation/ });
     expectNoSideScroll(canvasElement);
+    // A key name keeps its room: it never splits mid-word to fit a narrow column.
+    for (const name of canvasElement.querySelectorAll('.rotations__table .kv bdi')) {
+      const range = document.createRange();
+      range.selectNodeContents(name);
+      await expect(range.getClientRects().length).toBe(1);
+    }
     await expect(canvas.getAllByText(/Owed role valid until/)[0]).toBeVisible();
   },
 };

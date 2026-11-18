@@ -297,11 +297,13 @@ environment. A person who lacks it gets the API's answer (the same not-found for
 rotation that is absent), which the tab words as "Listing them needs read on this
 environment" without saying whether anything exists.
 
-The list shows each rotation's id, keys, provider, interval and overlap, its state as
-a word (`active`, `paused`, `halted` or `disabled`), the next run, when the
-delivered credential expires, and its record: authority principal, creator, generation
-and created and updated times (every field the API returns for a rotation, which
-`hikyo rotation show` prints only partly in its table). A halted rotation is flagged with the command that resumes it, and when it is also
+The list shows each rotation's id, keys (by name, with the key id on hover), provider
+(kind, origin and id), interval and overlap, its state as a word (`active`, `paused`,
+`halted` or `disabled`), the next run, when the delivered credential expires, and its
+record: authority principal, creator, generation and created and updated times. That is
+everything the API returns for a rotation, which `hikyo rotation show` prints only partly
+in its table; the environment is the one you chose above the list. A halted rotation is
+flagged with the command that resumes it, and when it is also
 held after a restore the tab says to lift the hold first. The tab does not say why a
 rotation halted: the reason is recorded server side but the API does not expose it
 today. A rotation held after a restore gets a `RESTORE HOLD` alert with the exact

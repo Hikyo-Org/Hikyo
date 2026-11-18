@@ -72,6 +72,7 @@ it('lists each rotation with its keys, provider, state, schedule and expiry', as
     expect(active.textContent).toContain('Role name keyDATABASE_USER');
     expect(active.textContent).toContain('postgres');
     expect(active.textContent).toContain('db.internal.example.com:5432');
+    expect(active.textContent).toContain(dynamicProvider.id);
     expect(active.textContent).toContain('active');
     expect(active.textContent).toContain('Every 30 days, 1 day overlap');
     // A halted rotation says so in a word and is not scheduled.
@@ -283,6 +284,46 @@ it('shows a run that appeared while the timeline was hidden when it is reopened'
   }
 });
 
+it('does not read on from an old cursor when the reopened timeline fails to refetch', async () => {
+  // Page 1 is cached with a next page unread; the reopen refetches page 1 and it fails. The old
+  // pages still say a next page exists, but asking for it would continue from a stale cursor and
+  // clear the error while a newer run is missing: the failure must stay, and nothing more is read.
+  const [a1] = [nthRun(1)];
+  let reopened = false;
+  const calls = stub({
+    ...keysRoute,
+    [listPath(PROD)]: () => Response.json(rotationList()),
+    [runsPath(PROD, ROTATION)]: (url) => {
+      if (url.searchParams.get('after') !== null) return new Promise<Response>(() => {});
+      return reopened ? Response.json({ error: 'boom' }, { status: 500 }) : Response.json({ items: [a1], next_after: a1.id });
+    },
+  });
+  const afterCalls = () => calls.calls.filter((c) => c.includes('after=')).length;
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    await act(async () => buttonNamed(container, 'Show runs of DATABASE_PASSWORD').click());
+    await vi.waitFor(async () => {
+      await settleTask();
+      expect(afterCalls()).toBe(1);
+    });
+    await act(async () => buttonNamed(container, 'Hide runs of DATABASE_PASSWORD').click());
+    reopened = true;
+    await act(async () => buttonNamed(container, 'Show runs of DATABASE_PASSWORD').click());
+    await vi.waitFor(async () => {
+      await settleTask();
+      expect(container.textContent).toContain('The runs could not be listed. Reload to try again.');
+    });
+    await settleTask();
+    expect(afterCalls()).toBe(1);
+    expect(container.textContent).toContain('Only the newest 1 run is shown');
+    expect(container.textContent).toContain('The runs could not be listed. Reload to try again.');
+    expect(container.textContent).not.toContain('Loading more runs');
+  } finally {
+    await unmount();
+  }
+});
+
 it('keeps the runs it has and says older ones were not read when a later page fails', async () => {
   const [first] = owedRuns.items;
   stub({
@@ -401,6 +442,62 @@ it('pages the rotation list and asks for deleted ones only on request', async ()
       `?after=${ROTATION}`,
       '?include_disabled=true',
     ]);
+  } finally {
+    await unmount();
+  }
+});
+
+/** A window refocus refetches the stale list; the test decides what that refetch and a next page answer. */
+async function listWithMore(refetchFails: () => boolean, nextFails: () => boolean) {
+  stub({
+    ...keysRoute,
+    [listPath(PROD)]: (url) => {
+      if (url.searchParams.get('after') !== null) {
+        return nextFails() ? Response.json({ error: 'boom' }, { status: 500 }) : Response.json({ items: [rotationList().items[1]] });
+      }
+      return refetchFails() ? Response.json({ error: 'boom' }, { status: 500 }) : Response.json({ items: [rotationList().items[0]], next_after: ROTATION });
+    },
+  });
+  const mounted = await mount();
+  await settleTask();
+  return mounted;
+}
+
+it('hides "Load more rotations" while the list refetch has failed, so a stale list is not shown as current', async () => {
+  let failing = false;
+  const { container, unmount } = await listWithMore(() => failing, () => false);
+  try {
+    expect(buttonNamed(container, 'Load more rotations')).toBeDefined();
+    failing = true;
+    await act(async () => { window.dispatchEvent(new Event('visibilitychange')); });
+    await vi.waitFor(async () => {
+      await settleTask();
+      expect(container.textContent).toContain('The rotations could not be listed');
+    });
+    expect(container.textContent).not.toContain('Load more rotations');
+    expect(container.querySelector('table')).toBeNull();
+  } finally {
+    await unmount();
+  }
+});
+
+it('keeps "Load more rotations" to retry when only the next page failed', async () => {
+  let failing = true;
+  const { container, unmount } = await listWithMore(() => false, () => failing);
+  try {
+    await act(async () => buttonNamed(container, 'Load more rotations').click());
+    await vi.waitFor(async () => {
+      await settleTask();
+      expect(container.textContent).toContain('The rotations could not be listed');
+    });
+    expect(buttonNamed(container, 'Load more rotations')).toBeDefined();
+    failing = false;
+    await act(async () => buttonNamed(container, 'Load more rotations').click());
+    await vi.waitFor(async () => {
+      await settleTask();
+      expect(container.querySelectorAll('tbody tr')).toHaveLength(2);
+    });
+    expect(container.textContent).not.toContain('could not be listed');
   } finally {
     await unmount();
   }
