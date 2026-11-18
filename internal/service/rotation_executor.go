@@ -891,14 +891,34 @@ func (e *RotationExecutor) rollback(ctx context.Context, provider dynamic.Provid
 // never parks a run past the point its credential can still be extended.
 func overlapSettle(r store.RotationRun, now, from time.Time) store.RotationSettle {
 	deadline := from.Add(time.Duration(r.RevocationDelaySeconds) * time.Second)
-	validUntil := r.CandidateValidUntil
-	if r.RotationState != "active" {
-		validUntil = time.Time{}
-	}
 	return store.RotationSettle{
 		Now: now, FromPhases: []string{"published"}, Phase: "overlap",
-		NextAttempt: rotationOverlapWake(now, deadline, validUntil), RevokeNotBefore: deadline,
+		NextAttempt: overlapWakeFor(r, now, deadline), RevokeNotBefore: deadline,
 	}
+}
+
+// overlapWakeFor is rotationOverlapWake for a claimed run. A paused or halted
+// rotation does not extend, so its wake is the deadline alone. A rotation a
+// restore holds extends nothing either, but only until release-hold, which changes
+// no run schedule: the wake keeps the credential's extension margin so the run is
+// visited before the credential expires, and a margin already passed is polled at
+// the backoff floor, not claimed back to back for the length of the hold. The
+// deadline can lie past VALID UNTIL when the overlap is established late (a
+// recovered run takes it from the recovery's own observation).
+func overlapWakeFor(r store.RotationRun, now, deadline time.Time) time.Time {
+	held := r.RotationState == store.RotationStateRestoreHeld
+	validUntil := r.CandidateValidUntil
+	if r.RotationState != "active" && !held {
+		validUntil = time.Time{}
+	}
+	wake := rotationOverlapWake(now, deadline, validUntil)
+	if held && !wake.After(now) && now.Before(deadline) {
+		wake = now.Add(rotationBackoffFloor)
+		if wake.After(deadline) {
+			wake = deadline
+		}
+	}
+	return wake
 }
 
 // followState re-reads a run after a fence loss and acts on what it now is. A run
@@ -1452,11 +1472,7 @@ func (e *RotationExecutor) revoke(ctx context.Context, run store.RotationRun) er
 		// states that never extend (a quarantined run) wait for the deadline.
 		wake := until
 		if executorPhase {
-			validUntil := run.CandidateValidUntil
-			if run.RotationState != "active" {
-				validUntil = time.Time{}
-			}
-			wake = rotationOverlapWake(now, until, validUntil)
+			wake = overlapWakeFor(run, now, until)
 			if !wake.After(now) {
 				// The extension was due and did not happen (a failed or skipped try):
 				// retry on the backoff, not in a tight loop.
