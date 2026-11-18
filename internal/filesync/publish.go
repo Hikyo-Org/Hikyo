@@ -275,7 +275,7 @@ func (d *Destination) Intact(keys *crypto.LocalKeys, target string, policy Polic
 		if ok, err := d.linkIsOurs(name); err != nil || !ok {
 			return st, false, err
 		}
-		fi, content, err := d.readGenFile(path.Join(st.Generation, name))
+		fi, content, err := d.readGenFile(path.Join(st.Generation, name), -1)
 		if err != nil {
 			return st, false, err
 		}
@@ -443,7 +443,7 @@ func (d *Destination) Publish(ctx context.Context, plan Plan, probe Probe) (Resu
 }
 
 func (d *Destination) predecessor(current string) (string, error) {
-	_, raw, err := d.readGenFile(path.Join(current, previousName))
+	_, raw, err := d.readGenFile(path.Join(current, previousName), markerLimit)
 	if err != nil {
 		return "", err
 	}
@@ -671,7 +671,7 @@ func (d *Destination) generationMatches(gen string, plan Plan) (bool, error) {
 		return false, nil
 	}
 	for _, f := range plan.Files {
-		fi, got, err := d.readGenFile(path.Join(gen, f.Name))
+		fi, got, err := d.readGenFile(path.Join(gen, f.Name), -1)
 		if errors.Is(err, ErrForeign) {
 			// A planted symlink or hard link: not our generation, so publish a
 			// fresh one; collect then removes this one through the pinned root.
@@ -807,7 +807,7 @@ func (d *Destination) retain(gen, name string) error {
 	// The recipient owns generation files and may have replaced this one with
 	// a symlink or hard link to something it cannot read; readGenFile refuses
 	// both, so only this generation's own bytes are copied.
-	fi, content, err := d.readGenFile(path.Join(gen, name))
+	fi, content, err := d.readGenFile(path.Join(gen, name), -1)
 	if err != nil {
 		return err
 	}
@@ -920,8 +920,9 @@ func (d *Destination) collect(newGen, oldGen string) error {
 // through a single descriptor. It must be a regular file with one link and the
 // descriptor must be the file Lstat saw, so a symlink or hard link the
 // recipient planted in its own generation directory is refused, not followed.
-// The returned info is the descriptor's.
-func (d *Destination) readGenFile(name string) (fs.FileInfo, []byte, error) {
+// The returned info is the descriptor's. A non-negative limit caps the read for
+// small marker files, so a recipient cannot make the publisher buffer a huge one.
+func (d *Destination) readGenFile(name string, limit int64) (fs.FileInfo, []byte, error) {
 	before, err := d.gen.Lstat(name)
 	if err != nil {
 		return nil, nil, err
@@ -941,13 +942,23 @@ func (d *Destination) readGenFile(name string) (fs.FileInfo, []byte, error) {
 	if !os.SameFile(before, fi) || linkCount(fi) != 1 {
 		return nil, nil, fmt.Errorf("%w: %s in .hikyo-gen was replaced or is hard-linked", ErrForeign, name)
 	}
-	content, err := io.ReadAll(f)
+	var r io.Reader = f
+	if limit >= 0 {
+		r = io.LimitReader(f, limit+1)
+	}
+	content, err := io.ReadAll(r)
+	if err == nil && limit >= 0 && int64(len(content)) > limit {
+		return nil, nil, fmt.Errorf("%w: %s in .hikyo-gen exceeds %d bytes", ErrForeign, name, limit)
+	}
 	return fi, content, err
 }
 
+// markerLimit bounds .complete and .previous, which hold one stamp or name.
+const markerLimit = 4096
+
 // readGenText is readGenFile for a small marker file, trimmed.
 func (d *Destination) readGenText(name string) (string, error) {
-	_, raw, err := d.readGenFile(name)
+	_, raw, err := d.readGenFile(name, markerLimit)
 	return strings.TrimSpace(string(raw)), err
 }
 
