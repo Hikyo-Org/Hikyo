@@ -32,6 +32,7 @@ import { useTransport, useWorkspaceContext } from '../api/transport.tsx';
 import { runPasskeyCeremony } from '../api/values.ts';
 import { writeClipboard } from '../app/clipboard.ts';
 import { useNavigationGuard } from '../app/useNavigationGuard.ts';
+import { NoEnvironments, type EnvironmentsRead } from './machineAccess/EnvironmentsRead.tsx';
 import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -115,12 +116,14 @@ export function SSHCertificatesPanel({
   project,
   sessionId,
   environments,
+  environmentsRead,
   requesterOptions,
 }: {
   org: string;
   project: string;
   sessionId: string | null;
   environments: readonly EnvOption[];
+  environmentsRead: EnvironmentsRead;
   requesterOptions: readonly RequesterOption[];
 }) {
   const [environmentId, setEnvironmentId] = useState(environments[0]?.id ?? '');
@@ -138,7 +141,7 @@ export function SSHCertificatesPanel({
   const issue = useMintLifecycle<IssueRequest, SSHIssued>({ sessionId, org, project });
 
   if (current === undefined) {
-    return <p role="status">This project has no environments, so it has no SSH CAs.</p>;
+    return <NoEnvironments read={environmentsRead} what="SSH CAs" />;
   }
   const caItems = cas.data?.items ?? [];
   const profileItems = profiles.data?.items ?? [];

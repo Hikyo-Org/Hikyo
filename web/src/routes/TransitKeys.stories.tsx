@@ -38,6 +38,9 @@ type Story = StoryObj<typeof meta>;
 export const Populated: Story = { play: async ({ canvas }) => {
   await expect(await canvas.findByRole('button', { name: 'Inspect database-column' })).toBeVisible();
   await expect(canvas.getByText('Rotation due', { exact: true })).toBeVisible();
+  // The rotation tables share `.machine__table`; a Transit key name keeps the row-header weight.
+  const rowHeader = canvas.getByRole('rowheader', { name: 'database-column' });
+  await expect(Number(getComputedStyle(rowHeader).fontWeight)).toBeGreaterThanOrEqual(600);
   await userEvent.click(canvas.getByRole('button', { name: 'Inspect database-column' }));
   const detail = await canvas.findByRole('region', { name: 'Selected Transit key' });
   await expect(await within(detail).findByRole('heading', { name: 'Key versions' })).toBeVisible();

@@ -1,0 +1,169 @@
+import { listRotationRunsOp, listRotationsOp } from '@hikyo/operations';
+import { zCredentialRotation, zRotationRun } from '@hikyo/zod';
+import {
+  useInfiniteQuery,
+  type InfiniteData,
+  type UseInfiniteQueryResult,
+} from '@tanstack/react-query';
+import type { z } from 'zod';
+
+import { parsed } from './client.ts';
+import { commonRefusalText, statusText } from './statusText.ts';
+import { useTransport } from './transport.tsx';
+
+/** A scheduled credential rotation (#148), status only: no secret is ever on it. */
+export type Rotation = z.infer<typeof zCredentialRotation>;
+
+/** One run of a rotation: the fixed-word error code, never provider detail. */
+export type RotationRun = z.infer<typeof zRotationRun>;
+
+/** EnvironmentRef addresses one environment: rotations are environment-scoped. */
+export type EnvironmentRef = {
+  readonly org: string;
+  readonly project: string;
+  readonly environment: string;
+};
+
+type RotationPage = { readonly items: readonly Rotation[]; readonly next_after?: string };
+type RunPage = { readonly items: readonly RotationRun[]; readonly next_after?: string };
+
+/** The server's own page ceiling for the runs list; the CLI reads runs at it too. */
+export const RUNS_PAGE_LIMIT = 500;
+
+/** How many run pages the browser reads back, the same bound as `hikyo rotation show`. */
+export const MAX_RUN_PAGES = 20;
+
+const rotationsKey = (env: EnvironmentRef, includeDisabled: boolean) =>
+  ['rotations', env.org, env.project, env.environment, includeDisabled] as const;
+
+const runsKey = (env: EnvironmentRef, rotation: string) =>
+  ['rotation-runs', env.org, env.project, env.environment, rotation] as const;
+
+// The first page carries no cursor; the server answers `next_after` until the last page.
+const FIRST_PAGE: string | undefined = undefined;
+
+/**
+ * useRotations pages one environment's rotations in id order. Deleted
+ * (`disabled`) rotations are history and only listed on request.
+ */
+export function useRotations(
+  env: EnvironmentRef,
+  includeDisabled: boolean,
+): UseInfiniteQueryResult<InfiniteData<RotationPage, string | undefined>, unknown> {
+  const transport = useTransport();
+  return useInfiniteQuery({
+    queryKey: rotationsKey(env, includeDisabled),
+    initialPageParam: FIRST_PAGE,
+    queryFn: ({ pageParam, signal }) =>
+      parsed(listRotationsOp, {
+        path: { org: env.org, project: env.project, environment: env.environment },
+        query: {
+          ...(includeDisabled ? { include_disabled: true } : {}),
+          ...(pageParam === undefined ? {} : { after: pageParam }),
+        },
+        signal,
+        ...transport,
+      }),
+    getNextPageParam: (last) => last.next_after,
+    enabled: env.org !== '' && env.project !== '' && env.environment !== '',
+  });
+}
+
+/** useRotationRuns pages one rotation's runs, newest first. */
+export function useRotationRuns(
+  env: EnvironmentRef,
+  rotation: string,
+): UseInfiniteQueryResult<InfiniteData<RunPage, string | undefined>, unknown> {
+  const transport = useTransport();
+  return useInfiniteQuery({
+    queryKey: runsKey(env, rotation),
+    initialPageParam: FIRST_PAGE,
+    queryFn: ({ pageParam, signal }) =>
+      parsed(listRotationRunsOp, {
+        path: {
+          org: env.org,
+          project: env.project,
+          environment: env.environment,
+          rotation,
+        },
+        query: {
+          limit: RUNS_PAGE_LIMIT,
+          ...(pageParam === undefined ? {} : { after: pageParam }),
+        },
+        signal,
+        ...transport,
+      }),
+    getNextPageParam: (last) => last.next_after,
+    enabled: rotation !== '',
+  });
+}
+
+/**
+ * rotationRefusalText names a failed read without inventing a cause. The API
+ * answers a caller who may not read the environment with the same not-found it
+ * gives an absent one, so 403 and 404 both read as "needs read here".
+ */
+export function rotationRefusalText(error: unknown, what: 'rotations' | 'runs'): string {
+  const subject = what === 'rotations' ? 'The rotations' : 'The runs';
+  return statusText(
+    error,
+    {
+      401: commonRefusalText.sessionEnded,
+      403: `${subject} could not be listed. Listing them needs read on this environment.`,
+      404: `${subject} could not be listed. Listing them needs read on this environment.`,
+      429: commonRefusalText.requests,
+    },
+    `${subject} could not be listed. Reload to try again.`,
+  );
+}
+
+// ---- Safety wording ------------------------------------------------------
+//
+// These sentences are the CLI's, word for word (internal/cli/credential_rotation.go,
+// noteOwedRuns and noteRestoreHold) and the user docs' (rotation.mdx). An operator
+// reads the same instruction in the terminal and in the browser, so a change to
+// one is a change to all three. Times are RFC 3339 UTC, as the CLI prints them.
+
+/** rfc3339 prints an instant as the CLI does: UTC, whole seconds. */
+export function rfc3339(value: string): string {
+  const at = new Date(value);
+  return Number.isNaN(at.getTime()) ? value : at.toISOString().replace(/\.\d+Z$/, 'Z');
+}
+
+/** The run error code of a drop refused because a restore may have put the role back. */
+export const VERSIONS_CHANGED_CODE = 'published_versions_changed';
+
+/** Whether a run still owes a provider role a drop: a refused revoke, or a quarantine. */
+export function owesDrop(run: RotationRun): boolean {
+  return run.phase === 'revoke_refused' || run.phase === 'quarantine';
+}
+
+/** owedRunText is the ATTENTION sentence for a run that owes a provider role a drop. */
+export function owedRunText(run: RotationRun): string {
+  let until = 'no recorded expiry';
+  if (run.credential_valid_until !== undefined && run.credential_valid_until !== null) {
+    const at = rfc3339(run.credential_valid_until);
+    until =
+      run.credential_valid_until_lower_bound === true
+        ? `stays valid at least until ${at}, and possibly longer: an extend of it is unsettled`
+        : `stays valid until ${at}`;
+  }
+  if (run.error_code === VERSIONS_CHANGED_CODE) {
+    return `ATTENTION: run ${run.id} is ${run.phase} (${VERSIONS_CHANGED_CODE}): a restore put an earlier value back, so the keys may be serving the role it owes a drop again (${until}); do NOT drop it at the provider until the keys have moved off it`;
+  }
+  return `ATTENTION: run ${run.id} is ${run.phase} and a provider role it owes a drop is still live (${until}); before you drop it at the provider, check that neither key serves that role, because a revision restore can put it back`;
+}
+
+/** The command that lifts a restore hold; the browser has no release action. */
+export function releaseHoldCommand(rotation: Rotation): string {
+  return `hikyo rotation release-hold ${rotation.id}`;
+}
+
+/** restoreHoldText is the RESTORE HOLD sentence for a rotation a restore holds. */
+export function restoreHoldText(rotation: Rotation): string {
+  const until =
+    rotation.credential_expires_at === undefined || rotation.credential_expires_at === null
+      ? 'no recorded expiry'
+      : `the delivered credential lapses at ${rfc3339(rotation.credential_expires_at)}`;
+  return `RESTORE HOLD: rotation ${rotation.id} is held after a restore and starts no run (${until}); reconcile its grants and provider credential, then run: ${releaseHoldCommand(rotation)}`;
+}

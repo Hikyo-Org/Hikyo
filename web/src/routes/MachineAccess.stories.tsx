@@ -21,6 +21,7 @@ import type { MockRoute } from '../../.storybook/withApp.tsx';
 import { ORG, PRJ, PROD, STAGING } from '../testkit/ids.ts';
 import { target } from '../testkit/deliveryTargets.ts';
 import { dynamicProvider } from '../testkit/machineAccess.ts';
+import { HELD_ROTATION, rotationKeys, rotationList } from '../testkit/rotations.ts';
 import { MachineAccessPage } from './MachineAccess.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -300,6 +301,15 @@ export const AccountRowsAligned: Story = {
     for (const node of table.querySelectorAll<HTMLElement>('.values__keyname, td.col-secondary, .badge')) {
       await expect(getComputedStyle(node).whiteSpace).toBe('nowrap');
     }
+    // The rotation tables share `.machine__table`; their wrapping id rules must
+    // not reach an account name, which still ellipsises at 14rem on one line.
+    const remPx = parseFloat(getComputedStyle(document.documentElement).fontSize);
+    for (const name of table.querySelectorAll<HTMLElement>('.machine__name')) {
+      const style = getComputedStyle(name);
+      await expect(style.textOverflow).toBe('ellipsis');
+      await expect(style.whiteSpace).toBe('nowrap');
+      await expect(style.maxWidth).toBe(`${14 * remPx}px`);
+    }
     for (const origin of table.querySelectorAll<HTMLElement>('.machine__origin')) {
       await expect(origin.title).toBe(origin.textContent);
       await expect(getComputedStyle(origin).textOverflow).toBe('ellipsis');
@@ -492,6 +502,26 @@ export const SshTab: Story = {
       await expect(card?.querySelector('table')).not.toBeNull();
     }
     await expect(await canvas.findByText(/no ssh ca in this environment yet/i)).toBeVisible();
+  },
+};
+
+// The Rotations tab, opened from the URL: status only, with the loud restore
+// hold naming the CLI command that lifts it.
+export const RotationsTab: Story = {
+  parameters: {
+    app: app(
+      [
+        { url: `${BASE}/keys`, body: rotationKeys },
+        { url: `${BASE}/environments/${PROD}/rotations`, body: rotationList() },
+        ...populatedResponses,
+      ],
+      `${PATH}?tab=rotations`,
+    ),
+  },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('tab', { name: 'Rotations' })).toHaveAttribute('aria-selected', 'true');
+    await expect(await canvas.findByRole('heading', { name: 'Rotations', level: 2 })).toBeVisible();
+    await expect(await canvas.findByText(new RegExp(`hikyo rotation release-hold ${HELD_ROTATION}`))).toBeVisible();
   },
 };
 

@@ -22,7 +22,7 @@ action is not built yet: a run held at `revoke_refused`, or closed as quarantine
 has no release command. Its role expires at the time the line prints, or you drop
 it at the provider after checking that neither key serves that role, because a revision
 restore can put it back. A run refused as `published_versions_changed` is the case where
-a restore already did: leave it until the keys have moved off it. Watch `hikyo rotation list` (state and halt reason), `hikyo
+a restore already did: leave it until the keys have moved off it. Watch `hikyo rotation list` (state), `hikyo
 doctor` and the audit log while rotations are enabled.
 :::
 
@@ -146,8 +146,10 @@ valid for the overlap. When the window or the attempt cap is spent, the rotation
 moves to `halted` with a named reason: `retries_exhausted` (the schedule ran
 out), `authority_lost` (the recorded person no longer holds the access) or
 `gate_failed` (the environment became protected, a key changed, or a draft
-appeared). A halted rotation shows its state and reason in `show` and `list`, is audited,
-and does not extend the delivered credential; `resume` starts a new cycle. As the delivered credential nears its
+appeared). A halted rotation shows `halted` as its state in `show` and `list`, and does not
+extend the delivered credential; the reason is recorded server side but the API does
+not expose it today, so `show`, `list` and the browser state that it is halted and
+not why; `resume` starts a new cycle. As the delivered credential nears its
 expiry, the server extends its `VALID UNTIL` while the rotation is active and
 the gate still holds.
 
@@ -284,6 +286,42 @@ check that neither key serves that role (and reassign what it owns, for
 `role_owns_objects`). A page holds up to `--limit` runs (1 to 500, default 100); when more
 follow, the CLI prints the `--after` value that continues the list. It needs only
 **read** on the environment.
+
+## In the browser
+
+**Machine access** has a **Rotations** tab that shows an environment's rotations
+and the runs of one of them. It is status only: creating, pausing, resuming,
+running and deleting a rotation, and lifting a restore hold, are `hikyo rotation`
+commands, and the tab has no button for any of them. It needs **read** on the
+environment. A person who lacks it gets the API's answer (the same not-found for a
+rotation that is absent), which the tab words as "Listing them needs read on this
+environment" without saying whether anything exists.
+
+The list shows each rotation's id, keys (by name, with the key id on hover), provider
+(kind, origin and id), interval and overlap, its state as a word (`active`, `paused`,
+`halted` or `disabled`), the next run, when the delivered credential expires, and its
+record: authority principal, creator, generation and created and updated times. That is
+everything the API returns for a rotation, which `hikyo rotation show` prints only partly
+in its table; the environment is the one you chose above the list. A halted rotation is
+flagged with the command that resumes it, and when it is also
+held after a restore the tab says to lift the hold first. The tab does not say why a
+rotation halted: the reason is recorded server side but the API does not expose it
+today. A rotation held after a restore gets a `RESTORE HOLD` alert with the exact
+`hikyo rotation release-hold <rotation>` command, and its next run reads "Held after a
+restore: no run starts". Deleted rotations are listed only when you tick **Include deleted
+rotations**.
+
+**Show runs** opens the timeline of one rotation, newest first: phase, trigger,
+start and last change, the published revision, the overlap, the fixed-word error
+code, and `credential_valid_until` (read "At least" as the
+`credential_valid_until_lower_bound` caveat, the role may outlive the time shown).
+The tab reads every page, up to the same bound as `hikyo rotation show`, and warns
+when history remains beyond it. A run that owes a provider drop (`revoke_refused`
+or quarantine) gets the same `ATTENTION` text the CLI prints, including **do NOT
+drop it** while the keys may serve the role again (`published_versions_changed`),
+and that run carries a "Do not drop: restore" badge instead of "Owes a drop".
+The `not_converged_adapter_targets` count covers adapter (sync) targets only, as
+described above; it does not prove that other machine consumers are unaffected.
 
 ## After a restore
 
