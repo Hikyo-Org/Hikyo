@@ -1611,3 +1611,22 @@ func envFilter(env []string, prefix string) []string {
 	}
 	return out
 }
+
+// The saved and presented binding must carry the loader-ack marker, or a
+// legacy cursor (marker absent) would match again.
+func TestLocalCursorBindingMarksLoaderAcks(t *testing.T) {
+	s := &composeStack{cfg: &compose.Config{}}
+	if !s.localCursorBinding().LoaderAcksBound {
+		t.Fatal("localCursorBinding does not set LoaderAcksBound")
+	}
+}
+
+func TestRuntimeExitRefusesCustodyOnly(t *testing.T) {
+	custody := fmt.Errorf("publish: %w", fmt.Errorf("%w: runtime dir /r is not a directory", compose.ErrRuntimeCustody))
+	if got := runtimeExit(custody); got != ExitRefused {
+		t.Errorf("custody refusal exit = %d, want ExitRefused", got)
+	}
+	if got := runtimeExit(errors.New("disk full")); got != ExitInternal {
+		t.Errorf("other runtime error exit = %d, want ExitInternal", got)
+	}
+}

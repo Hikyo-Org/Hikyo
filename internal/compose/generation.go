@@ -457,9 +457,9 @@ func openRuntimeRoot(runtimeDir string, create bool) (*os.Root, error) {
 // owner, unsafe parent, non-directory or swapped entry); render refuses it.
 var ErrRuntimeCustody = errors.New("compose: runtime dir custody refused")
 
-// RuntimeDirCustody reports why runtimeDir would be refused for custody
-// reasons (foreign owner, unsafe parent), or nil. A missing dir is not a
-// custody failure; doctor uses this read-only form of the openRuntimeRoot check.
+// RuntimeDirCustody reports why runtimeDir would be refused (an
+// ErrRuntimeCustody refusal, or an error inspecting it), or nil. A missing dir
+// is not a failure; doctor uses this read-only form of the openRuntimeRoot check.
 func RuntimeDirCustody(runtimeDir string) error {
 	info, err := os.Lstat(runtimeDir)
 	if errors.Is(err, os.ErrNotExist) {

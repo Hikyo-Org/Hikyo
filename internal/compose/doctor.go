@@ -100,7 +100,7 @@ type DoctorInput struct {
 	ManagedStamps  map[string]string
 	RuntimeDir     string
 	RuntimeTmpfs   bool              // CLI probes IsTmpfs(RuntimeDir) and passes the result
-	RuntimeCustody error             // CLI passes RuntimeDirCustody(RuntimeDir): non-nil = foreign owner or unsafe parent
+	RuntimeCustody error             // CLI passes RuntimeDirCustody(RuntimeDir): non-nil = custody refusal or inspection error
 	ServerStamps   map[string]string // target -> stamp over the server's current content
 	ConfigTargets  map[string]Target
 	ExistingKeyIDs map[string]bool // server's current key ids
