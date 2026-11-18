@@ -400,7 +400,7 @@ func openRuntimeRoot(runtimeDir string, create bool) (*os.Root, error) {
 	if err != nil {
 		return nil, fmt.Errorf("compose: open runtime dir parent: %w", err)
 	}
-	defer parent.Close()
+	defer func() { _ = parent.Close() }()
 	base := filepath.Base(runtimeDir)
 	created := false
 	if create {
@@ -434,20 +434,20 @@ func openRuntimeRoot(runtimeDir string, create bool) (*os.Root, error) {
 	}
 	st, err := root.Stat(".")
 	if err != nil {
-		root.Close()
+		_ = root.Close()
 		return nil, fmt.Errorf("compose: stat opened runtime dir %s: %w", runtimeDir, err)
 	}
 	if !os.SameFile(info, st) {
-		root.Close()
+		_ = root.Close()
 		return nil, fmt.Errorf("compose: runtime dir %s was swapped while opening; refusing", runtimeDir)
 	}
 	pinfo, err := parent.Stat(".")
 	if err != nil {
-		root.Close()
+		_ = root.Close()
 		return nil, fmt.Errorf("compose: stat runtime dir parent: %w", err)
 	}
 	if err := checkRuntimeCustody(runtimeDir, st, pinfo); err != nil {
-		root.Close()
+		_ = root.Close()
 		return nil, err
 	}
 	return root, nil
