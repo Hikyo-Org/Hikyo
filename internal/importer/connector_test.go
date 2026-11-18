@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -266,6 +269,53 @@ func TestSOPSRefusesUndecryptableWithoutEchoingIt(t *testing.T) {
 	withAgeIdentity(t)
 	_, err = run(t, sopsSource, "sops-corrupt.yaml", "")
 	wantCode(t, err, CodeDecrypt, "ENC[", "AES256_GCM")
+}
+
+// A SOPS file names its own Vault Transit address in its metadata, and the
+// library sends the ambient token there before any integrity check. The
+// destination must be pinned to the operator's VAULT_ADDR.
+func TestSOPSVaultKeyIsPinnedToTheOperatorsVaultAddr(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		http.Error(w, "nope", http.StatusBadRequest)
+	}))
+	defer server.Close()
+	other := httptest.NewServer(http.NotFoundHandler())
+	defer other.Close()
+
+	enc := "ENC[AES256_GCM,data:AAAA,iv:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=,tag:AAAAAAAAAAAAAAAAAAAAAA==,type:str]"
+	file := fmt.Sprintf(`{"k":%q,"sops":{"hc_vault":[{"vault_address":%q,"engine_path":"transit","key_name":"k","created_at":"2026-01-01T00:00:00Z","enc":"vault:v1:AAAA"}],"lastmodified":"2026-01-01T00:00:00Z","mac":%q,"version":"3.13.1"}}`, enc, server.URL, enc)
+
+	for _, tc := range []struct {
+		name, vaultAddr string
+		wantHits        bool
+	}{
+		{"no VAULT_ADDR", "", false},
+		{"a different VAULT_ADDR", other.URL, false},
+		{"the matching VAULT_ADDR", server.URL, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hits.Store(0)
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("VAULT_TOKEN", "hvs.operator-token")
+			t.Setenv("VAULT_ADDR", tc.vaultAddr)
+			// Registers the variable for restoration, then makes it unset.
+			t.Setenv("SOPS_HC_VAULT_ALLOWLIST", "")
+			if err := os.Unsetenv("SOPS_HC_VAULT_ALLOWLIST"); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := Run(t.Context(), sopsSource, Input{Path: "vault.json", Data: []byte(file)})
+			wantCode(t, err, CodeDecrypt)
+			if got := hits.Load() > 0; got != tc.wantHits {
+				t.Fatalf("Vault requests received = %d, want contact = %v", hits.Load(), tc.wantHits)
+			}
+			if v, ok := os.LookupEnv("SOPS_HC_VAULT_ALLOWLIST"); ok {
+				t.Fatalf("allowlist leaked past the import: %q", v)
+			}
+		})
+	}
 }
 
 // ---------------------------------------------------------------------------
