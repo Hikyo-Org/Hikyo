@@ -3,6 +3,7 @@
 package filesync
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io/fs"
@@ -988,4 +989,29 @@ func TestFIFOInPlaceOfPreviousMarkerDoesNotBlock(t *testing.T) {
 			t.Errorf("publish over a FIFO predecessor = %+v, %v; want a fresh generation", res, err)
 		}
 	})
+}
+
+func TestOversizedMarkerIsForeignAndRepublished(t *testing.T) {
+	t.Parallel()
+	for _, marker := range []string{completeName, previousName} {
+		f := newFixture(t)
+		f.mustPublish(file("a", "A"))
+		_, p := currentGenPath(t, f, marker)
+		if err := os.WriteFile(p, bytes.Repeat([]byte("x"), markerLimit+1), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if marker == completeName {
+			d, err := OpenDestination(f.dir, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := d.Current(); !errors.Is(err, ErrForeign) {
+				t.Errorf("Current over an oversized marker = %v, want ErrForeign", err)
+			}
+			_ = d.Close()
+		}
+		if res, err := f.publish(nil, file("a", "A")); err != nil || !res.Changed {
+			t.Errorf("publish over an oversized %s = %+v, %v; want a fresh generation", marker, res, err)
+		}
+	}
 }
