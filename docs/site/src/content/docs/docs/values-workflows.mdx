@@ -92,9 +92,11 @@ environment, as any publish there does. A live window is reused; a protected
 environment, or a window of `0s`, needs a new passkey ceremony for each
 decision, in the browser or through the CLI's browser handoff. A covered environment refuses a
 publish that spans several environments, so publish it alone. Value changes
-that skip draft publication (`values copy`, `values import`, bulk apply and
-cloning onto an existing environment) are also refused for a covered
-environment, since they cannot be reviewed. The browser exposes the same flow under **Change
+that skip draft publication (`values copy`, `values import`, `values declare`,
+bulk apply and cloning onto an existing environment) are also refused for a
+covered environment, since they cannot be reviewed. `values declare` into a
+protected environment also needs the publish reauthentication ceremony for the
+declared key, which the CLI completes for a human; a machine caller is refused. The browser exposes the same flow under **Change
 approvals** in the project. The server reports `hikyo_approval_requests_open`
 and `hikyo_approval_requests_expired` on the operational listener.
 

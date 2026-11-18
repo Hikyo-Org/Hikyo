@@ -772,6 +772,25 @@ func (s *Values) declare(ctx context.Context, actor Actor, scope domain.Scope, e
 			if err := validateValueWithParameters(key, value, declarations); err != nil {
 				return declareWriteResult{}, err
 			}
+			// Declare delivers like a publish, so a protected destination takes the
+			// same ceremony (human) or refusal (machine: this call has no field to
+			// confirm a protected set) that an ordinary publish enforces.
+			settings, err := az.EnvironmentReauthSettings(ctx, envID)
+			if err != nil {
+				return declareWriteResult{}, err
+			}
+			if settings.Protected {
+				if skipsCeremony(caller) {
+					return declareWriteResult{}, ProtectedDestinationRefusal(envScope.Env)
+				}
+				intent, err := NewPublishReauthIntent(envID, []string{key.ID})
+				if err != nil {
+					return declareWriteResult{}, err
+				}
+				if err := requireCeremony(ctx, s.Auth, az, caller, intent); err != nil {
+					return declareWriteResult{}, err
+				}
+			}
 			updatedAt, err := writeCell(ctx, r, p, sealer, envScope, key, caller.Principal, value)
 			if err != nil {
 				return declareWriteResult{}, err

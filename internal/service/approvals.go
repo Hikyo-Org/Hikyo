@@ -140,11 +140,12 @@ type ApprovalCeremonyBinding struct {
 // approvalGatedTrigger reports whether a republish trigger is an out-of-band
 // value change that must be refused when a policy covers the destination. The
 // draft publishes ("values"/"restore") already ran the approval gate; the
-// structural fan-outs ("declare", "environment-create", "schema") are not value
-// changes a policy governs.
+// structural fan-outs ("environment-create", "key-create", "key-rename",
+// "key-declaration" and the other schema triggers) are not value changes a
+// policy governs. A supplied-value "declare" overwrites cells, so it is gated.
 func approvalGatedTrigger(trigger string) bool {
 	switch trigger {
-	case "import", copyOpCopy, copyOpBulkApply, copyOpClone:
+	case "declare", "import", copyOpCopy, copyOpBulkApply, copyOpClone:
 		return true
 	}
 	return false
