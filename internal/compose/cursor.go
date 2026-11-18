@@ -49,10 +49,11 @@ type CursorBinding struct {
 	// cursor: a "current" answer would otherwise skip the render-time refusal and
 	// let an already-published generation be applied.
 	TargetLoaderAcks map[string][]string `json:"target_loader_acks,omitempty"`
-	// LoaderAcksBound marks a binding that carries TargetLoaderAcks. A cursor
-	// written before the member existed lacks it and is never eligible, so an
-	// acknowledgement removed across an upgrade still forces a full fetch.
-	LoaderAcksBound bool `json:"loader_acks_bound,omitempty"`
+	// LoaderAcksBound marks a binding that carries TargetLoaderAcks. A stored
+	// cursor written before the member existed lacks it and EligibleCursor
+	// refuses it, so an acknowledgement removed across an upgrade still forces a
+	// full fetch.
+	LoaderAcksBound bool `json:"loader_acks_bound"`
 }
 
 // canonical returns a copy with the projection and every key-id list sorted and
@@ -139,7 +140,7 @@ func EligibleCursor(state *CursorState, want CursorBinding, currentStamps map[st
 	if state == nil {
 		return "", false
 	}
-	if !state.Binding.Equal(want) {
+	if !state.Binding.LoaderAcksBound || !state.Binding.Equal(want) {
 		return "", false
 	}
 	// The target set is authoritative from the binding. The cursor and the

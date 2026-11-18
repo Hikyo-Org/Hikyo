@@ -269,8 +269,6 @@ func (s *composeStack) renderOffline(ctx context.Context, ios IO, lock *compose.
 	return moved, nil
 }
 
-// publishRenderPlan adapts the pure render plan to the one filesystem-owner
-// operation shared by live and offline flows.
 // runtimeExit maps a runtime-dir custody refusal to ExitRefused; any other
 // runtime-dir failure is internal.
 func runtimeExit(err error) int {
@@ -280,6 +278,8 @@ func runtimeExit(err error) int {
 	return ExitInternal
 }
 
+// publishRenderPlan adapts the pure render plan to the one filesystem-owner
+// operation shared by live and offline flows.
 func publishRenderPlan(lock *compose.RenderLock, runtimeDir string, keys *crypto.LocalKeys, plan compose.RenderPlan) (compose.PublishResult, error) {
 	targets := make(map[string][]byte, len(plan.Targets))
 	for _, target := range plan.Targets {

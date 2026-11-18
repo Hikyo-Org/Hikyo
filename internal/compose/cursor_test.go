@@ -19,12 +19,13 @@ func cursorSetup(t *testing.T) (state, runtime string) {
 
 func baseBinding() CursorBinding {
 	return CursorBinding{
-		CredentialID:   "cred_1",
-		Environment:    "env_1",
-		ConfigOnly:     false,
-		PinnedRevision: 0,
-		Projection:     []string{"read", "reveal"},
-		TargetKeyIDs:   map[string][]string{"api": {"key_1", "key_2"}},
+		CredentialID:    "cred_1",
+		Environment:     "env_1",
+		ConfigOnly:      false,
+		PinnedRevision:  0,
+		Projection:      []string{"read", "reveal"},
+		TargetKeyIDs:    map[string][]string{"api": {"key_1", "key_2"}},
+		LoaderAcksBound: true,
 	}
 }
 
@@ -132,13 +133,16 @@ func TestEligibleCursorLoaderAckChange(t *testing.T) {
 // current config has none, because its acknowledgements at save time are unknown.
 func TestEligibleCursorLegacyBindingWithoutAckMarker(t *testing.T) {
 	_, runtime := cursorSetup(t)
-	cs, binding, current := buildEligible(t, runtime)
-	want := binding
-	want.LoaderAcksBound = true
-	cs.Binding = binding
+	cs, want, current := buildEligible(t, runtime)
 	cs.Binding.LoaderAcksBound = false
 	if _, ok := EligibleCursor(&cs, want, current, runtime); ok {
 		t.Fatal("legacy cursor without the acknowledgement marker should be ineligible")
+	}
+	// Even against an unmarked want: the stored marker itself is required.
+	unmarked := want
+	unmarked.LoaderAcksBound = false
+	if _, ok := EligibleCursor(&cs, unmarked, current, runtime); ok {
+		t.Fatal("unmarked stored cursor matched an unmarked want")
 	}
 	cs.Binding.LoaderAcksBound = true
 	if _, ok := EligibleCursor(&cs, want, current, runtime); !ok {
