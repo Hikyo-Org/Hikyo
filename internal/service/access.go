@@ -602,7 +602,10 @@ func (s *Access) Vote(ctx context.Context, actor Actor, scope domain.Scope, requ
 			if err != nil {
 				return err
 			}
-			if !ok || covering.ID != policy.ID || covering.Version != policy.Version {
+			switch {
+			case ok && !covering.Enabled:
+				cause = "policy_disabled"
+			case !ok || covering.ID != policy.ID || covering.Version != policy.Version:
 				cause = "policy_changed"
 			}
 		}

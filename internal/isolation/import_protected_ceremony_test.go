@@ -26,6 +26,14 @@ func TestProtectedImportRequiresExactWrittenKeyCeremony(t *testing.T) {
 		if after := latestRevision(t, db, string(envA1)); after != before {
 			t.Fatalf("refused import advanced revision: %d -> %d", before, after)
 		}
+		// A machine has no ceremony to complete, and import has no field to
+		// confirm a protected write, so it is refused rather than let through.
+		if _, err := fixture.values.Import(ctx, service.LocalPrincipal(fixture.admin.boot.PrincipalID), scope, req); !errors.Is(err, service.ErrProtectedDestination) {
+			t.Fatalf("protected import by a machine caller: %v", err)
+		}
+		if after := latestRevision(t, db, string(envA1)); after != before {
+			t.Fatalf("machine import advanced revision: %d -> %d", before, after)
+		}
 		token = passkeyCeremony(t, auth, ctx, token, service.PurposePublish, string(envA1),
 			[]string{"key_" + ceremonySecretB}, fixture.device).SessionToken
 		if _, err := fixture.values.Import(ctx, service.Bearer(token), scope, req); !errors.Is(err, service.ErrReauthUnitMismatch) {
