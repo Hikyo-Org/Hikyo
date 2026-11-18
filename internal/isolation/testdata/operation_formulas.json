@@ -1989,6 +1989,17 @@
     ]
   },
   {
+    "operation": "rotation.release_hold",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "edit@environment",
+      "publish@environment",
+      "reveal@environment"
+    ],
+    "post_grant_forbidden": true
+  },
+  {
     "operation": "rotation.resume",
     "class": "tenant",
     "level": "environment",

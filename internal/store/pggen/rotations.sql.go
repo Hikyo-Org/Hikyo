@@ -370,7 +370,7 @@ func (q *Queries) RotationCredentialExpiry(ctx context.Context, arg RotationCred
 }
 
 const rotationGet = `-- name: RotationGet :one
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4
 `
 
 type RotationGetParams struct {
@@ -395,6 +395,7 @@ type RotationGetRow struct {
 	Generation             int64
 	CreatedAt              pgtype.Timestamptz
 	UpdatedAt              pgtype.Timestamptz
+	RestoreHold            bool
 }
 
 func (q *Queries) RotationGet(ctx context.Context, arg RotationGetParams) (RotationGetRow, error) {
@@ -420,12 +421,13 @@ func (q *Queries) RotationGet(ctx context.Context, arg RotationGetParams) (Rotat
 		&i.Generation,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RestoreHold,
 	)
 	return i, err
 }
 
 const rotationList = `-- name: RotationList :many
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND state<>'disabled' AND id > $4 ORDER BY id LIMIT $5
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND state<>'disabled' AND id > $4 ORDER BY id LIMIT $5
 `
 
 type RotationListParams struct {
@@ -451,6 +453,7 @@ type RotationListRow struct {
 	Generation             int64
 	CreatedAt              pgtype.Timestamptz
 	UpdatedAt              pgtype.Timestamptz
+	RestoreHold            bool
 }
 
 func (q *Queries) RotationList(ctx context.Context, arg RotationListParams) ([]RotationListRow, error) {
@@ -483,6 +486,7 @@ func (q *Queries) RotationList(ctx context.Context, arg RotationListParams) ([]R
 			&i.Generation,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.RestoreHold,
 		); err != nil {
 			return nil, err
 		}
@@ -495,7 +499,7 @@ func (q *Queries) RotationList(ctx context.Context, arg RotationListParams) ([]R
 }
 
 const rotationListActiveByProvider = `-- name: RotationListActiveByProvider :many
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE org_id=$1 AND project_id=$2 AND provider_id=$3 AND state='active' ORDER BY id
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=$1 AND project_id=$2 AND provider_id=$3 AND state='active' ORDER BY id
 `
 
 type RotationListActiveByProviderParams struct {
@@ -519,6 +523,7 @@ type RotationListActiveByProviderRow struct {
 	Generation             int64
 	CreatedAt              pgtype.Timestamptz
 	UpdatedAt              pgtype.Timestamptz
+	RestoreHold            bool
 }
 
 func (q *Queries) RotationListActiveByProvider(ctx context.Context, arg RotationListActiveByProviderParams) ([]RotationListActiveByProviderRow, error) {
@@ -545,6 +550,7 @@ func (q *Queries) RotationListActiveByProvider(ctx context.Context, arg Rotation
 			&i.Generation,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.RestoreHold,
 		); err != nil {
 			return nil, err
 		}
@@ -557,7 +563,7 @@ func (q *Queries) RotationListActiveByProvider(ctx context.Context, arg Rotation
 }
 
 const rotationListActiveInEnvironment = `-- name: RotationListActiveInEnvironment :many
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND state='active' ORDER BY id
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND state='active' ORDER BY id
 `
 
 type RotationListActiveInEnvironmentParams struct {
@@ -581,6 +587,7 @@ type RotationListActiveInEnvironmentRow struct {
 	Generation             int64
 	CreatedAt              pgtype.Timestamptz
 	UpdatedAt              pgtype.Timestamptz
+	RestoreHold            bool
 }
 
 func (q *Queries) RotationListActiveInEnvironment(ctx context.Context, arg RotationListActiveInEnvironmentParams) ([]RotationListActiveInEnvironmentRow, error) {
@@ -607,6 +614,7 @@ func (q *Queries) RotationListActiveInEnvironment(ctx context.Context, arg Rotat
 			&i.Generation,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.RestoreHold,
 		); err != nil {
 			return nil, err
 		}
@@ -619,7 +627,7 @@ func (q *Queries) RotationListActiveInEnvironment(ctx context.Context, arg Rotat
 }
 
 const rotationListActiveInProject = `-- name: RotationListActiveInProject :many
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE org_id=$1 AND project_id=$2 AND state='active' ORDER BY id
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=$1 AND project_id=$2 AND state='active' ORDER BY id
 `
 
 type RotationListActiveInProjectParams struct {
@@ -642,6 +650,7 @@ type RotationListActiveInProjectRow struct {
 	Generation             int64
 	CreatedAt              pgtype.Timestamptz
 	UpdatedAt              pgtype.Timestamptz
+	RestoreHold            bool
 }
 
 func (q *Queries) RotationListActiveInProject(ctx context.Context, arg RotationListActiveInProjectParams) ([]RotationListActiveInProjectRow, error) {
@@ -668,6 +677,7 @@ func (q *Queries) RotationListActiveInProject(ctx context.Context, arg RotationL
 			&i.Generation,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.RestoreHold,
 		); err != nil {
 			return nil, err
 		}
@@ -680,7 +690,7 @@ func (q *Queries) RotationListActiveInProject(ctx context.Context, arg RotationL
 }
 
 const rotationListAll = `-- name: RotationListAll :many
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND id > $4 ORDER BY id LIMIT $5
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND id > $4 ORDER BY id LIMIT $5
 `
 
 type RotationListAllParams struct {
@@ -706,6 +716,7 @@ type RotationListAllRow struct {
 	Generation             int64
 	CreatedAt              pgtype.Timestamptz
 	UpdatedAt              pgtype.Timestamptz
+	RestoreHold            bool
 }
 
 func (q *Queries) RotationListAll(ctx context.Context, arg RotationListAllParams) ([]RotationListAllRow, error) {
@@ -738,6 +749,7 @@ func (q *Queries) RotationListAll(ctx context.Context, arg RotationListAllParams
 			&i.Generation,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.RestoreHold,
 		); err != nil {
 			return nil, err
 		}
@@ -750,7 +762,7 @@ func (q *Queries) RotationListAll(ctx context.Context, arg RotationListAllParams
 }
 
 const rotationListRuns = `-- name: RotationListRuns :many
-SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_adapter_targets FROM rotation_runs WHERE rotation_id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4 ORDER BY id DESC LIMIT $5
+SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_adapter_targets,candidate_valid_until,superseded_handle FROM rotation_runs WHERE rotation_id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4 ORDER BY id DESC LIMIT $5
 `
 
 type RotationListRunsParams struct {
@@ -771,6 +783,8 @@ type RotationListRunsRow struct {
 	PhaseAt                    pgtype.Timestamptz
 	LastError                  pgtype.Text
 	NotConvergedAdapterTargets pgtype.Int8
+	CandidateValidUntil        pgtype.Timestamptz
+	SupersededHandle           pgtype.Text
 }
 
 // A page of a rotation's runs, newest first. Run ids are time-ordered (UUIDv7); a
@@ -778,6 +792,8 @@ type RotationListRunsRow struct {
 // after the request, so id order is start order. The cursor is the last run id of the
 // previous page. Only operator-visible metadata: no handle, no candidate, no
 // provider detail beyond the fixed-word last_error code.
+// candidate_valid_until and superseded_handle let a run that still owes a role drop say when that role
+// lapses on its own; the superseded role's expiry is read per owed run (RotationRunMinterByHandle).
 func (q *Queries) RotationListRuns(ctx context.Context, arg RotationListRunsParams) ([]RotationListRunsRow, error) {
 	rows, err := q.db.Query(ctx, rotationListRuns,
 		arg.RotationID,
@@ -803,6 +819,8 @@ func (q *Queries) RotationListRuns(ctx context.Context, arg RotationListRunsPara
 			&i.PhaseAt,
 			&i.LastError,
 			&i.NotConvergedAdapterTargets,
+			&i.CandidateValidUntil,
+			&i.SupersededHandle,
 		); err != nil {
 			return nil, err
 		}
@@ -815,7 +833,7 @@ func (q *Queries) RotationListRuns(ctx context.Context, arg RotationListRunsPara
 }
 
 const rotationListRunsAfter = `-- name: RotationListRunsAfter :many
-SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_adapter_targets FROM rotation_runs WHERE rotation_id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4 AND id < $5 ORDER BY id DESC LIMIT $6
+SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_adapter_targets,candidate_valid_until,superseded_handle FROM rotation_runs WHERE rotation_id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4 AND id < $5 ORDER BY id DESC LIMIT $6
 `
 
 type RotationListRunsAfterParams struct {
@@ -837,6 +855,8 @@ type RotationListRunsAfterRow struct {
 	PhaseAt                    pgtype.Timestamptz
 	LastError                  pgtype.Text
 	NotConvergedAdapterTargets pgtype.Int8
+	CandidateValidUntil        pgtype.Timestamptz
+	SupersededHandle           pgtype.Text
 }
 
 func (q *Queries) RotationListRunsAfter(ctx context.Context, arg RotationListRunsAfterParams) ([]RotationListRunsAfterRow, error) {
@@ -865,6 +885,8 @@ func (q *Queries) RotationListRunsAfter(ctx context.Context, arg RotationListRun
 			&i.PhaseAt,
 			&i.LastError,
 			&i.NotConvergedAdapterTargets,
+			&i.CandidateValidUntil,
+			&i.SupersededHandle,
 		); err != nil {
 			return nil, err
 		}
@@ -901,7 +923,7 @@ func (q *Queries) RotationManualPending(ctx context.Context, arg RotationManualP
 }
 
 const rotationPauseActive = `-- name: RotationPauseActive :execrows
-UPDATE rotations SET state='paused',next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=FALSE,generation=generation+1,updated_at=$1 WHERE id=$2 AND org_id=$3 AND project_id=$4 AND state='active'
+UPDATE rotations SET deferred_from=NULL,state='paused',next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=FALSE,generation=generation+1,updated_at=$1 WHERE id=$2 AND org_id=$3 AND project_id=$4 AND state='active'
 `
 
 type RotationPauseActiveParams struct {
@@ -1046,8 +1068,37 @@ func (q *Queries) RotationPurgeRuns(ctx context.Context, arg RotationPurgeRunsPa
 	return err
 }
 
+const rotationReleaseHold = `-- name: RotationReleaseHold :execrows
+UPDATE rotations SET restore_hold=FALSE,updated_at=$1 WHERE id=$2 AND org_id=$3 AND project_id=$4 AND environment_id=$5 AND restore_hold=TRUE
+`
+
+type RotationReleaseHoldParams struct {
+	At           pgtype.Timestamptz
+	RotationID   string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+// Clears the restore hold of one rotation. The generation is not bumped: a run in
+// flight asserts the generation it started under, and a release must not
+// invalidate it. Zero rows means the rotation is gone or was not held.
+func (q *Queries) RotationReleaseHold(ctx context.Context, arg RotationReleaseHoldParams) (int64, error) {
+	result, err := q.db.Exec(ctx, rotationReleaseHold,
+		arg.At,
+		arg.RotationID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const rotationRequestRun = `-- name: RotationRequestRun :execrows
-UPDATE rotations SET manual_run_id=$1,manual_skip_overlap=$2,next_run_at=$3,updated_at=$3 WHERE id=$4 AND org_id=$5 AND project_id=$6 AND environment_id=$7 AND state='active' AND generation=$8 AND manual_run_id IS NULL
+UPDATE rotations SET deferred_from=NULL,manual_run_id=$1,manual_skip_overlap=$2,next_run_at=$3,updated_at=$3 WHERE id=$4 AND org_id=$5 AND project_id=$6 AND environment_id=$7 AND state='active' AND generation=$8 AND manual_run_id IS NULL
 `
 
 type RotationRequestRunParams struct {
@@ -1082,8 +1133,63 @@ func (q *Queries) RotationRequestRun(ctx context.Context, arg RotationRequestRun
 	return result.RowsAffected(), nil
 }
 
+const rotationRunExtendUncertain = `-- name: RotationRunExtendUncertain :one
+SELECT COUNT(*) FROM rotation_effects WHERE run_id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4 AND kind='extend' AND (outcome IS NULL OR outcome='unknown')
+`
+
+type RotationRunExtendUncertainParams struct {
+	RunID        string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+// Extends of a run whose outcome is open or unknown: its recorded VALID UNTIL is then only a lower bound.
+func (q *Queries) RotationRunExtendUncertain(ctx context.Context, arg RotationRunExtendUncertainParams) (int64, error) {
+	row := q.db.QueryRow(ctx, rotationRunExtendUncertain,
+		arg.RunID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const rotationRunMinterByHandle = `-- name: RotationRunMinterByHandle :one
+SELECT id,candidate_valid_until FROM rotation_runs WHERE candidate_handle=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4 ORDER BY id DESC LIMIT 1
+`
+
+type RotationRunMinterByHandleParams struct {
+	Handle       string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+type RotationRunMinterByHandleRow struct {
+	ID                  string
+	CandidateValidUntil pgtype.Timestamptz
+}
+
+// The run that minted a role, by its handle, under the chain: the same lookup the executor makes for a
+// superseded role (chain and handle only, never the rotation, so a recreated rotation finds it too).
+// Its candidate_valid_until is that role's recorded VALID UNTIL.
+func (q *Queries) RotationRunMinterByHandle(ctx context.Context, arg RotationRunMinterByHandleParams) (RotationRunMinterByHandleRow, error) {
+	row := q.db.QueryRow(ctx, rotationRunMinterByHandle,
+		arg.Handle,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+	)
+	var i RotationRunMinterByHandleRow
+	err := row.Scan(&i.ID, &i.CandidateValidUntil)
+	return i, err
+}
+
 const rotationSetState = `-- name: RotationSetState :execrows
-UPDATE rotations SET state=$1,halt_reason=NULL,manual_run_id=NULL,manual_skip_overlap=FALSE,next_run_at=$2,generation=generation+1,updated_at=$3 WHERE id=$4 AND org_id=$5 AND project_id=$6 AND environment_id=$7 AND generation=$8 AND state<>'disabled'
+UPDATE rotations SET deferred_from=NULL,state=$1,halt_reason=NULL,manual_run_id=NULL,manual_skip_overlap=FALSE,restore_hold=CASE WHEN $1='disabled' THEN FALSE ELSE restore_hold END,next_run_at=$2,generation=generation+1,updated_at=$3 WHERE id=$4 AND org_id=$5 AND project_id=$6 AND environment_id=$7 AND generation=$8 AND state<>'disabled'
 `
 
 type RotationSetStateParams struct {

@@ -46,6 +46,17 @@ type RotationExecutor struct {
 	// anything else. A test publishes a replacement run there to prove that the
 	// replacement's revoke read counts the extend as uncertain. nil in production.
 	AfterExtendSupersessionCheck func()
+	// AfterExtendHoldRead is a conformance seam: it runs after an extend refused by
+	// a definite gate error has read that no restore holds the rotation, before the
+	// halting settle. A test lands the hold there to prove the settle decides on the
+	// hold at write time. nil in production.
+	AfterExtendHoldRead func()
+	// BeforeHeldRead is a conformance seam: it runs immediately before the
+	// executor's own restore-hold read at a candidate-drop or recovery site
+	// (recover, reconcile:entry, reconcile:predrop, drop_orphan, drop_candidate),
+	// so a test lands a hold after the claim and proves the read is the guard.
+	// Production leaves it nil.
+	BeforeHeldRead func(site string)
 	// Log receives the executor's operational faults as redacted error classes,
 	// never the cause text. nil logs to the default logger.
 	Log *slog.Logger
@@ -131,6 +142,8 @@ func rotationErrClass(err error) string {
 		return "provider_ambiguous"
 	case errors.Is(err, errRotationBudget):
 		return "publish_budget"
+	case errors.Is(err, errRotationHeld):
+		return "rotation_held"
 	case errors.Is(err, errRotationInactive):
 		return "rotation_inactive"
 	case errors.Is(err, ErrRotationAuthorityLost):
@@ -166,6 +179,7 @@ const (
 	rotCodePublishFailed   = "publish_failed"
 	rotCodeBudget          = "publish_budget_exceeded"
 	rotCodePaused          = "rotation_paused"
+	rotCodeHeld            = "rotation_held"
 	rotCodeDropFailed      = "drop_failed"
 	rotCodeOwnsObjects     = "role_owns_objects"
 	rotCodeVersionsChanged = "published_versions_changed"
@@ -188,7 +202,10 @@ const (
 
 var (
 	errRotationInactive = errors.New("service: the rotation is no longer active at the generation this run started under")
-	errRotationBudget   = errors.New("service: the run exceeded its publish budget")
+	// errRotationHeld is errRotationInactive for a rotation a restore holds, so
+	// every inactive check still applies and a record can name the hold itself.
+	errRotationHeld   = fmt.Errorf("%w: a restore holds it", errRotationInactive)
+	errRotationBudget = errors.New("service: the run exceeded its publish budget")
 )
 
 // RunRotationSweep does one unit of executor work and reports whether it did any.
@@ -424,37 +441,37 @@ func (e *RotationExecutor) gateWithin(ctx context.Context, r store.Repos, az *au
 	if err != nil {
 		return err
 	}
-	if rec.State != store.RotationStateActive || (check.generation != anyGeneration && rec.Generation != check.generation) {
+	switch {
+	case rec.State == store.RotationStateActive && rec.RestoreHold:
+		return errRotationHeld
+	case rec.State != store.RotationStateActive || (check.generation != anyGeneration && rec.Generation != check.generation):
 		return errRotationInactive
 	}
-	if err := requireUnattendedEnvironment(ctx, r, az, proof, scope); err != nil {
-		return err
-	}
-	if err := requireRotationProvider(ctx, r, proof, rec.ProviderID); err != nil {
-		return err
-	}
-	if err := requireRotationKeys(ctx, r, proof, rec.KeyID, rec.UsernameKeyID, true); err != nil {
-		return err
-	}
-	for _, id := range []string{rec.KeyID, rec.UsernameKeyID} {
-		key := authz.KeyByID(id)
-		holds, err := az.RecordedPrincipalHolds(ctx, caller, caller.Principal, authz.OpRotationResume, scope, &key)
+	return requireRotationStartable(ctx, r, az, proof, caller, caller.Principal, authz.OpRotationResume, scope, rec, check.drafts)
+}
+
+// authorizeRotationRun is the executor's own publish authorization for the
+// recorded authority: OpRotationRun on both of the rotation's keys, so an
+// authority that holds publish only through member rules narrowed to those keys
+// passes exactly as it does resume's check (RecordedPrincipalHolds on both keys),
+// and an environment-wide holder passes for every key. A keyless check could never
+// be satisfied by a key-narrowed rule. The caller stays the authority principal;
+// no identity is synthesized for it.
+func authorizeRotationRun(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, scope domain.Scope, keyID, usernameKeyID string) (authz.Proof, error) {
+	var proof authz.Proof
+	for _, id := range []string{keyID, usernameKeyID} {
+		held, err := az.AuthorizeKey(ctx, caller, authz.OpRotationRun, scope, authz.KeyByID(id))
 		if err != nil {
-			return err
+			return held, err
 		}
-		if !holds {
-			return ErrRotationAuthorityLost
-		}
+		proof = held
 	}
-	if check.drafts {
-		return requireNoAuthorityDraft(ctx, r, proof, rec.AuthorityPrincipalID, rec.KeyID, rec.UsernameKeyID)
-	}
-	return nil
+	return proof, nil
 }
 
 // gate runs gateWithin in its own transaction, as the recorded authority: before
 // a run is created, and before a delivered credential is extended.
-func (e *RotationExecutor) gate(ctx context.Context, chain domain.Scope, rotationID, authority string, check gateCheck, now time.Time) error {
+func (e *RotationExecutor) gate(ctx context.Context, chain domain.Scope, rotationID, authority, keyID, usernameKeyID string, check gateCheck, now time.Time) error {
 	actor := LocalPrincipal(domain.PrincipalID(authority))
 	return tx.Write(ctx, e.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, err := actor.resolve(ctx, az, now)
@@ -462,7 +479,7 @@ func (e *RotationExecutor) gate(ctx context.Context, chain domain.Scope, rotatio
 			return err
 		}
 		az.SetClock(now)
-		proof, err := az.Authorize(ctx, caller, authz.OpRotationRun, chain)
+		proof, err := authorizeRotationRun(ctx, az, caller, chain, keyID, usernameKeyID)
 		if err != nil {
 			return err
 		}
@@ -547,7 +564,7 @@ func (e *RotationExecutor) startRun(ctx context.Context, worker string, d store.
 	now := e.now()
 	// The Gate's own transaction and its denials carry the authority; no run id
 	// exists yet.
-	if err := e.gate(attributed(ctx, d.AuthorityPrincipalID, ""), d.Chain(), d.ID, d.AuthorityPrincipalID, gateCheck{generation: d.Generation, drafts: true}, now); err != nil {
+	if err := e.gate(attributed(ctx, d.AuthorityPrincipalID, ""), d.Chain(), d.ID, d.AuthorityPrincipalID, d.KeyID, d.UsernameKeyID, gateCheck{generation: d.Generation, drafts: true}, now); err != nil {
 		reason, definite := rotationGateReason(err)
 		if errors.Is(err, errRotationInactive) {
 			// Paused or changed between selection and the gate: nothing to do.
@@ -800,7 +817,7 @@ func (e *RotationExecutor) confirmAbsent(ctx context.Context, run store.Rotation
 func (e *RotationExecutor) failureSettle(ctx context.Context, run store.RotationRun, code string, now time.Time, forcedHalt string) (store.RotationSettle, error) {
 	settle := store.RotationSettle{Now: now, FromPhases: []string{"minting", "minted"}, Phase: "failed", LastError: code, NextAttempt: now, KeepLease: true}
 	if run.RotationState != "active" && run.RotationState != "" {
-		// Paused, deleted or already halted: the schedule is not ours to move.
+		// Paused, deleted, held by a restore or already halted: the schedule is not ours to move.
 		return settle, nil
 	}
 	if code == rotCodeInfra {
@@ -874,14 +891,34 @@ func (e *RotationExecutor) rollback(ctx context.Context, provider dynamic.Provid
 // never parks a run past the point its credential can still be extended.
 func overlapSettle(r store.RotationRun, now, from time.Time) store.RotationSettle {
 	deadline := from.Add(time.Duration(r.RevocationDelaySeconds) * time.Second)
-	validUntil := r.CandidateValidUntil
-	if r.RotationState != "active" {
-		validUntil = time.Time{}
-	}
 	return store.RotationSettle{
 		Now: now, FromPhases: []string{"published"}, Phase: "overlap",
-		NextAttempt: rotationOverlapWake(now, deadline, validUntil), RevokeNotBefore: deadline,
+		NextAttempt: overlapWakeFor(r, now, deadline), RevokeNotBefore: deadline,
 	}
+}
+
+// overlapWakeFor is rotationOverlapWake for a claimed run. A paused or halted
+// rotation does not extend, so its wake is the deadline alone. A rotation a
+// restore holds extends nothing either, but only until release-hold, which changes
+// no run schedule: the wake keeps the credential's extension margin so the run is
+// visited before the credential expires, and a margin already passed is polled at
+// the backoff floor, not claimed back to back for the length of the hold. The
+// deadline can lie past VALID UNTIL when the overlap is established late (a
+// recovered run takes it from the recovery's own observation).
+func overlapWakeFor(r store.RotationRun, now, deadline time.Time) time.Time {
+	held := r.RotationState == store.RotationStateRestoreHeld
+	validUntil := r.CandidateValidUntil
+	if r.RotationState != "active" && !held {
+		validUntil = time.Time{}
+	}
+	wake := rotationOverlapWake(now, deadline, validUntil)
+	if held && !wake.After(now) && now.Before(deadline) {
+		wake = now.Add(rotationBackoffFloor)
+		if wake.After(deadline) {
+			wake = deadline
+		}
+	}
+	return wake
 }
 
 // followState re-reads a run after a fence loss and acts on what it now is. A run
@@ -921,6 +958,10 @@ func (e *RotationExecutor) dropOrphan(ctx context.Context, provider dynamic.Prov
 	if cur.PublishedRevision != 0 || (cur.Phase != "failed" && cur.Phase != "quarantine") {
 		return nil
 	}
+	if held, err := e.heldRead(ctx, run, "drop_orphan"); err != nil || held {
+		// A held rotation drops no candidate (see leaveCandidateHeld); the role expires.
+		return err
+	}
 	opCtx, cancel := context.WithTimeout(ctx, e.providerDeadline())
 	defer cancel()
 	if err := provider.DropRole(opCtx, run.CandidateHandle); err != nil {
@@ -933,6 +974,11 @@ func (e *RotationExecutor) dropOrphan(ctx context.Context, provider dynamic.Prov
 // INTENT recorded, and records the outcome: a confirmed drop settles the run; a
 // definite failure leaves it to the reconciler; an unknown outcome quarantines it.
 func (e *RotationExecutor) dropCandidate(ctx context.Context, provider dynamic.Provider, run store.RotationRun, effectID string) error {
+	if held, err := e.heldRead(ctx, run, "drop_candidate"); err != nil {
+		return err
+	} else if held {
+		return e.leaveCandidateHeld(ctx, run, []string{"failed"}, "failed", effectID)
+	}
 	opCtx, cancel := context.WithTimeout(ctx, e.providerDeadline())
 	err := provider.DropRole(opCtx, run.CandidateHandle)
 	cancel()
@@ -963,7 +1009,46 @@ func (e *RotationExecutor) dropCandidate(ctx context.Context, provider dynamic.P
 	}
 }
 
+// leaveCandidateHeld ends a candidate drop that a restore hold forbids. While a
+// restore holds the rotation no DROP ROLE is issued for a candidate that never
+// published: the archive can say a run never published that the live instance did
+// publish and consumers fetched, and a drop would kill that credential with no
+// restore assertion to guard it. The INTENT is closed as a failure (the provider
+// was never called) and the run is left due; the claim skips its held rotation, so
+// the reconciler revisits it after release-hold. The role lingers until then,
+// bounded by its VALID UNTIL, and the release lets the executor drop it.
+func (e *RotationExecutor) leaveCandidateHeld(ctx context.Context, run store.RotationRun, from []string, phase, effectID string) error {
+	now := e.now()
+	closed, err := e.outcome(run, effectID, "drop_candidate", audit.OutcomeFailure, rotCodeHeld, now)
+	if err != nil {
+		return err
+	}
+	return e.settleDrop(ctx, run, store.RotationSettle{Now: now, FromPhases: from, Phase: phase, LastError: run.LastError, NextAttempt: now, Close: closed})
+}
+
+// heldRead is the executor's own restore-hold read at a recovery or drop site.
+func (e *RotationExecutor) heldRead(ctx context.Context, run store.RotationRun, site string) (bool, error) {
+	if e.BeforeHeldRead != nil {
+		e.BeforeHeldRead(site)
+	}
+	return e.Runtime.RestoreHeld(ctx, run)
+}
+
+// yieldHeldRun hands back a claimed run whose rotation a restore hold reached
+// after the claim, before the step touched anything: the lease is released and the
+// run stays due in its own phase, so the claim (which skips held rotations) takes
+// it again after release-hold instead of after the lease term. The claim already
+// counted this visit in attempt_count; that is one bump per hold landing in the
+// claim window, only sizes the backoff, and stays bounded.
+func (e *RotationExecutor) yieldHeldRun(ctx context.Context, run store.RotationRun) error {
+	return e.settleDrop(ctx, run, store.RotationSettle{Now: e.now(), FromPhases: []string{run.Phase}, Phase: run.Phase, LastError: run.LastError, NextAttempt: e.now()})
+}
+
 func (e *RotationExecutor) settleDrop(ctx context.Context, run store.RotationRun, s store.RotationSettle) error {
+	// A done run parked at "never" is never claimed again, and a restore release does
+	// not re-arm it; the write decides on the hold itself so one landing after the
+	// caller's own reads cannot strand a delivered credential.
+	s.DueIfHeld = s.DueIfHeld || (s.Phase == "done" && s.NextAttempt.Equal(rotationNever))
 	err := e.Runtime.Settle(ctx, run, s)
 	if errors.Is(err, store.ErrRotationFenceLost) {
 		return nil
@@ -974,6 +1059,14 @@ func (e *RotationExecutor) settleDrop(ctx context.Context, run store.RotationRun
 // recoverInFlight is a claimed run found minting or minted: its worker died and
 // its password with it. It always rolls back, under the fenced claim write.
 func (e *RotationExecutor) recoverInFlight(ctx context.Context, run store.RotationRun) error {
+	// A rotation a restore holds recovers nothing (see leaveCandidateHeld): the run and
+	// its role are left as they are until release-hold. The claim already skips such
+	// a rotation; this read covers a hold that landed after the claim.
+	if held, err := e.heldRead(ctx, run, "recover"); err != nil {
+		return err
+	} else if held {
+		return e.yieldHeldRun(ctx, run)
+	}
 	code := rotCodeInterrupted
 	if run.RotationState != "active" {
 		code = rotCodePaused
@@ -1054,7 +1147,7 @@ func (e *RotationExecutor) publish(ctx context.Context, provider dynamic.Provide
 			if now.After(run.StartedAt.Add(rotationPublishBudget)) {
 				return errRotationBudget
 			}
-			proof, err := az.Authorize(ctx, caller, authz.OpRotationRun, scope)
+			proof, err := authorizeRotationRun(ctx, az, caller, scope, run.KeyID, run.UsernameKeyID)
 			if err != nil {
 				return err
 			}
@@ -1070,7 +1163,7 @@ func (e *RotationExecutor) publish(ctx context.Context, provider dynamic.Provide
 			if store.CanonTime(now).After(run.StartedAt.Add(rotationPublishBudget)) {
 				return nil, errRotationBudget
 			}
-			proof, err := az.Authorize(ctx, caller, authz.OpRotationRun, scope)
+			proof, err := authorizeRotationRun(ctx, az, caller, scope, run.KeyID, run.UsernameKeyID)
 			if err != nil {
 				return nil, err
 			}
@@ -1109,7 +1202,7 @@ func (e *RotationExecutor) publish(ctx context.Context, provider dynamic.Provide
 			if now.After(run.StartedAt.Add(rotationPublishBudget)) {
 				return errRotationBudget
 			}
-			proof, err := az.Authorize(ctx, caller, authz.OpRotationRun, scope)
+			proof, err := authorizeRotationRun(ctx, az, caller, scope, run.KeyID, run.UsernameKeyID)
 			if err != nil {
 				return err
 			}
@@ -1181,6 +1274,8 @@ func (e *RotationExecutor) rollbackAfterPublishError(ctx context.Context, provid
 	switch {
 	case errors.Is(cause, errRotationBudget):
 		code = rotCodeBudget
+	case errors.Is(cause, errRotationHeld):
+		code = rotCodeHeld
 	case errors.Is(cause, errRotationInactive):
 		code = rotCodePaused
 	default:
@@ -1242,6 +1337,11 @@ func roleExpired(validUntil time.Time, extendUncertain bool, now time.Time) bool
 // a revoked admin credential or an unreachable provider cannot hold the run (and
 // with it the provider and environment) forever.
 func (e *RotationExecutor) reconcileCandidate(ctx context.Context, run store.RotationRun) error {
+	if held, err := e.heldRead(ctx, run, "reconcile:entry"); err != nil {
+		return err
+	} else if held {
+		return e.yieldHeldRun(ctx, run)
+	}
 	now := e.now()
 	expired := roleExpired(run.CandidateValidUntil, false, now)
 	retry := func(code string) error {
@@ -1271,6 +1371,11 @@ func (e *RotationExecutor) reconcileCandidate(ctx context.Context, run store.Rot
 			return nil
 		}
 		return err
+	}
+	if held, err := e.heldRead(ctx, run, "reconcile:predrop"); err != nil {
+		return err
+	} else if held {
+		return e.leaveCandidateHeld(ctx, run, []string{run.Phase}, run.Phase, intent.EffectID)
 	}
 	err = errNoProvider
 	if provider != nil {
@@ -1367,11 +1472,7 @@ func (e *RotationExecutor) revoke(ctx context.Context, run store.RotationRun) er
 		// states that never extend (a quarantined run) wait for the deadline.
 		wake := until
 		if executorPhase {
-			validUntil := run.CandidateValidUntil
-			if run.RotationState != "active" {
-				validUntil = time.Time{}
-			}
-			wake = rotationOverlapWake(now, until, validUntil)
+			wake = overlapWakeFor(run, now, until)
 			if !wake.After(now) {
 				// The extension was due and did not happen (a failed or skipped try):
 				// retry on the backoff, not in a tight loop.
@@ -1623,7 +1724,14 @@ func (e *RotationExecutor) extendDelivered(ctx context.Context, run store.Rotati
 		// lapse with nothing left to extend it. Stop loudly rather than silently.
 		return e.haltClosing(ctx, run, from, rotHaltExhausted, now, now, intent)
 	}
-	if err := e.gate(ctx, run.Chain(), run.RotationID, run.AuthorityPrincipalID, gateCheck{generation: anyGeneration}, now); err != nil {
+	if err := e.gate(ctx, run.Chain(), run.RotationID, run.AuthorityPrincipalID, run.KeyID, run.UsernameKeyID, gateCheck{generation: anyGeneration}, now); err != nil {
+		if errors.Is(err, errRotationHeld) {
+			// A restore hold landed after the claim. The claim skips held rotations, so
+			// the run stays due without being picked up until the hold is released;
+			// parking it at "never" would leave the delivered credential with nothing
+			// to extend it.
+			return skip(now)
+		}
 		if errors.Is(err, errRotationInactive) {
 			return skip(rotationNever)
 		}
@@ -1631,6 +1739,20 @@ func (e *RotationExecutor) extendDelivered(ctx context.Context, run store.Rotati
 		if !definite {
 			e.warn("rotation extend gate failed", run, "extend", err)
 			return skip(backoff)
+		}
+		// The gate authorizes before it reads the rotation, so a held rotation whose
+		// authority is also refused arrives here as a definite halt. The hold blocks the
+		// halt itself, so settling the run at "never" would strand the delivered
+		// credential: classify the hold first and keep the run due like the held branch.
+		restoreHeld, herr := e.Runtime.RestoreHeld(ctx, run)
+		if herr != nil {
+			return failed(herr)
+		}
+		if restoreHeld {
+			return skip(now)
+		}
+		if e.AfterExtendHoldRead != nil {
+			e.AfterExtendHoldRead()
 		}
 		next := rotationNever
 		if held {

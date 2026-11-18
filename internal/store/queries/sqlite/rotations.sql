@@ -2,16 +2,16 @@
 INSERT INTO rotations (id,org_id,project_id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at) VALUES (sqlc.arg(id),sqlc.arg(chain_org),sqlc.arg(chain_project),sqlc.arg(chain_env),sqlc.arg(provider_id),sqlc.arg(key_id),sqlc.arg(username_key_id),sqlc.arg(interval_seconds),sqlc.arg(revocation_delay_seconds),sqlc.arg(authority_principal_id),sqlc.arg(authority_principal_id),'active',sqlc.arg(next_run_at),1,sqlc.arg(at),sqlc.arg(at));
 
 -- name: RotationGet :one
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env);
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env);
 
 -- name: RotationList :many
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state<>'disabled' AND id > sqlc.arg(after_id) ORDER BY id LIMIT sqlc.arg(page_limit);
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state<>'disabled' AND id > sqlc.arg(after_id) ORDER BY id LIMIT sqlc.arg(page_limit);
 
 -- name: RotationListAll :many
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND id > sqlc.arg(after_id) ORDER BY id LIMIT sqlc.arg(page_limit);
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND id > sqlc.arg(after_id) ORDER BY id LIMIT sqlc.arg(page_limit);
 
 -- name: RotationSetState :execrows
-UPDATE rotations SET state=sqlc.arg(state),halt_reason=NULL,manual_run_id=NULL,manual_skip_overlap=0,next_run_at=sqlc.narg(next_run_at),generation=generation+1,updated_at=sqlc.arg(at) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(expected_generation) AND state<>'disabled';
+UPDATE rotations SET deferred_from=NULL,state=sqlc.arg(state),halt_reason=NULL,manual_run_id=NULL,manual_skip_overlap=0,restore_hold=CASE WHEN sqlc.arg(state)='disabled' THEN 0 ELSE restore_hold END,next_run_at=sqlc.narg(next_run_at),generation=generation+1,updated_at=sqlc.arg(at) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(expected_generation) AND state<>'disabled';
 
 -- name: RotationCountOpenRuns :one
 SELECT COUNT(*) FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND phase NOT IN ('done','quarantine','failed');
@@ -73,16 +73,16 @@ DELETE FROM rotation_key_claims WHERE org_id=sqlc.arg(chain_org) AND project_id=
 DELETE FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env);
 
 -- name: RotationListActiveByProvider :many
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND provider_id=sqlc.arg(provider_id) AND state='active' ORDER BY id;
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND provider_id=sqlc.arg(provider_id) AND state='active' ORDER BY id;
 
 -- name: RotationPauseActive :execrows
-UPDATE rotations SET state='paused',next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=0,generation=generation+1,updated_at=sqlc.arg(at) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state='active';
+UPDATE rotations SET deferred_from=NULL,state='paused',next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=0,generation=generation+1,updated_at=sqlc.arg(at) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state='active';
 
 -- name: RotationListActiveInEnvironment :many
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(environment_id) AND state='active' ORDER BY id;
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(environment_id) AND state='active' ORDER BY id;
 
 -- name: RotationListActiveInProject :many
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state='active' ORDER BY id;
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state='active' ORDER BY id;
 
 -- Abandon closes every unsettled run and bumps the claim token, so a worker still
 -- holding the run loses its fence. A pre-publish run becomes quarantine and is due
@@ -127,7 +127,7 @@ SELECT COUNT(*) FROM rotation_runs ru JOIN rotations ro ON ro.org_id=ru.org_id A
 -- request; the service re-counts open runs after this write, in the same
 -- transaction, and the caller reads the row to say which condition refused.
 -- name: RotationRequestRun :execrows
-UPDATE rotations SET manual_run_id=sqlc.arg(run_id),manual_skip_overlap=sqlc.arg(skip_overlap),next_run_at=sqlc.arg(now),updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active' AND generation=sqlc.arg(expected_generation) AND manual_run_id IS NULL;
+UPDATE rotations SET deferred_from=NULL,manual_run_id=sqlc.arg(run_id),manual_skip_overlap=sqlc.arg(skip_overlap),next_run_at=sqlc.arg(now),updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active' AND generation=sqlc.arg(expected_generation) AND manual_run_id IS NULL;
 
 -- Whether a run-now request is pending for the rotation.
 -- name: RotationManualPending :one
@@ -138,8 +138,26 @@ SELECT COUNT(*) FROM rotations WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.ar
 -- after the request, so id order is start order. The cursor is the last run id of the
 -- previous page. Only operator-visible metadata: no handle, no candidate, no
 -- provider detail beyond the fixed-word last_error code.
+-- candidate_valid_until and superseded_handle let a run that still owes a role drop say when that role
+-- lapses on its own; the superseded role's expiry is read per owed run (RotationRunMinterByHandle).
 -- name: RotationListRuns :many
-SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_adapter_targets FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) ORDER BY id DESC LIMIT sqlc.arg(page_limit);
+SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_adapter_targets,candidate_valid_until,superseded_handle FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) ORDER BY id DESC LIMIT sqlc.arg(page_limit);
 
 -- name: RotationListRunsAfter :many
-SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_adapter_targets FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND id < sqlc.arg(after_id) ORDER BY id DESC LIMIT sqlc.arg(page_limit);
+SELECT id,run_trigger,phase,published_revision,revocation_delay_seconds,started_at,phase_at,last_error,not_converged_adapter_targets,candidate_valid_until,superseded_handle FROM rotation_runs WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND id < sqlc.arg(after_id) ORDER BY id DESC LIMIT sqlc.arg(page_limit);
+
+-- The run that minted a role, by its handle, under the chain: the same lookup the executor makes for a
+-- superseded role (chain and handle only, never the rotation, so a recreated rotation finds it too).
+-- Its candidate_valid_until is that role's recorded VALID UNTIL.
+-- name: RotationRunMinterByHandle :one
+SELECT id,candidate_valid_until FROM rotation_runs WHERE candidate_handle=sqlc.arg(handle) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) ORDER BY id DESC LIMIT 1;
+
+-- Extends of a run whose outcome is open or unknown: its recorded VALID UNTIL is then only a lower bound.
+-- name: RotationRunExtendUncertain :one
+SELECT COUNT(*) FROM rotation_effects WHERE run_id=sqlc.arg(run_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND kind='extend' AND (outcome IS NULL OR outcome='unknown');
+
+-- Clears the restore hold of one rotation. The generation is not bumped: a run in
+-- flight asserts the generation it started under, and a release must not
+-- invalidate it. Zero rows means the rotation is gone or was not held.
+-- name: RotationReleaseHold :execrows
+UPDATE rotations SET restore_hold=0,updated_at=sqlc.arg(at) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND restore_hold=1;

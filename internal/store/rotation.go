@@ -29,6 +29,10 @@ const (
 	RotationStatePaused   = "paused"
 	RotationStateHalted   = "halted"
 	RotationStateDisabled = "disabled"
+	// RotationStateRestoreHeld is what the executor sees in place of the state of a
+	// rotation a restore holds (RotationRecord.RestoreHold): not active, so it starts
+	// and extends nothing, whatever the stored state is. It is never stored.
+	RotationStateRestoreHeld = "restore_hold"
 )
 
 var (
@@ -82,6 +86,9 @@ type RotationRecord struct {
 	CreatedAt              string
 	UpdatedAt              string
 	CredentialExpiresAt    string
+	// RestoreHold is set by a restore and cleared by ReleaseHold: a held rotation
+	// starts no run and takes no pre-publish step, whatever its state.
+	RestoreHold bool
 }
 
 // RotationCreate is one rotation configuration. The environment is bound from
@@ -152,6 +159,16 @@ type RotationRunRecord struct {
 	PhaseAt                    string
 	ErrorCode                  string
 	NotConvergedAdapterTargets *int64
+	// CredentialValidUntil is when the role a revoke_refused or quarantine run still
+	// owes a drop lapses on its own: the superseded role's for a run that published
+	// (its candidate is the serving credential and must never be dropped by hand),
+	// the candidate's for a run that never did. Empty for every other phase or when no
+	// expiry was recorded.
+	CredentialValidUntil string
+	// CredentialValidUntilLowerBound reports that an extend of that role has an
+	// open or unknown outcome, so the role may outlive CredentialValidUntil: the
+	// recorded expiry is "at least", not a fact.
+	CredentialValidUntilLowerBound bool
 }
 
 // RotationReader is the read side.
@@ -181,6 +198,10 @@ type RotationRepo interface {
 	// is the service's: it counts again after this write, which holds the row the
 	// executor locks to start a run, and rolls the request back if one opened.
 	RequestRun(ctx context.Context, p authz.Proof, m RotationRunRequest) error
+	// ReleaseHold clears the restore hold of a held rotation. It reports
+	// ErrConflict when the rotation is not held (or is gone). The generation is
+	// not bumped, so a run in flight is not invalidated.
+	ReleaseHold(ctx context.Context, p authz.Proof, rotationID string, at time.Time) error
 	// PauseForProvider pauses every active rotation that mints from the provider,
 	// in the proof's project, and returns them as paused. It is the provider
 	// delete and credential revoke cascade: a rotation never stays active against
@@ -250,8 +271,13 @@ type rotationStoreQueries interface {
 	setState(ctx context.Context, chain domain.Scope, m RotationSetState) (int64, error)
 	countOpenRuns(ctx context.Context, chain domain.Scope, rotationID string) (int64, error)
 	requestRun(ctx context.Context, chain domain.Scope, m RotationRunRequest) (int64, error)
+	releaseHold(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) (int64, error)
 	manualPending(ctx context.Context, chain domain.Scope, rotationID string) (bool, error)
 	listRuns(ctx context.Context, chain domain.Scope, q RotationRunQuery) ([]RotationRunRecord, error)
+	// mintedExpiry is the recorded VALID UNTIL of the role a handle names, read from
+	// the run that minted it under the chain (never the rotation, so a recreated
+	// rotation finds its predecessor's role), and whether an extend of it is unsettled.
+	mintedExpiry(ctx context.Context, chain domain.Scope, handle string) (until string, uncertain bool, err error)
 	credentialExpiry(ctx context.Context, chain domain.Scope, keyID string) (string, error)
 	// credentialExpiries returns the delivered-credential expiry per key, from the
 	// latest published run of each key, in one read.
@@ -516,6 +542,21 @@ func (r rotationQueries) RequestRun(ctx context.Context, p authz.Proof, m Rotati
 		return ErrRotationRunPending
 	}
 	return ErrConflict
+}
+
+func (r rotationQueries) ReleaseHold(ctx context.Context, p authz.Proof, rotationID string, at time.Time) error {
+	chain, err := r.envChain(p, authz.StoreRotationsReleaseHold)
+	if err != nil {
+		return err
+	}
+	rows, err := r.queries.releaseHold(ctx, chain, rotationID, at)
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return ErrConflict
+	}
+	return nil
 }
 
 func (r rotationQueries) ListRuns(ctx context.Context, p authz.Proof, q RotationRunQuery) ([]RotationRunRecord, error) {
@@ -955,7 +996,7 @@ func sqliteRotation(c sqlitegen.RotationGetRow) (RotationRecord, error) {
 		ID: c.ID, EnvironmentID: c.EnvironmentID, ProviderID: c.ProviderID, KeyID: c.KeyID, UsernameKeyID: c.UsernameKeyID,
 		IntervalSeconds: c.IntervalSeconds, RevocationDelaySeconds: c.RevocationDelaySeconds,
 		AuthorityPrincipalID: c.AuthorityPrincipalID, CreatedBy: c.CreatedBy, State: c.State,
-		NextRunAt: c.NextRunAt.String, Generation: c.Generation, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+		NextRunAt: c.NextRunAt.String, Generation: c.Generation, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, RestoreHold: c.RestoreHold != 0,
 	}
 	if err := normalizeStoredTimes(&out.NextRunAt, &out.CreatedAt, &out.UpdatedAt); err != nil {
 		return RotationRecord{}, err
@@ -968,7 +1009,7 @@ func pgRotation(c pggen.RotationGetRow) (RotationRecord, error) {
 		ID: c.ID, EnvironmentID: c.EnvironmentID, ProviderID: c.ProviderID, KeyID: c.KeyID, UsernameKeyID: c.UsernameKeyID,
 		IntervalSeconds: c.IntervalSeconds, RevocationDelaySeconds: c.RevocationDelaySeconds,
 		AuthorityPrincipalID: c.AuthorityPrincipalID, CreatedBy: c.CreatedBy, State: c.State,
-		NextRunAt: pgStoredStamp(c.NextRunAt), Generation: c.Generation, CreatedAt: pgStoredStamp(c.CreatedAt), UpdatedAt: pgStoredStamp(c.UpdatedAt),
+		NextRunAt: pgStoredStamp(c.NextRunAt), Generation: c.Generation, CreatedAt: pgStoredStamp(c.CreatedAt), UpdatedAt: pgStoredStamp(c.UpdatedAt), RestoreHold: c.RestoreHold,
 	}
 	if err := normalizeStoredTimes(&out.NextRunAt, &out.CreatedAt, &out.UpdatedAt); err != nil {
 		return RotationRecord{}, err
@@ -1020,6 +1061,12 @@ func (r rotationQueries) RecordRunPublish(ctx context.Context, p authz.Proof, re
 	// Zero rows is correct: the rotation was paused or deleted while the run was
 	// in flight. The publish still stands, so the run still revokes; only the
 	// schedule is not re-armed.
+	// This write is also the publish's guard against a restore hold that lands after
+	// the begin check: the schedule write targets only an active, unheld row, so under
+	// PG serializable a concurrent hold on that row conflicts with it and the publish
+	// transaction aborts (the run then settles as held), while sqlite's single write
+	// connection cannot interleave a hold at all.
+	// TestRotationHoldDuringThePublishTransactionRollsItBack fails without it.
 	_, err = rt.setNextRun(ctx, chain, run.RotationID, rec.NextRunAt, rec.Now)
 	return err
 }
@@ -1068,6 +1115,14 @@ func (q pgRotationQueries) providerLiveRuns(ctx context.Context, chain domain.Sc
 	return q.q.RotationProviderLiveRuns(ctx, pggen.RotationProviderLiveRunsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ProviderID: providerID})
 }
 
+func (q sqliteRotationQueries) releaseHold(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) (int64, error) {
+	return q.q.RotationReleaseHold(ctx, sqlitegen.RotationReleaseHoldParams{At: fixedStamp(at), RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+}
+
+func (q pgRotationQueries) releaseHold(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) (int64, error) {
+	return q.q.RotationReleaseHold(ctx, pggen.RotationReleaseHoldParams{At: pgRequiredTime(at), RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+}
+
 func (q sqliteRotationQueries) requestRun(ctx context.Context, chain domain.Scope, m RotationRunRequest) (int64, error) {
 	skip := int64(0)
 	if m.SkipOverlap {
@@ -1090,6 +1145,29 @@ func (q pgRotationQueries) manualPending(ctx context.Context, chain domain.Scope
 	return n > 0, err
 }
 
+// resolveRunExpiry fills the expiry of the role a revoke_refused or quarantine run
+// still owes a drop: the candidate's when the run never published, else the
+// superseded role's (a published run's candidate is the serving credential, so an
+// operator is never pointed at it).
+func resolveRunExpiry(ctx context.Context, q rotationStoreQueries, chain domain.Scope, rec *RotationRunRecord, candidateUntil, supersededHandle string) error {
+	if rec.Phase != "revoke_refused" && rec.Phase != "quarantine" {
+		return nil
+	}
+	if rec.PublishedRevision == 0 {
+		rec.CredentialValidUntil = candidateUntil
+		return nil
+	}
+	if supersededHandle == "" {
+		return nil
+	}
+	until, uncertain, err := q.mintedExpiry(ctx, chain, supersededHandle)
+	if err != nil {
+		return err
+	}
+	rec.CredentialValidUntil, rec.CredentialValidUntilLowerBound = until, uncertain
+	return nil
+}
+
 func (q sqliteRotationQueries) listRuns(ctx context.Context, chain domain.Scope, lq RotationRunQuery) ([]RotationRunRecord, error) {
 	var rows []sqlitegen.RotationListRunsRow
 	var err error
@@ -1108,7 +1186,10 @@ func (q sqliteRotationQueries) listRuns(ctx context.Context, chain domain.Scope,
 	out := make([]RotationRunRecord, 0, len(rows))
 	for _, r := range rows {
 		rec := RotationRunRecord{ID: r.ID, Trigger: r.RunTrigger, Phase: r.Phase, PublishedRevision: r.PublishedRevision.Int64, RevocationDelaySeconds: r.RevocationDelaySeconds, StartedAt: r.StartedAt, PhaseAt: r.PhaseAt, ErrorCode: r.LastError.String}
-		if err := normalizeStoredTimes(&rec.StartedAt, &rec.PhaseAt); err != nil {
+		if err := resolveRunExpiry(ctx, q, chain, &rec, r.CandidateValidUntil.String, r.SupersededHandle.String); err != nil {
+			return nil, err
+		}
+		if err := normalizeStoredTimes(&rec.StartedAt, &rec.PhaseAt, &rec.CredentialValidUntil); err != nil {
 			return nil, err
 		}
 		if r.NotConvergedAdapterTargets.Valid {
@@ -1140,7 +1221,10 @@ func (q pgRotationQueries) listRuns(ctx context.Context, chain domain.Scope, lq 
 	out := make([]RotationRunRecord, 0, len(rows))
 	for _, r := range rows {
 		rec := RotationRunRecord{ID: r.ID, Trigger: r.RunTrigger, Phase: r.Phase, PublishedRevision: r.PublishedRevision.Int64, RevocationDelaySeconds: r.RevocationDelaySeconds, StartedAt: pgStoredStamp(r.StartedAt), PhaseAt: pgStoredStamp(r.PhaseAt), ErrorCode: r.LastError.String}
-		if err := normalizeStoredTimes(&rec.StartedAt, &rec.PhaseAt); err != nil {
+		if err := resolveRunExpiry(ctx, q, chain, &rec, pgStoredStamp(r.CandidateValidUntil), r.SupersededHandle.String); err != nil {
+			return nil, err
+		}
+		if err := normalizeStoredTimes(&rec.StartedAt, &rec.PhaseAt, &rec.CredentialValidUntil); err != nil {
 			return nil, err
 		}
 		if r.NotConvergedAdapterTargets.Valid {
@@ -1149,4 +1233,28 @@ func (q pgRotationQueries) listRuns(ctx context.Context, chain domain.Scope, lq 
 		out = append(out, rec)
 	}
 	return out, nil
+}
+
+func (q sqliteRotationQueries) mintedExpiry(ctx context.Context, chain domain.Scope, handle string) (string, bool, error) {
+	minter, err := q.q.RotationRunMinterByHandle(ctx, sqlitegen.RotationRunMinterByHandleParams{Handle: handle, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	if isNoRows(err) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	n, err := q.q.RotationRunExtendUncertain(ctx, sqlitegen.RotationRunExtendUncertainParams{RunID: minter.ID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	return minter.CandidateValidUntil.String, n > 0, err
+}
+
+func (q pgRotationQueries) mintedExpiry(ctx context.Context, chain domain.Scope, handle string) (string, bool, error) {
+	minter, err := q.q.RotationRunMinterByHandle(ctx, pggen.RotationRunMinterByHandleParams{Handle: handle, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	if isNoRows(err) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	n, err := q.q.RotationRunExtendUncertain(ctx, pggen.RotationRunExtendUncertainParams{RunID: minter.ID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	return pgStoredStamp(minter.CandidateValidUntil), n > 0, err
 }

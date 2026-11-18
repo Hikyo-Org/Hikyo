@@ -7,7 +7,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
+	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
 // rotationWorker drains due scheduled-rotation work (#148, S2a). Like the
@@ -77,4 +79,25 @@ func (w *rotationWorker) Run(ctx context.Context) {
 		case <-timer.C:
 		}
 	}
+}
+
+// rotationGaugeSource feeds the label-free /metrics gauges at scrape time. A
+// datastore hiccup is reported as an error so the collector marks the gauges
+// unknown instead of rendering zeros.
+type rotationGaugeSource struct {
+	runtime *store.RotationRuntime
+	log     *slog.Logger
+}
+
+// RotationSnapshot reads the instance-wide rotation counts with a two-second
+// timeout. A failed read returns an error; the counts are then unavailable.
+func (s rotationGaugeSource) RotationSnapshot() (server.RotationCounts, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	g, err := s.runtime.Gauges(ctx, time.Now().UTC())
+	if err != nil {
+		s.log.Warn("rotation gauge scrape failed", "class", service.RotationErrorClass(err))
+		return server.RotationCounts{}, err
+	}
+	return server.RotationCounts{Quarantined: g.Quarantined, UnknownOutcome: g.UnknownOutcome, RevokeRefused: g.RevokeRefused, Halted: g.Halted, RestoreHeld: g.RestoreHeld, Overdue: g.Overdue, CredentialsExpiring: g.Expiring}, nil
 }

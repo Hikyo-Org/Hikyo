@@ -702,6 +702,10 @@ func (a *TxAuthorizer) HoldRestoredPKIIssuers(ctx context.Context) error {
 	return a.r.HoldRestoredPKIIssuers(ctx)
 }
 
+func (a *TxAuthorizer) HoldRestoredRotations(ctx context.Context, now time.Time) error {
+	return a.r.HoldRestoredRotations(ctx, now)
+}
+
 func (a *TxAuthorizer) IncidentByID(ctx context.Context, id string) (Incident, error) {
 	return a.r.IncidentByID(ctx, id)
 }

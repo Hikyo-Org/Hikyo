@@ -14554,7 +14554,10 @@ paths:
         `abandon` closes every unsettled run as quarantine (or done, for a
         published run that owes no revoke) and records a row for each; it
         revokes nothing, so a role a run may still hold is kept for the
-        executor to settle. `expected_generation`, when
+        executor to settle. A rotation a restore holds refuses the delete,
+        `abandon` included, with a conflict until `release-hold`: the delete
+        would clear the hold and let the executor drop a candidate role the
+        live instance may have published. `expected_generation`, when
         given, must equal the rotation's current generation. The credential
         already delivered into the keys stays valid until
         `credential_expires_at`; deleting does not revoke it.
@@ -14594,8 +14597,10 @@ paths:
         `expected_generation`, when given, must equal the rotation's current
         generation, so a stale client cannot overwrite a newer change. The
         credential already delivered into the keys stays valid until
-        `credential_expires_at`; pausing does not revoke it. Pause needs
-        publish on the environment, not per-key access.
+        `credential_expires_at`; pausing does not revoke it. The caller needs
+        publish on both of the rotation's keys: on the environment, or through rules
+        narrowed to those keys, which also need `read` on the environment (the
+        rotation cannot be looked up without it).
       x-hikyo-class: tenant
       x-hikyo-operation: rotation.pause
       x-hikyo-formula: [publish@environment]
@@ -14627,7 +14632,8 @@ paths:
         generation, so a stale client cannot overwrite a newer change. Resume is
         a human act like create, and it re-runs the whole authorization whether the
         rotation was paused or halted: the caller must hold edit, publish and
-        reveal on both keys and consume the publish reauthentication window over
+        reveal on both keys (through rules narrowed to those keys only with `read` on the
+        environment) and consume the publish reauthentication window over
         them, the recorded authority principal must still hold the same access, the
         environment must still run unattended, the provider must still be able to
         mint, and both keys must still exist. Each refusal is named.
@@ -14641,6 +14647,47 @@ paths:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: Rotation after the change., content: {application/json: {schema: {$ref: "#/components/schemas/CredentialRotation"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/release-hold:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/RotationID"
+    post:
+      operationId: releaseRotationHold
+      tags: [rotation]
+      summary: Release the restore hold of a rotation.
+      description: |
+        A restore holds every rotation it brings back: a held rotation starts no
+        run and takes no pre-publish step until an operator reconciles grants and
+        provider credentials and releases it. The release is a human act with
+        resume's authorization (edit, publish and reveal on both keys, with `read` on the
+        environment when that access comes only from key-narrowed rules) and consumes
+        the publish reauthentication window over them. It changes nothing else: the
+        state, the schedule, every run and every provider role stay as they are, so
+        it never drops a superseded role early and never resumes a paused or halted
+        rotation. It does let the executor settle what the hold left alone: the
+        runs held before their publish are rolled back or reconciled and their
+        unpublished candidate roles dropped, so read the rotation's runs first.
+        `expected_generation`, when given, must equal the rotation's
+        current generation. A rotation that is not held, or is deleted, is refused.
+      x-hikyo-class: tenant
+      x-hikyo-operation: rotation.release_hold
+      x-hikyo-formula: [edit@environment, publish@environment, reveal@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 19
+      requestBody: {required: false, content: {application/json: {schema: {$ref: "#/components/schemas/RotationStateRequest"}}}}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: Rotation after the release., content: {application/json: {schema: {$ref: "#/components/schemas/CredentialRotation"}}}}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -14665,9 +14712,9 @@ paths:
         normal path: the same pre-publish gate, recorded authority and overlap as a
         scheduled one, so a manual run bypasses none of them. Run-now is resume's
         equivalent: the caller must be a signed-in person who holds edit, publish
-        and reveal on the environment itself (access held only through key-narrowed
-        rules does not reach it) and consume the publish reauthentication window
-        over both rotation keys. `confirm_destructive` must be true on every
+        and reveal on both rotation keys (on the environment, or through rules narrowed
+        to those keys, which also need `read` on the environment) and consume the
+        publish reauthentication window over both rotation keys. `confirm_destructive` must be true on every
         request, and a body without it, or with false, is refused by name. Only an active rotation with no
         run in flight and no request already waiting is accepted; a paused, halted
         or deleted rotation is refused. The request makes the rotation due now, so
@@ -18368,7 +18415,7 @@ components:
     CredentialRotation:
       type: object
       additionalProperties: false
-      required: [id, environment_id, provider_id, key_id, username_key_id, interval_seconds, revocation_delay_seconds, authority_principal_id, created_by, state, generation, created_at, updated_at]
+      required: [id, environment_id, provider_id, key_id, username_key_id, interval_seconds, revocation_delay_seconds, authority_principal_id, created_by, state, restore_hold, generation, created_at, updated_at]
       properties:
         id: {$ref: "#/components/schemas/ID"}
         environment_id: {$ref: "#/components/schemas/ID"}
@@ -18380,6 +18427,7 @@ components:
         authority_principal_id: {$ref: "#/components/schemas/ID"}
         created_by: {$ref: "#/components/schemas/ID"}
         state: {$ref: "#/components/schemas/CredentialRotationState"}
+        restore_hold: {type: boolean, description: "True while a restore holds the rotation: it starts no run and takes no pre-publish step, whatever its state, until `release-hold`. The delivered credential keeps lapsing at credential_expires_at, so release the hold before then."}
         next_run_at: {type: [string, "null"], format: date-time, description: Set only while the rotation is active.}
         credential_expires_at: {type: [string, "null"], format: date-time, description: "When the credential currently delivered into the keys lapses (the delivered role's VALID UNTIL, from the latest published run). Null until a run has published, or when the role never expires. Pausing or deleting the rotation does not revoke it."}
         generation: {type: integer, format: int64, minimum: 1}
@@ -18453,8 +18501,10 @@ components:
         revocation_delay_seconds: {type: integer, format: int64, minimum: 0, description: The overlap this run snapshotted; zero for a run that skipped it.}
         started_at: {$ref: "#/components/schemas/Timestamp"}
         phase_at: {$ref: "#/components/schemas/Timestamp"}
-        error_code: {type: [string, "null"], description: "The fixed-word code of the last failure, if any. Never provider detail."}
+        error_code: {type: [string, "null"], description: "The fixed-word code of the last failure, if any. Never provider detail. `published_versions_changed` on a revoke_refused or quarantine run means a restore put an earlier value back, so the keys may be serving the role the run owes a drop again: that role must not be dropped until the keys have moved off it."}
         not_converged_adapter_targets: {type: [integer, "null"], format: int64, minimum: 0, description: "Adapter (sync) targets that mirror either rotation key and had not converged to the published revision when the run decided to revoke the superseded credential. Machine principals that read the keys directly are not counted. Null until then."}
+        credential_valid_until: {type: [string, "null"], format: date-time, description: "For a revoke_refused or quarantine run that published, when the superseded role it still owes a drop expires on its own (its candidate is the serving credential and is never named here); for a quarantine run that never published, when its candidate role does. Null for every other phase, or when no expiry was recorded. The role is owed a drop, not necessarily safe to drop: before dropping it, check that neither key serves it, because a revision restore can put it back (error_code `published_versions_changed` says one already did). A lower bound when credential_valid_until_lower_bound is true."}
+        credential_valid_until_lower_bound: {type: boolean, description: "True when an extend of that role has an open or unknown outcome, so the role may stay valid past credential_valid_until: read the time as \"at least until\". Absent otherwise."}
 
     RotationRunList:
       type: object
@@ -23764,6 +23814,34 @@ components:
           type: integer
           minimum: 0
           description: Private-PKI issuer versions held after a restore until reconciled (#154). Absent when not measured.
+        rotation_runs_quarantined:
+          type: integer
+          minimum: 0
+          description: Scheduled-rotation runs closed as quarantine that still owe a drop (#148). Absent when not measured.
+        rotation_runs_unknown_outcome:
+          type: integer
+          minimum: 0
+          description: Scheduled-rotation runs not yet settled that recorded an effect of unknown outcome, so a possibly live credential exists (#148). Absent when not measured.
+        rotation_runs_revoke_refused:
+          type: integer
+          minimum: 0
+          description: Scheduled-rotation runs whose superseded role could not be dropped, because it owns objects or a restore put its value back (#148). Absent when not measured.
+        rotation_halted:
+          type: integer
+          minimum: 0
+          description: Scheduled rotations halted by a failed authority gate or an exhausted retry window (#148). Absent when not measured.
+        rotation_restore_held:
+          type: integer
+          minimum: 0
+          description: Scheduled rotations a restore holds until an operator releases them, so none starts a run (#148). Absent when not measured.
+        rotation_overdue:
+          type: integer
+          minimum: 0
+          description: Active scheduled rotations due for over fifteen minutes with no run started (#148). Absent when not measured.
+        rotation_credentials_expiring:
+          type: integer
+          minimum: 0
+          description: Scheduled rotations (not deleted) whose delivered credential expires within the next six hours; credentials already past expiry are not counted (#148). Absent when not measured.
 
     BackupHealth:
       type: object

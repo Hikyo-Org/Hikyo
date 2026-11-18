@@ -50,6 +50,11 @@ func (w *rotationWire) handler(t *testing.T) http.Handler {
 		case r.Method == http.MethodPost && r.URL.Path == rotationBase+"/run-now":
 			rw.WriteHeader(http.StatusAccepted)
 			_ = jsonwire.Encode(rw, apigen.RotationRunRequested{RotationId: "rot_70", RunId: "rrn_71", SkipOverlap: true})
+		case r.Method == http.MethodGet && r.URL.Path == rotationBase:
+			lapses := time.Date(2030, 1, 3, 0, 0, 0, 0, time.UTC)
+			_ = jsonwire.Encode(rw, apigen.CredentialRotation{Id: "rot_70", State: "active", RestoreHold: true, CredentialExpiresAt: &lapses})
+		case r.Method == http.MethodPost && r.URL.Path == rotationBase+"/release-hold":
+			_ = jsonwire.Encode(rw, apigen.CredentialRotation{Id: "rot_70", State: "active"})
 		case r.Method == http.MethodDelete && r.URL.Path == rotationBase:
 			_ = jsonwire.Encode(rw, apigen.CredentialRotation{Id: "rot_70", State: "disabled"})
 		default:
@@ -98,6 +103,7 @@ func TestRotationRefusesSurplusPositionals(t *testing.T) {
 		{"run-now", []string{"run-now", "rot_70", "rot_71", "--confirm-destructive", "--skip-overlap"}, "rotation run-now takes one rotation id, got 2"},
 		{"pause", []string{"pause", "rot_70", "rot_71"}, "rotation pause takes one rotation id, got 2"},
 		{"resume", []string{"resume", "rot_70", "rot_71"}, "rotation resume takes one rotation id, got 2"},
+		{"release-hold", []string{"release-hold", "rot_70", "rot_71"}, "rotation release-hold takes one rotation id, got 2"},
 		{"show", []string{"show", "rot_70", "rot_71"}, "rotation show takes one rotation id, got 2"},
 		{"runs", []string{"runs", "rot_70", "rot_71"}, "rotation runs takes one rotation id, got 2"},
 		{"delete", []string{"delete", "rot_70", "rot_71", "--abandon"}, "rotation delete takes one rotation id, got 2"},
@@ -144,8 +150,14 @@ func TestRotationRunsListsMetadataOnly(t *testing.T) {
 	if code := cli.Run(t.Context(), ios, args); code != cli.ExitOK {
 		t.Fatalf("exit %d; stderr=%s", code, stderr)
 	}
-	if seen := wire.take(); len(seen) != 1 || seen[0] != "GET "+rotationBase+"/runs?after=rrn_72&limit=1" {
+	if seen := wire.take(); len(seen) != 2 || seen[0] != "GET "+rotationBase+"/runs?after=rrn_72&limit=1" || seen[1] != "GET "+rotationBase {
 		t.Fatalf("requests = %v", seen)
+	}
+	// A held rotation is said loudly before the runs, with the lapse time and the way out.
+	for _, want := range []string{"RESTORE HOLD", "2030-01-03T00:00:00Z", "hikyo rotation release-hold rot_70"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("no hold notice %q: %q", want, stderr)
+		}
 	}
 	for _, want := range []string{"rrn_70", "manual", "done", "provider_unreachable", "2", "1h0m0s"} {
 		if !strings.Contains(stdout.String(), want) {
@@ -166,5 +178,26 @@ func TestRotationDeleteAbandonRidesTheQuery(t *testing.T) {
 	}
 	if seen := wire.take(); len(seen) != 1 || seen[0] != "DELETE "+rotationBase+"?abandon=true&expected_generation=3" {
 		t.Fatalf("requests = %v", seen)
+	}
+}
+
+// release-hold posts to its own route with the optional generation, and says
+// nothing about the hold once the server reports it gone.
+func TestRotationReleaseHoldPostsToItsRoute(t *testing.T) {
+	var wire rotationWire
+	ios, _, stderr := definitionsTestIO(t, wire.handler(t))
+	args := append([]string{"rotation", "release-hold", "rot_70", "--expected-generation", "3"}, rotationScope...)
+	if code := cli.Run(t.Context(), ios, args); code != cli.ExitOK {
+		t.Fatalf("exit %d; stderr=%s", code, stderr)
+	}
+	seen := wire.take()
+	if len(seen) != 1 || !strings.HasPrefix(seen[0], "POST "+rotationBase+"/release-hold ") || !strings.Contains(seen[0], `"expected_generation":3`) {
+		t.Fatalf("requests = %v", seen)
+	}
+	if strings.Contains(stderr.String(), "RESTORE HOLD") {
+		t.Errorf("hold notice after release: %q", stderr)
+	}
+	if !strings.Contains(stderr.String(), "may now drop lingering unpublished candidate roles") {
+		t.Errorf("release says nothing of the candidate drops: %q", stderr)
 	}
 }

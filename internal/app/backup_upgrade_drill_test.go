@@ -316,7 +316,7 @@ func TestLegacyDrillFixtureRefusesProjectCapacityEvidence(t *testing.T) {
 	}
 }
 
-// The runtime-created fixture includes migrations 45 through 87 (88 on PostgreSQL), then 89, 90, 91, 92 and 93, while the
+// The runtime-created fixture includes migrations 45 through 87 (88 on PostgreSQL), then 89, 90, 91, 92, 93 and 94, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -342,11 +342,12 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		versions = append(versions, 88)
 	}
 	// 00089 (principal containment), 00090 (incident ledger), 00091 (credential
-	// rotation), 00092 (rotation revoke deadline) and 00093 (rotation manual run)
+	// rotation), 00092 (rotation revoke deadline), 00093 (rotation manual run) and
+	// 00094 (rotation restore hold)
 	// are on both engines.
-	versions = append(versions, 89, 90, 91, 92, 93)
+	versions = append(versions, 89, 90, 91, 92, 93, 94)
 	if len(current.Entries) != len(legacy.Entries)+len(versions) || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 87 (88 on PostgreSQL), then 89, 90, 91, 92 and 93 only")
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 87 (88 on PostgreSQL), then 89, 90, 91, 92, 93 and 94 only")
 	}
 	for i, version := range versions {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
@@ -473,7 +474,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate, PKI, temporary-access, file-target, member-access-rule or manual-pairing evidence", query, err)
 		}
 	}
-	// Reverse 00091 (and with it 00092 and 00093, whose columns live on these tables) only
+	// Reverse 00091 (and with it 00092 to 00094, whose columns live on these tables) only
 	// after proving no rotation is configured. Effects, runs and key claims
 	// reference rotations, so they go first.
 	drillExec(t, db, "DROP TABLE rotation_key_claims")
@@ -740,7 +741,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		}
 		drillExec(t, db, "DELETE FROM goose_db_version WHERE version_id = 88")
 	}
-	drillExec(t, db, "DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,89,90,91,92,93)")
+	drillExec(t, db, "DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,89,90,91,92,93,94)")
 }
 
 // reverseAWSAdapter undoes 00067 on a pristine fixture. On PostgreSQL only

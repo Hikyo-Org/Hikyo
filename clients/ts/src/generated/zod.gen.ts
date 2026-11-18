@@ -754,6 +754,7 @@ export const zCredentialRotation = z.object({
     authority_principal_id: zId,
     created_by: zId,
     state: zCredentialRotationState,
+    restore_hold: z.boolean(),
     next_run_at: z.iso.datetime().nullish(),
     credential_expires_at: z.iso.datetime().nullish(),
     generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
@@ -815,7 +816,9 @@ export const zRotationRun = z.object({
     started_at: zTimestamp,
     phase_at: zTimestamp,
     error_code: z.string().nullish(),
-    not_converged_adapter_targets: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullish()
+    not_converged_adapter_targets: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullish(),
+    credential_valid_until: z.iso.datetime().nullish(),
+    credential_valid_until_lower_bound: z.boolean().optional()
 });
 
 export const zRotationRunList = z.object({
@@ -3220,7 +3223,14 @@ export const zRetentionHealth = z.object({
     adapter_targets_attention: z.int().gte(0),
     adapter_jobs_queued: z.int().gte(0),
     pki_certificates_unknown: z.int().gte(0).optional(),
-    pki_issuers_on_hold: z.int().gte(0).optional()
+    pki_issuers_on_hold: z.int().gte(0).optional(),
+    rotation_runs_quarantined: z.int().gte(0).optional(),
+    rotation_runs_unknown_outcome: z.int().gte(0).optional(),
+    rotation_runs_revoke_refused: z.int().gte(0).optional(),
+    rotation_halted: z.int().gte(0).optional(),
+    rotation_restore_held: z.int().gte(0).optional(),
+    rotation_overdue: z.int().gte(0).optional(),
+    rotation_credentials_expiring: z.int().gte(0).optional()
 });
 
 export const zProjectRetentionPolicy = z.object({
@@ -9717,6 +9727,20 @@ export const zResumeRotationPath = z.object({
  * Rotation after the change.
  */
 export const zResumeRotationResponse = zCredentialRotation;
+
+export const zReleaseRotationHoldBody = zRotationStateRequest;
+
+export const zReleaseRotationHoldPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    rotation: zId
+});
+
+/**
+ * Rotation after the release.
+ */
+export const zReleaseRotationHoldResponse = zCredentialRotation;
 
 export const zRunRotationNowBody = zRunRotationNowRequest;
 

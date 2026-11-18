@@ -1352,7 +1352,7 @@ func runRotationDeliveryPath(t *testing.T, db *store.DB) {
 }
 
 // runRotationExecutorAuditLifecycle gives the executor's run events real
-// emitters for the audit coverage proof: a full cycle emits the run intent and
+// emitters for the audit coverage proof: a manual run emits the run-now request, a full cycle emits the run intent and
 // outcome rows, and a delete with abandon over a published run emits the
 // quarantine. It runs on its own database because the rotation fixture owns key
 // and grant ids the shared audit database already uses.
@@ -1361,6 +1361,13 @@ func runRotationExecutorAuditLifecycle(t *testing.T, engine store.Engine) *store
 	db := seededDB(t, func(t *testing.T) *store.DB { return openSelfConfigAuditDB(t, engine, "_rotationexec") })
 	x := newRotExec(t, db)
 	rot := x.create(rotPasswordKey, rotUsernameKey)
+	// A manual run emits the run-now request event.
+	if _, err := x.runNow(x.actor, rot.ID, false); err != nil {
+		t.Fatalf("rotation run-now: %v", err)
+	}
+	x.drain()
+	x.advance(time.Hour + time.Minute)
+	x.drain()
 	x.cycle(rot.ID)
 	// rotation.run_now: requested while no run is open, then started by the drain.
 	if _, err := x.runNow(x.actor, rot.ID, false); err != nil {

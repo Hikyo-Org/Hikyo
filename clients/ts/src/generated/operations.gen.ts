@@ -330,6 +330,7 @@ import {
   regenerateRecoveryCodes,
   releasePkiIssuerHold,
   releaseRevisionPin,
+  releaseRotationHold,
   removeAdapterTarget,
   removePasskey,
   removeRemote,
@@ -764,6 +765,7 @@ import type {
   RegenerateRecoveryCodesData,
   ReleasePkiIssuerHoldData,
   ReleaseRevisionPinData,
+  ReleaseRotationHoldData,
   RemoveAdapterTargetData,
   RemovePasskeyData,
   RemoveRemoteData,
@@ -1174,6 +1176,7 @@ import {
   zRegenerateRecoveryCodesResponse,
   zReleasePkiIssuerHoldResponse,
   zReleaseRevisionPinResponse,
+  zReleaseRotationHoldResponse,
   zRemoveAdapterTargetResponse,
   zRemovePasskeyResponse,
   zRemoveTotpResponse,
@@ -1556,6 +1559,7 @@ export const refreshSamlProviderMetadataOp: BodyOperation<RefreshSamlProviderMet
 export const regenerateRecoveryCodesOp: BodyOperation<RegenerateRecoveryCodesData, typeof zRegenerateRecoveryCodesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(regenerateRecoveryCodes, [200], zRegenerateRecoveryCodesResponse);
 export const releasePkiIssuerHoldOp: BodyOperation<ReleasePkiIssuerHoldData, typeof zReleasePkiIssuerHoldResponse> = /* @__PURE__ */ new GeneratedBodyOperation(releasePkiIssuerHold, [200], zReleasePkiIssuerHoldResponse);
 export const releaseRevisionPinOp: BodyOperation<ReleaseRevisionPinData, typeof zReleaseRevisionPinResponse> = /* @__PURE__ */ new GeneratedBodyOperation(releaseRevisionPin, [200], zReleaseRevisionPinResponse);
+export const releaseRotationHoldOp: BodyOperation<ReleaseRotationHoldData, typeof zReleaseRotationHoldResponse> = /* @__PURE__ */ new GeneratedBodyOperation(releaseRotationHold, [200], zReleaseRotationHoldResponse);
 export const removeAdapterTargetOp: BodyOperation<RemoveAdapterTargetData, typeof zRemoveAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(removeAdapterTarget, [200], zRemoveAdapterTargetResponse);
 export const removePasskeyOp: BodyOperation<RemovePasskeyData, typeof zRemovePasskeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(removePasskey, [200], zRemovePasskeyResponse);
 export const removeTotpOp: BodyOperation<RemoveTotpData, typeof zRemoveTotpResponse> = /* @__PURE__ */ new GeneratedBodyOperation(removeTotp, [200], zRemoveTotpResponse);

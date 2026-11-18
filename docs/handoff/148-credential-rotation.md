@@ -15,7 +15,9 @@ the session that ran the reviews, not kept in this file.
 - `mvp-boundary.md` §4.1 "Arbitrary third-party rotation": flipped **In for exactly
   one provider, PostgreSQL**; every other provider keeps the per-provider trigger.
 - `api-cli-surface.md`: declared amendment adding the closed `rotation` verb family
-  (`create|list|show|pause|resume|run-now|delete`, `runs`) and its API paths.
+  (`create|list|show|pause|resume|release-hold|run-now|delete`, `runs`) and its API paths.
+- `audit-events` (`rotation.configured`): the `action` enum gains `hold_released` (S2b-2);
+  no new event type.
 - `system-architecture.md` § Jobs: a third domain-specific outbox in the dynamic
   outbox pattern; no generic queue, no `SiteScheduler` growth.
 - `docs/spec/ops-catalogue.md` § Scheduled credential rotation (#148): the four bounds.
@@ -75,11 +77,16 @@ decision 13). Never a `SystemProof`, never a scheduler site.
   provider e2e (skips without `HIKYO_TEST_DYNAMIC_PG_*`)
 - [x] S2b-1 run-now (`rotation.run_now`, `OpRotationRunNow`, manual runs, `--skip-overlap`),
   runs inspection (API and CLI), `--abandon` on the wire, user docs (see "S2b-1 as built")
-- [ ] S2b-1 consumer-convergence report: adapter (sync) targets only
-  (`not_converged_adapter_targets`); the machine-principal part is pending an owner decision
-  (options A to D under "S2b-1 as built")
-- [ ] S2b-2 metrics, `hikyo doctor`, the `restore_hold` column and release, incident
-  containment, key-aware resume, pause and delete
+- [x] S2b-1 consumer-convergence report: adapter (sync) targets only
+  (`not_converged_adapter_targets`); the machine-principal part is option A, accepted as
+  recommended (see "Owner decisions on S2b-2")
+- [x] S2b-2 metrics, `hikyo doctor`, the `restore_hold` column and release, key-aware
+  pause, resume, delete and run-now (see "S2b-2 as built")
+- [ ] S2b-2 incident ledger enumeration of rotations: owner chose B (account scope only),
+  built in a follow-up branch from dev after this PR merges, not in this PR; containment itself
+  already halts the rotation
+- [x] S2b-2 run-level `published_versions_changed` hold release: option A (status only, as
+  built), accepted as recommended
 - [ ] S3 SPA status surface, parity flip
 
 ## Decisions taken in S1 (divergences from the issue handoff flagged)
@@ -175,11 +182,10 @@ decision 13). Never a `SystemProof`, never a scheduler site.
    rotation).
    Resume (owner decision Q5) is the `rotation.resume` operation, whose formula is
    `edit ∧ publish ∧ reveal @environment` (the same atoms as create, so a resume denial is
-   recorded under the resume operation, never `rotation.create`). The outer authorization
-   has no key target, so it needs those grants environment-wide; a caller who holds the
-   formula only through key-narrowed member rules gets the uniform not-found at that outer
-   step and CANNOT resume (S2 checklist: make resume, pause and delete key-aware for
-   narrowed creators). Inside, in order: a human caller, the environment still unattended,
+   recorded under the resume operation, never `rotation.create`). S1 had no key target in the
+   outer authorization; S2b-2 authorizes the operation on both stored keys, so a caller who
+   holds the formula through key-narrowed member rules resumes like an environment-wide one
+   (see "S2b-2 as built"). Inside, in order: a human caller, the environment still unattended,
    the provider active with a credential, both keys present and secret, the CALLER holding
    the formula on both stored keys (`AuthorizeKey`), the recorded authority principal still
    holding it on both stored keys (`RecordedPrincipalHolds` with a key target, resolved from
@@ -191,8 +197,10 @@ decision 13). Never a `SystemProof`, never a scheduler site.
    `paused` or a `halted` rotation and runs the same full authorization for both. This is
    the S2 `Gate` shape in miniature.
 5. **CAS.** `pause`, `resume`, `delete` carry `expected_generation`; a stale value is
-   `409`. Every mutation increments `generation`.
-6. **Audit.** Only `rotation.configured` (`action`: `created|paused|resumed|deleted`;
+   `409`. Every mutation increments `generation`, **except `release-hold` and the restore
+   hold itself** (S2b-2: an in-flight run asserts the generation it started under; see
+   "S2b-2 as built"). The pre-00094 fallback pause of a restore does bump it.
+6. **Audit.** Only `rotation.configured` (`action`: `created|paused|resumed|deleted`, plus `hold_released` from S2b-2;
    plus `environment_id` on every action, the optional `reason` of a cascade pause
    (`provider_deleted`, `provider_credential_revoked`, `environment_protected`,
    `approval_policy_enabled`) and the `credential_expires_at` in force) is registered in S1. **Divergence from the brief:** the run events are *specified*
@@ -568,7 +576,9 @@ start at `D + 1s` is refused as `retries_exhausted`.
 
 ### Run-now (S2)
 
-Superseded by "S2b-1 as built" (the Run-now subsection): `OpRotationRunNow` takes resume's
+Superseded by "S2b-1 as built" (the Run-now subsection) and, for who may call it, by
+"S2b-2 as built" (run-now is key-aware: the formula is authorized on both keys, not only
+environment-wide): `OpRotationRunNow` takes resume's
 formula (`edit`, `publish` and `reveal` at the environment, environment-wide), a
 `PurposePublish` ceremony over both keys and a required `confirm_destructive` body field
 (CLI `--confirm-destructive`) on every request. `--skip-overlap` snapshots
@@ -692,6 +702,10 @@ operator e2e (`k8se2e`) asserting a rollout after rotation.
    uniform not-found. An environment-wide second person can resume such a creator's
    rotation as long as the creator still holds the formula on both keys through the rules.
    Making resume, pause and delete key-aware for narrowed creators is on the S2 checklist.
+   **Superseded by "S2b-2 as built" (Key-aware pause, resume, delete, run-now):** all four
+   verbs, and release-hold, now authorize the operation on both stored keys; pause and
+   delete keep their `publish` formula but a one-key holder is refused. The outer
+   environment-level step described here no longer decides.
 
 ## S2a as built (executor)
 
@@ -1059,11 +1073,11 @@ Round 4 review additions (CodeRabbit threads on PR #1426):
 
 ### What S2b must wire
 
-Done in S2b-1: run-now, runs inspection, `--abandon` on the wire and the user docs (see "S2b-1 as built"). Remaining for S2b-2:
+Done in S2b-1: run-now, runs inspection, `--abandon` on the wire and the user docs (see "S2b-1 as built"). Built in S2b-2 (see "S2b-2 as built"): metrics, doctor, the `restore_hold` column and
+release, and key-aware pause, resume, delete and run-now. Still open: ledger enumeration of
+rotations, owner decision B, built in a follow-up branch after this PR merges (see "Owner
+decisions on S2b-2").
 
-- Metrics, `hikyo doctor` (approaching `credential_expires_at`, halted, quarantine,
-  `revoke_refused`), the `restore_hold` column and release, incident containment, and
-  key-aware pause, resume and delete.
 - Parity rows (S3 flips them).
 - The machine-principal part of the consumer report, if the owner picks option B or C
   below.
@@ -1088,9 +1102,8 @@ and `rotation_runs.not_converged_adapter_targets`. API revision 18 (additive).
   nothing and holds no provider handle. There is no per-key `AuthorizeKey` after the
   environment check: a key-narrowed rule never satisfies an operation that passes no key and an
   environment-wide holder passes for every key, so it could never deny. Like resume, run-now
-  therefore needs the formula environment-wide: a principal who could create a rotation through
-  key-narrowed rules can neither run it now nor resume it (S2b-2 makes these key-aware).
-  `TestRotationRunNowKeyChecksAddNothing` pins the equivalence. The request resets `next_run_at` to now, so it also
+  therefore needed the formula environment-wide in S2b-1; S2b-2 made run-now, pause, resume and
+  delete key-aware (see "S2b-2 as built"). The request resets `next_run_at` to now, so it also
   overrides a retry backoff; the attempt cap and the retry deadline still apply.
 - The executor's due read exposes the request; `startRun` uses the pre-generated id with
   trigger `manual` through the same Gate, window and attempts checks as a scheduled run.
@@ -1109,7 +1122,7 @@ and `rotation_runs.not_converged_adapter_targets`. API revision 18 (additive).
   locks to start a run, so a racing run is caught either by the recount or by the
   serialization retry. No interleaving test: the window needs a concurrent transaction.
 
-### `not_converged_adapter_targets` (adapter targets only, owner decision pending)
+### `not_converged_adapter_targets` (adapter targets only, option A accepted)
 
 The field was named `not_converged_consumers` while it was designed; it is renamed because it
 counts adapter (sync) targets only, never "delivery targets" (that term is the Kubernetes
@@ -1160,8 +1173,430 @@ flight is unchanged.
 
 ### Still S2b-2
 
-Metrics, `hikyo doctor` warnings, the `restore_hold` column and release, incident containment,
-key-aware resume, pause and delete. S2b-2 must ship in the same release as S2a and S2b-1.
+Done; see "S2b-2 as built". S2b-2 must ship in the same release as S2a and S2b-1.
+
+## S2b-2 as built (operability)
+
+### Metrics and doctor
+
+`hikyo_rotation_runs_quarantined`, `_runs_unknown_outcome`, `_runs_revoke_refused`,
+`_halted`, `_restore_held`, `_overdue` and `_credentials_expiring`, with
+`hikyo_rotation_gauges_known`. All label-free, from one `RotationRtGauges` read (instance
+scope, one series each; the conformance bound registry pins `MaxSeries: 1`). Overdue means an
+active, unheld rotation more than `RotationOverdueGrace` (15 minutes) past `next_run_at` with
+no run open, measured from the first due time (`rotations.deferred_from`, set only when a
+datastore fault defers the start, cleared by every real schedule write) so a deferral cannot
+hide it; expiring means a delivered credential whose `credential_expires_at` is in the next
+`RotationExpiringWithin` (6 hours) and not yet past, for any state but deleted. A lapsed
+credential is not counted (it halts or overdues its rotation instead); a separate "expired"
+gauge was left out as unneeded. The counts are read once per scrape, by the metrics
+collector; the audited retention health read (doctor) reads them with a 2 second bound.
+A partial index (`rotation_runs_env_published`, migration 00094) backs the expiring
+subquery. Doctor reports counts only and names no tenant or rotation id, a deliberate
+deviation from listing the affected ids: it tells the operator to run `hikyo rotation list`
+(halted, held, overdue) and `hikyo rotation runs <rotation>` (quarantined, refused, unknown
+outcome). **Accepted as recommended (owner, round 5).** `hikyo doctor` has one `rotation`
+finding fed by `RetentionHealth` (new optional fields, omitted when unmeasured, so doctor
+says `unknown`, never ok).
+
+### Key-aware pause, resume, delete, run-now
+
+`authorizeRotationKeys` authorizes the operation on both stored keys. An environment-wide
+holder passes both keys, so nothing narrows for them; a key-narrowed holder passes exactly
+when they pass for each key, like the create that made the rotation. The rotation is looked
+up under a proof chosen by the same evaluation `Authorize` makes, member rules included
+(round 2: the round-1 choice used `CallerHolds`, which reads grants only, so a person whose
+read and operation come only from member rules got not-found with no audit row). The probe is
+`TxAuthorizer.AuthorizeFirst` (round 3 folded the round-2 `AuthorizeUnrecorded` primitive into it and
+unexported the primitive, so a caller cannot refuse quietly; shared `CallerHolds` is unchanged, it
+has other callers): it authorizes the first of the given operations the caller holds, without
+recording a refusal of the earlier ones, and when all refuse it records one denial under the first. The order is the operation's own environment-wide proof when held (so a publisher
+without read can pause), else the inspect proof (how a key-narrowed holder finds the keys),
+else the operation itself is authorized so the refusal is recorded once under it. Every
+refusal, an absent rotation included, answers the same not-found and is recorded the same
+way (one denial under the operation, none under `rotation.inspect`): a caller who reached the
+rotation through inspect only is recorded under the operation whether the rotation is absent
+or one of its keys refuses them, so neither the answer nor the audit trail is an existence
+oracle. A caller who holds the operation environment-wide passes both keys, so a key refusal
+cannot occur for them and there is nothing to tell apart.
+**Remaining deviation:** a person who holds the operation only through key-narrowed rules and
+lacks read cannot look the rotation up, so they are refused (denied under the operation).
+Options: (A) accept, as built; (B) an authz primitive that resolves a rotation's keys inside
+authz (a new registry concept, not a wider `SiteScheduler`); (C) require read for key-narrowed
+rules. Recommendation: A. Also: a key-narrowed holder cannot pause or delete a rotation whose
+key was deleted (the key lookup answers not-found); an environment-wide holder can.
+`TestRotationTransitionsAreKeyAware`, `TestRotationTransitionLookupNeedsNoRead`,
+`TestRotationRuleOnlyMemberTransitions` and `TestRotationReaderRefusalIsIndistinguishable` pin it.
+
+### Restore hold
+
+- Migration 00094 adds `rotations.restore_hold` (both engines). `CompleteRestore` calls
+  `HoldRestoredRotations`: every non-deleted rotation, paused and halted included, is held.
+  The closure runs against the archive's schema before migrations, so it probes the table
+  and the column; an archive from migrations 00091 to 00093 (nightly tags such as
+  `v1.1.0-nightly.20261111` already contain 00091; no stable release does) has no column,
+  so only its **active** rotations are paused, and that pause bumps the generation. Its
+  paused and halted rotations restore **unheld**, exactly as they were. The hold also clears
+  a queued run-now (`manual_run_id`, `manual_skip_overlap`), so releasing never fires a
+  skip-overlap revoke of a role still serving; the rotation stays due, so the first run
+  after release is an ordinary scheduled one. Delete clears the hold in the same write
+  (`RotationSetState`), so no reader sees a deleted rotation held.
+- Audit: a restore writes one instance event, `restore.completed`, for the whole act. The
+  hold is not a per-rotation decision (it applies to every non-deleted rotation, by the local
+  host authority), so it adds no per-rotation row; each release is audited
+  (`rotation.configured`, `hold_released`) and the held state is visible in `show`, `list`
+  and the gauge. If an owner wants a per-rotation restore row, that is a follow-up.
+- A held rotation is a non-active one to the executor (projected into the run's
+  `RotationState`): no start, no pre-publish step, no extend, no candidate drop; a run past
+  its publish continues to its revoke. The stored `state` is unchanged,
+  so resume cannot bypass the hold: resume and run-now refuse with `ErrRotationRestoreHeld`;
+  pause and delete are allowed. The Gate refuses a held rotation.
+- `rotation release-hold` (`rotation.release_hold`, `POST .../release-hold`): human only,
+  resume's formula (edit, publish and reveal) on both keys through `authorizeRotationKeys` (so key-narrowed operators can run
+  it), the publish ceremony, an optional generation compare-and-set, audited as
+  `rotation.configured` with `action: hold_released` (no new event type). It lifts the hold
+  only. It does not resume, does not drop a superseded role, does not touch a run and does
+  not bump the generation (an in-flight run asserts the generation it started under). For an
+  **active** held rotation, before the ceremony is consumed it runs the Gate's whole check
+  set (`requireRotationStartable`: environment unattended, provider active with a credential,
+  keys present and fitting, the recorded authority holding the formula on both keys, no
+  draft staged by the authority), refusing with the Gate's named errors, so a release never
+  hands the executor a rotation whose first Gate halts it. A **paused or halted** held
+  rotation is released without that preflight: release only lifts the hold, and resume
+  re-runs every check, so a provider that was revoked cannot trap the hold. Denials of the
+  authority check are recorded under `rotation.release_hold`, not `rotation.resume`.
+  A run found in flight while the rotation is held is not recovered at all (round 5, owner
+  decision B); the recovery code still records `rotation_paused` for a paused rotation.
+- `rotation show`, `list` and `runs` print a `RESTORE HOLD` line on stderr with the
+  `credential_expires_at` deadline; the JSON carries `restore_hold`.
+- Observed: a hold that outlasts the delivered credential's window makes the first run after
+  release halt (`retries_exhausted`); the operator resumes after checking the credential.
+- API: `restore_hold` is a **required** field of the `CredentialRotation` response, so a
+  revision 19 SDK talking to a revision 18 server fails to parse the rotation. Accepted:
+  rotations have not shipped in a stable release and the nightlies that carry them move with
+  the server; making it optional would hide a held rotation from an old client.
+- Run records gain `credential_valid_until` (additive, optional): the expiry of the role the
+  run still owes a drop, and `credential_valid_until_lower_bound` (true only when set). For
+  `revoke_refused` and for a quarantine run that published, that is the superseded role's
+  expiry, found by chain and handle (so it survives a recreated rotation); the candidate is
+  then the serving credential and is never named. For a quarantine run that never published
+  it is the candidate's expiry. The flag is true when an `extend` of that role has an open
+  or unknown outcome: the recorded time is then a lower bound, the role may outlive it, and
+  the CLI says "at least ... and possibly longer". The expiry is resolved per owed run
+  (extra reads, only for those phases), which keeps `RotationListRuns` a single-table query
+  the predicate analyzer proves, so its `instance-scoped` annotation is gone. `rotation runs`
+  and `rotation show` print an `ATTENTION` line per such run; `show` pages through every
+  run and warns on stderr, without failing, when the runs cannot be read or the history
+  exceeds 20 pages of 500. The run-level release action stays unbuilt.
+  A run refused as `published_versions_changed` (a restore put an earlier value back, so the
+  keys may serve the superseded role again; the executor deliberately keeps the role) gets a
+  different `ATTENTION` line: do **not** drop it at the provider until the keys have moved off it.
+  A quarantine run that published can reach the same hold. `role_owns_objects` and
+  `provider_unavailable` keep the drop advice, now with the same caution (review round 4):
+  check that neither key serves the role first, because a restore after the refusal can
+  put it back and no flag records that.
+- Tests: `TestRotationRestoreHold`, `TestRotationRestoreHoldFallbackPausesWithoutTheColumn`,
+  `TestRotationReleaseLeavesARefusedRunAlone` (the run-level hold stays untouched).
+
+### Review round 2 (as built)
+
+- Publish rollback records `rotation_held` (a distinct sentinel, `errRotationHeld`) when the
+  Gate refused because a restore holds the rotation, and `rotation_paused` for a pause.
+- The doctor's rotation gauges are read through the `RotationGauger` interface, so a test
+  pins that `OperationalHealth` reads them once and within the 2 second bound.
+- **Rebuild note (migration 00094).** Rounds 1 and 3 edited migration 00094 in place (it adds
+  `rotations.deferred_from`, and in round 3 the `rotation_runs_minter` index). A development or
+  preview database that applied an earlier version of 00094 lacks that column or index and
+  **must be rebuilt**; no stable release carries the
+  migration, so nothing shipped is affected.
+- `release_hold` storeOps gained the approval-policy and pending-list reads the Gate's checks
+  use for an active rotation.
+- Tests: `internal/isolation/rotation_round3_test.go`, the CLI `credential_rotation_owed_test.go`
+  and the server `TestRotationRunBodyMapsTheExpiry`.
+- Not covered over HTTP: wire ids must match `^[a-z]{2,8}_[0-9a-fA-F-]{36}$`, which the
+  isolation fixtures' short ids do not, so the transport leg of the human-only test uses
+  absent well-formed ids (status 404 or 403) and the service leg proves the refusal.
+
+### Review round 3 (as built)
+
+- The `ATTENTION` line branches on `published_versions_changed` (above); openapi `error_code`
+  and `credential_valid_until`, `rotation.mdx` and `credential_rotation_owed_test.go` say the same.
+- `TxAuthorizer.AuthorizeFirst` replaces the exported `AuthorizeUnrecorded`; the unrecorded probe
+  is private to it, so the "must then record the refusal" rule is enforced by the method, not by
+  a comment. `tx_authorizer_surface.json` follows.
+- `TestRotationReleaseHoldMatchesResume` (authz registry test) pins release-hold's formula,
+  post-grant reauthentication and self-config membership to resume's: the Gate checks the recorded
+  authority under resume's formula, so the two rows change together.
+- `TestRotationReleaseHoldUsesTheGate` now also asserts the ceremony window is not spent by a
+  refused release (the sliding window's expiry does not move; the successful release moves it) and
+  that exactly one `rotation.release_hold` denial is recorded.
+- **Expiry lookup index.** Migration 00094 gains `rotation_runs_minter (org_id, project_id,
+  environment_id, candidate_handle)` on both engines (edited in place, unreleased; the
+  rebuild note of round 2 covers it, and `development.json` is regenerated). The superseded
+  role is found by handle, and the revoke step's own role lookup (`RotationRtLoadSupersededRole`)
+  uses the same join, so neither scans a chain's runs any more. A run leaves `quarantine` after a
+  successful drop: a pre-publish one settles to `failed` once its candidate drop is confirmed and a
+  published one to `done` once its revoke succeeds, so the per-run lookups of `rotation runs` and
+  `show` are bounded by the runs whose drop keeps failing.
+- **Extend racing a restore hold (confirmed, fixed).** The claim skips held rotations, but a hold
+  landing between the claim and the Gate made `extendDelivered` treat `errRotationHeld` as
+  inactive and park the settled run at "never", so nothing extended the delivered credential after
+  the release. A held refusal now leaves the run due (`NextAttempt` now); the claim still skips it
+  while held. `TestRotationExtendRacingARestoreHoldIsRetriedAfterRelease` failed before the fix (the
+  run parked at year 9000) and passes after.
+- **Published `failed` runs.** Not reachable by any writer: the only writers of `failed` are the
+  pre-publish rollback and the candidate reconciler (both `published_revision IS NULL`), a published
+  run that cannot drop its superseded role stays in its phase (`revoke_refused`, `quarantine`, or
+  the executor phases) and a successful revoke settles `done`, and abandon sets `done` or
+  `quarantine`. The SQL still treats a published `failed` run as possibly owing a role (environment
+  delete, the claim), so the CLI is left flagging `revoke_refused` and `quarantine` only: flagging a
+  published `failed` run would also flag one whose revoke already succeeded, which the run record
+  cannot tell apart.
+
+### Review round 4 (as built)
+
+- **Runs read survives a failed hold read.** `rotation runs` reads the rotation after the runs;
+  when only that second read fails it renders the runs and warns on stderr that the hold status
+  is unknown (`TestRotationRunsRenderWhenTheHoldStatusCannotBeRead`).
+- **Every manual drop carries the key check.** The `ATTENTION` line of a `role_owns_objects`,
+  `provider_unavailable` or unflagged quarantine run now says to check that neither key serves
+  the role before dropping it, because a revision restore after the refusal can put it back and
+  nothing flags that. `published_versions_changed` keeps its stronger "do NOT drop". openapi,
+  `rotation.mdx` and the owed-run test follow; the reassign-owned-objects instruction stays.
+- **Release-hold transport test is exact.** `TestRotationReleaseHoldRefusesNonSessions` pins a
+  404 for the person, the workload machine and the automation credential on an absent rotation
+  and fails if the answers differ; none of them gets a 403 there (observed on sqlite and
+  PostgreSQL).
+- **Key-narrowed authority (confirmed, fixed).** The Gate and the three publish callbacks
+  authorized `OpRotationRun` with no key, which a key-narrowed rule never satisfies, while
+  create, resume and release-hold accept such an authority through `RecordedPrincipalHolds` on both
+  keys. A rotation created by a narrowed authority therefore halted `authority_lost` at its first
+  due time. `authorizeRotationRun` now authorizes `OpRotationRun` on both of the rotation's keys
+  (`AuthorizeKey`), as the recorded authority itself; an environment-wide holder passes for every
+  key as before, and no identity is synthesized. `TestRotationExecutorRunsAKeyNarrowedAuthority`
+  failed before the fix (`authority_lost`) and publishes and settles after it.
+- **Hold landing between claim and publish (confirmed, fixed).** The run is loaded before the
+  hold, so `failureSettle` still saw an active rotation: its retry plan could return a halt, and
+  the halt, schedule and defer statements matched `state='active'` only, so a held row was
+  halted (a release does not undo a halt) or rescheduled. `RotationRtHaltRotation`,
+  `RotationRtSetNextRun` and `RotationRtDeferNextRun` now also require the hold to be absent, on
+  both engines; a halt that matches no row writes no halt audit. The same predicate makes the
+  start transaction's schedule write refuse (conflict, rolled back) when a hold lands after the
+  Gate, so no run starts under a hold. Left alone on purpose: the human verbs `pause`,
+  `set state` and `run-now` read the hold in their own transaction. Consequences: a publish that
+  commits after a hold does not re-arm the schedule, so a release finds the rotation due; and the
+  run the hold interrupts is a failed attempt like any other (`rotation_held` counts toward the cap).
+  `TestRotationHoldDuringAClaimedRunLeavesTheRotationAlone` (retry and would-halt cases) failed
+  before the fix.
+
+### Review round 5 (as built)
+
+- **Hold landing between stage and commit of a publish (not reproducible; guard documented).**
+  The begin callback checks the hold, and the commit callback checks only authorization, but the
+  commit's last write is the schedule write on the rotation row, which targets an active, unheld
+  row. Under PG serializable a hold that lands after the begin check conflicts with that write, the
+  publish transaction aborts, and the run settles as held (`rotation_held`), not halted; sqlite's
+  single write connection cannot interleave a hold. A negative control (removing that write) made
+  the new test publish a held rotation, so the guard is real but was incidental: it is now named in
+  `RecordRunPublish`, and `TestRotationHoldDuringThePublishTransactionRollsItBack` (PG, hold
+  landing at the baseline read) pins it. No separate hold read was added: the existing write
+  already is the serialization guard, and the pause and delete publish behavior is untouched.
+- **Extend gate: hold classified before the halt reason (confirmed, fixed).** The gate authorizes
+  before it reads the rotation, so a held rotation whose recorded authority was also refused came
+  back as a definite halt reason. The hold blocks the halt UPDATE (round 4), but the done run was
+  still settled at year 9000 and a release never re-arms it, so the delivered credential was never
+  extended. `extendDelivered` now reads the hold (`RotationRuntime.RestoreHeld`, new query
+  `RotationRtRestoreHeld` on both engines) before choosing `next` for a definite refusal and keeps
+  the run due like the `errRotationHeld` branch. `TestRotationExtendHeldAndAuthorityRefusedStaysDueAfterRelease`
+  failed before the fix on both engines (`next_attempt_at` 9000-01-01, 0 extends after release).
+  Siblings audited: the other `rotationNever` writers are hold independent (a superseded or
+  window-spent credential, a failed run's finished drop) or unreachable for a held rotation (the
+  claim skips held rotations, so a claimed run's state is never the held state); the pre-start gate
+  in `startRun` halts a held rotation's due row, which the hold also blocks, leaving the row due
+  for the release.
+- **Hold decided in the settle transaction (confirmed residual, fixed).** The `RestoreHeld` read
+  and the settle that follows were separate transactions, so a hold landing between them still
+  parked the done run at "never" while the halt refused the held rotation. `RotationSettle` now
+  carries `DueIfHeld`, which `settleDrop` sets for every done-phase settle that parks at
+  `rotationNever` (extend parks, skips and halts alike). `RotationRuntime.Settle` then reads the
+  hold last, in the transaction that wrote the settle and tried the halt, and leaves the run due
+  now (`RotationRtDueRun`, both engines) when the rotation is held. Under PG serializable a hold
+  committed after the transaction began conflicts with the halt write and fails the transaction
+  (`dbTransaction` has no retry, so the executor does not retry it: the error goes to the sweep, the
+  run is reclaimed after the release plus the lease term, and `staleEffect` then closes the open
+  extend INTENT as unknown, the safe direction) and one committed before it is seen by the read, so
+  the held decision and the halt agree; sqlite has one writer. The earlier read stays as the fast path. The run stays due, the claim
+  skips the held rotation, and a release re-evaluates the gate. A nested SELECT inside the settle
+  UPDATE was tried first and refused by the SQL predicate analyzer, hence the in-transaction read.
+  `TestRotationExtendHoldLandingAfterTheHoldReadStaysDueAfterRelease` (seam `AfterExtendHoldRead`)
+  failed before the fix on both engines (next attempt 9000-01-01, 0 extends after release).
+
+- **Candidate drops while held (owner decision B, built).** Every path that issues `DROP ROLE`
+  for a candidate was checked: `dropOrphan`, `dropCandidate` (the rollback of `recoverInFlight`
+  and of a refused publish), the reconciler's drop in `reconcileCandidate`, and the superseded
+  revoke. The revoke is unchanged. The other three now read the hold first and issue no drop for
+  a held rotation. The claim query no longer selects `minting`, `minted` and unpublished
+  `failed`/`quarantine` runs of a held rotation (both engines), so the run and its role are left
+  untouched until `release-hold`; `recoverInFlight` and `reconcileCandidate` also read the hold
+  themselves for a hold landing after the claim, and the drops re-read it just before the
+  provider call (`leaveCandidateHeld` closes an opened INTENT as a failure with `rotation_held`
+  and leaves the run due). The `rotation_held` recovery label is gone with the recovery: a
+  held rotation recovers nothing. After the release the run is due and the normal rollback and
+  drop happen. Tests: `TestRotationHeldRotationDoesNotRecoverInFlightRuns` (minting and minted),
+  `TestRotationHeldRotationDoesNotReconcileCandidates` and
+  `TestRotationHoldDuringARunSkipsTheRollbackDrop`, each failing before the change on both
+  engines. The residual window is a hold landing between the final read and the provider call.
+
+### Review round 6 (as built)
+
+- **Delete and abandon refused while held (owner decision to confirm, default A).** `RotationSetState`
+  clears `restore_hold` when the state becomes `disabled`, and `delete --abandon` turns minting and
+  minted runs into quarantine in the same transaction, so the reconciler (its claim has no state
+  filter) found the rotation unheld and dropped a candidate the live instance may have published,
+  which undid decision B. A plain delete also succeeded when only unpublished failed or quarantine
+  runs existed (`CountOpenRuns` ignores them). The service now refuses both with
+  `ErrRotationRestoreHeld` ("release it with release-hold") before it counts or abandons anything,
+  so nothing changes: no state, no run, no audit row. Pause stays allowed while held; delete and
+  abandon are refused until release. The clear on disable stays and is now unreachable for a held
+  row. Tests: `TestRotationDeleteRefusedWhileRestoreHeld` (delete and abandon, run left minting),
+  `TestRotationDeleteSucceedsAfterRelease`, `TestRotationPauseAllowedWhileRestoreHeld` and
+  `TestRotationDisabledRowNeverKeepsAHold`, the first two failing before the change on both engines.
+  **Owner decision, flagged:** A (built): refuse until `release-hold`. B: keep the hold through
+  the delete and let `release-hold` accept a deleted rotation (needs the claim to filter on state or
+  the release to settle the runs, and a hold on a disabled row, so a larger change). Reversal of A
+  is the one `cur.RestoreHold` check in the delete branch.
+- **Release triggers the candidate drops (docs, CLI).** After `release-hold` the held runs are due
+  at once and the executor rolls back or reconciles them, dropping an unpublished candidate the live
+  instance may have published. The earlier wording that the unused role "lingers until release and
+  expires at its VALID UNTIL" (option B above) is superseded by: the role is left untouched until
+  release, and the release lets the executor drop it. `rotation.mdx`, the release-hold CLI help
+  and its golden, the post-release stderr line, the OpenAPI descriptions of delete and release-hold
+  and the ADR banner say so; `rotation runs` is the check before releasing.
+- **Hold landing after the claim, each in-executor read pinned.** A seam
+  `RotationExecutor.BeforeHeldRead(site)` runs before every executor hold read (`recover`,
+  `reconcile:entry`, `reconcile:predrop`, `drop_orphan`, `drop_candidate`). Tests land the hold at
+  each site and assert no `DROP ROLE`; removing any one read turns its test red (checked by
+  mutation on both engines). `TestRotationHoldDuringARunSkipsTheRollbackDrop` also asserts exactly
+  one drop after the release.
+- **Lease on the early returns.** `recoverInFlight` and `reconcileCandidate` returned on a hold
+  that landed after the claim and kept the lease until its term. They now call `yieldHeldRun`: the
+  fenced settle keeps the phase, releases the lease and leaves the run due, so the claim, which
+  skips the held rotation, takes it again right after the release. The claim's `attempt_count`
+  bump for that visit stays (it only sizes the backoff); it is one per hold landing in the claim
+  window, so it is bounded and left as is. Removing the yield turns the release-immediately
+  assertion red.
+
+### Owner decisions on S2b-2 (resolved)
+
+Owner answered "continue as recommended" on the open S2b-2 decisions:
+
+- Decision 1, provider-role drops while held: **B**, built above.
+- Decision 2, containment ledger: **B** (account scope only: object kind `rotation`, owner
+  function `rotation.halt`, enumerated by authority principal in `collectAccount`, one new store
+  read and one authz read operation), conditional on org and project scopes inheriting through
+  the accounts they select. Not in PR #1430: built in a follow-up branch from dev after it merges.
+- Decision 3, run-level `published_versions_changed` hold release: **A**, status only, as built
+  (accepted as recommended).
+- Decision 4, key-narrowed holders without read: **A**, accepted (accepted as recommended).
+- Doctor count-only and `not_converged_adapter_targets` adapter-only: **A**, accepted as
+  recommended; no code change.
+
+### Incident containment
+
+A contained principal loads no grants, so a Gate that runs while the principal is contained
+(`RecordedPrincipalHolds`) refuses at the rotation's next start and halts it. Containment
+does not stop a run already past its Gate or a revoke in flight; a release of the principal never resumes it
+(`TestRotationHaltsWhenItsAuthorityIsContained`). That is containment through the existing
+seam. **Stopped, owner decision needed:** listing a principal's rotations as ledger items and
+pausing them through an owner function. What is settled: the ledger vocabulary is code-level
+(no CHECK on `owner_function` or `object_kind`), and `Incidents.Owners` has no registered
+owners yet (#1039 wires them). What is not settled: the ADR lists scheduled rotation under
+"Not decided here", and it gives no rotation effect for the org and project scopes.
+
+- A. Leave it. Containment halts by effect; the ledger does not list rotations. Cheapest;
+  the operator sees halted rotations in doctor and metrics but not on the incident.
+- B. Account scope only: add object kind `rotation` and owner function `rotation.halt`,
+  enumerate by authority principal in `collectAccount` (new store read and authz op), the
+  owner function halts with a named reason; org and project scopes ride on the accounts they
+  select. Registration of the owner stays with #1039.
+- C. B plus a project-scope item for every rotation in the project, whatever its authority.
+  Needs an ADR amendment for project scope.
+- Recommendation: B, after the owner confirms that org and project scopes inherit through
+  the accounts they select. It needs one new store read, one authz read operation and about
+  one slice of tests; none of it is in this PR.
+
+### Run-level hold (`revoke_refused` with `published_versions_changed`)
+
+Not released by `release-hold`. Decisions 7 and 33 say it exits only through the restore
+assertion passing or the superseded role being dead, and release must not drop a role early.
+Options for the operator's view of that hold after a restore:
+
+- A. Status only (as built): `rotation runs` shows the phase and error; `release-hold` leaves it.
+- B. A separate human action moves the run to `quarantine` so the next cycle supersedes it.
+- C. A separate human acknowledgement that extends the superseded role.
+- Recommendation: A for this release, B as a follow-up if operators ask. C hands the
+  operator a way to keep a role the instance can no longer account for.
+
+### Restored in-flight runs do not drop a role consumers already fetched (resolved, option B)
+
+(Security review round 1, M2; resolved by the owner in round 5.) Scenario: the archive was
+taken while a run was `minting` or `minted`; the live instance then published that run's
+candidate and consumers fetched it. After the restore the archive says the run never
+published, so recovery used to roll it back and `DROP ROLE IF EXISTS` killed a credential
+consumers already hold, with no restore assertion guarding the drop. Built as option B: while a
+rotation is restore-held, no `DROP ROLE` is issued for a candidate that never published.
+See "Review round 5" for the mechanism. An unpublished candidate role is left untouched
+until `release-hold`, and the release is what lets the executor drop it (round 6; this replaces
+the earlier "expires at its `VALID UNTIL`" wording). Delete and abandon are refused while held. Revokes of the superseded role are
+unchanged (the restore assertion guards them) and runs past their publish still finish.
+
+### Review round 7 (as built)
+
+- **Hold committed during a provider call (CodeRabbit thread 4607573921, no code change).**
+  `reconcileCandidate`, `dropCandidate` and `dropOrphan` read the hold once and then call the
+  provider. A hold landing between that read and the call is unobserved, but no path was found where
+  a role consumers already fetched is dropped. The hold is set only by `HoldRestoredRotations`
+  inside `CompleteRestore`'s transaction, and a restore targets an empty SQLite path or an empty
+  PostgreSQL database with the server stopped (`store.ErrTargetNotEmpty` refuses anything else;
+  `RestoreDestination` serves no repositories), so the hold commits with the rows it covers, before
+  any worker can claim a restored run. A worker of the pre-restore instance reads and fences the old
+  database and its settles never reach the restored one. After the commit the hold clears only by a
+  human `release-hold` or by a disable, which round 6 refuses while held. The post-claim reads
+  (`BeforeHeldRead` sites) are defence in depth for the synthetic case that the tests build by
+  landing a hold in a live database. No cheap exclusion that spans the provider call is needed;
+  a lease-fence advance in the restore would protect a database no worker reads.
+- **Held published run waited for its revoke deadline (CodeRabbit outside-diff, real, narrow).**
+  While held, `overlapSettle` dropped the candidate validity from the wake, so a published run
+  slept until `RevokeNotBefore`; after `release-hold` (which changes no schedule) it had no
+  window if the candidate lapsed before that deadline, and keeping the expiry in the wake would
+  re-claim at once, because `rotationOverlapWake` clamps an extension time that has passed to
+  now. `overlapWakeFor` now keeps the candidate validity in the wake while held, and a wake that
+  has already passed is pushed five minutes ahead (never past the deadline), so the run is polled
+  and not spun. `ReleaseHold` is unchanged: it still flips only the flag. The documented rule
+  stays: when the cycle window is spent (deadline later than `VALID UNTIL` minus the window), the
+  first run after release halts the rotation with `retries_exhausted` before the credential
+  lapses; the docs now say so for the post-publish case. Test
+  `TestRotationHeldPublishedRunIsWokenBeforeItsCredentialExpires` failed before the change
+  (run not woken before the credential expiry) and passes on both engines.
+- **Key-narrowed transitions need environment read (CodeRabbit outside-diff, docs).** True for
+  holders whose publish/edit/reveal comes only from rules narrowed to the keys: the rotation is
+  looked up under `rotation.inspect` (environment `read`), so without `read` the answer is the
+  uniform not-found with one denial under the operation. A `read` rule narrowed to the keys is
+  enough, because read applies to the whole environment, so the earlier claim that a key-narrowed
+  `read` rule never reaches the environment was wrong in the other direction: read ignores key
+  limits. `TestRotationKeyNarrowedTransitionsNeedEnvironmentRead` pins both. The rotation page and
+  the OpenAPI text for pause, resume, run-now and release-hold now say it (the stale "Pause needs
+  publish on the environment, not per-key access" and the run-now "access held only through
+  key-narrowed rules does not reach it" sentences are gone).
+
+### Judgment calls
+
+- Generation is not bumped on release.
+- The audit enum gains `hold_released` on `rotation.configured`; no new event type.
+- `RestoreHold` is a boolean on rotations and an integer on `pki_issuers.restore_hold`; the
+  query contract lint accepts int32 for that one name instead of renaming either column.
+- The audit coverage test lacked a `rotation.run_now` emitter (a gap from S2b-1); the
+  executor audit lifecycle now issues one run-now.
 
 ## S2 checklist (carried forward from review)
 
@@ -1172,7 +1607,7 @@ the service side of `--abandon`, multi-node takeover, the `2BP01` refusal, the g
 and draft refusals, resume scheduling, the held-run extend and expiry exits. Gate placement is described in
 judgment call 11. Carried to
 S2b: the doctor warning and metric, incident containment, the `restore_hold` column,
-key-aware resume, pause and delete, the consumer-convergence report and run-now/runs.
+key-aware resume, pause and delete (all built in S2b-2 except ledger enumeration), the consumer-convergence report and run-now/runs.
 The list below is the original text and stays as the acceptance record.
 
 - Gate: `RecordedPrincipalHolds` only, with a key target per stored key (see The Gate);

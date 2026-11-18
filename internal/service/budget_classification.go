@@ -269,7 +269,7 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		// scheduled credential rotation configuration (#148): single-row
 		// lifecycle writes and reads with no external call or fan-out
 		authz.OpRotationCreate, authz.OpRotationInspect, authz.OpRotationPause,
-		authz.OpRotationResume, authz.OpRotationDelete, authz.OpRotationRunNow, authz.OpRotationRuns,
+		authz.OpRotationResume, authz.OpRotationDelete, authz.OpRotationRunNow, authz.OpRotationReleaseHold, authz.OpRotationRuns,
 		// the executor's own publish transaction (#148, S2): never a request
 		// path, charged under the publish categories by PublishPlanned itself
 		authz.OpRotationRun,

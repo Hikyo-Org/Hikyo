@@ -1,7 +1,6 @@
 package isolation
 
 import (
-	"context"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -9,11 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
-	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
 // Run-now and run inspection (#148, slice S2b-1). The request is a row on the
@@ -350,72 +347,106 @@ func runRotationRunNowRefusedUnlessActive(t *testing.T, db *store.DB) {
 	}
 }
 
-// Run-now needs the resume formula environment-wide, and its refusal is recorded
-// under rotation.run_now. Access held only through key-narrowed rules, even for
-// all four capabilities on both rotation keys, never reaches an operation that
-// passes no key, so that person is refused at the environment check. That also
-// makes a per-key AuthorizeKey after it unable to deny: whoever passes the
-// environment check passes it on each rotation key too (the key-aware check can
-// only be wider, as the key-narrowed holder shows). If the authorizer ever gains a
-// narrowing rule this test fails, and RunNow must then authorize both keys again.
-func TestRotationRunNowKeyChecksAddNothing(t *testing.T) {
-	forEngines(t, runRotationRunNowKeyChecksAddNothing)
+// Run-now, pause, resume and delete authorize both stored keys as keys (#148,
+// S2b-2): a person whose edit, publish and reveal come through rules narrowed to
+// exactly the two keys may drive their rotation, a person narrowed to only one of
+// the keys may not, and each refusal is recorded under the operation itself.
+func TestRotationTransitionsAreKeyAware(t *testing.T) {
+	forEngines(t, runRotationTransitionsAreKeyAware)
 }
 
-func runRotationRunNowKeyChecksAddNothing(t *testing.T, db *store.DB) {
+func runRotationTransitionsAreKeyAware(t *testing.T, db *store.DB) {
 	ctx := tctx(t)
 	x := newRotExec(t, db)
 	rot := x.create(rotPasswordKey, rotUsernameKey)
-	rotationHuman(t, db, rotNarrow, "read")
 	rules := &service.Rules{DB: db}
 	envMode, envs := onlyEnvs(x.env)
-	for _, c := range []domain.Capability{domain.CapRead, domain.CapEdit, domain.CapPublish, domain.CapReveal} {
-		if _, err := rules.Create(ctx, service.LocalPrincipal(orgAdmin), service.RuleSpec{
-			Target: rotNarrow, Capability: c, Org: orgA,
-			Where: whereIn(envMode, envs, domain.AxisOnly, domain.RuleKeyItem{KeyID: rotPasswordKey}, domain.RuleKeyItem{KeyID: rotUsernameKey}),
-		}); err != nil {
-			t.Fatalf("create %s rule: %v", c, err)
+	narrow := func(p domain.PrincipalID, keys ...string) {
+		t.Helper()
+		rotationHuman(t, db, p, "read")
+		items := make([]domain.RuleKeyItem, len(keys))
+		for i, k := range keys {
+			items[i] = domain.RuleKeyItem{KeyID: k}
+		}
+		for _, c := range []domain.Capability{domain.CapEdit, domain.CapPublish, domain.CapReveal} {
+			if _, err := rules.Create(ctx, service.LocalPrincipal(orgAdmin), service.RuleSpec{
+				Target: p, Capability: c, Org: orgA, Where: whereIn(envMode, envs, domain.AxisOnly, items...),
+			}); err != nil {
+				t.Fatalf("create %s rule for %s: %v", c, p, err)
+			}
 		}
 	}
+	const oneKey = domain.PrincipalID("usr_rot_onekey")
+	narrow(rotNarrow, rotPasswordKey, rotUsernameKey)
+	narrow(oneKey, rotPasswordKey)
 	rotationHuman(t, db, "usr_rot_noreveal", "read", "edit", "publish")
+	rotationHuman(t, db, rotPublisher, "read", "publish")
 
-	// The key-narrowed holder is refused with the uniform not-found, the denial is
-	// recorded under rotation.run_now, and nothing is requested.
-	if _, err := x.runNow(x.session(rotNarrow, true), rot.ID, false); !errors.Is(err, domain.ErrNotFound) {
-		t.Fatalf("run-now by a key-narrowed holder = %v", err)
+	denials := func(p domain.PrincipalID, op string) int64 {
+		return queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE outcome='denied' AND actor_id='`+string(p)+`' AND payload LIKE '%`+op+`%'`)
 	}
-	if n := queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE outcome='denied' AND actor_id='`+string(rotNarrow)+`' AND payload LIKE '%rotation.run_now%'`); n == 0 {
-		t.Fatal("no denial was recorded under rotation.run_now")
+	req := service.RotationStateRequest{RotationID: rot.ID}
+
+	// Refused: the uniform not-found, a denial under the operation, no effect.
+	for _, p := range []domain.PrincipalID{oneKey, "usr_rot_noreveal", rotPublisher} {
+		if _, err := x.runNow(x.session(p, true), rot.ID, false); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("run-now by %s = %v, want not-found", p, err)
+		}
+		if denials(p, "rotation.run_now") == 0 {
+			t.Fatalf("no denial under rotation.run_now for %s", p)
+		}
 	}
 	if got := x.manualRequest(rot.ID); got != "" {
 		t.Fatalf("a refused run-now left request %q", got)
 	}
+	// Pause needs publish only, so the publisher passes it (and the key-narrowed
+	// holder resumes it) while the one-key person does not: a key they cannot
+	// reach refuses even a reducing change.
+	if _, err := x.svc.Pause(ctx, x.session(oneKey, true), x.scope, req); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("pause by the one-key holder = %v, want not-found", err)
+	}
+	if denials(oneKey, "rotation.pause") == 0 {
+		t.Fatal("no denial under rotation.pause for the one-key holder")
+	}
 
-	// Whoever passes the environment check passes it for each rotation key.
-	for _, p := range []domain.PrincipalID{alice, rotNarrow, "usr_rot_noreveal", rotPublisher} {
-		caller := authz.Identity{Principal: p, Class: domain.ClassHuman}
-		var envErr error
-		keyErrs := map[string]error{}
-		if err := tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
-			_, envErr = az.Authorize(ctx, caller, authz.OpRotationRunNow, x.scope)
-			for _, id := range []string{rotPasswordKey, rotUsernameKey} {
-				_, keyErrs[id] = az.AuthorizeKey(ctx, caller, authz.OpRotationRunNow, x.scope, authz.KeyByID(id))
-			}
-			return nil
-		}); err != nil {
-			t.Fatal(err)
-		}
-		if p == alice && envErr != nil {
-			t.Fatalf("alice refused at the environment: %v", envErr)
-		}
-		if p != alice && !errors.Is(envErr, domain.ErrNotFound) {
-			t.Fatalf("%s at the environment = %v, want not-found", p, envErr)
-		}
-		for id, err := range keyErrs {
-			if envErr == nil && err != nil {
-				t.Fatalf("%s passes the environment but not %s (%v): a per-key check now narrows, restore it in RunNow", p, id, err)
-			}
-		}
+	// Allowed: the key-narrowed holder of both keys drives the whole lifecycle.
+	if _, err := x.runNow(x.session(rotNarrow, true), rot.ID, false); err != nil {
+		t.Fatalf("run-now by the key-narrowed holder = %v", err)
+	}
+	if x.manualRequest(rot.ID) == "" {
+		t.Fatal("the key-narrowed run-now requested nothing")
+	}
+	x.drain()
+	if got, err := x.svc.Pause(ctx, x.session(rotPublisher, true), x.scope, req); err != nil || got.State != store.RotationStatePaused {
+		t.Fatalf("pause by the publisher = %+v, %v", got, err)
+	}
+	if _, err := x.svc.Resume(ctx, x.session(rotNarrow, true), x.scope, req); err != nil {
+		t.Fatalf("resume by the key-narrowed holder after the publisher's pause = %v", err)
+	}
+	paused, err := x.svc.Pause(ctx, x.session(rotNarrow, true), x.scope, req)
+	if err != nil {
+		t.Fatalf("pause by the key-narrowed holder = %v", err)
+	}
+	if _, err := x.svc.Resume(ctx, x.session(oneKey, true), x.scope, req); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("resume by the one-key holder = %v, want not-found", err)
+	}
+	if denials(oneKey, "rotation.resume") == 0 {
+		t.Fatal("no denial under rotation.resume for the one-key holder")
+	}
+	if paused.State != store.RotationStatePaused {
+		t.Fatalf("state after pause = %s", paused.State)
+	}
+	if _, err := x.svc.Resume(ctx, x.session(rotNarrow, true), x.scope, req); err != nil {
+		t.Fatalf("resume by the key-narrowed holder = %v", err)
+	}
+	if _, err := x.svc.Delete(ctx, x.session(oneKey, true), x.scope, req); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("delete by the one-key holder = %v, want not-found", err)
+	}
+	if denials(oneKey, "rotation.delete") == 0 {
+		t.Fatal("no denial under rotation.delete for the one-key holder")
+	}
+	if _, err := x.svc.Delete(ctx, x.session(rotNarrow, true), x.scope, service.RotationStateRequest{RotationID: rot.ID, Abandon: true}); err != nil {
+		t.Fatalf("delete by the key-narrowed holder = %v", err)
 	}
 }
 

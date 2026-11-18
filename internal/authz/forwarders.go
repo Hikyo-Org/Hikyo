@@ -391,6 +391,7 @@ type txForwarded interface {
 	// snapshot immediately before a session or reauth window is written.
 	GuardSAMLProviderForMint(ctx context.Context, id string, rowVersion int64, entityID string) (bool, error)
 	HoldRestoredPKIIssuers(ctx context.Context) error
+	HoldRestoredRotations(ctx context.Context, now time.Time) error
 	IndefiniteCredentials(ctx context.Context) ([]AffectedCredential, error)
 	InstanceConnectionByID(ctx context.Context, id string) (authn.InstanceConnection, error)
 	InstanceConnections(ctx context.Context) ([]authn.InstanceConnection, error)
