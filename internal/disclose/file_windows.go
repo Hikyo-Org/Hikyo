@@ -9,6 +9,8 @@ import (
 	"os"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/Hikyo-Org/hikyo/internal/securefile"
 )
 
 type preparedFile struct {
@@ -43,18 +45,24 @@ func (t *windowsTerminal) Close() error {
 
 // prepareFile uses CREATE_NEW with no sharing, so the reserved handle cannot
 // be reopened, replaced, or deleted before WriteOnce/Abort consumes it. The
-// owner-only DACL and dirfd-relative parent checks used on Unix still have no
-// equivalent here; Windows remains a client platform, not a bootstrap host.
+// file is created with a protected owner-only DACL, so it never inherits the
+// parent's access rules. The dirfd-relative parent checks used on Unix still
+// have no equivalent here; Windows remains a client platform, not a bootstrap
+// host.
 func prepareFile(path string) (*preparedFile, error) {
 	pathp, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		return nil, fmt.Errorf("refusing to disclose: invalid output path %q: %w", path, err)
 	}
+	attributes, err := securefile.PrivateSecurityAttributes(false)
+	if err != nil {
+		return nil, fmt.Errorf("refusing to disclose: cannot build owner-only access rules: %w", err)
+	}
 	handle, err := windows.CreateFile(
 		pathp,
 		windows.GENERIC_WRITE|windows.DELETE,
 		0,
-		nil,
+		attributes,
 		windows.CREATE_NEW,
 		windows.FILE_ATTRIBUTE_NORMAL,
 		0,
