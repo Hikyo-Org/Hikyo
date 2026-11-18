@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 )
@@ -871,4 +872,120 @@ func TestRetainCapsModeAtConfigLimit(t *testing.T) {
 	if fi.Mode().Perm() != 0o640 {
 		t.Fatalf("retained mode = %v, want the 0640 cap", fi.Mode().Perm())
 	}
+}
+
+// currentGenPath is the path of name inside the current generation.
+func currentGenPath(t *testing.T, f *fixture, name string) (gen, p string) {
+	t.Helper()
+	gen, err := os.Readlink(filepath.Join(f.dir, genDir, currentName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return gen, filepath.Join(f.dir, genDir, gen, name)
+}
+
+func TestPublishRepublishesOverHardLinkPlantedInCurrentGeneration(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.mustPublish(file("a", "A"))
+	_, planted := currentGenPath(t, f, "a")
+	secret := filepath.Join(f.dir, "secret")
+	if err := os.WriteFile(secret, []byte("ROOT-ONLY"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(planted); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(secret, planted); err != nil {
+		t.Fatal(err)
+	}
+	res, err := f.publish(nil, file("a", "A"))
+	if err != nil || !res.Changed {
+		t.Fatalf("publish over a planted hard link = %+v, %v; want a fresh generation", res, err)
+	}
+	if got := f.read("a"); got != "A" {
+		t.Fatalf("a = %q, want the published content", got)
+	}
+}
+
+func TestRetainFailureDoesNotLeakStagedGeneration(t *testing.T) {
+	t.Parallel()
+	f, old := retainFixture(t)
+	oldGen, _ := currentGenPath(t, f, "b")
+	secret := filepath.Join(f.dir, "secret")
+	if err := os.WriteFile(secret, []byte("ROOT-ONLY"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(old); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(secret, old); err != nil {
+		t.Fatal(err)
+	}
+	// Every poll fails the same way; none may leave another plaintext generation.
+	for range 3 {
+		if _, err := f.publish(nil, file("a", "A2")); err == nil {
+			t.Fatal("retain accepted a hard-linked generation entry")
+		}
+		assertOnlyGenerations(t, f.dir, oldGen)
+	}
+}
+
+// bounded runs fn and fails the test, instead of hanging the suite, when a
+// planted FIFO makes it block.
+func bounded(t *testing.T, fn func()) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() { defer close(done); fn() }()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("blocked on a recipient-planted FIFO")
+	}
+}
+
+func plantFIFO(t *testing.T, f *fixture, name string) {
+	t.Helper()
+	_, p := currentGenPath(t, f, name)
+	if err := os.Remove(p); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(p, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFIFOInPlaceOfCompleteMarkerDoesNotBlock(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.mustPublish(file("a", "A"))
+	plantFIFO(t, f, completeName)
+	bounded(t, func() {
+		d, err := OpenDestination(f.dir, false)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer func() { _ = d.Close() }()
+		if _, err := d.Current(); !errors.Is(err, ErrForeign) {
+			t.Errorf("Current over a FIFO marker = %v, want ErrForeign", err)
+		}
+	})
+	bounded(t, func() {
+		if res, err := f.publish(nil, file("a", "A")); err != nil || !res.Changed {
+			t.Errorf("publish over a FIFO marker = %+v, %v; want a fresh generation", res, err)
+		}
+	})
+}
+
+func TestFIFOInPlaceOfPreviousMarkerDoesNotBlock(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.mustPublish(file("a", "A"))
+	plantFIFO(t, f, previousName)
+	bounded(t, func() {
+		if res, err := f.publish(nil, file("a", "A")); err != nil || !res.Changed {
+			t.Errorf("publish over a FIFO predecessor = %+v, %v; want a fresh generation", res, err)
+		}
+	})
 }

@@ -81,3 +81,8 @@ func linkCount(fi fs.FileInfo) uint64 {
 	}
 	return uint64(st.Nlink)
 }
+
+// readFlags opens a generation file for reading without ever blocking: a
+// recipient that owns the destination can swap a file for a FIFO, and a
+// blocking open would stall the publisher while it holds the directory lock.
+const readFlags = os.O_RDONLY | syscall.O_NONBLOCK

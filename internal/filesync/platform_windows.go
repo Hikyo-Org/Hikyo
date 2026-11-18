@@ -27,3 +27,5 @@ func syncRootDir(*os.Root, string) error { return nil }
 func ownedByProcess(fs.FileInfo) bool { return false }
 
 func linkCount(fs.FileInfo) uint64 { return 0 }
+
+const readFlags = os.O_RDONLY
