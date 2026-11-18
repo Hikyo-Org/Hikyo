@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { useProjectKeys } from '../../api/adapters.ts';
 import type { DynamicProvider } from '../../api/dynamic.ts';
@@ -7,6 +7,7 @@ import {
   owedRunText,
   owesDrop,
   restoreHoldText,
+  VERSIONS_CHANGED_CODE,
   rotationRefusalText,
   useRotationRuns,
   useRotations,
@@ -22,6 +23,7 @@ import { Button } from '../../ui/Button.tsx';
 import { Checkbox } from '../../ui/Checkbox.tsx';
 import { NamedId } from '../../ui/NamedId.tsx';
 import { Select } from '../../ui/Select.tsx';
+import { NoEnvironments, type EnvironmentsRead } from './EnvironmentsRead.tsx';
 
 type EnvOption = { readonly id: string; readonly name: string };
 
@@ -56,6 +58,25 @@ function at(value: string | null | undefined, none: string): string {
 }
 
 /**
+ * Facts is a labelled list of one row's fields. Every field is its own labelled
+ * line inside a wrapping cell, so no column is hidden or scrolled out of sight
+ * at any width, and the label survives where a table header does not (a phone
+ * lays the table out as one card per row, without its header).
+ */
+function Facts({ children }: { children: ReactNode }) {
+  return <dl className="kv">{children}</dl>;
+}
+
+function Fact({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="kv__pair">
+      <dt>{label}</dt>
+      <dd>{children}</dd>
+    </div>
+  );
+}
+
+/**
  * RotationsPanel is the status surface for scheduled credential rotation
  * (#148) on `machine-access`: an environment's rotations and the run timeline
  * of one of them. Status only. Creating, pausing, resuming, running and
@@ -69,11 +90,13 @@ export function RotationsPanel({
   org,
   project,
   environments,
+  environmentsRead,
   providers,
 }: {
   org: string;
   project: string;
   environments: readonly EnvOption[];
+  environmentsRead: EnvironmentsRead;
   providers: readonly DynamicProvider[];
 }) {
   const [environmentId, setEnvironmentId] = useState(environments[0]?.id ?? '');
@@ -89,7 +112,7 @@ export function RotationsPanel({
         <code>hikyo rotation</code> command.
       </p>
       {current === undefined ? (
-        <p role="status">This project has no environments, so it has no rotations.</p>
+        <NoEnvironments read={environmentsRead} what="rotations" />
       ) : (
         <>
           <Select
@@ -147,58 +170,64 @@ function RotationList({
       {halted.length > 0 ? (
         <Alert tone="warn">
           {halted.length === 1 ? 'One rotation is' : `${String(halted.length)} rotations are`} halted:
-          the server stopped {halted.length === 1 ? 'it' : 'them'} after a failed check and starts
-          no run until a person resumes {halted.length === 1 ? 'it' : 'them'} with{' '}
-          <code>hikyo rotation resume</code>. A halted rotation does not extend the credential
-          already delivered.
+          the server stopped {halted.length === 1 ? 'it' : 'them'} and starts no run until a person
+          resumes {halted.length === 1 ? 'it' : 'them'} with <code>hikyo rotation resume</code>. A
+          halted rotation does not extend the credential already delivered.
+          {halted
+            .filter((rotation) => rotation.restore_hold)
+            .map((rotation) => (
+              <span key={rotation.id}>
+                {' '}
+                Rotation {rotation.id} is also held after a restore: lift the hold with{' '}
+                <code>hikyo rotation release-hold {rotation.id}</code> first, then resume it.
+              </span>
+            ))}
         </Alert>
       ) : null}
 
-      {query.isSuccess ? (
-        <div className="table-scroll">
-          <table className="values__table machine__table">
+      {query.isSuccess && rotations.length > 0 ? (
+        <div className="table-scroll" role="region" aria-label="Rotation list" tabIndex={0}>
+          <table className="values__table machine__table table--cards">
             <caption className="visually-hidden">
               The environment&apos;s credential rotations. No credential is listed.
             </caption>
             <thead>
               <tr>
-                <th scope="col">Keys</th>
-                <th scope="col">Provider</th>
-                <th scope="col">State</th>
-                <th scope="col" className="col-secondary">Schedule</th>
-                <th scope="col" className="col-secondary">Next run</th>
-                <th scope="col" className="col-secondary">Delivered credential expires</th>
-                <th scope="col">Runs</th>
+                <th scope="col">Rotation</th>
+                <th scope="col">State and runs</th>
+                <th scope="col">Schedule</th>
               </tr>
             </thead>
             <tbody>
               {rotations.map((rotation) => {
                 const minter = provider(rotation.provider_id);
                 const isHeld = rotation.restore_hold && rotation.state !== 'disabled';
+                const label = keyName(rotation.key_id) ?? rotation.id;
+                const open = selected === rotation.id;
                 return (
                   <tr key={rotation.id} data-rotation={rotation.id}>
-                    <td>
-                      <div>
-                        Password key{' '}
-                        <NamedId id={rotation.key_id} name={keyName(rotation.key_id)} />
-                      </div>
-                      <div>
-                        Role name key{' '}
-                        <NamedId id={rotation.username_key_id} name={keyName(rotation.username_key_id)} />
-                      </div>
+                    <th scope="row">
+                      <Facts>
+                        <Fact label="Password key">
+                          <NamedId id={rotation.key_id} name={keyName(rotation.key_id)} />
+                        </Fact>
+                        <Fact label="Role name key">
+                          <NamedId id={rotation.username_key_id} name={keyName(rotation.username_key_id)} />
+                        </Fact>
+                        <Fact label="Provider">
+                          {minter === undefined ? (
+                            <NamedId id={rotation.provider_id} name={undefined} />
+                          ) : (
+                            <>
+                              {minter.kind} <span className="mono machine__origin" title={minter.origin}>{minter.origin}</span>
+                            </>
+                          )}
+                        </Fact>
+                      </Facts>
                       <div className="mono machine__name" title={rotation.id}>
                         {rotation.id}
                       </div>
-                    </td>
-                    <td>
-                      {minter === undefined ? (
-                        <NamedId id={rotation.provider_id} name={undefined} />
-                      ) : (
-                        <>
-                          {minter.kind} <span className="mono machine__origin" title={minter.origin}>{minter.origin}</span>
-                        </>
-                      )}
-                    </td>
+                    </th>
                     <td>
                       <Badge tone={STATE_TONE[rotation.state]}>{rotation.state}</Badge>
                       {isHeld ? (
@@ -207,29 +236,34 @@ function RotationList({
                           <Badge tone="danger">Restore hold</Badge>
                         </>
                       ) : null}
-                    </td>
-                    <td className="col-secondary">
-                      Every {span(rotation.interval_seconds)}, {span(rotation.revocation_delay_seconds)} overlap
-                    </td>
-                    <td className="col-secondary">
-                      {rotation.state === 'active'
-                        ? at(rotation.next_run_at, 'Not scheduled')
-                        : 'Not scheduled'}
-                      {isHeld ? ' (held: no run starts)' : null}
-                    </td>
-                    <td className="col-secondary">
-                      {at(rotation.credential_expires_at, 'No run has published yet')}
+                      <div className="machine__runs">
+                        <Button
+                          type="button"
+                          variant="quiet"
+                          aria-expanded={open}
+                          aria-controls={open ? `runs-${rotation.id}` : undefined}
+                          aria-label={`${open ? 'Hide' : 'Show'} runs of ${label}`}
+                          onClick={() => setSelected(open ? null : rotation.id)}
+                        >
+                          {open ? 'Hide runs' : 'Show runs'}
+                        </Button>
+                      </div>
                     </td>
                     <td>
-                      <Button
-                        type="button"
-                        variant="quiet"
-                        aria-pressed={selected === rotation.id}
-                        aria-label={`Runs of rotation ${keyName(rotation.key_id) ?? rotation.id}`}
-                        onClick={() => setSelected(selected === rotation.id ? null : rotation.id)}
-                      >
-                        {selected === rotation.id ? 'Hide runs' : 'Show runs'}
-                      </Button>
+                      <Facts>
+                        <Fact label="Schedule">
+                          Every {span(rotation.interval_seconds)}, {span(rotation.revocation_delay_seconds)} overlap
+                        </Fact>
+                        <Fact label="Next run">
+                          {rotation.state === 'active'
+                            ? at(rotation.next_run_at, 'Not scheduled')
+                            : 'Not scheduled'}
+                          {isHeld ? ' (held: no run starts)' : null}
+                        </Fact>
+                        <Fact label="Delivered credential expires">
+                          {at(rotation.credential_expires_at, 'No run has published yet')}
+                        </Fact>
+                      </Facts>
                     </td>
                   </tr>
                 );
@@ -254,7 +288,7 @@ function RotationList({
       ) : null}
 
       {chosen === undefined ? null : (
-        <RunTimeline env={env} rotation={chosen} name={keyName(chosen.key_id) ?? chosen.id} />
+        <RunTimeline key={chosen.id} env={env} rotation={chosen} name={keyName(chosen.key_id) ?? chosen.id} />
       )}
     </>
   );
@@ -271,17 +305,27 @@ function RunTimeline({ env, rotation, name }: { env: EnvironmentRef; rotation: R
   const pages = query.data?.pages.length ?? 0;
   const runs = useMemo(() => query.data?.pages.flatMap((page) => page.items) ?? [], [query.data]);
   const reading = hasNextPage && pages < MAX_RUN_PAGES && !isFetchNextPageError;
+  // `pages` is a dependency because a page that lands between two renders never
+  // shows `isFetchingNextPage` as true, so without it the next page is not asked for.
   useEffect(() => {
     if (reading && !isFetchingNextPage) void fetchNextPage();
-  }, [reading, isFetchingNextPage, fetchNextPage]);
+  }, [reading, isFetchingNextPage, pages, fetchNextPage]);
   const owed = runs.filter(owesDrop);
+  // Opening the timeline moves focus to its heading, so the keyboard and a
+  // screen reader land on what the button revealed instead of staying above it.
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => heading.current?.focus(), []);
+  // Older runs remain unread (the page bound, or a later page that failed): an
+  // older run can still owe a drop, so the gap is said, as the CLI says it.
+  const truncated = hasNextPage && !reading;
 
   return (
-    <section className="machine__sub" aria-labelledby={`runs-title-${rotation.id}`}>
-      <h3 id={`runs-title-${rotation.id}`}>Runs of {name}</h3>
+    <section className="machine__sub" id={`runs-${rotation.id}`} aria-labelledby={`runs-title-${rotation.id}`}>
+      <h3 id={`runs-title-${rotation.id}`} ref={heading} tabIndex={-1}>Runs of {name}</h3>
       {query.isPending ? <p role="status">Loading runs…</p> : null}
+      {reading && !query.isPending ? <p role="status">Loading more runs…</p> : null}
       {query.isError ? <Alert>{rotationRefusalText(query.error, 'runs')}</Alert> : null}
-      {hasNextPage && !reading && !query.isError ? (
+      {truncated ? (
         <Alert tone="warn">
           Only the newest {String(runs.length)} runs are shown. An older run can still owe a
           provider role a drop: page through <code>hikyo rotation runs {rotation.id}</code> to
@@ -296,64 +340,70 @@ function RunTimeline({ env, rotation, name }: { env: EnvironmentRef; rotation: R
       ) : null}
       {runs.length > 0 ? (
         <div className="table-scroll" role="region" aria-label={`Run history of ${name}`} tabIndex={0}>
-          <table className="values__table machine__table">
+          <table className="values__table machine__table table--cards">
             <caption className="visually-hidden">
               Runs of this rotation, newest first. Error codes are fixed words, never provider detail.
             </caption>
             <thead>
               <tr>
                 <th scope="col">Run</th>
-                <th scope="col">Phase</th>
-                <th scope="col">Trigger</th>
-                <th scope="col" className="col-secondary">Started</th>
-                <th scope="col" className="col-secondary">Last change</th>
-                <th scope="col" className="col-secondary">Published revision</th>
-                <th scope="col" className="col-secondary">Overlap</th>
-                <th scope="col">Error</th>
-                <th scope="col" className="col-secondary">Adapter targets not converged</th>
-                <th scope="col" className="col-secondary">Owed role valid until</th>
+                <th scope="col">Phase and error</th>
+                <th scope="col">Detail</th>
               </tr>
             </thead>
             <tbody>
               {runs.map((run) => (
                 <tr key={run.id} data-run={run.id}>
-                  <td>
+                  <th scope="row">
                     <span className="mono machine__name" title={run.id}>{run.id}</span>
-                  </td>
+                    <Facts>
+                      <Fact label="Trigger">{run.trigger}</Fact>
+                      <Fact label="Started">{formatWhen(run.started_at)}</Fact>
+                      <Fact label="Last change">{formatWhen(run.phase_at)}</Fact>
+                    </Facts>
+                  </th>
                   <td>
                     <Badge tone={PHASE_TONE[run.phase]}>{run.phase}</Badge>
                     {owesDrop(run) ? (
                       <>
                         {' '}
-                        <Badge tone="danger">Owes a drop</Badge>
+                        {/* A restore may have put the role back: the badge must not say to drop it. */}
+                        <Badge tone="danger">
+                          {run.error_code === VERSIONS_CHANGED_CODE ? 'Do not drop: restore' : 'Owes a drop'}
+                        </Badge>
                       </>
                     ) : null}
+                    <Facts>
+                      <Fact label="Error">
+                        {run.error_code === undefined || run.error_code === null ? (
+                          'None'
+                        ) : (
+                          <span className="mono">{run.error_code}</span>
+                        )}
+                      </Fact>
+                      <Fact label="Owed role valid until">
+                        {run.credential_valid_until === undefined || run.credential_valid_until === null
+                          ? 'Not applicable'
+                          : `${run.credential_valid_until_lower_bound === true ? 'At least ' : ''}${formatWhen(run.credential_valid_until)}`}
+                      </Fact>
+                    </Facts>
                   </td>
-                  <td>{run.trigger}</td>
-                  <td className="col-secondary">{formatWhen(run.started_at)}</td>
-                  <td className="col-secondary">{formatWhen(run.phase_at)}</td>
-                  <td className="col-secondary">
-                    {run.published_revision === undefined || run.published_revision === null
-                      ? 'Not published'
-                      : String(run.published_revision)}
-                  </td>
-                  <td className="col-secondary">{run.revocation_delay_seconds === 0n ? 'Skipped' : span(run.revocation_delay_seconds)}</td>
                   <td>
-                    {run.error_code === undefined || run.error_code === null ? (
-                      'None'
-                    ) : (
-                      <span className="mono">{run.error_code}</span>
-                    )}
-                  </td>
-                  <td className="col-secondary">
-                    {run.not_converged_adapter_targets === undefined || run.not_converged_adapter_targets === null
-                      ? 'Not measured'
-                      : String(run.not_converged_adapter_targets)}
-                  </td>
-                  <td className="col-secondary">
-                    {run.credential_valid_until === undefined || run.credential_valid_until === null
-                      ? 'Not applicable'
-                      : `${run.credential_valid_until_lower_bound === true ? 'At least ' : ''}${formatWhen(run.credential_valid_until)}`}
+                    <Facts>
+                      <Fact label="Published revision">
+                        {run.published_revision === undefined || run.published_revision === null
+                          ? 'Not published'
+                          : String(run.published_revision)}
+                      </Fact>
+                      <Fact label="Overlap">
+                        {run.revocation_delay_seconds === 0n ? 'Skipped' : span(run.revocation_delay_seconds)}
+                      </Fact>
+                      <Fact label="Adapter targets not converged">
+                        {run.not_converged_adapter_targets === undefined || run.not_converged_adapter_targets === null
+                          ? 'Not measured'
+                          : String(run.not_converged_adapter_targets)}
+                      </Fact>
+                    </Facts>
                   </td>
                 </tr>
               ))}

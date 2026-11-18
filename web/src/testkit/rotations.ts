@@ -17,6 +17,8 @@ export const PASSWORD_KEY = 'key_123e4567-e89b-12d3-a456-426614174101';
 export const USERNAME_KEY = 'key_123e4567-e89b-12d3-a456-426614174102';
 export const OTHER_PASSWORD_KEY = 'key_123e4567-e89b-12d3-a456-426614174103';
 export const OTHER_USERNAME_KEY = 'key_123e4567-e89b-12d3-a456-426614174104';
+export const HALTED_PASSWORD_KEY = 'key_123e4567-e89b-12d3-a456-426614174105';
+export const HALTED_USERNAME_KEY = 'key_123e4567-e89b-12d3-a456-426614174106';
 
 const OPERATOR = 'prn_123e4567-e89b-12d3-a456-426614174010';
 export const ROTATION = 'rot_123e4567-e89b-12d3-a456-426614174201';
@@ -41,13 +43,15 @@ const catalogueKey = (id: string, name: string): WireKey => ({
 });
 
 export const rotationKeys = {
-  count: 4,
+  count: 6,
   schema_revision: 1,
   items: [
     catalogueKey(PASSWORD_KEY, 'DATABASE_PASSWORD'),
     catalogueKey(USERNAME_KEY, 'DATABASE_USER'),
     catalogueKey(OTHER_PASSWORD_KEY, 'REPORTING_PASSWORD'),
     catalogueKey(OTHER_USERNAME_KEY, 'REPORTING_USER'),
+    catalogueKey(HALTED_PASSWORD_KEY, 'ANALYTICS_PASSWORD'),
+    catalogueKey(HALTED_USERNAME_KEY, 'ANALYTICS_USER'),
   ],
 } satisfies z.input<typeof zKeyList>;
 
@@ -76,7 +80,7 @@ const rotation = (
   ...overrides,
 });
 
-/** An active rotation, a restore-held one, a halted one and (when asked for) a deleted one. */
+/** An active rotation and a restore-held one; `haltedRotation` and `deletedRotation` are separate. */
 export const rotationList = (environment: string = PROD) =>
   ({
     items: [
@@ -90,7 +94,7 @@ export const rotationList = (environment: string = PROD) =>
   }) satisfies z.input<typeof zCredentialRotationList>;
 
 export const haltedRotation = (environment: string = PROD) =>
-  rotation(HALTED_ROTATION, environment, [PASSWORD_KEY, USERNAME_KEY], {
+  rotation(HALTED_ROTATION, environment, [HALTED_PASSWORD_KEY, HALTED_USERNAME_KEY], {
     state: 'halted',
     next_run_at: null,
     interval_seconds: 3_600,

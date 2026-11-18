@@ -21,6 +21,7 @@ import { CertificatesTab, certificateCount } from './CertificatesTab.tsx';
 import { DeliveryTargetsPanel } from './DeliveryTargets.tsx';
 import { RotationsPanel } from './machineAccess/Rotations.tsx';
 import { SSHCertificatesPanel } from './SSHCertificates.tsx';
+import type { EnvironmentsRead } from './machineAccess/EnvironmentsRead.tsx';
 import { ApiError } from '../api/client.ts';
 import { gateSystemScope } from './SystemScope.tsx';
 import {
@@ -167,6 +168,11 @@ export function MachineAccessPage() {
   );
   const environmentsKnown = environmentsQuery.isSuccess && environmentsQuery.data !== null;
   const environmentsUnavailable = !environmentsKnown && !environmentsQuery.isPending;
+  const environmentsRead: EnvironmentsRead = environmentsQuery.isPending
+    ? 'loading'
+    : environmentsUnavailable
+      ? 'unavailable'
+      : 'ready';
   const leaseListings = useLeases(project, environments);
   const certificateListings = useCertificates(project, environments);
   // An empty fan-out is only a known empty inventory after the hierarchy read
@@ -833,6 +839,7 @@ export function MachineAccessPage() {
             project={project.project}
             sessionId={liveSessionId}
             environments={environments.map((environment) => ({ id: environment.id, name: environment.name }))}
+            environmentsRead={environmentsRead}
             requesterOptions={[
               ...(auth.identity === null || auth.identity === undefined
                 ? []
@@ -846,6 +853,7 @@ export function MachineAccessPage() {
             org={project.org}
             project={project.project}
             environments={environments.map((environment) => ({ id: environment.id, name: environment.name }))}
+            environmentsRead={environmentsRead}
             providers={providers}
           />
         ) : null}

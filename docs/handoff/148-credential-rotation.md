@@ -1598,6 +1598,20 @@ unchanged (the restore assertion guards them) and runs past their publish still 
 - The audit coverage test lacked a `rotation.run_now` emitter (a gap from S2b-1); the
   executor audit lifecycle now issues one run-now.
 
+## S3 as built (browser status surface): open owner decisions
+
+- **`halt_reason` is not on the wire (open owner decision).** The server stores a
+  halt reason (migration 00091) but neither `CredentialRotation` nor any CLI output
+  carries it, although this handoff expected `show` and `list` to. The S3 tab and the
+  user docs therefore say a rotation is halted and not why. Options: A) add
+  `halt_reason` (fixed words) to `CredentialRotation` and the CLI, recommended;
+  B) keep it audit-only and leave the docs as corrected.
+- **No last result or owed-drop summary on the list.** An owed drop appears only after
+  a rotation's runs are opened. Option: a `last_run` or `owes_drop` summary on
+  `CredentialRotation`.
+- The six mutating rotation rows in `api/parity.yaml` stay `{issue: 148}`; the owner
+  decides their parity class.
+
 ## S2 checklist (carried forward from review)
 
 Status after S2a and its round 1 review: closed in S2a are the Gate, the provider-delete and environment-delete

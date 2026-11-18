@@ -8,6 +8,7 @@ import { ORG, PRJ, PROD, STAGING } from '../../testkit/ids.ts';
 import {
   deletedRotation,
   haltedRotation,
+  HALTED_ROTATION,
   HELD_ROTATION,
   owedRuns,
   ROTATION,
@@ -15,6 +16,7 @@ import {
   rotationList,
   settledRuns,
 } from '../../testkit/rotations.ts';
+import { MAX_RUN_PAGES } from '../../api/rotations.ts';
 import { RotationsPanel } from './Rotations.tsx';
 
 afterEach(() => {
@@ -54,7 +56,7 @@ function buttonNamed(container: ParentNode, name: string): HTMLButtonElement {
   return found;
 }
 
-const mount = () => renderForm(<RotationsPanel org={ORG} project={PRJ} environments={environments} providers={providers} />);
+const mount = () => renderForm(<RotationsPanel org={ORG} project={PRJ} environments={environments} environmentsRead="ready" providers={providers} />);
 
 it('lists each rotation with its keys, provider, state, schedule and expiry', async () => {
   stub({ ...keysRoute, [listPath(PROD)]: () => Response.json({ items: [...rotationList().items, haltedRotation()] }) });
@@ -64,8 +66,8 @@ it('lists each rotation with its keys, provider, state, schedule and expiry', as
     const rows = [...container.querySelectorAll('tbody tr')];
     expect(rows).toHaveLength(3);
     const active = container.querySelector(`[data-rotation="${ROTATION}"]`)!;
-    expect(active.textContent).toContain('Password key DATABASE_PASSWORD');
-    expect(active.textContent).toContain('Role name key DATABASE_USER');
+    expect(active.textContent).toContain('Password keyDATABASE_PASSWORD');
+    expect(active.textContent).toContain('Role name keyDATABASE_USER');
     expect(active.textContent).toContain('postgres');
     expect(active.textContent).toContain('db.internal.example.com:5432');
     expect(active.textContent).toContain('active');
@@ -107,7 +109,7 @@ it('shows the run timeline with an ATTENTION line for each run that owes a drop'
   const { container, unmount } = await mount();
   try {
     await settleTask();
-    await act(async () => buttonNamed(container, 'Runs of rotation DATABASE_PASSWORD').click());
+    await act(async () => buttonNamed(container, 'Show runs of DATABASE_PASSWORD').click());
     await settleTask();
     const attention = [...container.querySelectorAll('.alert')].map((a) => a.textContent ?? '').filter((t) => t.includes('ATTENTION'));
     expect(attention).toHaveLength(3);
@@ -117,14 +119,18 @@ it('shows the run timeline with an ATTENTION line for each run that owes a drop'
     const rows = [...container.querySelectorAll('[data-run]')];
     expect(rows).toHaveLength(5);
     expect(rows[0]!.textContent).toContain('revoke_refused');
-    expect(rows[0]!.textContent).toContain('Owes a drop');
+    // A restore may have put the role back: no badge says to drop it.
     expect(rows[0]!.textContent).toContain('published_versions_changed');
+    expect(rows[0]!.textContent).toContain('Do not drop: restore');
+    expect(rows[0]!.textContent).not.toContain('Owes a drop');
+    expect(rows[1]!.textContent).toContain('Owes a drop');
+    expect(rows[1]!.textContent).toContain('At least');
     expect(rows[2]!.textContent).toContain('manual');
     expect(rows[2]!.textContent).toContain('Skipped');
     expect(rows[3]!.textContent).not.toContain('Owes a drop');
     expect(container.textContent).toContain('Adapter targets not converged counts adapter (sync) targets only');
     // Hiding the runs removes the timeline.
-    await act(async () => buttonNamed(container, 'Runs of rotation DATABASE_PASSWORD').click());
+    await act(async () => buttonNamed(container, 'Hide runs of DATABASE_PASSWORD').click());
     expect(container.querySelector('[data-run]')).toBeNull();
   } finally {
     await unmount();
@@ -141,10 +147,10 @@ it('says a rotation with no owed drop and no runs has not run yet', async () => 
   const { container, unmount } = await mount();
   try {
     await settleTask();
-    await act(async () => buttonNamed(container, 'Runs of rotation DATABASE_PASSWORD').click());
+    await act(async () => buttonNamed(container, 'Show runs of DATABASE_PASSWORD').click());
     await settleTask();
     expect(container.textContent).not.toContain('ATTENTION');
-    await act(async () => buttonNamed(container, 'Runs of rotation REPORTING_PASSWORD').click());
+    await act(async () => buttonNamed(container, 'Show runs of REPORTING_PASSWORD').click());
     await settleTask();
     expect(container.textContent).toContain('This rotation has not run yet.');
   } finally {
@@ -165,16 +171,143 @@ it('reads back through every run page, because an old run can still owe a drop',
   const { container, unmount } = await mount();
   try {
     await settleTask();
-    await act(async () => buttonNamed(container, 'Runs of rotation DATABASE_PASSWORD').click());
-    await settleTask();
-    expect(container.querySelectorAll('[data-run]')).toHaveLength(5);
+    await act(async () => buttonNamed(container, 'Show runs of DATABASE_PASSWORD').click());
+    // The second page is fetched by an effect after the first renders: wait for the state, not for ticks.
+    await vi.waitFor(async () => {
+      await settleTask();
+      expect(container.querySelectorAll('[data-run]')).toHaveLength(5);
+    });
     expect(calls.calls.filter((c) => c.includes('/runs'))).toEqual([
       `GET ${runsPath(PROD, ROTATION)}?limit=500`,
       `GET ${runsPath(PROD, ROTATION)}?limit=500&after=${first!.id}`,
     ]);
     expect([...container.querySelectorAll('.alert')].filter((a) => a.textContent?.includes('ATTENTION'))).toHaveLength(3);
+    expect(container.textContent).not.toContain('Loading more runs');
   } finally {
     await unmount();
+  }
+});
+
+const nthRun = (n: number) => ({ ...owedRuns.items[3]!, id: `rrn_123e4567-e89b-12d3-a456-4266141${String(70000 + n)}` });
+
+it('stops at the page bound and says older runs were not read', async () => {
+  let served = 0;
+  stub({
+    ...keysRoute,
+    [listPath(PROD)]: () => Response.json(rotationList()),
+    [runsPath(PROD, ROTATION)]: () => {
+      served += 1;
+      return Response.json({ items: [nthRun(served)], next_after: nthRun(served).id });
+    },
+  });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    await act(async () => buttonNamed(container, 'Show runs of DATABASE_PASSWORD').click());
+    // Each page is fetched by an effect after the last renders; pump until the
+    // reader has stopped at its bound, then assert the state it left.
+    while (served < MAX_RUN_PAGES) await settleTask();
+    await vi.waitFor(async () => {
+      await settleTask();
+      expect(container.textContent).toContain('Only the newest 20 runs are shown');
+    });
+    expect(served).toBe(MAX_RUN_PAGES);
+    expect(container.querySelectorAll('[data-run]')).toHaveLength(MAX_RUN_PAGES);
+    expect(container.textContent).toContain(`hikyo rotation runs ${ROTATION}`);
+    expect(container.textContent).not.toContain('Loading more runs');
+  } finally {
+    await unmount();
+  }
+});
+
+it('keeps the runs it has and says older ones were not read when a later page fails', async () => {
+  const [first] = owedRuns.items;
+  stub({
+    ...keysRoute,
+    [listPath(PROD)]: () => Response.json(rotationList()),
+    [runsPath(PROD, ROTATION)]: (url) =>
+      url.searchParams.get('after') === null
+        ? Response.json({ items: [first], next_after: first!.id })
+        : Response.json({ error: 'boom' }, { status: 500 }),
+  });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    await act(async () => buttonNamed(container, 'Show runs of DATABASE_PASSWORD').click());
+    await vi.waitFor(async () => {
+      await settleTask();
+      expect(container.textContent).toContain('Only the newest 1 runs are shown');
+    });
+    expect(container.textContent).toContain('The runs could not be listed. Reload to try again.');
+    expect([...container.querySelectorAll('.alert')].filter((a) => a.textContent?.includes('ATTENTION'))).toHaveLength(1);
+    expect(container.textContent).not.toContain('Loading more runs');
+  } finally {
+    await unmount();
+  }
+});
+
+it('shows the run toggle as an expandable control named by its visible text, and focuses the timeline', async () => {
+  stub({
+    ...keysRoute,
+    [listPath(PROD)]: () => Response.json(rotationList()),
+    [runsPath(PROD, ROTATION)]: () => Response.json(settledRuns),
+  });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    const toggle = buttonNamed(container, 'Show runs of DATABASE_PASSWORD');
+    expect(toggle.textContent).toBe('Show runs');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.hasAttribute('aria-pressed')).toBe(false);
+    await act(async () => toggle.click());
+    await settleTask();
+    const open = buttonNamed(container, 'Hide runs of DATABASE_PASSWORD');
+    expect(open.textContent).toBe('Hide runs');
+    expect(open.getAttribute('aria-expanded')).toBe('true');
+    const timeline = container.querySelector(`#${open.getAttribute('aria-controls')}`);
+    expect(timeline?.querySelector('h3')?.textContent).toBe('Runs of DATABASE_PASSWORD');
+    expect(document.activeElement).toBe(timeline?.querySelector('h3'));
+  } finally {
+    await unmount();
+  }
+});
+
+it('says both commands a halted rotation that is also held needs', async () => {
+  stub({
+    ...keysRoute,
+    [listPath(PROD)]: () => Response.json({ items: [{ ...haltedRotation(), restore_hold: true }] }),
+  });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    const text = [...container.querySelectorAll('.alert, .notice')].map((a) => a.textContent ?? '').join('\n');
+    expect(text).toContain('hikyo rotation resume');
+    expect(text).toContain(`hikyo rotation release-hold ${HALTED_ROTATION}`);
+    expect(text).toContain('first, then resume it');
+    // No cause is named: the server stopped it, and the wire does not say why.
+    expect(text).not.toContain('failed check');
+  } finally {
+    await unmount();
+  }
+});
+
+it('does not call a project environment-less while its environments are still loading or refused', async () => {
+  stub({});
+  for (const [read, text] of [
+    ['loading', 'Loading environments'],
+    ['unavailable', 'environments could not be read'],
+    ['ready', 'This project has no environments, so it has no rotations.'],
+  ] as const) {
+    const { container, unmount } = await renderForm(
+      <RotationsPanel org={ORG} project={PRJ} environments={[]} environmentsRead={read} providers={providers} />,
+    );
+    try {
+      await settleTask();
+      expect(container.textContent).toContain(text);
+      if (read !== 'ready') expect(container.textContent).not.toContain('no environments');
+    } finally {
+      await unmount();
+    }
   }
 });
 
@@ -240,7 +373,7 @@ it('says so when an environment has no rotations', async () => {
   try {
     await settleTask();
     expect(container.textContent).toContain('No rotations in this environment yet.');
-    expect(container.querySelector('table')?.querySelectorAll('tbody tr')).toHaveLength(0);
+    expect(container.querySelector('table')).toBeNull();
   } finally {
     await unmount();
   }

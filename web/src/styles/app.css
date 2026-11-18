@@ -3993,6 +3993,33 @@ fieldset.field > legend {
   white-space: nowrap;
 }
 
+/* A table cell's labelled fields stack their label over the value. The
+   140px label track of a bare `.kv` list sets a cell's minimum width, and four
+   such cells in a row are wider than the page column; stacked, the cell wraps
+   and the table never scrolls sideways to hide a field. */
+.machine__table .kv__pair {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+/* A row's own identifier wraps inside its row-header cell instead of
+   ellipsising at 14rem: nowrap sets the cell's minimum width, and the whole
+   id is the thing an operator copies into a `hikyo rotation` command. */
+.machine__table tbody th {
+  font-weight: normal;
+  text-align: start;
+}
+
+.machine__runs {
+  margin-block-start: var(--space-2);
+}
+
+.machine__table tbody th .machine__name {
+  max-width: none;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .machine__grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

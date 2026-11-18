@@ -234,7 +234,10 @@ test.describe('machine access', () => {
       await expect(page.getByRole('button', { name: /release/i })).toHaveCount(0);
 
       // The run timeline: three runs owe a drop, each in the CLI's words.
-      await page.getByRole('button', { name: 'Runs of rotation DATABASE_PASSWORD' }).first().click();
+      const toggle = page.getByRole('button', { name: 'Show runs of DATABASE_PASSWORD' });
+      await toggle.click();
+      await expect(page.getByRole('button', { name: 'Hide runs of DATABASE_PASSWORD' })).toHaveAttribute('aria-expanded', 'true');
+      await expect(page.getByRole('heading', { name: 'Runs of DATABASE_PASSWORD', level: 3 })).toBeFocused();
       const attention = page.getByRole('alert').filter({ hasText: 'ATTENTION: run ' });
       await expect(attention).toHaveCount(3);
       await expect(attention.first()).toContainText('(published_versions_changed)');
@@ -243,14 +246,26 @@ test.describe('machine access', () => {
       await expect(attention.nth(2)).toContainText('no recorded expiry');
       await expectStatusIsTextAndAria(page, attention.first());
       const runs = page.getByRole('table', { name: /Runs of this rotation/ });
-      await expect(runs.getByText('Owes a drop')).toHaveCount(3);
+      // A refused or quarantined drop says it owes one; the restore-held run says the opposite.
+      await expect(runs.getByText('Owes a drop', { exact: true })).toHaveCount(2);
+      await expect(runs.getByText('Do not drop: restore', { exact: true })).toHaveCount(1);
 
-      // Keyboard: the scrollable runs region is reachable, so a narrow screen can read every column.
-      const region = page.getByRole('region', { name: 'Run history of DATABASE_PASSWORD' });
-      await region.focus();
-      await expect(region).toBeFocused();
-      // The page never scrolls sideways, at the desktop or the mobile width.
+      // Every field of every row is on the page at this width (a card per row on a
+      // phone, columns on a desktop): none is hidden, and none needs a sideways scroll.
+      const fields = ['Password key', 'Role name key', 'Provider', 'Next run', 'Delivered credential expires', 'held: no run starts'];
+      for (const field of fields) await expect(table.getByText(field).first()).toBeVisible();
+      for (const field of ['Started', 'Last change', 'Published revision', 'Overlap', 'Adapter targets not converged', 'Owed role valid until']) {
+        await expect(runs.getByText(field).first()).toBeVisible();
+      }
+      await expect(runs.getByText(/^At least /)).toBeVisible();
+      for (const region of [page.getByRole('region', { name: 'Rotation list' }), page.getByRole('region', { name: 'Run history of DATABASE_PASSWORD' })]) {
+        expect(await region.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+      }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+      // The restore hold badge is inside the page's width, not pushed off an edge by a sideways scroll.
+      const badge = await table.getByText('Restore hold', { exact: true }).boundingBox();
+      const width = await page.evaluate(() => document.documentElement.clientWidth);
+      expect(badge !== null && badge.x >= 0 && badge.x + badge.width <= width).toBe(true);
     } finally {
       await page.unroute('**/rotations/*/runs*');
       await page.unroute('**/environments/*/rotations');
