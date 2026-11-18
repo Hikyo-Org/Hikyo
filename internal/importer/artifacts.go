@@ -339,20 +339,20 @@ func ParseTemplate(raw []byte) (Template, error) {
 		return Template{}, failure("import", CodeMalformed, "mapping.json",
 			"the template names no target environment")
 	}
-	mapped := map[EnvironmentMapping]bool{}
+	mapped := map[string]bool{}
 	for i, env := range t.Environments {
 		if env.Target == "" {
 			return Template{}, failure("import", CodeMalformed, "mapping.json",
 				"environment mapping %d names no target environment", i+1)
 		}
-		// The wizard refuses a target mapped twice; a replayed template must too,
-		// or the duplicate surfaces as a late create collision after server calls.
-		key := EnvironmentMapping{Target: env.Target, Create: env.Create}
-		if mapped[key] {
+		// The wizard claims existing IDs and created names in one set and refuses a
+		// target mapped twice; a replayed template must too, or the duplicate
+		// surfaces as a late create collision after server calls.
+		if mapped[env.Target] {
 			return Template{}, failure("import", CodeMalformed, "mapping.json",
 				"environment %s is already mapped", quoteName(env.Target))
 		}
-		mapped[key] = true
+		mapped[env.Target] = true
 	}
 	for _, c := range t.Classifications {
 		if c.Class != string(schema.Secret) && c.Class != string(schema.Config) {

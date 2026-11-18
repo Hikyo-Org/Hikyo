@@ -815,7 +815,7 @@ func mergeAttributes(attrs map[string]any, index map[string][]string, delta map[
 		canonical := scimAttributeName(k)
 		storedKey := k
 		if spellings := index[canonical]; len(spellings) > 0 {
-			storedKey = spellings[0]
+			storedKey = slices.Min(spellings) // deterministic when stored state holds several spellings
 			for _, existing := range spellings {
 				delete(attrs, existing)
 			}
