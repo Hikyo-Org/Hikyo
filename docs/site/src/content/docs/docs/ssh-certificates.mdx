@@ -161,6 +161,12 @@ defaults to the time until the last live certificate signed by the old key
 expires and is capped at 30 days. Hosts pick up the new key on their next trust-bundle refresh; refresh
 them before the overlap ends.
 
+Rotation must move to a key the CA has never used. Rotating with an imported
+key that matches the active key or any earlier key of the same CA, retired ones
+included, is refused. An earlier key's revoked serials may have left the KRL,
+so trusting it again would revive certificates you revoked. A key shared by two
+different CAs is allowed; each CA's KRL covers only its own certificates.
+
 ## Multi-node behavior
 
 Issuance is one transaction: it re-reads the active key, the profile's
@@ -173,8 +179,9 @@ node cannot hand one out. Nodes hold no cached signing key.
 
 A restore rolls the certificate records back to the backup's instant. A
 certificate issued and revoked after the backup has no record, so it cannot be
-in the KRL. After a restore, rotate every SSH CA with `--overlap 0` and
-refresh host trust; certificates from before the rotation then stop working.
+in the KRL. After a restore, rotate every SSH CA with `--overlap 0` to a newly
+generated key, or to an imported key the CA has never used, and refresh host
+trust; certificates from before the rotation then stop working.
 
 ## Monitoring
 

@@ -45,6 +45,7 @@ func TestCanonicalDSNRejectsMultiHostOrigins(t *testing.T) {
 	for _, origin := range []string{
 		"postgres://u@h1:5432,h2:5432/db",
 		"postgres://u@h1,h2:5432/db",
+		"postgres://u@h1:5432:5433/db",
 	} {
 		if _, _, err := canonicalDSN(origin, "pw"); err == nil {
 			t.Errorf("canonicalDSN(%q) accepted a multi-host origin", origin)

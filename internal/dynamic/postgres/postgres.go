@@ -133,8 +133,9 @@ func canonicalDSN(origin, password string) (string, string, error) {
 		return "", "", fmt.Errorf("postgres: origin %q must carry a host", origin)
 	}
 	// url.Parse accepts "h1:5432,h2:5432"; pgx would turn it into a primary plus
-	// fallbacks that this provider's TLS pinning does not cover.
-	if strings.Contains(u.Host, ",") {
+	// fallbacks that this provider's TLS pinning does not cover. It also accepts
+	// "h1:5432:5433", whose Hostname "h1:5432" pgx then refuses as a bad port.
+	if strings.Contains(u.Host, ",") || (strings.Contains(u.Hostname(), ":") && !strings.HasPrefix(u.Host, "[")) {
 		return "", "", fmt.Errorf("postgres: origin %q must name exactly one host", origin)
 	}
 	if strings.Trim(u.Path, "/") == "" {

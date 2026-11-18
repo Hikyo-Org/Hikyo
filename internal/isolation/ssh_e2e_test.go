@@ -507,9 +507,13 @@ func TestSSHRotateCARefusesAnEarlierKey(t *testing.T) {
 		if _, err := node.svc.RotateCA(ctx, admin, env, ca.ID, service.RotateSSHCARequest{PrivateKey: pemKey}); !errors.Is(err, domain.ErrInvalid) {
 			t.Fatalf("rotate to the active key: %v, want ErrInvalid", err)
 		}
-		// A retired key.
-		if _, err := node.svc.RotateCA(ctx, admin, env, ca.ID, service.RotateSSHCARequest{}); err != nil {
+		// A retired key (not merely retiring).
+		rotated, err := node.svc.RotateCA(ctx, admin, env, ca.ID, service.RotateSSHCARequest{})
+		if err != nil {
 			t.Fatalf("rotate to a generated key: %v", err)
+		}
+		if _, err := node.svc.RetireCAKey(ctx, admin, env, ca.ID, rotated.Keys[1].ID); err != nil {
+			t.Fatalf("retire the imported key: %v", err)
 		}
 		if _, err := node.svc.RotateCA(ctx, admin, env, ca.ID, service.RotateSSHCARequest{PrivateKey: pemKey}); !errors.Is(err, domain.ErrInvalid) {
 			t.Fatalf("rotate back to an earlier key: %v, want ErrInvalid", err)
