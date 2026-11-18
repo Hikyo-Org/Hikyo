@@ -252,14 +252,17 @@ test.describe('machine access', () => {
 
       // Every field of every row is on the page at this width (a card per row on a
       // phone, columns on a desktop): none is hidden, and none needs a sideways scroll.
-      const fields = ['Password key', 'Role name key', 'Provider', 'Next run', 'Delivered credential expires', 'held: no run starts'];
+      const fields = ['Rotation', 'Password key', 'Role name key', 'Provider', 'Next run', 'Delivered credential expires', 'Authority principal', 'Created by', 'Generation', 'Updated', 'Held after a restore: no run starts'];
       for (const field of fields) await expect(table.getByText(field).first()).toBeVisible();
+      await expect(table.getByText(ROTATION, { exact: true })).toBeVisible();
       for (const field of ['Started', 'Last change', 'Published revision', 'Overlap', 'Adapter targets not converged', 'Owed role valid until']) {
         await expect(runs.getByText(field).first()).toBeVisible();
       }
       await expect(runs.getByText(/^At least /)).toBeVisible();
-      for (const region of [page.getByRole('region', { name: 'Rotation list' }), page.getByRole('region', { name: 'Run history of DATABASE_PASSWORD' })]) {
-        expect(await region.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+      const scrollers = page.locator('.table-scroll');
+      expect(await scrollers.count()).toBeGreaterThanOrEqual(2);
+      for (const scroller of await scrollers.all()) {
+        expect(await scroller.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
       // The restore hold badge is inside the page's width, not pushed off an edge by a sideways scroll.

@@ -33,7 +33,7 @@ const providers = [dynamicProvider];
 type Stub = { readonly calls: string[] };
 
 /** Answers each rotation read from `routes`, keyed by path; anything else is a failure to see. */
-function stub(routes: Readonly<Record<string, (url: URL) => Response>>): Stub {
+function stub(routes: Readonly<Record<string, (url: URL) => Response | Promise<Response>>>): Stub {
   const calls: string[] = [];
   vi.stubGlobal('fetch', vi.fn(async (...args: Parameters<typeof fetch>) => {
     const request = args[0] instanceof Request ? args[0] : new Request(args[0]);
@@ -55,6 +55,8 @@ function buttonNamed(container: ParentNode, name: string): HTMLButtonElement {
   if (found === undefined) throw new Error(`no button ${name}`);
   return found;
 }
+
+const nthRun = (n: number) => ({ ...owedRuns.items[3]!, id: `rrn_123e4567-e89b-12d3-a456-4266141${String(70000 + n)}` });
 
 const mount = () => renderForm(<RotationsPanel org={ORG} project={PRJ} environments={environments} environmentsRead="ready" providers={providers} />);
 
@@ -93,7 +95,7 @@ it('is loud about a restore hold and names the command that releases it', async 
     expect(alert?.textContent).toContain(`hikyo rotation release-hold ${HELD_ROTATION}`);
     // The row says it in words too, and offers no release action.
     expect(container.querySelector(`[data-rotation="${HELD_ROTATION}"]`)?.textContent).toContain('Restore hold');
-    expect(container.querySelector(`[data-rotation="${HELD_ROTATION}"]`)?.textContent).toContain('held: no run starts');
+    expect(container.querySelector(`[data-rotation="${HELD_ROTATION}"]`)?.textContent).toContain('Held after a restore: no run starts');
     expect([...container.querySelectorAll('button')].map((b) => b.textContent).join(' ')).not.toMatch(/release|resume|pause|delete|run now/i);
   } finally {
     await unmount();
@@ -188,7 +190,35 @@ it('reads back through every run page, because an old run can still owe a drop',
   }
 });
 
-const nthRun = (n: number) => ({ ...owedRuns.items[3]!, id: `rrn_123e4567-e89b-12d3-a456-4266141${String(70000 + n)}` });
+it('reads three pages that each answer at once, one after another', async () => {
+  // Each page lands before the next render, so `isFetchingNextPage` is never seen as true:
+  // the third page is only asked for because the page count changed.
+  const ids = [1, 2, 3].map((n) => nthRun(n).id);
+  const calls = stub({
+    ...keysRoute,
+    [listPath(PROD)]: () => Response.json(rotationList()),
+    [runsPath(PROD, ROTATION)]: (url) => {
+      const after = url.searchParams.get('after');
+      const index = after === null ? 0 : ids.indexOf(after) + 1;
+      const next = ids[index];
+      return Response.json({ items: [nthRun(index + 1)], ...(index < ids.length - 1 && next !== undefined ? { next_after: next } : {}) });
+    },
+  });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    await act(async () => buttonNamed(container, 'Show runs of DATABASE_PASSWORD').click());
+    await vi.waitFor(async () => {
+      await settleTask();
+      expect(container.querySelectorAll('[data-run]')).toHaveLength(3);
+    });
+    expect(calls.calls.filter((c) => c.includes('/runs'))).toHaveLength(3);
+    expect(container.textContent).not.toContain('Loading more runs');
+    expect(container.textContent).not.toContain('are shown');
+  } finally {
+    await unmount();
+  }
+});
 
 it('stops at the page bound and says older runs were not read', async () => {
   let served = 0;
@@ -204,9 +234,7 @@ it('stops at the page bound and says older runs were not read', async () => {
   try {
     await settleTask();
     await act(async () => buttonNamed(container, 'Show runs of DATABASE_PASSWORD').click());
-    // Each page is fetched by an effect after the last renders; pump until the
-    // reader has stopped at its bound, then assert the state it left.
-    while (served < MAX_RUN_PAGES) await settleTask();
+    // Each page is fetched by an effect after the last renders: wait for the state it ends in.
     await vi.waitFor(async () => {
       await settleTask();
       expect(container.textContent).toContain('Only the newest 20 runs are shown');
@@ -215,6 +243,41 @@ it('stops at the page bound and says older runs were not read', async () => {
     expect(container.querySelectorAll('[data-run]')).toHaveLength(MAX_RUN_PAGES);
     expect(container.textContent).toContain(`hikyo rotation runs ${ROTATION}`);
     expect(container.textContent).not.toContain('Loading more runs');
+  } finally {
+    await unmount();
+  }
+});
+
+it('shows a run that appeared while the timeline was hidden when it is reopened', async () => {
+  // Page 1 is cached and page 2 never landed, so the reopened timeline has a refetch of page 1
+  // in flight and a next page to read: the next page must wait for the refetch, not cancel it.
+  const [a1, a2, b] = [nthRun(1), nthRun(2), nthRun(3)];
+  let reopened = false;
+  stub({
+    ...keysRoute,
+    [listPath(PROD)]: () => Response.json(rotationList()),
+    [runsPath(PROD, ROTATION)]: (url) => {
+      if (url.searchParams.get('after') === null) {
+        return Response.json({ items: reopened ? [b, a1] : [a1], next_after: a1.id });
+      }
+      return reopened ? Response.json({ items: [a2] }) : new Promise<Response>(() => {});
+    },
+  });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    await act(async () => buttonNamed(container, 'Show runs of DATABASE_PASSWORD').click());
+    await vi.waitFor(async () => {
+      await settleTask();
+      expect(container.querySelectorAll('[data-run]')).toHaveLength(1);
+    });
+    await act(async () => buttonNamed(container, 'Hide runs of DATABASE_PASSWORD').click());
+    reopened = true;
+    await act(async () => buttonNamed(container, 'Show runs of DATABASE_PASSWORD').click());
+    await vi.waitFor(async () => {
+      await settleTask();
+      expect([...container.querySelectorAll('[data-run]')].map((row) => row.getAttribute('data-run'))).toEqual([b.id, a1.id, a2.id]);
+    });
   } finally {
     await unmount();
   }
@@ -236,7 +299,7 @@ it('keeps the runs it has and says older ones were not read when a later page fa
     await act(async () => buttonNamed(container, 'Show runs of DATABASE_PASSWORD').click());
     await vi.waitFor(async () => {
       await settleTask();
-      expect(container.textContent).toContain('Only the newest 1 runs are shown');
+      expect(container.textContent).toContain('Only the newest 1 run is shown');
     });
     expect(container.textContent).toContain('The runs could not be listed. Reload to try again.');
     expect([...container.querySelectorAll('.alert')].filter((a) => a.textContent?.includes('ATTENTION'))).toHaveLength(1);

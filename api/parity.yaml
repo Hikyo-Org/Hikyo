@@ -481,9 +481,10 @@ operations:
 
   # scheduled credential rotation (#148). The machine-access Rotations tab is
   # the status surface: the list shows each rotation's keys, provider, schedule,
-  # state, restore hold, next run and credential expiry (not the creator,
-  # authority, generation or timestamps), and the runs read is the run
-  # timeline. The mutating verbs stay CLI-only for now (#148 S3 is status
+  # state, restore hold, next run, credential expiry, authority principal,
+  # creator, generation and created/updated times (every field of the wire
+  # rotation except the halt reason, which the API does not carry), so the list
+  # read is the whole of showRotation, and the runs read is the run timeline. The mutating verbs stay CLI-only for now (#148 S3 is status
   # only); their rows keep the open issue until a management WebUI issue takes
   # them over.
   listRotations:               {webui: machine-access}

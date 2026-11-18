@@ -301,6 +301,15 @@ export const AccountRowsAligned: Story = {
     for (const node of table.querySelectorAll<HTMLElement>('.values__keyname, td.col-secondary, .badge')) {
       await expect(getComputedStyle(node).whiteSpace).toBe('nowrap');
     }
+    // The rotation tables share `.machine__table`; their wrapping id rules must
+    // not reach an account name, which still ellipsises at 14rem on one line.
+    const remPx = parseFloat(getComputedStyle(document.documentElement).fontSize);
+    for (const name of table.querySelectorAll<HTMLElement>('.machine__name')) {
+      const style = getComputedStyle(name);
+      await expect(style.textOverflow).toBe('ellipsis');
+      await expect(style.whiteSpace).toBe('nowrap');
+      await expect(style.maxWidth).toBe(`${14 * remPx}px`);
+    }
     for (const origin of table.querySelectorAll<HTMLElement>('.machine__origin')) {
       await expect(origin.title).toBe(origin.textContent);
       await expect(getComputedStyle(origin).textOverflow).toBe('ellipsis');

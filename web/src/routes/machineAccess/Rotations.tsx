@@ -15,7 +15,7 @@ import {
   type Rotation,
   type RotationRun,
 } from '../../api/rotations.ts';
-import { duration } from '../../app/duration.ts';
+import { duration, plural } from '../../app/duration.ts';
 import { formatWhen } from '../../lib/formatWhen.ts';
 import { Alert } from '../../ui/Alert.tsx';
 import { Badge, type BadgeTone } from '../../ui/Badge.tsx';
@@ -186,8 +186,8 @@ function RotationList({
       ) : null}
 
       {query.isSuccess && rotations.length > 0 ? (
-        <div className="table-scroll" role="region" aria-label="Rotation list" tabIndex={0}>
-          <table className="values__table machine__table table--cards">
+        <div className="table-scroll">
+          <table className="values__table machine__table rotations__table table--cards">
             <caption className="visually-hidden">
               The environment&apos;s credential rotations. No credential is listed.
             </caption>
@@ -195,7 +195,7 @@ function RotationList({
               <tr>
                 <th scope="col">Rotation</th>
                 <th scope="col">State and runs</th>
-                <th scope="col">Schedule</th>
+                <th scope="col">Schedule and record</th>
               </tr>
             </thead>
             <tbody>
@@ -208,6 +208,9 @@ function RotationList({
                   <tr key={rotation.id} data-rotation={rotation.id}>
                     <th scope="row">
                       <Facts>
+                        <Fact label="Rotation">
+                          <span className="mono rotations__id" title={rotation.id}>{rotation.id}</span>
+                        </Fact>
                         <Fact label="Password key">
                           <NamedId id={rotation.key_id} name={keyName(rotation.key_id)} />
                         </Fact>
@@ -224,9 +227,6 @@ function RotationList({
                           )}
                         </Fact>
                       </Facts>
-                      <div className="mono machine__name" title={rotation.id}>
-                        {rotation.id}
-                      </div>
                     </th>
                     <td>
                       <Badge tone={STATE_TONE[rotation.state]}>{rotation.state}</Badge>
@@ -236,7 +236,7 @@ function RotationList({
                           <Badge tone="danger">Restore hold</Badge>
                         </>
                       ) : null}
-                      <div className="machine__runs">
+                      <div className="rotations__runs">
                         <Button
                           type="button"
                           variant="quiet"
@@ -255,14 +255,24 @@ function RotationList({
                           Every {span(rotation.interval_seconds)}, {span(rotation.revocation_delay_seconds)} overlap
                         </Fact>
                         <Fact label="Next run">
-                          {rotation.state === 'active'
-                            ? at(rotation.next_run_at, 'Not scheduled')
-                            : 'Not scheduled'}
-                          {isHeld ? ' (held: no run starts)' : null}
+                          {isHeld
+                            ? 'Held after a restore: no run starts'
+                            : rotation.state === 'active'
+                              ? at(rotation.next_run_at, 'Not scheduled')
+                              : 'Not scheduled'}
                         </Fact>
                         <Fact label="Delivered credential expires">
                           {at(rotation.credential_expires_at, 'No run has published yet')}
                         </Fact>
+                        <Fact label="Authority principal">
+                          <span className="mono rotations__id">{rotation.authority_principal_id}</span>
+                        </Fact>
+                        <Fact label="Created by">
+                          <span className="mono rotations__id">{rotation.created_by}</span>
+                        </Fact>
+                        <Fact label="Generation">{String(rotation.generation)}</Fact>
+                        <Fact label="Created">{formatWhen(rotation.created_at)}</Fact>
+                        <Fact label="Updated">{formatWhen(rotation.updated_at)}</Fact>
                       </Facts>
                     </td>
                   </tr>
@@ -301,15 +311,19 @@ function RotationList({
  */
 function RunTimeline({ env, rotation, name }: { env: EnvironmentRef; rotation: Rotation; name: string }) {
   const query = useRotationRuns(env, rotation.id);
-  const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = query;
+  const { hasNextPage, isFetching, isFetchNextPageError, fetchNextPage } = query;
   const pages = query.data?.pages.length ?? 0;
   const runs = useMemo(() => query.data?.pages.flatMap((page) => page.items) ?? [], [query.data]);
   const reading = hasNextPage && pages < MAX_RUN_PAGES && !isFetchNextPageError;
-  // `pages` is a dependency because a page that lands between two renders never
-  // shows `isFetchingNextPage` as true, so without it the next page is not asked for.
+  // Ask for the next page only while nothing is fetching, of any kind. A reopened
+  // timeline refetches its cached first pages, and `fetchNextPage` would cancel that
+  // refetch and read on from a stale cursor, hiding a newer run for good. `pages` is a
+  // dependency because a page that lands between two renders never shows `isFetching`
+  // as true, so without it the next page is not asked for. Not `cancelRefetch: false`:
+  // a refetch keeps the page count, so nothing would wake this effect again.
   useEffect(() => {
-    if (reading && !isFetchingNextPage) void fetchNextPage();
-  }, [reading, isFetchingNextPage, pages, fetchNextPage]);
+    if (reading && !isFetching) void fetchNextPage();
+  }, [reading, isFetching, pages, fetchNextPage]);
   const owed = runs.filter(owesDrop);
   // Opening the timeline moves focus to its heading, so the keyboard and a
   // screen reader land on what the button revealed instead of staying above it.
@@ -327,7 +341,7 @@ function RunTimeline({ env, rotation, name }: { env: EnvironmentRef; rotation: R
       {query.isError ? <Alert>{rotationRefusalText(query.error, 'runs')}</Alert> : null}
       {truncated ? (
         <Alert tone="warn">
-          Only the newest {String(runs.length)} runs are shown. An older run can still owe a
+          Only the newest {plural(runs.length, 'run')} {runs.length === 1 ? 'is' : 'are'} shown. An older run can still owe a
           provider role a drop: page through <code>hikyo rotation runs {rotation.id}</code> to
           check.
         </Alert>
@@ -339,8 +353,8 @@ function RunTimeline({ env, rotation, name }: { env: EnvironmentRef; rotation: R
         <p role="status">This rotation has not run yet.</p>
       ) : null}
       {runs.length > 0 ? (
-        <div className="table-scroll" role="region" aria-label={`Run history of ${name}`} tabIndex={0}>
-          <table className="values__table machine__table table--cards">
+        <div className="table-scroll">
+          <table className="values__table machine__table rotations__table table--cards">
             <caption className="visually-hidden">
               Runs of this rotation, newest first. Error codes are fixed words, never provider detail.
             </caption>
@@ -355,7 +369,7 @@ function RunTimeline({ env, rotation, name }: { env: EnvironmentRef; rotation: R
               {runs.map((run) => (
                 <tr key={run.id} data-run={run.id}>
                   <th scope="row">
-                    <span className="mono machine__name" title={run.id}>{run.id}</span>
+                    <span className="mono rotations__id" title={run.id}>{run.id}</span>
                     <Facts>
                       <Fact label="Trigger">{run.trigger}</Fact>
                       <Fact label="Started">{formatWhen(run.started_at)}</Fact>

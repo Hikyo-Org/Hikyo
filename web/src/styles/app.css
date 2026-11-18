@@ -3993,31 +3993,52 @@ fieldset.field > legend {
   white-space: nowrap;
 }
 
-/* A table cell's labelled fields stack their label over the value. The
-   140px label track of a bare `.kv` list sets a cell's minimum width, and four
-   such cells in a row are wider than the page column; stacked, the cell wraps
-   and the table never scrolls sideways to hide a field. */
-.machine__table .kv__pair {
+/* The rotation status tables (routes/machineAccess/Rotations.tsx). Each row
+   holds labelled fields in wrapping cells so no column is hidden or scrolled
+   out of sight; everything here is scoped to `.rotations__table` because
+   `.machine__table` is shared with tables whose names must keep their bold
+   weight and their 14rem ellipsis. */
+
+/* The 140px label track of a bare `.kv` list sets a cell's minimum width, and
+   three such cells in a row are wider than the page column; stacked, the cell
+   wraps. */
+.rotations__table .kv__pair {
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
 }
 
-/* A row's own identifier wraps inside its row-header cell instead of
-   ellipsising at 14rem: nowrap sets the cell's minimum width, and the whole
-   id is the thing an operator copies into a `hikyo rotation` command. */
-.machine__table tbody th {
+.rotations__table tbody th {
   font-weight: normal;
   text-align: start;
 }
 
-.machine__runs {
+/* An identifier wraps instead of ellipsising: it is what an operator copies
+   into a `hikyo rotation` command, and nowrap would set the cell's minimum. */
+.rotations__table .rotations__id {
+  overflow-wrap: anywhere;
+}
+
+/* A badge's word may wrap rather than widen its cell. */
+.rotations__table .badge {
+  white-space: normal;
+}
+
+.rotations__runs {
   margin-block-start: var(--space-2);
 }
 
-.machine__table tbody th .machine__name {
-  max-width: none;
-  overflow-wrap: anywhere;
-  white-space: normal;
+@media (max-width: 700px) {
+  /* A card per row: a row's own cells run together, and only its last cell
+     closes the card with a rule heavier than any inside it, so a block never
+     reads as belonging to the next row. */
+  .rotations__table tbody :is(th, td) {
+    border-bottom: 0;
+  }
+
+  .rotations__table tbody td:last-child {
+    border-bottom: 2px solid var(--tx-dim);
+    padding-block-end: var(--space-3);
+  }
 }
 
 .machine__grid {

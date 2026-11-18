@@ -297,14 +297,16 @@ environment. A person who lacks it gets the API's answer (the same not-found for
 rotation that is absent), which the tab words as "Listing them needs read on this
 environment" without saying whether anything exists.
 
-The list shows each rotation's keys, provider, interval and overlap, its state as
-a word (`active`, `paused`, `halted` or `disabled`), the next run, and when the
-delivered credential expires. A halted rotation is flagged with the command that resumes it, and when it is also
+The list shows each rotation's id, keys, provider, interval and overlap, its state as
+a word (`active`, `paused`, `halted` or `disabled`), the next run, when the
+delivered credential expires, and its record: authority principal, creator, generation
+and created and updated times (every field the API returns for a rotation, which
+`hikyo rotation show` prints only partly in its table). A halted rotation is flagged with the command that resumes it, and when it is also
 held after a restore the tab says to lift the hold first. The tab does not say why a
 rotation halted: the reason is recorded server side but the API does not expose it
 today. A rotation held after a restore gets a `RESTORE HOLD` alert with the exact
-`hikyo rotation release-hold <rotation>` command, and its next run reads "held: no
-run starts". Deleted rotations are listed only when you tick **Include deleted
+`hikyo rotation release-hold <rotation>` command, and its next run reads "Held after a
+restore: no run starts". Deleted rotations are listed only when you tick **Include deleted
 rotations**.
 
 **Show runs** opens the timeline of one rotation, newest first: phase, trigger,

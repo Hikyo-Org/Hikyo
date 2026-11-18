@@ -63,6 +63,12 @@ export const Populated: Story = {
     await expect(within(table).getByText('halted')).toBeVisible();
     await expect(within(table).getAllByRole('button').map((button) => button.textContent)).toEqual(['Show runs', 'Show runs', 'Show runs']);
     await expect(within(table).getByRole('button', { name: 'Show runs of ANALYTICS_PASSWORD' })).toBeVisible();
+    // The id is labelled (the CLI takes it) and the record fields are on the row.
+    await expect(within(table).getAllByText('Rotation', { selector: 'dt' })).toHaveLength(3);
+    await expect(within(table).getByText(ROTATION)).toBeVisible();
+    for (const label of ['Authority principal', 'Created by', 'Generation', 'Created', 'Updated']) {
+      await expect(within(table).getAllByText(label, { selector: 'dt' })).toHaveLength(3);
+    }
   },
 };
 
@@ -141,37 +147,36 @@ export const NoEnvironments: Story = {
 // stays on the page (no column is hidden), and neither the page nor the table
 // scrolls sideways, so the restore hold, the next run and the expiry are all
 // readable without a gesture.
-async function expectNoSideScroll(canvas: ReturnType<typeof within>) {
-  const region = await canvas.findByRole('region', { name: 'Rotation list' });
-  await expect(region.scrollWidth).toBeLessThanOrEqual(region.clientWidth);
-  await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(document.documentElement.clientWidth);
+function expectNoSideScroll(canvasElement: HTMLElement) {
+  const scrollers = canvasElement.querySelectorAll('.table-scroll');
+  expect(scrollers.length).toBeGreaterThan(0);
+  for (const scroller of scrollers) expect(scroller.scrollWidth).toBeLessThanOrEqual(scroller.clientWidth);
+  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(document.documentElement.clientWidth);
 }
 
 export const PhoneCompactTable: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
-  play: async ({ canvas }) => {
+  play: async ({ canvas, canvasElement }) => {
     const table = await canvas.findByRole('table', { name: /credential rotations/ });
-    for (const text of ['Password key', 'Role name key', 'Provider', 'Schedule', 'Next run', 'Delivered credential expires', 'held: no run starts', 'Restore hold']) {
+    for (const text of ['Rotation', 'Password key', 'Role name key', 'Provider', 'Schedule', 'Next run', 'Delivered credential expires', 'Authority principal', 'Created by', 'Generation', 'Updated', 'Held after a restore: no run starts', 'Restore hold']) {
       await expect(within(table).getAllByText(new RegExp(text)).filter((node) => node.checkVisibility())[0]).toBeDefined();
     }
-    await expectNoSideScroll(canvas);
+    expectNoSideScroll(canvasElement);
     await userEvent.click(await canvas.findByRole('button', { name: 'Show runs of DATABASE_PASSWORD' }));
     const runs = await canvas.findByRole('table', { name: /Runs of this rotation/ });
     for (const text of ['Started', 'Last change', 'Published revision', 'Overlap', 'Adapter targets not converged', 'Owed role valid until', 'At least']) {
       await expect(within(runs).getAllByText(new RegExp(text)).filter((node) => node.checkVisibility())[0]).toBeDefined();
     }
-    await expectNoSideScroll(canvas);
+    expectNoSideScroll(canvasElement);
   },
 };
 
 // At desktop width the same tables hold every field without a sideways scroll too.
 export const DesktopNoSideScroll: Story = {
-  play: async ({ canvas }) => {
+  play: async ({ canvas, canvasElement }) => {
     await userEvent.click(await canvas.findByRole('button', { name: 'Show runs of DATABASE_PASSWORD' }));
     await canvas.findByRole('table', { name: /Runs of this rotation/ });
-    for (const region of await canvas.findAllByRole('region')) {
-      await expect(region.scrollWidth).toBeLessThanOrEqual(region.clientWidth);
-    }
+    expectNoSideScroll(canvasElement);
     await expect(canvas.getAllByText(/Owed role valid until/)[0]).toBeVisible();
   },
 };
