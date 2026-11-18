@@ -37,12 +37,15 @@ import (
 // Everything below goes through an os.Root opened on <dir>: no path the client
 // writes can escape the directory, the only symlinks followed are the ones the
 // client itself created inside it, and a foreign symlink or regular file at a
-// configured name is refused rather than replaced.
+// configured name is refused rather than replaced. .hikyo-gen is additionally
+// pinned by a second os.Root (see pinGen) that every generation operation
+// uses, so renaming or swapping the name afterwards cannot redirect them.
 
 const (
 	genDir        = ".hikyo-gen"
-	bindingFile   = genDir + "/binding"
-	currentLink   = genDir + "/current"
+	bindingName   = "binding"
+	currentName   = "current"
+	currentLink   = genDir + "/" + currentName
 	completeName  = ".complete"
 	previousName  = ".previous"
 	tmpLinkPrefix = ".hikyo-link-"
@@ -94,6 +97,7 @@ type Policy struct {
 type Destination struct {
 	dir  string
 	root *os.Root
+	gen  *os.Root // pinned .hikyo-gen, nil until pinGen succeeds
 	lock *os.File
 }
 
@@ -143,7 +147,11 @@ func OpenDestination(dir string, requireTmpfs bool) (*Destination, error) {
 
 // Close releases the lock and the root.
 func (d *Destination) Close() error {
-	return errors.Join(unlockDirectory(d.lock), d.root.Close())
+	var genErr error
+	if d.gen != nil {
+		genErr = d.gen.Close()
+	}
+	return errors.Join(unlockDirectory(d.lock), genErr, d.root.Close())
 }
 
 // Dir is the destination path.
@@ -194,7 +202,12 @@ type State struct {
 // a zero State and no error.
 func (d *Destination) Current() (State, error) {
 	var st State
-	binding, err := d.root.ReadFile(bindingFile)
+	if err := d.pinGen(); errors.Is(err, fs.ErrNotExist) {
+		return st, nil
+	} else if err != nil {
+		return st, err
+	}
+	binding, err := d.gen.ReadFile(bindingName)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		return st, nil
@@ -207,7 +220,7 @@ func (d *Destination) Current() (State, error) {
 		return st, err
 	}
 	st.Generation = gen
-	stamp, err := d.root.ReadFile(path.Join(genDir, gen, completeName))
+	stamp, err := d.gen.ReadFile(path.Join(gen, completeName))
 	if err != nil {
 		return st, fmt.Errorf("filesync: current generation %s is incomplete: %w", gen, err)
 	}
@@ -262,19 +275,14 @@ func (d *Destination) Intact(keys *crypto.LocalKeys, target string, policy Polic
 		if ok, err := d.linkIsOurs(name); err != nil || !ok {
 			return st, false, err
 		}
-		p := path.Join(genDir, st.Generation, name)
-		fi, err := d.root.Lstat(p)
-		if err != nil {
-			return st, false, err
-		}
-		if fi.Mode().Perm() != policy.Mode.Perm() || !ownedAs(fi, policy.UID, policy.GID) {
-			return st, false, nil
-		}
-		content, err := d.root.ReadFile(p)
+		fi, content, err := d.readGenFile(path.Join(st.Generation, name))
 		if err != nil {
 			return st, false, err
 		}
 		files = append(files, Rendered{Name: name, Content: content})
+		if fi.Mode().Perm() != policy.Mode.Perm() || !ownedAs(fi, policy.UID, policy.GID) {
+			return st, false, nil
+		}
 	}
 	return st, GenerationStamp(keys, target, policy, files) == st.Stamp, nil
 }
@@ -337,7 +345,7 @@ func (d *Destination) Publish(ctx context.Context, plan Plan, probe Probe) (Resu
 	// A previous attempt may have committed current before pruning. Its new
 	// manifest no longer lists removed names; exact managed links retain them.
 	desiredNames := sortedNames(plan.Files)
-	entries, err := d.readDir(".")
+	entries, err := d.readDir(d.root, ".")
 	if err != nil {
 		return res, err
 	}
@@ -391,11 +399,11 @@ func (d *Destination) Publish(ctx context.Context, plan Plan, probe Probe) (Resu
 	if err := d.stage(newGen, plan, probe, oldGen); err != nil {
 		// A staging failure (a full disk, a refused chown) removes the partial
 		// generation; `current` was never touched.
-		_ = d.root.RemoveAll(path.Join(genDir, newGen))
+		_ = d.gen.RemoveAll(newGen)
 		return res, err
 	}
 	if err := ctx.Err(); err != nil {
-		_ = d.root.RemoveAll(path.Join(genDir, newGen))
+		_ = d.gen.RemoveAll(newGen)
 		return res, fmt.Errorf("filesync: cancelled before commit: %w", err)
 	}
 	if probe != nil {
@@ -430,15 +438,15 @@ func (d *Destination) Publish(ctx context.Context, plan Plan, probe Probe) (Resu
 }
 
 func (d *Destination) predecessor(current string) (string, error) {
-	name := path.Join(genDir, current, previousName)
-	info, err := d.root.Lstat(name)
+	name := path.Join(current, previousName)
+	info, err := d.gen.Lstat(name)
 	if err != nil {
 		return "", err
 	}
 	if !info.Mode().IsRegular() || info.Size() > 64 {
 		return "", errors.New("filesync: invalid predecessor metadata")
 	}
-	file, err := d.root.Open(name)
+	file, err := d.gen.Open(name)
 	if err != nil {
 		return "", err
 	}
@@ -479,39 +487,40 @@ func (d *Destination) pruneRemoved(plan Plan, removed []string, res *Result) err
 // already belongs to another one: two bindings sharing a directory would
 // otherwise overwrite each other's `current`.
 func (d *Destination) claimBinding(target string) error {
-	fi, err := d.root.Lstat(genDir)
-	switch {
-	case errors.Is(err, fs.ErrNotExist):
+	err := d.pinGen()
+	if errors.Is(err, fs.ErrNotExist) {
 		if err := d.root.Mkdir(genDir, 0o711); err != nil {
 			return err
 		}
-		if err := d.writeFileSynced(bindingFile, []byte(target+"\n"), 0o600); err != nil {
+		if err := d.pinGen(); err != nil {
 			return err
 		}
-		if err := d.syncDir(genDir); err != nil {
+		if err := d.writeFileSynced(d.gen, bindingName, []byte(target+"\n"), 0o600); err != nil {
+			return err
+		}
+		if err := syncRootDir(d.gen, "."); err != nil {
 			return err
 		}
 		return d.syncDir(".")
-	case err != nil:
-		return err
-	case !fi.IsDir():
-		return fmt.Errorf("%w: %s is not a directory", ErrForeign, path.Join(d.dir, genDir))
 	}
-	raw, err := d.root.ReadFile(bindingFile)
+	if err != nil {
+		return err
+	}
+	raw, err := d.gen.ReadFile(bindingName)
 	if errors.Is(err, fs.ErrNotExist) {
 		// The binding is written right after the directory; a crash between
 		// the two leaves an empty directory the first run may claim.
-		entries, rerr := d.readDir(genDir)
+		entries, rerr := d.readDir(d.gen, ".")
 		if rerr != nil {
 			return rerr
 		}
 		if len(entries) > 0 {
 			return fmt.Errorf("%w: %s has no binding record", ErrForeign, path.Join(d.dir, genDir))
 		}
-		if err := d.writeFileSynced(bindingFile, []byte(target+"\n"), 0o600); err != nil {
+		if err := d.writeFileSynced(d.gen, bindingName, []byte(target+"\n"), 0o600); err != nil {
 			return err
 		}
-		return d.syncDir(genDir)
+		return syncRootDir(d.gen, ".")
 	}
 	if err != nil {
 		return err
@@ -522,6 +531,41 @@ func (d *Destination) claimBinding(target string) error {
 	return nil
 }
 
+// pinGen opens .hikyo-gen once and keeps the handle: every generation
+// operation goes through it, so a destination writer who renames or swaps the
+// name for a symlink afterwards cannot make a privileged chown, chmod or copy
+// land elsewhere. The directory must be this process's own and closed to group
+// and others; a pre-created one the recipient owns could have entries swapped
+// under the publisher. A missing directory returns an error wrapping
+// fs.ErrNotExist.
+func (d *Destination) pinGen() error {
+	if d.gen != nil {
+		return nil
+	}
+	fi, err := d.root.Lstat(genDir)
+	if err != nil {
+		return err
+	}
+	where := path.Join(d.dir, genDir)
+	if !fi.IsDir() {
+		return fmt.Errorf("%w: %s is not a directory", ErrForeign, where)
+	}
+	if !ownedByProcess(fi) || fi.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("%w: %s must be owned by this user and not writable by group or others", ErrForeign, where)
+	}
+	gen, err := d.root.OpenRoot(genDir)
+	if err != nil {
+		return err
+	}
+	opened, err := gen.Stat(".")
+	if err != nil || !os.SameFile(fi, opened) {
+		_ = gen.Close()
+		return fmt.Errorf("filesync: %s changed while it was being opened", where)
+	}
+	d.gen = gen
+	return nil
+}
+
 // recover removes what a crash can leave behind: a generation without its
 // .complete marker that `current` does not name, and temporary links.
 func (d *Destination) recover() error {
@@ -529,7 +573,7 @@ func (d *Destination) recover() error {
 	if err != nil {
 		return err
 	}
-	entries, err := d.readDir(genDir)
+	entries, err := d.readDir(d.gen, ".")
 	if err != nil {
 		return err
 	}
@@ -537,18 +581,18 @@ func (d *Destination) recover() error {
 		name := e.Name()
 		switch {
 		case strings.HasPrefix(name, "current.tmp-"):
-			if err := d.root.Remove(path.Join(genDir, name)); err != nil {
+			if err := d.gen.Remove(name); err != nil {
 				return err
 			}
 		case genGrammar.MatchString(name) && name != current:
-			if _, err := d.root.Lstat(path.Join(genDir, name, completeName)); errors.Is(err, fs.ErrNotExist) {
-				if err := d.root.RemoveAll(path.Join(genDir, name)); err != nil {
+			if _, err := d.gen.Lstat(path.Join(name, completeName)); errors.Is(err, fs.ErrNotExist) {
+				if err := d.gen.RemoveAll(name); err != nil {
 					return err
 				}
 			}
 		}
 	}
-	top, err := d.readDir(".")
+	top, err := d.readDir(d.root, ".")
 	if err != nil {
 		return err
 	}
@@ -567,7 +611,7 @@ func (d *Destination) recover() error {
 // currentGeneration reads the `current` link, refusing anything but a link to
 // a well-formed sibling generation.
 func (d *Destination) currentGeneration() (string, error) {
-	fi, err := d.root.Lstat(currentLink)
+	fi, err := d.gen.Lstat(currentName)
 	if errors.Is(err, fs.ErrNotExist) {
 		return "", nil
 	}
@@ -577,7 +621,7 @@ func (d *Destination) currentGeneration() (string, error) {
 	if fi.Mode()&fs.ModeSymlink == 0 {
 		return "", fmt.Errorf("%w: %s is not a link", ErrForeign, path.Join(d.dir, currentLink))
 	}
-	target, err := d.root.Readlink(currentLink)
+	target, err := d.gen.Readlink(currentName)
 	if err != nil {
 		return "", err
 	}
@@ -589,7 +633,7 @@ func (d *Destination) currentGeneration() (string, error) {
 
 // generationFiles lists a generation's published names, sorted.
 func (d *Destination) generationFiles(gen string) ([]string, error) {
-	entries, err := d.readDir(path.Join(genDir, gen))
+	entries, err := d.readDir(d.gen, gen)
 	if err != nil {
 		return nil, err
 	}
@@ -614,7 +658,7 @@ func (d *Destination) generationFiles(gen string) ([]string, error) {
 // the bytes identical but changes the stamp, and reusing the generation would
 // leave a .complete that Intact can never match again.
 func (d *Destination) generationMatches(gen string, plan Plan) (bool, error) {
-	stamp, err := d.root.ReadFile(path.Join(genDir, gen, completeName))
+	stamp, err := d.gen.ReadFile(path.Join(gen, completeName))
 	if err != nil {
 		return false, fmt.Errorf("filesync: generation %s is incomplete: %w", gen, err)
 	}
@@ -629,21 +673,13 @@ func (d *Destination) generationMatches(gen string, plan Plan) (bool, error) {
 		return false, nil
 	}
 	for _, f := range plan.Files {
-		p := path.Join(genDir, gen, f.Name)
-		fi, err := d.root.Lstat(p)
-		if err != nil {
-			return false, err
-		}
-		if fi.Mode().Perm() != plan.Policy.Mode.Perm() || !ownedAs(fi, plan.Policy.UID, plan.Policy.GID) {
-			return false, nil
-		}
-		got, err := d.root.ReadFile(p)
+		fi, got, err := d.readGenFile(path.Join(gen, f.Name))
 		if err != nil {
 			return false, err
 		}
 		same := bytes.Equal(got, f.Content)
 		crypto.Zero(got)
-		if !same {
+		if !same || fi.Mode().Perm() != plan.Policy.Mode.Perm() || !ownedAs(fi, plan.Policy.UID, plan.Policy.GID) {
 			return false, nil
 		}
 	}
@@ -654,24 +690,35 @@ func (d *Destination) generationMatches(gen string, plan Plan) (bool, error) {
 // with owner-only mode, chowned and chmodded BEFORE any byte is written, so
 // plaintext never exists under a wider mode or the wrong owner.
 func (d *Destination) stage(gen string, plan Plan, probe Probe, previous string) error {
-	dir := path.Join(genDir, gen)
-	if err := d.root.Mkdir(dir, 0o700); err != nil {
+	if err := d.gen.Mkdir(gen, 0o700); err != nil {
 		return err
 	}
+	// Pin the new generation: every write below and the final chown/chmod use
+	// these handles, never the name, so a swapped directory is not followed.
+	root, err := d.gen.OpenRoot(gen)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = root.Close() }()
+	dir, err := root.Open(".")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dir.Close() }()
 	for _, f := range plan.Files {
 		if probe != nil {
 			if err := probe.BeforeWrite(f.Name); err != nil {
 				return fmt.Errorf("filesync: write %s: %w", f.Name, err)
 			}
 		}
-		if err := d.writeOwned(path.Join(dir, f.Name), f.Content, plan.Policy); err != nil {
+		if err := d.writeOwned(root, f.Name, f.Content, plan.Policy); err != nil {
 			return fmt.Errorf("filesync: write %s: %w", f.Name, err)
 		}
 	}
-	if err := d.writeFileSynced(path.Join(dir, previousName), []byte(previous+"\n"), 0o600); err != nil {
+	if err := d.writeFileSynced(root, previousName, []byte(previous+"\n"), 0o600); err != nil {
 		return err
 	}
-	if err := d.writeFileSynced(path.Join(dir, completeName), []byte(plan.Stamp+"\n"), 0o600); err != nil {
+	if err := d.writeFileSynced(root, completeName, []byte(plan.Stamp+"\n"), 0o600); err != nil {
 		return err
 	}
 	// The generation directory must let the configured owner and group reach
@@ -681,28 +728,32 @@ func (d *Destination) stage(gen string, plan Plan, probe Probe, previous string)
 		dirMode = 0o750
 	}
 	if plan.Policy.UID >= 0 || plan.Policy.GID >= 0 {
-		if err := d.root.Chown(dir, plan.Policy.UID, plan.Policy.GID); err != nil {
+		if err := dir.Chown(plan.Policy.UID, plan.Policy.GID); err != nil {
 			return fmt.Errorf("filesync: chown generation: %w", err)
 		}
 	}
-	if err := d.root.Chmod(dir, dirMode); err != nil {
+	if err := dir.Chmod(dirMode); err != nil {
 		return err
 	}
-	if err := d.syncDir(dir); err != nil {
+	if err := dir.Sync(); err != nil {
 		return err
 	}
-	return d.syncDir(genDir)
+	return syncRootDir(d.gen, ".")
 }
 
 // ensureGenDirAccess keeps the shared generation directory independent from
 // any one generation's owner and mode. Execute-only access lets each
 // generation enforce its own policy without exposing the directory listing.
 func (d *Destination) ensureGenDirAccess() error {
-	return d.root.Chmod(genDir, 0o711)
+	f, err := d.gen.Open(".")
+	if err != nil {
+		return err
+	}
+	return errors.Join(f.Chmod(0o711), f.Close())
 }
 
-func (d *Destination) writeOwned(name string, content []byte, policy Policy) error {
-	f, err := d.root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+func (d *Destination) writeOwned(root *os.Root, name string, content []byte, policy Policy) error {
+	f, err := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
@@ -727,8 +778,8 @@ func (d *Destination) writeOwned(name string, content []byte, policy Policy) err
 	return f.Close()
 }
 
-func (d *Destination) writeFileSynced(name string, content []byte, perm os.FileMode) error {
-	f, err := d.root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, perm)
+func (d *Destination) writeFileSynced(root *os.Root, name string, content []byte, perm os.FileMode) error {
+	f, err := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, perm)
 	if err != nil {
 		return err
 	}
@@ -750,12 +801,10 @@ func (d *Destination) retain(gen, name string) error {
 	if err != nil || !ok {
 		return err
 	}
-	src := path.Join(genDir, gen, name)
-	fi, err := d.root.Lstat(src)
-	if err != nil {
-		return err
-	}
-	content, err := d.root.ReadFile(src)
+	// The recipient owns generation files and may have replaced this one with
+	// a symlink or hard link to something it cannot read; readGenFile refuses
+	// both, so only this generation's own bytes are copied.
+	fi, content, err := d.readGenFile(path.Join(gen, name))
 	if err != nil {
 		return err
 	}
@@ -766,7 +815,9 @@ func (d *Destination) retain(gen, name string) error {
 	}
 	tmp := retainPrefix + suffix + ".tmp"
 	uid, gid := ownerIDs(fi)
-	if err := d.writeOwned(tmp, content, Policy{Mode: fi.Mode().Perm(), UID: uid, GID: gid}); err != nil {
+	// A retained file is never wider than the config grammar allows (0640).
+	mode := fi.Mode().Perm() & (0o777 &^ forbiddenModeBits)
+	if err := d.writeOwned(d.root, tmp, content, Policy{Mode: mode, UID: uid, GID: gid}); err != nil {
 		_ = d.root.Remove(tmp)
 		return err
 	}
@@ -783,15 +834,15 @@ func (d *Destination) swapCurrent(gen string) error {
 	if err != nil {
 		return err
 	}
-	tmp := currentLink + ".tmp-" + suffix
-	if err := d.root.Symlink(gen, tmp); err != nil {
+	tmp := currentName + ".tmp-" + suffix
+	if err := d.gen.Symlink(gen, tmp); err != nil {
 		return err
 	}
-	if err := d.root.Rename(tmp, currentLink); err != nil {
-		_ = d.root.Remove(tmp)
+	if err := d.gen.Rename(tmp, currentName); err != nil {
+		_ = d.gen.Remove(tmp)
 		return err
 	}
-	return d.syncDir(genDir)
+	return syncRootDir(d.gen, ".")
 }
 
 // ensureLinks creates the stable per-name links that do not exist yet. Each is
@@ -846,7 +897,7 @@ func (d *Destination) linkIsOurs(name string) (bool, error) {
 // collect removes every generation except the new one and keptGenerations
 // predecessors (the old current).
 func (d *Destination) collect(newGen, oldGen string) error {
-	entries, err := d.readDir(genDir)
+	entries, err := d.readDir(d.gen, ".")
 	if err != nil {
 		return err
 	}
@@ -855,15 +906,44 @@ func (d *Destination) collect(newGen, oldGen string) error {
 		if !genGrammar.MatchString(name) || name == newGen || (keptGenerations > 0 && name == oldGen) {
 			continue
 		}
-		if err := d.root.RemoveAll(path.Join(genDir, name)); err != nil {
+		if err := d.gen.RemoveAll(name); err != nil {
 			return err
 		}
 	}
-	return d.syncDir(genDir)
+	return syncRootDir(d.gen, ".")
 }
 
-func (d *Destination) readDir(name string) ([]fs.DirEntry, error) {
-	f, err := d.root.Open(name)
+// readGenFile reads one generation file (path relative to .hikyo-gen)
+// through a single descriptor. It must be a regular file with one link and the
+// descriptor must be the file Lstat saw, so a symlink or hard link the
+// recipient planted in its own generation directory is refused, not followed.
+// The returned info is the descriptor's.
+func (d *Destination) readGenFile(name string) (fs.FileInfo, []byte, error) {
+	before, err := d.gen.Lstat(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !before.Mode().IsRegular() {
+		return nil, nil, fmt.Errorf("%w: %s in .hikyo-gen is not a regular file", ErrForeign, name)
+	}
+	f, err := d.gen.Open(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = f.Close() }()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, nil, err
+	}
+	if !os.SameFile(before, fi) || linkCount(fi) != 1 {
+		return nil, nil, fmt.Errorf("%w: %s in .hikyo-gen was replaced or is hard-linked", ErrForeign, name)
+	}
+	content, err := io.ReadAll(f)
+	return fi, content, err
+}
+
+func (d *Destination) readDir(root *os.Root, name string) ([]fs.DirEntry, error) {
+	f, err := root.Open(name)
 	if err != nil {
 		return nil, err
 	}
