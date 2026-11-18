@@ -79,6 +79,9 @@ func validateProviderOrigin(origin string) error {
 	if u.Hostname() == "" {
 		return fmt.Errorf("%w: origin must carry a host", domain.ErrInvalid)
 	}
+	if strings.Contains(u.Host, ",") {
+		return fmt.Errorf("%w: origin must name exactly one host", domain.ErrInvalid)
+	}
 	if strings.Trim(u.Path, "/") == "" {
 		return fmt.Errorf("%w: origin must name a database", domain.ErrInvalid)
 	}
