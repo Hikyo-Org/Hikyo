@@ -3,6 +3,7 @@
 package filesync
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io/fs"
@@ -14,6 +15,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 )
@@ -676,5 +678,340 @@ func TestEnsureLinksPreservesForeignEntries(t *testing.T) {
 	got, err := os.ReadFile(filepath.Join(f.dir, "a"))
 	if err != nil || string(got) != "foreign" {
 		t.Fatalf("foreign entry changed: %q, %v", got, err)
+	}
+}
+
+// genDirEntries lists the generation directories under .hikyo-gen.
+func genDirEntries(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(dir, genDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, e := range entries {
+		if genGrammar.MatchString(e.Name()) {
+			out = append(out, e.Name())
+		}
+	}
+	return out
+}
+
+func TestPublishRefusesUnsafeGenDir(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	gen := filepath.Join(f.dir, genDir)
+	if err := os.Mkdir(gen, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// Mkdir is subject to the umask; widen explicitly.
+	if err := os.Chmod(gen, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.publish(nil, file("a", "1")); !errors.Is(err, ErrForeign) {
+		t.Fatalf("group/other-writable %s: %v", genDir, err)
+	}
+	if _, err := os.Lstat(filepath.Join(f.dir, "a")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatal("published into an unsafe generation directory")
+	}
+}
+
+func TestPublishRefusesForeignOwnedGenDir(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() != 0 {
+		t.Skip("assigning a foreign owner needs root")
+	}
+	f := newFixture(t)
+	gen := filepath.Join(f.dir, genDir)
+	if err := os.Mkdir(gen, 0o711); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chown(gen, 4242, 4243); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.publish(nil, file("a", "1")); !errors.Is(err, ErrForeign) {
+		t.Fatalf("recipient-owned %s: %v", genDir, err)
+	}
+}
+
+// swapProbe replaces the staging generation directory with a symlink to
+// victim (a directory inside the destination) once staging has begun, the way
+// a recipient with write access to the destination would.
+type swapProbe struct {
+	faultProbe
+	t      *testing.T
+	dir    string
+	victim string
+	done   bool
+}
+
+func (p *swapProbe) BeforeWrite(string) error {
+	if p.done {
+		return nil
+	}
+	p.done = true
+	gens := genDirEntries(p.t, p.dir)
+	if len(gens) != 1 {
+		p.t.Fatalf("staging generations = %v", gens)
+	}
+	staged := filepath.Join(p.dir, genDir, gens[0])
+	if err := os.Rename(staged, staged+"-moved"); err != nil {
+		p.t.Fatal(err)
+	}
+	return os.Symlink(filepath.Join("..", p.victim), staged)
+}
+
+func TestPublishGenerationSwapDoesNotChmodTarget(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	victim := filepath.Join(f.dir, "victim")
+	if err := os.Mkdir(victim, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(victim, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	probe := &swapProbe{t: t, dir: f.dir, victim: "victim"}
+	_, _ = f.publish(probe, file("a", "1"))
+	if !probe.done {
+		t.Fatal("probe never ran")
+	}
+	fi, err := os.Stat(victim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o755 {
+		t.Fatalf("victim directory mode = %v; the publisher followed the swapped generation symlink", fi.Mode().Perm())
+	}
+	if entries, _ := os.ReadDir(victim); len(entries) != 0 {
+		t.Fatalf("publisher wrote %d entries through the swapped generation symlink", len(entries))
+	}
+}
+
+// retainFixture publishes a and b, then returns the path of b inside the
+// current generation, ready for a retain-on-removed publication of a alone.
+func retainFixture(t *testing.T) (*fixture, string) {
+	t.Helper()
+	f := newFixture(t)
+	f.mustPublish(file("a", "A"), file("b", "B"))
+	f.pol.OnRemoved = RemovedRetain
+	gen, err := os.Readlink(filepath.Join(f.dir, currentLink))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return f, filepath.Join(f.dir, genDir, gen, "b")
+}
+
+func assertNotLeaked(t *testing.T, f *fixture, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("retain accepted a planted generation entry")
+	}
+	if fi, lerr := os.Lstat(filepath.Join(f.dir, "b")); lerr == nil && fi.Mode().IsRegular() {
+		t.Fatalf("regular file b was materialized: %q", f.read("b"))
+	}
+}
+
+type beforeCommitProbe struct {
+	faultProbe
+	run func()
+}
+
+func (p *beforeCommitProbe) BeforeCommit() error { p.run(); return nil }
+
+func TestRetainRefusesSymlinkPlantedInOldGeneration(t *testing.T) {
+	t.Parallel()
+	f, old := retainFixture(t)
+	secret := filepath.Join(f.dir, "secret")
+	if err := os.WriteFile(secret, []byte("ROOT-ONLY"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Planted after generationFiles has accepted the generation and before
+	// retain copies it.
+	probe := &beforeCommitProbe{run: func() {
+		if err := os.Remove(old); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join("..", "..", "secret"), old); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	_, err := f.publish(probe, file("a", "A2"))
+	assertNotLeaked(t, f, err)
+}
+
+func TestRetainRefusesHardLinkInOldGeneration(t *testing.T) {
+	t.Parallel()
+	f, old := retainFixture(t)
+	secret := filepath.Join(f.dir, "secret")
+	if err := os.WriteFile(secret, []byte("ROOT-ONLY"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(old); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(secret, old); err != nil {
+		t.Fatal(err)
+	}
+	_, err := f.publish(nil, file("a", "A2"))
+	assertNotLeaked(t, f, err)
+}
+
+func TestRetainCapsModeAtConfigLimit(t *testing.T) {
+	t.Parallel()
+	f, old := retainFixture(t)
+	if err := os.Chmod(old, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.publish(nil, file("a", "A2")); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Lstat(filepath.Join(f.dir, "b"))
+	if err != nil || !fi.Mode().IsRegular() {
+		t.Fatalf("retained b = %v %v", fi, err)
+	}
+	if fi.Mode().Perm() != 0o640 {
+		t.Fatalf("retained mode = %v, want the 0640 cap", fi.Mode().Perm())
+	}
+}
+
+// currentGenPath is the path of name inside the current generation.
+func currentGenPath(t *testing.T, f *fixture, name string) (gen, p string) {
+	t.Helper()
+	gen, err := os.Readlink(filepath.Join(f.dir, genDir, currentName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return gen, filepath.Join(f.dir, genDir, gen, name)
+}
+
+func TestPublishRepublishesOverHardLinkPlantedInCurrentGeneration(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.mustPublish(file("a", "A"))
+	_, planted := currentGenPath(t, f, "a")
+	secret := filepath.Join(f.dir, "secret")
+	if err := os.WriteFile(secret, []byte("ROOT-ONLY"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(planted); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(secret, planted); err != nil {
+		t.Fatal(err)
+	}
+	res, err := f.publish(nil, file("a", "A"))
+	if err != nil || !res.Changed {
+		t.Fatalf("publish over a planted hard link = %+v, %v; want a fresh generation", res, err)
+	}
+	if got := f.read("a"); got != "A" {
+		t.Fatalf("a = %q, want the published content", got)
+	}
+}
+
+func TestRetainFailureDoesNotLeakStagedGeneration(t *testing.T) {
+	t.Parallel()
+	f, old := retainFixture(t)
+	oldGen, _ := currentGenPath(t, f, "b")
+	secret := filepath.Join(f.dir, "secret")
+	if err := os.WriteFile(secret, []byte("ROOT-ONLY"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(old); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(secret, old); err != nil {
+		t.Fatal(err)
+	}
+	// Every poll fails the same way; none may leave another plaintext generation.
+	for range 3 {
+		if _, err := f.publish(nil, file("a", "A2")); err == nil {
+			t.Fatal("retain accepted a hard-linked generation entry")
+		}
+		assertOnlyGenerations(t, f.dir, oldGen)
+	}
+}
+
+// bounded runs fn and fails the test, instead of hanging the suite, when a
+// planted FIFO makes it block.
+func bounded(t *testing.T, fn func()) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() { defer close(done); fn() }()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("blocked on a recipient-planted FIFO")
+	}
+}
+
+func plantFIFO(t *testing.T, f *fixture, name string) {
+	t.Helper()
+	_, p := currentGenPath(t, f, name)
+	if err := os.Remove(p); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(p, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFIFOInPlaceOfCompleteMarkerDoesNotBlock(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.mustPublish(file("a", "A"))
+	plantFIFO(t, f, completeName)
+	bounded(t, func() {
+		d, err := OpenDestination(f.dir, false)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer func() { _ = d.Close() }()
+		if _, err := d.Current(); !errors.Is(err, ErrForeign) {
+			t.Errorf("Current over a FIFO marker = %v, want ErrForeign", err)
+		}
+	})
+	bounded(t, func() {
+		if res, err := f.publish(nil, file("a", "A")); err != nil || !res.Changed {
+			t.Errorf("publish over a FIFO marker = %+v, %v; want a fresh generation", res, err)
+		}
+	})
+}
+
+func TestFIFOInPlaceOfPreviousMarkerDoesNotBlock(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.mustPublish(file("a", "A"))
+	plantFIFO(t, f, previousName)
+	bounded(t, func() {
+		if res, err := f.publish(nil, file("a", "A")); err != nil || !res.Changed {
+			t.Errorf("publish over a FIFO predecessor = %+v, %v; want a fresh generation", res, err)
+		}
+	})
+}
+
+func TestOversizedMarkerIsForeignAndRepublished(t *testing.T) {
+	t.Parallel()
+	for _, marker := range []string{completeName, previousName} {
+		f := newFixture(t)
+		f.mustPublish(file("a", "A"))
+		_, p := currentGenPath(t, f, marker)
+		if err := os.WriteFile(p, bytes.Repeat([]byte("x"), markerLimit+1), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if marker == completeName {
+			d, err := OpenDestination(f.dir, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := d.Current(); !errors.Is(err, ErrForeign) {
+				t.Errorf("Current over an oversized marker = %v, want ErrForeign", err)
+			}
+			_ = d.Close()
+		}
+		if res, err := f.publish(nil, file("a", "A")); err != nil || !res.Changed {
+			t.Errorf("publish over an oversized %s = %+v, %v; want a fresh generation", marker, res, err)
+		}
 	}
 }
