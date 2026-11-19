@@ -26,6 +26,12 @@ func TestClientPackagesStayOffTheCLIAndServer(t *testing.T) {
 		module + "/internal/app",
 		module + "/internal/authz",
 		module + "/internal/webui",
+		module + "/internal/mcpserver",
+		module + "/internal/operator",
+		module + "/internal/pki",
+		module + "/internal/updater",
+		module + "/internal/importer",
+		module + "/internal/compose",
 		module + "/cmd",
 	}
 	for _, goos := range []string{"linux", "darwin", "windows"} {

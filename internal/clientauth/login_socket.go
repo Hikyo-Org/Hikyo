@@ -6,6 +6,8 @@ import (
 	"syscall"
 )
 
+// ListenLoopback binds an ephemeral 127.0.0.1 TCP port with address reuse
+// disabled before bind, so no other process can share the callback port.
 func ListenLoopback(ctx context.Context) (net.Listener, error) {
 	config := net.ListenConfig{Control: func(_, _ string, raw syscall.RawConn) error {
 		var optionError error

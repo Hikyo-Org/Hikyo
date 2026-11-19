@@ -44,6 +44,7 @@ type FieldError struct{ error }
 
 func (e FieldError) Unwrap() error { return e.error }
 
+// UnmarshalJSON refuses any value other than "spki" or "system-ca".
 func (m *Mode) UnmarshalJSON(raw []byte) error {
 	var value string
 	if err := json.Unmarshal(raw, &value); err != nil {
@@ -56,6 +57,7 @@ func (m *Mode) UnmarshalJSON(raw []byte) error {
 	return nil
 }
 
+// UnmarshalJSON refuses any value other than "compat" or "strict".
 func (p *Profile) UnmarshalJSON(raw []byte) error {
 	var value string
 	if err := json.Unmarshal(raw, &value); err != nil {
