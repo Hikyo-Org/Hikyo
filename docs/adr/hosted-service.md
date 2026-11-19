@@ -12,7 +12,7 @@ Context: the locked ADRs describe one trusted operator, 1 to 3 orgs, and a full 
 
 ## Vocabulary
 
-The [glossary](../../GLOSSARY.md) settles these terms. On 2026-11-19, round 1 of [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334) renamed three terms in this ADR, with no change in meaning: "installation" became **instance**, "Managed" became **Standard** and "holder" became **key holder**.
+The [glossary](../../GLOSSARY.md) settles these terms. On 2026-11-19, round 1 of [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334) renamed terms in this ADR, with no change in meaning: "installation" became **instance**, "Managed" became **Standard**, "holder" became **key holder**, and "holder secret" and "presented key" became **holder key**.
 
 - **Instance**: one running Hikyo service, made up of its datastore, its root key and its server nodes. This ADR avoids "pod", which already has a meaning in the [k8s-integration ADR](./k8s-integration.md).
 - **Org**: unchanged. The tenant boundary and the billing customer.

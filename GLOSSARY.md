@@ -30,8 +30,7 @@ A retired word is a word that Hikyo's own copy no longer uses for that meaning. 
 - **Third-party names.** A third-party name keeps its own spelling, for example a GitHub organization.
 - **Managed configuration.** "Managed" left the protection mode because it collides with managed configuration.
 - **Operator as software.** "Operator" still names software, for example the Kubernetes operator. It does not name a person.
-- **The `operator` template.** The shipped `operator` role template keeps its name. It is an identifier.
-- **Identifiers.** The shipped sealed webhook keeps its identifiers, for example `HIKYO_SEALED_WEBHOOK_FILE`, until the rename change merges. Key names such as `sealedSlotKey` and `holderTransitKey` stay until round 2 settles them.
+- **Identifiers.** The shipped sealed webhook keeps its identifiers, for example `HIKYO_SEALED_WEBHOOK_FILE`, until the rename change merges. Key names such as `sealedSlotKey` and `holderTransitKey` stay until round 2 settles them. The `operator` role template keeps its name.
 
 ## Open terms (round 2)
 
