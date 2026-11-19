@@ -2348,6 +2348,41 @@ fieldset.field > legend {
   box-shadow: -1px 0 0 0 var(--sticky-bg);
 }
 
+/* A column's resize handle (ColumnResizer, Matrix.tsx) on its header's
+   trailing edge, inside the cell so the next sticky header never covers it. */
+.matrix__resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--space-2);
+  cursor: col-resize;
+  /* A drag on the handle resizes; it must not scroll the matrix instead. */
+  touch-action: none;
+}
+
+.matrix__resizer::after {
+  position: absolute;
+  top: 25%;
+  right: 2px;
+  bottom: 25%;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--line);
+  content: '';
+}
+
+.matrix__resizer:hover::after,
+.matrix__resizer:active::after {
+  background: var(--accent);
+}
+
+@media (pointer: coarse) {
+  .matrix__resizer {
+    width: var(--hit-min);
+  }
+}
+
 /* The environment chooser opens out of the sticky key header. Keep that
    header above later sticky row headings so its menu remains clickable. */
 .matrix__table thead th:first-child {
@@ -3225,6 +3260,15 @@ fieldset.field > legend {
      than an edge to mark. Key rows only, this width only. */
   .matrix__table tbody > tr.matrix__key-row > th:first-child {
     border-right: 1px solid color-mix(in oklch, var(--line), var(--accent) 25%);
+  }
+
+  /* A key column the user widened past icon-only (ColumnResizer) shows
+     names again: the link takes the column, left-aligned and ellipsised. */
+  .matrix__table--key-names .matrix__key {
+    width: auto;
+    max-width: 100%;
+    padding-inline: var(--space-2);
+    text-align: left;
   }
 
   /* With the text clipped out of flow, the heading's one remaining visible

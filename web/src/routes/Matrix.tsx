@@ -294,6 +294,17 @@ export function Matrix({
   // into the head row above the table.
   const phone = useMediaQuery(`(max-width: ${String(BREAKPOINTS.phone)}px)`);
 
+  // Column widths the user dragged (ColumnResizer). Widening the key column
+  // past icon-only brings the key names back on a phone.
+  const [keyWidth, setKeyWidth] = useState<number>();
+  const [environmentWidths, setEnvironmentWidths] = useState<ReadonlyMap<string, number>>(new Map());
+  const keyNamesShown = !phone || (keyWidth !== undefined && keyWidth >= KEY_NAME_WIDTH);
+  const resizeKeyColumn = (width: number) => {
+    // The sticky column must leave a touch target of the scrolled values beside it.
+    const max = (matrixScroll.current?.clientWidth ?? width) - TOUCH;
+    setKeyWidth(Math.max(phone ? TOUCH : KEY_DESKTOP_MIN, Math.min(max, width)));
+  };
+
   // The legend and environment-picker are native <details> popovers. Native
   // <details> only close by re-clicking their summary, so, like the prototype's
   // popovers, close them on an outside pointer-down or Escape. Opening one this
@@ -1146,11 +1157,14 @@ export function Matrix({
           ) : (
             <div className="matrix__scroll" ref={matrixScroll}>
               <table
-                className="matrix__table"
+                className={phone && keyNamesShown ? 'matrix__table matrix__table--key-names' : 'matrix__table'}
                 ref={matrixTable}
                 // The key column compacts when the environments' nominal widths
                 // leave it less than its full width (app.css, .matrix__table).
-                style={{ '--env-count': visibleEnvironments.length } as CSSProperties}
+                style={{
+                  '--env-count': visibleEnvironments.length,
+                  ...(keyWidth === undefined ? {} : { '--matrix-key': `${String(keyWidth)}px` }),
+                } as CSSProperties}
               >
                 <thead ref={setMatrixHead}>
                   <tr>
@@ -1165,6 +1179,7 @@ export function Matrix({
                         <span className="visually-hidden-phone">Key</span>
                         {phone ? null : environmentPicker}
                       </div>
+                      <ColumnResizer onResize={resizeKeyColumn} />
                     </th>
                     {visibleEnvironments.map((environment) => {
                       const revision = revisionsByEnvironment.get(environment.id);
@@ -1173,7 +1188,12 @@ export function Matrix({
                         <th
                           scope="col"
                           key={environment.id}
-                          style={{ '--chars': longestByEnvironment.get(environment.id)?.length ?? 0 } as CSSProperties}
+                          style={{
+                            '--chars': longestByEnvironment.get(environment.id)?.length ?? 0,
+                            // min-width too: an overflowing table otherwise shrinks it back toward the header.
+                            width: environmentWidths.get(environment.id),
+                            minWidth: environmentWidths.get(environment.id),
+                          } as CSSProperties}
                         >
                           <span>{environment.name}</span>
                           {/* DESIGN.md: the protected state is named in text, in
@@ -1213,6 +1233,11 @@ export function Matrix({
                               <span className="btn__label">{`rev ${String(revision)} · history`}</span>
                             </Link>
                           )}
+                          <ColumnResizer
+                            onResize={(width) => {
+                              setEnvironmentWidths((current) => new Map(current).set(environment.id, width));
+                            }}
+                          />
                         </th>
                       );
                     })}
@@ -1329,7 +1354,7 @@ export function Matrix({
                           <MatrixKeyLink
                             keyRecord={key}
                             to={keyDetailLink(key.id)}
-                            phone={phone}
+                            iconOnly={!keyNamesShown}
                             onOpen={(anchor) => {
                               keyDetailOpener.current = anchor;
                             }}
@@ -1685,17 +1710,18 @@ function useMediaQuery(query: string): boolean {
  * link's accessible name is unchanged, and `event.detail` is 0 for a
  * keyboard-triggered click, so Enter always activates it directly.
  *
- * Above the phone breakpoint the popover never opens and a click navigates.
+ * With the name shown (above the phone breakpoint, or a key column widened
+ * past icon-only) the popover never opens and a click navigates.
  */
 function MatrixKeyLink({
   keyRecord,
   to,
-  phone,
+  iconOnly,
   onOpen,
 }: {
   keyRecord: MatrixKey;
   to: string;
-  phone: boolean;
+  iconOnly: boolean;
   onOpen: (anchor: HTMLAnchorElement) => void;
 }) {
   const link = useRef<HTMLAnchorElement>(null);
@@ -1729,7 +1755,7 @@ function MatrixKeyLink({
     }, { signal });
   };
   const previewOnHover = () => {
-    if (phone && window.matchMedia('(hover: hover)').matches) openTip();
+    if (iconOnly && window.matchMedia('(hover: hover)').matches) openTip();
   };
 
   return (
@@ -1748,7 +1774,7 @@ function MatrixKeyLink({
         }}
         onBlur={closeTip}
         onClick={(event: MouseEvent<HTMLAnchorElement>) => {
-          if (phone && event.detail > 0 && !tipOpen()) {
+          if (iconOnly && event.detail > 0 && !tipOpen()) {
             event.preventDefault();
             openTip();
             return;
@@ -1762,12 +1788,49 @@ function MatrixKeyLink({
         ) : (
           <><Glyph name="config" className="matrix__key-glyph--config" /> </>
         )}
-        <span className="matrix__key-name visually-hidden-phone">{keyRecord.name}</span>
+        <span className={iconOnly ? 'matrix__key-name visually-hidden' : 'matrix__key-name'}>{keyRecord.name}</span>
       </Link>
       <span ref={tip} popover="manual" className="matrix__key-tip" aria-hidden="true">
         {keyRecord.name}
       </span>
     </>
+  );
+}
+
+/** `--touch` (tokens.css): the icon-only phone key column's width. */
+const TOUCH = 44;
+/** The desktop key column's floor: its header's Key label and envs picker. */
+const KEY_DESKTOP_MIN = 160;
+/** A phone key column at least this wide shows key names, not icons only. */
+const KEY_NAME_WIDTH = 2 * TOUCH;
+
+/**
+ * A drag handle (mouse, pen or touch) on a header cell's trailing edge,
+ * reporting that cell's new width. Pointer-only and hidden from assistive
+ * technology: inside the header it would join the column's accessible name,
+ * and what widening reveals (a key's name, a long value) is already each
+ * link's and cell's accessible name.
+ */
+function ColumnResizer({ onResize }: { onResize: (width: number) => void }) {
+  const drag = useRef<{ x: number; width: number } | null>(null);
+  const end = () => {
+    drag.current = null;
+  };
+  return (
+    <span
+      aria-hidden="true"
+      className="matrix__resizer"
+      onPointerDown={(event: PointerEvent<HTMLSpanElement>) => {
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        drag.current = { x: event.clientX, width: event.currentTarget.parentElement?.getBoundingClientRect().width ?? 0 };
+      }}
+      onPointerMove={(event: PointerEvent<HTMLSpanElement>) => {
+        if (drag.current !== null) onResize(Math.max(TOUCH, drag.current.width + event.clientX - drag.current.x));
+      }}
+      onPointerUp={end}
+      onPointerCancel={end}
+    />
   );
 }
 

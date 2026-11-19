@@ -862,6 +862,50 @@ export const PhoneCompactKeyColumn: Story = {
   },
 };
 
+// A phone's key column widens on demand (ColumnResizer): past twice the touch
+// target the names come back and a tap opens the declaration directly. An
+// environment column resizes the same way.
+export const PhoneWidenedKeyColumn: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ canvas, canvasElement }) => {
+    const link = await canvas.findByRole('link', { name: 'Declaration of DATABASE_READ_REPLICA_URL, secret' });
+    const heading = canvasElement.querySelector<HTMLElement>('.matrix__table thead th:first-child');
+    const nameSpan = link.querySelector('.matrix__key-name');
+    if (heading === null || nameSpan === null) throw new Error('key heading or name missing');
+    await expect(nameSpan.getBoundingClientRect().width).toBeLessThanOrEqual(1);
+    // The handle joins neither the header's accessible name nor the tab order.
+    await expect(heading).toHaveAccessibleName('Key');
+
+    const dragBy = async (handle: Element | null | undefined, dx: number) => {
+      if (handle === null || handle === undefined) throw new Error('resize handle missing');
+      const box = handle.getBoundingClientRect();
+      const at = { clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 };
+      await userEvent.pointer([
+        { keys: '[MouseLeft>]', target: handle, coords: at },
+        { target: handle, coords: { ...at, clientX: at.clientX + dx } },
+        { keys: '[/MouseLeft]', target: handle },
+      ]);
+    };
+
+    await dragBy(heading.querySelector('.matrix__resizer'), 140);
+    await waitFor(() => expect(heading.getBoundingClientRect().width).toBeGreaterThanOrEqual(180));
+    await expect(nameSpan.getBoundingClientRect().width).toBeGreaterThan(40);
+    await expect(link).toHaveAccessibleName('Declaration of DATABASE_READ_REPLICA_URL, secret');
+    // The sticky column never covers the whole well.
+    await expect(heading.getBoundingClientRect().width).toBeLessThan(canvasElement.querySelector('.matrix__scroll')?.clientWidth ?? 0);
+
+    // Narrowed back to icon-only, the name hides again.
+    await dragBy(heading.querySelector('.matrix__resizer'), -400);
+    await waitFor(() => expect(heading.getBoundingClientRect().width).toBeLessThanOrEqual(48));
+    await expect(nameSpan.getBoundingClientRect().width).toBeLessThanOrEqual(1);
+
+    const envHeading = canvas.getByRole('columnheader', { name: /^development/ });
+    const before = envHeading.getBoundingClientRect().width;
+    await dragBy(envHeading.querySelector('.matrix__resizer'), 32);
+    await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeCloseTo(before + 32, 0));
+  },
+};
+
 // Two columns degraded in place (#451): production's reads denied, staging's
 // failed. The grid stays up; those cells read `· unreadable`.
 export const Degraded: Story = {
