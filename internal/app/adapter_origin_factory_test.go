@@ -20,7 +20,7 @@ func TestAdapterFactoryHoldsLegacyOriginsBeforeProviderConstruction(t *testing.T
 		{adapter.CloudflareProvider, ""},
 		{adapter.VaultKVProvider, "https://vault.example:443/Team"},
 		{adapter.AWSSecretsManagerProvider, "https://secretsmanager.us-east-1.amazonaws.com/"},
-		{adapter.SealedWebhookProvider, "https://receiver.example/"},
+		{adapter.EncryptedWebhookProvider, "https://receiver.example/"},
 	} {
 		t.Run(string(tc.provider), func(t *testing.T) {
 			calls := 0
