@@ -66,8 +66,9 @@ echo "$HOME/.cosign" >>"$GITHUB_PATH"
 `
 )
 
-// The frozen steps below restore literal versions. Lock the pin files to the
-// same values first, so a changed pin cannot hide behind the restored step.
+// Lock the pin files to these reviewed values, so a changed pin cannot hide
+// behind the frozen steps below. Those steps keep the literal versions their
+// digest was taken from (kind v0.32.0), which may predate the current pin.
 var frozenToolPins = map[string][2]string{
 	"shellcheck-linux-x86_64": {"https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz", "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198"},
 	"kind-linux-amd64":        {"https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64", "aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d"},

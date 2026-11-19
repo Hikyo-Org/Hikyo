@@ -9,21 +9,27 @@ dependency was compared against its registry's latest release.
 - pnpm 11.24.0 → 12.21.0 in every `packageManager`, the setup docs and the CI
   version fixtures. Corepack 0.35.0 provisions it unchanged. Lockfiles keep
   format 9.0 and gain a `packageManagerDependencies` document; no resolved
-  dependency changed. `export-pnpm-cache.sh` now requires `12.*` (the store path
+  dependency changed. The private root package now has a `pnpm-lock.yaml`:
+  pnpm 12 records the `packageManager` pin there on any root invocation, and
+  `--frozen-lockfile` fails without it. `export-pnpm-cache.sh` now requires `12.*` (the store path
   is still `v11`).
-- pnpm 12 injects an ESM resolve hook through `NODE_OPTIONS` into `pnpm run`
-  scripts. `clients/ts/src/installJsonParser.test.ts` spawned a child node outside
+- With the global virtual store (`virtualStoreType: global`), pnpm 12 injects an
+  ESM resolve hook through `NODE_OPTIONS` into `pnpm run` scripts. `clients/ts/src/installJsonParser.test.ts` spawned a child node outside
   any package and failed with `ERR_REQUIRE_CYCLE_MODULE`; the child now runs
   without the inherited `NODE_OPTIONS`.
-- Actions: `setup-node` v7.1.0, `configure-pages` v6.0.0, `deploy-pages` v5.0.1.
-  The release notes list only the Node 24 runtime and removal of the dummy
-  `NODE_AUTH_TOKEN`; no workflow sets `registry-url`. The frozen coverage digest
-  gained the matching setup-node pair.
+- Actions: `configure-pages` v6.0.0 and `deploy-pages` v5.0.1; their release
+  notes list only the Node 24 runtime.
+- `setup-node` v7.1.0 lands separately through a `hotfix/` PR to `main`:
+  `ci.yml` is a CI definition that dev admission refuses, and the storybook and
+  feedback workflows must mirror its setup-node step. v7 only drops the dummy
+  `NODE_AUTH_TOKEN`, and no workflow sets `registry-url`. That PR also adds the
+  setup-node pair to the frozen coverage digest. A main-to-dev backmerge brings it here.
 - kind v0.32.0 → v0.33.0. The `kindest/node` image moves within Kubernetes 1.36
   (v1.36.1 → v1.36.4, the digest from the v0.33.0 release notes); the default
   1.37 image was not adopted.
-- Go: cel-go v0.30.0, x/net v0.63.0, x/tools v0.53.0 (from a pseudo-version, also
-  in `go-tool-modules.txt` and the goimports pin), x/vuln v1.10.0,
+- Go: cel-go v0.31.0 (the last release under `github.com/google/cel-go`),
+  x/net v0.63.0, x/tools v0.53.0 (from a pseudo-version, also in
+  `go-tool-modules.txt` and the goimports pin), x/vuln v1.10.0,
   controller-tools v0.23.0 (CRDs differ only in the generator annotation) and
   standard-webhooks v1.3.0 (source compatible; it now rejects empty secrets,
   which the OIDC call sites already guard).
@@ -34,6 +40,9 @@ dependency was compared against its registry's latest release.
   its receipts and `docs/site/.../mcp.mdx` bind the recorded authenticated Codex
   proof to that exact version; moving it needs a new authenticated run.
 - go-jose v5 has no tagged release, only a pseudo-version.
+- cel-go v0.32.0+ moved to `cel.dev/cel-go`. `k8s.io/apiserver` still imports
+  `github.com/google/cel-go`, so moving the admission tests would evaluate CEL
+  with a different library than the API server they model.
 - Node stays on 26.x (27 is alpha); Postgres stays 18 (19 is a release candidate).
 - `docs/site` stays on TypeScript 6.0.3 and `clients/ts` keeps the
   `@typescript/typescript6` alias. Both were retested from scratch on TS 7.0.2:

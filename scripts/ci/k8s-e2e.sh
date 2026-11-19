@@ -3,8 +3,9 @@
 # real Helm install/readiness suite. Keeping both behind the existing k8s-e2e
 # required job lets trusted base-branch CI execute a PR-head chart gate even in
 # the same PR that introduces or changes the gate. The `kind`
-# binary comes from PATH; the node image is digest-pinned to the default for the
-# pinned kind release (v0.33.0), so the API-server version is reproducible.
+# binary comes from PATH; the node image is digest-pinned to the Kubernetes 1.36
+# image published for the pinned kind release (v0.33.0, whose default is 1.37),
+# so the API-server version is reproducible.
 #
 # The cluster is created fresh and deleted in a trap. It never adopts or deletes
 # a pre-existing `hikyo-e2e` cluster: a parallel session might own it, and
