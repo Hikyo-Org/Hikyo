@@ -528,7 +528,7 @@ export const EmptyFolderSuggestion: Story = {
 
 // The sticky key column at a laptop width (760px, still the desktop layout):
 // three environments leave it less than its full 236px, so it compacts to its
-// 160px floor and a long name ellipsises, while the row title and the link's
+// 188px floor and a long name ellipsises, while the row title and the link's
 // accessible name keep the full name. The environment columns give up their
 // spare width (the filler goes to 0) and the table scrolls in its own well.
 export const CompactKeyColumn: Story = {
@@ -540,13 +540,16 @@ export const CompactKeyColumn: Story = {
     const keyCell = link.closest('th');
     const heading = canvasElement.querySelector<HTMLElement>('.matrix__table thead th:first-child');
     if (keyCell === null || heading === null) throw new Error('key column missing');
-    await expect(Math.abs(heading.getBoundingClientRect().width - 160)).toBeLessThanOrEqual(1);
-    await expect(Math.abs(keyCell.getBoundingClientRect().width - 160)).toBeLessThanOrEqual(1);
+    await expect(Math.abs(heading.getBoundingClientRect().width - 188)).toBeLessThanOrEqual(1);
+    await expect(Math.abs(keyCell.getBoundingClientRect().width - 188)).toBeLessThanOrEqual(1);
     await expect(getComputedStyle(link).textOverflow).toBe('ellipsis');
     await expect(link.scrollWidth).toBeGreaterThan(link.clientWidth);
     await expect(keyCell).toHaveAttribute('title', name);
-    // The envs picker still fits beside "Key" at the floor.
-    await expect(heading.querySelector('.matrix__environment-picker')).not.toBeNull();
+    // The envs picker still fits beside "Key" at the floor, clear of the resize handle.
+    const picker = heading.querySelector('.matrix__environment-picker');
+    const handle = heading.querySelector('.matrix__resizer');
+    if (picker === null || handle === null) throw new Error('envs picker or resize handle missing');
+    await expect(picker.getBoundingClientRect().right).toBeLessThanOrEqual(handle.getBoundingClientRect().left + 0.5);
     // Short of room: the table scrolls, the filler has nothing left, and a
     // value ellipsises rather than widening its column.
     const { overflows, truncated, fillerWidth } = await expectColumnLayout(canvasElement);
@@ -862,47 +865,71 @@ export const PhoneCompactKeyColumn: Story = {
   },
 };
 
-// A phone's key column widens on demand (ColumnResizer): past twice the touch
-// target the names come back and a tap opens the declaration directly. An
-// environment column resizes the same way.
+// A phone's key column widens on demand (ColumnResizer): drag its handle,
+// tap it, or use the arrow keys. Past twice the touch target the names come
+// back and a tap on one opens the declaration directly. An environment column
+// resizes the same way, and a tap on its handle restores its default width.
 export const PhoneWidenedKeyColumn: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ canvas, canvasElement }) => {
-    const link = await canvas.findByRole('link', { name: 'Declaration of DATABASE_READ_REPLICA_URL, secret' });
+    const name = 'Declaration of DATABASE_READ_REPLICA_URL, secret';
+    const link = await canvas.findByRole('link', { name });
     const heading = canvasElement.querySelector<HTMLElement>('.matrix__table thead th:first-child');
+    const well = canvasElement.querySelector<HTMLElement>('.matrix__scroll');
     const nameSpan = link.querySelector('.matrix__key-name');
-    if (heading === null || nameSpan === null) throw new Error('key heading or name missing');
-    await expect(nameSpan.getBoundingClientRect().width).toBeLessThanOrEqual(1);
-    // The handle joins neither the header's accessible name nor the tab order.
+    if (heading === null || well === null || nameSpan === null) throw new Error('matrix parts missing');
+    const nameHidden = () => expect(nameSpan.getBoundingClientRect().width).toBeLessThanOrEqual(1);
+    await nameHidden();
+    // The handle inside does not join the header's name.
     await expect(heading).toHaveAccessibleName('Key');
+    const handle = canvas.getByRole('separator', { name: 'Resize Key column' });
 
-    const dragBy = async (handle: Element | null | undefined, dx: number) => {
-      if (handle === null || handle === undefined) throw new Error('resize handle missing');
-      const box = handle.getBoundingClientRect();
+    const dragBy = async (target: HTMLElement, dx: number) => {
+      const box = target.getBoundingClientRect();
       const at = { clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 };
       await userEvent.pointer([
-        { keys: '[MouseLeft>]', target: handle, coords: at },
-        { target: handle, coords: { ...at, clientX: at.clientX + dx } },
-        { keys: '[/MouseLeft]', target: handle },
+        { keys: '[MouseLeft>]', target, coords: at },
+        { target, coords: { ...at, clientX: at.clientX + dx } },
+        { keys: '[/MouseLeft]', target },
       ]);
     };
 
-    await dragBy(heading.querySelector('.matrix__resizer'), 140);
-    await waitFor(() => expect(heading.getBoundingClientRect().width).toBeGreaterThanOrEqual(180));
+    // A drag far past the well stops a touch target short of its edge.
+    await dragBy(handle, 600);
+    await waitFor(() => expect(heading.getBoundingClientRect().width).toBeCloseTo(well.clientWidth - 44, 0));
     await expect(nameSpan.getBoundingClientRect().width).toBeGreaterThan(40);
-    await expect(link).toHaveAccessibleName('Declaration of DATABASE_READ_REPLICA_URL, secret');
-    // The sticky column never covers the whole well.
-    await expect(heading.getBoundingClientRect().width).toBeLessThan(canvasElement.querySelector('.matrix__scroll')?.clientWidth ?? 0);
+    await expect(handle).toHaveAttribute('aria-valuenow', String(Math.round(heading.getBoundingClientRect().width)));
+    await expect(link).toHaveAccessibleName(name);
 
-    // Narrowed back to icon-only, the name hides again.
-    await dragBy(heading.querySelector('.matrix__resizer'), -400);
+    // Arrow keys narrow it back to icon-only.
+    handle.focus();
+    for (let step = 0; step < 24; step += 1) await userEvent.keyboard('{ArrowLeft}');
     await waitFor(() => expect(heading.getBoundingClientRect().width).toBeLessThanOrEqual(48));
-    await expect(nameSpan.getBoundingClientRect().width).toBeLessThanOrEqual(1);
+    await nameHidden();
 
-    const envHeading = canvas.getByRole('columnheader', { name: /^development/ });
+    // A tap opens it to show the names; a second tap closes it again.
+    await userEvent.click(handle);
+    await waitFor(() => expect(nameSpan.getBoundingClientRect().width).toBeGreaterThan(40));
+    await userEvent.click(handle);
+    await waitFor(() => expect(heading.getBoundingClientRect().width).toBeLessThanOrEqual(48));
+    await nameHidden();
+
+    const envHandle = canvas.getByRole('separator', { name: 'Resize development column' });
+    const envHeading = envHandle.parentElement;
+    if (envHeading === null) throw new Error('environment heading missing');
     const before = envHeading.getBoundingClientRect().width;
-    await dragBy(envHeading.querySelector('.matrix__resizer'), 32);
+    await dragBy(envHandle, 32);
     await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeCloseTo(before + 32, 0));
+    await userEvent.click(envHandle);
+    await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeCloseTo(before, 0));
+
+    // With the names shown, the first tap on a key opens it: no name preview.
+    await userEvent.click(handle);
+    await waitFor(() => expect(nameSpan.getBoundingClientRect().width).toBeGreaterThan(40));
+    const tip = link.parentElement?.querySelector('.matrix__key-tip');
+    await userEvent.click(link);
+    await waitFor(() => expect(link).not.toBeInTheDocument());
+    await expect(tip).not.toBeVisible();
   },
 };
 
