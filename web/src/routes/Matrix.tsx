@@ -1811,32 +1811,40 @@ function MatrixKeyLink({
   );
 }
 
-/** A phone key column at least this wide shows key names: twice `--touch`, the icon-only width. */
+/** A phone key column at least this wide shows key names: twice `--touch` (44px, tokens.css), the icon-only width. */
 const KEY_NAME_WIDTH = 88;
-/** The width a tap on the icon-only phone key column's handle opens it to. */
+/** The width a tap on the icon-only phone key column's handle opens it to: about 16 key-name characters. */
 const KEY_NAMES_TAP_WIDTH = 180;
-/** Pointer travel under this many pixels is a tap on the handle, not a drag. */
-const TAP_SLOP = 4;
+/** Pointer travel under this many pixels is a tap on the handle, not a drag (a finger wobbles more). */
+const TAP_SLOP = { touch: 10, other: 4 };
 /** One arrow-key press on a focused handle, in pixels. */
 const KEY_STEP = 16;
 
 /**
  * A column's resize handle on its header cell's trailing edge: drag it
- * (mouse, pen or touch), tap it, or focus it and press the arrow keys.
+ * (mouse, pen or touch), or focus it and press the arrow keys; a tap or Enter
+ * is the column's `onTap`. Matrix-only (DESIGN.md, Column resize).
+ * Its range is 0 to the matrix well's width, the most a column can usefully take.
  * Reports the header cell's new width or the tap; the matrix decides how
  * either applies to its column.
  */
 function ColumnResizer({ label, onResize, onTap }: { label: string; onResize: (width: number) => void; onTap: () => void }) {
   const handle = useRef<HTMLSpanElement>(null);
-  const drag = useRef<{ x: number; width: number; moved: boolean } | null>(null);
+  const drag = useRef<{ x: number; width: number; slop: number; moved: boolean } | null>(null);
   const [now, setNow] = useState(0);
+  const [max, setMax] = useState(0);
   const cellWidth = () => handle.current?.parentElement?.getBoundingClientRect().width ?? 0;
   // The separator's value is the column's rendered width, whatever set it.
   useEffect(() => {
     const cell = handle.current?.parentElement;
     if (cell === null || cell === undefined) return;
-    const observer = new ResizeObserver(() => setNow(Math.round(cell.getBoundingClientRect().width)));
+    const well = cell.closest('.matrix__scroll');
+    const observer = new ResizeObserver(() => {
+      setNow(Math.round(cell.getBoundingClientRect().width));
+      setMax(well?.clientWidth ?? 0);
+    });
     observer.observe(cell);
+    if (well !== null) observer.observe(well);
     return () => observer.disconnect();
   }, []);
   const end = () => {
@@ -1849,19 +1857,21 @@ function ColumnResizer({ label, onResize, onTap }: { label: string; onResize: (w
       aria-orientation="vertical"
       aria-label={`Resize ${label} column`}
       aria-valuenow={now}
+      aria-valuemin={0}
+      aria-valuemax={Math.max(now, max)}
       tabIndex={0}
       className="matrix__resizer"
       onPointerDown={(event: PointerEvent<HTMLSpanElement>) => {
         if (!event.isPrimary || event.button !== 0) return;
         event.preventDefault();
         event.currentTarget.setPointerCapture(event.pointerId);
-        drag.current = { x: event.clientX, width: cellWidth(), moved: false };
+        drag.current = { x: event.clientX, width: cellWidth(), slop: event.pointerType === 'touch' ? TAP_SLOP.touch : TAP_SLOP.other, moved: false };
       }}
       onPointerMove={(event: PointerEvent<HTMLSpanElement>) => {
         const start = drag.current;
         if (start === null) return;
         const dx = event.clientX - start.x;
-        if (!start.moved && Math.abs(dx) < TAP_SLOP) return;
+        if (!start.moved && Math.abs(dx) < start.slop) return;
         start.moved = true;
         onResize(Math.max(0, start.width + dx));
       }}
@@ -1872,6 +1882,11 @@ function ColumnResizer({ label, onResize, onTap }: { label: string; onResize: (w
       onPointerCancel={end}
       onLostPointerCapture={end}
       onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          onTap();
+          return;
+        }
         const step = event.key === 'ArrowRight' ? KEY_STEP : event.key === 'ArrowLeft' ? -KEY_STEP : 0;
         if (step === 0) return;
         event.preventDefault();

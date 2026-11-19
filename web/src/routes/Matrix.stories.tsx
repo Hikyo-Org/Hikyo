@@ -20,7 +20,7 @@ import type { MockRoute } from '../../.storybook/withApp.tsx';
 import { ORG, PRJ } from '../testkit/ids.ts';
 import { Matrix } from './Matrix.tsx';
 
-import { tokenColor } from '../../.storybook/tokens.ts';
+import { tokenColor, tokenPx } from '../../.storybook/tokens.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 
 // The whole-project environment matrix. On mount it reads the project catalogue
@@ -540,8 +540,10 @@ export const CompactKeyColumn: Story = {
     const keyCell = link.closest('th');
     const heading = canvasElement.querySelector<HTMLElement>('.matrix__table thead th:first-child');
     if (keyCell === null || heading === null) throw new Error('key column missing');
-    await expect(Math.abs(heading.getBoundingClientRect().width - 188)).toBeLessThanOrEqual(1);
-    await expect(Math.abs(keyCell.getBoundingClientRect().width - 188)).toBeLessThanOrEqual(1);
+    // The floor: Key label and envs picker (164px with the start padding), then the handle.
+    const floor = 164 + tokenPx('--hit-min');
+    await expect(Math.abs(heading.getBoundingClientRect().width - floor)).toBeLessThanOrEqual(1);
+    await expect(Math.abs(keyCell.getBoundingClientRect().width - floor)).toBeLessThanOrEqual(1);
     await expect(getComputedStyle(link).textOverflow).toBe('ellipsis');
     await expect(link.scrollWidth).toBeGreaterThan(link.clientWidth);
     await expect(keyCell).toHaveAttribute('title', name);
@@ -874,15 +876,33 @@ export const PhoneWidenedKeyColumn: Story = {
   play: async ({ canvas, canvasElement }) => {
     const name = 'Declaration of DATABASE_READ_REPLICA_URL, secret';
     const link = await canvas.findByRole('link', { name });
+    const table = canvasElement.querySelector<HTMLElement>('.matrix__table');
     const heading = canvasElement.querySelector<HTMLElement>('.matrix__table thead th:first-child');
     const well = canvasElement.querySelector<HTMLElement>('.matrix__scroll');
     const nameSpan = link.querySelector('.matrix__key-name');
-    if (heading === null || well === null || nameSpan === null) throw new Error('matrix parts missing');
-    const nameHidden = () => expect(nameSpan.getBoundingClientRect().width).toBeLessThanOrEqual(1);
-    await nameHidden();
+    if (table === null || heading === null || well === null || nameSpan === null) throw new Error('matrix parts missing');
+    // A phone has a coarse pointer, this browser a fine one: take the coarse
+    // handle width (app.css, `--matrix-resizer`) the way a phone would.
+    table.style.setProperty('--matrix-resizer', 'var(--touch)');
+    const touch = tokenPx('--touch');
+    const iconOnly = async () => {
+      await waitFor(() => expect(heading.getBoundingClientRect().width).toBeLessThanOrEqual(touch + 1));
+      await expect(nameSpan.getBoundingClientRect().width).toBeLessThanOrEqual(1);
+    };
+    const namesShown = () => waitFor(() => expect(nameSpan.getBoundingClientRect().width).toBeGreaterThan(40));
+    await iconOnly();
     // The handle inside does not join the header's name.
     await expect(heading).toHaveAccessibleName('Key');
     const handle = canvas.getByRole('separator', { name: 'Resize Key column' });
+    // The icon-only key header is the handle, edge to edge.
+    await expect(handle.getBoundingClientRect().width).toBeCloseTo(touch, 0);
+    // Every environment header's own controls end before its handle.
+    for (const envHandle of canvas.getAllByRole('separator', { name: /^Resize (?!Key)/ })) {
+      const history = envHandle.parentElement?.querySelector('.matrix__history-link');
+      if (history !== null && history !== undefined) {
+        await expect(history.getBoundingClientRect().right).toBeLessThanOrEqual(envHandle.getBoundingClientRect().left + 0.5);
+      }
+    }
 
     const dragBy = async (target: HTMLElement, dx: number) => {
       const box = target.getBoundingClientRect();
@@ -896,23 +916,30 @@ export const PhoneWidenedKeyColumn: Story = {
 
     // A drag far past the well stops a touch target short of its edge.
     await dragBy(handle, 600);
-    await waitFor(() => expect(heading.getBoundingClientRect().width).toBeCloseTo(well.clientWidth - 44, 0));
-    await expect(nameSpan.getBoundingClientRect().width).toBeGreaterThan(40);
-    await expect(handle).toHaveAttribute('aria-valuenow', String(Math.round(heading.getBoundingClientRect().width)));
+    await waitFor(() => expect(heading.getBoundingClientRect().width).toBeCloseTo(well.clientWidth - touch, 0));
+    await namesShown();
+    await waitFor(() => expect(handle).toHaveAttribute('aria-valuenow', String(Math.round(heading.getBoundingClientRect().width))));
+    await expect(handle).toHaveAttribute('aria-valuemax', String(well.clientWidth));
     await expect(link).toHaveAccessibleName(name);
+    // The row's own marks return with the name.
+    const required = link.closest('.matrix__key-cell')?.querySelector('.matrix__required');
+    if (required !== null && required !== undefined) await expect(required).toBeVisible();
 
     // Arrow keys narrow it back to icon-only.
     handle.focus();
     for (let step = 0; step < 24; step += 1) await userEvent.keyboard('{ArrowLeft}');
-    await waitFor(() => expect(heading.getBoundingClientRect().width).toBeLessThanOrEqual(48));
-    await nameHidden();
+    await iconOnly();
 
-    // A tap opens it to show the names; a second tap closes it again.
+    // A tap opens it to show the names; a second tap closes it again. Enter does the same.
     await userEvent.click(handle);
-    await waitFor(() => expect(nameSpan.getBoundingClientRect().width).toBeGreaterThan(40));
+    await namesShown();
     await userEvent.click(handle);
-    await waitFor(() => expect(heading.getBoundingClientRect().width).toBeLessThanOrEqual(48));
-    await nameHidden();
+    await iconOnly();
+    handle.focus();
+    await userEvent.keyboard('{Enter}');
+    await namesShown();
+    await userEvent.keyboard('{Enter}');
+    await iconOnly();
 
     const envHandle = canvas.getByRole('separator', { name: 'Resize development column' });
     const envHeading = envHandle.parentElement;
@@ -925,7 +952,7 @@ export const PhoneWidenedKeyColumn: Story = {
 
     // With the names shown, the first tap on a key opens it: no name preview.
     await userEvent.click(handle);
-    await waitFor(() => expect(nameSpan.getBoundingClientRect().width).toBeGreaterThan(40));
+    await namesShown();
     const tip = link.parentElement?.querySelector('.matrix__key-tip');
     await userEvent.click(link);
     await waitFor(() => expect(link).not.toBeInTheDocument());

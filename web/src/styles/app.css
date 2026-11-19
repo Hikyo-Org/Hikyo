@@ -3245,8 +3245,7 @@ fieldset.field > legend {
     padding: 0;
   }
 
-  .matrix__key-cell > .matrix__linked-keys,
-  .matrix__key-cell > .matrix__required {
+  .matrix__table:not(.matrix__table--key-names) .matrix__key-cell > :is(.matrix__linked-keys, .matrix__required) {
     display: none;
   }
 
