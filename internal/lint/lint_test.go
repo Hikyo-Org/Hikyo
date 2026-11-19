@@ -826,6 +826,36 @@ func TestContextsSelectTaggedAndPlatformFiles(t *testing.T) {
 	}
 }
 
+// The ui context's webui placeholder must not push the dependency closure onto
+// the source path: go/packages abandons export data for every package when it
+// is given Config.Overlay, which took the ui load's live heap from ~1.1GB to
+// ~2.5GB.
+func TestContextOverlayKeepsDependenciesOnExportData(t *testing.T) {
+	i := slices.IndexFunc(Contexts, func(c BuildContext) bool { return c.Name == "ui" })
+	if i < 0 {
+		t.Fatal("no ui context")
+	}
+	ui := Contexts[i]
+	if overlay, err := ui.Overlay(); err != nil {
+		t.Fatal(err)
+	} else if overlay == nil {
+		t.Skip("internal/webui/dist is populated; no placeholder overlay to exercise")
+	}
+	pkgs, err := LoadIn(ui, Module+"/internal/webui")
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := map[*packages.Package]bool{}
+	for _, p := range pkgs {
+		roots[p] = true
+	}
+	packages.Visit(pkgs, nil, func(p *packages.Package) {
+		if !roots[p] && len(p.Syntax) > 0 {
+			t.Errorf("dependency %s was type-checked from source", p.ID)
+		}
+	})
+}
+
 // The context environment is explicit: ambient GOFLAGS never leaks into the
 // build-system query, and the windows context pins GOOS.
 func TestContextEnvClearsAmbientGOFLAGS(t *testing.T) {

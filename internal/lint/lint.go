@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 
@@ -87,7 +88,7 @@ func moduleRoot() string {
 	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
 }
 
-// Overlay returns the go/packages overlay the context needs: the webui dist
+// Overlay returns the build overlay the context needs: the webui dist
 // placeholder for the ui context when no dist file exists, otherwise nil.
 func (c BuildContext) Overlay() (map[string][]byte, error) {
 	if !c.needsWebuiPlaceholder() {
@@ -198,10 +199,26 @@ func Load(patterns ...string) ([]*packages.Package, error) {
 }
 
 // LoadIn loads arbitrary patterns under one supported context.
+//
+// The context's overlay reaches cmd/go as an -overlay build flag rather than
+// packages.Config.Overlay: go/packages treats any Config.Overlay as invalidating
+// all export data and then type-checks the whole dependency closure from source,
+// which took the ui context's live heap from ~1.1GB to ~2.5GB.
 func LoadIn(ctx BuildContext, patterns ...string) ([]*packages.Package, error) {
-	overlay, err := ctx.Overlay()
-	if err != nil {
-		return nil, err
+	buildFlags := ctx.BuildFlags
+	if ctx.needsWebuiPlaceholder() {
+		dir, err := os.MkdirTemp("", "hikyo-lint-overlay-")
+		if err != nil {
+			return nil, err
+		}
+		defer os.RemoveAll(dir)
+		overlay, err := ctx.WriteOverlay(dir)
+		if err != nil {
+			return nil, err
+		}
+		if overlay != "" {
+			buildFlags = append(slices.Clone(buildFlags), "-overlay="+overlay)
+		}
 	}
 	cfg := &packages.Config{
 		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax |
@@ -209,9 +226,8 @@ func LoadIn(ctx BuildContext, patterns ...string) ([]*packages.Package, error) {
 		// Test packages are in scope: a forged proof in a test outside authz
 		// is the same breach as one in production code.
 		Tests:      !ctx.ProductionOnly,
-		BuildFlags: ctx.BuildFlags,
+		BuildFlags: buildFlags,
 		Env:        ctx.Env(),
-		Overlay:    overlay,
 	}
 	pkgs, err := packages.Load(cfg, patterns...)
 	if err != nil {
