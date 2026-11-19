@@ -68,7 +68,7 @@ func deploymentProviderRegistry(endpoints sealedWebhookEndpoints, policy adapter
 			}
 			return &awssm.Module{API: client}, func(context.Context) { client.Forget() }, nil
 		},
-		adapter.SealedWebhookProvider: func(config adapter.Config, credential string, allowed, _ []netip.Prefix) (adapter.Module, func(context.Context), error) {
+		adapter.EncryptedWebhookProvider: func(config adapter.Config, credential string, allowed, _ []netip.Prefix) (adapter.Module, func(context.Context), error) {
 			endpoint := endpoints[config.Origin]
 			if endpoint == nil {
 				return nil, nil, errors.New("sealed-webhook: origin is not an instance-admin configured endpoint")

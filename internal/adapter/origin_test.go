@@ -23,7 +23,7 @@ func TestCanonicalOriginOwnsAllProviderAliases(t *testing.T) {
 		// Existing ParseOrigin admits leading slashes, then sends only the
 		// trimmed namespace in X-Vault-Namespace and a bare HTTPS base.
 		{VaultKVProvider, "https://vault.example//Team", "https://vault.example/Team"},
-		{SealedWebhookProvider, "https://Receiver.Example:443/", "https://receiver.example"},
+		{EncryptedWebhookProvider, "https://Receiver.Example:443/", "https://receiver.example"},
 		{CloudflareProvider, "", "https://api.cloudflare.com"},
 		{CloudflareProvider, "https://API.CLOUDFLARE.COM:443/", "https://api.cloudflare.com"},
 		{AWSSecretsManagerProvider, "https://SECRETSMANAGER-FIPS.US-EAST-1.AMAZONAWS.COM:443/", "https://secretsmanager-fips.us-east-1.amazonaws.com"},
@@ -55,7 +55,7 @@ func TestCanonicalOriginPreservesNamespaceAndRejectsAmbiguousRouting(t *testing.
 		{VaultKVProvider, "https://vault.example/%54eam"},
 		{VaultKVProvider, "https://vault.example/root"},
 		{CloudflareProvider, "https://api.cloudflare.com.evil"},
-		{SealedWebhookProvider, "https://receiver.example?"},
+		{EncryptedWebhookProvider, "https://receiver.example?"},
 		{AWSSecretsManagerProvider, "https://aws.example/path"},
 		{ForgejoProvider, "https://git.example:0"},
 		{ForgejoProvider, "https://git.example:65536"},

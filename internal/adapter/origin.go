@@ -90,7 +90,7 @@ func CanonicalOrigin(provider Provider, raw string) (string, error) {
 	}
 	path := ""
 	switch provider {
-	case ForgejoProvider, SealedWebhookProvider, AWSSecretsManagerProvider, CloudflareProvider:
+	case ForgejoProvider, EncryptedWebhookProvider, AWSSecretsManagerProvider, CloudflareProvider:
 		if u.Path != "" && u.Path != "/" {
 			return "", fmt.Errorf("%s: origin must be a bare https origin", provider)
 		}

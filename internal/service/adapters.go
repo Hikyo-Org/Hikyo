@@ -1948,7 +1948,7 @@ func (s *Adapters) Adopt(ctx context.Context, actor Actor, scope domain.Scope, r
 			if err != nil {
 				return err
 			}
-			if target.Provider == string(adapter.SealedWebhookProvider) {
+			if target.Provider == string(adapter.EncryptedWebhookProvider) {
 				// The sealed protocol carries no adopt intent: a receiver never
 				// transfers an unowned name to a route, so adoption could only
 				// loop on conflict. The receiver releases the name instead.
