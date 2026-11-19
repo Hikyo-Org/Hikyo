@@ -76,7 +76,7 @@ Use a `web/src/ui` atom wherever one exists; a missing generic pattern becomes a
 ### Button (`ui/Button.tsx`, `Button.css`)
 
 - **Variants carry a role**: `primary` (the one action a surface leads with), `secondary` (default), `danger` (destructive; the word says so), `quiet` (tertiary, inside a row or header). A variant changes colour and fill only, never size.
-- **One size**: `--control` tall, `0 --space-4`, `--fs-md`. The `btn--compact` class (not a prop) is `--hit-min` tall on a fine pointer, `--control` on a coarse one, `0 --space-2`, `--fs-xs`; it is only for the matrix column header's `rev N · history` link and `envs N/N` summary. A new use needs a rule here.
+- **One size**: `--control` tall, `0 --space-4`, `--fs-md`. The `btn--compact` class (not a prop) is `--hit-min` tall on a fine pointer, `--control` on a coarse one, `0 --space-2`, `--fs-xs`; it is only for the matrix column header's `rev N · history` link and `envs N/N` summary, and the matrix group row's `+ Key`, which sits at the row's visible right end and stays there on a horizontal scroll. A new use needs a rule here.
 - **Icon-only**: `icon` with a required `aria-label`; square, glyph at `--icon-in-button`. `btn--icon-phone` with a `.btn__label` span keeps the label visible on desktop and collapses to icon-only at 700px without changing the accessible name (the label is hidden by the phone visually-hidden rule in `app.css`).
 - **One line.** Labels never wrap (`white-space: nowrap`).
 - **Disabled** (`:disabled`, `[disabled]`, `[aria-disabled='true']`, including inside `<fieldset disabled>`): flat `--tx` 8% tint, no border, `--tx-faint` label, not-allowed cursor, no hover. A rule in `app.css` that restyles a `.btn` state must exclude disabled.

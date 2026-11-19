@@ -1323,7 +1323,7 @@ export function Matrix({
                                 }
                               >
                                 <Glyph name="chevron-down" className="matrix__group-chevron" />
-                                <span>{group.name}</span>
+                                <span className="matrix__group-name">{group.name}</span>
                                 <span className="matrix__group-count">{String(group.keys.length)}</span>
                                 {count === 0 ? null : (
                                   <Badge tone="danger">
@@ -1337,13 +1337,14 @@ export function Matrix({
                                 ) : null}
                               </button>
                               {/* env-matrix 31: declare a key straight into this
-                                  group. Hidden while collapsed to match the
-                                  prototype, you open a group, then add to it. */}
+                                  group, from the row's visible right end. Hidden
+                                  while collapsed to match the prototype, you
+                                  open a group, then add to it. */}
                               {collapsed || declarationsLocked ? null : (
                                 <Button
                                   type="button"
                                   variant="quiet"
-                                  className="matrix__add-key"
+                                  className="btn--compact matrix__add-key"
                                   aria-label={`Add key to ${group.name}`}
                                   onClick={() => {
                                     setCreateError(null);

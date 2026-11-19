@@ -82,8 +82,9 @@ a.btn {
 }
 
 /* The compact class, only for the matrix column header's `rev N · history`
-   anchor and environment picker summary. Its height is the WCAG hit floor on a
-   fine pointer; a coarse pointer keeps the touch control. */
+   anchor and environment picker summary, and the matrix group row's `+ Key`.
+   Its height is the WCAG hit floor on a fine pointer; a coarse pointer keeps
+   the touch control. */
 .btn--compact {
   padding: 0 var(--space-2);
   font-size: var(--fs-xs);

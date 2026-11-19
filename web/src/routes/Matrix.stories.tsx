@@ -376,7 +376,7 @@ function alphaOf(css: string): number {
 // opaque behind every scrolled environment column, for the header, a group
 // row and an ordinary key row; and for the group row specifically, which has
 // no cells of its own to protect, the label itself (chevron, folder name,
-// count, problem badge, "+ Key") stays over the left edge instead of
+// count, problem badge) stays over the left edge instead of
 // scrolling away with the rest of the row. The tinted right border marks a
 // KEY row's own edge, and only at the phone breakpoint: the header and group
 // rows still carry the full-width key column there, not an edge to mark.
@@ -404,6 +404,14 @@ const expectStickyKeyColumn = async (root: HTMLElement) => {
   for (const cell of [headerCell, groupCell, keyCell, groupLabel]) {
     await expect(Math.abs(cell.getBoundingClientRect().left - scrollerLeft)).toBeLessThanOrEqual(1);
   }
+  // The label's "+ Key" holds the visible right end: still wholly inside the
+  // scroller after the scroll, clear of the folder name's toggle.
+  const add = groupLabel.querySelector<HTMLElement>('.matrix__add-key');
+  const toggle = groupLabel.querySelector<HTMLElement>('.matrix__group-toggle');
+  if (add === null || toggle === null) throw new Error('group add-key button missing');
+  const addBox = add.getBoundingClientRect();
+  await expect(addBox.right).toBeLessThanOrEqual(scrollerLeft + scroller.clientWidth);
+  await expect(addBox.left).toBeGreaterThanOrEqual(toggle.getBoundingClientRect().right);
   scroller.scrollLeft = 0;
 };
 
@@ -652,8 +660,22 @@ export const GroupRows: Story = {
     await expect(linkedRow.querySelector('.matrix__linked-keys')).toHaveTextContent('Linked keys: stripe');
     await expect(Math.round(linkedRow.getBoundingClientRect().height)).toBe(Math.round(plainRow.getBoundingClientRect().height));
 
-    const toggle = add.closest('tr')?.querySelector<HTMLElement>('.matrix__group-toggle');
-    if (toggle == null) throw new Error('payments toggle missing');
+    // The add action sits at the row's visible right end, one compact control
+    // shorter than the row, not beside the folder name at the row's height.
+    const groupRow = add.closest('tr');
+    const groupToggle = groupRow?.querySelector<HTMLElement>('.matrix__group-toggle');
+    const scroller = canvasElement.querySelector<HTMLElement>('.matrix__scroll');
+    if (groupRow == null || groupToggle == null || scroller === null) throw new Error('payments group row missing');
+    const addBox = add.getBoundingClientRect();
+    const visibleEnd = scroller.getBoundingClientRect().left + scroller.clientWidth;
+    await expect(visibleEnd - addBox.right).toBeGreaterThan(0);
+    await expect(visibleEnd - addBox.right).toBeLessThanOrEqual(tokenPx('--space-3') + 1);
+    await expect(addBox.left).toBeGreaterThanOrEqual(groupToggle.getBoundingClientRect().right);
+    // A fine pointer, as in this story's browser; a coarse one keeps the touch floor.
+    await expect(addBox.height).toBe(tokenPx('--hit-min'));
+    await expect(addBox.height).toBeLessThan(groupRow.getBoundingClientRect().height);
+
+    const toggle = groupToggle;
     await userEvent.click(toggle);
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(canvas.queryByRole('button', { name: 'Add key to payments' })).toBeNull();
@@ -752,6 +774,57 @@ export const PhoneLegendStaysOnScreenMinimum: Story = {
   globals: { viewport: { value: 'phone320', isRotated: false } },
   play: async ({ canvasElement }) => {
     await expectLegendStaysOnScreen(canvasElement);
+  },
+};
+
+// A folder name longer than a phone row is cut short before the group's
+// "+ Key", which stays whole at the row's visible right end and is the topmost
+// thing under its own centre, so a tap on it never lands on the toggle. The
+// story's browser has a fine pointer, so this covers layout, not the touch size.
+const longFolder = 'accounts/billing/webhooks/production-read-replicas';
+const longFolderKeys = [...keys, key(90, 'BILLING_REPLICA_URL', longFolder, 'config')];
+export const PhoneLongFolderName: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  parameters: app([
+    ...catalogue({ keys: { body: { items: longFolderKeys, count: longFolderKeys.length, schema_revision: 12 } satisfies z.input<typeof zKeyList> } }),
+    ...allReady,
+  ]),
+  play: async ({ canvas, canvasElement }) => {
+    const add = await canvas.findByRole('button', { name: /^Add key to accounts\/billing/ });
+    const row = add.closest('tr');
+    const name = row?.querySelector<HTMLElement>('.matrix__group-name');
+    const scroller = canvasElement.querySelector<HTMLElement>('.matrix__scroll');
+    if (name == null || scroller === null) throw new Error('long folder row missing');
+    // Hit-testing needs the row on screen; the group sorts below the fold.
+    add.scrollIntoView({ block: 'center' });
+    await expect(name.scrollWidth).toBeGreaterThan(name.clientWidth);
+    const addBox = add.getBoundingClientRect();
+    await expect(name.getBoundingClientRect().right).toBeLessThanOrEqual(addBox.left);
+    await expect(addBox.right).toBeLessThanOrEqual(scroller.getBoundingClientRect().left + scroller.clientWidth);
+    const hit = document.elementFromPoint(addBox.left + addBox.width / 2, addBox.top + addBox.height / 2);
+    await expect(hit?.closest('.matrix__add-key')).toBe(add);
+  },
+};
+
+// Collapsed on a phone, the key list gives way first: the folder name stays
+// whole while the list beside it is cut short.
+export const PhoneCollapsedGroup: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ canvas, canvasElement }) => {
+    await canvas.findByRole('link', { name: 'Declaration of PAYMENT_PROVIDER' });
+    const toggle = [...canvasElement.querySelectorAll<HTMLElement>('.matrix__group-toggle')]
+      .find((candidate) => candidate.querySelector('.matrix__group-name')?.textContent === 'payments');
+    if (toggle === undefined) throw new Error('payments group missing');
+    await userEvent.click(toggle);
+    const name = toggle.querySelector<HTMLElement>('.matrix__group-name');
+    const summary = await waitFor(() => {
+      const found = toggle.querySelector<HTMLElement>('.matrix__group-summary');
+      if (found === null) throw new Error('summary missing');
+      return found;
+    });
+    if (name === null) throw new Error('payments name missing');
+    await expect(name.scrollWidth).toBeLessThanOrEqual(name.clientWidth);
+    await expect(summary.scrollWidth).toBeGreaterThan(summary.clientWidth);
   },
 };
 
