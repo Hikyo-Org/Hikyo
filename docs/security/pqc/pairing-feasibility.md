@@ -234,7 +234,7 @@ PR #1156 sets this hop at compat (E-08, hop table rows "Pairing fetch to a remot
 Hikyo" and "Pairing proxy hop"). [src] what that means:
 
 - `tlspolicy.Profile.Apply` is called only for the native listener
-  (`internal/app/tls.go:51`), `cli.NewClient` (`internal/cli/client.go:217`) and
+  (`internal/app/tls.go:51`), `clienttrust.TLSConfig` (`internal/clienttrust/clienttrust.go:244`, called by `cli.NewClient`) and
   `opclient.NewClient` (`internal/operator/client/client.go:159`). The pairing
   clients build their own configs: `remotefetch.httpClient` (`remotefetch.go:246`),
   the proxy dial (`remotefetch.go:303`) and the identity probe
@@ -261,7 +261,7 @@ Reproduce the source facts, from the repository root:
 
 ```sh
 rg -n 'tlspolicy' internal/remotefetch --glob '!*_test.go'   # import and SPKIFingerprint
-rg -n '\.Apply\(' internal/app/tls.go internal/cli/client.go internal/operator/client/client.go
+rg -n '\.Apply\(' internal/app/tls.go internal/clienttrust/clienttrust.go internal/operator/client/client.go
 rg -n 'MinVersion' internal/remotefetch --glob '!*_test.go'
 go test -p 2 -count=1 ./internal/pairing/ ./internal/remotefetch/
 ```

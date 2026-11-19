@@ -1,4 +1,4 @@
-package cli
+package clientauth
 
 import (
 	"net"
@@ -8,7 +8,7 @@ import (
 )
 
 func TestLoginListenerUsesExclusiveWindowsSocket(t *testing.T) {
-	listener, err := listenLoginLoopback(t.Context())
+	listener, err := ListenLoopback(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}

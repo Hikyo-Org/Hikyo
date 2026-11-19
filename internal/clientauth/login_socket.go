@@ -1,4 +1,4 @@
-package cli
+package clientauth
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"syscall"
 )
 
-func listenLoginLoopback(ctx context.Context) (net.Listener, error) {
+func ListenLoopback(ctx context.Context) (net.Listener, error) {
 	config := net.ListenConfig{Control: func(_, _ string, raw syscall.RawConn) error {
 		var optionError error
 		if err := raw.Control(func(fd uintptr) { optionError = loginSocketOptions(fd) }); err != nil {

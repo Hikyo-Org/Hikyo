@@ -17,6 +17,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/clienttrust"
 	"github.com/Hikyo-Org/hikyo/internal/diagnostics"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
@@ -1117,21 +1118,7 @@ func establishWithTLSMode(ios IO, st *State, target, name, trustFile, socket, tl
 	if err := validateCredentialTransport(entry); err != nil {
 		return TrustEntry{}, failf(ExitRefused, "cannot establish %s: %v", origin, err)
 	}
-	identityLabel, identity := "certificate", shortPin(pin)
-	mode := effectiveTLSMode(entry)
-	if entry.TLSMode == TLSModeSPKI {
-		identity += " (leaf SPKI; no CA chain, certificate validity or hostname verification)"
-	}
-	if entry.TLSMode == TLSModeSystemCA {
-		identityLabel, identity = "verification", "system trusted CA chain, validity and hostname; certificate keys may rotate"
-	}
-	if socket != "" {
-		identityLabel, identity = "local socket", socket+" (same uid required)"
-		mode = "same-user local socket"
-	}
-	prompt := fmt.Sprintf(
-		"Establish trust for a new instance?\n\n    origin:       %s\n    trust mode:   %s\n    %-13s %s\n\nRecord it",
-		origin, mode, identityLabel+":", identity)
+	prompt := clienttrust.FirstContactPrompt(origin, entry.TLSMode, pin, socket)
 	ok, err := session.Confirm(prompt)
 	if err != nil {
 		return TrustEntry{}, failf(ExitRefused,
