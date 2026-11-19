@@ -289,7 +289,7 @@ func InspectIdentity(parent context.Context, origin string, timeout time.Duratio
 		_ = conn.Close()
 		return "", clienterr.Failf(clienterr.ExitUnavailable, "cannot reach %s: %v", origin, err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
 		return "", clienterr.Failf(clienterr.ExitRefused, "%s presented no certificate", origin)

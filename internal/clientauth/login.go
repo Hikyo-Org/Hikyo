@@ -65,7 +65,7 @@ func LoginLoopback(ctx context.Context, tr Transport, provider string, openURL f
 	if err != nil {
 		return apigen.LoginResult{}, clienterr.Failf(clienterr.ExitUnavailable, "binding the CLI login callback: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	state, err := proof()
 	if err != nil {
 		return apigen.LoginResult{}, err
@@ -124,7 +124,7 @@ func LoginLoopback(ctx context.Context, tr Transport, provider string, openURL f
 		_, _ = io.WriteString(w, "CLI login received. Return to the terminal.\n")
 	})
 	server := &http.Server{Handler: callback, ReadHeaderTimeout: 5 * time.Second}
-	defer server.Close()
+	defer func() { _ = server.Close() }()
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.Serve(listener) }()
 	if openURL == nil {
@@ -223,7 +223,7 @@ func LoginDevice(ctx context.Context, tr Transport, prompt io.Writer, provider s
 		query.Set("provider", provider)
 		verification.RawQuery = query.Encode()
 	}
-	fmt.Fprintf(prompt, "On another device, visit %s\nEnter code: %s\nApprove a CLI login for %s.\n", verification.String(), started.UserCode, tr.Origin())
+	_, _ = fmt.Fprintf(prompt, "On another device, visit %s\nEnter code: %s\nApprove a CLI login for %s.\n", verification.String(), started.UserCode, tr.Origin())
 	return PollDevice(pollCtx, tr, prompt, started.DeviceCode, interval)
 }
 
@@ -263,7 +263,7 @@ func PollDevice(ctx context.Context, tr Transport, stderr io.Writer, deviceCode 
 				return apigen.LoginResult{}, throttle
 			}
 			wait = max(interval, limited.RetryAfter)
-			fmt.Fprintf(stderr, "hikyo: throttled by the server; retrying in %d s (Retry-After)\n", int(wait/time.Second))
+			_, _ = fmt.Fprintf(stderr, "hikyo: throttled by the server; retrying in %d s (Retry-After)\n", int(wait/time.Second))
 			continue
 		}
 		if status == http.StatusOK {

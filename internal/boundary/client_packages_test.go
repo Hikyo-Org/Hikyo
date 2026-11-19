@@ -36,7 +36,7 @@ func TestClientPackagesStayOffTheCLIAndServer(t *testing.T) {
 	}
 	for _, goos := range []string{"linux", "darwin", "windows"} {
 		t.Run(goos, func(t *testing.T) {
-			command := exec.Command("go", append([]string{"list", "-deps", "-f", "{{.ImportPath}}"}, roots...)...)
+			command := exec.CommandContext(t.Context(), "go", append([]string{"list", "-deps", "-f", "{{.ImportPath}}"}, roots...)...)
 			command.Env = append(os.Environ(), "GOOS="+goos, "CGO_ENABLED=0")
 			out, err := command.Output()
 			if err != nil {

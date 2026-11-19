@@ -65,7 +65,11 @@ func (f *fakeTransport) Wait(context.Context, time.Duration) error { return nil 
 
 func callback(t *testing.T, redirect, code, state string) {
 	t.Helper()
-	response, err := http.Get(redirect + "?" + url.Values{"code": {code}, "state": {state}}.Encode())
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, redirect+"?"+url.Values{"code": {code}, "state": {state}}.Encode(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,7 @@
 package clientauth
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"os/exec"
@@ -27,12 +28,13 @@ func browserCommand(target, platform string) (*exec.Cmd, error) {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil {
 		return nil, fmt.Errorf("browser URL must be an absolute http or https URL without credentials")
 	}
+	// Background: the launcher is released after Start and must outlive the caller.
 	switch platform {
 	case "darwin":
-		return exec.Command("open", target), nil
+		return exec.CommandContext(context.Background(), "open", target), nil //nolint:gosec // target is validated above as an absolute http or https URL without credentials
 	case "windows":
-		return exec.Command("rundll32", "url.dll,FileProtocolHandler", target), nil
+		return exec.CommandContext(context.Background(), "rundll32", "url.dll,FileProtocolHandler", target), nil //nolint:gosec // target is validated above as an absolute http or https URL without credentials
 	default:
-		return exec.Command("xdg-open", target), nil
+		return exec.CommandContext(context.Background(), "xdg-open", target), nil //nolint:gosec // target is validated above as an absolute http or https URL without credentials
 	}
 }

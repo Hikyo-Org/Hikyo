@@ -40,11 +40,11 @@ type RotatedSession struct {
 // Reauth binds the callback before opening the browser, then returns the
 // rotated session after an exact state + PKCE exchange.
 func Reauth(ctx context.Context, tr Transport, req ReauthRequest, openURL func(string) error) (RotatedSession, error) {
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp4", "127.0.0.1:0")
 	if err != nil {
 		return RotatedSession{}, clienterr.Failf(clienterr.ExitUnavailable, "binding the CLI reauthentication callback: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	rawVerifier := make([]byte, 32)
 	if _, err := rand.Read(rawVerifier); err != nil {
@@ -109,7 +109,7 @@ func Reauth(ctx context.Context, tr Transport, req ReauthRequest, openURL func(s
 		http.Error(w, "This CLI authorization callback was already used.", http.StatusConflict)
 	})
 	server := &http.Server{Handler: callback, ReadHeaderTimeout: 5 * time.Second}
-	defer server.Close()
+	defer func() { _ = server.Close() }()
 	go func() { _ = server.Serve(listener) }()
 
 	if openURL == nil {
