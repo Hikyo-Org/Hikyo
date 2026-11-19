@@ -909,7 +909,7 @@
       "hash": "136d46360cc2c6a4087f0be41f18895720845f3bcde6159f94fddec733530dd9",
       "reason": "External PostgreSQL provider wire-decoder construction fixes the backend message-body cap at 1 MiB before reading the peer-controlled body. It exposes no application SQL and is installed only by the verify-full egress-policy constructor.",
       "callers": {
-        "internal/dynamic/postgres/postgres.go:newWithDialer": "dc0bd8bdb013d4bfdee0684d127971e3a83cfded2b92e0d592b0392e6bbec0d1"
+        "internal/dynamic/postgres/postgres.go:newWithDialer": "81fc5598efe05ae33ee065194627e028fb77354f0c1c7b123b7e2d15ab8f9207"
       }
     },
     "internal/store/admission.go:DB.beginPostgresOn": {

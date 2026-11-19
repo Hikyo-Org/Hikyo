@@ -635,6 +635,27 @@ func (s *Auth) RemoveTOTP(ctx context.Context, presented, password string) (Logi
 	return result, nil
 }
 
+// liveConfirmedTOTP resolves the account's confirmed TOTP factor for a proof. A
+// factor from a superseded credential epoch (a restored row) is inert
+// (human-auth ADR § Restore), so it is refused exactly like no factor.
+func liveConfirmedTOTP(ctx context.Context, az *authz.TxAuthorizer, accountID string) (authz.TOTPCredential, error) {
+	confirmed, err := az.ConfirmedTOTP(ctx, accountID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return authz.TOTPCredential{}, ErrNoTOTPFactor
+	}
+	if err != nil {
+		return authz.TOTPCredential{}, err
+	}
+	epoch, err := az.CredentialEpoch(ctx)
+	if err != nil {
+		return authz.TOTPCredential{}, err
+	}
+	if confirmed.CredentialEpoch != epoch {
+		return authz.TOTPCredential{}, ErrNoTOTPFactor
+	}
+	return confirmed, nil
+}
+
 // StepUpTOTP elevates the acting session in place: a valid code consumes its
 // step (single-use CAS), then the session's factor set gains `totp` and its
 // token rotates. It is NOT an account-security mutation — no generation
@@ -658,10 +679,7 @@ func (s *Auth) StepUpTOTP(ctx context.Context, presented, code string) (LoginRes
 		if err != nil {
 			return err
 		}
-		confirmed, err = az.ConfirmedTOTP(ctx, account.ID)
-		if errors.Is(err, domain.ErrNotFound) {
-			return ErrNoTOTPFactor
-		}
+		confirmed, err = liveConfirmedTOTP(ctx, az, account.ID)
 		return err
 	})
 	if err != nil {
@@ -707,9 +725,7 @@ func (s *Auth) StepUpTOTP(ctx context.Context, presented, code string) (LoginRes
 		if err != nil {
 			return err
 		}
-		if _, err := az.ConfirmedTOTP(ctx, account.ID); errors.Is(err, domain.ErrNotFound) {
-			return ErrNoTOTPFactor
-		} else if err != nil {
+		if _, err := liveConfirmedTOTP(ctx, az, account.ID); err != nil {
 			return err
 		}
 		// CAS on the row whose seed was VERIFIED in phase 1, not a freshly read
