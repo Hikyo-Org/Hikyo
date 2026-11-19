@@ -24,6 +24,7 @@ import { Sep } from '../ui/Sep.tsx';
 import { ConsequencesDialog } from './Sections.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 import { KeyMoveConfirmDialog, type WideningRefusal } from './accessRules/KeyMoveConfirmDialog.tsx';
+import { DownloadLink } from '../app/DownloadLink.tsx';
 
 type Props = { org: string; project: string; settings: DefinitionsSettings };
 
@@ -58,12 +59,12 @@ export function DefinitionsBundlePanel({ org, project, settings }: Props) {
                 </>
               ) : (
                 <>
-                  <a className="btn" href={path} download="definitions.json">
+                  <DownloadLink href={path} filename="definitions.json">
                     Download definitions bundle
-                  </a>
-                  <a className="btn" href={`${path}?portable=true`} download="definitions-portable.json">
+                  </DownloadLink>
+                  <DownloadLink href={`${path}?portable=true`} filename="definitions-portable.json">
                     Download portable bundle
-                  </a>
+                  </DownloadLink>
                 </>
               )}
             </>

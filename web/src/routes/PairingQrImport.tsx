@@ -5,6 +5,7 @@ import { Button } from '../ui/Button.tsx';
 import { Input } from '../ui/Input.tsx';
 import { readPairingInvitation } from './pairingInvitation.ts';
 import { decodeQrPixels, qrFrame, readQrImage } from './pairingQr.ts';
+import { isAppMode, offerContinueInBrowser } from '../app/shell.ts';
 
 /** Pixels and decoded invitations stay in this surface only. No URLs, uploads,
  * automatic redemption, or browser-native BarcodeDetector dependency. */
@@ -49,7 +50,9 @@ export function PairingQrImport({ onDecoded, revision, disabled }: {
   const startCamera = async () => {
     stop(); setNotice('');
     if (!window.isSecureContext || navigator.mediaDevices?.getUserMedia === undefined) {
-      setNotice('Camera scanning needs HTTPS and camera support. Import a QR image or paste the invitation instead.'); return;
+      setNotice('Camera scanning needs HTTPS and camera support. Import a QR image or paste the invitation instead.');
+      if (isAppMode()) offerContinueInBrowser('The desktop app cannot scan with a camera. Continue in your browser to scan, or import a QR image here.');
+      return;
     }
     const token = operation.current;
     const current = () => mounted.current && token === operation.current && !document.hidden;
@@ -82,6 +85,7 @@ export function PairingQrImport({ onDecoded, revision, disabled }: {
     } catch (error) {
       if (!current()) return;
       stop();
+      if (isAppMode()) offerContinueInBrowser('The desktop app was refused the camera. Continue in your browser to scan, or import a QR image here.');
       setNotice(error instanceof DOMException && error.name === 'NotAllowedError'
         ? 'Camera permission was refused. Allow the camera in your browser, import a QR image, or paste the invitation.'
         : 'The camera could not start. Check that it is connected and available, import a QR image, or paste the invitation.');

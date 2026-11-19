@@ -2,6 +2,7 @@ import {
   enrolPasskeyFinishOp, enrolTotpConfirmOp, regenerateRecoveryCodesOp,
   removePasskeyOp, removeTotpOp, setPasswordOp, unlinkIdentityOp, whoamiOp,
 } from '@hikyo/operations';
+import { isAppMode } from '../app/shell.ts';
 import { assertSessionEpoch, captureSessionEpoch, checkSessionRefusal, reconcileSessionResponse, sessionEpochSignal } from './sessionEpoch.ts';
 
 import type { ErrorCode, ScanFinding, WideningRefusal } from '@hikyo/client';
@@ -18,6 +19,16 @@ const ACCOUNT_SESSION_ROTATIONS = new Set<object>([
   enrolPasskeyFinishOp, enrolTotpConfirmOp, removePasskeyOp, removeTotpOp, setPasswordOp, unlinkIdentityOp,
 ]);
 
+/**
+ * The artifact this window's session holds: `browser` in a browser, `cli` in the
+ * desktop app (ADR D3). Without the second, a reissued app session is never
+ * verified, `acceptAccountSession` refuses it, and the recovery codes the server
+ * already replaced are never shown.
+ */
+export function isOwnArtifact(artifact: string): boolean {
+  return artifact === 'browser' || (artifact === 'cli' && isAppMode());
+}
+
 function expectedAccountRotation<T>(operation: object, data: T): ExpectedSessionRotation | undefined {
   const recovered = operation === regenerateRecoveryCodesOp
     ? zRecoveryCodesResult.safeParse(data) : undefined;
@@ -25,7 +36,7 @@ function expectedAccountRotation<T>(operation: object, data: T): ExpectedSession
   const login = recovered?.success ? recovered.data.login : rotated?.success ? rotated.data : undefined;
   // A malformed proof grants no continuity. Still reconcile the cookie before
   // the operation's normal parser reports its contract error to the caller.
-  if (login === undefined || login.session.artifact !== 'browser') return undefined;
+  if (login === undefined || !isOwnArtifact(login.session.artifact)) return undefined;
   return { session: login.session.id, principal: login.principal.id };
 }
 

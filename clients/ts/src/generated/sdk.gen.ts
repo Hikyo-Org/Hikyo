@@ -2731,7 +2731,7 @@ export const linkIdentity = <ThrowOnError extends boolean = false>(options: Opti
  * An account-security mutation proved by the selected local credential.
  * Requires a password, another external identity, or a complete usable
  * passkey login set to remain after removal; TOTP alone is insufficient.
- * Deletes the identity's sessions and
+ * Deletes every session of the principal, whichever artifact it holds, and
  * reissues the acting session. The reissued token replaces the old one.
  *
  */

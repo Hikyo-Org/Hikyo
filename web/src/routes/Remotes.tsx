@@ -50,6 +50,7 @@ import {
   type WorkspaceBearer,
 } from '../api/workspace.ts';
 import { createWorkspaceClient } from '../api/workspaceClient.ts';
+import { instanceOrigin, isAppMode } from '../app/shell.ts';
 import { writeClipboard } from '../app/clipboard.ts';
 import { useNavigationGuard } from '../app/useNavigationGuard.ts';
 import { makeQueryClient, retireQueryClient } from '../app/queryClient.ts';
@@ -377,7 +378,8 @@ export function RemoteCard({
       ) : null}
 
       <div className="actions remote__actions">
-        {live === undefined ? (
+        {/* A workspace is a popup handoff between two browser origins, which the desktop app's window cannot run. */}
+        {live === undefined && !isAppMode() ? (
           <Button
             variant="primary"
             type="button"
@@ -561,7 +563,7 @@ export function AddRemote({ onAdded }: { onAdded?: () => void } = {}) {
       );
       return;
     }
-    if (submittedOrigin === globalThis.location.origin) {
+    if (submittedOrigin === instanceOrigin()) {
       setValidationFailure('That is this instance. A remote must be another instance.');
       return;
     }

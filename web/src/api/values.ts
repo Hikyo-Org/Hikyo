@@ -34,6 +34,7 @@ import {
 } from './keys.ts';
 import { useTransport } from './transport.tsx';
 import { environmentListQueryOptions } from './hierarchyQueries.ts';
+import { ContinueInBrowserError, ShellError, isAppMode, offerContinueInBrowser, shellReauth, type ShellReauthRequest } from '../app/shell.ts';
 
 /**
  * The value surface and the reveal ceremony, as the SPA sees them (#58).
@@ -170,6 +171,7 @@ export type PasskeyCeremonyInput = {
  * keys below" exists to prevent.
  */
 export async function runPasskeyCeremony(input: PasskeyCeremonyInput): Promise<void> {
+  if (isAppMode()) return runAppReauth(input);
   const epoch = captureSessionEpoch();
   const options = await parsed(reauthPasskeyStartOp, {
       body: {
@@ -182,12 +184,42 @@ export async function runPasskeyCeremony(input: PasskeyCeremonyInput): Promise<v
   await finishPasskeyCeremony(request, epoch);
 }
 
+/**
+ * The desktop app's window cannot run a passkey (no valid RP ID on its origin),
+ * so a decision the reauth handoff serves goes to the system browser through
+ * the shell and comes back redeemed, with the page state intact (ADR D7). The
+ * far end offers whatever factors the person has, so this covers the OIDC
+ * button too. `mint` and `access` have no handoff purpose: the browser hop
+ * cannot sign them, so the page offers to continue in the browser instead.
+ */
+const APP_REAUTH: Partial<Record<PasskeyCeremonyInput['operation'], Pick<ShellReauthRequest, 'purpose' | 'operation'>>> = {
+  reveal: { purpose: 'reveal', operation: 'value.reveal' },
+  copy: { purpose: 'copy', operation: 'value.copy-source' },
+  publish: { purpose: 'publish', operation: 'value.copy-destination' },
+  approve: { purpose: 'approve', operation: 'approval.vote' },
+  reject: { purpose: 'reject', operation: 'approval.vote' },
+  bypass: { purpose: 'bypass', operation: 'approval.bypass' },
+};
+
+/** The browser hop for one environment's decision; used by every non-adapter ceremony in app mode. */
+export async function runAppReauth(input: PasskeyCeremonyInput): Promise<void> {
+  const route = APP_REAUTH[input.operation];
+  if (route === undefined) {
+    throw offerContinueInBrowser('This confirmation needs your browser. Continue there, then return to the app.');
+  }
+  await shellReauth({ ...route, environment_ids: [input.environmentId], key_ids: [...input.keyIds] });
+}
+
 /** Run one adapter-purpose passkey ceremony over one zero-window environment. */
 export async function runAdapterPasskeyCeremony(input: {
   operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync';
   environmentId: string;
   environmentIds: readonly string[];
 }): Promise<void> {
+  // One hop over the whole set: the far end still asks for a touch per environment.
+  if (isAppMode()) {
+    return shellReauth({ purpose: 'adapter', operation: input.operation, environment_ids: [...input.environmentIds] });
+  }
   const epoch = captureSessionEpoch();
   const options = await parsed(reauthPasskeyStartOp, {
       body: {
@@ -441,7 +473,8 @@ export async function runOIDCCeremony(
  * that was fine.
  */
 export function ceremonyRefusalText(error: unknown): string {
-  if (error instanceof OIDCCeremonyError) return error.message;
+  if (error instanceof OIDCCeremonyError || error instanceof ContinueInBrowserError) return error.message;
+  if (error instanceof ShellError) return shellRefusalText(error);
   if (error instanceof ApiError) {
     return statusText(
       error,
@@ -457,6 +490,16 @@ export function ceremonyRefusalText(error: unknown): string {
     return 'The passkey prompt was dismissed or timed out. Nothing was disclosed.';
   }
   return 'The reauthentication could not be completed.';
+}
+
+function shellRefusalText(error: ShellError): string {
+  switch (error.code) {
+    case 'cancelled': return 'The confirmation was cancelled. Nothing was authorised.';
+    case 'busy': return 'Another confirmation is already open in your browser. Finish or close it, then try again.';
+    case 'rate_limited': return 'Too many confirmations just now. Wait a moment, then try again.';
+    case 'refused': return 'The desktop app will not run this confirmation. Continue in your browser instead.';
+    default: return 'The confirmation could not be completed in your browser. Try again.';
+  }
 }
 
 /**
