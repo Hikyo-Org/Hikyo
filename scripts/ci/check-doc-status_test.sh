@@ -25,6 +25,17 @@ make_fixture() {
       ]
     },
     {
+      "id": "CAP-PUBLIC-RELEASE",
+      "kind": "capability",
+      "title": "Public release",
+      "status": "implemented",
+      "implemented": "Stable v1.1.0 published",
+      "evidence": [
+        { "label": "#78 handoff", "path": "docs/handoff/78-docs-governance.md" },
+        { "label": "Published v1.1.0", "url": "https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.1.0" }
+      ]
+    },
+    {
       "id": "OBL-DOCS-SITE",
       "kind": "obligation",
       "title": "Publish the documentation site for 1.0",
@@ -44,6 +55,8 @@ EOF
 
 - <a id="obl-docs-site"></a>`OBL-DOCS-SITE` — Publish the documentation site for 1.0.
 EOF
+	mkdir -p "$root/release/trust"
+	printf '{"highest_release": "1.1.0"}\n' >"$root/release/trust/metadata.json"
 	cat >"$root/docs/handoff/78-docs-governance.md" <<'EOF'
 # Historical evidence
 EOF
@@ -121,4 +134,9 @@ printf '%s\n' '# Immutable ADR' '- [ ] Mutable implementation task' \
 	>"$spec_checkbox/docs/adr/immutable.md"
 expect_reject 'mutable ADR/spec checkbox' "$spec_checkbox"
 
-printf 'documentation status fixture: valid ledger accepted; contradictions, unresolved disposition, orphan, unknown ID, missing evidence, and mutable spec status refused\n'
+stale_release="$fixture_dir/stale-release"
+cp -R "$valid" "$stale_release"
+printf '{"highest_release": "1.2.0"}\n' >"$stale_release/release/trust/metadata.json"
+expect_reject 'ledger behind the published stable release' "$stale_release"
+
+printf 'documentation status fixture: valid ledger accepted; contradictions, unresolved disposition, orphan, unknown ID, missing evidence, mutable spec status and stale stable release refused\n'

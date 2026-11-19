@@ -49,7 +49,8 @@ Both recipes run the coordinator from the signed release package on the host,
 which installs `/usr/bin/hikyo`. The binary installer's `/usr/local/bin/hikyo` is
 not used: the maintenance unit and native upgrades name the packaged path, and
 the ceremony stops with that explanation if the package is absent. Release 1.0.0
-does not contain `security-maintenance`, and a host installed from it is not adopted:
+does not contain `security-maintenance` (it first ships in 1.1.0), and a host
+installed from 1.0.0 is not adopted:
 it keeps the [manual procedure](manual-upgrades.md), and `enroll` refuses it and says
 why. Only an installation created through these recipes from a release that contains
 this feature can enroll. On Compose, both the host package and the image must be

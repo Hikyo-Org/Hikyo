@@ -208,6 +208,7 @@ case "${1:-help}" in
 		download_verify "$version"
 		signed_pr "release/sync-trust-$version" "chore(release): record published $version trust" "$download" \
 			metadata.json metadata.sigstore.json catalog.json catalog.sigstore.json
+		printf 'Update CAP-PUBLIC-RELEASE in docs/status/ledger.json on that PR to name v%s and cite its release URL, then run node scripts/ci/check-doc-status.mjs --write; docs CI refuses the trust PR until it does.\n' "$version"
 		printf 'Merge the trust PR after review and green CI before building another release.\n'
 		;;
 	homebrew)

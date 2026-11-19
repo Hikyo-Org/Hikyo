@@ -12,8 +12,8 @@ Apple signing before final artifact hashing and Cosign signing.
 The design combines SOPS-style keyless signing and provenance with OpenBao-style
 review before publication. It does not deploy SOPS or an OpenBao server.
 
-**[Hikyo 1.0.0 is published](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0).**
-The [publication record](1.0.0.md) links the released source and remaining
+**The [latest stable release](https://github.com/Hikyo-Org/Hikyo/releases/latest) is published.**
+The 1.0.0 [publication record](1.0.0.md) links that release's source and remaining
 verification and qualification work. A successful test or signed draft alone
 does not establish publication of a future release.
 
@@ -41,7 +41,10 @@ scripts/release/ceremony.sh sync-trust VERSION
 ```
 
 Wait for the draft build before review, inspect the release notes and evidence,
-and wait for local publication verification before syncing trust. Merge the trust PR after review
+and wait for local publication verification before syncing trust. Before merging,
+the trust PR must also update `CAP-PUBLIC-RELEASE` in `docs/status/ledger.json` to name
+the new version and cite its release URL (then run `node scripts/ci/check-doc-status.mjs --write`);
+docs CI refuses the trust PR until it does. Merge the trust PR after review
 and green CI before the next release. The [complete guide](online-signing.md)
 explains each boundary and retry behavior.
 

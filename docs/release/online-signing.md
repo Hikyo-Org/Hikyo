@@ -8,8 +8,8 @@ OpenBao-style review of a draft before publication. No SOPS or OpenBao service
 is installed. GitHub's short-lived OIDC identity signs routine releases; the
 existing recovery key authorizes that delegation once.
 
-**[Hikyo 1.0.0 is published](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0).**
-The [publication record](1.0.0.md) records its identity and remaining closeout.
+**The [latest stable release](https://github.com/Hikyo-Org/Hikyo/releases/latest) is published.**
+The 1.0.0 [publication record](1.0.0.md) records that release's identity and remaining closeout.
 Public verification and signed trust synchronization follow publication;
 confirm the selected checkout's authenticated trust state before verification
 or another release. The commands below remain the maintainer procedure.
@@ -76,7 +76,11 @@ Do not run `build 1.0.0` until designs and final-candidate acceptance are done.
    command to pass.
 4. **Record published trust:** run
    `scripts/release/ceremony.sh sync-trust VERSION`. It re-verifies the public
-   release and opens a PR containing its signed metadata and catalog. Review
+   release and opens a PR containing its signed metadata and catalog. Push a
+   commit to that PR that updates `CAP-PUBLIC-RELEASE` in
+   `docs/status/ledger.json` to name the new version and cite its release URL,
+   then run `node scripts/ci/check-doc-status.mjs --write`; docs CI refuses the
+   trust PR until the ledger names the release. Review
    and merge it promptly after green CI, then pull main. Merging redeploys
    hikyo.app: the landing page and docs name the new version, and the demo
    is rebuilt with them. That deployment fails unless the live landing page

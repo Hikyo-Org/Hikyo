@@ -33,13 +33,14 @@ That complete example keeps the delivery controller disabled until the server
 works. The setup below instead shows the manual server-plus-delivery-operator
 shape; the delivery operator does not manage server releases.
 Use [Kubernetes GitOps](/docs/kubernetes-gitops/) to install a signed chart through
-Flux or Argo CD with the delivery operator disabled. It refuses stable 1.0.0. To install stable 1.0.0, first
+Flux or Argo CD with the delivery operator disabled. It refuses the stable 1.0.0 chart.
+To install stable %STABLE_VERSION% manually, first
 [verify the stable bundle](/docs/installation/#verify-a-stable-bundle), then use the
-setup below with version `1.0.0` and confirm its digest against the release notes.
-That setup is not a complete first-install runbook: the 1.0.0 chart does not expose
+setup below with version `%STABLE_VERSION%` and confirm its digest against the release notes.
+That setup is not a complete first-install runbook. The 1.0.0 chart also does not expose
 its staged root-key path to in-pod `admin` commands, so `hikyo admin create` refuses
 with `no root key configured` and the unmodified chart offers no first-administrator
-route.
+route; later charts set `HIKYO_ROOT_KEY_FILE`.
 
 Generate the root key once and create both required server Secrets first.
 Prepare a private `database-dsn` file containing the PostgreSQL DSN, with

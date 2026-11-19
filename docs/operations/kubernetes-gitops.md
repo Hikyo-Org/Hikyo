@@ -17,14 +17,17 @@ The version you select decides what the generator requires:
 Nightlies remain unsupported prereleases. Passing the generator does not qualify a
 stable chart; record its controller and application results as described below.
 
-**Stable 1.0.0 is refused, and no published stable chart passes yet.** The 1.0.0
+**Stable 1.0.0 is refused, and no published stable chart has a recorded controller install yet.** The 1.0.0
 chart does not set `HIKYO_ROOT_KEY_FILE`, and it has no value that could add it.
 `admin` has no root-key flag, so the first-administrator step fails with
 `no root key configured`. The 1.0.0 image and chart signatures themselves verify.
 Under Flux 2.10.0 the same chart also fails to install: Flux versions it
 `1.0.0+<digest>`, and the chart copies that into an invalid `helm.sh/chart` label.
-Both are fixed in this source, so the first stable release cut from it can pass
-the generator. No published stable chart has completed a controller install yet.
+Both are fixed from the 1.1.0 chart on (`HIKYO_ROOT_KEY_FILE` and a sanitized
+`helm.sh/chart` label at `v1.1.0`). On 19 November 2026 the generator, with Helm 4.2.3, accepted the published 1.1.0
+chart (`sha256:bab52fb111e56d05d4178c938f7d12409139067176d4082e3cce91d89f150d6d`,
+source `c56b8b44820a6e088920759f974aabc456d737ef`) for Flux and Argo CD.
+No published stable chart has completed a recorded controller install yet.
 See the [deployment matrix](deployment-support.md#runtime-matrix).
 
 These recipes do not authorize installation into an existing cluster. Source

@@ -11,9 +11,10 @@ and matching image. Flux starts suspended; Argo CD requires manual sync.
 The generator accepts signed stable and nightly charts, and nightlies remain
 unsupported prereleases. It refuses the stable 1.0.0 chart:
 that chart gives `hikyo admin create` no root key, and it fails to install under
-Flux. The first stable release cut after those fixes can pass the generator, though
-no published stable chart has completed a controller install. For 1.0.0 artifacts, use
-[stable downloads](/docs/installation/#stable-downloads).
+Flux. Stable charts from 1.1.0 on carry both fixes, and the generator accepted the
+published 1.1.0 chart for Flux and Argo CD on 19 November 2026. No published stable
+chart has a recorded controller install yet.
+For 1.0.0 artifacts, use [stable downloads](/docs/installation/#stable-downloads).
 
 Use the [complete GitOps runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/kubernetes-gitops.md)
 for prerequisites, controller activation, maintenance, recovery and recorded
