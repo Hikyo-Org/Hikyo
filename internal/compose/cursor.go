@@ -44,23 +44,43 @@ type CursorBinding struct {
 	// TargetKeyIDs is the render-target membership: target name → its immutable
 	// key ids. Both the key set and the target set are compared exactly.
 	TargetKeyIDs map[string][]string `json:"target_key_ids"`
+	// TargetLoaderAcks is each target's acknowledge_loader_control set (targets
+	// with none are omitted). Removing an acknowledgement must invalidate the
+	// cursor: a "current" answer would otherwise skip the render-time refusal and
+	// let an already-published generation be applied.
+	TargetLoaderAcks map[string][]string `json:"target_loader_acks,omitempty"`
+	// LoaderAcksBound marks a binding that carries TargetLoaderAcks. A stored
+	// cursor written before the member existed lacks it and EligibleCursor
+	// refuses it, so an acknowledgement removed across an upgrade still forces a
+	// full fetch.
+	LoaderAcksBound bool `json:"loader_acks_bound"`
 }
 
 // canonical returns a copy with the projection and every key-id list sorted and
 // deduplicated, so equality is order- and duplicate-invariant.
 func (b CursorBinding) canonical() CursorBinding {
 	out := CursorBinding{
-		CredentialID:   b.CredentialID,
-		Environment:    b.Environment,
-		ConfigOnly:     b.ConfigOnly,
-		PinnedRevision: b.PinnedRevision,
-		Projection:     crypto.CanonicalStringSet(b.Projection),
+		CredentialID:    b.CredentialID,
+		Environment:     b.Environment,
+		ConfigOnly:      b.ConfigOnly,
+		PinnedRevision:  b.PinnedRevision,
+		Projection:      crypto.CanonicalStringSet(b.Projection),
+		LoaderAcksBound: b.LoaderAcksBound,
 	}
 	if b.TargetKeyIDs != nil {
 		out.TargetKeyIDs = make(map[string][]string, len(b.TargetKeyIDs))
 		for t, ids := range b.TargetKeyIDs {
 			out.TargetKeyIDs[t] = crypto.CanonicalStringSet(ids)
 		}
+	}
+	for t, acks := range b.TargetLoaderAcks {
+		if acks = crypto.CanonicalStringSet(acks); len(acks) == 0 {
+			continue
+		}
+		if out.TargetLoaderAcks == nil {
+			out.TargetLoaderAcks = make(map[string][]string, len(b.TargetLoaderAcks))
+		}
+		out.TargetLoaderAcks[t] = acks
 	}
 	return out
 }
@@ -118,7 +138,7 @@ func EligibleCursor(state *CursorState, want CursorBinding, currentStamps map[st
 	if state == nil {
 		return "", false
 	}
-	if !state.Binding.Equal(want) {
+	if !state.Binding.LoaderAcksBound || !state.Binding.Equal(want) {
 		return "", false
 	}
 	// The target set is authoritative from the binding. The cursor and the
@@ -138,7 +158,7 @@ func EligibleCursor(state *CursorState, want CursorBinding, currentStamps map[st
 	// so a crafted stamp/target cannot escape and the <target>.env check is
 	// fd-relative (root.Lstat does not follow the final component: a dir or a
 	// symlink in place of the regular file is refused).
-	root, err := os.OpenRoot(runtimeDir)
+	root, err := openRuntimeRoot(runtimeDir, false)
 	if err != nil {
 		return "", false
 	}
