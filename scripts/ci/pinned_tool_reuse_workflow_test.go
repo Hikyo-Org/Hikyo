@@ -162,7 +162,7 @@ func normalizePinnedToolReuse(jobs map[string]map[string]any) error {
 			if _, hasEnv := step["env"]; hasEnv || strings.Count(run, kindNewDownload) != 1 {
 				return true, fmt.Errorf("k8s-e2e kind must be fetched through the verifying helper")
 			}
-			step["env"] = map[string]any{"KIND_VERSION": "v0.33.0", "KIND_SHA256": "aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d"}
+			step["env"] = map[string]any{"KIND_VERSION": "v0.32.0", "KIND_SHA256": "50030de23cf40a18505f20426f6a8506bedf13c6e509244bd1fa9463721b0f54"}
 			step["run"] = strings.Replace(run, kindNewDownload, kindFrozenDownload, 1)
 			return true, nil
 		}},
