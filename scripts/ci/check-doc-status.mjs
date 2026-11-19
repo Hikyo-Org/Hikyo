@@ -256,7 +256,9 @@ async function validateStableRelease(root, entries) {
 	const entry = entries.find((candidate) => candidate.id === 'CAP-PUBLIC-RELEASE');
 	if (entry === undefined) fail('CAP-PUBLIC-RELEASE must record the published stable release');
 	const url = `https://github.com/Hikyo-Org/Hikyo/releases/tag/${tag}`;
-	if (!entry.evidence.some((evidence) => evidence.url === url) || !entry.implemented.includes(tag)) {
+	// Whole-version match: v1.1.0 must not satisfy v1.1.10 or v1.1.0-rc.1.
+	const named = new RegExp(`(?<![\\w.])${tag.replaceAll('.', '\\.')}(?![\\w-]|\\.\\d)`);
+	if (!entry.evidence.some((evidence) => evidence.url === url) || !named.test(entry.implemented)) {
 		fail(`CAP-PUBLIC-RELEASE must name stable ${tag} from release/trust/metadata.json and cite ${url}`);
 	}
 }

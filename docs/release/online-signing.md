@@ -8,8 +8,9 @@ OpenBao-style review of a draft before publication. No SOPS or OpenBao service
 is installed. GitHub's short-lived OIDC identity signs routine releases; the
 existing recovery key authorizes that delegation once.
 
-**The [latest stable release](https://github.com/Hikyo-Org/Hikyo/releases/latest) is published.**
-The 1.0.0 [publication record](1.0.0.md) records that release's identity and remaining closeout.
+**The [latest stable release](https://github.com/Hikyo-Org/Hikyo/releases/latest)
+is published.** The 1.0.0 [publication record](1.0.0.md) records that release's
+identity and remaining closeout.
 Public verification and signed trust synchronization follow publication;
 confirm the selected checkout's authenticated trust state before verification
 or another release. The commands below remain the maintainer procedure.

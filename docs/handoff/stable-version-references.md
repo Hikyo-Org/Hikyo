@@ -28,8 +28,8 @@
   coordinator updates the ledger on it.
 - `ceremony.sh sync-trust`, `signing.md` and `online-signing.md` all state
   that step.
-- Fixture coverage: `check-doc-status_test.sh` covers the case where the
-  ledger is behind the published stable release.
+- Fixture coverage: `check-doc-status_test.sh` covers a ledger behind the
+  published stable release and a ledger naming only a prerelease of it.
 
 ## Evidence
 

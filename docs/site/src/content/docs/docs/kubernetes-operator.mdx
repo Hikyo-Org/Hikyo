@@ -40,7 +40,7 @@ setup below with version `%STABLE_VERSION%` and confirm its digest against the r
 That setup is not a complete first-install runbook. The 1.0.0 chart also does not expose
 its staged root-key path to in-pod `admin` commands, so `hikyo admin create` refuses
 with `no root key configured` and the unmodified chart offers no first-administrator
-route; later charts set `HIKYO_ROOT_KEY_FILE`.
+route; the 1.1.0 chart sets `HIKYO_ROOT_KEY_FILE`.
 
 Generate the root key once and create both required server Secrets first.
 Prepare a private `database-dsn` file containing the PostgreSQL DSN, with

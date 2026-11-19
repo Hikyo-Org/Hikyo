@@ -28,7 +28,7 @@ your deployment.
 
 The nightly chart publisher added by this deployment slice is a publication
 mechanism, not evidence that an existing nightly has a chart. On 2 November 2026
-an anonymous client could pull stable `1.0.0`, the repository's only chart.
+an anonymous client could pull stable `1.0.0`, then the repository's only chart.
 Treat a nightly chart as **HOLD** until its exact publisher run and a clean
 anonymous pull succeed. Older prereleases do not acquire charts retroactively.
 Nightly versions are prereleases, so Helm 3.16.1 kept resolving an unpinned chart
@@ -76,7 +76,7 @@ the reverse proxy further reduces exposure.
 
 The GitOps generator accepts stable and nightly charts, and the singleton guide's
 commands name the nightly publisher. The generator refuses the stable 1.0.0 chart
-because it predates two changes that stable charts carry from 1.1.0 on:
+because it predates two changes that the 1.1.0 chart carries:
 
 - It does not set `HIKYO_ROOT_KEY_FILE`, and `admin` has no root-key flag. Inside a
   running 1.0.0 pod, `admin create` refuses with `no root key configured`. The chart
@@ -88,8 +88,8 @@ because it predates two changes that stable charts carry from 1.1.0 on:
 On 19 November 2026 the generator, with Helm 4.2.3, accepted the published 1.1.0
 chart (`sha256:bab52fb111e56d05d4178c938f7d12409139067176d4082e3cce91d89f150d6d`,
 source `c56b8b44820a6e088920759f974aabc456d737ef`) for Flux and Argo CD, but no
-published stable chart has completed a recorded controller install. In a test, an unsigned chart built from
-this source and running the released 1.0.0 image installed under Flux and created its
+published stable chart has completed a recorded controller install. In a test, an
+unsigned chart built from this source and running the released 1.0.0 image installed under Flux and created its
 first administrator inside the pod. That run used controllers older than the qualified
 Flux 2.10.0, with signature verification removed, and a database and custody already
 initialized by the 1.0.0 chart, so it was not a fresh install. No complete stable Kubernetes first-install
