@@ -153,7 +153,7 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	// owner runtime before the fixtures, and normalize only this exact addition.
 	expectedNode := map[string]any{
 		"name": "Select pinned Node for feedback fixtures",
-		"uses": "actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903",
+		"uses": "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
 		"with": map[string]any{"node-version-file": ".nvmrc"},
 	}
 	// #1046 adds mandatory trusted-release fixtures. Require their complete
@@ -252,11 +252,12 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 		}
 		workflow.Jobs[jobName]["steps"] = kept
 	}
-	// Accept only the reviewed artifact runtime upgrades, then restore their
+	// Accept only the reviewed action runtime upgrades, then restore their
 	// frozen pins for hashing. Every other step setting remains fingerprinted.
-	artifactPins := map[string][2]string{
+	actionPins := map[string][2]string{
 		"actions/upload-artifact@":   {"cf430e030ddbb5b0abf93d22962f4752f3646cd9", "ea165f8d65b6e75b540449e92b4886f43607fa02"},
 		"actions/download-artifact@": {"9000827ccba6bdab643e8b6fd33ac0654aef8333", "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"},
+		"actions/setup-node@":        {"949feb2413d6458794dcd2491c4babbbce0c15c1", "2028fbc5c25fe9cf00d9f06a71cc4710d4507903"},
 	}
 	for name, job := range workflow.Jobs {
 		steps, _ := job["steps"].([]any)
@@ -266,10 +267,10 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 				return fmt.Errorf("%s has malformed step configuration", name)
 			}
 			uses, _ := step["uses"].(string)
-			for prefix, pins := range artifactPins {
+			for prefix, pins := range actionPins {
 				if strings.HasPrefix(uses, prefix) {
 					if uses != prefix+pins[0] {
-						return fmt.Errorf("%s requires the reviewed artifact action pin: %s", name, uses)
+						return fmt.Errorf("%s requires the reviewed action pin: %s", name, uses)
 					}
 					step["uses"] = prefix + pins[1]
 				}
