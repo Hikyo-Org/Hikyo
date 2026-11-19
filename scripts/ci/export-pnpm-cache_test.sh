@@ -10,7 +10,7 @@ cat >"$fixture_dir/bin/pnpm" <<'PNPM'
 #!/bin/sh
 set -eu
 case "$*" in
-	--version) printf '%s\n' 11.24.0 ;;
+	--version) printf '%s\n' 12.21.0 ;;
 	'store path')
 		if [ "${PNPM_FIXTURE_WRONG_PATH:-}" = true ]; then
 			printf '%s\n' /unrelated/store/v11
@@ -39,7 +39,7 @@ export npm_config_store_dir=/unrelated/legacy/store
 "$script_dir/export-pnpm-cache.sh"
 grep -Fx "pnpm_config_store_dir=$GITHUB_WORKSPACE/.ci-cache/pnpm/store" "$GITHUB_ENV"
 grep -Fx 'path=.ci-cache/pnpm/store' "$GITHUB_OUTPUT"
-grep -Fx 'abi=node147-pnpm11.24.0' "$GITHUB_OUTPUT"
+grep -Fx 'abi=node147-pnpm12.21.0' "$GITHUB_OUTPUT"
 
 export PNPM_FIXTURE_WRONG_PATH=true
 if "$script_dir/export-pnpm-cache.sh" >"$fixture_dir/refusal.log" 2>&1; then
