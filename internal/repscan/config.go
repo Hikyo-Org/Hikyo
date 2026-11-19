@@ -179,26 +179,33 @@ func matchGlob(pattern, relPath string) bool {
 	return matchSegments(strings.Split(pattern, "/"), strings.Split(relPath, "/"))
 }
 
+// matchSegments backtracks only to the most recent "**", so matching costs
+// O(len(pat) x len(name)); a repo-supplied pattern with many "**" segments
+// cannot make a scan hang (the naive recursion was exponential in them).
 func matchSegments(pat, name []string) bool {
-	for len(pat) > 0 {
-		if pat[0] == "**" {
-			rest := pat[1:]
-			for i := 0; i <= len(name); i++ {
-				if matchSegments(rest, name[i:]) {
-					return true
-				}
+	p, n, star, mark := 0, 0, -1, 0
+	for n < len(name) {
+		if p < len(pat) && pat[p] == "**" {
+			star, mark = p, n
+			p++
+			continue
+		}
+		if p < len(pat) {
+			if ok, _ := path.Match(pat[p], name[n]); ok {
+				p, n = p+1, n+1
+				continue
 			}
+		}
+		if star < 0 {
 			return false
 		}
-		if len(name) == 0 {
-			return false
-		}
-		if ok, _ := path.Match(pat[0], name[0]); !ok {
-			return false
-		}
-		pat, name = pat[1:], name[1:]
+		mark++
+		p, n = star+1, mark
 	}
-	return len(name) == 0
+	for p < len(pat) && pat[p] == "**" {
+		p++
+	}
+	return p == len(pat)
 }
 
 func excluded(patterns []string, relPath string) bool {

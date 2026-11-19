@@ -2,8 +2,11 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
+	"runtime"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 )
@@ -52,5 +55,37 @@ func TestSCIMPreserveSubjectSourceKeepsOneCaseVariantLeaf(t *testing.T) {
 	}
 	if len(desired["URN:EXAMPLE:USER"].(map[string]any)) != 2 {
 		t.Fatal("preserving the subject mutated incoming attributes")
+	}
+}
+
+// A patch with many commands must cost linear work in the attributes it
+// touches. The old merge copied the whole map and scanned every stored key per
+// command, so this took minutes; the bound is generous to stay unflaky.
+func TestSCIMAttributePatchScalesLinearly(t *testing.T) {
+	const commands = 20000
+	patch := make([]UserPatchCommand, 0, commands+1)
+	for i := range commands {
+		patch = append(patch, UserPatchMergeAttributes{Attributes: map[string]any{fmt.Sprintf("Attr%d", i): i}})
+	}
+	patch = append(patch, UserPatchMergeAttributes{Attributes: map[string]any{"ATTR0": nil, "attr1": "again"}})
+
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	start := time.Now()
+	got, err := ReduceUserPatch(DesiredUser{}, patch)
+	elapsed := time.Since(start)
+	runtime.ReadMemStats(&after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Deterministic guard: a clone per command allocates gigabytes here.
+	if allocated := after.TotalAlloc - before.TotalAlloc; allocated > 256<<20 {
+		t.Fatalf("%d-command patch allocated %d bytes; merge is no longer linear", commands, allocated)
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("%d-command patch took %s; merge is no longer linear", commands, elapsed)
+	}
+	if _, ok := got.Attributes["Attr0"]; ok || len(got.Attributes) != commands-1 || got.Attributes["Attr1"] != "again" {
+		t.Fatalf("merge result wrong: %d attributes, Attr1=%v", len(got.Attributes), got.Attributes["Attr1"])
 	}
 }
