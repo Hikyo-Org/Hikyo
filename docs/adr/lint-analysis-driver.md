@@ -77,12 +77,10 @@ The spike also established that:
       that arrived on `dev`: they read only Go syntax of the package they are
       given, and their stale-allowlist and target-presence results travel as
       summaries);
-   2. input hashing and the analyzers that read non-Go inputs. Left on the old
-      harness until here from `dev`: `containmentgates` and its `sqlscope`
-      scanner (read `.sql` query text), `CheckJSONv1Imports` (walks every Go
-      file in the repository, including directories outside the module's
-      packages) and `CheckStableCopies` (parses `scripts/ci` programs that are
-      not analyzed packages);
+   2. input hashing and the analyzers that read non-Go inputs: `containmentgates`
+      (with its `sqlscope` scanner), `sqlpredicate`, `reencryptcoverage`,
+      `stablecopies`, `appendonly`, `grantlock`, `denialwriter` and `jsonv1`.
+      RawSQL stays in step 3. See the step 2 amendment below;
    3. RawSQL with facts and summaries;
    4. removal of `LoadRepo`, `flatten`, and the old harness, including the
       `internal/isolation` callers.
@@ -110,3 +108,46 @@ The spike also established that:
   removed.
 - A changed vet tool binary invalidates every cached result, so analyzer
   changes still pay one full run.
+
+## Amendment: step 2 (input hashing)
+
+Decided while implementing step 2; accepted by the same owner decision that
+accepted the ADR, as an implementation of decision 2 and 3.
+
+- **Helper.** `internal/lint/inputs.go`. An analyzer declares `InputSpec`s
+  (a file, or a directory with extensions, optionally recursive) relative to a
+  root. The driver hashes them and passes `-<analyzer>.root` and
+  `-<analyzer>.inputs`. The analyzer snapshots the declared files once, refuses
+  unless the digest equals the flag, and serves reads only from the snapshot, so
+  a file edited after hashing cannot change what it sees. An undeclared path,
+  a missing flag and a digest mismatch are refusals, reported as findings at
+  the anchor's package clause (not as a vet error, so `// want` can state
+  them). A declared file that is absent hashes as absent and reads as not-exist.
+- **Never declare analyzed Go files.** Vet flags are part of every package's
+  action ID, so any edit to a declared input re-vets every package of the
+  context. Declared inputs are therefore limited to files vet does not key on
+  (`.sql`, the generated query APIs, the `scripts/ci` copies) plus the test
+  files that `reviewed_pins.json` cites for scoped queries (read by
+  `sqlpredicate`; an edit to one of them re-vets the context, which is the cost
+  of that check's old behavior).
+- **File-input analyzers run once, on an anchor package** (`internal/store`,
+  `internal/jsonwire`) and report a target summary, so a renamed anchor is a
+  finding. `grantlock` and `denialwriter` are per-package analyzers that open
+  the declared query files only in packages that can reach a generated query
+  package (`grantlock`) or are the resolution surface (`denialwriter`).
+- **`appendonly` splits.** Its `.sql` side is a declared input; the
+  `synchronous_commit` ban over Go files runs per package on the package's own
+  files (vet keys on them), and Go files no analyzed package contains are
+  judged by the test-process check below.
+- **`jsonv1` deviates from decision 3's pure summary shape.** Each analyzed
+  package judges its files' imports and reports a `gofile` summary per file;
+  the package allowed to import `encoding/json` reports an `exception` summary.
+  `CheckUnanalyzedGoFiles` runs in the test process after every context: it
+  parses the Go files of the repository that no context analyzed (excluded by
+  build tags in every context, lone programs), applies the jsonv1 and
+  `synchronous_commit` rules to them, and reports a stale exception when no
+  context saw it import. It runs on every test run, so it is never a replayed
+  vet result. The check only runs when every context ran.
+- `Check.OnDisk` builds the same analyzer reading straight from disk, for the
+  old harness and the parity leg; the registered analyzers refuse without the
+  driver's flags.

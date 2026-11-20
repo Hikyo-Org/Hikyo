@@ -33,7 +33,8 @@ func repoInputFlags(t *testing.T) []string {
 	for _, name := range InputAnalyzers() {
 		flags = append(flags, inputFlags(t, name, moduleRoot())...)
 	}
-	return flags
+	// jsonv1 reads no declared input; it needs the root its paths are relative to.
+	return append(flags, "-jsonv1.root="+moduleRoot())
 }
 
 // findingMessages strips the position and analyzer prefix of the analyzer's
