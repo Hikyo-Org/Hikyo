@@ -156,6 +156,11 @@ cp "$STUB_LIST" "$STUB_LIST_PROBE"
 printf 'github.com/Hikyo-Org/hikyo/scripts/ci/gotools\n' >>"$STUB_LIST_PROBE"
 expect_refusal 'a probe-build-only import' 'scripts/ci/gotools, but a change there does not select the desktop job'
 
+# Only desktop's own external test package is skipped; a real root package of that name counts.
+reset
+printf 'github.com/Hikyo-Org/hikyo/desktop_test\n' >>"$STUB_LIST"
+expect_refusal 'a real root package named desktop_test' 'desktop/ imports desktop_test, but a change there does not select the desktop job'
+
 reset
 printf 'fmt\ngithub.com/Hikyo-Org/hikyo/desktop\n' >"$STUB_LIST"
 expect_refusal 'no root imports' 'imports no root packages'

@@ -70,7 +70,7 @@ awk -v mod="$root_module" '
 listing=$(cd desktop && GOOS=darwin CGO_ENABLED=1 "${GO:-go}" list -deps -test -f '{{.ImportPath}}' ./... &&
 	GOOS=darwin CGO_ENABLED=1 "${GO:-go}" list -deps -test -tags probe -f '{{.ImportPath}}' ./...) ||
 	fail 'go list failed inside desktop/'
-packages=$(printf '%s\n' "$listing" | sed -n "s|^$root_module/||p" | grep -v -E -e '^desktop(_test)?( .*)?$' -e '^desktop/' | sed 's/ \[.*$//; s/\.test$//' | sort -u) ||
+packages=$(printf '%s\n' "$listing" | sed -n "s|^$root_module/||p" | grep -v -E -e '^desktop( .*)?$' -e '^desktop/' -e '^desktop_test \[.*/desktop\.test\]$' | sed 's/ \[.*$//; s/\.test$//' | sort -u) ||
 	packages=''
 [ -n "$packages" ] || fail 'desktop/ imports no root packages; the classifier list is stale'
 for package in $packages; do
