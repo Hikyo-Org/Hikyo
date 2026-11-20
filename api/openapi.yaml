@@ -14500,7 +14500,9 @@ paths:
       description: |
         Metadata only: no credential, candidate handle or password is stored or
         returned. Deleted (disabled) rotations are history and are listed only
-        with `include_disabled`. The list is paged in id order (`limit`, default
+        with `include_disabled`, except one that owns a run owing a provider role
+        a drop (`owed_drop_runs` above zero), which is always listed so the
+        warning is not lost with the delete. The list is paged in id order (`limit`, default
         100, at most 500; `after` continues from `next_after`). `credential_expires_at` is when the credential
         currently delivered into the rotation's keys lapses, once a run has
         published one. Slice one of scheduled rotation records the
@@ -14514,7 +14516,7 @@ paths:
         - name: include_disabled
           in: query
           required: false
-          description: List deleted (disabled) rotations as well. Off by default.
+          description: List every deleted (disabled) rotation as well. Off by default, which still lists a deleted rotation that owns a run owing a provider role a drop.
           schema: {type: boolean, default: false}
         - name: limit
           in: query
@@ -18505,7 +18507,7 @@ components:
         state: {$ref: "#/components/schemas/CredentialRotationState"}
         halt_reason: {$ref: "#/components/schemas/RotationHaltReason", description: "Present only while the state is halted: why the server stopped the rotation, as a fixed word."}
         last_run: {$ref: "#/components/schemas/RotationLastRun", description: "The newest run, the top row of the runs list. Absent when the rotation has never run."}
-        owed_drop_runs: {type: integer, format: int64, minimum: 0, description: "How many of the rotation's runs, over its whole history, still owe a provider role a drop: those in phase revoke_refused or quarantine, whatever their error code. It is the count `hikyo rotation runs` lists as ATTENTION, and the hikyo_rotation_runs_revoke_refused and hikyo_rotation_runs_quarantined gauges sum the same runs. Hikyo has no operator action that releases such a role; it lapses on its own unless dropped at the provider. Zero means no run owes one. A deleted rotation keeps the count of the runs its delete closed."}
+        owed_drop_runs: {type: integer, format: int64, minimum: 0, description: "How many of the rotation's runs, over its whole history, need an operator's attention because they still owe a provider role a drop that Hikyo will not carry out: those in phase revoke_refused or quarantine, whatever their error code. It is the count `hikyo rotation runs` lists as ATTENTION, and the hikyo_rotation_runs_revoke_refused and hikyo_rotation_runs_quarantined gauges sum the same runs. Hikyo has no operator action that releases such a role; it lapses on its own unless dropped at the provider. Zero means no run needs an operator's attention for a role: a run still in flight (published, overlap or revoking) also owes a drop, which the executor carries out itself, and is not counted here. A deleted rotation keeps the count of the runs its delete closed."}
         owed_drop_runs_versions_changed: {type: integer, format: int64, minimum: 0, description: "The part of owed_drop_runs a restore refused (error_code `published_versions_changed`): the keys may be serving that role again, so it must not be dropped until they have moved off it. Whenever this is above zero, never tell an operator to drop; tell them to read the runs first."}
         restore_hold: {type: boolean, description: "True while a restore holds the rotation: it starts no run and takes no pre-publish step, whatever its state, until `release-hold`. The delivered credential keeps lapsing at credential_expires_at, so release the hold before then."}
         next_run_at: {type: [string, "null"], format: date-time, description: Set only while the rotation is active.}

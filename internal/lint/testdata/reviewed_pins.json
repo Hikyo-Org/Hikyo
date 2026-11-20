@@ -856,10 +856,10 @@
       ]
     },
     "RotationLastRuns": {
-      "authority": "Verified rotation-list project chain binds org, project and environment on the one table read. Runs of the requested rotation ids only; one derived table ranks each rotation's runs by id and the outer predicate keeps rank one, so a rotation reads its newest run and never the run history. Reads an id, a phase, a fixed-word error code and a time only.",
+      "authority": "Verified rotation-list project chain binds org, project and environment on both joined tables. Runs of the requested rotation ids only; a correlated subquery picks each rotation's newest run by start time and id, one index probe per requested rotation, so a page reads one run per rotation and the output carries no run history. The read is bounded by the number of requested rotations, not by their histories. Reads an id, a phase, a fixed-word error code and a time only.",
       "sql_hash": {
-        "postgres": "1ef50fb035b1dfe10b117cbf6ff564af49737981d294d136d59d838b35989999",
-        "sqlite": "ca2efda3e097dc12549158a35c60d2c50f7786673e298a3dedd60eb19c562ad2"
+        "postgres": "918eb1891c7735cbe4717b54b1e0a35bcc8a1685dc078ee771b27d22726fcc88",
+        "sqlite": "fbdebfeacb501244c923ec288ba23105d19e4523a14d8533c55e9bfc9c965cd3"
       },
       "api_hash": {
         "postgres": "f040b8f1e7a0f3c602f03870996f63891300e7829696503411bbaf3b32d7e3d5",
@@ -868,6 +868,20 @@
       "tests": [
         "internal/isolation/rotation_summary_test.go:TestRotationLastRunsQueryIsBounded",
         "internal/isolation/rotation_summary_test.go:TestRotationSummaryCountsOwedDropsAndLastRun"
+      ]
+    },
+    "RotationListOrOwed": {
+      "authority": "Verified rotation-list project chain binds org, project and environment on both tables. The outer predicate keeps live rotations; a deleted rotation passes only when an EXISTS over its own runs, bound to the same org, project and environment, finds one in phase revoke_refused or quarantine, so the warning that run owes is not lost with the delete. Reads rotation metadata only, in id order, one page.",
+      "sql_hash": {
+        "postgres": "4866e66dc3d16040af9998631d0848deb231de578d48956e28cea19f5643751f",
+        "sqlite": "4866e66dc3d16040af9998631d0848deb231de578d48956e28cea19f5643751f"
+      },
+      "api_hash": {
+        "postgres": "76358bcd534f7a8712798dfb4a0bc4947c59438d725703d64162d8a035b1950e",
+        "sqlite": "194887e61424d183342f027d6fd0ae9bb01802724e7102ab60d4aef178e02737"
+      },
+      "tests": [
+        "internal/isolation/rotation_summary_review_test.go:TestRotationDefaultListKeepsDeletedRotationsThatOweADrop"
       ]
     }
   },

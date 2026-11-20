@@ -937,7 +937,7 @@ export type CredentialRotation = {
      */
     last_run?: RotationLastRun;
     /**
-     * How many of the rotation's runs, over its whole history, still owe a provider role a drop: those in phase revoke_refused or quarantine, whatever their error code. It is the count `hikyo rotation runs` lists as ATTENTION, and the hikyo_rotation_runs_revoke_refused and hikyo_rotation_runs_quarantined gauges sum the same runs. Hikyo has no operator action that releases such a role; it lapses on its own unless dropped at the provider. Zero means no run owes one. A deleted rotation keeps the count of the runs its delete closed.
+     * How many of the rotation's runs, over its whole history, need an operator's attention because they still owe a provider role a drop that Hikyo will not carry out: those in phase revoke_refused or quarantine, whatever their error code. It is the count `hikyo rotation runs` lists as ATTENTION, and the hikyo_rotation_runs_revoke_refused and hikyo_rotation_runs_quarantined gauges sum the same runs. Hikyo has no operator action that releases such a role; it lapses on its own unless dropped at the provider. Zero means no run needs an operator's attention for a role: a run still in flight (published, overlap or revoking) also owes a drop, which the executor carries out itself, and is not counted here. A deleted rotation keeps the count of the runs its delete closed.
      */
     owed_drop_runs: number;
     /**
@@ -33839,7 +33839,7 @@ export type ListRotationsData = {
     };
     query?: {
         /**
-         * List deleted (disabled) rotations as well. Off by default.
+         * List every deleted (disabled) rotation as well. Off by default, which still lists a deleted rotation that owns a run owing a provider role a drop.
          */
         include_disabled?: boolean;
         /**

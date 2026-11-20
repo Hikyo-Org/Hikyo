@@ -25,7 +25,7 @@ func credentialRotationTable(list apigen.CredentialRotationList) Table {
 		}
 		halt := "-"
 		if r.HaltReason != nil {
-			halt = *r.HaltReason
+			halt = haltReasonWord(r.HaltReason)
 		}
 		last := "-"
 		if r.LastRun != nil {
@@ -447,8 +447,25 @@ func haltReasonSentence(reason string) string {
 		return "the recorded person no longer holds the access the rotation needs, or one of its keys or its environment is gone"
 	case "gate_failed":
 		return "a pre-publish gate refused: the environment became protected, a key changed or a draft appeared"
+	case "unknown":
+		return "the server halted the rotation without a reason it can name"
 	}
 	return "the server recorded a reason this client does not know"
+}
+
+// haltReasonWord is the halt reason as printed: one of the server's fixed words
+// bare, any other value quoted so it can never read as a sentence or carry control
+// characters. A missing reason is the fixed word unknown.
+func haltReasonWord(reason *string) string {
+	word := "unknown"
+	if reason != nil {
+		word = *reason
+	}
+	switch word {
+	case "retries_exhausted", "authority_lost", "gate_failed", "unknown":
+		return word
+	}
+	return strconv.Quote(word)
 }
 
 // noteHalted says, on stderr, that the server halted the rotation and why.
@@ -456,32 +473,37 @@ func noteHalted(ios IO, r apigen.CredentialRotation) {
 	if r.State != apigen.CredentialRotationStateHalted {
 		return
 	}
-	word := "unknown"
-	if r.HaltReason != nil {
-		word = *r.HaltReason
-	}
-	switch word {
-	case "retries_exhausted", "authority_lost", "gate_failed", "unknown":
-	default:
-		word = strconv.Quote(word)
-	}
+	word := haltReasonWord(r.HaltReason)
 	_, _ = fmt.Fprintf(ios.Stderr, "HALTED: rotation %s is halted (%s): %s; it starts no run and does not extend the delivered credential until a person resumes it: hikyo rotation resume %s\n", r.Id, word, haltReasonSentence(word), r.Id)
+}
+
+// deletedMark qualifies a deleted rotation: it is gone from the list unless asked for
+// but its roles can still be live, so a line about it says it was deleted.
+func deletedMark(r apigen.CredentialRotation) string {
+	if r.State == apigen.CredentialRotationStateDisabled {
+		return " (deleted)"
+	}
+	return ""
 }
 
 // noteOwedSummary is the rotation-level ATTENTION line: some of its runs still owe a
 // provider role a drop. It counts the runs noteOwedRuns warns about, by the same
-// phases, and points at the per-run lines instead of repeating them. It never says to
-// drop: when a restore refused any of them (published_versions_changed) the keys may
-// be serving that role again, and it says not to drop it until they have moved off it.
+// phases, and points at the per-run lines instead of repeating them. It carries the
+// same key check as a per-run line: a restore (an earlier one that refused a run, or
+// a restore hold that is still on) may have put the role back, so it never plainly
+// says to drop and tells the operator to check that neither key serves the role first.
 func noteOwedSummary(ios IO, r apigen.CredentialRotation) {
 	if r.OwedDropRuns <= 0 {
 		return
 	}
-	if r.OwedDropRunsVersionsChanged > 0 {
-		_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: rotation %s has %d run(s) that owe a provider role a drop, %d of them refused after a restore (%s): the keys may be serving that role again, so do NOT drop it at the provider until the keys have moved off it; read: hikyo rotation runs %s\n", r.Id, r.OwedDropRuns, r.OwedDropRunsVersionsChanged, versionsChangedCode, r.Id)
-		return
+	switch {
+	case r.OwedDropRunsVersionsChanged > 0:
+		_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: rotation %s%s has %d run(s) that owe a provider role a drop, %d of them refused after a restore (%s): the keys may be serving that role again, so do NOT drop it at the provider until the keys have moved off it; read: hikyo rotation runs %s\n", r.Id, deletedMark(r), r.OwedDropRuns, r.OwedDropRunsVersionsChanged, versionsChangedCode, r.Id)
+	case r.RestoreHold:
+		_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: rotation %s%s has %d run(s) that owe a provider role a drop and a restore holds the rotation: the keys may be serving that role again, so do NOT drop it at the provider until you have checked that neither key serves it; read: hikyo rotation runs %s\n", r.Id, deletedMark(r), r.OwedDropRuns, r.Id)
+	default:
+		_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: rotation %s%s has %d run(s) that owe a provider role a drop and the role is still live; before you drop it at the provider, check that neither key serves that role, because a revision restore can put it back; read: hikyo rotation runs %s\n", r.Id, deletedMark(r), r.OwedDropRuns, r.Id)
 	}
-	_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: rotation %s has %d run(s) that owe a provider role a drop and the role is still live; read before you act: hikyo rotation runs %s\n", r.Id, r.OwedDropRuns, r.Id)
 }
 
 // noteRestoreHold says loudly, on stderr, that a restore holds the rotation: it

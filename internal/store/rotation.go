@@ -144,6 +144,10 @@ type RotationSetState struct {
 // RotationListQuery is one page of a rotation list.
 type RotationListQuery struct {
 	IncludeDisabled bool
+	// KeepOwed lists, without IncludeDisabled, also a deleted rotation that owns a run
+	// still owing a provider role a drop. The API's default list sets it; the
+	// environment delete's "live rotations" read does not.
+	KeepOwed bool
 	After           string
 	Limit           int
 }
@@ -200,6 +204,10 @@ type RotationRunRecord struct {
 // RotationReader is the read side.
 type RotationReader interface {
 	Get(ctx context.Context, p authz.Proof, rotationID string) (RotationRecord, error)
+	// Summarize fills, in place, each row's last run and owed-drop counts (the runs
+	// that need an operator: revoke_refused and quarantine) with two reads for the
+	// whole slice. Get and List leave them empty: only a response needs them.
+	Summarize(ctx context.Context, p authz.Proof, rows []RotationRecord) error
 	// List returns up to Limit of the environment's rotations whose id sorts after
 	// After, in id order; disabled history only with IncludeDisabled. Each carries
 	// its delivered-credential expiry, read for the whole page in one query.
@@ -392,16 +400,24 @@ func (r rotationQueries) get(ctx context.Context, chain domain.Scope, rotationID
 	if err != nil {
 		return RotationRecord{}, err
 	}
-	one := []RotationRecord{rec}
-	if err := r.withRunSummary(ctx, chain, one); err != nil {
-		return RotationRecord{}, err
-	}
-	return one[0], nil
+	return rec, nil
 }
 
-// withRunSummary fills the last run and the owed-drop counts of a page of
-// rotations from two reads for the whole page, whatever its length.
-func (r rotationQueries) withRunSummary(ctx context.Context, chain domain.Scope, rows []RotationRecord) error {
+// Summarize fills the last run and the owed-drop counts of the rotations a response
+// returns, from two reads for the whole slice whatever its length. It is not part of
+// Get, List or any mutation: the executor's gates and the existence checks read a
+// rotation on every sweep and must not pay for a summary no transport shows, so the
+// service asks for it once, for the rotations it returns, after trimming a page.
+func (r rotationQueries) Summarize(ctx context.Context, p authz.Proof, rows []RotationRecord) error {
+	chain, err := r.envChain(p, authz.StoreRotationsSummarize)
+	if err != nil {
+		return err
+	}
+	return r.summarize(ctx, chain, rows)
+}
+
+// summarize is Summarize after the proof: two reads for the slice, whatever its length.
+func (r rotationQueries) summarize(ctx context.Context, chain domain.Scope, rows []RotationRecord) error {
 	if len(rows) == 0 {
 		return nil
 	}
@@ -452,6 +468,12 @@ func (r rotationQueries) List(ctx context.Context, p authz.Proof, q RotationList
 	if q.Limit <= 0 || q.Limit > RotationListMaxLimit+1 {
 		return nil, fmt.Errorf("%w: rotation list limit out of range", domain.ErrInvalid)
 	}
+	return r.page(ctx, chain, q)
+}
+
+// page is one page of rotations with their delivered-credential expiry, from one
+// read each; it carries no run summary (see Summarize).
+func (r rotationQueries) page(ctx context.Context, chain domain.Scope, q RotationListQuery) ([]RotationRecord, error) {
 	rows, err := r.queries.list(ctx, chain, q)
 	if err != nil {
 		return nil, err
@@ -469,9 +491,6 @@ func (r rotationQueries) List(ctx context.Context, p authz.Proof, q RotationList
 	}
 	for i := range rows {
 		rows[i].CredentialExpiresAt = expiries[rows[i].KeyID]
-	}
-	if err := r.withRunSummary(ctx, chain, rows); err != nil {
-		return nil, err
 	}
 	return rows, nil
 }
@@ -709,6 +728,14 @@ func (q sqliteRotationQueries) list(ctx context.Context, chain domain.Scope, lq 
 		for _, c := range all {
 			rows = append(rows, sqlitegen.RotationGetRow(c))
 		}
+	} else if lq.KeepOwed {
+		kept, err := q.q.RotationListOrOwed(ctx, sqlitegen.RotationListOrOwedParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), AfterID: lq.After, PageLimit: int64(lq.Limit)})
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range kept {
+			rows = append(rows, sqlitegen.RotationGetRow(c))
+		}
 	} else {
 		live, err := q.q.RotationList(ctx, sqlitegen.RotationListParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), AfterID: lq.After, PageLimit: int64(lq.Limit)})
 		if err != nil {
@@ -733,6 +760,14 @@ func (q pgRotationQueries) list(ctx context.Context, chain domain.Scope, lq Rota
 			return nil, err
 		}
 		for _, c := range all {
+			rows = append(rows, pggen.RotationGetRow(c))
+		}
+	} else if lq.KeepOwed {
+		kept, err := q.q.RotationListOrOwed(ctx, pggen.RotationListOrOwedParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), AfterID: lq.After, PageLimit: pageLimit})
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range kept {
 			rows = append(rows, pggen.RotationGetRow(c))
 		}
 	} else {

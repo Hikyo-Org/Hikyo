@@ -457,11 +457,11 @@ func (q *Queries) RotationGet(ctx context.Context, arg RotationGetParams) (Rotat
 }
 
 const rotationLastRuns = `-- name: RotationLastRuns :many
-SELECT rotation_id AS rotation_id,id AS id,phase AS phase,last_error AS last_error,phase_at AS phase_at FROM (
- SELECT ru.rotation_id AS rotation_id,ru.id AS id,ru.phase AS phase,ru.last_error AS last_error,ru.phase_at AS phase_at,ROW_NUMBER() OVER (PARTITION BY ru.rotation_id ORDER BY ru.id DESC) AS ordinal
- FROM rotation_runs ru
- WHERE ru.org_id=?1 AND ru.project_id=?2 AND ru.environment_id=?3 AND ru.rotation_id IN (/*SLICE:rotation_ids*/?)
- ) ranked WHERE ordinal=1 ORDER BY rotation_id
+SELECT ro.id AS rotation_id,ru.id AS id,ru.phase AS phase,ru.last_error AS last_error,ru.phase_at AS phase_at
+FROM rotations ro JOIN rotation_runs ru ON ru.rotation_id=ro.id AND ru.org_id=ro.org_id AND ru.project_id=ro.project_id AND ru.environment_id=ro.environment_id
+WHERE ro.org_id=?1 AND ro.project_id=?2 AND ro.environment_id=?3 AND ro.id IN (/*SLICE:rotation_ids*/?)
+AND ru.id=(SELECT latest.id FROM rotation_runs latest WHERE latest.rotation_id=ro.id AND latest.org_id=ro.org_id AND latest.project_id=ro.project_id AND latest.environment_id=ro.environment_id ORDER BY latest.started_at DESC,latest.id DESC LIMIT 1)
+ORDER BY ro.id
 `
 
 type RotationLastRunsParams struct {
@@ -479,12 +479,16 @@ type RotationLastRunsRow struct {
 	PhaseAt    string
 }
 
-// The newest run of each rotation of a page (the top row of its runs list, by id), and
-// the count of runs that still owe a provider role a drop. One query each for the whole page,
-// never one per rotation. A run owes a drop in exactly the phases the CLI ATTENTION lines, the
-// web notice and the hikyo_rotation_runs_{quarantined,revoke_refused} gauges count:
-// revoke_refused and quarantine, whatever their error code. versions_changed is the part of
-// that count a restore refused (published_versions_changed): its role may be served again.
+// The newest run of each rotation of a page (the top row of its runs list), and the count of
+// runs that still owe a provider role a drop. One query each for the whole page, never one per
+// rotation. The newest run is the one with the latest started_at, id breaking a tie: run ids are
+// UUIDv7 stamped from the same clock as started_at and a rotation has at most one open run, so it is
+// the runs list's first row (id DESC), and the read is one probe of rotation_runs_rotation
+// (rotation_id, started_at) per rotation, never a scan of its history.
+// A run owes a drop in exactly the phases the CLI ATTENTION lines, the web notice and the
+// hikyo_rotation_runs_{quarantined,revoke_refused} gauges count: revoke_refused and quarantine,
+// whatever their error code. versions_changed is the part of that count a restore refused
+// (published_versions_changed): its role may be served again.
 func (q *Queries) RotationLastRuns(ctx context.Context, arg RotationLastRunsParams) ([]RotationLastRunsRow, error) {
 	query := rotationLastRuns
 	var queryParams []interface{}
@@ -558,6 +562,8 @@ type RotationListRow struct {
 	HaltReason             sql.NullString
 }
 
+// Live rotations, plus a deleted one that still owns a run owing a provider role a drop (a quarantine
+// an abandoning delete leaves): an operator must still see what is owed after the delete.
 func (q *Queries) RotationList(ctx context.Context, arg RotationListParams) ([]RotationListRow, error) {
 	rows, err := q.db.QueryContext(ctx, rotationList,
 		arg.ChainOrg,
@@ -856,6 +862,86 @@ func (q *Queries) RotationListAll(ctx context.Context, arg RotationListAllParams
 	var items []RotationListAllRow
 	for rows.Next() {
 		var i RotationListAllRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.EnvironmentID,
+			&i.ProviderID,
+			&i.KeyID,
+			&i.UsernameKeyID,
+			&i.IntervalSeconds,
+			&i.RevocationDelaySeconds,
+			&i.AuthorityPrincipalID,
+			&i.CreatedBy,
+			&i.State,
+			&i.NextRunAt,
+			&i.Generation,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.RestoreHold,
+			&i.HaltReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rotationListOrOwed = `-- name: RotationListOrOwed :many
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE rotations.org_id=?1 AND rotations.project_id=?2 AND rotations.environment_id=?3 AND (rotations.state<>'disabled' OR EXISTS (SELECT 1 FROM rotation_runs owed WHERE owed.rotation_id=rotations.id AND owed.org_id=rotations.org_id AND owed.project_id=rotations.project_id AND owed.environment_id=rotations.environment_id AND owed.phase IN ('revoke_refused','quarantine'))) AND rotations.id > ?4 ORDER BY rotations.id LIMIT ?5
+`
+
+type RotationListOrOwedParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	AfterID      string
+	PageLimit    int64
+}
+
+type RotationListOrOwedRow struct {
+	ID                     string
+	EnvironmentID          string
+	ProviderID             string
+	KeyID                  string
+	UsernameKeyID          string
+	IntervalSeconds        int64
+	RevocationDelaySeconds int64
+	AuthorityPrincipalID   string
+	CreatedBy              string
+	State                  string
+	NextRunAt              sql.NullString
+	Generation             int64
+	CreatedAt              string
+	UpdatedAt              string
+	RestoreHold            int64
+	HaltReason             sql.NullString
+}
+
+// Live rotations, plus a deleted one that owns a run still owing a provider role a
+// drop (phase revoke_refused or quarantine): the default list of the API, so the
+// warning that run owes is not lost with the delete.
+func (q *Queries) RotationListOrOwed(ctx context.Context, arg RotationListOrOwedParams) ([]RotationListOrOwedRow, error) {
+	rows, err := q.db.QueryContext(ctx, rotationListOrOwed,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.AfterID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RotationListOrOwedRow
+	for rows.Next() {
+		var i RotationListOrOwedRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.EnvironmentID,

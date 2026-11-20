@@ -46,7 +46,7 @@ func TestRotationListNamesTheHaltReason(t *testing.T) {
 	if code := cli.Run(t.Context(), ios, append([]string{"rotation", "list"}, rotationScope...)); code != cli.ExitOK {
 		t.Fatalf("exit %d; stderr=%s", code, stderr)
 	}
-	for _, want := range []string{"HALT REASON", "retries_exhausted", "authority_lost", "gate_failed"} {
+	for _, want := range []string{"HALT REASON", "retries_exhausted", "authority_lost", "gate_failed", `"brand_new\nword"`} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Errorf("stdout lacks %q:\n%s", want, stdout)
 		}
@@ -56,12 +56,15 @@ func TestRotationListNamesTheHaltReason(t *testing.T) {
 		"HALTED: rotation rot_a is halted (retries_exhausted): the retry window ran out before a run could publish or extend the credential; it starts no run and does not extend the delivered credential until a person resumes it: hikyo rotation resume rot_a",
 		"HALTED: rotation rot_b is halted (authority_lost): the recorded person no longer holds the access the rotation needs, or one of its keys or its environment is gone;",
 		"HALTED: rotation rot_c is halted (gate_failed): a pre-publish gate refused: the environment became protected, a key changed or a draft appeared;",
-		"HALTED: rotation rot_d is halted (unknown): the server recorded a reason this client does not know;",
+		"HALTED: rotation rot_d is halted (unknown): the server halted the rotation without a reason it can name;",
 		`HALTED: rotation rot_e is halted ("brand_new\nword"): the server recorded a reason this client does not know;`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("stderr lacks %q:\n%s", want, out)
 		}
+	}
+	if strings.Contains(stdout.String(), "brand_new\nword") {
+		t.Errorf("an unrecognised halt word reached the table raw:\n%s", stdout)
 	}
 	if strings.Contains(out, "rot_f") {
 		t.Errorf("an active rotation was reported:\n%s", out)
@@ -84,6 +87,11 @@ func TestRotationListSummarisesOwedDrops(t *testing.T) {
 			r.OwedDropRuns = 2
 			r.LastRun = &apigen.RotationLastRun{Id: "rrn_2", Phase: apigen.RotationRunPhaseRevokeRefused, ErrorCode: ptr("role_owns_objects"), PhaseAt: when}
 		}),
+		summaryRotation("rot_held", apigen.CredentialRotationStateActive, func(r *apigen.CredentialRotation) {
+			r.RestoreHold = true
+			r.OwedDropRuns = 1
+		}),
+		summaryRotation("rot_gone", apigen.CredentialRotationStateDisabled, func(r *apigen.CredentialRotation) { r.OwedDropRuns = 1 }),
 		summaryRotation("rot_restore", apigen.CredentialRotationStateActive, func(r *apigen.CredentialRotation) {
 			r.RestoreHold = true
 			r.OwedDropRuns, r.OwedDropRunsVersionsChanged = 3, 1
@@ -114,6 +122,20 @@ func TestRotationListSummarisesOwedDrops(t *testing.T) {
 	if strings.Contains(owed, "NOT") || strings.Contains(owed, "published_versions_changed") {
 		t.Errorf("an ordinary owed drop was worded as a restore case: %q", owed)
 	}
+	// The key check the per-run line carries is on the rotation-level line too.
+	const keyCheck = "check that neither key serves that role, because a revision restore can put it back"
+	if !strings.Contains(owed, keyCheck) {
+		t.Errorf("owed line lacks the key check: %q", owed)
+	}
+	// A restore hold that is still on: never a plain drop, whatever the error codes.
+	held := lineWith(out, "ATTENTION: rotation rot_held")
+	if !strings.Contains(held, "a restore holds the rotation") || !strings.Contains(held, "do NOT drop it at the provider until you have checked that neither key serves it") {
+		t.Errorf("held line = %q", held)
+	}
+	// A deleted rotation says it is deleted; its warning is not lost with the delete.
+	if gone := lineWith(out, "ATTENTION: rotation rot_gone"); !strings.Contains(gone, "rotation rot_gone (deleted) has 1 run(s)") || !strings.Contains(gone, keyCheck) {
+		t.Errorf("deleted line = %q", gone)
+	}
 	restore := lineWith(out, "ATTENTION: rotation rot_restore")
 	for _, want := range []string{"3 run(s) that owe a provider role a drop, 1 of them refused after a restore (published_versions_changed)", "do NOT drop it at the provider until the keys have moved off it", "hikyo rotation runs rot_restore"} {
 		if !strings.Contains(restore, want) {
@@ -121,7 +143,7 @@ func TestRotationListSummarisesOwedDrops(t *testing.T) {
 		}
 	}
 	// The per-run text lives in `rotation runs`, not in the list.
-	if strings.Contains(out, "stays valid") || strings.Contains(out, "before you drop it at the provider") {
+	if strings.Contains(out, "stays valid") || strings.Contains(out, "ATTENTION: run ") {
 		t.Errorf("the per-run text was repeated in the list:\n%s", out)
 	}
 }

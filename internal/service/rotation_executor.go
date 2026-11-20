@@ -1484,11 +1484,28 @@ func (e *RotationExecutor) revoke(ctx context.Context, run store.RotationRun) er
 		}
 		return e.settleDrop(ctx, run, store.RotationSettle{Now: now, FromPhases: from, Phase: run.Phase, LastError: run.LastError, NextAttempt: wake})
 	}
+	// The restore assertion is a store read and needs no provider, so it is read
+	// first: a provider that cannot be opened (or a role that cannot be loaded) must
+	// never replace the restore refusal with a transient code. While the assertion
+	// fails, the keys may serve the superseded role again and nothing but the
+	// provider can prove it dead, so every path that cannot reach the provider
+	// keeps the run held as published_versions_changed, which tells the operator
+	// not to drop the role.
+	holds, err := e.Runtime.RestoreAssertion(ctx, run)
+	if err != nil {
+		return err
+	}
+	unreachable := func() error {
+		if !holds {
+			return hold(refusedPhase, rotCodeVersionsChanged)
+		}
+		return hold(run.Phase, rotCodeProvider)
+	}
 	role, err := e.Runtime.LoadSupersededRole(ctx, run, now)
 	if errors.Is(err, store.ErrNotFound) {
 		// The lease was lost, or no run minted this role: nothing to act on safely.
 		e.warn("rotation revoke found no minting run for its superseded role", run, "revoke", err)
-		return hold(run.Phase, rotCodeProvider)
+		return unreachable()
 	}
 	if err != nil {
 		return err
@@ -1498,19 +1515,13 @@ func (e *RotationExecutor) revoke(ctx context.Context, run store.RotationRun) er
 	if openErr != nil {
 		e.warn("rotation revoke could not open its provider", run, "revoke", openErr)
 		if !expired {
-			return hold(run.Phase, rotCodeProvider)
+			return unreachable()
 		}
 	} else {
 		defer provider.Close()
 	}
-	if !expired {
-		holds, err := e.Runtime.RestoreAssertion(ctx, run)
-		if err != nil {
-			return err
-		}
-		if !holds && !e.supersededDead(ctx, provider, run.SupersededHandle, now) {
-			return hold(refusedPhase, rotCodeVersionsChanged)
-		}
+	if !expired && !holds && !e.supersededDead(ctx, provider, run.SupersededHandle, now) {
+		return hold(refusedPhase, rotCodeVersionsChanged)
 	}
 	intent, err := e.intent(run, "revoke", now)
 	if err != nil {

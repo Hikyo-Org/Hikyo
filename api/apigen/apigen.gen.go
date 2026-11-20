@@ -6933,7 +6933,7 @@ type CredentialRotation struct {
 	// NextRunAt Set only while the rotation is active.
 	NextRunAt *time.Time `json:"next_run_at,omitzero"`
 
-	// OwedDropRuns How many of the rotation's runs, over its whole history, still owe a provider role a drop: those in phase revoke_refused or quarantine, whatever their error code. It is the count `hikyo rotation runs` lists as ATTENTION, and the hikyo_rotation_runs_revoke_refused and hikyo_rotation_runs_quarantined gauges sum the same runs. Hikyo has no operator action that releases such a role; it lapses on its own unless dropped at the provider. Zero means no run owes one. A deleted rotation keeps the count of the runs its delete closed.
+	// OwedDropRuns How many of the rotation's runs, over its whole history, need an operator's attention because they still owe a provider role a drop that Hikyo will not carry out: those in phase revoke_refused or quarantine, whatever their error code. It is the count `hikyo rotation runs` lists as ATTENTION, and the hikyo_rotation_runs_revoke_refused and hikyo_rotation_runs_quarantined gauges sum the same runs. Hikyo has no operator action that releases such a role; it lapses on its own unless dropped at the provider. Zero means no run needs an operator's attention for a role: a run still in flight (published, overlap or revoking) also owes a drop, which the executor carries out itself, and is not counted here. A deleted rotation keeps the count of the runs its delete closed.
 	OwedDropRuns int64 `json:"owed_drop_runs"`
 
 	// OwedDropRunsVersionsChanged The part of owed_drop_runs a restore refused (error_code `published_versions_changed`): the keys may be serving that role again, so it must not be dropped until they have moved off it. Whenever this is above zero, never tell an operator to drop; tell them to read the runs first.
@@ -14064,7 +14064,7 @@ type ListRevisionsParams struct {
 
 // ListRotationsParams defines parameters for ListRotations.
 type ListRotationsParams struct {
-	// IncludeDisabled List deleted (disabled) rotations as well. Off by default.
+	// IncludeDisabled List every deleted (disabled) rotation as well. Off by default, which still lists a deleted rotation that owns a run owing a provider role a drop.
 	IncludeDisabled *bool `form:"include_disabled" json:"include_disabled,omitzero"`
 
 	// Limit Maximum rotations on this page, in id order.

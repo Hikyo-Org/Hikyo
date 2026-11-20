@@ -4,8 +4,16 @@ INSERT INTO rotations (id,org_id,project_id,environment_id,provider_id,key_id,us
 -- name: RotationGet :one
 SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env);
 
+-- Live rotations, plus a deleted one that still owns a run owing a provider role a drop (a quarantine
+-- an abandoning delete leaves): an operator must still see what is owed after the delete.
 -- name: RotationList :many
 SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state<>'disabled' AND id > sqlc.arg(after_id) ORDER BY id LIMIT sqlc.arg(page_limit);
+
+-- Live rotations, plus a deleted one that owns a run still owing a provider role a
+-- drop (phase revoke_refused or quarantine): the default list of the API, so the
+-- warning that run owes is not lost with the delete.
+-- name: RotationListOrOwed :many
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE rotations.org_id=sqlc.arg(chain_org) AND rotations.project_id=sqlc.arg(chain_project) AND rotations.environment_id=sqlc.arg(chain_env) AND (rotations.state<>'disabled' OR EXISTS (SELECT 1 FROM rotation_runs owed WHERE owed.rotation_id=rotations.id AND owed.org_id=rotations.org_id AND owed.project_id=rotations.project_id AND owed.environment_id=rotations.environment_id AND owed.phase IN ('revoke_refused','quarantine'))) AND rotations.id > sqlc.arg(after_id) ORDER BY rotations.id LIMIT sqlc.arg(page_limit);
 
 -- name: RotationListAll :many
 SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND id > sqlc.arg(after_id) ORDER BY id LIMIT sqlc.arg(page_limit);
@@ -48,18 +56,22 @@ SELECT key_id AS key_id,run_id AS run_id,expires_at AS expires_at,published_revi
  WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env) AND ro.username_key_id IN (sqlc.slice('key_ids')) AND ru.published_revision IS NOT NULL
  ) ranked WHERE ordinal=1 ORDER BY key_id;
 
--- The newest run of each rotation of a page (the top row of its runs list, by id), and
--- the count of runs that still owe a provider role a drop. One query each for the whole page,
--- never one per rotation. A run owes a drop in exactly the phases the CLI ATTENTION lines, the
--- web notice and the hikyo_rotation_runs_{quarantined,revoke_refused} gauges count:
--- revoke_refused and quarantine, whatever their error code. versions_changed is the part of
--- that count a restore refused (published_versions_changed): its role may be served again.
+-- The newest run of each rotation of a page (the top row of its runs list), and the count of
+-- runs that still owe a provider role a drop. One query each for the whole page, never one per
+-- rotation. The newest run is the one with the latest started_at, id breaking a tie: run ids are
+-- UUIDv7 stamped from the same clock as started_at and a rotation has at most one open run, so it is
+-- the runs list's first row (id DESC), and the read is one probe of rotation_runs_rotation
+-- (rotation_id, started_at) per rotation, never a scan of its history.
+-- A run owes a drop in exactly the phases the CLI ATTENTION lines, the web notice and the
+-- hikyo_rotation_runs_{quarantined,revoke_refused} gauges count: revoke_refused and quarantine,
+-- whatever their error code. versions_changed is the part of that count a restore refused
+-- (published_versions_changed): its role may be served again.
 -- name: RotationLastRuns :many
-SELECT rotation_id AS rotation_id,id AS id,phase AS phase,last_error AS last_error,phase_at AS phase_at FROM (
- SELECT ru.rotation_id AS rotation_id,ru.id AS id,ru.phase AS phase,ru.last_error AS last_error,ru.phase_at AS phase_at,ROW_NUMBER() OVER (PARTITION BY ru.rotation_id ORDER BY ru.id DESC) AS ordinal
- FROM rotation_runs ru
- WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env) AND ru.rotation_id IN (sqlc.slice('rotation_ids'))
- ) ranked WHERE ordinal=1 ORDER BY rotation_id;
+SELECT ro.id AS rotation_id,ru.id AS id,ru.phase AS phase,ru.last_error AS last_error,ru.phase_at AS phase_at
+FROM rotations ro JOIN rotation_runs ru ON ru.rotation_id=ro.id AND ru.org_id=ro.org_id AND ru.project_id=ro.project_id AND ru.environment_id=ro.environment_id
+WHERE ro.org_id=sqlc.arg(chain_org) AND ro.project_id=sqlc.arg(chain_project) AND ro.environment_id=sqlc.arg(chain_env) AND ro.id IN (sqlc.slice('rotation_ids'))
+AND ru.id=(SELECT latest.id FROM rotation_runs latest WHERE latest.rotation_id=ro.id AND latest.org_id=ro.org_id AND latest.project_id=ro.project_id AND latest.environment_id=ro.environment_id ORDER BY latest.started_at DESC,latest.id DESC LIMIT 1)
+ORDER BY ro.id;
 
 -- name: RotationOwedDropCounts :many
 SELECT rotation_id AS rotation_id,COUNT(*) AS owed,COUNT(CASE WHEN last_error='published_versions_changed' THEN 1 END) AS versions_changed FROM rotation_runs

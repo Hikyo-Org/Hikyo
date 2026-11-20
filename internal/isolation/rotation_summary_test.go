@@ -86,7 +86,7 @@ func runRotationSummary(t *testing.T, db *store.DB) {
 	c := f.create(pw, user)
 	seedRunState(t, db, f, c.ID, []sumRun{
 		{id: "run_sum_c1", phase: "done", published: true},
-		{id: "run_sum_c2", phase: "failed", code: "retries_exhausted"},
+		{id: "run_sum_c2", phase: "failed", code: "mint_failed"},
 	})
 	// D: a refused drop that is not a restore case.
 	pw, user = rotationKeyPair(t, db, 4)
@@ -110,7 +110,7 @@ func runRotationSummary(t *testing.T, db *store.DB) {
 	wants := map[string]want{
 		a.ID: {2, 1, "run_sum_a3", "revoke_refused", "published_versions_changed"},
 		b.ID: {0, 0, "", "", ""},
-		c.ID: {0, 0, "run_sum_c2", "failed", "retries_exhausted"},
+		c.ID: {0, 0, "run_sum_c2", "failed", "mint_failed"},
 		d.ID: {1, 0, "run_sum_d1", "revoke_refused", "role_owns_objects"},
 		e.ID: {1, 0, "run_sum_e1", "quarantine", ""},
 	}
