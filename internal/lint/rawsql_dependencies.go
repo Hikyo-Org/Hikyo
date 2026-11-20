@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/format"
+	"go/token"
 	"go/types"
 	"path/filepath"
 	"slices"
@@ -23,8 +24,12 @@ type rawSQLDeclaration struct {
 // Bind each named constant reference to its resolved value in lexical order.
 // Without named constants the established formatted-body digest is unchanged.
 func rawSQLBodyHash(pkg *packages.Package, fn *ast.FuncDecl) (string, error) {
+	return rawSQLBodyHashOf(pkg.Fset, pkg.TypesInfo, fn)
+}
+
+func rawSQLBodyHashOf(fset *token.FileSet, info *types.Info, fn *ast.FuncDecl) (string, error) {
 	var body bytes.Buffer
-	if err := format.Node(&body, pkg.Fset, fn.Body); err != nil {
+	if err := format.Node(&body, fset, fn.Body); err != nil {
 		return "", err
 	}
 	var bindings []string
@@ -33,7 +38,7 @@ func rawSQLBodyHash(pkg *packages.Package, fn *ast.FuncDecl) (string, error) {
 		if !ok {
 			return true
 		}
-		c, ok := pkg.TypesInfo.Uses[id].(*types.Const)
+		c, ok := info.Uses[id].(*types.Const)
 		if !ok || c.Pkg() == nil {
 			return true
 		}
@@ -108,11 +113,34 @@ func rawSQLHelperReferences(declaration rawSQLDeclaration, root string) []string
 // Follow handwritten helper references, including aliases and callbacks. Another
 // reviewed protocol owner is an independently pinned boundary, not a new grant.
 func rawSQLDependencies(owner string, declarations map[string]rawSQLDeclaration, protocols map[string]RawSQLProtocol, root string) map[string]string {
+	if _, exists := declarations[owner]; !exists {
+		return map[string]string{}
+	}
+	return rawSQLWalkDependencies(owner, protocols,
+		func(name string) []string { return rawSQLHelperReferences(declarations[name], root) },
+		func(ref string) (string, bool) {
+			declaration, exists := declarations[ref]
+			if !exists {
+				return "", false
+			}
+			hash, err := rawSQLBodyHash(declaration.pkg, declaration.fn)
+			if err != nil {
+				hash = ""
+			}
+			return hash, true
+		})
+}
+
+// rawSQLWalkDependencies is the dependency walk both harnesses share. refs
+// lists a declaration's helper references and hash returns a declared helper's
+// body hash (empty when it cannot be pinned); a reference with no declaration
+// is not a dependency.
+func rawSQLWalkDependencies(owner string, protocols map[string]RawSQLProtocol, refs func(string) []string, hash func(string) (string, bool)) map[string]string {
 	dependencies := map[string]string{}
 	seen := map[string]bool{owner: true}
 	var visit func(string)
 	visit = func(name string) {
-		for _, ref := range rawSQLHelperReferences(declarations[name], root) {
+		for _, ref := range refs(name) {
 			if seen[ref] {
 				continue
 			}
@@ -120,22 +148,15 @@ func rawSQLDependencies(owner string, declarations map[string]rawSQLDeclaration,
 			if _, reviewed := protocols[ref]; reviewed {
 				continue
 			}
-			declaration, exists := declarations[ref]
+			digest, exists := hash(ref)
 			if !exists {
 				continue
 			}
-			hash, err := rawSQLBodyHash(declaration.pkg, declaration.fn)
-			if err != nil {
-				dependencies[ref] = ""
-			} else {
-				dependencies[ref] = hash
-			}
+			dependencies[ref] = digest
 			visit(ref)
 		}
 	}
-	if _, exists := declarations[owner]; exists {
-		visit(owner)
-	}
+	visit(owner)
 	return dependencies
 }
 

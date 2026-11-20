@@ -99,6 +99,18 @@ func TestDecodeVetOutput(t *testing.T) {
 		{name: "pin summary from another analyzer", raw: tree("fence", summary("pin x")), wantErr: "only redactpins may"},
 		{name: "gofile summary from another analyzer", raw: tree("fence", summary("gofile /r/a.go")), wantErr: "only jsonv1 may"},
 		{name: "exception summary from jsonv1", raw: tree("jsonv1", summary("exception "+Module+"/api/apigen"))},
+		{
+			name: "rawsql summaries", raw: tree("rawsql", summary("rawowner a.go:F")),
+			check: func(t *testing.T, out *vetOutcome) {
+				if len(out.Summaries["rawsql"]) != 1 || len(out.Findings) != 0 {
+					t.Fatalf("summaries = %v, findings = %v", out.Summaries, out.Findings)
+				}
+			},
+		},
+		{name: "rawsql owner summary from another analyzer", raw: tree("fence", summary("rawowner a.go:F")), wantErr: "only rawsql may"},
+		{name: "rawsql caller summary from another analyzer", raw: tree("fence", summary("rawcaller a.go:F b.go:G")), wantErr: "only rawsql may"},
+		{name: "rawsql helper summary from another analyzer", raw: tree("fence", summary("rawhelper a.go:F")), wantErr: "only rawsql may"},
+		{name: "rawsql unreached summary from another analyzer", raw: tree("fence", summary("rawunreached a.go:F b.go:G")), wantErr: "only rawsql may"},
 		{name: "unknown summary kind", raw: tree("fence", summary("surprise x")), wantErr: "unknown summary kind"},
 		{name: "malformed summary", raw: tree("fence", summary("target")), wantErr: "malformed summary"},
 	}

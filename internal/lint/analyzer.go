@@ -57,6 +57,11 @@ func (s Summary) validate(analyzer string) error {
 			return fmt.Errorf("analyzer %s reported a %s summary; only %s may", analyzer, summaryPin, RedactPins.Name)
 		}
 		return nil
+	case summaryRawOwner, summaryRawCaller, summaryRawHelper, summaryRawUnreached:
+		if analyzer != RawSQL.Name {
+			return fmt.Errorf("analyzer %s reported a %s summary; only %s may", analyzer, s.Kind, RawSQL.Name)
+		}
+		return nil
 	case summaryGoFile, summaryException:
 		if analyzer != JSONv1.Name {
 			return fmt.Errorf("analyzer %s reported a %s summary; only %s may", analyzer, s.Kind, JSONv1.Name)
@@ -241,16 +246,20 @@ func Checks() []Check {
 }
 
 // Analyzers lists the analyzers the vet tool registers.
+//
+// RawSQL is registered here and not in Checks: it exports facts, which RunOver
+// (the old loader's pass runner) cannot supply, so its parity with the old
+// harness is checked by TestVetDriverRawSQLParity.
 func Analyzers() []*analysis.Analyzer {
 	checks := Checks()
-	out := make([]*analysis.Analyzer, len(checks))
+	out := make([]*analysis.Analyzer, len(checks), len(checks)+1)
 	for i, c := range checks {
 		out[i] = c.Analyzer
 		if strictDeferred[c.Analyzer.Name] {
 			out[i] = deferTestSites(c.Analyzer)
 		}
 	}
-	return out
+	return append(out, RawSQL)
 }
 
 // strictDeferred are the analyzers whose in-package test sites the vet driver

@@ -97,6 +97,10 @@ type vetOutcome struct {
 	// Targets is analyzer -> package paths its passes reported as analyzed.
 	Targets   map[string]map[string]bool
 	Summaries map[string][]Summary
+	// Context is the analysis context the run used and Flags the analyzer flags
+	// the run passed, so an aggregate judges what the passes saw.
+	Context string
+	Flags   []string
 }
 
 // decodeVetOutput parses vet's concatenated JSON trees. go prefixes a package's
@@ -182,6 +186,7 @@ func runVet(t *testing.T, bin string, ctx BuildContext, flags, patterns []string
 	if overlay != "" {
 		args = append(args, "-overlay="+overlay)
 	}
+	flags = append(slices.Clone(flags), "-rawsql.context="+ctx.Name)
 	args = append(append(args, flags...), patterns...)
 	cmd := exec.CommandContext(t.Context(), "go", args...)
 	cmd.Dir = moduleRoot()
@@ -195,6 +200,7 @@ func runVet(t *testing.T, bin string, ctx BuildContext, flags, patterns []string
 	if err != nil {
 		t.Fatalf("go %s under %s: %v\n%s", strings.Join(args, " "), ctx.Name, err, excerpt(stdout.String()+stderr.String()))
 	}
+	outcome.Context, outcome.Flags = ctx.Name, flags
 	return outcome
 }
 
@@ -345,6 +351,13 @@ func TestVetDriverRepo(t *testing.T) {
 			for _, finding := range missingTargets(out, Checks()) {
 				t.Error(finding)
 			}
+			aggregated, err := rawSQLAggregate(out, moduleRoot())
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, finding := range aggregated {
+				t.Error(finding)
+			}
 			files, exception := analyzedGoFiles(out)
 			maps.Copy(analyzed, files)
 			exceptionSeen = exceptionSeen || exception
@@ -395,4 +408,9 @@ type vetFixture struct {
 	// aggregate returns the findings the test process adds to the vet run's
 	// (see CheckUnanalyzedGoFiles), in the old harness's wording.
 	aggregate func(out *vetOutcome) []string
+	// oldIn is old for an entry point that depends on the context.
+	oldIn func(ctx BuildContext, pkgs []*packages.Package) []string
+	// wantAggregate, when set, is the exact aggregate the fixture must produce:
+	// findings with no source line to carry a want comment.
+	wantAggregate func(context string) []string
 }

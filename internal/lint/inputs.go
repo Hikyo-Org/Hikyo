@@ -426,6 +426,7 @@ var inputDeclarations = map[string]specsFunc{
 	"appendonly":        appendOnlySpecs,
 	"denialwriter":      queryInputs,
 	"grantlock":         queryInputs,
+	"rawsql":            rawSQLSpecs,
 	"reencryptcoverage": reencryptSpecs,
 	"sqlpredicate":      sqlPredicateSpecs,
 	"stablecopies":      stableCopiesSpecs,

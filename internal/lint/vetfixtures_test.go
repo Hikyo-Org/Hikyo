@@ -198,6 +198,39 @@ var vetFixtures = []vetFixture{
 		},
 	},
 	{
+		// RawSQL: a want comment per finding with a source line; the rest is
+		// aggregated by the driver (wantAggregate).
+		name: "rawsql", analyzer: "rawsql", patterns: []string{fixtureRoot + "badrawsql/..."},
+		flags:      []string{"-rawsql.prefix=" + fixtureImportRoot + "badrawsql"},
+		inputsRoot: "internal/lint/testdata/badrawsql", messages: true,
+		oldIn: func(ctx BuildContext, pkgs []*packages.Package) []string {
+			protocols, err := rawSQLFixtureProtocols()
+			if err != nil {
+				panic(err)
+			}
+			return CheckRawSQL(pkgs, rawSQLFixtureRoot(), fixtureImportRoot+"badrawsql", protocols, ctx.Name)
+		},
+		aggregate: func(out *vetOutcome) []string {
+			findings, err := rawSQLAggregate(out, rawSQLFixtureRoot())
+			if err != nil {
+				panic(err)
+			}
+			return findings
+		},
+		wantAggregate: func(context string) []string {
+			want := []string{
+				"rawsql: owner/owner.go:DroppedDependencies helper dependency helper/helper.go:Gone is absent from analyzed production source",
+				"rawsql: owner/owner.go:DroppedDependencies no longer references helper dependency helper/helper.go:Spare; retire its dependency pin",
+				"rawsql: protocol owner owner/gone.go:Vanished is absent from analyzed production source",
+				"rawsql: protocol owner/owner.go:Restricted no longer has reviewed caller owner/owner.go:OldCaller; retire its caller pin",
+			}
+			if context == "windows" {
+				want = append(want, "rawsql: protocol owner owner/gone.go:WindowsOnly is absent from analyzed production source")
+			}
+			return want
+		},
+	},
+	{
 		name: "upgradebuild", analyzer: "upgradebuild", patterns: []string{fixtureRoot + "badupgradebuild"},
 		old: UpgradeBuildAuthority,
 	},
@@ -402,6 +435,12 @@ func TestVetDriverFixtures(t *testing.T) {
 					for _, finding := range MissingTargets(f.analyzer, f.targets, out.Targets[f.analyzer]) {
 						t.Error(finding)
 					}
+					if f.wantAggregate != nil {
+						got, want := slices.Sorted(slices.Values(f.aggregate(out))), slices.Sorted(slices.Values(f.wantAggregate(ctx.Name)))
+						if !slices.Equal(got, want) {
+							t.Errorf("aggregate findings = %q, want %q", got, want)
+						}
+					}
 				})
 			}
 		})
@@ -447,13 +486,19 @@ func TestVetDriverParity(t *testing.T) {
 			for _, c := range Checks() {
 				requireSubset(t, c.Analyzer.Name+" on the repository", RunOver(c.For(moduleRoot()), pkgs).Findings, repo.Findings)
 			}
+			requireRawSQLParity(t, ctx, repo, pkgs)
 			fixtures := runVet(t, bin, ctx, flags, patterns)
 			for _, f := range vetFixtures {
 				loaded, err := LoadIn(ctx, f.loadPatterns()...)
 				if err != nil {
 					t.Fatal(err)
 				}
-				old := f.old(loaded)
+				var old []string
+				if f.oldIn != nil {
+					old = f.oldIn(ctx, loaded)
+				} else {
+					old = f.old(loaded)
+				}
 				if len(old) == 0 {
 					t.Errorf("old harness found nothing in fixture %s: the parity check would be vacuous", f.name)
 				}
