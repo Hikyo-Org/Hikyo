@@ -306,8 +306,8 @@ This has not been built or run.
   SPA and shell changes can land in one PR. Wails and cgo never enter the root `go.mod`.
 - **Amended by the owner on 2026-11-20** (replacing a separate `Hikyo-Org/hikyo-app`
   repository): binaries are published from this repository as their own release series.
-  The same release run that cuts a stable `hikyo` tag such as `v1.4.0` also cuts
-  `desktop-v1.4.0`, so both carry the same version. The desktop release holds only the
+  The stable release run for a tag such as `v1.4.0` also stages a `desktop-v1.4.0`
+  draft, so both carry the same version. The desktop release holds only the
   app's files (`Hikyo-Desktop-<version>-<arch>.dmg`) and its own signed inventory, and is
   never marked Latest. Nightlies carry no app. The app is signed and notarized with the
   stable lane's existing Developer ID ([apple-signing.md](../release/apple-signing.md)),
@@ -329,8 +329,10 @@ This has not been built or run.
   of 20) and the nightly installer reads. Update checks validate every listed asset's
   name, URL, size and digest (`internal/updatecheck/source.go`) before skipping the tag,
   so one malformed desktop asset fails the whole listing.
-- Publication order: the desktop release is published only after `v<version>` is
-  published, so a version burned before publication leaves no desktop release. Release
+- Publication order: the release run only stages drafts. The maintainer's publication
+  step (`scripts/release/ceremony.sh`, `scripts/release/publish-stable-draft.sh`)
+  publishes the desktop draft only after `v<version>` is published, so a version burned
+  before publication leaves no desktop release. Release
   candidates and nightlies get no desktop release.
 - The release lane must also add tag protection for `refs/tags/desktop-v*` (the
   existing rulesets cover `refs/tags/v*` only), keep `make_latest` false on every
@@ -502,20 +504,25 @@ Settled on 2026-11-20:
    apart by name, and first chose the app's files inside the stable `hikyo` release.
    Review then found that the stable verifier refuses any file outside the signed
    manifest. Offered a `desktop-v` tag at the same version, a widened verifier, or the
-   separate repository, the owner chose "desktop-v tag, same ver".
+   separate repository, the owner chose "desktop-v tag, same ver". The revised
+   oss-mechanics banner's scope follows from this choice; the owner accepts that scope by
+   approving its pull request.
 
 ## Review record
 
-- **2026-11-20 amendment of D13 and the revised oss-mechanics banner:** two independent
+- **2026-11-20 amendment of D13 and the revised oss-mechanics banner:** three independent
   same-provider reviews by fresh Claude Opus 5.5 agents, reading source without running
   anything. The first found that the stable verifier's closed inventory blocks the app
   inside a `hikyo` release, which led to the `desktop-v` shape. The second, at
-  `a87fb99c5`, found two release readers that do not skip `desktop-v*`, that withdrawing
-  the oss-mechanics banner would reinterpret locked text instead of amending it, and that
-  the publication order was unstated; this revision repairs those. Cross-provider review
-  did not run. GOVERNANCE.md's procedure asks for it; the owner's standing review policy
-  since 2026-10-29 makes it optional and it was not requested, so this departs from that
-  procedure as item 2 of the header records for the original decision. Not CLEAN.
+  `a87fb99c55de41eac48bbe4a27e3c13da7938809`, found two release readers that do not skip `desktop-v*`, that
+  withdrawing the oss-mechanics banner would reinterpret locked text instead of amending
+  it, and that the publication order was unstated. The third, limited to the repair at
+  `b67edf200055df118b7e2d6fcebfb24ae9c02737`, confirmed all of those fixed and found only low findings
+  (the publication owner, the banner's acceptance, this record's wording), repaired in
+  the next commit. Cross-provider review did not run. GOVERNANCE.md's procedure asks for
+  it. Unlike header item 2, which was a waiver for one decision, no waiver was given here:
+  the owner's standing review policy (2026-10-29, outside this repository) makes
+  cross-provider review optional, and it was not requested. Not CLEAN.
 - **Cross-model review:** not run. SKIPPED by explicit owner instruction (2026-11-04), for
   this decision only, and not CLEAN.
 - **Independent same-provider review:** three rounds by separate fresh Claude Opus 5.5

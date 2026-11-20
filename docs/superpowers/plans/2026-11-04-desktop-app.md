@@ -172,8 +172,9 @@ existing Developer ID signing and notarization identity.
 - A `desktop-v<version>` release holding `Hikyo-Desktop-<version>-<arch>.dmg` and its own
   signed inventory, with `make_latest` false. Never on nightlies, never inside a `hikyo`
   release. No updater and no update check.
-- Publish the desktop release only after `v<version>` is published; none for release
-  candidates.
+- `release.yml` stages the desktop draft; `scripts/release/ceremony.sh` and
+  `publish-stable-draft.sh` publish it only after `v<version>` is published. None for
+  release candidates.
 - Make `scripts/release/latest-stable-version.sh` and `.github/workflows/security-release.yml`
   skip `desktop-v*` first; both misread it today.
 - Pin GoReleaser's tag (`GORELEASER_CURRENT_TAG`), since two tags share a commit.
