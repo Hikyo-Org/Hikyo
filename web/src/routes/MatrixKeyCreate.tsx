@@ -81,7 +81,7 @@ export function editDistance(a: string, b: string): number {
 
 // Trimming runs before validation (schema-model.md), so a whitespace-only value is empty, not skipped.
 const WHITESPACE_ONLY_FIRST_VALUE =
-  'This value is only whitespace, so trimming leaves it empty. Clear it to declare the key without a first value.';
+  'This value is only whitespace, so trimming leaves it empty.';
 
 /** An existing key one or two edits away from `name` (never an exact match), or null. */
 export function nearMissKeyName(name: string, existing: readonly string[]): string | null {
@@ -179,7 +179,8 @@ export function MatrixKeyCreate({
     () => nearMissKeyName(normalizedName, existingKeyNames),
     [existingKeyNames, normalizedName],
   );
-  const whitespaceRemoved = normalizeMatrixDraftValue(value) !== value;
+  const normalizedValue = normalizeMatrixDraftValue(value);
+  const whitespaceRemoved = normalizedValue !== value;
   const valueIsJson = useMemo(() => {
     const trimmed = normalizeMatrixDraftValue(value);
     return trimmed !== '' && zJSONText.safeParse(trimmed).success;
@@ -255,7 +256,7 @@ export function MatrixKeyCreate({
 
     const trimmedValue = normalizeMatrixDraftValue(value);
     if (value !== '' && trimmedValue === '') {
-      setError(WHITESPACE_ONLY_FIRST_VALUE);
+      setError('Clear the first value to declare the key without one, or enter a value.');
       return;
     }
     let firstValue: MatrixKeyCreateFirstValue | null = null;
@@ -572,7 +573,7 @@ export function MatrixKeyCreate({
           ) : null}
           {whitespaceRemoved ? (
             <p className="matrix-editor__hint" role="status">
-              {normalizeMatrixDraftValue(value) === ''
+              {normalizedValue === ''
                 ? WHITESPACE_ONLY_FIRST_VALUE
                 : 'Leading and trailing whitespace was removed.'}
             </p>

@@ -29,6 +29,7 @@ import {
   useUpdateKeyMetadata,
   type KeyImpact,
   type MatrixKey,
+  TIGHTEN_ADVISORY,
 } from '../api/matrix.ts';
 import type { MatrixRef } from '../api/keys.ts';
 import { ApiError, type RefusalFinding } from '../api/client.ts';
@@ -863,10 +864,6 @@ function RenameKey({
     </form>
   );
 }
-
-const TIGHTEN_ADVISORY =
-  'Tightening cannot un-disclose: the value was readable as config, so treat it as exposed and rotate it. ' +
-  'Old values stay readable in history under ordinary read.';
 
 /**
  * ReclassifyKey runs the reclassification ceremony in the one direction that is

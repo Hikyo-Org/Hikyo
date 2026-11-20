@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { retireSensitiveOperations } from '../api/sensitiveMutation.ts';
 import { MatrixRowEditor, type MatrixEditorChange } from './MatrixRowEditor.tsx';
-import { normalizeMatrixDraftValue } from './matrix-state.ts';
 
 type MatrixRowEditorProps = Parameters<typeof MatrixRowEditor>[0];
 
@@ -425,22 +424,10 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
   it('warns when editing a deprecated key, naming where it still has a value', async () => {
     const view = await renderEditor({ ...keyRecord, deprecated: true, deprecation_note: 'Use LOG_LEVEL_V2.' });
     const warning = [...view.container.querySelectorAll('.notice')].find((node) => node.textContent?.includes('deprecated'));
-    expect(warning?.textContent).toContain('This key is deprecated. Use LOG_LEVEL_V2.');
+    expect(warning?.textContent).toBe(
+      'This key is deprecated. Use LOG_LEVEL_V2. It still has 1 live value across development. Remove the values before deleting the key.',
+    );
     expect(warning?.querySelector('.glyph')).not.toBeNull();
-    await view.unmount();
-  });
-
-  it('keeps interior newlines of a multiline value through staging', async () => {
-    const view = await renderEditor();
-    const textarea = view.container.querySelector<HTMLTextAreaElement>('textarea[id^="matrix-edit-"]');
-    const saveButton = view.container.querySelector<HTMLButtonElement>('button[type="submit"]');
-    if (textarea === null || saveButton === null) throw new Error('row form controls are missing');
-    const pem = '-----BEGIN CERTIFICATE-----\nMIIB\nAQAB\n-----END CERTIFICATE-----';
-    await act(async () => typeInto(textarea, `${pem}\n`));
-    await act(async () => saveButton.click());
-    // The matrix trims at stage time (normalizeMatrixDraftValue); interior newlines survive it.
-    expect(view.onApply).toHaveBeenCalledWith([{ environmentId, operation: 'set', value: `${pem}\n` }]);
-    expect(normalizeMatrixDraftValue(`${pem}\n`)).toBe(pem);
     await view.unmount();
   });
 

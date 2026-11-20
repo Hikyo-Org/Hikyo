@@ -433,7 +433,9 @@ export function MatrixRowEditor({
                       hint={
                         liveValidation !== null && liveValidation.level !== 'error'
                           ? liveValidation.message
-                          : alternativesHint
+                          : liveError === undefined
+                            ? alternativesHint
+                            : undefined
                       }
                       error={liveError ?? loneProblem}
                     >
@@ -802,13 +804,16 @@ function declarationRules(keyRecord: MatrixKey): readonly MatrixDraftRule[] {
     : [keyRecord.declaration.rule];
 }
 
-/** The key detail's deprecation caveat, counted from the cells this editor can read. */
+/** The key detail's deprecation caveat, counted only from the cells this editor can read. */
 function deprecationWarning(keyRecord: MatrixKey, rows: readonly EditorRow[]): string {
   const live = rows.filter((row) => row.cell?.set === true).map((row) => row.environment.name);
+  const note = keyRecord.deprecation_note.trim();
   return [
     'This key is deprecated.',
-    keyRecord.deprecation_note,
-    live.length === 0 ? '' : `It still has a value in ${live.join(', ')}. Remove the values before deleting the key.`,
+    note === '' || /[.!?]$/.test(note) ? note : `${note}.`,
+    live.length === 0
+      ? ''
+      : `It still has ${plural(live.length, 'live value')} across ${live.join(', ')}. Remove the values before deleting the key.`,
   ].filter((part) => part !== '').join(' ');
 }
 

@@ -772,8 +772,8 @@ describe('KeyDeclarationDetail', () => {
     const dialogText = confirmDialog(view.container).textContent ?? '';
     expect(dialogText).toContain('dismissals are dropped');
     const advisory =
-      'Tightening cannot un-disclose: the value was readable as config, so treat it as exposed and rotate it. ' +
-      'Old values stay readable in history under ordinary read.';
+      'Tightening cannot un-disclose: this key’s values were readable as config, so treat them as exposed and rotate them. ' +
+      'Old values stay readable in history to anyone with read access.';
     expect(dialogText).toContain(advisory);
     // Tightening does not disclose, so it names no second-factor requirement.
     expect(dialogText.toLowerCase()).not.toContain('second-factor');

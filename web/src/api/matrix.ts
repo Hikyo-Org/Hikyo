@@ -1170,6 +1170,11 @@ export function keyLifecycleRefusalText(
   return `The server could not ${action} this key.`;
 }
 
+/** What tightening a key to secret cannot undo; schema-model.md makes stating it mandatory. */
+export const TIGHTEN_ADVISORY =
+  'Tightening cannot un-disclose: this key’s values were readable as config, so treat them as exposed and rotate them. ' +
+  'Old values stay readable in history to anyone with read access.';
+
 /** The one missing-key sentence every key refusal shares. A single constant so
  *  no surface can render a distinguishable 404 that would turn the reveal gate
  *  into an existence oracle. */

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import type { ScanFinding } from '../api/matrix.ts';
+import { TIGHTEN_ADVISORY, type ScanFinding } from '../api/matrix.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
@@ -147,6 +147,7 @@ export function ScanWarnDialog({
         ))}
       </ul>
 
+      {onReclassify === undefined ? null : <p className="scan-warn__note">{TIGHTEN_ADVISORY}</p>}
       <p className="scan-warn__note">
         Keep as config affirms the value belongs here and stays outside secret handling; the
         identical value will not warn again. A different credential-shaped value still will.

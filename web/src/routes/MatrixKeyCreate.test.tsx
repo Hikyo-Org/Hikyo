@@ -245,11 +245,12 @@ describe('MatrixKeyCreate', () => {
   it('refuses a whitespace-only first value instead of dropping it', async () => {
     const view = await render();
     await act(async () => set(byLabel(view.container, 'matrix-create-value'), ' \n\t '));
-    const message = 'This value is only whitespace, so trimming leaves it empty. Clear it to declare the key without a first value.';
-    expect(view.container.textContent).toContain(message);
+    expect(view.container.textContent).toContain('This value is only whitespace, so trimming leaves it empty.');
     await fillNameAndSubmit(view.container, 'LEVEL');
     expect(view.onCreate).not.toHaveBeenCalled();
-    expect(view.container.querySelector('[role="alert"]')?.textContent).toContain(message);
+    expect(view.container.querySelector('[role="alert"]')?.textContent).toContain(
+      'Clear the first value to declare the key without one, or enter a value.',
+    );
     await view.unmount();
   });
 
