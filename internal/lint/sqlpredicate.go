@@ -4,14 +4,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 	"sync"
-
-	"github.com/Hikyo-Org/hikyo/internal/pathutil"
 )
 
 // This file is analyzer 2 (tenant-isolation ADR, invariant 8): sqlc queries
@@ -84,8 +81,12 @@ func maskSQLCArgs(s string) string {
 // ParseScopeDirectives reads the hikyo:table directives from every migration
 // file in dir.
 func ParseScopeDirectives(dir string) (map[string]TableRule, error) {
+	return parseScopeDirectives(osSource{}, dir)
+}
+
+func parseScopeDirectives(fsrc source, dir string) (map[string]TableRule, error) {
 	out := map[string]TableRule{}
-	if err := eachSQLFile(dir, func(path, src string) error {
+	if err := eachSQLFile(fsrc, dir, func(path, src string) error {
 		for _, m := range directiveRe.FindAllStringSubmatch(src, -1) {
 			table, class, chain := m[1], m[2], m[3]
 			if _, dup := out[table]; dup {
@@ -123,9 +124,13 @@ func ParseScopeDirectives(dir string) (map[string]TableRule, error) {
 // directive dangles" must ask about every name, or declaring the twin — which
 // 00006 does on both engines — would look like a stale entry.
 func CollectTables(dir string) (live, named []string, err error) {
+	return collectTables(osSource{}, dir)
+}
+
+func collectTables(fsrc source, dir string) (live, named []string, err error) {
 	alive := map[string]bool{}
 	seen := map[string]bool{}
-	if err := eachSQLFile(dir, func(_, src string) error {
+	if err := eachSQLFile(fsrc, dir, func(_, src string) error {
 		for _, stmt := range tableStatementRe.FindAllStringSubmatch(src, -1) {
 			switch {
 			case stmt[1] != "": // CREATE TABLE x
@@ -157,9 +162,11 @@ func sortedSet(m map[string]bool) []string {
 
 // ParseQueries reads every sqlc query block in dir, with its hikyo
 // annotation if the line directly above the name line carries one.
-func ParseQueries(dir string) ([]Query, error) {
+func ParseQueries(dir string) ([]Query, error) { return parseQueries(osSource{}, dir) }
+
+func parseQueries(fsrc source, dir string) ([]Query, error) {
 	var out []Query
-	if err := eachSQLFile(dir, func(path, src string) error {
+	if err := eachSQLFile(fsrc, dir, func(path, src string) error {
 		lines := strings.Split(src, "\n")
 		for i := 0; i < len(lines); i++ {
 			m := nameRe.FindStringSubmatch(strings.TrimSpace(lines[i]))
@@ -208,7 +215,9 @@ func ParseQueries(dir string) ([]Query, error) {
 // CheckSQLPredicates runs analyzer 2 over both engines' migration and query
 // directories under repoRoot, including the cross-engine agreement checks
 // (same tables, directives, and query contracts on both engines).
-func CheckSQLPredicates(repoRoot string) []string {
+func CheckSQLPredicates(repoRoot string) []string { return checkSQLPredicates(osSource{}, repoRoot) }
+
+func checkSQLPredicates(src source, repoRoot string) []string {
 	var findings []string
 	perEngine := map[string][]Query{}
 	perEngineRules := map[string]map[string]TableRule{}
@@ -222,11 +231,11 @@ func CheckSQLPredicates(repoRoot string) []string {
 		migDir := filepath.Join(repoRoot, "internal", "store", "migrations", engine)
 		queryDir := filepath.Join(repoRoot, "internal", "store", "queries", engine)
 
-		rules, err := ParseScopeDirectives(migDir)
+		rules, err := parseScopeDirectives(src, migDir)
 		if err != nil {
 			return append(findings, "sqlpredicate: "+err.Error())
 		}
-		live, named, err := CollectTables(migDir)
+		live, named, err := collectTables(src, migDir)
 		if err != nil {
 			return append(findings, "sqlpredicate: "+err.Error())
 		}
@@ -245,14 +254,14 @@ func CheckSQLPredicates(repoRoot string) []string {
 			}
 		}
 
-		queries, err := ParseQueries(queryDir)
+		queries, err := parseQueries(src, queryDir)
 		if err != nil {
 			return append(findings, "sqlpredicate: "+err.Error())
 		}
 		perEngine[engine] = queries
 		perEngineRules[engine] = rules
 		generatedDir := filepath.Join(repoRoot, "internal", "store", map[string]string{"sqlite": "sqlitegen", "postgres": "pggen"}[engine])
-		contracts, err := readGeneratedContracts(generatedDir, engine)
+		contracts, err := readGeneratedContracts(src, generatedDir, engine)
 		if err != nil {
 			return append(findings, "sqlpredicate: "+err.Error())
 		}
@@ -263,7 +272,7 @@ func CheckSQLPredicates(repoRoot string) []string {
 			}
 			if reviewed, ok := reviews[engine][q.Name]; ok {
 				api, generated := contracts[q.Name]
-				findings = append(findings, checkScopedQueryReview(engine, q, api, generated, reviewed, repoRoot)...)
+				findings = append(findings, checkScopedQueryReview(src, engine, q, api, generated, reviewed, repoRoot)...)
 			} else {
 				findings = append(findings, checkQuery(engine, q, rules)...)
 			}
@@ -567,17 +576,18 @@ func crossEngine(queries map[string][]Query, rules map[string]map[string]TableRu
 	return out
 }
 
-func eachSQLFile(dir string, fn func(path, src string) error) error {
-	entries, err := os.ReadDir(dir)
+func eachSQLFile(src source, dir string, fn func(path, src string) error) error {
+	names, err := src.ReadDir(dir)
 	if err != nil {
 		return err
 	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") {
+	slices.Sort(names)
+	for _, name := range names {
+		if !strings.HasSuffix(name, ".sql") {
 			continue
 		}
-		path := filepath.Join(dir, e.Name())
-		b, err := pathutil.ReadFileWithin(dir, path)
+		path := filepath.Join(dir, name)
+		b, err := src.ReadFile(path)
 		if err != nil {
 			return err
 		}

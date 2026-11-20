@@ -1,11 +1,11 @@
 package lint
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -38,7 +38,7 @@ func expandScopedQueryReviews(records map[string]reviewedQueryPin) map[string]ma
 	return reviews
 }
 
-func checkScopedQueryReview(engine string, q Query, api generatedContract, generated bool, review scopedQueryReview, root string) []string {
+func checkScopedQueryReview(src source, engine string, q Query, api generatedContract, generated bool, review scopedQueryReview, root string) []string {
 	label := fmt.Sprintf("sqlpredicate(%s): %s", engine, q.Name)
 	if q.Annotation != "" || !generated || !api.BindSitesKnown || strings.TrimSpace(review.Authority) == "" || review.SQLHash != q.Hash() || review.APIHash != api.hash() || len(review.Tests) == 0 {
 		return []string{fmt.Sprintf("%s: changed or incomplete reviewed scoped query: sql=%s api=%s", label, q.Hash(), api.hash())}
@@ -54,12 +54,15 @@ func checkScopedQueryReview(engine string, q Query, api generatedContract, gener
 			continue
 		}
 		full := filepath.Join(root, clean)
-		info, err := os.Lstat(full)
-		if err != nil || !info.Mode().IsRegular() {
+		text, err := src.ReadFile(full)
+		if errors.Is(err, ErrUndeclaredInput) {
+			return append(findings, label+": inputs refused: "+err.Error())
+		}
+		if err != nil {
 			findings = append(findings, label+": missing scoped-query test source "+evidence)
 			continue
 		}
-		file, err := parser.ParseFile(token.NewFileSet(), full, nil, 0)
+		file, err := parser.ParseFile(token.NewFileSet(), full, text, 0)
 		if err != nil {
 			findings = append(findings, label+": invalid scoped-query test source "+evidence)
 			continue

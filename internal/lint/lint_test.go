@@ -130,7 +130,7 @@ func TestFileScansAcceptDoubleDotsInsidePathComponents(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(storeDir, "..safe.sql"), []byte("SELECT 1;\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for _, finding := range checkNoSyncCommitDowngrade(repo) {
+	for _, finding := range checkNoSyncCommitDowngrade(osSource{}, repo, []string{".go", ".sql"}) {
 		if strings.Contains(finding, "invalid file path") {
 			t.Fatalf("valid dotted walked path rejected: %s", finding)
 		}
@@ -202,7 +202,7 @@ func TestAppendOnlyScanRejectsSymlinkEscapeWithReadCause(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	findings := checkNoSyncCommitDowngrade(repo)
+	findings := checkNoSyncCommitDowngrade(osSource{}, repo, []string{".go", ".sql"})
 	if len(findings) != 1 {
 		t.Fatalf("findings = %v, want one refused read", findings)
 	}
@@ -690,7 +690,7 @@ func TestGrantLockCatchesLocklessWriter(t *testing.T) {
 		if !writers["InsertGrant"] {
 			t.Fatal("GrantWriters omits InsertGrant — the analyzer would not enforce the grant surface")
 		}
-		findings := CheckGrantLockIn(pkgs, surface, writers, lockName)
+		findings := CheckGrantLockIn(pkgs, surface, writers)
 		assertFindings(t, findings, []string{
 			"LocklessWriter writes a grant table but does not take the LockPrincipalRow principal-row lock",
 			// The decoy proves the lock match is type-resolved, not name-only: a
@@ -703,7 +703,7 @@ func TestGrantLockCatchesLocklessWriter(t *testing.T) {
 			}
 		}
 		// Scoping: the same package is silent when it is not the named surface.
-		if f := CheckGrantLockIn(pkgs, Module+"/internal/store/authn", writers, lockName); len(f) != 0 {
+		if f := CheckGrantLockIn(pkgs, Module+"/internal/store/authn", writers); len(f) != 0 {
 			t.Errorf("analyzer fired outside the named surface: %v", f)
 		}
 	})

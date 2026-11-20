@@ -92,6 +92,32 @@ var vetFixtures = []vetFixture{
 		},
 	},
 	{
+		name: "grantlock", analyzer: "grantlock", patterns: []string{fixtureRoot + "badgrant"},
+		flags:      []string{"-grantlock.surface=" + fixtureImportRoot + "badgrant"},
+		targets:    []string{fixtureImportRoot + "badgrant"},
+		inputsRoot: ".",
+		old: func(pkgs []*packages.Package) []string {
+			writers, err := GrantWriters(moduleRoot())
+			if err != nil {
+				panic(err)
+			}
+			return CheckGrantLockIn(pkgs, fixtureImportRoot+"badgrant", writers)
+		},
+	},
+	{
+		name: "denialwriter", analyzer: "denialwriter", patterns: []string{fixtureRoot + "badauthn"},
+		flags:      []string{"-denialwriter.surface=" + fixtureImportRoot + "badauthn", "-denialwriter.writers=WriteDenial"},
+		targets:    []string{fixtureImportRoot + "badauthn"},
+		inputsRoot: ".",
+		old: func(pkgs []*packages.Package) []string {
+			mutating, _, err := MutatingQueries(moduleRoot())
+			if err != nil {
+				panic(err)
+			}
+			return CheckDenialWriterIn(pkgs, fixtureImportRoot+"badauthn", map[string]bool{"WriteDenial": true}, mutating)
+		},
+	},
+	{
 		name: "stablecopies", analyzer: "stablecopies", patterns: []string{fixtureRoot + "badstablecopies"},
 		flags:      []string{"-stablecopies.anchor=" + fixtureImportRoot + "badstablecopies"},
 		targets:    []string{fixtureImportRoot + "badstablecopies"},
@@ -207,6 +233,18 @@ func scanWants(t *testing.T, dirs []string) map[wantKey][]*regexp.Regexp {
 	return wants
 }
 
+// inFixture reports whether file (testdata-relative) belongs to one of the
+// fixture's own packages. Fixtures that share one run each see the others'
+// packages, which other analyzers may flag.
+func inFixture(f vetFixture, file string) bool {
+	for _, dir := range fixtureDirs(f.patterns) {
+		if strings.HasPrefix(file, fixtureKey(dir)+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 // checkWants requires every want to match one diagnostic of the fixture's
 // analyzer on its line, and every such diagnostic to match a want.
 func checkWants(t *testing.T, f vetFixture, findings []string) {
@@ -227,8 +265,8 @@ func checkWants(t *testing.T, f vetFixture, findings []string) {
 			continue
 		}
 		key := wantKey{fixtureKey(file), line}
-		if !strings.Contains(key.file, "testdata/") {
-			continue
+		if !inFixture(f, key.file) {
+			continue // a sibling fixture's package, judged by its own entry
 		}
 		message := finding[cut+len(prefix):]
 		matched := false

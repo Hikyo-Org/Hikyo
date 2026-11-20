@@ -85,7 +85,7 @@ func TestReviewedScopedQueryRequiresExactSQLAPIAndEvidence(t *testing.T) {
 	api := generatedContract{BindSitesKnown: true}
 	review := scopedQueryReview{SQLHash: q.Hash(), APIHash: api.hash(), Authority: "Exact proof-derived owning org, project and retained snapshot membership.", Tests: []string{"boundary_test.go:TestBoundary"}}
 	review.FlowTests = []string{"boundary_test.go:TestUnrelated"}
-	if got := checkScopedQueryReview("sqlite", q, api, true, review, root); len(got) != 0 {
+	if got := checkScopedQueryReview(osSource{}, "sqlite", q, api, true, review, root); len(got) != 0 {
 		t.Fatal(got)
 	}
 	for name, modify := range map[string]func(*scopedQueryReview){
@@ -105,21 +105,21 @@ func TestReviewedScopedQueryRequiresExactSQLAPIAndEvidence(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := review
 			modify(&bad)
-			if got := checkScopedQueryReview("sqlite", q, api, true, bad, root); len(got) == 0 {
+			if got := checkScopedQueryReview(osSource{}, "sqlite", q, api, true, bad, root); len(got) == 0 {
 				t.Fatal("incomplete review accepted")
 			}
 		})
 	}
-	if got := checkScopedQueryReview("sqlite", q, api, false, review, root); len(got) == 0 {
+	if got := checkScopedQueryReview(osSource{}, "sqlite", q, api, false, review, root); len(got) == 0 {
 		t.Fatal("missing generated API accepted")
 	}
 	api.BindSitesKnown = false
-	if got := checkScopedQueryReview("sqlite", q, api, true, review, root); len(got) == 0 {
+	if got := checkScopedQueryReview(osSource{}, "sqlite", q, api, true, review, root); len(got) == 0 {
 		t.Fatal("unknown bindings accepted")
 	}
 	api.BindSitesKnown = true
 	q.Annotation = "instance-scoped"
-	if got := checkScopedQueryReview("sqlite", q, api, true, review, root); len(got) == 0 {
+	if got := checkScopedQueryReview(osSource{}, "sqlite", q, api, true, review, root); len(got) == 0 {
 		t.Fatal("tenant query relabeled instance-scoped")
 	}
 }

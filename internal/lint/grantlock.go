@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -57,6 +58,15 @@ var lockDefiners = map[string]bool{
 	Module + "/internal/store/authn":     true,
 }
 
+// queryInputs are the sqlc query files the grant and denial analyzers derive
+// their writer sets from.
+func queryInputs(string) ([]InputSpec, error) {
+	return []InputSpec{
+		{Dir: "internal/store/queries/sqlite", Exts: []string{".sql"}},
+		{Dir: "internal/store/queries/postgres", Exts: []string{".sql"}},
+	}, nil
+}
+
 // GrantWriters returns the mutating generated queries that target the grant
 // table, derived from the query files rather than a curated list so a new grant
 // writer is covered the moment it is added. Classification is by SQL verb/target,
@@ -64,9 +74,13 @@ var lockDefiners = map[string]bool{
 // writes a grant row (the old cmd-based skip classified it as a read and let it
 // through). Only a SELECT on the grant table is a read.
 func GrantWriters(repoRoot string) (map[string]bool, error) {
+	return grantWriters(osSource{}, repoRoot)
+}
+
+func grantWriters(src source, repoRoot string) (map[string]bool, error) {
 	out := map[string]bool{}
 	for _, engine := range []string{"sqlite", "postgres"} {
-		queries, err := ParseQueries(filepath.Join(repoRoot, "internal", "store", "queries", engine))
+		queries, err := parseQueries(src, filepath.Join(repoRoot, "internal", "store", "queries", engine))
 		if err != nil {
 			return nil, err
 		}
@@ -84,51 +98,90 @@ func GrantWriters(repoRoot string) (map[string]bool, error) {
 	return out, nil
 }
 
-// CheckGrantLock enforces the obligation over EVERY module package that can call
-// a generated grant-mutation query, not only the resolution surface: a grant
-// write is a grant write wherever it is issued from. It scans all loaded
-// packages except the generated query packages themselves (whose method bodies
-// ARE the queries, not callers of them). testdata fixtures are never loaded by
-// the `module/...` pattern, so the negative fixture does not false-positive the
-// repo run.
+// reachesGenerated reports whether pkg can name a generated query: it is, or
+// transitively imports, a sqlc output package.
+func reachesGenerated(pkg *types.Package) bool {
+	for path := range generatedPackages {
+		if findPackage(pkg, path) != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// GrantLock enforces the obligation over EVERY module package that can call a
+// generated grant-mutation query, not only the resolution surface: a grant
+// write is a grant write wherever it is issued from, and its in-package test
+// files are packages' callers too. It skips the generated query packages
+// themselves (whose method bodies ARE the queries, not callers of them);
+// testdata fixtures are never loaded by the `module/...` pattern, so the
+// negative fixture does not false-positive the repo run. The writer set comes
+// from the declared query files.
+var GrantLock = newGrantLock(flagInputs, nil)
+
+// newGrantLock builds the analyzer. A fixed writers set replaces the
+// query-derived one for the old harness's scoped entry point.
+func newGrantLock(provide func(*analysis.Analyzer) inputProvider, fixed map[string]bool) *analysis.Analyzer {
+	declareInputs("grantlock", queryInputs)
+	a := &analysis.Analyzer{Name: "grantlock", Doc: "every grant-table writer takes the principal-row lock"}
+	surface := ""
+	a.Flags.StringVar(&surface, "surface", "", "analyze only this package (default: every module package)")
+	in := provide(a)
+	a.Run = func(pass *analysis.Pass) (any, error) {
+		path := pass.Pkg.Path()
+		if !inModule(path) || generatedPackages[path] || (surface != "" && path != surface) {
+			return nil, nil
+		}
+		if path == surface || path == Module+"/internal/store/authn" {
+			reportTarget(pass)
+		}
+		if !reachesGenerated(pass.Pkg) {
+			return nil, nil
+		}
+		writers := fixed
+		if writers == nil {
+			src, root, err := in.open()
+			if err != nil {
+				reportRefusal(pass, err)
+				return nil, nil
+			}
+			if writers, err = grantWriters(src, root); err != nil {
+				pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: err.Error()})
+				return nil, nil
+			}
+			if len(writers) == 0 {
+				pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: "no grant-table writers found — the analyzer would be vacuously green"})
+				return nil, nil
+			}
+		}
+		checkGrantLockPass(pass, writers, lockName)
+		return nil, nil
+	}
+	return a
+}
+
+// CheckGrantLock is GrantLock through the old go/packages harness.
 func CheckGrantLock(pkgs []*packages.Package, repoRoot string) []string {
-	writers, err := GrantWriters(repoRoot)
-	if err != nil {
-		return []string{"grantlock: " + err.Error()}
-	}
-	if len(writers) == 0 {
-		return []string{"grantlock: no grant-table writers found — the analyzer would be vacuously green"}
-	}
-	var findings []string
-	for _, p := range flatten(pkgs) {
-		path := strings.TrimSuffix(p.PkgPath, ".test")
-		if p.TypesInfo == nil || generatedPackages[path] {
-			continue
-		}
-		findings = append(findings, checkGrantLockPkg(p, writers, lockName)...)
-	}
-	return findings
+	c := Check{Analyzer: newGrantLock(diskInputs(repoRoot), nil), Targets: []string{Module + "/internal/store/authn"}}
+	return RunOver(c, pkgs).Findings
 }
 
-// CheckGrantLockIn is CheckGrantLock scoped to ONE named surface, so the negative
-// fixture can prove the check fires on a lockless grant writer and stays silent
-// outside the surface it is pointed at.
-func CheckGrantLockIn(pkgs []*packages.Package, surface string, writers map[string]bool, lock string) []string {
-	var findings []string
-	for _, p := range flatten(pkgs) {
-		if strings.TrimSuffix(p.PkgPath, ".test") != surface || p.TypesInfo == nil {
-			continue
-		}
-		findings = append(findings, checkGrantLockPkg(p, writers, lock)...)
+// CheckGrantLockIn is CheckGrantLock scoped to ONE named surface with a given
+// writer set, so the negative fixture can prove the check fires on a lockless
+// grant writer and stays silent outside the surface it is pointed at.
+func CheckGrantLockIn(pkgs []*packages.Package, surface string, writers map[string]bool) []string {
+	a := newGrantLock(diskInputs(""), writers)
+	if err := a.Flags.Set("surface", surface); err != nil {
+		panic(err)
 	}
-	return findings
+	return RunOver(Check{Analyzer: a}, pkgs).Findings
 }
 
-// checkGrantLockPkg reports every function in p that names a grant-mutating
-// writer but does not take the real principal-row lock in the same body.
-func checkGrantLockPkg(p *packages.Package, writers map[string]bool, lock string) []string {
-	var findings []string
-	for _, file := range p.Syntax {
+// checkGrantLockPass reports every function of the pass's package that names a
+// grant-mutating writer but does not take the real principal-row lock in the
+// same body.
+func checkGrantLockPass(pass *analysis.Pass, writers map[string]bool, lock string) {
+	for _, file := range pass.Files {
 		ast.Inspect(file, func(n ast.Node) bool {
 			fn, ok := n.(*ast.FuncDecl)
 			if !ok || fn.Body == nil {
@@ -140,7 +193,7 @@ func checkGrantLockPkg(p *packages.Package, writers map[string]bool, lock string
 				if !ok {
 					return true
 				}
-				obj, ok := p.TypesInfo.Uses[sel.Sel]
+				obj, ok := pass.TypesInfo.Uses[sel.Sel]
 				if !ok {
 					return true
 				}
@@ -162,12 +215,11 @@ func checkGrantLockPkg(p *packages.Package, writers map[string]bool, lock string
 				return true
 			})
 			if namesWriter && !namesLock {
-				findings = append(findings, fmt.Sprintf(
-					"grantlock: %s: %s writes a grant table but does not take the %s principal-row lock — every grant writer must hold it so credential-reset's org-bounded test is serializable (#54 B14)",
-					p.Fset.Position(fn.Pos()), fn.Name.Name, lock))
+				pass.Report(analysis.Diagnostic{Pos: fn.Pos(), Message: fmt.Sprintf(
+					"%s writes a grant table but does not take the %s principal-row lock — every grant writer must hold it so credential-reset's org-bounded test is serializable (#54 B14)",
+					fn.Name.Name, lock)})
 			}
 			return true
 		})
 	}
-	return findings
 }

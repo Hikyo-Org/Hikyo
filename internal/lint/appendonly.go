@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Hikyo-Org/hikyo/internal/pathutil"
+	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -33,12 +33,54 @@ var auditDeletionAllowlist = map[string]string{
 	"postgres/PruneInstanceAuditRetention": "fda06448ca43aad9884524b2a9d30dea73ffebc474cdffac275639707c3b431d",
 }
 
-// CheckAuditAppendOnly scans every query file on both engines.
+func appendOnlySpecs(string) ([]InputSpec, error) {
+	specs, _ := queryInputs("")
+	return append(specs, InputSpec{Dir: "internal/store", Exts: []string{".sql"}, Recursive: true}), nil
+}
+
+// AuditAppendOnly runs once on internal/store: the audit-table statements of
+// both engines' query files and the `.sql` files under internal/store come from
+// the declared inputs. The Go files of internal/store are not declared (vet
+// keys on them already): each package of the subtree scans its own files.
+var AuditAppendOnly = newAuditAppendOnly(flagInputs)
+
+func newAuditAppendOnly(provide func(*analysis.Analyzer) inputProvider) *analysis.Analyzer {
+	declareInputs("appendonly", appendOnlySpecs)
+	return fileCheck{
+		name: "appendonly", doc: "audit tables are append-only at the application layer and no code downgrades commit durability",
+		anchor: Module + "/internal/store", specs: appendOnlySpecs,
+		run: func(src source, root string) ([]string, error) {
+			findings := checkAuditQueries(src, root)
+			return append(findings, checkNoSyncCommitDowngrade(src, root, []string{".sql"})...), nil
+		},
+		pkg: func(pass *analysis.Pass, root string) {
+			for _, file := range pass.Files {
+				name := fileName(pass, file.Package)
+				body, err := os.ReadFile(name)
+				if err != nil {
+					pass.Report(analysis.Diagnostic{Pos: file.Package, Message: "appendonly: " + err.Error()})
+					continue
+				}
+				if finding, ok := syncCommitFinding(root, name, body); ok {
+					pass.Report(analysis.Diagnostic{Pos: file.Package, Message: finding})
+				}
+			}
+		},
+	}.analyzer(provide)
+}
+
+// CheckAuditAppendOnly scans every query file on both engines and every Go and
+// SQL file under internal/store, straight from disk: the old harness.
 func CheckAuditAppendOnly(repoRoot string) []string {
+	findings := checkAuditQueries(osSource{}, repoRoot)
+	return append(findings, checkNoSyncCommitDowngrade(osSource{}, repoRoot, []string{".go", ".sql"})...)
+}
+
+func checkAuditQueries(src source, repoRoot string) []string {
 	var findings []string
 	for _, engine := range []string{"sqlite", "postgres"} {
 		queryDir := filepath.Join(repoRoot, "internal", "store", "queries", engine)
-		queries, err := ParseQueries(queryDir)
+		queries, err := parseQueries(src, queryDir)
 		if err != nil {
 			return append(findings, "appendonly: "+err.Error())
 		}
@@ -64,7 +106,6 @@ func CheckAuditAppendOnly(repoRoot string) []string {
 				engine, q.Name))
 		}
 	}
-	findings = append(findings, checkNoSyncCommitDowngrade(repoRoot)...)
 	return findings
 }
 
@@ -76,39 +117,38 @@ func CheckAuditAppendOnly(repoRoot string) []string {
 // merely naming the banned statement — like this comment — does not trip it.
 var syncCommitRe = regexp.MustCompile(`(?i)SET\s+(LOCAL\s+)?synchronous_commit\s*(=|TO\s)`)
 
-func checkNoSyncCommitDowngrade(repoRoot string) []string {
-	var findings []string
-	roots := []string{
-		filepath.Join(repoRoot, "internal", "store"),
+// syncCommitFinding is the finding for a file that issues the banned statement.
+func syncCommitFinding(root, path string, body []byte) (string, bool) {
+	if !syncCommitRe.Match(body) {
+		return "", false
 	}
-	for _, root := range roots {
-		// Walk and read errors surface as findings: an analyzer that
-		// silently skips what it cannot read is fail-open.
-		werr := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				findings = append(findings, fmt.Sprintf("appendonly: walk %s: %v", path, err))
-				return nil
-			}
-			if info.IsDir() {
-				return nil
-			}
-			if !strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, ".sql") {
-				return nil
-			}
-			b, rerr := pathutil.ReadFileWithin(root, path)
-			if rerr != nil {
-				findings = append(findings, fmt.Sprintf("appendonly: %v", rerr))
-				return nil
-			}
-			if syncCommitRe.Match(b) {
-				findings = append(findings, fmt.Sprintf(
-					"appendonly: %s issues SET synchronous_commit — durability is a boot-verified server setting, never a session downgrade (audit-model ADR CI invariant 7)",
-					path))
-			}
-			return nil
-		})
-		if werr != nil {
-			findings = append(findings, fmt.Sprintf("appendonly: walk %s: %v", root, werr))
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		rel = path
+	}
+	return fmt.Sprintf(
+		"appendonly: %s issues SET synchronous_commit — durability is a boot-verified server setting, never a session downgrade (audit-model ADR CI invariant 7)",
+		filepath.ToSlash(rel)), true
+}
+
+// checkNoSyncCommitDowngrade scans the files with the given extensions under
+// internal/store. Walk and read errors surface as findings: an analyzer that
+// silently skips what it cannot read is fail-open.
+func checkNoSyncCommitDowngrade(src source, repoRoot string, exts []string) []string {
+	root := filepath.Join(repoRoot, "internal", "store")
+	paths, err := src.WalkFiles(root, exts)
+	if err != nil {
+		return []string{fmt.Sprintf("appendonly: walk %s: %v", root, err)}
+	}
+	var findings []string
+	for _, path := range paths {
+		b, err := src.ReadFile(path)
+		if err != nil {
+			findings = append(findings, fmt.Sprintf("appendonly: %v", err))
+			continue
+		}
+		if finding, ok := syncCommitFinding(repoRoot, path, b); ok {
+			findings = append(findings, finding)
 		}
 	}
 	return findings
@@ -456,72 +496,126 @@ var ResolutionSurfaceWriters = map[string]bool{
 	"dropRestoredSCIMOrigins": true,
 }
 
-// CheckDenialWriter enforces the enumerated-writer rule as a build failure,
+// DenialWriter enforces the enumerated-writer rule as a build failure,
 // not a comment. The import boundary alone cannot see this —
 // internal/store/authn already holds the generated query handles, so a
 // mutating call inside it would be a proof-free writer that every other guard
-// admits. Every call to a generated mutating query from that package must sit
-// inside a function named in ResolutionSurfaceWriters.
-func CheckDenialWriter(pkgs []*packages.Package, repoRoot string) []string {
-	mutating, findings, err := MutatingQueries(repoRoot)
-	if err != nil {
-		return append(findings, "denialwriter: "+err.Error())
+// admits. Every reference to a generated mutating query from that package, its
+// test files included, must sit inside a function named in
+// ResolutionSurfaceWriters. The mutating set comes from the declared query
+// files.
+var DenialWriter = newDenialWriter(flagInputs, nil)
+
+const denialSurface = Module + "/internal/store/authn"
+
+// newDenialWriter builds the analyzer; a fixed mutating set replaces the
+// query-derived one for the old harness's scoped entry point.
+func newDenialWriter(provide func(*analysis.Analyzer) inputProvider, fixed map[string]bool) *analysis.Analyzer {
+	declareInputs("denialwriter", queryInputs)
+	a := &analysis.Analyzer{Name: "denialwriter", Doc: "the resolution surface writes only from its enumerated writers"}
+	surface := denialSurface
+	writers := ResolutionSurfaceWriters
+	a.Flags.StringVar(&surface, "surface", denialSurface, "the resolution-surface package")
+	a.Flags.Func("writers", "comma-separated enumerated writers (default: ResolutionSurfaceWriters)", func(v string) error {
+		writers = map[string]bool{}
+		for _, name := range strings.Split(v, ",") {
+			writers[name] = true
+		}
+		return nil
+	})
+	in := provide(a)
+	a.Run = func(pass *analysis.Pass) (any, error) {
+		if pass.Pkg.Path() != surface {
+			return nil, nil
+		}
+		reportTarget(pass)
+		mutating := fixed
+		if mutating == nil {
+			src, root, err := in.open()
+			if err != nil {
+				reportRefusal(pass, err)
+				return nil, nil
+			}
+			var findings []string
+			if mutating, findings, err = mutatingQueries(src, root); err != nil {
+				pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: err.Error()})
+				return nil, nil
+			}
+			for _, f := range findings {
+				pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: f})
+			}
+			if len(mutating) == 0 {
+				pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: "no mutating queries found — the analyzer would be vacuously green"})
+				return nil, nil
+			}
+		}
+		checkDenialWriterPass(pass, writers, mutating)
+		return nil, nil
 	}
-	if len(mutating) == 0 {
-		return append(findings,
-			"denialwriter: no mutating queries found — the analyzer would be vacuously green")
-	}
-	return append(findings,
-		CheckDenialWriterIn(pkgs, Module+"/internal/store/authn", ResolutionSurfaceWriters, mutating)...)
+	return a
 }
 
-// CheckDenialWriterIn is CheckDenialWriter with the surface named, so the
-// negative fixture can prove the check actually fires on an unlisted writer
-// rather than merely on a package that has none.
+// CheckDenialWriter is DenialWriter through the old go/packages harness.
+func CheckDenialWriter(pkgs []*packages.Package, repoRoot string) []string {
+	c := Check{Analyzer: newDenialWriter(diskInputs(repoRoot), nil), Targets: []string{denialSurface}}
+	return RunOver(c, pkgs).Findings
+}
+
+// CheckDenialWriterIn is CheckDenialWriter with the surface, writers and
+// mutating set named, so the negative fixture can prove the check actually
+// fires on an unlisted writer rather than merely on a package that has none.
 func CheckDenialWriterIn(pkgs []*packages.Package, surface string, writers, mutating map[string]bool) []string {
-	var findings []string
-	for _, p := range flatten(pkgs) {
-		if strings.TrimSuffix(p.PkgPath, ".test") != surface || p.TypesInfo == nil {
-			continue
-		}
-		for _, file := range p.Syntax {
-			ast.Inspect(file, func(n ast.Node) bool {
-				fn, ok := n.(*ast.FuncDecl)
-				if !ok || fn.Body == nil {
+	a := newDenialWriter(diskInputs(""), mutating)
+	if err := a.Flags.Set("surface", surface); err != nil {
+		panic(err)
+	}
+	names := make([]string, 0, len(writers))
+	for name := range writers {
+		names = append(names, name)
+	}
+	if err := a.Flags.Set("writers", strings.Join(names, ",")); err != nil {
+		panic(err)
+	}
+	return RunOver(Check{Analyzer: a}, pkgs).Findings
+}
+
+func checkDenialWriterPass(pass *analysis.Pass, writers, mutating map[string]bool) {
+	for _, file := range pass.Files {
+		ast.Inspect(file, func(n ast.Node) bool {
+			fn, ok := n.(*ast.FuncDecl)
+			if !ok || fn.Body == nil {
+				return true
+			}
+			// Inspect every REFERENCE to a mutating generated query, not
+			// just calls. `x.InsertFoo(...)` and `f := x.InsertFoo` select
+			// the same method; catching only the first let a method value
+			// smuggle the write past the guard (round-2 finding). Naming
+			// the method at all, in any position, must sit inside an
+			// approved writer.
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				sel, ok := n.(*ast.SelectorExpr)
+				if !ok {
 					return true
 				}
-				// Inspect every REFERENCE to a mutating generated query, not
-				// just calls. `x.InsertFoo(...)` and `f := x.InsertFoo` select
-				// the same method; catching only the first let a method value
-				// smuggle the write past the guard (round-2 finding). Naming
-				// the method at all, in any position, must sit inside an
-				// approved writer.
-				ast.Inspect(fn.Body, func(n ast.Node) bool {
-					sel, ok := n.(*ast.SelectorExpr)
-					if !ok {
-						return true
-					}
-					obj, ok := p.TypesInfo.Uses[sel.Sel]
-					if !ok {
-						return true
-					}
-					f, ok := obj.(*types.Func)
-					if !ok || f.Pkg() == nil || !generatedPackages[f.Pkg().Path()] {
-						return true
-					}
-					if !mutating[f.Name()] || writers[fn.Name.Name] {
-						return true
-					}
-					findings = append(findings, fmt.Sprintf(
-						"denialwriter: %s: %s names the mutating query %s, and %s is not in the pinned enumerated write list — every proof-free writer in the resolution surface must be named there (audit-model ADR amendment part 4, extended by #47)",
-						p.Fset.Position(sel.Pos()), fn.Name.Name, f.Name(), fn.Name.Name))
+				obj, ok := pass.TypesInfo.Uses[sel.Sel]
+				if !ok {
 					return true
-				})
-				return false
+				}
+				f, ok := obj.(*types.Func)
+				if !ok || f.Pkg() == nil || !generatedPackages[f.Pkg().Path()] {
+					return true
+				}
+				if !mutating[f.Name()] || writers[fn.Name.Name] {
+					return true
+				}
+				pass.Report(analysis.Diagnostic{Pos: sel.Pos(), Message: fmt.Sprintf(
+					"%s names the mutating query %s, and %s is not in the pinned enumerated write list — every proof-free writer in the resolution surface must be named there (audit-model ADR amendment part 4, extended by #47)",
+					fn.Name.Name, f.Name(), fn.Name.Name)})
+				return true
 			})
-		}
+			return false
+		})
 	}
-	return findings
 }
 
 // MutatingQueries derives the set of generated queries that write, from the
@@ -539,10 +633,14 @@ func CheckDenialWriterIn(pkgs []*packages.Package, surface string, writers, muta
 // MUTATING — the fail-closed direction — and reported, so a sqlc release that
 // adds a command cannot silently widen the hole.
 func MutatingQueries(repoRoot string) (map[string]bool, []string, error) {
+	return mutatingQueries(osSource{}, repoRoot)
+}
+
+func mutatingQueries(src source, repoRoot string) (map[string]bool, []string, error) {
 	out := map[string]bool{}
 	var findings []string
 	for _, engine := range []string{"sqlite", "postgres"} {
-		queries, err := ParseQueries(filepath.Join(repoRoot, "internal", "store", "queries", engine))
+		queries, err := parseQueries(src, filepath.Join(repoRoot, "internal", "store", "queries", engine))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -555,7 +653,7 @@ func MutatingQueries(repoRoot string) (map[string]bool, []string, error) {
 			default:
 				out[q.Name] = true
 				findings = append(findings, fmt.Sprintf(
-					"denialwriter: query %s has unrecognised sqlc command %q — treated as mutating (fail-closed); classify it deliberately",
+					"query %s has unrecognised sqlc command %q — treated as mutating (fail-closed); classify it deliberately",
 					q.Name, q.Cmd))
 			}
 		}

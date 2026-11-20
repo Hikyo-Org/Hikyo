@@ -57,14 +57,9 @@ type source interface {
 // osSource reads the disk directly: the old harness and the helpers' tests.
 type osSource struct{}
 
+// ReadFile reads through a handle to the file's directory, so a symlink that
+// leaves it is refused (pathutil.ReadFileWithin).
 func (osSource) ReadFile(path string) ([]byte, error) {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("%s is not a regular file", path)
-	}
 	return pathutil.ReadFileWithin(filepath.Dir(path), path)
 }
 

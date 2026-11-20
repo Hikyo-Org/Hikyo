@@ -212,6 +212,9 @@ func Checks() []Check {
 		{Analyzer: ContainmentSetters, Targets: ruleTargets(ContainmentSetterRules)},
 		{Analyzer: ActorSplit, Targets: []string{Module + "/internal/server"}},
 		{Analyzer: RedactPins, Targets: []string{sensitiveOwner}},
+		{Analyzer: GrantLock, Targets: []string{Module + "/internal/store/authn"}, OnDisk: func(root string) *analysis.Analyzer { return newGrantLock(diskInputs(root), nil) }},
+		{Analyzer: DenialWriter, Targets: []string{denialSurface}, OnDisk: func(root string) *analysis.Analyzer { return newDenialWriter(diskInputs(root), nil) }},
+		{Analyzer: AuditAppendOnly, Targets: []string{Module + "/internal/store"}, OnDisk: func(root string) *analysis.Analyzer { return newAuditAppendOnly(diskInputs(root)) }},
 		{Analyzer: StableCopies, Targets: []string{Module + "/internal/jsonwire"}, OnDisk: func(root string) *analysis.Analyzer { return newStableCopies(diskInputs(root)) }},
 	}
 }

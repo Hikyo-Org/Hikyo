@@ -40,7 +40,7 @@ func TestUpdateReviewedPins(t *testing.T) {
 			t.Fatal(err)
 		}
 		output := map[string]string{"sqlite": "sqlitegen", "postgres": "pggen"}[engine]
-		apis, err := readGeneratedContracts(filepath.Join(root, "internal/store", output), engine)
+		apis, err := readGeneratedContracts(osSource{}, filepath.Join(root, "internal/store", output), engine)
 		if err != nil {
 			t.Fatal(err)
 		}

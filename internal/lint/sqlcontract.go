@@ -9,7 +9,6 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
-	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -146,8 +145,8 @@ func compareQueryContracts(name string, sqlite, postgres Query, sqliteAPI, postg
 	return findings
 }
 
-func readGeneratedContracts(dir, engine string) (map[string]generatedContract, error) {
-	entries, err := os.ReadDir(dir)
+func readGeneratedContracts(src source, dir, engine string) (map[string]generatedContract, error) {
+	names, err := src.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -155,12 +154,16 @@ func readGeneratedContracts(dir, engine string) (map[string]generatedContract, e
 	var files []*ast.File
 	structs := map[string][]apiField{}
 	querySQL := map[string]string{}
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+	for _, name := range names {
+		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
 			continue
 		}
-		path := filepath.Join(dir, entry.Name())
-		file, err := parser.ParseFile(fset, path, nil, 0)
+		path := filepath.Join(dir, name)
+		text, err := src.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		file, err := parser.ParseFile(fset, path, text, 0)
 		if err != nil {
 			return nil, fmt.Errorf("parse generated API %s: %w", path, err)
 		}
