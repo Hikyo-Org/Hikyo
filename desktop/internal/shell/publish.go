@@ -8,7 +8,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
+
+// publishing is read-held by every publication; FinishDownloads takes it.
+var publishing sync.RWMutex
+
+// FinishDownloads waits for the publications in progress and blocks new ones.
+// Call it once, at shutdown: a quit during a copy fallback would otherwise leave
+// a partly written file under its final name.
+func FinishDownloads() { publishing.Lock() }
 
 // PublishDownload gives a staged download its final name and returns the name
 // used. If the save panel already saw a file at final (replaceApproved), the
@@ -17,6 +26,8 @@ import (
 // download takes the next free "name (2).ext". A hard link fails when the name
 // exists, so the check and the publication are one step.
 func PublishDownload(temp, final string, replaceApproved bool) (string, error) {
+	publishing.RLock()
+	defer publishing.RUnlock()
 	if replaceApproved {
 		return final, os.Rename(temp, final)
 	}
