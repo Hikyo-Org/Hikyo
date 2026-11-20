@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestShellRoutesAreAClosedList(t *testing.T) {
@@ -214,8 +213,8 @@ func TestDownloadRoutes(t *testing.T) {
 	if name := h.native.saveNames[0]; strings.ContainsAny(name, "/\\‮") || strings.HasPrefix(name, ".") {
 		t.Errorf("save panel got %q", name)
 	}
-	// A proxied path.
-	time.Sleep(0)
+	// A proxied path, replacing the file the person approved replacing.
+	h.native.saveReplace = true
 	if rec := h.page(c, "POST", "/__shell/download", `{"path":"/api/v1/export","filename":"e.bin"}`); rec.Code != 204 {
 		t.Fatalf("path: %d %s", rec.Code, rec.Body)
 	}

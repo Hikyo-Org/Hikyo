@@ -187,6 +187,10 @@ func TestUntrustedKeychainItemIsNeverUsedOrRevokedThrough(t *testing.T) {
 	if h.inst.total() != before {
 		t.Errorf("an untrusted item reached the instance: %d requests", h.inst.total()-before)
 	}
+	// untrustedItem.Get always refuses, so look at the real store.
+	if _, err := h.secrets.Get(info.Host); !errors.Is(err, ErrNoSecret) {
+		t.Errorf("removal left the refused keychain item: %v", err)
+	}
 }
 
 // Signing in again replaces a refused item. The old token is never sent, and

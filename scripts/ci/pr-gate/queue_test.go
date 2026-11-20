@@ -841,7 +841,7 @@ func TestQueuePaginationLimitNeverPublishesTruncatedMembership(t *testing.T) {
 	}
 	reads := 0
 	for path, count := range f.api.reads {
-		if strings.HasPrefix(path, "graphql:") {
+		if strings.HasPrefix(path, "graphql:") && (!strings.Contains(path, "checkSuites{totalCount}") || strings.Contains(path, "checkSuites(")) {
 			reads += count
 		}
 	}

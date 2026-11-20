@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"time"
 
@@ -23,17 +24,34 @@ func credentialRotationTable(list apigen.CredentialRotationList) Table {
 		if r.CredentialExpiresAt != nil {
 			expires = r.CredentialExpiresAt.UTC().Format(time.RFC3339)
 		}
+		// The cell follows the state, like the HALTED line: a halted rotation always
+		// says why, a missing reason reading as unknown.
+		halt := "-"
+		if r.State == apigen.CredentialRotationStateHalted {
+			halt = haltReasonWord(r.HaltReason)
+		}
+		state := string(r.State)
+		if r.State == apigen.CredentialRotationStateDisabled {
+			state = "deleted"
+		}
+		last := "-"
+		if r.LastRun != nil {
+			last = runWord(string(r.LastRun.Phase), rotationRunPhaseWords)
+			if r.LastRun.ErrorCode != nil {
+				last += " (" + runWord(*r.LastRun.ErrorCode, rotationRunErrorWords) + ")"
+			}
+		}
 		rows = append(rows, []string{
-			string(r.Id), string(r.State), string(r.ProviderId), string(r.KeyId), string(r.UsernameKeyId),
+			string(r.Id), state, halt, string(r.ProviderId), string(r.KeyId), string(r.UsernameKeyId),
 			(time.Duration(r.IntervalSeconds) * time.Second).String(),
 			(time.Duration(r.RevocationDelaySeconds) * time.Second).String(),
-			next, expires, strconv.FormatInt(r.Generation, 10),
+			next, expires, strconv.FormatInt(r.Generation, 10), last, strconv.FormatInt(r.OwedDropRuns, 10),
 		})
 	}
 	return Table{
 		// No credential column: this record holds configuration only; no password
 		// or role handle is stored or returned.
-		Columns: []string{"ID", "STATE", "PROVIDER", "KEY", "USERNAME KEY", "INTERVAL", "REVOCATION DELAY", "NEXT RUN", "CREDENTIAL EXPIRES", "GENERATION"},
+		Columns: []string{"ID", "STATE", "HALT REASON", "PROVIDER", "KEY", "USERNAME KEY", "INTERVAL", "REVOCATION DELAY", "NEXT RUN", "CREDENTIAL EXPIRES", "GENERATION", "LAST RUN", "OWED DROPS"},
 		Rows:    rows,
 		JSON:    list,
 	}
@@ -47,13 +65,13 @@ func rotationRunsTable(list apigen.RotationRunList) Table {
 			revision = strconv.FormatInt(*r.PublishedRevision, 10)
 		}
 		if r.ErrorCode != nil {
-			code = *r.ErrorCode
+			code = runWord(*r.ErrorCode, rotationRunErrorWords)
 		}
 		if r.NotConvergedAdapterTargets != nil {
 			converged = strconv.FormatInt(*r.NotConvergedAdapterTargets, 10)
 		}
 		rows = append(rows, []string{
-			string(r.Id), string(r.Trigger), string(r.Phase), revision,
+			string(r.Id), string(r.Trigger), runWord(string(r.Phase), rotationRunPhaseWords), revision,
 			(time.Duration(r.RevocationDelaySeconds) * time.Second).String(),
 			r.StartedAt.UTC().Format(time.RFC3339), r.PhaseAt.UTC().Format(time.RFC3339), code, converged,
 		})
@@ -176,6 +194,8 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 		}
 		for _, r := range out.Items {
 			noteRestoreHold(ios, r)
+			noteHalted(ios, r)
+			noteOwedSummary(ios, r)
 		}
 		if out.NextAfter != nil {
 			_, _ = fmt.Fprintf(ios.Stderr, "more rotations follow; continue with --after %s\n", *out.NextAfter)
@@ -191,6 +211,8 @@ func runCredentialRotation(ctx context.Context, ios IO, args []string) error {
 			return err
 		}
 		noteRestoreHold(ios, out)
+		noteHalted(ios, out)
+		noteOwedSummary(ios, out)
 		// The rotation itself was read; a failure of the runs read only costs the
 		// owed-drop warnings, so it is reported and never fails the show.
 		noteAllOwedRuns(ctx, client, ios, base+"/"+url.PathEscape(id)+"/runs")
@@ -413,10 +435,102 @@ func noteOwedRuns(ios IO, runs apigen.RotationRunList) {
 		if r.ErrorCode != nil && *r.ErrorCode == versionsChangedCode {
 			// A restore put an older value back, so the keys may be serving this very
 			// role again: dropping it now would cut off the consumers.
-			_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: run %s is %s (%s): a restore put an earlier value back, so the keys may be serving the role it owes a drop again (%s); do NOT drop it at the provider until the keys have moved off it\n", r.Id, r.Phase, versionsChangedCode, until)
+			_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: run %s is %s (%s): a restore put an earlier value back, so the keys may be serving the role it owes a drop again (%s); do NOT drop it at the provider until the keys have moved off it\n", r.Id, runWord(string(r.Phase), rotationRunPhaseWords), versionsChangedCode, until)
 			continue
 		}
-		_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: run %s is %s and a provider role it owes a drop is still live (%s); before you drop it at the provider, check that neither key serves that role, because a revision restore can put it back\n", r.Id, r.Phase, until)
+		_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: run %s is %s and a provider role it owes a drop is still live (%s); before you drop it at the provider, check that neither key serves that role, because a revision restore can put it back\n", r.Id, runWord(string(r.Phase), rotationRunPhaseWords), until)
+	}
+}
+
+// rotationRunPhaseWords and rotationRunErrorWords are the fixed words a run's phase
+// and error code may carry (the server maps anything else to unknown). Like the halt
+// reason, a value outside them is printed quoted: a newer server, or a bug, can never
+// put control characters or a sentence on the terminal as if it were a word.
+var rotationRunPhaseWords = []string{"staged", "minting", "minted", "published", "overlap", "revoking", "revoke_refused", "quarantine", "done", "failed"}
+
+var rotationRunErrorWords = []string{
+	"interrupted", "provider_unavailable", "mint_failed", "mint_ambiguous", "publish_failed",
+	"publish_budget_exceeded", "rotation_paused", "rotation_held", "drop_failed", "role_owns_objects",
+	"published_versions_changed", "revoke_failed", "extend_failed", "extend_skipped", "expired",
+	"infrastructure_unavailable", "abandoned", "unknown",
+}
+
+// runWord prints a known word bare and anything else quoted.
+func runWord(word string, known []string) string {
+	if slices.Contains(known, word) {
+		return word
+	}
+	return strconv.Quote(word)
+}
+
+// haltReasonSentence says in words why a halted rotation stopped. The sentences are
+// the browser's (web/src/api/rotations.ts, haltReasonText) and the user docs'
+// (rotation.mdx), word for word. The reason is one of the server's fixed words; any
+// other value reads as unknown here and is printed quoted, never interpreted.
+func haltReasonSentence(reason string) string {
+	switch reason {
+	case "retries_exhausted":
+		return "the retry window ran out before a run could publish or extend the credential"
+	case "authority_lost":
+		return "the recorded person no longer holds the access the rotation needs, or one of its keys or its environment is gone"
+	case "gate_failed":
+		return "a pre-publish gate refused: the environment became protected, a key changed or a draft appeared"
+	case "unknown":
+		return "the server halted the rotation without a reason it can name"
+	}
+	return "the server recorded a reason this client does not know"
+}
+
+// haltReasonWord is the halt reason as printed: one of the server's fixed words
+// bare, any other value quoted so it can never read as a sentence or carry control
+// characters. A missing reason is the fixed word unknown.
+func haltReasonWord(reason *string) string {
+	word := "unknown"
+	if reason != nil {
+		word = *reason
+	}
+	switch word {
+	case "retries_exhausted", "authority_lost", "gate_failed", "unknown":
+		return word
+	}
+	return strconv.Quote(word)
+}
+
+// noteHalted says, on stderr, that the server halted the rotation and why.
+func noteHalted(ios IO, r apigen.CredentialRotation) {
+	if r.State != apigen.CredentialRotationStateHalted {
+		return
+	}
+	word := haltReasonWord(r.HaltReason)
+	_, _ = fmt.Fprintf(ios.Stderr, "HALTED: rotation %s is halted (%s): %s; it starts no run and does not extend the delivered credential until a person resumes it: hikyo rotation resume %s\n", r.Id, word, haltReasonSentence(word), r.Id)
+}
+
+// deletedMark qualifies a deleted rotation: it is gone from the list unless asked for
+// but its roles can still be live, so a line about it says it was deleted.
+func deletedMark(r apigen.CredentialRotation) string {
+	if r.State == apigen.CredentialRotationStateDisabled {
+		return " (deleted)"
+	}
+	return ""
+}
+
+// noteOwedSummary is the rotation-level ATTENTION line: some of its runs still owe a
+// provider role a drop. It counts the runs noteOwedRuns warns about, by the same
+// phases, and points at the per-run lines instead of repeating them. It carries the
+// same key check as a per-run line: a restore (an earlier one that refused a run, or
+// a restore hold that is still on) may have put the role back, so it never plainly
+// says to drop and tells the operator to check that neither key serves the role first.
+func noteOwedSummary(ios IO, r apigen.CredentialRotation) {
+	if r.OwedDropRuns <= 0 {
+		return
+	}
+	switch {
+	case r.OwedDropRunsVersionsChanged > 0:
+		_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: rotation %s%s has %d run(s) that owe a provider role a drop, %d of them refused after a restore (%s): the keys may be serving that role again, so do NOT drop it at the provider until the keys have moved off it; read: hikyo rotation runs %s\n", r.Id, deletedMark(r), r.OwedDropRuns, r.OwedDropRunsVersionsChanged, versionsChangedCode, r.Id)
+	case r.RestoreHold:
+		_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: rotation %s%s has %d run(s) that owe a provider role a drop and a restore holds the rotation: the keys may be serving that role again, so do NOT drop it at the provider until you have checked that neither key serves it; read: hikyo rotation runs %s\n", r.Id, deletedMark(r), r.OwedDropRuns, r.Id)
+	default:
+		_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: rotation %s%s has %d run(s) that owe a provider role a drop and the role is still live; before you drop it at the provider, check that neither key serves that role, because a revision restore can put it back; read: hikyo rotation runs %s\n", r.Id, deletedMark(r), r.OwedDropRuns, r.Id)
 	}
 }
 

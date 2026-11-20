@@ -11,7 +11,7 @@ int hikyoInstallDelegates(void);
 int hikyoHardenWindow(void *nswindow);
 int hikyoConfirm(const char *title, const char *message, const char *label);
 void hikyoAlert(const char *title, const char *message);
-char *hikyoSavePanel(const char *name, const char *source, const char *mime);
+char *hikyoSavePanel(const char *name, const char *source, const char *mime, int *replace);
 int hikyoAppActive(void);
 void hikyoShowCode(long id, const char *url, const char *code);
 void hikyoDismissCode(long id);
@@ -31,6 +31,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -54,6 +55,12 @@ var delegatesInstalled = func() bool {
 }()
 
 // macNative is the shell.Native for macOS, plus the window registry.
+// closing is what CloseWindow waits for.
+type closing struct {
+	gone chan struct{}
+	id   uint
+}
+
 type macNative struct {
 	app     *application.App
 	manager *shell.Manager
@@ -64,6 +71,9 @@ type macNative struct {
 	// host can't both create one. It is separate from mu, which the window
 	// callbacks take during creation. Close waits on it.
 	opening map[string]chan struct{}
+	// closed holds, per host, the channel closed by the window's closing handler
+	// and the window id; CloseWindow waits on both.
+	closed map[string]closing
 }
 
 var _ shell.Native = (*macNative)(nil)
@@ -72,7 +82,7 @@ var _ shell.Native = (*macNative)(nil)
 var theNative atomic.Pointer[macNative]
 
 func newMacNative() *macNative {
-	n := &macNative{windows: map[string]*application.WebviewWindow{}, opening: map[string]chan struct{}{}}
+	n := &macNative{windows: map[string]*application.WebviewWindow{}, opening: map[string]chan struct{}{}, closed: map[string]closing{}}
 	theNative.Store(n)
 	return n
 }
@@ -111,9 +121,15 @@ func (n *macNative) OpenWindow(host, title string, bind func(string)) error {
 		w.Close()
 		return errors.New("could not harden the window's web view; refusing to open it")
 	}
+	gone := make(chan struct{})
 	n.mu.Lock()
 	n.windows[host] = w
+	n.closed[host] = closing{gone: gone, id: w.ID()}
 	n.mu.Unlock()
+	var once sync.Once
+	// Wails' own listener runs concurrently with this one, so this only says the
+	// close was requested; CloseWindow also waits for Wails to drop the window,
+	// which it does after the native close has run.
 	w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
 		n.mu.Lock()
 		if n.windows[host] == w {
@@ -122,6 +138,7 @@ func (n *macNative) OpenWindow(host, title string, bind func(string)) error {
 		n.mu.Unlock()
 		n.manager.UnbindWindow(id)
 		pendingDownloads.Drop(host)
+		once.Do(func() { close(gone) })
 	})
 	installProbe(w, host)
 	w.SetURL(shell.PageScheme + "://" + host + "/")
@@ -150,17 +167,44 @@ func (n *macNative) reserve(host string) (release func()) {
 	}
 }
 
-func (n *macNative) CloseWindow(host string) {
+func (n *macNative) CloseWindow(host string) error {
 	// An open still creating this host's window finishes first, so the close
-	// below sees it and no window outlives the removal.
+	// below sees it and no window outlives the removal. The host stays reserved
+	// until the window's teardown has run, so a wipe or a reopen can't overlap
+	// a renderer that is still alive.
 	defer n.reserve(host)()
 	n.mu.Lock()
-	w := n.windows[host]
-	delete(n.windows, host)
+	w, c := n.windows[host], n.closed[host]
 	n.mu.Unlock()
-	if w != nil {
-		w.Close()
+	if c.gone == nil {
+		return nil
 	}
+	if w != nil {
+		w.Close() // queues WindowClosing; it does not wait for it
+	}
+	// The entries stay until the teardown is seen, so a retry after a timeout
+	// waits again instead of finding nothing to wait for.
+	deadline := time.After(10 * time.Second)
+	select {
+	case <-c.gone:
+	case <-deadline:
+		return errors.New("the window did not finish closing")
+	}
+	for {
+		if _, exists := n.app.Window.GetByID(c.id); !exists {
+			break
+		}
+		select {
+		case <-deadline:
+			return errors.New("the window did not finish closing")
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+	n.mu.Lock()
+	delete(n.windows, host)
+	delete(n.closed, host)
+	n.mu.Unlock()
+	return nil
 }
 
 func (n *macNative) WipeStorage(host string) error {
@@ -187,17 +231,18 @@ func (n *macNative) Alert(title, message string) {
 	C.hikyoAlert(t, m)
 }
 
-func (n *macNative) SavePanel(name, source, mimeType string) (string, bool) {
+func (n *macNative) SavePanel(name, source, mimeType string) (string, bool, bool) {
 	cName, cSource, cMIME := C.CString(name), C.CString(source), C.CString(mimeType)
 	defer C.free(unsafe.Pointer(cName))
 	defer C.free(unsafe.Pointer(cSource))
 	defer C.free(unsafe.Pointer(cMIME))
-	chosen := C.hikyoSavePanel(cName, cSource, cMIME)
+	var replace C.int
+	chosen := C.hikyoSavePanel(cName, cSource, cMIME, &replace)
 	if chosen == nil {
-		return "", false
+		return "", false, false
 	}
 	defer C.free(unsafe.Pointer(chosen))
-	return C.GoString(chosen), true
+	return C.GoString(chosen), replace == 1, true
 }
 
 var (
@@ -270,7 +315,7 @@ func hikyoDownloadDestination(key C.uintptr_t, pageHost, suggested *C.char) *C.c
 	if c := n.manager.Conn(host); c != nil {
 		source = c.Info().Name
 	}
-	final, ok := n.SavePanel(shell.SanitizeFilename(C.GoString(suggested)), source, "")
+	final, replace, ok := n.SavePanel(shell.SanitizeFilename(C.GoString(suggested)), source, "")
 	if !ok {
 		return nil
 	}
@@ -282,13 +327,10 @@ func hikyoDownloadDestination(key C.uintptr_t, pageHost, suggested *C.char) *C.c
 		log.Printf("download: %v", err)
 		return nil
 	}
-	// The panel asks before replacing a file it saw; one that appears later
-	// is not replaced (PublishDownload).
-	_, statErr := os.Lstat(final)
 	temp := f.Name()
 	_ = f.Close()
 	_ = os.Remove(temp) // WKDownload needs a destination that does not exist
-	pendingDownloads.Add(uintptr(key), host, temp, final, statErr == nil)
+	pendingDownloads.Add(uintptr(key), host, temp, final, replace)
 	return C.CString(temp) // freed by the caller
 }
 
@@ -300,6 +342,12 @@ func hikyoDownloadFinished(key C.uintptr_t) {
 		failDownload("The download took too long or its window was closed, so it was not saved.")
 		return
 	}
+	// Off the main thread: on a volume without hard links PublishDownload copies
+	// the whole file, and the alerts post themselves to the main thread.
+	go finishDownload(temp, final, replace)
+}
+
+func finishDownload(temp, final string, replace bool) {
 	if err := shell.Quarantine(temp); err != nil {
 		log.Printf("download: could not mark the file as downloaded: %v", err)
 		_ = os.Remove(temp)

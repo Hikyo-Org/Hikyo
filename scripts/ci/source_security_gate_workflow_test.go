@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -77,6 +78,18 @@ func TestSourceSecurityGateTrustedBaseMigration(t *testing.T) {
 					plan := make(map[string]any)
 					for _, key := range current.PathClasses["full"] {
 						plan[key] = !docs || key == "docs"
+					}
+					if baseKind != "current" {
+						// A trusted base classifier emits only the plan keys its registry knows.
+						var base registry
+						if err := json.Unmarshal(baseRegistry, &base); err != nil {
+							t.Fatal(err)
+						}
+						for key := range plan {
+							if !slices.Contains(base.PathClasses["full"], key) {
+								delete(plan, key)
+							}
+						}
 					}
 					results := make(map[string]map[string]string)
 					for name, rule := range current.Jobs {

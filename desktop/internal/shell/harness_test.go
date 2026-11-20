@@ -25,6 +25,10 @@ type fakeNative struct {
 	alerts        []string
 	savePath      string
 	saveOK        bool
+	saveReplace   bool // the panel reports an approved replacement
+	closeErr      error
+	onConfirm     func() // runs inside Confirm, as another operation would
+	onClose       func() // runs inside CloseWindow, after the marker is stored
 	saveNames     []string
 	saveMIME      []string
 	closed        []string
@@ -52,10 +56,14 @@ func (f *fakeNative) OpenWindow(host, _ string, bind func(string)) error {
 	bind(id)
 	return nil
 }
-func (f *fakeNative) CloseWindow(host string) {
+func (f *fakeNative) CloseWindow(host string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.closed = append(f.closed, host)
+	if f.onClose != nil {
+		f.onClose()
+	}
+	return f.closeErr
 }
 func (f *fakeNative) WipeStorage(host string) error {
 	f.mu.Lock()
@@ -67,6 +75,9 @@ func (f *fakeNative) Confirm(title, message, _ string) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.confirms = append(f.confirms, title+"\n"+message)
+	if f.onConfirm != nil {
+		f.onConfirm()
+	}
 	return f.confirmAnswer
 }
 func (f *fakeNative) Alert(title, message string) {
@@ -76,12 +87,12 @@ func (f *fakeNative) Alert(title, message string) {
 }
 func (f *fakeNative) AppActive() bool { f.mu.Lock(); defer f.mu.Unlock(); return !f.inactive }
 
-func (f *fakeNative) SavePanel(name, _, mimeType string) (string, bool) {
+func (f *fakeNative) SavePanel(name, _, mimeType string) (string, bool, bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.saveNames = append(f.saveNames, name)
 	f.saveMIME = append(f.saveMIME, mimeType)
-	return f.savePath, f.saveOK
+	return f.savePath, f.saveReplace, f.saveOK
 }
 func (f *fakeNative) ShowDeviceCode(url, code string, _, open func()) func() {
 	f.mu.Lock()

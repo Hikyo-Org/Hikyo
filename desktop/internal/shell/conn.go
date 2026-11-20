@@ -21,8 +21,8 @@ type Conn struct {
 	inst *Instance
 	url  *url.URL
 
-	// ctx ends when the connection is removed, which ends its ceremonies. It
-	// is replaced if a removal fails part way. Guarded by mu; use life().
+	// ctx ends when removal begins, which ends its ceremonies. It is never
+	// replaced: removal does not undo (see the lifecycle owner below).
 	ctx    context.Context
 	cancel context.CancelFunc
 
@@ -38,13 +38,30 @@ type Conn struct {
 	// removal whose storage wipe is still owed).
 	tampered bool
 
-	// rotMu serializes token rotation: one at a time (ADR D4).
-	rotMu sync.Mutex
+	// The lifecycle owner. lifeMu serializes every step that decides whether
+	// this connection holds a session or exists at all: the sign-in commit
+	// (acceptLogin, setSession), the rotation commit (applyRotation), a stop
+	// caused by a response (stopSent), the start of removal (beginRemoval), the
+	// final removal (finishRemoval) and the opening of the window
+	// (OpenConnection). Each checks state under lifeMu before it commits.
+	//
+	// State only moves forward: lifeActive, lifeEnding (Remove has begun and its
+	// marker is on disk before anything is destroyed), lifeGone (record
+	// deleted). A step of Remove that fails leaves the connection ending,
+	// unusable and retryable by Remove; nothing revives it. A late sign-in or
+	// rotation therefore fails its commit check and revokes what it obtained, and
+	// the old in-memory session can never be written back to the keychain.
+	lifeMu sync.Mutex
+	state  lifeState
+	// removeMu admits one Remove at a time, including retries.
+	removeMu sync.Mutex
+	// revoked is set when a Remove revoked the session on the instance, so a
+	// retry after a restart-free failure can still report it. Guarded by removeMu.
+	revoked bool
 	// sessGate admits one session change at a time from before the bearer is
 	// chosen until the new session is committed or the change fails (ADR D4).
-	// It is separate from rotMu, which applyRotation takes inside the gate.
+	// It is taken before lifeMu, never inside it.
 	sessGate gate
-	removed  bool // set under rotMu by Remove: no new session may be stored
 	flights  flights
 	proxy    *httputil.ReverseProxy
 
@@ -83,8 +100,8 @@ func (m *Manager) newConn(info Connection) (*Conn, error) {
 		return nil, err
 	}
 	if info.WipePending {
-		c.tampered = true
-		c.stopped = "This connection was removed, but its browser data could not be deleted. Remove it again to finish."
+		c.tampered, c.state, c.stopped = true, lifeEnding, removalPending
+		cancel()
 		c.proxy = c.newProxy()
 		return c, nil
 	}
@@ -114,30 +131,57 @@ func (m *Manager) newConn(info Connection) (*Conn, error) {
 	return c, nil
 }
 
-// life is the context that ends when the connection is removed.
-func (c *Conn) life() context.Context {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.ctx
+type lifeState int
+
+const (
+	lifeActive lifeState = iota
+	lifeEnding
+	lifeGone
+)
+
+const removalPending = "This connection's removal has not finished. Remove it again to finish."
+
+// life is the context that ends when removal begins.
+func (c *Conn) life() context.Context { return c.ctx }
+
+// beginRemoval moves the connection to lifeEnding. The retry marker is written
+// first: if that write fails nothing has changed and the connection is intact.
+// It returns the bearer to revoke (empty when the connection can't vouch for
+// one) and whether this is a retry of a removal that already began.
+func (c *Conn) beginRemoval() (token string, retry bool, err error) {
+	c.lifeMu.Lock()
+	defer c.lifeMu.Unlock()
+	switch c.state {
+	case lifeGone:
+		return "", false, errRemoved
+	case lifeEnding:
+		return "", true, nil
+	}
+	token = c.bearer()
+	info := c.Info()
+	info.WipePending = true
+	if err := c.m.store.Put(info); err != nil {
+		return "", false, err
+	}
+	c.state = lifeEnding
+	c.cancel()
+	c.mu.Lock()
+	c.info = info
+	c.tampered = true
+	c.stopped = removalPending
+	c.secret = Secret{}
+	c.mu.Unlock()
+	c.flights.cancelAll()
+	return token, false, nil
 }
 
-// beginRemoval stops ceremonies and refuses new sessions; undo reverses it
-// when the removal fails and the connection stays in the list.
-func (c *Conn) beginRemoval() (undo func()) {
-	c.rotMu.Lock()
-	c.removed = true
-	c.rotMu.Unlock()
-	c.mu.Lock()
-	c.cancel()
-	c.mu.Unlock()
-	return func() {
-		c.rotMu.Lock()
-		c.removed = false
-		c.rotMu.Unlock()
-		c.mu.Lock()
-		c.ctx, c.cancel = context.WithCancel(context.Background())
-		c.mu.Unlock()
-	}
+// finishRemoval ends the lifecycle once the record is deleted.
+func (c *Conn) finishRemoval() {
+	c.lifeMu.Lock()
+	c.state = lifeGone
+	c.lifeMu.Unlock()
+	c.flights.cancelAll()
+	c.closeInstance()
 }
 
 // errRemoved means the connection was removed while a ceremony was running.
@@ -283,6 +327,21 @@ func (c *Conn) revokeAsync(token string) {
 	})
 }
 
+// stopSent stops the connection because the response to a request that carried
+// sent could not be accepted, unless a later sign-in or rotation has already
+// replaced sent: that response belongs to an old session and says nothing about
+// the current one.
+func (c *Conn) stopSent(sent, reason string) {
+	c.lifeMu.Lock()
+	defer c.lifeMu.Unlock()
+	c.mu.RLock()
+	current := c.secret.Token == sent
+	c.mu.RUnlock()
+	if c.state == lifeActive && current {
+		c.stop(reason)
+	}
+}
+
 // errSuperseded means a sign-in replaced the session that sent the request
 // while it was in flight. Its response is obsolete, not an attack.
 var errSuperseded = errors.New("the session was replaced while this request was running")
@@ -294,9 +353,9 @@ var errSuperseded = errors.New("the session was replaced while this request was 
 // response for a session that has since been replaced is discarded without
 // stopping the current one.
 func (c *Conn) applyRotation(kind Rotation, view tokenView, sent string) error {
-	c.rotMu.Lock()
-	defer c.rotMu.Unlock()
-	if c.removed {
+	c.lifeMu.Lock()
+	defer c.lifeMu.Unlock()
+	if c.state != lifeActive {
 		c.revokeAsync(view.Token)
 		return errRemoved
 	}
@@ -331,18 +390,6 @@ func (c *Conn) applyRotation(kind Rotation, view tokenView, sent string) error {
 	return nil
 }
 
-// endSession stops the connection quietly because its session is gone
-// (revoked or deleted) while a removal is still unfinished. The record stays so
-// the removal can be retried, and the list offers a sign-in.
-func (c *Conn) endSession(reason string) {
-	c.mu.Lock()
-	if c.stopped == "" {
-		c.stopped = reason
-	}
-	c.mu.Unlock()
-	c.flights.cancelAll()
-}
-
 func (c *Conn) isTampered() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -359,16 +406,6 @@ func (c *Conn) confirmSignIn() bool {
 	info := c.Info()
 	return c.m.native.Confirm("Sign in to this instance?",
 		fmt.Sprintf("origin: %s\nname: %s\n\nSign in opens your browser at this address. Continue only if it is the instance you added.", info.Origin, logSafe(info.Name)), "Sign in")
-}
-
-// markWipePending turns the connection into one that can't be used while its
-// browser data is still owed a deletion.
-func (c *Conn) markWipePending(info Connection) {
-	c.mu.Lock()
-	c.info = info
-	c.tampered = true
-	c.stopped = "This connection was removed, but its browser data could not be deleted. Remove it again to finish."
-	c.mu.Unlock()
 }
 
 // closeInstance releases the idle connections of a connection that has an

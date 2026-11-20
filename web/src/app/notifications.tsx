@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 
 import { isDemo } from '../demo/config.ts';
 import { Glyph } from '../ui/Glyph.tsx';
+import { isAppMode, knownShellOrigin } from './shell.ts';
 
 type Notification = {
   id: number;
@@ -73,6 +74,17 @@ function dismiss(id: number): void {
   clearNotification();
 }
 
+/**
+ * A toast link opens in a new window. The desktop app's window origin is not
+ * the instance's, so a relative link resolves against the real origin and the
+ * shell opens it in the system browser.
+ */
+function toastHref(href: string): string {
+  if (isDemo && href.startsWith('/')) return `#${href}`;
+  const origin = isAppMode() ? knownShellOrigin() : undefined;
+  return origin !== undefined && href.startsWith('/') && !href.startsWith('//') ? `${origin}${href}` : href;
+}
+
 export function ToastViewport() {
   const notification = useSyncExternalStore(subscribe, snapshot, snapshot);
   const assertive = notification?.tone === 'error' ? notification : null;
@@ -95,7 +107,7 @@ export function ToastViewport() {
           {notification.action === undefined ? null : (
             <a
               className="toast__action"
-              href={isDemo && notification.action.href.startsWith('/') ? `#${notification.action.href}` : notification.action.href}
+              href={toastHref(notification.action.href)}
               target="_blank"
               rel="noreferrer"
             >

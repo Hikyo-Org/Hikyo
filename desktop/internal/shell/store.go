@@ -6,6 +6,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -38,8 +39,9 @@ type Connection struct {
 	// in as. A sign-in that returns another principal needs confirmation (D3).
 	PrincipalID   string `json:"principal_id,omitzero"`
 	PrincipalName string `json:"principal_name,omitzero"`
-	// WipePending marks a connection whose removal finished except for its
-	// browser data. It can't be opened or signed in; removing it again retries.
+	// WipePending marks a connection whose removal has begun and is not
+	// finished. It is stored before anything is destroyed. It can't be opened or
+	// signed in; removing it again retries.
 	WipePending bool `json:"wipe_pending,omitzero"`
 }
 
@@ -65,10 +67,16 @@ type Store struct {
 // corrupt file is an error: the shell never guesses at connection data.
 func OpenStore(path string) (*Store, error) {
 	s := &Store{path: path}
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return s, nil
 	}
+	if err != nil {
+		return nil, err
+	}
+	// Bounded before it is read: a huge file must not exhaust memory.
+	data, err := io.ReadAll(io.LimitReader(f, maxStoreSize+1))
+	_ = f.Close()
 	if err != nil {
 		return nil, err
 	}

@@ -7,6 +7,7 @@ import { App } from './app/App.tsx';
 import { AuthProvider } from './app/AuthProvider.tsx';
 import { installSandMotion } from './app/sandMotion.ts';
 import { initTheme } from './app/theme.ts';
+import { isAppMode, shellOrigin } from './app/shell.ts';
 import { isDemo } from './demo/config.ts';
 
 // Paint the stored theme choice before first render, so a reload lands on it
@@ -26,6 +27,17 @@ if (host === null) {
   // Fail loud: a missing mount point means the document the server served is
   // not the document this bundle was built for.
   throw new Error('hikyo: #root is missing from the document');
+}
+
+// The desktop app's links and self-checks name the instance's real origin, not
+// the window's. Without it they would name a scheme no one can open, so stop.
+if (isAppMode()) {
+  try {
+    await shellOrigin();
+  } catch (error) {
+    host.textContent = 'The desktop app could not read this instance’s address. Quit and reopen it.';
+    throw error;
+  }
 }
 
 // Keep this condition local so Vite removes the import itself in normal builds.

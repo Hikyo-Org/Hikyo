@@ -26,6 +26,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 	"github.com/Hikyo-Org/hikyo/internal/updater"
+	"github.com/Hikyo-Org/hikyo/internal/webui"
 )
 
 // The API transport. It owns exactly three things — moving bytes, attaching
@@ -326,6 +327,11 @@ func (a *API) GetMeta(ctx context.Context, _ apigen.GetMetaRequestObject) (apige
 	capabilities := []apigen.ProtocolCapability{"local-password", "loopback-handoff", "device-code"}
 	for _, token := range deliverytarget.CapabilityTokens() {
 		capabilities = append(capabilities, apigen.ProtocolCapability(token))
+	}
+	// An instance must not advertise what it does not serve: the SPA implements
+	// the desktop shell protocol, so only a build that embeds it says so (D8).
+	if webui.Assets() != nil {
+		capabilities = append(capabilities, "desktop-app/1")
 	}
 	return apigen.GetMeta200JSONResponse{
 		ServerVersion:        a.Version,
