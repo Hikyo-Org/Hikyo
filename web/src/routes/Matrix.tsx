@@ -1831,7 +1831,8 @@ function useAnchoredTip(anchor: RefObject<HTMLElement | null>, eligible: () => b
     const el = anchor.current;
     const popover = tip.current;
     const seen = visibleBox();
-    if (el === null || popover === null || seen === null) return false;
+    // Resize and scroll re-place it: a link whose name now shows needs no tip.
+    if (el === null || popover === null || seen === null || !eligibleRef.current()) return false;
     const rect = el.getBoundingClientRect();
     // Measured at the left edge, where the viewport cannot narrow it.
     popover.style.setProperty('--tip-x', '0px');
@@ -1936,12 +1937,20 @@ function useAnchoredTip(anchor: RefObject<HTMLElement | null>, eligible: () => b
     if (focusedTip?.id === id) focusedTip = null;
     hide();
   }, [hide, id]);
+  // Keyboard focus still asks for the tip, so a pointer passing off it keeps it.
+  const focusHolds = () => anchor.current?.matches(':focus-visible') === true;
   const anchorLeave = (event: { relatedTarget: EventTarget | null }) => {
+    if (focusHolds()) return;
     if (!(event.relatedTarget instanceof Node && tip.current?.contains(event.relatedTarget) === true)) close();
   };
   const tipLeave = (event: { relatedTarget: EventTarget | null }) => {
+    if (focusHolds()) return;
     if (!(event.relatedTarget instanceof Node && anchor.current?.contains(event.relatedTarget) === true)) close();
   };
+  // A render can make the anchor ineligible (a key column widened to show names).
+  useLayoutEffect(() => {
+    if (isOpen() && !eligibleRef.current()) close();
+  });
   return { tip, isOpen, open, openOnHover, blur, close, dismiss, anchorLeave, tipLeave };
 }
 

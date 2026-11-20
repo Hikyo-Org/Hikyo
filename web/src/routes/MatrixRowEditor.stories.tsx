@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, fn, userEvent, waitFor } from 'storybook/test';
+import { expect, fn, spyOn, userEvent, waitFor } from 'storybook/test';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 import { MatrixRowEditor } from './MatrixRowEditor.tsx';
@@ -394,6 +394,15 @@ export const SecretCellUnderConfigKeyRevealable: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Reveal LOG_LEVEL' }));
     await expect(await canvas.findByText('audited-reveal-value')).toBeVisible();
     await expect(canvas.getByText('Disclosure recorded.')).toBeVisible();
+    // The audited control: a secret response makes Copy a recorded disclosure.
+    const write = spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+    try {
+      await userEvent.click(canvas.getByRole('button', { name: 'Copy LOG_LEVEL (audited disclosure)' }));
+      await expect(await canvas.findByText(/^Copied, and recorded as a disclosure\./)).toBeVisible();
+      await expect(write).toHaveBeenCalledWith('audited-reveal-value');
+    } finally {
+      write.mockRestore();
+    }
   },
 };
 
@@ -428,6 +437,15 @@ export const SecretCellUnderConfigKeyNowConfig: Story = {
     await userEvent.click(await canvas.findByRole('button', { name: 'Reveal LOG_LEVEL' }));
     await expect(await canvas.findByText('config-reveal-value')).toBeVisible();
     await expect(canvas.queryByText(/Disclosure recorded/)).toBeNull();
+    // Copy reads the same response: the value is copied, and no disclosure claimed.
+    const write = spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+    try {
+      await userEvent.click(canvas.getByRole('button', { name: 'Copy LOG_LEVEL (audited disclosure)' }));
+      await expect(await canvas.findByText('Copied. This value is not a secret, so no disclosure was recorded.')).toBeVisible();
+      await expect(write).toHaveBeenCalledWith('config-reveal-value');
+    } finally {
+      write.mockRestore();
+    }
   },
 };
 

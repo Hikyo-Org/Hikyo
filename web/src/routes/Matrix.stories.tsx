@@ -630,6 +630,10 @@ export const ValueTip: Story = {
     tip.textContent = 'LINE\n'.repeat(120);
     window.dispatchEvent(new Event('resize'));
     await waitFor(() => expect(tip).toHaveAttribute('data-cut'));
+    // Cut, not clipped: the reader can scroll it, and it stays open meanwhile.
+    tip.scrollTop = 40;
+    await waitFor(() => expect(tip.scrollTop).toBeGreaterThan(0));
+    await expect(isOpen()).toBe(true);
     await userEvent.unhover(flags);
     tip.style.whiteSpace = '';
     tip.textContent = original;
@@ -717,6 +721,9 @@ export const PhoneKeyTipFocus: Story = {
       link.focus();
       await waitFor(() => expect(tip.matches(':popover-open')).toBe(true));
       await expect(tip).toHaveTextContent('DATABASE_READ_REPLICA_URL');
+      // A pointer passing off the link does not take the tip from keyboard focus.
+      link.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, pointerType: 'mouse', relatedTarget: document.body }));
+      await expect(tip.matches(':popover-open')).toBe(true);
       link.blur();
       await expect(tip.matches(':popover-open')).toBe(false);
     } finally {
