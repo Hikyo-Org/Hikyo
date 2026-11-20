@@ -13,8 +13,6 @@ printf 'package app\n' >app/owner.go
 printf 'package config\n' >internal/config/variables.go
 printf 'package tool\n' >scripts/tool/owner.go
 printf 'package scripts\n' >scripts/owner.go
-mkdir -p desktop/internal/shell
-printf 'package shell\n' >desktop/internal/shell/owner.go
 printf 'package tool\n' >"scripts/tool/line
 break.go"
 printf '#!/bin/sh\n' >'-space name.sh'
@@ -65,9 +63,6 @@ plan all
 expect '([del(.lanes)[]] | all(. == false)) and all(.lanes[]; .checks == [])'
 plan all app/owner.go
 expect '.go and (.lanes.go.checks | map(.id)) == ["go-format", "go-compile"] and .lanes.tooling.checks == [] and .lanes.go.prerequisites.go'
-# desktop/ is its own module: the root module cannot compile it.
-plan all desktop/internal/shell/owner.go
-expect '(.lanes.go.checks | map(.id)) == ["go-format"]'
 plan application scripts/tool/owner.go
 expect '.go == false and .lanes.go.checks == [] and (.lanes.tooling.checks | map(.id)) == ["go-format", "go-compile"]'
 plan tooling app/owner.go

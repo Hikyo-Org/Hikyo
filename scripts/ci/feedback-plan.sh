@@ -54,7 +54,6 @@ feedback_plan_build() {
 			go.mod | go.sum) all_go=true ;;
 		esac
 		case "$path" in
-			desktop/*.go) ;; # nested module (desktop/go.mod): macOS-only cgo, validated by its own job
 			*.go)
 				case "$path" in
 					*/*) package="./${path%/*}" ;;
