@@ -121,6 +121,29 @@ func TestRuntimeCustodyRefusesReplaceableAncestor(t *testing.T) {
 	}
 }
 
+// An ancestor above the parent that no other user can write is still refused
+// when it is owned by neither the effective uid nor root: its owner can rename
+// the hierarchy below it.
+func TestRuntimeCustodyRefusesForeignOwnedAncestor(t *testing.T) {
+	grand := filepath.Join(t.TempDir(), "team")
+	runtime := filepath.Join(grand, "private", "runtime")
+	if err := os.MkdirAll(runtime, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(grand, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Control: owned by the effective uid, the hierarchy above the parent passes.
+	if err := checkRuntimeAncestors(runtime, grand, map[string]bool{}, 0); err != nil {
+		t.Fatalf("own non-writable ancestors refused: %v", err)
+	}
+	foreignUID(t)
+	err := checkRuntimeAncestors(runtime, grand, map[string]bool{}, 0)
+	if !errors.Is(err, ErrRuntimeCustody) || !strings.Contains(err.Error(), "is owned by uid") {
+		t.Fatalf("foreign-owned ancestor err=%v, want an ownership refusal", err)
+	}
+}
+
 func TestRuntimeCustodyMissingDirIsNotAFailure(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "absent")
 	if err := RuntimeDirCustody(missing); err != nil {
