@@ -51,9 +51,9 @@ if [[ "$mode" == pool ]]; then
 else
   # Run lint even if app failed, preserving useful coverage on red runs.
   go test -count=1 "$app_package" || status=1
-  # The vet driver compiles and analyzes every context; measured ~515 s cold
-  # locally after the lint cache is prepared, so 25 m leaves headroom for a
-  # slower runner without hiding a hang.
-  go test -count=1 -timeout=25m "$lint_package" || status=1
+  # The vet driver compiles and analyzes every context; measured 461 s on a
+  # hosted runner after the lint cache is prepared (run 44694008741), so 20 m
+  # is about 2.6x headroom without hiding a hang.
+  go test -count=1 -timeout=20m "$lint_package" || status=1
 fi
 exit "$status"

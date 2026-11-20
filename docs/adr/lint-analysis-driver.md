@@ -62,7 +62,11 @@ The spike also established that:
    line. forgeguard honours it only in `_test.go` files and requires a reason;
    a marker in a production file, or without a reason, is a finding of its own.
    It is a reviewed, reasoned, test-only exemption at the site, not an inventory
-   entry. Test helpers that seed an isolated fixture database may likewise
+   entry. forgeguard's stated limits: an unassigned local `Proof` passed on, an
+   omitted `Proof` struct field, a naked named return and a generic zero value
+   each still yield a nil proof that the guard does not see; the store refuses
+   it at runtime, which is the enforcement. Test helpers that seed an isolated
+   fixture database may likewise
    carry `fence:fixture <reason>`, honoured by the fence analyzer only in
    `_test.go` files; `fence:exempt` keeps its original meaning.
 5. **Rollout.** A stack of PRs, each runs both harnesses for the analyzers it
@@ -85,6 +89,11 @@ The spike also established that:
 
 ## Consequences
 
+- The memory and wall-time reduction lands when the old harness is removed
+  (PR 4 of the rollout). Until then `LoadRepoIn` still caches all four
+  contexts for the process and the vet driver runs on top of it, so PRs 1 to 3
+  raise the peak memory and wall time of `go test ./internal/lint` compared
+  with the base, and the CI budgets are sized for that interim cost.
 - Acceptance for the final stack: the full `go test ./internal/lint` stays
   green, and its measured peak whole-tree RSS stays under 1.5 GB with no single
   process above 0.8 GB.

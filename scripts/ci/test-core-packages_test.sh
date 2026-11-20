@@ -31,7 +31,7 @@ elif [[ "$1" == test && "$2" == -count=1 ]]; then
     [[ "$#" == 1 && $(wc -l <"$CORE_TEST_CALLS") -eq 1 ]] || exit 91
     [[ "$CORE_TEST_FAIL" != app ]] || exit 92
   elif [[ "$*" == *internal/lint* ]]; then
-    [[ "$#" == 2 && "$1" == -timeout=25m && $(wc -l <"$CORE_TEST_CALLS") -eq 2 ]] || exit 95
+    [[ "$#" == 2 && "$1" == -timeout=20m && $(wc -l <"$CORE_TEST_CALLS") -eq 2 ]] || exit 95
     [[ "$CORE_TEST_FAIL" != lint ]] || exit 96
   else
     [[ "$CORE_TEST_FAIL" != concurrent ]] || exit 93
