@@ -417,7 +417,3 @@ func (c fileCheck) pkgApplies(anchor, path string) bool {
 	base := strings.TrimSuffix(anchor, "/")
 	return path == base || strings.HasPrefix(path, base+"/") || path == base+"_test"
 }
-
-// onDisk is the analyzer reading straight from disk under root, for the old
-// harness and for parity.
-func (c fileCheck) onDisk(root string) *analysis.Analyzer { return c.analyzer(diskInputs(root)) }
