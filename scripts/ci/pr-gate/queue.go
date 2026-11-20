@@ -1399,6 +1399,9 @@ func (q *queueController) groupChecks(ctx context.Context, p pull) ([]check, err
 		}
 		checks = append(checks, all.Checks...)
 	}
+	if err := checksuites.Recheck(ctx, q.suiteSource(), p.Head.SHA, listings); err != nil {
+		return nil, err
+	}
 	for _, v := range local {
 		if !seen[v.ID] {
 			return nil, errors.New("merge-group required check missing from the check suite inventory")

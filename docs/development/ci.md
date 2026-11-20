@@ -682,9 +682,18 @@ owners' scan). Past 900 suites admission may time out; at 1,000 the scans alone
 take about 42 s. It then fails closed and the PR needs a new head.
 Because those reads open only `github-actions` suites, the owners also list the
 name by commit and refuse another app's same-name record there, as a listing by
-commit alone did. They refuse when the `github-actions` suite total changes during a scan, so a
-head still gaining suites can refuse until a later attempt. A controller record the listing by commit shows but the suite inventory lacks is
-refused, not treated as absent.
+commit alone did, each by its own rule. The queue verdict refuses any other
+app's same-name record. Retirement refuses one only when its external ID carries
+the controller prefix. The reporter refuses one only when its external ID matches
+the report's. They refuse when the `github-actions` suite total changes during a
+scan, so a head still gaining suites can refuse until a later attempt. The
+controller and the queue verdict refuse a `github-actions` record the listing by
+commit shows but the suite inventory lacks, instead of treating it as absent,
+whether or not its external ID carries the controller prefix; the reporter
+compares only records with the report's external ID. At 900 suites or fewer each
+owner reads the commit listing, then counts every app's suites again and
+refuses if the count has passed 900, since REST could then have left an older
+suite out of the listing.
 Both use the shared `scripts/ci/checksuites` reader. A suite inventory that
 cannot be completed, a run reported by two suites, or a check in more than 100
 suites refuses instead of listing partially. Discovery refuses all targets on

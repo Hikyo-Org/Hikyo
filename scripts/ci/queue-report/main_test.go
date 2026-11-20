@@ -46,6 +46,9 @@ type fixture struct {
 	// recent makes a listing by commit show this head's records from every app,
 	// as for a record newer than the suite scan.
 	recent bool
+	// grown, when set, becomes the suite total once a listing by commit is read,
+	// as if suites were added during that read.
+	grown int
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -131,6 +134,9 @@ func newFixture(t *testing.T) *fixture {
 		case path == "git/commits/"+f.r.HeadSHA:
 			result = map[string]any{"sha": f.r.HeadSHA, "parents": f.parents}
 		case strings.HasPrefix(path, "commits/"), strings.HasPrefix(path, "check-suites/"):
+			if f.grown > 0 && strings.HasPrefix(path, "commits/") {
+				f.suites = f.grown
+			}
 			checks := []check{}
 			for _, c := range f.checks {
 				if c.Name == req.URL.Query().Get("check_name") && f.listed(path, c) {

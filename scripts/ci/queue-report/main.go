@@ -371,6 +371,9 @@ func (c client) existing(ctx context.Context, repoID int64, head, name, external
 			return nil, err
 		}
 	}
+	if err := checksuites.Recheck(ctx, source, head, listings); err != nil {
+		return nil, err
+	}
 	if len(listings) == 1 && strings.HasPrefix(listings[0], "commits/") {
 		return found, nil
 	}
