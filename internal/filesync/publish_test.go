@@ -807,6 +807,9 @@ func assertNotLeaked(t *testing.T, f *fixture, err error) {
 	if err == nil {
 		t.Fatal("retain accepted a planted generation entry")
 	}
+	if !errors.Is(err, ErrForeign) {
+		t.Fatalf("retain over a planted generation entry = %v, want ErrForeign", err)
+	}
 	if fi, lerr := os.Lstat(filepath.Join(f.dir, "b")); lerr == nil && fi.Mode().IsRegular() {
 		t.Fatalf("regular file b was materialized: %q", f.read("b"))
 	}
@@ -822,17 +825,15 @@ func (p *beforeCommitProbe) BeforeCommit() error { p.run(); return nil }
 func TestRetainRefusesSymlinkPlantedInOldGeneration(t *testing.T) {
 	t.Parallel()
 	f, old := retainFixture(t)
-	secret := filepath.Join(f.dir, "secret")
-	if err := os.WriteFile(secret, []byte("ROOT-ONLY"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	// Planted after generationFiles has accepted the generation and before
-	// retain copies it.
+	// retain copies it. The target is a readable sibling inside .hikyo-gen, so
+	// only readGenFile's own guard can refuse it; a target outside .hikyo-gen
+	// would also fail on os.Root's escape check.
 	probe := &beforeCommitProbe{run: func() {
 		if err := os.Remove(old); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Symlink(filepath.Join("..", "..", "secret"), old); err != nil {
+		if err := os.Symlink("a", old); err != nil {
 			t.Fatal(err)
 		}
 	}}
