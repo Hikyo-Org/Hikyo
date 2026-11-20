@@ -68,6 +68,26 @@ func TestListingsReadBySuiteOnlyAboveTheMargin(t *testing.T) {
 	}
 }
 
+func TestConfirmRefusesCommitListingOnceTheCountPassesTheMargin(t *testing.T) {
+	for _, tc := range []struct {
+		suites   int
+		listings []string
+		queries  int
+		wantErr  bool
+	}{
+		{suites: Margin, listings: []string{"commits/abc/check-runs"}, queries: 1},
+		{suites: Margin + 1, listings: []string{"commits/abc/check-runs"}, queries: 1, wantErr: true},
+		// Listings by suite do not depend on REST's cap, so they need no count.
+		{suites: Margin + 1, listings: []string{"check-suites/7/check-runs"}},
+	} {
+		var queries []string
+		err := Confirm(context.Background(), source(tc.suites, 7, &queries), "abc", tc.listings)
+		if (err != nil) != tc.wantErr || len(queries) != tc.queries {
+			t.Fatalf("%d suites, %v: err=%v after %d queries", tc.suites, tc.listings, err, len(queries))
+		}
+	}
+}
+
 func TestFindRefusesMissingNamedRunCounts(t *testing.T) {
 	var queries []string
 	s := source(3, 1, &queries)

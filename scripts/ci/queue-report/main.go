@@ -367,6 +367,9 @@ func (c client) existing(ctx context.Context, repoID int64, head, name, external
 		}
 	}
 	if len(listings) == 1 && strings.HasPrefix(listings[0], "commits/") {
+		if err := checksuites.Confirm(ctx, source, head, listings); err != nil {
+			return nil, err
+		}
 		return found, nil
 	}
 	// The suite reads open only github-actions suites. A listing by commit also

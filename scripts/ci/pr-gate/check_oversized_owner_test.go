@@ -34,6 +34,8 @@ type oversizedHead struct {
 	// foreign is what a listing by commit shows of other apps, whose suites the
 	// per-suite reads never open.
 	foreign []check
+	// grown, when set, is the suite count every count after the first reports.
+	grown, counts int
 }
 
 var (
@@ -47,8 +49,8 @@ func installOversizedHead(f *queueFixture, suites int, holding ...int64) *oversi
 	return a
 }
 
-func (a *oversizedHead) suiteResponse(nodes []map[string]any, more bool, cursor string) map[string]any {
-	object := map[string]any{"oid": a.f.pr.Head.SHA, "checkSuites": map[string]any{"totalCount": a.suites}}
+func (a *oversizedHead) suiteResponse(suites int, nodes []map[string]any, more bool, cursor string) map[string]any {
+	object := map[string]any{"oid": a.f.pr.Head.SHA, "checkSuites": map[string]any{"totalCount": suites}}
 	if nodes != nil {
 		object["every"] = map[string]any{"totalCount": a.suites}
 		object["checkSuites"] = map[string]any{"totalCount": a.suites, "nodes": nodes, "pageInfo": map[string]any{"hasNextPage": more, "endCursor": cursor}}
@@ -82,12 +84,19 @@ func (a *oversizedHead) read(ctx context.Context, path string, result any) error
 			}
 			nodes = append(nodes, map[string]any{"databaseId": id, "named": map[string]any{"totalCount": named}})
 		}
-		return queueHistoryJSON(a.suiteResponse(nodes, (page+1)*100 < a.suites, fmt.Sprintf("p%d", page+1)), result)
+		return queueHistoryJSON(a.suiteResponse(a.suites, nodes, (page+1)*100 < a.suites, fmt.Sprintf("p%d", page+1)), result)
 	case strings.HasPrefix(path, "graphql:") && strings.Contains(path, "checkSuites{totalCount}") && !strings.Contains(path, "checkSuites("):
 		if a.countErr != nil {
 			return a.countErr
 		}
-		return queueHistoryJSON(a.suiteResponse(nil, false, ""), result)
+		a.mu.Lock()
+		a.counts++
+		suites := a.suites
+		if a.grown != 0 && a.counts > 1 {
+			suites = a.grown
+		}
+		a.mu.Unlock()
+		return queueHistoryJSON(a.suiteResponse(suites, nil, false, ""), result)
 	case strings.Contains(path, "/commits/"+head+"/check-runs?"):
 		// REST lists the commit's newest 1000 suites only, which exclude the holders.
 		if a.foreign != nil {
@@ -264,6 +273,9 @@ func TestOwnedChecksOfHeadBeyondRESTSuiteCapRefuseForeignAppRecords(t *testing.T
 		{name: "foreign record with any identity, queue verdict", owners: "group", wantErr: true},
 		{name: "another app id under the actions slug, queue verdict", owners: "group", appID: 99, slug: "github-actions", wantErr: true},
 		{name: "the actions app id under another slug, queue verdict", owners: "group", appID: actionsAppID, slug: "other-app", wantErr: true},
+		// A listing by commit refused these as ambiguous same-name Actions checks.
+		{name: "another app id under the actions slug, owner listing", owners: "owned", appID: 99, slug: "github-actions", wantErr: true},
+		{name: "the actions app id under another slug, owner listing", owners: "owned", appID: actionsAppID, slug: "other-app", wantErr: true},
 		// Unchanged from a listing by commit: owners ignore it unless it claims to be theirs.
 		{name: "foreign record with another identity, owner listing", owners: "owned"},
 	} {
@@ -297,20 +309,30 @@ func TestOwnedChecksOfHeadBeyondRESTSuiteCapRefuseForeignAppRecords(t *testing.T
 // it shows that the suites did not is refused instead of taken for absent.
 func TestOwnedChecksRefuseRecordTheSuiteInventoryHasNotIndexed(t *testing.T) {
 	for _, tc := range []struct {
-		name    string
-		holding []int64
-		dup     bool
-		wantErr bool
+		name       string
+		holding    []int64
+		dup        bool
+		unprefixed bool
+		wantErr    bool
 	}{
 		{name: "indexed in a holding suite", holding: []int64{1856}},
 		{name: "not indexed yet", wantErr: true},
 		{name: "commit listing repeats a run", holding: []int64{1856}, dup: true, wantErr: true},
+		// A listing by commit refused a same-name Actions check without the
+		// controller identity as ambiguous, so the suite read must too.
+		{name: "same-name Actions check outside the controller, not indexed yet", holding: []int64{1856}, unprefixed: true, wantErr: true},
 	} {
 		for _, owners := range []string{"owned", "group"} {
 			t.Run(tc.name+", "+owners, func(t *testing.T) {
 				f, _ := retirementFixture(t, queueCheckName)
 				head := installOversizedHead(f, 2005, tc.holding...)
 				head.foreign = []check{f.api.checks[0]}
+				if tc.unprefixed {
+					outside := f.api.checks[0]
+					outside.ID += 1000
+					outside.ExternalID = "unrelated"
+					head.foreign = append(head.foreign, outside)
+				}
 				if tc.dup {
 					head.foreign = append(head.foreign, f.api.checks[0])
 				}
@@ -322,6 +344,36 @@ func TestOwnedChecksRefuseRecordTheSuiteInventoryHasNotIndexed(t *testing.T) {
 				}
 				if (err != nil) != tc.wantErr {
 					t.Fatalf("err = %v, want refusal=%v", err, tc.wantErr)
+				}
+			})
+		}
+	}
+}
+
+// Margin keeps a listing by commit under REST's cap only while the head gains
+// fewer suites than it leaves, so every owner counts again after that listing
+// and refuses a head that grew past the margin meanwhile.
+func TestOwnedChecksRefuseHeadThatGrewPastSuiteMarginDuringCommitListing(t *testing.T) {
+	for _, tc := range []struct {
+		grown   int
+		wantErr bool
+	}{
+		{grown: checksuites.Margin},
+		{grown: checksuites.Margin + 1, wantErr: true},
+	} {
+		for _, owners := range []string{"owned", "group"} {
+			t.Run(fmt.Sprintf("%d suites, %s", tc.grown, owners), func(t *testing.T) {
+				f, _ := retirementFixture(t, queueCheckName)
+				head := installOversizedHead(f, checksuites.Margin)
+				head.grown = tc.grown
+				var err error
+				if owners == "owned" {
+					_, err = f.c.listOwnedChecks(context.Background(), f.c.expectedHead)
+				} else {
+					_, err = f.q.groupChecks(context.Background(), f.pr)
+				}
+				if (err != nil) != tc.wantErr || head.readsOf("/check-suites/") != 0 || head.counts != 2 {
+					t.Fatalf("err = %v after %d counts, want refusal=%v", err, head.counts, tc.wantErr)
 				}
 			})
 		}
