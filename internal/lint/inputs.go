@@ -46,7 +46,8 @@ var (
 )
 
 // source is how an input-reading analyzer reaches the disk: through a verified
-// Inputs under the vet driver, or straight from disk for the old harness.
+// Inputs under the vet driver, or straight from disk (osSource) for the helpers
+// that run outside it.
 type source interface {
 	// ReadFile reads a regular file.
 	ReadFile(path string) ([]byte, error)
@@ -56,12 +57,14 @@ type source interface {
 	WalkFiles(dir string, exts []string) ([]string, error)
 }
 
-// osSource reads the disk directly: the old harness and the helpers' tests.
+// osSource reads the disk directly, for the exported helpers outside the vet
+// driver (ParseQueries, ParseScopeDirectives, GrantWriters, MutatingQueries) and
+// for CheckUnanalyzedGoFiles, which runs in the test process.
 // shortcut: it has no root to confine reads to, so a symlinked parent directory
 // is followed (only the final directory component and the file's own directory
 // are checked), and a walk skips a symlinked subdirectory; Inputs, which has the
-// root, refuses both. The old harness goes in
-// PR 4, so this is not widened.
+// root, refuses both. Confine it with a root per caller if one of these helpers
+// ever reads a path it does not control.
 type osSource struct{}
 
 // ReadFile reads through a handle to the file's directory, so a symlink that
@@ -478,13 +481,6 @@ func flagInputs(a *analysis.Analyzer) inputProvider {
 		}
 		return in, root, nil
 	}}
-}
-
-// diskInputs is the old harness's provider: the disk under root, unverified.
-func diskInputs(root string) func(*analysis.Analyzer) inputProvider {
-	return func(*analysis.Analyzer) inputProvider {
-		return inputProvider{root: func() string { return root }, open: func() (source, string, error) { return osSource{}, root, nil }}
-	}
 }
 
 // reportRefusal reports a refused input as a finding at the package clause, so

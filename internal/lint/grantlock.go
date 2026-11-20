@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/packages"
 )
 
 // Grant-lock analyzer (#54 B14). credential-reset's org-bounded test is made
@@ -157,23 +156,6 @@ func newGrantLock(provide func(*analysis.Analyzer) inputProvider, fixed map[stri
 		return nil, nil
 	}
 	return a
-}
-
-// CheckGrantLock is GrantLock through the old go/packages harness.
-func CheckGrantLock(pkgs []*packages.Package, repoRoot string) []string {
-	c := Check{Analyzer: newGrantLock(diskInputs(repoRoot), nil), Targets: []string{Module + "/internal/store/authn"}}
-	return RunOver(c, pkgs).Findings
-}
-
-// CheckGrantLockIn is CheckGrantLock scoped to ONE named surface with a given
-// writer set, so the negative fixture can prove the check fires on a lockless
-// grant writer and stays silent outside the surface it is pointed at.
-func CheckGrantLockIn(pkgs []*packages.Package, surface string, writers map[string]bool) []string {
-	a := newGrantLock(diskInputs(""), writers)
-	if err := a.Flags.Set("surface", surface); err != nil {
-		panic(err)
-	}
-	return RunOver(Check{Analyzer: a}, pkgs).Findings
 }
 
 // checkGrantLockPass reports every function of the pass's package that names a

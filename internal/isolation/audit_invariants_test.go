@@ -199,34 +199,10 @@ func TestInvariantAuditRegistryClosure(t *testing.T) {
 	}
 }
 
-// TestInvariantAuditAppendOnly is CI invariant 3 (plus invariant 7's
-// SET-ban): INSERT and SELECT only, empty licensed-deleter allowlist until
-// pruning and org-deletion land their pinned queries.
-func TestInvariantAuditAppendOnly(t *testing.T) {
-	root, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range lint.CheckAuditAppendOnly(root) {
-		t.Error(f)
-	}
-}
-
-// TestInvariantAuditRedaction is CI invariant 8: full formatting surface on
-// the pinned sensitive types, no formatting/marshaling of them outside
-// their owning package, no audit content in ops-log emission.
-func TestInvariantAuditRedaction(t *testing.T) {
-	pkgs, err := lint.LoadRepo()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range lint.CheckRedactionSurfaces(pkgs) {
-		t.Error(f)
-	}
-	for _, f := range lint.CheckSensitiveFormatting(pkgs) {
-		t.Error(f)
-	}
-}
+// Audit invariant 3 (append-only audit tables, plus invariant 7's SET ban) and
+// invariant 8 (redaction surfaces and formatting) are the appendonly,
+// redactsurfaces and redactfmt analyzers, run by the vet driver over the whole
+// module under every build context (internal/lint TestVetDriverRepo).
 
 // TestInvariantAuditFKException is CI invariant 13: audit_tenant_events is
 // the SINGLE named tenant-owned table permitted to omit ancestry FKs (an

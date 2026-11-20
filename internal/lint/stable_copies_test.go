@@ -7,10 +7,12 @@ import (
 	"testing"
 )
 
-func TestStableCopiesRepo(t *testing.T) {
-	for _, f := range CheckStableCopies(repoRoot(t)) {
-		t.Error(f)
+func stableCopyFindings(root string) []string {
+	findings, err := checkStableCopies(osSource{}, root, stableCopies)
+	if err != nil {
+		findings = append(findings, "stablecopy: "+err.Error())
 	}
+	return findings
 }
 
 func TestStableCopiesCatchesDrift(t *testing.T) {
@@ -29,7 +31,7 @@ func TestStableCopiesCatchesDrift(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if got := CheckStableCopies(root); len(got) != 0 {
+	if got := stableCopyFindings(root); len(got) != 0 {
 		t.Fatalf("pristine copies must agree: %v", got)
 	}
 	drifted := filepath.Join(root, "scripts/ci/pr-gate/main.go")
@@ -40,5 +42,5 @@ func TestStableCopiesCatchesDrift(t *testing.T) {
 	if err := os.WriteFile(drifted, []byte(strings.Replace(string(src), "\tjsontext.PreserveRawStrings(true),\n", "", 1)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	assertFindings(t, CheckStableCopies(root), []string{"stablecopy: scripts/ci/pr-gate/main.go stableJSON options"})
+	assertFindings(t, stableCopyFindings(root), []string{"stablecopy: scripts/ci/pr-gate/main.go stableJSON options"})
 }

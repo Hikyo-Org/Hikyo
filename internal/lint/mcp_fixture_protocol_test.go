@@ -16,7 +16,7 @@ import (
 
 func TestMCPFixtureDriverAuthorityIsExactFileScoped(t *testing.T) {
 	const owner = Module + "/scripts/acceptance/mcp-fixture"
-	pkgs, err := Load("../../scripts/acceptance/mcp-fixture", "../../internal/jsonwire")
+	pkgs, err := loadDefault("../../scripts/acceptance/mcp-fixture", "../../internal/jsonwire")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestMCPFixtureDriverAuthorityIsExactFileScoped(t *testing.T) {
 				if tc.generated {
 					addImport(&candidate, Module+"/internal/store/pggen")
 				}
-				findings := CheckDriverHandles([]*packages.Package{&candidate})
+				findings := checkDriverHandles([]*packages.Package{&candidate})
 				driverFound := false
 				for _, finding := range findings {
 					driverFound = driverFound || strings.Contains(finding, tc.file+":") && (strings.Contains(finding, "names driver type") || strings.Contains(finding, "calls store.DB.PG"))
@@ -168,7 +168,7 @@ func TestMCPFixtureProtocolsRejectDrift(t *testing.T) {
 				}
 			}
 			candidate := typecheckMCPFixtureMutation(t, actual, overlay)
-			findings := CheckRawSQL([]*packages.Package{candidate, helpers}, root, Module, pins)
+			findings := checkRawSQL([]*packages.Package{candidate, helpers}, root, Module, pins)
 			if tc.refusal == "" {
 				if len(findings) != 0 {
 					t.Fatalf("reviewed fixture refused: %v", findings)
@@ -235,7 +235,7 @@ func typecheckMCPFixtureMutation(t *testing.T, actual *packages.Package, overlay
 
 func TestMCPFixtureProtocolBuildContextsFailClosed(t *testing.T) {
 	root := repoRoot(t)
-	pkgs, err := Load("../../scripts/acceptance/mcp-fixture", "../../internal/jsonwire")
+	pkgs, err := loadDefault("../../scripts/acceptance/mcp-fixture", "../../internal/jsonwire")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,19 +257,19 @@ func TestMCPFixtureProtocolBuildContextsFailClosed(t *testing.T) {
 	}
 	// Exclusion removes SQL authority, rather than silencing findings if a
 	// Unix-only source unexpectedly enters the Windows build later.
-	findings := CheckRawSQL(pkgs, root, Module, map[string]RawSQLProtocol{owner: pin}, "windows")
+	findings := checkRawSQL(pkgs, root, Module, map[string]RawSQLProtocol{owner: pin}, "windows")
 	assertFindings(t, findings, []string{"requireEmptyPostgres executes handwritten SQL outside a named engine protocol"})
 	// A selected source set still requires the exact owner to be present.
-	assertFindings(t, CheckRawSQL(nil, root, Module, map[string]RawSQLProtocol{owner: pin}), []string{"protocol owner " + owner + " is absent"})
-	if got := CheckRawSQL(nil, root, Module, map[string]RawSQLProtocol{owner: pin}, "windows"); len(got) != 0 {
+	assertFindings(t, checkRawSQL(nil, root, Module, map[string]RawSQLProtocol{owner: pin}), []string{"protocol owner " + owner + " is absent"})
+	if got := checkRawSQL(nil, root, Module, map[string]RawSQLProtocol{owner: pin}, "windows"); len(got) != 0 {
 		t.Fatalf("excluded owner incorrectly required: %v", got)
 	}
 	for _, contexts := range [][]string{{"unknown"}, {"default", "default"}} {
 		bad := pin
 		bad.BuildContexts = contexts
-		assertFindings(t, CheckRawSQL(nil, root, Module, map[string]RawSQLProtocol{owner: bad}), []string{"unknown or duplicate owner build context"})
+		assertFindings(t, checkRawSQL(nil, root, Module, map[string]RawSQLProtocol{owner: bad}), []string{"unknown or duplicate owner build context"})
 	}
 	// Absence of a build restriction retains the existing all-context rule.
 	pin.BuildContexts = nil
-	assertFindings(t, CheckRawSQL(nil, root, Module, map[string]RawSQLProtocol{owner: pin}, "windows"), []string{"protocol owner " + owner + " is absent"})
+	assertFindings(t, checkRawSQL(nil, root, Module, map[string]RawSQLProtocol{owner: pin}, "windows"), []string{"protocol owner " + owner + " is absent"})
 }

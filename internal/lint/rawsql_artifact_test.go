@@ -79,7 +79,7 @@ func TestArtifactDisposableDatabaseProtocolsRejectDrift(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			findings := CheckRawSQL(pkgs, root, Module, pins)
+			findings := checkRawSQL(pkgs, root, Module, pins)
 			if tt.refusal == "" {
 				if len(findings) != 0 {
 					t.Fatalf("reviewed disposable-database lifecycle refused: %v", findings)

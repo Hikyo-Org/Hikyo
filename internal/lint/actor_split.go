@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/packages"
 )
 
 // The transport may not name service.LocalPrincipal.
@@ -52,11 +51,4 @@ var ActorSplit = &analysis.Analyzer{
 		}
 		return nil, nil
 	},
-}
-
-// CheckTransportLocalPrincipal is ActorSplit over the load roots, as the old
-// harness iterated them (including internal/server's test variant), until PR 4
-// removes the old loader.
-func CheckTransportLocalPrincipal(pkgs []*packages.Package) []string {
-	return runPackages(Check{Analyzer: ActorSplit, Targets: []string{transportPath}}, pkgs).Findings
 }

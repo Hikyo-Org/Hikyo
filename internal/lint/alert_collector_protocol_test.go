@@ -13,7 +13,7 @@ import (
 func TestAlertCollectorDriverAuthorityIsExactFileScoped(t *testing.T) {
 	const owner = Module + "/scripts/security/alert-route"
 	const sourceFile = "/" + alertCollectorSnapshotFile
-	pkgs, err := Load("../../scripts/security/alert-route")
+	pkgs, err := loadDefault("../../scripts/security/alert-route")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestAlertCollectorDriverAuthorityIsExactFileScoped(t *testing.T) {
 			if tc.generated {
 				addImport(&candidate, Module+"/internal/store/sqlitegen")
 			}
-			findings := CheckDriverHandles([]*packages.Package{&candidate})
+			findings := checkDriverHandles([]*packages.Package{&candidate})
 			driverFound := false
 			for _, finding := range findings {
 				driverFound = driverFound || strings.Contains(finding, "names driver type database/sql.")
@@ -130,7 +130,7 @@ func TestAlertCollectorSnapshotProtocolRejectsDrift(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			findings := CheckRawSQL(pkgs, root, Module, pins)
+			findings := checkRawSQL(pkgs, root, Module, pins)
 			if tc.refusal == "" {
 				if len(findings) != 0 {
 					t.Fatalf("reviewed external snapshot refused: %v", findings)

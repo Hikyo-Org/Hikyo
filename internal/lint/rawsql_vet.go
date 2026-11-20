@@ -167,6 +167,11 @@ func runRawSQL(pass *analysis.Pass, src source, root, prefix, context, native st
 	if err != nil {
 		return err
 	}
+	return runRawSQLWith(pass, src, root, prefix, context, protocols, dump)
+}
+
+// runRawSQLWith is runRawSQL over protocols already in force for the context.
+func runRawSQLWith(pass *analysis.Pass, src source, root, prefix, context string, protocols map[string]RawSQLProtocol, dump bool) error {
 	u := rawSQLUnit{pass: pass, prefix: prefix}
 	report := func(pos token.Pos, format string, args ...any) {
 		pass.Report(analysis.Diagnostic{Pos: pos, Message: "rawsql: " + fmt.Sprintf(format, args...)})
@@ -463,6 +468,12 @@ func rawSQLSummaryFindings(src source, root, context, native string, summaries [
 	if err != nil {
 		return nil, err
 	}
+	return rawSQLProtocolSummaryFindings(protocols, summaries)
+}
+
+// rawSQLProtocolSummaryFindings judges the summaries against protocols already
+// in force for the context.
+func rawSQLProtocolSummaryFindings(protocols map[string]RawSQLProtocol, summaries []Summary) ([]string, error) {
 	owners := map[string]bool{}
 	helpers := map[string]bool{}
 	callers := map[string]map[string]bool{}

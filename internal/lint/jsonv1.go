@@ -19,20 +19,6 @@ const jsonV1Exception = "api/apigen"
 
 const jsonV1Message = "jsonv1: %s imports encoding/json; use encoding/json/v2 and encoding/json/jsontext"
 
-// CheckJSONv1Imports reports encoding/json imports outside jsonV1Exception
-// and a stale exception when that directory stops importing it. It reads every .go file,
-// whatever its build tags, outside testdata, vendor and node_modules. This is
-// the old harness; the vet driver splits the same rule into the JSONv1
-// analyzer over the packages it analyzes and CheckUnanalyzedGoFiles over the
-// files it does not.
-func CheckJSONv1Imports(repoRoot string) []string {
-	findings, exceptionImports := walkJSONv1(repoRoot, nil)
-	if !exceptionImports {
-		findings = append(findings, staleJSONv1Exception())
-	}
-	return findings
-}
-
 func staleJSONv1Exception() string {
 	return fmt.Sprintf("jsonv1: %s no longer imports encoding/json; remove jsonV1Exception", jsonV1Exception)
 }

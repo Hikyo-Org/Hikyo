@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/packages"
 )
 
 // RecoveryRule confines one protected name (the containment-bypassing recovery
@@ -63,29 +62,12 @@ var ContainmentSetterRules = []RecoveryRule{
 	}},
 }
 
-// CheckRecoveryLookup reports every non-test reference to a protected name
-// from a function outside its allowlist, and every allowlisted function that
-// never references it (a stale entry would silently widen the surface).
-func CheckRecoveryLookup(pkgs []*packages.Package, rules []RecoveryRule) []string {
-	return confinementOver(recoveryKind, pkgs, rules)
-}
-
-// CheckContainmentSetters applies the same confinement to the containment
-// setters, so no production caller can set or clear the state unreviewed.
-func CheckContainmentSetters(pkgs []*packages.Package, rules []RecoveryRule) []string {
-	return confinementOver(setterKind, pkgs, rules)
-}
-
 type confinementKind struct{ name, doc, where string }
 
 var (
 	recoveryKind = confinementKind{"recoverylookup", "the recovery lookup is reached only from the reset and establishment flows", "the reset and establishment flows"}
 	setterKind   = confinementKind{"containmentsetters", "the containment setters are reached only from the authz forwarders and the authn store", "the authz forwarders and the authn store"}
 )
-
-func confinementOver(kind confinementKind, pkgs []*packages.Package, rules []RecoveryRule) []string {
-	return RunOver(Check{Analyzer: newConfinement(kind, rules), Targets: ruleTargets(rules)}, pkgs).Findings
-}
 
 // RecoveryLookup and ContainmentSetters are the two confinement analyzers.
 var (

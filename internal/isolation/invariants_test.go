@@ -9,6 +9,10 @@ package isolation
 import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
 	"maps"
 	"net/http"
 	"os"
@@ -250,70 +254,16 @@ func TestInvariant06OperationRegistryCompleteness(t *testing.T) {
 	}
 }
 
-// TestInvariant07ProofSignatures: analyzer 1 over the real repository.
-func TestInvariant07ProofSignatures(t *testing.T) {
-	pkgs, err := lint.LoadRepo()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range lint.CheckProofSignatures(pkgs, lint.Module+"/internal/store") {
-		t.Error(f)
-	}
-}
-
-// TestInvariant08PredicateConfinement: analyzer 2 over both engines'
-// migrations and queries (per-branch chain conjuncts, no SET on chain
-// columns, derived scope registry total). The binding-provenance half —
-// every chain parameter maps from proof fields and nothing else — is
-// asserted empirically by the positive controls in the engine suites: rows
-// written through the store carry exactly the proof's resolved chain.
-func TestInvariant08PredicateConfinement(t *testing.T) {
-	root, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range lint.CheckSQLPredicates(root) {
-		t.Error(f)
-	}
-}
-
-// TestInvariant09aDriverHandleConfinement: the proof boundary is only as
-// strong as the narrowest path around it. Raw driver handles and the
-// generated query packages are both one-line bypasses — a package holding
-// either can issue tenant queries with caller-controlled chain values and no
-// proof — so both carry exact allowlists, enforced across the module
-// including tests.
-func TestInvariant09aDriverHandleConfinement(t *testing.T) {
-	pkgs, err := lint.LoadRepo()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range lint.CheckDriverHandles(pkgs) {
-		t.Error(f)
-	}
-}
-
-// TestInvariant09ForgeryGuard: analyzer 3 over the real repository,
-// including test packages.
-func TestInvariant09ForgeryGuard(t *testing.T) {
-	pkgs, err := lint.LoadRepo()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range lint.CheckProofForgery(pkgs) {
-		t.Error(f)
-	}
-}
-
-func TestInvariant09bTransactionResultsAreDetached(t *testing.T) {
-	pkgs, err := lint.LoadRepo()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range lint.CheckTransactionResults(pkgs) {
-		t.Error(f)
-	}
-}
+// Invariants 07 (proof signatures), 08 (predicate confinement), 09a (driver
+// handle confinement), 09 (forgery guard) and 09b (detached transaction
+// results) are the proofsig, sqlpredicate, handles, forgeguard and txresult
+// analyzers. They run in the vet driver over the whole module under every
+// build context (internal/lint TestVetDriverRepo), which fails on any finding
+// and on an analyzer whose target package was not analyzed. The binding-
+// provenance half of 08 — every chain parameter maps from proof fields and
+// nothing else — is asserted empirically by the positive controls in the
+// engine suites: rows written through the store carry exactly the proof's
+// resolved chain.
 
 // TestInvariant11SystemProofEnumeration: the mint-site set is exactly
 // {boot, migration, recovery-mode reconciliation, break-glass, scheduler}.
@@ -525,7 +475,7 @@ func TestInvariant12CacheDiscipline(t *testing.T) {
 	}
 
 	// Sweep: any cache-shaped declaration must belong to a registered cache.
-	pkgs, err := lint.LoadRepo()
+	declared, err := packageScopeNames(filepath.Join("..", ".."))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -557,15 +507,12 @@ func TestInvariant12CacheDiscipline(t *testing.T) {
 		// The Linux-only test of hostupgrade.PrepareCacheDirectory: that directory is a selfupdate installer cache.
 		lint.Module + "/internal/hostupgrade.TestLinuxSecurityCacheRequiresPrivateRootOwnedStorage": "selfupdate.nightly-downloads",
 	}
-	for _, p := range pkgs {
-		if p.Types == nil || !strings.HasPrefix(p.PkgPath, lint.Module) {
-			continue
-		}
-		base := strings.TrimSuffix(p.PkgPath, ".test")
+	for pkgPath, names := range declared {
+		base := strings.TrimSuffix(pkgPath, "_test")
 		if base == lint.Module+"/internal/isolation" || knownPkgs[base] {
 			continue // the harness names the invariant; crypto's cache is registered
 		}
-		for _, name := range p.Types.Scope().Names() {
+		for _, name := range names {
 			if key := registeredDeclarations[base+"."+name]; key != "" {
 				if _, ok := registered[key]; !ok {
 					t.Errorf("%s.%s references missing cache registry entry %q", base, name, key)
@@ -577,6 +524,69 @@ func TestInvariant12CacheDiscipline(t *testing.T) {
 			}
 		}
 	}
+}
+
+// packageScopeNames lists the package-scope declaration names (functions, types,
+// variables and constants; not methods or blank names) of every Go package of
+// the module under root, keyed by import path, an external test package under
+// its path plus "_test". It reads every file whatever its build constraints,
+// test files included, so a cache hidden behind a tag or in a test still trips
+// the sweep. Fixture, vendored and dependency trees are skipped.
+func packageScopeNames(root string) (map[string][]string, error) {
+	out := map[string][]string{}
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", "testdata", "vendor", "node_modules":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(path) != ".go" {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, filepath.Dir(path))
+		if err != nil {
+			return err
+		}
+		pkgPath := lint.Module
+		if rel != "." {
+			pkgPath += "/" + filepath.ToSlash(rel)
+		}
+		if strings.HasSuffix(file.Name.Name, "_test") {
+			pkgPath += "_test"
+		}
+		for _, decl := range file.Decls {
+			switch d := decl.(type) {
+			case *ast.FuncDecl:
+				if d.Recv == nil && d.Name.Name != "_" && d.Name.Name != "init" {
+					out[pkgPath] = append(out[pkgPath], d.Name.Name)
+				}
+			case *ast.GenDecl:
+				for _, spec := range d.Specs {
+					switch sp := spec.(type) {
+					case *ast.TypeSpec:
+						out[pkgPath] = append(out[pkgPath], sp.Name.Name)
+					case *ast.ValueSpec:
+						for _, n := range sp.Names {
+							if n.Name != "_" {
+								out[pkgPath] = append(out[pkgPath], n.Name)
+							}
+						}
+					}
+				}
+			}
+		}
+		return nil
+	})
+	return out, err
 }
 
 // TestInvariant13AllowlistPinning: the instance-scoped and authn-resolution

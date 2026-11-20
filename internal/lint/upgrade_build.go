@@ -5,15 +5,7 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/packages"
 )
-
-// UpgradeBuildAuthority confines the empty-database build primitive to the
-// release generator. Resolve symbols through Go types so import aliases and
-// captured function values cannot turn this into a runtime migration bypass.
-func UpgradeBuildAuthority(pkgs []*packages.Package) []string {
-	return RunOver(Check{Analyzer: UpgradeBuild}, pkgs).Findings
-}
 
 // UpgradeBuild is UpgradeBuildAuthority as an analyzer.
 var UpgradeBuild = &analysis.Analyzer{

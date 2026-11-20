@@ -401,30 +401,16 @@ func TestInputAnalyzersReportAbsentDirectories(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			for source, a := range map[string]*analysis.Analyzer{"vet": vet, "disk": build(diskInputs(root))} {
-				findings := run(a)
-				if len(findings) == 0 {
-					t.Errorf("%s: no finding with every declared directory absent", source)
-				}
-				for _, f := range findings {
-					if strings.HasPrefix(f, "inputs refused:") {
-						t.Errorf("%s: refused instead of reporting the absent directories: %s", source, f)
-					}
+			findings := run(vet)
+			if len(findings) == 0 {
+				t.Error("no finding with every declared directory absent")
+			}
+			for _, f := range findings {
+				if strings.HasPrefix(f, "inputs refused:") {
+					t.Errorf("refused instead of reporting the absent directories: %s", f)
 				}
 			}
 		})
-	}
-	for name, check := range map[string]func() []string{
-		"appendonly":   func() []string { return CheckAuditAppendOnly(root) },
-		"sqlpredicate": func() []string { return CheckSQLPredicates(root) },
-		"reencryptcoverage": func() []string {
-			return CheckReencryptCoverage(filepath.Join(root, "internal", "store", "migrations", "sqlite"))
-		},
-		"stablecopies": func() []string { return CheckStableCopies(root) },
-	} {
-		if len(check()) == 0 {
-			t.Errorf("%s: the old entry point reports nothing with every declared directory absent", name)
-		}
 	}
 	// The per-package analyzers have no anchor: their helpers fail on the absent
 	// directories, through both readers.

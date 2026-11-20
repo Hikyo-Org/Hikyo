@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/packages"
 )
 
 // Analyzer 6 (audit-model ADR CI invariants 3 and 7): append-only audit
@@ -66,13 +65,6 @@ func newAuditAppendOnly(provide func(*analysis.Analyzer) inputProvider) *analysi
 			}
 		},
 	}.analyzer(provide)
-}
-
-// CheckAuditAppendOnly scans every query file on both engines and every Go and
-// SQL file under internal/store, straight from disk: the old harness.
-func CheckAuditAppendOnly(repoRoot string) []string {
-	findings := checkAuditQueries(osSource{}, repoRoot)
-	return append(findings, checkNoSyncCommitDowngrade(osSource{}, repoRoot, []string{".go", ".sql"})...)
 }
 
 func checkAuditQueries(src source, repoRoot string) []string {
@@ -551,30 +543,6 @@ func newDenialWriter(provide func(*analysis.Analyzer) inputProvider, fixed map[s
 		return nil, nil
 	}
 	return a
-}
-
-// CheckDenialWriter is DenialWriter through the old go/packages harness.
-func CheckDenialWriter(pkgs []*packages.Package, repoRoot string) []string {
-	c := Check{Analyzer: newDenialWriter(diskInputs(repoRoot), nil), Targets: []string{denialSurface}}
-	return RunOver(c, pkgs).Findings
-}
-
-// CheckDenialWriterIn is CheckDenialWriter with the surface, writers and
-// mutating set named, so the negative fixture can prove the check actually
-// fires on an unlisted writer rather than merely on a package that has none.
-func CheckDenialWriterIn(pkgs []*packages.Package, surface string, writers, mutating map[string]bool) []string {
-	a := newDenialWriter(diskInputs(""), mutating)
-	if err := a.Flags.Set("surface", surface); err != nil {
-		panic(err)
-	}
-	names := make([]string, 0, len(writers))
-	for name := range writers {
-		names = append(names, name)
-	}
-	if err := a.Flags.Set("writers", strings.Join(names, ",")); err != nil {
-		panic(err)
-	}
-	return RunOver(Check{Analyzer: a}, pkgs).Findings
 }
 
 func checkDenialWriterPass(pass *analysis.Pass, writers, mutating map[string]bool) {

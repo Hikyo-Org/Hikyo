@@ -5,8 +5,6 @@ import (
 	"maps"
 	"strings"
 	"testing"
-
-	"golang.org/x/tools/go/packages"
 )
 
 // These private implementation holders are compile-time pinned but cannot be
@@ -15,16 +13,6 @@ import (
 var internalOnlyRedactionPins = map[string]bool{
 	Module + "/internal/crypto.keyHandle": true,
 	Module + "/internal/crypto.dekEntry":  true,
-}
-
-// redactionPins collects the RedactPins analyzer's pin summaries.
-func redactionPins(t *testing.T, pkgs []*packages.Package) map[string]bool {
-	t.Helper()
-	res := RunOver(Check{Analyzer: RedactPins, Targets: []string{sensitiveOwner}}, pkgs)
-	for _, finding := range res.Findings {
-		t.Error(finding)
-	}
-	return pinSet(t, res.Summaries)
 }
 
 func pinSet(t *testing.T, summaries []Summary) map[string]bool {
@@ -62,8 +50,13 @@ func compareRedactionPins(pins, sensitive map[string]bool) []string {
 }
 
 func TestRedactionPinsMatchSensitiveTypes(t *testing.T) {
-	eachContext(t, sensitiveOwner, func(t *testing.T, pkgs []*packages.Package) {
-		pins := redactionPins(t, pkgs)
+	// The real pins are compared with SensitiveTypes by TestVetDriverRepo; this
+	// proves the comparison fails in every direction from a consistent baseline.
+	{
+		pins := maps.Clone(SensitiveTypes)
+		for name := range internalOnlyRedactionPins {
+			pins[name] = true
+		}
 		for _, finding := range compareRedactionPins(pins, SensitiveTypes) {
 			t.Error(finding)
 		}
@@ -95,5 +88,5 @@ func TestRedactionPinsMatchSensitiveTypes(t *testing.T) {
 				}
 			})
 		}
-	})
+	}
 }

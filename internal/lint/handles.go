@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/packages"
 )
 
 // driverHandles are the store's raw driver-handle accessors. They exist for
@@ -84,13 +83,6 @@ var generatedImporters = map[string]bool{
 	Module + "/internal/store/pggen":     true,
 	Module + "/internal/isolation":       true, // DBTX instrumentation (tests)
 	Module + "/internal/boundary":        true, // names them as strings only
-}
-
-// CheckDriverHandles enforces both allowlists across the module, test
-// packages included — a bypass in a test is still a bypass of the property
-// the tests exist to prove.
-func CheckDriverHandles(pkgs []*packages.Package) []string {
-	return RunOver(Check{Analyzer: Handles}, pkgs).Findings
 }
 
 // Handles is CheckDriverHandles as an analyzer. Imports are judged from the

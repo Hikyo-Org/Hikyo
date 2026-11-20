@@ -55,17 +55,6 @@ func newStableCopies(provide func(*analysis.Analyzer) inputProvider) *analysis.A
 	}.analyzer(provide)
 }
 
-// CheckStableCopies reports each copy of jsonwire.Stable whose JoinOptions
-// argument list differs from the original's, so a copy cannot drift out of
-// byte-compatibility with encoding/json (v1) unnoticed.
-func CheckStableCopies(repoRoot string) []string {
-	findings, err := checkStableCopies(osSource{}, repoRoot, stableCopies)
-	if err != nil {
-		findings = append(findings, "stablecopy: "+err.Error())
-	}
-	return findings
-}
-
 func checkStableCopies(src source, repoRoot string, copies []string) ([]string, error) {
 	want, err := joinOptionsArgs(src, filepath.Join(repoRoot, stableOriginal), "Stable")
 	if errors.Is(err, ErrUndeclaredInput) {

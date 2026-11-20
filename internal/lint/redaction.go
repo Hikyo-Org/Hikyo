@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/packages"
 )
 
 // Analyzer 5 (audit-model ADR CI invariant 8): the redaction guardrail
@@ -73,11 +72,6 @@ var redactionSurfaceMethods = []string{
 	"String", "GoString", "LogValue", "MarshalText", "MarshalJSON",
 }
 
-// CheckRedactionSurfaces asserts rule 1 against the loaded repo.
-func CheckRedactionSurfaces(pkgs []*packages.Package) []string {
-	return RunOver(Check{Analyzer: RedactSurfaces, Targets: []string{sensitiveOwner}}, pkgs).Findings
-}
-
 // RedactSurfaces is CheckRedactionSurfaces as an analyzer over the crypto package.
 var RedactSurfaces = &analysis.Analyzer{
 	Name: "redactsurface",
@@ -106,12 +100,6 @@ var RedactSurfaces = &analysis.Analyzer{
 		}
 		return nil, nil
 	},
-}
-
-// CheckSensitiveFormatting asserts rules 2 and 3 across the module, tests
-// included.
-func CheckSensitiveFormatting(pkgs []*packages.Package) []string {
-	return RunOver(Check{Analyzer: RedactFormat}, pkgs).Findings
 }
 
 // RedactFormat is CheckSensitiveFormatting as an analyzer.

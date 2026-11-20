@@ -10,27 +10,6 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// CheckReencryptCoverage is the reencrypt-coverage gate (encryption-model ADR
-// § Rotation, invariant 7 / #187). A DEK version is retired only once zero
-// ciphertexts reference it, and reencrypt proves that by walking every table
-// that holds tier-3-DEK-enveloped ciphertext. If a NEW enveloped column is added
-// to the schema but not to the walk, its rows are never moved and never scanned
-// by the retire's dryness gate (which scans only the walk's tables) — so the
-// retire would destroy a still-referenced key. This gate makes that impossible
-// to add silently: every BLOB/BYTEA column in the schema must be classified as
-// either reencrypt-covered or explicitly exempt, and an unclassified new column
-// fails the build until someone decides which it is.
-//
-// The covered set must equal reencrypt's walk (service.Reencrypt). The exempt
-// set is every other BLOB column, each a reviewed non-target: a wrapped KEY
-// (master/tier3 — a different tier, rotated by rotate-master-key/rotate-dek, not
-// reencrypt), a hashed/single-use VERIFIER (never envelope-decryptable), a
-// short-lived FLOW artifact (OAuth/SAML/WebAuthn transaction state), or PUBLIC
-// material (certificates, public keys, opaque handles).
-func CheckReencryptCoverage(sqliteMigrationsDir string) []string {
-	return checkReencryptCoverage(osSource{}, sqliteMigrationsDir, reencryptCovered, reencryptExemptBlobs)
-}
-
 func reencryptSpecs(string) ([]InputSpec, error) {
 	return []InputSpec{{Dir: "internal/store/migrations/sqlite", Exts: []string{".sql"}}}, nil
 }

@@ -5,8 +5,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-
-	"golang.org/x/tools/go/packages"
 )
 
 func rawSQLFixtureRoot() string {
@@ -55,26 +53,6 @@ func rawSQLAggregate(out *vetOutcome, root string) ([]string, error) {
 		native = runtime.GOOS
 	}
 	return rawSQLSummaryFindings(in, root, out.Context, native, out.Summaries[RawSQL.Name])
-}
-
-// requireRawSQLParity checks that every finding of the old RawSQL harness over
-// the repository is also reported by the driver, per-package diagnostics and
-// aggregate together.
-func requireRawSQLParity(t *testing.T, ctx BuildContext, repo *vetOutcome, pkgs []*packages.Package) {
-	t.Helper()
-	if reviewedPinsError != nil {
-		t.Fatal(reviewedPinsError)
-	}
-	protocols, err := reviewedPins.rawProtocols()
-	if err != nil {
-		t.Fatal(err)
-	}
-	aggregated, err := rawSQLAggregate(repo, moduleRoot())
-	if err != nil {
-		t.Fatal(err)
-	}
-	current := append(findingMessages(repo.Findings, RawSQL.Name), aggregated...)
-	requireSubset(t, "rawsql on the repository", CheckRawSQL(pkgs, moduleRoot(), Module, protocols, ctx.Name), current)
 }
 
 // The aggregate refuses a summary it cannot parse, a context it does not know

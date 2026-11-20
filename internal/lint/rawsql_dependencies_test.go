@@ -32,7 +32,7 @@ func rawSQLDependencyFixture(t *testing.T, extra string) (string, *packages.Pack
 		protocol.Dependencies = rawSQLDependencies(owner, decls, protocols, root)
 		protocols[owner] = protocol
 	}
-	if findings := CheckRawSQL([]*packages.Package{pkg}, root, Module, protocols); len(findings) != 0 {
+	if findings := checkRawSQL([]*packages.Package{pkg}, root, Module, protocols); len(findings) != 0 {
 		t.Fatalf("valid fixture: %v", findings)
 	}
 	return root, pkg, protocols
@@ -45,14 +45,14 @@ func constantProtocol(ctx context.Context,d driver) { d.Exec(ctx,sqlAlias) }
 `
 	_, _, pins := rawSQLDependencyFixture(t, source)
 	root, pkg, _ := rawSQLDependencyFixture(t, strings.Replace(source, `"SELECT "`, `"DELETE "`, 1))
-	findings := strings.Join(CheckRawSQL([]*packages.Package{pkg}, root, Module, pins), "\n")
+	findings := strings.Join(checkRawSQL([]*packages.Package{pkg}, root, Module, pins), "\n")
 	if !strings.Contains(findings, "constantProtocol changed its reviewed engine protocol") {
 		t.Fatal(findings)
 	}
 	// Re-spelling the alias with its identical resolved value does not change the
 	// executed SQL or the owner body, so it has the same dependency digest.
 	root, pkg, _ = rawSQLDependencyFixture(t, strings.Replace(source, `sqlBase + "1"`, `"SELECT 1"`, 1))
-	if findings := CheckRawSQL([]*packages.Package{pkg}, root, Module, pins); len(findings) != 0 {
+	if findings := checkRawSQL([]*packages.Package{pkg}, root, Module, pins); len(findings) != 0 {
 		t.Fatal(findings)
 	}
 }
@@ -85,7 +85,7 @@ func constantProtocol(ctx context.Context,d driver) {d.Exec(ctx,firstSQL);d.Exec
 	_, _, pins := rawSQLDependencyFixture(t, source)
 	changed := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(source, "SELECT 1", "SWAP"), "SELECT 2", "SELECT 1"), "SWAP", "SELECT 2")
 	root, pkg, _ := rawSQLDependencyFixture(t, changed)
-	findings := strings.Join(CheckRawSQL([]*packages.Package{pkg}, root, Module, pins), "\n")
+	findings := strings.Join(checkRawSQL([]*packages.Package{pkg}, root, Module, pins), "\n")
 	if !strings.Contains(findings, "constantProtocol changed its reviewed engine protocol") {
 		t.Fatal(findings)
 	}
@@ -111,7 +111,7 @@ func retired() string {return "unused"}
 	} {
 		t.Run(change.name, func(t *testing.T) {
 			root, pkg, _ := rawSQLDependencyFixture(t, strings.Replace(source, change.old, change.new, 1))
-			findings := strings.Join(CheckRawSQL([]*packages.Package{pkg}, root, Module, pins), "\n")
+			findings := strings.Join(checkRawSQL([]*packages.Package{pkg}, root, Module, pins), "\n")
 			if !strings.Contains(findings, "helperProtocol changed reviewed helper dependency") {
 				t.Fatal(findings)
 			}
@@ -131,7 +131,7 @@ func retired() string {return "unused"}
 				protocol.Dependencies[test.key] = "pinned"
 			}
 			changed[owner] = protocol
-			findings := strings.Join(CheckRawSQL([]*packages.Package{pkg}, root, Module, changed), "\n")
+			findings := strings.Join(checkRawSQL([]*packages.Package{pkg}, root, Module, changed), "\n")
 			if !strings.Contains(findings, test.want) {
 				t.Fatal(findings)
 			}
@@ -153,7 +153,7 @@ func TestRawSQLProtocolPinsGenericReceiverHelpers(t *testing.T) {
 				t.Fatal("generic method missing from dependencies")
 			}
 			root, pkg, _ := rawSQLDependencyFixture(t, strings.Replace(source, "SELECT 1", "SELECT 2", 1))
-			findings := strings.Join(CheckRawSQL([]*packages.Package{pkg}, root, Module, pins), "\n")
+			findings := strings.Join(checkRawSQL([]*packages.Package{pkg}, root, Module, pins), "\n")
 			if !strings.Contains(findings, "genericProtocol changed reviewed helper dependency protocol.go:builder.query") {
 				t.Fatal(findings)
 			}
@@ -175,7 +175,7 @@ func helperProtocol(ctx context.Context,d driver) {d.Exec(ctx,build())}
 			pin := pins[owner]
 			pin.BuildDependencies = map[string]map[string]string{test.context: {"protocol.go:build": pin.Dependencies["protocol.go:build"]}}
 			pins[owner] = pin
-			findings := strings.Join(CheckRawSQL([]*packages.Package{pkg}, root, Module, pins), "\n")
+			findings := strings.Join(checkRawSQL([]*packages.Package{pkg}, root, Module, pins), "\n")
 			if !strings.Contains(findings, test.want) {
 				t.Fatal(findings)
 			}
@@ -205,7 +205,7 @@ func bypassExpression(ctx context.Context,d driver) { o:=`+instance+`{}; alias:=
 			pin := pins["protocol.go:owner.execute"]
 			pin.Callers = map[string]string{"protocol.go:approvedMethod": hash}
 			pins["protocol.go:owner.execute"] = pin
-			findings := strings.Join(CheckRawSQL([]*packages.Package{pkg}, root, Module, pins), "\n")
+			findings := strings.Join(checkRawSQL([]*packages.Package{pkg}, root, Module, pins), "\n")
 			for _, caller := range []string{"bypassMethod", "bypassExpression"} {
 				if !strings.Contains(findings, caller+" references protocol protocol.go:owner.execute") {
 					t.Fatalf("method bypass escaped: %s", findings)
@@ -215,7 +215,7 @@ func bypassExpression(ctx context.Context,d driver) { o:=`+instance+`{}; alias:=
 				t.Fatal(findings)
 			}
 			pin.Callers["protocol.go:approvedMethod"] = "changed"
-			if got := strings.Join(CheckRawSQL([]*packages.Package{pkg}, root, Module, pins), "\n"); !strings.Contains(got, "approvedMethod references protocol") {
+			if got := strings.Join(checkRawSQL([]*packages.Package{pkg}, root, Module, pins), "\n"); !strings.Contains(got, "approvedMethod references protocol") {
 				t.Fatal("method caller drift escaped: " + got)
 			}
 		})
