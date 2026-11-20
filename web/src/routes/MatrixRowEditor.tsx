@@ -37,6 +37,7 @@ import {
   type MatrixDraftEdit,
   type MatrixDraftRule,
   type MatrixDraftValidation,
+  isSecret,
 } from './matrix-state.ts';
 import {
   useProtectedPublishCeremony,
@@ -96,14 +97,14 @@ export function MatrixRowEditor({
         rows.map((row) => [
           row.environmentId,
           draftValueForMatrixCell(
-            keyRecord.classification,
+            isSecret(row.cell, keyRecord) ? 'secret' : keyRecord.classification,
             row.cell?.set === true ? row.cell.value : undefined,
             row.signal?.pending?.operation,
             row.draftPreview,
           ),
         ]),
       ),
-    [keyRecord.classification, rows],
+    [keyRecord, rows],
   );
   const [edits, setEdits] = useSensitiveState<ReadonlyMap<string, MatrixDraftEdit>>(() => new Map());
   const [fillAll, setFillAll] = useSensitiveState('');
@@ -157,8 +158,15 @@ export function MatrixRowEditor({
     )
     .map((row) => row.environment.name);
 
-  const secret = keyRecord.classification === 'secret';
-  const valueClass = `mono matrix-editor__value${secret && !showTyping ? ' matrix-editor__value--masked' : ''}`;
+  // One decision per row, as the matrix cell makes it: a secret cell under a
+  // config key is still a secret, and so is every control that touches it.
+  const secret = isSecret(sourceRow.cell, keyRecord);
+  const classification: MatrixKey['classification'] = secret ? 'secret' : keyRecord.classification;
+  // Edit-all masks every row while any is secret: Fill all writes one typed
+  // value into all of them, and a config row must not show what a secret row hides.
+  const valueClassFor = (rowSecret: boolean) =>
+    `mono matrix-editor__value${rowSecret && !showTyping ? ' matrix-editor__value--masked' : ''}`;
+  const anySecret = visibleRows.some((row) => isSecret(row.cell, keyRecord));
   const declarationHref = withRemote(
     generatePath(surfaceById('key-detail').path, { ...refData, key: keyRecord.id }),
     workspace?.remote ?? '',
@@ -194,7 +202,7 @@ export function MatrixRowEditor({
         return {
           environmentId,
           environmentName: destination.environment.name,
-          keys: [{ id: keyRecord.id, name: keyRecord.name, classification: keyRecord.classification }],
+          keys: [{ id: keyRecord.id, name: keyRecord.name, classification }],
         };
       });
 
@@ -211,7 +219,9 @@ export function MatrixRowEditor({
       ) : null}
       {sourceSet && (!secret || disclosure.canReveal) ? (
         <Button type="button" onClick={disclosure.copy}>
-          {secret ? `Copy ${keyRecord.name} (audited disclosure)` : `Copy ${keyRecord.name}`}
+          {/* Only the reveal response says whether this copy is recorded: the
+              key may have become config since this view was loaded. */}
+          {secret ? `Copy ${keyRecord.name} (audited if still secret)` : `Copy ${keyRecord.name}`}
         </Button>
       ) : null}
       <Link className="btn" to={declarationHref} onClick={onClose}>
@@ -277,10 +287,10 @@ export function MatrixRowEditor({
           {/* The eyebrow follows the title now: the atom's h2 is always first,
               and it already names the classification the lock glyph stood for. */}
           <p className="matrix-editor__eyebrow">
-            {environment.name}<Sep />{keyRecord.classification}
+            {environment.name}<Sep />{classification}
           </p>
 
-          {secret ? (
+          {anySecret ? (
             <Checkbox
               className="matrix-editor__show-typing"
               label="Show while typing"
@@ -337,11 +347,11 @@ export function MatrixRowEditor({
                         expresses. Field still owns the label and the wiring. */}
                     <textarea
                       {...control}
-                      className={valueClass}
+                      className={valueClassFor(anySecret)}
                       rows={2}
                       autoComplete="off"
                       value={fillAll}
-                      placeholder={secret ? 'Write-only replacement' : 'Shared draft value'}
+                      placeholder={anySecret ? 'Write-only replacement' : 'Shared draft value'}
                       onChange={(event) => setFillAll(event.target.value)}
                     />
                     <Button
@@ -430,7 +440,7 @@ export function MatrixRowEditor({
                       {(control) => (
                         <textarea
                           {...control}
-                          className={valueClass}
+                          className={valueClassFor(editAll ? anySecret : isSecret(row.cell, keyRecord))}
                           rows={2}
                           readOnly={!canEdit(rowEnvironmentId)}
                           autoComplete="off"
@@ -442,7 +452,7 @@ export function MatrixRowEditor({
                                 : initialDrafts.get(rowEnvironmentId) ?? ''
                           }
                           placeholder={
-                            keyRecord.classification === 'secret'
+                            isSecret(row.cell, keyRecord)
                               ? publishedSet
                                 ? 'Write-only · replace current secret'
                                 : 'Write-only · set a new secret'
@@ -514,7 +524,7 @@ export function MatrixRowEditor({
             )}
           </p>
 
-          {!isDemo && keyRecord.classification === 'config' && sourceSet ? (
+          {!isDemo && !secret && sourceSet ? (
             <Button
               className="matrix-row-editor__toggle"
               type="button"
@@ -528,7 +538,7 @@ export function MatrixRowEditor({
               {`Copy published ${environment.name} value to…`}
             </Button>
           ) : null}
-          {copyOpen ? (
+          {copyOpen && !secret ? (
             <div className="matrix-editor__copy" id="matrix-editor-copy">
               <ChoiceGroup
                 legend="Copy independent published value to"
@@ -630,7 +640,9 @@ function useCellDisclosure(
     [refData.org, refData.project, sourceRow.environmentId],
   );
   const transport = useTransport();
-  const window = useRevealWindow(env, keyRecord.classification === 'secret');
+  const secret = isSecret(sourceRow.cell, keyRecord);
+  const classification: MatrixKey['classification'] = secret ? 'secret' : keyRecord.classification;
+  const window = useRevealWindow(env, secret);
   const revealOne = useRevealOne(env);
   const ceremony = useCeremonyTask([
     refData.org,
@@ -665,7 +677,7 @@ function useCellDisclosure(
   // this hook) on a cell change, which re-masks by dropping all disclosure state.
 
   const clipboardMessage = useCallback(
-    (value: string, audited: boolean) => writeExpiringClipboard(value, audited),
+    (value: string, audited: boolean, isCurrent?: () => boolean) => writeExpiringClipboard(value, audited, isCurrent),
     [],
   );
 
@@ -694,14 +706,16 @@ function useCellDisclosure(
       purpose,
       environmentId: sourceRow.environmentId,
       environmentName: sourceRow.environment.name,
-      keys: [{ id: keyRecord.id, name: keyRecord.name, classification: keyRecord.classification }],
+      keys: [{ id: keyRecord.id, name: keyRecord.name, classification }],
       window: state,
     }, () => void act(task));
-  }, [ceremony, env, keyRecord.classification, keyRecord.id, keyRecord.name, sourceRow.environment.name, sourceRow.environmentId, transport.client]);
+  }, [ceremony, classification, env, keyRecord.id, keyRecord.name, sourceRow.environment.name, sourceRow.environmentId, transport.client]);
 
   const discloseValue = useCallback(async (
     task: CeremonyTask,
-    onValue: (value: string) => Promise<void> | void,
+    // `recorded`: the server wrote a disclosure event, which it does only for a
+    // key it holds as secret. A row masked from a stale cell may already be config.
+    onValue: (value: string, recorded: boolean) => Promise<void> | void,
   ) => {
     try {
       const fresh = await revealOne.mutateAsync(keyRecord.name);
@@ -709,7 +723,7 @@ function useCellDisclosure(
         ceremony.commit(task, () => setError('The server disclosed no value for that key.'));
         return;
       }
-      if (ceremony.isCurrent(task)) await onValue(fresh.value);
+      if (ceremony.isCurrent(task)) await onValue(fresh.value, fresh.classification === 'secret');
     } catch (caught) {
       ceremony.commit(task, () => {
         setPlaintext(null);
@@ -728,16 +742,16 @@ function useCellDisclosure(
       if (!await waitForDisclosureFocus(task.signal) || !ceremony.isCurrent(task)) return;
       ceremony.commit(task, () => setNotice(null));
       const generation = focusGeneration.current;
-      await discloseValue(task, (value) => {
+      await discloseValue(task, (value, recorded) => {
         ceremony.commit(task, () => {
           if (generation !== focusGeneration.current || document.hidden || !document.hasFocus()) {
-            setNotice(`Disclosure recorded. ${FOCUS_REMASK_NOTICE}`);
+            setNotice(recorded ? `Disclosure recorded. ${FOCUS_REMASK_NOTICE}` : FOCUS_REMASK_NOTICE);
             return;
           }
           const revealedAt = Date.now();
           setNow(revealedAt);
           setPlaintext({ value, until: revealedAt + REMASK_MS });
-          setNotice('Disclosure recorded.');
+          setNotice(recorded ? 'Disclosure recorded.' : null);
           setAnnouncement((current) => ({
             id: (current?.id ?? 0) + 1,
             message: `${keyRecord.name} revealed, re-masks in ${duration(REMASK_MS / 1000)}`,
@@ -748,15 +762,15 @@ function useCellDisclosure(
   }, [ceremony, discloseValue, focusGeneration, keyRecord.name, setPlaintext, withDisclosure]);
 
   const copy = useCallback(() => {
-    if (keyRecord.classification === 'config') {
+    if (!secret) {
       void clipboardMessage(sourceRow.cell?.value ?? '', false).then(setNotice);
       return;
     }
-    void withDisclosure('clipboard', (task) => discloseValue(task, async (value) => {
-      const message = await clipboardMessage(value, true);
+    void withDisclosure('clipboard', (task) => discloseValue(task, async (value, recorded) => {
+      const message = await clipboardMessage(value, recorded, () => ceremony.isCurrent(task));
       ceremony.commit(task, () => setNotice(message));
     }));
-  }, [ceremony, clipboardMessage, discloseValue, keyRecord.classification, sourceRow.cell?.value, withDisclosure]);
+  }, [ceremony, clipboardMessage, discloseValue, secret, sourceRow.cell?.value, withDisclosure]);
 
   return {
     // Fail closed: no guard answer means no reveal, and no copy of a secret.
