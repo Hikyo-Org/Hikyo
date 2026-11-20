@@ -81,8 +81,9 @@ web/design/exports/*
 !web/design/exports/.gitkeep
 .specs/
 
-# Accidental local build outputs (go build ./scripts/ci/analysis-shards-go, ./cmd/nightly)
+# Accidental local build outputs (go build ./scripts/ci/analysis-shards-go, ./scripts/ci/pr-gate, ./cmd/nightly)
 /analysis-shards-go
+/pr-gate
 /nightly
 /hikyo
 /bin/

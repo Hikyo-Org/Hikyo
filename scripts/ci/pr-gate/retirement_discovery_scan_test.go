@@ -324,3 +324,19 @@ func TestRetirementDiscoveryDiagnosticFailureDiscardsTargets(t *testing.T) {
 		})
 	}
 }
+
+func TestDiscoveryNamesCheckSuitePagesWhenTheyExhaustTheDeadline(t *testing.T) {
+	scan := newRetirementDiscoveryScan()
+	if err := scan.deadlineDiagnostic(context.DeadlineExceeded); err == nil || err.Error() != context.DeadlineExceeded.Error() {
+		t.Fatalf("a deadline without suite pages was rewritten: %v", err)
+	}
+	scan.suitePages.Add(36)
+	scan.historyPages = 4
+	err := scan.deadlineDiagnostic(fmt.Errorf("history page 5: %w", context.DeadlineExceeded))
+	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "after 36 check suite pages and 4 of its history pages") {
+		t.Fatalf("deadline error = %v, want the suite pages named", err)
+	}
+	if err := scan.deadlineDiagnostic(errors.New("refused")); err == nil || err.Error() != "refused" {
+		t.Fatal("a refusal was rewritten")
+	}
+}
