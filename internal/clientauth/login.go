@@ -121,7 +121,7 @@ func LoginLoopback(ctx context.Context, tr Transport, provider string, openURL f
 			return
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		_, _ = io.WriteString(w, "CLI login received. Return to the terminal.\n")
+		_, _ = io.WriteString(w, "CLI login received. Return to the Hikyo app or terminal.\n")
 	})
 	server := &http.Server{Handler: callback, ReadHeaderTimeout: 5 * time.Second}
 	defer func() { _ = server.Close() }()
@@ -190,9 +190,22 @@ func deviceTransportError(ctx context.Context, err error) error {
 	return clienterr.Failf(clienterr.ExitUnavailable, "device login transport failed")
 }
 
+// DevicePrompt is what a human needs to approve a device login elsewhere.
+type DevicePrompt struct {
+	VerificationURL string
+	UserCode        string
+	ExpiresIn       time.Duration
+}
+
 // LoginDevice runs the RFC 8628 device flow. The verification URL and user
 // code are written to prompt for the human to act on another device.
 func LoginDevice(ctx context.Context, tr Transport, prompt io.Writer, provider string) (apigen.LoginResult, error) {
+	return LoginDeviceNotify(ctx, tr, prompt, provider, nil)
+}
+
+// LoginDeviceNotify is LoginDevice plus a structured callback, called once
+// before polling, so a caller need not parse the prompt text. notify may be nil.
+func LoginDeviceNotify(ctx context.Context, tr Transport, prompt io.Writer, provider string, notify func(DevicePrompt)) (apigen.LoginResult, error) {
 	status, header, raw, err := tr.PostForm(ctx, api.PathPrefix+"/auth/cli-login/device/start", url.Values{"client_id": {"hikyo-cli"}})
 	if err != nil {
 		return apigen.LoginResult{}, deviceTransportError(ctx, err)
@@ -224,6 +237,9 @@ func LoginDevice(ctx context.Context, tr Transport, prompt io.Writer, provider s
 		verification.RawQuery = query.Encode()
 	}
 	_, _ = fmt.Fprintf(prompt, "On another device, visit %s\nEnter code: %s\nApprove a CLI login for %s.\n", verification.String(), started.UserCode, tr.Origin())
+	if notify != nil {
+		notify(DevicePrompt{VerificationURL: verification.String(), UserCode: started.UserCode, ExpiresIn: lifetime})
+	}
 	return PollDevice(pollCtx, tr, prompt, started.DeviceCode, interval)
 }
 

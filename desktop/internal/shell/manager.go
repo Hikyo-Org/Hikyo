@@ -41,7 +41,8 @@ type Native interface {
 	Alert(title, message string)
 	// SavePanel shows a blocking save panel with a suggested name. source
 	// names the connection asking, so the user can tell which one it is.
-	SavePanel(suggestedName, source string) (path string, ok bool)
+	// mimeType, when set, is the page's type hint for the file.
+	SavePanel(suggestedName, source, mimeType string) (path string, ok bool)
 	// AppActive reports whether the app is the frontmost application.
 	AppActive() bool
 	// ShowDeviceCode shows a device-flow code until dismiss is called. cancel
@@ -193,6 +194,18 @@ func (m *Manager) OpenConnection(host string) error {
 	if c == nil {
 		return errors.New("unknown connection")
 	}
+	if c.isTampered() {
+		return &shellErr{codeRefused, c.Stopped()}
+	}
+	// The instance may have been downgraded since the connection was added
+	// (ADR D8): check on every open and refuse by name. An instance that can't
+	// be reached is not refused here; its window shows that itself.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	var missing capabilityError
+	if err := checkCapability(ctx, c.inst); errors.As(err, &missing) {
+		return &shellErr{codeCapabilityMissing, c.Info().Name + ": " + missing.Error()}
+	}
 	return m.native.OpenWindow(host, "Hikyo: "+c.Info().Name, func(id string) { m.BindWindow(id, host) })
 }
 
@@ -221,12 +234,12 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if origin := r.Header.Get("Origin"); origin != "" && origin != PageScheme+"://"+host {
 		// Without this, connection A could spend connection B's session on a
 		// blind request.
-		log.Printf("refused cross-connection request %s -> %s %s", origin, host, r.URL.Path)
+		log.Printf("refused cross-connection request %s -> %s %s", origin, host, logSafe(r.URL.Path))
 		jsonError(w, http.StatusForbidden, codeRefused, "cross-connection request refused")
 		return
 	}
 	if m.windowHost(r.Header.Get("X-Wails-Window-Id")) != host {
-		log.Printf("refused request from another window to %s %s", host, r.URL.Path)
+		log.Printf("refused request from another window to %s %s", host, logSafe(r.URL.Path))
 		jsonError(w, http.StatusForbidden, codeRefused, "this window belongs to another connection")
 		return
 	}

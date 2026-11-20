@@ -75,14 +75,14 @@ func TestClipboardClearsOnlyAnUnchangedPasteboard(t *testing.T) {
 		return func() {}
 	}
 	// Nothing copied: arm does nothing.
-	g.arm()
+	g.arm("a")
 	if fire != nil {
 		t.Fatal("armed without a pasteboard change")
 	}
 	// The page copies a secret, then the shell sees the change.
 	n.pasteboard++
 	g.observe()
-	g.arm()
+	g.arm("a")
 	if fire == nil {
 		t.Fatal("not armed after a change")
 	}
@@ -96,7 +96,7 @@ func TestClipboardClearsOnlyAnUnchangedPasteboard(t *testing.T) {
 	n.pasteboard++
 	g.observe()
 	fire = nil
-	g.arm()
+	g.arm("a")
 	fire()
 	if n.cleared != 1 {
 		t.Errorf("cleared %d times", n.cleared)
@@ -217,17 +217,17 @@ func TestClipboardIgnoresACopyJustBeforeSwitchBack(t *testing.T) {
 	n.pasteboard++ // copied elsewhere; no poll saw it
 	n.inactive = false
 	n.activation = n.pasteboard // the app became active
-	g.arm()
+	g.arm("a")
 	if armed {
 		t.Fatal("armed on a change made before the app came to the front")
 	}
 	g.observe() // a poll after activation must not attribute it either
-	g.arm()
+	g.arm("a")
 	if armed {
 		t.Fatal("armed after a late poll attributed the foreign copy to the page")
 	}
 	n.pasteboard++ // the page copies while active
-	g.arm()
+	g.arm("a")
 	if !armed {
 		t.Fatal("did not arm for the page's own copy")
 	}
@@ -241,7 +241,7 @@ func TestClipboardIgnoresCopiesMadeInOtherApps(t *testing.T) {
 	n.inactive = true
 	n.pasteboard++
 	g.observe()
-	g.arm()
+	g.arm("a")
 	if armed {
 		t.Fatal("armed for a copy made while another app was frontmost")
 	}
@@ -382,5 +382,38 @@ func TestOpenHandoffAcceptsOnlyThisOriginsHandoffPages(t *testing.T) {
 	}
 	if got := len(h.openedURLs()); got != 3 {
 		t.Errorf("opened %d URLs, want 3", got)
+	}
+}
+
+// One connection arming its clear must not cancel another's.
+func TestClipboardArmingIsPerConnection(t *testing.T) {
+	n := newFakeNative()
+	g := newClipboardGuard(n, time.Now)
+	fires := map[string]func(){}
+	stopped := map[string]bool{}
+	var current string
+	g.after = func(_ time.Duration, f func()) func() {
+		owner := current
+		fires[owner] = f
+		return func() { stopped[owner] = true }
+	}
+	current = "a"
+	n.pasteboard++
+	g.observe()
+	g.arm("a")
+	current = "b"
+	n.pasteboard++
+	g.observe()
+	g.arm("b")
+	if stopped["a"] {
+		t.Fatal("arming b cancelled a's pending clear")
+	}
+	fires["a"]() // a's secret was replaced by b's: a must not clear it
+	if n.cleared != 0 {
+		t.Fatal("a cleared b's copy")
+	}
+	fires["b"]()
+	if n.cleared != 1 {
+		t.Fatalf("b's copy cleared %d times", n.cleared)
 	}
 }

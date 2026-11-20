@@ -161,7 +161,7 @@ func (m *Manager) Remove(ctx context.Context, host string) (RemoveResult, error)
 		if err := c.revoke(ctx, token); err != nil {
 			result = RemoveResult{Message: "The session could not be revoked on the instance, so it stays valid until it expires. Revoke it from another signed-in session."}
 		}
-	} else if secret, err := m.secrets.Get(host); err == nil && secret.Token != "" {
+	} else if secret, err := m.secrets.Get(host); err == nil && secret.Token != "" && !c.isTampered() {
 		if err := c.revoke(ctx, secret.Token); err != nil {
 			result = RemoveResult{Message: "The session could not be revoked on the instance, so it stays valid until it expires. Revoke it from another signed-in session."}
 		}
@@ -197,6 +197,12 @@ func (m *Manager) SignIn(ctx context.Context, host, method string) error {
 	c := m.conn(host)
 	if c == nil {
 		return &shellErr{codeInvalid, "unknown connection"}
+	}
+	if c.isTampered() {
+		return &shellErr{codeRefused, "this connection's saved settings were changed outside the app; remove it and add it again"}
+	}
+	if !c.confirmSignIn() {
+		return &shellErr{codeTrustDeclined, "the sign-in was not confirmed"}
 	}
 	// Removing the connection ends its sign-in.
 	ctx, cancel := context.WithCancel(ctx)

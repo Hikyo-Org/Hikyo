@@ -3,20 +3,48 @@ package shell
 import (
 	"errors"
 	"sync"
+
+	"github.com/Hikyo-Org/hikyo/internal/clienttrust"
 )
 
 // Secret is what the keychain holds for one connection: the bearer and the id
 // of its session, in one item so a crash cannot leave them out of step (D4).
+// It also records where the bearer may be spent (origin, trust mode, pin) and
+// whom it belongs to. connections.json is editable by any process of the same
+// user, the keychain item is not, so a record that disagrees with the item is
+// refused instead of trusted (see bindingMismatch).
 type Secret struct {
-	Token     string `json:"token"`
-	SessionID string `json:"session_id"`
+	Token       string           `json:"token"`
+	SessionID   string           `json:"session_id"`
+	Origin      string           `json:"origin"`
+	TrustMode   clienttrust.Mode `json:"trust_mode"`
+	Pin         string           `json:"pin,omitzero"`
+	PrincipalID string           `json:"principal_id,omitzero"`
+}
+
+// bindingMismatch names the first way the connection record departs from what
+// the keychain item recorded, or "" when they agree.
+func (s Secret) bindingMismatch(info Connection) string {
+	switch {
+	case s.Origin != info.Origin:
+		return "origin"
+	case s.TrustMode != info.Trust.Mode:
+		return "trust mode"
+	case s.Pin != info.Trust.Pin:
+		return "certificate pin"
+	case s.PrincipalID != info.PrincipalID:
+		return "account"
+	}
+	return ""
 }
 
 // ErrNoSecret means the keychain has no item for the connection.
 var ErrNoSecret = errors.New("no stored session for this connection")
 
 // SecretStore is the OS keychain. Implementations restrict access to the
-// signed app (ADR D3) and must make Put atomic.
+// signed app (ADR D3). Put replaces the item as a whole: it deletes any
+// existing item first, so a pre-planted item's access list is never kept, and
+// a failure leaves no item rather than a half-written one.
 type SecretStore interface {
 	Get(host string) (Secret, error)
 	Put(host string, s Secret) error

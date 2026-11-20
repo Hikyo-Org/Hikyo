@@ -193,12 +193,27 @@ func (c *Conn) guardTOTPReauth(w http.ResponseWriter, r *http.Request) bool {
 		jsonError(w, http.StatusForbidden, "refused", "the reauthentication request could not be read")
 		return false
 	}
-	if purpose, ok := stringMember(members, "purpose"); ok && strings.EqualFold(strings.TrimSpace(purpose), "developer-credential") {
-		jsonError(w, http.StatusForbidden, "refused", "developer credentials are minted from a terminal")
-		return false
+	// encoding/json v1 on the instance matches member names case-insensitively
+	// (and folds a few non-ASCII letters), so every spelling of "purpose" is
+	// the purpose, and two spellings are ambiguous: refuse both.
+	var purposeKey string
+	for key := range members {
+		if !strings.EqualFold(key, "purpose") {
+			continue
+		}
+		if purposeKey != "" {
+			jsonError(w, http.StatusForbidden, "refused", "the reauthentication request could not be read")
+			return false
+		}
+		purposeKey = key
 	}
-	if raw, ok := members["purpose"]; ok {
-		if _, isString := stringMember(members, "purpose"); !isString && !isNull(raw) {
+	if purposeKey != "" {
+		purpose, isString := stringMember(members, purposeKey)
+		switch {
+		case isString && strings.EqualFold(strings.TrimSpace(purpose), "developer-credential"):
+			jsonError(w, http.StatusForbidden, "refused", "developer credentials are minted from a terminal")
+			return false
+		case !isString && !isNull(members[purposeKey]):
 			jsonError(w, http.StatusForbidden, "refused", "the reauthentication request could not be read")
 			return false
 		}
@@ -221,7 +236,13 @@ func (c *Conn) modifyResponse(resp *http.Response) error {
 	h.Del("Set-Cookie")
 	c.rewriteLocation(resp)
 	fl, _ := resp.Request.Context().Value(flightKey{}).(*flight)
+	rot := c.m.policy.RotationFor(resp.Request.Method, resp.Request.URL.EscapedPath())
 	if mt, _, _ := mime.ParseMediaType(h.Get("Content-Type")); mt == "text/event-stream" {
+		// A stream is passed through unscanned, so it can't carry a session change.
+		if rot != NotRotating {
+			c.stop("The instance answered a session change with a stream the app can't read. Sign in again.")
+			return errBlocked{"unreadable session response"}
+		}
 		if fl != nil {
 			fl.stream.Store(true)
 		}
@@ -246,7 +267,6 @@ func (c *Conn) modifyResponse(resp *http.Response) error {
 	default:
 		return errBlocked{"the instance used an encoding the app can't read"}
 	}
-	rot := c.m.policy.RotationFor(resp.Request.Method, resp.Request.URL.EscapedPath())
 	ok2xx := resp.StatusCode/100 == 2
 	if !ok2xx || resp.Request.Method == http.MethodHead || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusResetContent {
 		if ok2xx && rot == Reissue {
@@ -286,7 +306,7 @@ func (c *Conn) modifyResponse(resp *http.Response) error {
 		if view.Token != c.bearer() {
 			c.revokeAsync(view.Token)
 		}
-		log.Printf("connection %s: removed an unexpected session token from %s", c.host, resp.Request.URL.Path)
+		log.Printf("connection %s: removed an unexpected session token from %s", c.host, logSafe(resp.Request.URL.Path))
 		return errBlocked{"the instance returned a session token where none is allowed"}
 	case view.Token != "":
 		// A failed check has already stopped the connection and revoked the new
@@ -326,13 +346,13 @@ func (c *Conn) rewriteLocation(resp *http.Response) {
 func (c *Conn) proxyError(w http.ResponseWriter, r *http.Request, err error) {
 	var blocked errBlocked
 	if errors.As(err, &blocked) {
-		log.Printf("connection %s: blocked %s %s: %s", c.host, r.Method, r.URL.Path, blocked.msg)
+		log.Printf("connection %s: blocked %s %s: %s", c.host, r.Method, logSafe(r.URL.Path), blocked.msg)
 		jsonError(w, http.StatusBadGateway, "failed", blocked.msg)
 		return
 	}
 	if errors.Is(err, context.Canceled) {
 		return
 	}
-	log.Printf("connection %s: %s %s: instance unreachable: %v", c.host, r.Method, r.URL.Path, err)
+	log.Printf("connection %s: %s %s: instance unreachable: %v", c.host, r.Method, logSafe(r.URL.Path), logSafe(err.Error()))
 	jsonError(w, http.StatusBadGateway, "failed", "the instance could not be reached")
 }

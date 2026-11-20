@@ -92,7 +92,7 @@ func Reauth(ctx context.Context, tr Transport, req ReauthRequest, openURL func(s
 	var callbackOnce sync.Once
 	callback := http.NewServeMux()
 	callback.HandleFunc(reauthCallbackPath, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || !exactCallbackQuery(r.URL.Query(), started.State) {
+		if r.Method != http.MethodGet || r.Host != listener.Addr().String() || !exactCallbackQuery(r.URL.Query(), started.State) {
 			http.Error(w, "This CLI authorization callback did not match the request.", http.StatusBadRequest)
 			return
 		}
@@ -103,7 +103,7 @@ func Reauth(ctx context.Context, tr Transport, req ReauthRequest, openURL func(s
 		})
 		if accepted {
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			_, _ = w.Write([]byte("CLI authorization received. Return to the terminal.\n"))
+			_, _ = w.Write([]byte("CLI authorization received. Return to the Hikyo app or terminal.\n"))
 			return
 		}
 		http.Error(w, "This CLI authorization callback was already used.", http.StatusConflict)

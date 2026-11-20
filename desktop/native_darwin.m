@@ -2,6 +2,7 @@
 
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <objc/runtime.h>
 #include "_cgo_export.h"
 
@@ -95,8 +96,24 @@ static void becameDownload(id self, SEL _cmd, WKWebView *webView, id trigger, WK
 	download.delegate = downloads;
 }
 
-static int decide(WKWebView *webView, NSURL *url, int flags) {
-	return hikyoNavigate((char *)pageHost(webView).UTF8String, (char *)url.absoluteString.UTF8String, flags);
+static int decide(WKWebView *webView, NSURL *url, int flags, NSString *method, NSString *filename) {
+	return hikyoNavigate((char *)pageHost(webView).UTF8String, (char *)url.absoluteString.UTF8String, flags,
+		(char *)(method ?: @"").UTF8String, (char *)(filename ?: @"").UTF8String);
+}
+
+// The method of the last main-frame navigation a window started. WebKit does
+// not tell a response which request it answers, and the shell must not replay
+// a form POST as a GET.
+static const void *kLastMethod = &kLastMethod;
+
+// The link's download attribute. WebKit keeps it behind a private property;
+// without it the file is named from the response or the URL, so a missing
+// property only costs the suggested name.
+static NSString *downloadAttribute(WKNavigationAction *action) {
+	SEL sel = NSSelectorFromString(@"_downloadAttribute");
+	if (![action respondsToSelector:sel]) return nil;
+	id value = [action valueForKey:@"_downloadAttribute"];
+	return [value isKindOfClass:[NSString class]] ? value : nil;
 }
 
 static void decideAction(id self, SEL _cmd, WKWebView *webView, WKNavigationAction *action, void (^handler)(WKNavigationActionPolicy)) {
@@ -105,7 +122,11 @@ static void decideAction(id self, SEL _cmd, WKWebView *webView, WKNavigationActi
 	if (action.targetFrame == nil) flags |= flagNewWindow;
 	if (action.shouldPerformDownload) flags |= flagDownload;
 	if (action.navigationType == WKNavigationTypeLinkActivated || action.navigationType == WKNavigationTypeFormSubmitted) flags |= flagGesture;
-	int verdict = decide(webView, action.request.URL, flags);
+	int verdict = decide(webView, action.request.URL, flags, action.request.HTTPMethod, action.shouldPerformDownload ? downloadAttribute(action) : nil);
+	if (verdict == 1 && action.targetFrame.isMainFrame) {
+		// Only a navigation that will actually load can produce the next response.
+		objc_setAssociatedObject(webView, kLastMethod, action.request.HTTPMethod, OBJC_ASSOCIATION_COPY_NONATOMIC);
+	}
 	if (verdict == 1) {
 		handler(WKNavigationActionPolicyAllow);
 	} else if (verdict == 2) {
@@ -118,6 +139,7 @@ static void decideAction(id self, SEL _cmd, WKWebView *webView, WKNavigationActi
 // An attachment, or a type WebKit cannot show, is a download. A custom-scheme
 // download cannot be handed to WKDownload (NSURLErrorDomain -1002), so Go
 // fetches it through the connection's proxy and the response is cancelled.
+// Go refuses it when the request that produced the response was not a GET.
 static void decideResponse(id self, SEL _cmd, WKWebView *webView, WKNavigationResponse *navResponse, void (^handler)(WKNavigationResponsePolicy)) {
 	NSString *disposition = nil;
 	if ([navResponse.response isKindOfClass:[NSHTTPURLResponse class]]) {
@@ -129,13 +151,19 @@ static void decideResponse(id self, SEL _cmd, WKWebView *webView, WKNavigationRe
 		handler(WKNavigationResponsePolicyAllow);
 		return;
 	}
-	int verdict = decide(webView, navResponse.response.URL, flagDownload | flagMainFrame);
+	if (!navResponse.isForMainFrame) {
+		// Only a main-frame response is ever saved; a subframe's request method is unknown.
+		handler(WKNavigationResponsePolicyCancel);
+		return;
+	}
+	NSString *method = objc_getAssociatedObject(webView, kLastMethod);
+	int verdict = decide(webView, navResponse.response.URL, flagDownload | flagMainFrame, method, nil);
 	handler(verdict == 2 ? WKNavigationResponsePolicyDownload : WKNavigationResponsePolicyCancel);
 }
 
 static WKWebView *createWindow(id self, SEL _cmd, WKWebView *webView, WKWebViewConfiguration *configuration, WKNavigationAction *action, WKWindowFeatures *features) {
 	// A popup never gets a window of its own: https leaves for the browser.
-	decide(webView, action.request.URL, flagNewWindow | flagMainFrame);
+	decide(webView, action.request.URL, flagNewWindow | flagMainFrame, action.request.HTTPMethod, nil);
 	return nil;
 }
 
@@ -214,12 +242,19 @@ void hikyoAlert(const char *title, const char *message) {
 	});
 }
 
-char *hikyoSavePanel(const char *name, const char *source) {
+char *hikyoSavePanel(const char *name, const char *source, const char *mime) {
 	__block char *out = NULL;
 	NSString *n = [NSString stringWithUTF8String:name], *from = [NSString stringWithUTF8String:source];
+	NSString *type = [NSString stringWithUTF8String:mime];
 	onMainRL(^{
 		NSSavePanel *panel = [NSSavePanel savePanel];
 		panel.nameFieldStringValue = n;
+		// The page's type hint only suggests an extension; any name stays allowed.
+		UTType *hint = type.length > 0 ? [UTType typeWithMIMEType:type] : nil;
+		if (hint != nil) {
+			panel.allowedContentTypes = @[hint];
+			panel.allowsOtherFileTypes = YES;
+		}
 		panel.message = [NSString stringWithFormat:@"Save a file from %@", from];
 		panel.canCreateDirectories = YES;
 		[NSApp activateIgnoringOtherApps:YES];

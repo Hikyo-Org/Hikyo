@@ -161,3 +161,53 @@ func TestValidateSessionRefusesMalformedResult(t *testing.T) {
 		t.Fatal("empty login result accepted")
 	}
 }
+
+func TestReauthCallbackRefusesForeignHost(t *testing.T) {
+	tr := &fakeTransport{t: t}
+	_, err := Reauth(t.Context(), tr, ReauthRequest{Purpose: "adapter", Operation: "adapter.sync", EnvironmentIDs: []string{"env_one"}}, func(string) error {
+		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, tr.reauth.RedirectUri+"?"+url.Values{"code": {"x"}, "state": {"hik_1_hs_opaque"}}.Encode(), nil)
+		if err != nil {
+			return err
+		}
+		request.Host = "evil.example"
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			return err
+		}
+		_ = response.Body.Close()
+		if response.StatusCode != http.StatusBadRequest {
+			t.Errorf("foreign Host status %d", response.StatusCode)
+		}
+		// The refused request must not consume the single-use callback.
+		callback(t, tr.reauth.RedirectUri, "reauth-code", "hik_1_hs_opaque")
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+type deviceTransport struct{ fakeTransport }
+
+func (d *deviceTransport) PostForm(_ context.Context, path string, _ url.Values) (int, http.Header, []byte, error) {
+	if strings.HasSuffix(path, "/device/start") {
+		return 200, nil, []byte(`{"device_code":"dc","user_code":"ABCD2345","verification_uri":"https://hikyo.example/login/cli?device=1","expires_in":600,"interval":5,"expires_at":"2030-01-01T00:00:00Z"}`), nil
+	}
+	return 200, nil, []byte(`{"access_token":"tok","token_type":"Bearer","expires_in":60}`), nil
+}
+
+func TestLoginDeviceNotifyMatchesPrintedPrompt(t *testing.T) {
+	var out strings.Builder
+	var got DevicePrompt
+	_, err := LoginDeviceNotify(t.Context(), &deviceTransport{fakeTransport{t: t}}, &out, "", func(p DevicePrompt) { got = p })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.VerificationURL != "https://hikyo.example/login/cli?device=1" || got.UserCode != "ABCD2345" || got.ExpiresIn != 10*time.Minute {
+		t.Fatalf("prompt %+v", got)
+	}
+	want := "On another device, visit https://hikyo.example/login/cli?device=1\nEnter code: ABCD2345\nApprove a CLI login for https://hikyo.example.\n"
+	if out.String() != want {
+		t.Fatalf("printed %q", out.String())
+	}
+}

@@ -11,8 +11,8 @@ tasks:
     summary: Builds the release binary (cgo, macOS)
     env:
       CGO_ENABLED: '1'
-      CGO_CFLAGS: -mmacosx-version-min=12.0
-      CGO_LDFLAGS: -mmacosx-version-min=12.0
+      CGO_CFLAGS: -mmacosx-version-min=13.0
+      CGO_LDFLAGS: -mmacosx-version-min=13.0
     cmds:
       - go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o "{{.BIN_DIR}}/{{.APP_NAME}}"
 

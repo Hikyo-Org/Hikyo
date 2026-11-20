@@ -8,8 +8,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"regexp"
-	"sync"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/clientauth"
@@ -73,6 +71,12 @@ func (c *Conn) sessionAlive(ctx context.Context) (bool, error) {
 // runSignIn confirms the session is dead, then signs in again through the
 // system browser (ADR D6, D9).
 func (c *Conn) runSignIn(ctx context.Context) *shellErr {
+	if c.isTampered() {
+		return &shellErr{codeRefused, "this connection's saved settings were changed outside the app; remove it and add it again"}
+	}
+	if !c.confirmSignIn() {
+		return &shellErr{codeCancelled, "cancelled"}
+	}
 	alive, err := c.sessionAlive(ctx)
 	if err != nil {
 		return &shellErr{codeFailed, "the instance could not be reached to check the session"}
@@ -90,32 +94,6 @@ func (c *Conn) runSignIn(ctx context.Context) *shellErr {
 	return nil
 }
 
-var devicePromptPattern = regexp.MustCompile(`visit (\S+)\nEnter code: (\S+)\n`)
-
-// devicePrompt receives clientauth's device-flow instructions and shows them
-// natively once.
-type devicePrompt struct {
-	show func(verificationURL, code string)
-	once sync.Once
-	buf  []byte
-}
-
-func (p *devicePrompt) Write(b []byte) (int, error) {
-	p.once.Do(func() {})
-	p.buf = append(p.buf, b...)
-	if m := devicePromptPattern.FindSubmatch(p.buf); m != nil {
-		p.show(string(m[1]), string(m[2]))
-		p.buf = nil
-		p.show = func(string, string) {}
-	}
-	if len(p.buf) > 4096 {
-		p.buf = nil
-	}
-	return len(b), nil
-}
-
-var _ io.Writer = (*devicePrompt)(nil)
-
 // login runs the sign-in handoff: loopback with PKCE, then the device flow
 // when the loopback can't run. method "device" skips the loopback.
 func (m *Manager) login(ctx context.Context, in *Instance, method string) (apigen.LoginResult, error) {
@@ -130,15 +108,14 @@ func (m *Manager) login(ctx context.Context, in *Instance, method string) (apige
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var dismiss func()
-	prompt := &devicePrompt{show: func(verificationURL, code string) {
+	result, err := clientauth.LoginDeviceNotify(ctx, tr, io.Discard, "", func(p clientauth.DevicePrompt) {
 		open := func() {
-			if err := m.openHandoff(in.Origin, verificationURL); err != nil {
+			if err := m.openHandoff(in.Origin, p.VerificationURL); err != nil {
 				log.Printf("sign-in: opening the verification page failed: %v", err)
 			}
 		}
-		dismiss = m.native.ShowDeviceCode(verificationURL, code, cancel, open)
-	}}
-	result, err := clientauth.LoginDevice(ctx, tr, prompt, "")
+		dismiss = m.native.ShowDeviceCode(p.VerificationURL, p.UserCode, cancel, open)
+	})
 	if dismiss != nil {
 		dismiss()
 	}
@@ -175,7 +152,7 @@ func (m *Manager) acceptLogin(ctx context.Context, c *Conn, result apigen.LoginR
 		c.revokeAsync(token)
 		return errRemoved
 	}
-	if err := c.setSession(Secret{Token: token, SessionID: string(result.Session.Id)}, principalID, name); err != nil {
+	if err := c.setSession(token, string(result.Session.Id), principalID, name); err != nil {
 		c.revokeAsync(token)
 		return clienterr.Failf(clienterr.ExitInternal, "the session could not be saved to the keychain: %v", err)
 	}

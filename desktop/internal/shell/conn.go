@@ -30,6 +30,10 @@ type Conn struct {
 	info    Connection
 	secret  Secret
 	stopped string
+	// tampered is set when the connection record disagrees with the keychain
+	// item. Such a connection is never used, signed in again or revoked: the
+	// record can't be trusted to say where the bearer goes.
+	tampered bool
 
 	// rotMu serializes token rotation: one at a time (ADR D4).
 	rotMu   sync.Mutex
@@ -40,7 +44,7 @@ type Conn struct {
 	reauthSlot, signInSlot, downloadSlot slot
 	reauthLimit, signInLimit             *limiter
 	openLimit, downloadLimit             *limiter
-	linkLimit, clipLimit                 *limiter
+	linkLimit, clipLimit, alertLimit     *limiter
 }
 
 func (m *Manager) newConn(info Connection) (*Conn, error) {
@@ -62,9 +66,17 @@ func (m *Manager) newConn(info Connection) (*Conn, error) {
 		downloadLimit: newLimiter(20, time.Minute, m.now),
 		linkLimit:     newLimiter(10, time.Minute, m.now),
 		clipLimit:     newLimiter(30, time.Minute, m.now),
+		alertLimit:    newLimiter(4, time.Minute, m.now),
 	}
 	switch secret, err := m.secrets.Get(info.Host); {
 	case err == nil:
+		if field := secret.bindingMismatch(info); field != "" {
+			c.tampered = true
+			c.stopped = "The saved connection settings (" + field + ") do not match the keychain. " +
+				"Something changed this connection outside the app, so it was not used. Remove the connection and add it again."
+			log.Printf("connection %s: record disagrees with the keychain (%s)", info.Host, field)
+			break
+		}
 		c.secret = secret
 	case errors.Is(err, ErrNoSecret):
 		c.stopped = "This connection has no stored session. Sign in again."
@@ -140,15 +152,24 @@ func (c *Conn) stop(reason string) {
 
 // setSession stores a fresh session after a sign-in and clears a stop. The
 // keychain write comes first: if it fails nothing in memory changes.
-func (c *Conn) setSession(s Secret, principalID, principalName string) error {
+func (c *Conn) setSession(token, sessionID, principalID, principalName string) error {
+	c.mu.RLock()
+	tampered := c.tampered
+	info := c.info
+	c.mu.RUnlock()
+	if tampered {
+		return errors.New("this connection's saved settings were changed outside the app; remove it and add it again")
+	}
+	info.PrincipalID, info.PrincipalName = principalID, principalName
+	s := Secret{Token: token, SessionID: sessionID, Origin: info.Origin,
+		TrustMode: info.Trust.Mode, Pin: info.Trust.Pin, PrincipalID: principalID}
 	if err := c.m.secrets.Put(c.host, s); err != nil {
 		return err
 	}
 	c.mu.Lock()
 	c.secret = s
 	c.stopped = ""
-	c.info.PrincipalID, c.info.PrincipalName = principalID, principalName
-	info := c.info
+	c.info = info
 	c.mu.Unlock()
 	c.flights.cancelStreams()
 	return c.m.store.Put(info)
@@ -198,21 +219,45 @@ func (c *Conn) applyRotation(kind Rotation, view tokenView) error {
 	}
 	c.mu.RLock()
 	stored, principal := c.secret, c.info.PrincipalID
+	tampered := c.tampered
 	c.mu.RUnlock()
+	if tampered {
+		return errors.New("the connection record was changed outside the app")
+	}
 	newID, err := checkRotation(kind, view, stored, principal)
 	if err != nil {
 		c.revokeAsync(view.Token)
 		c.stop("The instance returned a session the app can't accept (" + err.Error() + "). Sign in again.")
 		return err
 	}
-	if err := c.m.secrets.Put(c.host, Secret{Token: view.Token, SessionID: newID}); err != nil {
+	rotated := stored
+	rotated.Token, rotated.SessionID = view.Token, newID
+	if err := c.m.secrets.Put(c.host, rotated); err != nil {
 		c.revokeAsync(view.Token)
 		c.stop("The new session could not be saved to the keychain (" + err.Error() + "). Sign in again.")
 		return err
 	}
 	c.mu.Lock()
-	c.secret = Secret{Token: view.Token, SessionID: newID}
+	c.secret = rotated
 	c.mu.Unlock()
 	c.flights.cancelStreams()
 	return nil
+}
+
+func (c *Conn) isTampered() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.tampered
+}
+
+// confirmSignIn names the origin before a sign-in that has no stored session to
+// vouch for it. Without a session the keychain can't say the record is the one
+// the person added, so the person says so.
+func (c *Conn) confirmSignIn() bool {
+	if c.bearer() != "" {
+		return true
+	}
+	info := c.Info()
+	return c.m.native.Confirm("Sign in to this instance?",
+		fmt.Sprintf("origin: %s\nname: %s\n\nSign in opens your browser at this address. Continue only if it is the instance you added.", info.Origin, logSafe(info.Name)), "Sign in")
 }
