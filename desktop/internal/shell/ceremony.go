@@ -35,6 +35,14 @@ func (c *Conn) transport() authTransport { return authTransport{in: c.inst, bear
 // runReauth runs the browser ceremony for a page's request (ADR D7, D9) and
 // stores the rotated session. The page gets no token and no window result.
 func (c *Conn) runReauth(ctx context.Context, in reauthIn) *shellErr {
+	// Held from before the bearer is chosen until the rotation is stored, so no
+	// proxied session change overlaps this ceremony (ADR D4).
+	release, gerr := c.sessGate.acquire(ctx)
+	if gerr != nil {
+		return failureOf(gerr)
+	}
+	defer release()
+	sent := c.bearer()
 	rotated, err := clientauth.Reauth(ctx, c.transport(), clientauth.ReauthRequest{
 		Purpose: in.Purpose, Operation: in.Operation,
 		EnvironmentIDs: in.EnvironmentIDs, KeyIDs: in.KeyIDs, SelfConfig: in.SelfConfig,
@@ -43,7 +51,10 @@ func (c *Conn) runReauth(ctx context.Context, in reauthIn) *shellErr {
 		return failureOf(err)
 	}
 	// A redeemed handoff rotates the session and keeps its id (ADR D4).
-	if err := c.applyRotation(Rotate, tokenView{Token: rotated.Token, SessionID: rotated.SessionID}); err != nil {
+	if err := c.applyRotation(Rotate, tokenView{Token: rotated.Token, SessionID: rotated.SessionID}, sent); err != nil {
+		if errors.Is(err, errSuperseded) {
+			return &shellErr{codeFailed, "you signed in again while this was running; try it again"}
+		}
 		return &shellErr{codeFailed, "the approved session could not be kept; sign in again"}
 	}
 	return nil
@@ -72,7 +83,7 @@ func (c *Conn) sessionAlive(ctx context.Context) (bool, error) {
 // system browser (ADR D6, D9).
 func (c *Conn) runSignIn(ctx context.Context) *shellErr {
 	if c.isTampered() {
-		return &shellErr{codeRefused, "this connection's saved settings were changed outside the app; remove it and add it again"}
+		return &shellErr{codeRefused, c.Stopped()}
 	}
 	if !c.confirmSignIn() {
 		return &shellErr{codeCancelled, "cancelled"}
@@ -151,6 +162,12 @@ func (m *Manager) acceptLogin(ctx context.Context, c *Conn, result apigen.LoginR
 	if c.removed {
 		c.revokeAsync(token)
 		return errRemoved
+	}
+	// A sign-in whose connection was removed and then restored by a failed
+	// removal must not complete: its own context was cancelled.
+	if err := ctx.Err(); err != nil {
+		c.revokeAsync(token)
+		return err
 	}
 	if err := c.setSession(token, string(result.Session.Id), principalID, name); err != nil {
 		c.revokeAsync(token)

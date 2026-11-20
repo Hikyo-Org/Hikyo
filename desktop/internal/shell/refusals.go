@@ -175,7 +175,7 @@ func returnsSessionToken(op *openapi3.Operation) bool {
 			continue
 		}
 		for _, media := range ref.Value.Content {
-			if schemaHasToken(media.Schema, map[*openapi3.Schema]bool{}, true) {
+			if schemaHasToken(media.Schema, map[visit]bool{}, true) {
 				return true
 			}
 		}
@@ -183,11 +183,19 @@ func returnsSessionToken(op *openapi3.Operation) bool {
 	return false
 }
 
-func schemaHasToken(ref *openapi3.SchemaRef, seen map[*openapi3.Schema]bool, descend bool) bool {
-	if ref == nil || ref.Value == nil || seen[ref.Value] {
+// visit is a schema reached in one descent mode. A schema first reached under
+// `login` (which is not searched further) must still be searched when a later
+// branch reaches it at the response root.
+type visit struct {
+	schema  *openapi3.Schema
+	descend bool
+}
+
+func schemaHasToken(ref *openapi3.SchemaRef, seen map[visit]bool, descend bool) bool {
+	if ref == nil || ref.Value == nil || seen[visit{ref.Value, descend}] {
 		return false
 	}
-	seen[ref.Value] = true
+	seen[visit{ref.Value, descend}] = true
 	schema := ref.Value
 	if _, ok := schema.Properties["session_token"]; ok {
 		return true

@@ -2,6 +2,7 @@ package shell
 
 import (
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/clienterr"
 	"github.com/Hikyo-Org/hikyo/internal/clienttrust"
 )
 
@@ -53,11 +55,25 @@ func (e capabilityError) Error() string {
 }
 
 // checkCapability reads /api/v1/meta and refuses an instance that does not
-// advertise desktop-app/1 (ADR D8). There is no degraded mode.
+// advertise desktop-app/1 (ADR D8). There is no degraded mode: an instance that
+// answers the meta request with a client error (one that predates the endpoint
+// answers 404) is refused like one that omits the capability. A server error,
+// rate limit or timeout says nothing about the capability, so it is returned as
+// a failure and the window opens to show the instance's own state.
 func checkCapability(ctx context.Context, in *Instance) error {
+	status, _, data, err := in.call(ctx, http.MethodGet, api.PathPrefix+"/meta", "", nil, "")
+	if err != nil {
+		return clienterr.Failf(clienterr.ExitUnavailable, "cannot reach %s: %v", in.Origin, err)
+	}
+	if status/100 == 4 && status != http.StatusRequestTimeout && status != http.StatusTooManyRequests {
+		return capabilityError{serverVersion: "unknown"}
+	}
+	if status/100 != 2 {
+		return authTransport{in: in}.ResponseError(status, nil, nil)
+	}
 	var meta apigen.Meta
-	if err := (authTransport{in: in}).Do(ctx, http.MethodGet, api.PathPrefix+"/meta", nil, &meta); err != nil {
-		return err
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return clienterr.Failf(clienterr.ExitInternal, "the instance sent an unreadable response")
 	}
 	if !slices.Contains(meta.ProtocolCapabilities, capabilityDesktop) {
 		return capabilityError{serverVersion: meta.ServerVersion}
@@ -141,14 +157,19 @@ func (m *Manager) Add(ctx context.Context, req AddRequest) (string, error) {
 
 // RemoveResult reports what removal did. Revoked is false when the instance
 // could not be told to end the session, which then stays live until it expires.
+// StorageKept is true when the connection's browser data could not be deleted:
+// the connection stays in the list, unusable, so the removal can be retried.
+// Message is shown whatever the other fields say.
 type RemoveResult struct {
-	Revoked bool   `json:"revoked"`
-	Message string `json:"message,omitzero"`
+	Revoked     bool   `json:"revoked"`
+	StorageKept bool   `json:"storage_kept,omitzero"`
+	Message     string `json:"message,omitzero"`
 }
 
 // Remove revokes the connection's session on the instance first, then deletes
 // its window, browser storage, keychain item and record together (ADR D2).
-// A failed revocation is reported plainly and does not keep the data.
+// A failed revocation is reported plainly and does not keep the data. A failed
+// storage wipe keeps an unusable record, so it can be retried.
 func (m *Manager) Remove(ctx context.Context, host string) (RemoveResult, error) {
 	c := m.conn(host)
 	if c == nil {
@@ -157,28 +178,49 @@ func (m *Manager) Remove(ctx context.Context, host string) (RemoveResult, error)
 	// No ceremony may store a session after this point (ADR D2).
 	undo := c.beginRemoval()
 	const notRevoked = "The session could not be revoked on the instance, so it stays valid until it expires. Revoke it from another signed-in session."
+	const ended = "This connection's session was ended while it was being removed. Sign in again, or remove it again to finish."
 	var revokeErr error
-	if token := c.bearer(); token != "" {
+	switch token := c.bearer(); {
+	case c.Info().WipePending:
+		// Revoked and deleted by the earlier removal; only the data is left.
+	case token != "":
 		revokeErr = c.revoke(ctx, token)
-	} else {
+	default:
 		revokeErr = m.revokeStored(ctx, host)
 	}
 	result := RemoveResult{Revoked: revokeErr == nil}
-	if errors.Is(revokeErr, ErrNoSecret) {
+	switch {
+	case errors.Is(revokeErr, ErrNoSecret):
 		result.Message = "There was no stored session to revoke."
-	} else if revokeErr != nil {
+	case revokeErr != nil:
 		result.Message = notRevoked
 	}
-	m.native.CloseWindow(host)
-	var failures []string
-	if err := m.native.WipeStorage(host); err != nil {
-		failures = append(failures, "browser storage: "+err.Error())
+	if revokeErr == nil {
+		c.endSession(ended)
 	}
+	m.native.CloseWindow(host)
+	wipeErr := m.native.WipeStorage(host)
 	if err := m.secrets.Delete(host); err != nil {
 		// Keep the record so the user can retry: an orphaned keychain item
 		// would be unreachable from the list.
 		undo()
 		return result, &shellErr{codeFailed, "the keychain item could not be deleted: " + err.Error()}
+	}
+	c.endSession(ended)
+	if wipeErr != nil {
+		// The session and keychain item are gone but the page's data is not.
+		// Keep a record that can't open the connection, so the wipe can be
+		// retried from the list.
+		info := c.Info()
+		info.WipePending = true
+		if err := m.store.Put(info); err != nil {
+			undo()
+			return result, &shellErr{codeFailed, "browser data could not be deleted and the connection could not be marked for a retry: " + err.Error()}
+		}
+		c.markWipePending(info)
+		result.StorageKept = true
+		result.Message = strings.TrimSpace(result.Message + " The connection's browser data could not be deleted (" + wipeErr.Error() + "). It stays in the list; remove it again to retry.")
+		return result, nil
 	}
 	if err := m.store.Remove(host); err != nil {
 		undo()
@@ -188,17 +230,17 @@ func (m *Manager) Remove(ctx context.Context, host string) (RemoveResult, error)
 	delete(m.conns, host)
 	m.mu.Unlock()
 	c.flights.cancelAll()
-	c.inst.close()
-	if len(failures) > 0 {
-		result.Message = strings.TrimSpace(result.Message + " Some data could not be deleted (" + strings.Join(failures, "; ") + ").")
-	}
+	c.closeInstance()
 	return result, nil
 }
 
 // revokeStored revokes the keychain item's session through an instance built
 // from the item's own origin, trust mode and pin. connections.json is editable
 // by any process of the same user, so no instance built from it may carry a
-// bearer. The store refuses items that another application could read.
+// bearer. The store refuses items that another application could read. The
+// bearer goes only to the origin the item names, whatever the record says, so a
+// record that startup could not compare with its item (the keychain was
+// unreadable then) can't redirect it.
 func (m *Manager) revokeStored(ctx context.Context, host string) error {
 	secret, err := m.secrets.Get(host)
 	if err != nil {
@@ -219,7 +261,7 @@ func (m *Manager) SignIn(ctx context.Context, host, method string) error {
 		return &shellErr{codeInvalid, "unknown connection"}
 	}
 	if c.isTampered() {
-		return &shellErr{codeRefused, "this connection's saved settings were changed outside the app; remove it and add it again"}
+		return &shellErr{codeRefused, c.Stopped()}
 	}
 	if !c.confirmSignIn() {
 		return &shellErr{codeTrustDeclined, "the sign-in was not confirmed"}

@@ -52,14 +52,18 @@ func SanitizeFilename(name string) string {
 // downloadSource is a proxied download that answered 200: the shell knows it
 // has something to save before it shows the save panel.
 type downloadSource struct {
-	body io.ReadCloser // streamed to the file; nil when head holds the whole body
-	head []byte        // a scanned JSON body
-	name string        // from Content-Disposition, "" when absent
+	body   io.ReadCloser // streamed to the file; nil when head holds the whole body
+	head   []byte        // a scanned JSON body
+	name   string        // from Content-Disposition, "" when absent
+	cancel context.CancelFunc
 }
 
 func (d *downloadSource) close() {
 	if d.body != nil {
 		_ = d.body.Close()
+	}
+	if d.cancel != nil {
+		d.cancel()
 	}
 }
 
@@ -95,10 +99,13 @@ func (c *Conn) download(ctx context.Context, proxiedPath string, data []byte, na
 	if !ok {
 		return &shellErr{codeCancelled, "the download was cancelled"}
 	}
-	return c.writeDownload(dest, src, data)
+	// The panel asks before replacing a file it saw; one that appears later is
+	// not replaced (PublishDownload).
+	_, statErr := os.Lstat(dest)
+	return c.writeDownload(dest, statErr == nil, src, data)
 }
 
-func (c *Conn) writeDownload(dest string, src *downloadSource, data []byte) *shellErr {
+func (c *Conn) writeDownload(dest string, replaceApproved bool, src *downloadSource, data []byte) *shellErr {
 	tmp, err := os.CreateTemp(filepath.Dir(dest), ".hikyo-download-*")
 	if err != nil {
 		return &shellErr{codeFailed, "the file could not be created there"}
@@ -108,7 +115,11 @@ func (c *Conn) writeDownload(dest string, src *downloadSource, data []byte) *she
 	switch {
 	case src != nil && src.body != nil:
 		var n int64
-		n, werr = io.Copy(tmp, io.LimitReader(src.body, maxDownloadFile+1))
+		// The idle clock starts now, not when the headers arrived: the save
+		// panel may have been open for a while.
+		idle := newIdleReader(src.body, downloadIdle, src.cancel)
+		n, werr = io.Copy(tmp, io.LimitReader(idle, maxDownloadFile+1))
+		idle.stop()
 		if werr == nil && n > maxDownloadFile {
 			werr = errDownload
 		}
@@ -127,7 +138,7 @@ func (c *Conn) writeDownload(dest string, src *downloadSource, data []byte) *she
 	if err := setQuarantine(tmp.Name()); err != nil {
 		return &shellErr{codeFailed, "the file could not be marked as downloaded"}
 	}
-	if err := os.Rename(tmp.Name(), dest); err != nil {
+	if _, err := PublishDownload(tmp.Name(), dest, replaceApproved); err != nil {
 		return &shellErr{codeFailed, "the file could not be saved there"}
 	}
 	return nil
@@ -143,12 +154,21 @@ func (c *Conn) openDownload(ctx context.Context, p string) (*downloadSource, *sh
 	if token == "" {
 		return nil, &shellErr{codeFailed, "this connection needs a new sign-in first"}
 	}
-	req, err := c.inst.newRequest(ctx, http.MethodGet, p, token, nil, "")
+	ctx, cancel := context.WithCancel(ctx)
+	ok := false
+	defer func() {
+		if !ok {
+			cancel()
+		}
+	}()
+	// The bearer is added at send time and a stale one is retried once, as for
+	// any proxied read (ADR D4). The transport follows no redirect.
+	req, err := c.inst.newRequest(ctx, http.MethodGet, p, "", nil, "")
 	if err != nil {
 		return nil, &shellErr{codeInvalid, "that download address is not valid"}
 	}
 	req.Header.Set("Accept", "*/*")
-	resp, err := c.inst.client.Do(req)
+	resp, err := bearerTransport{c}.RoundTrip(req)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return nil, &shellErr{codeCancelled, "the download was cancelled"}
@@ -172,17 +192,25 @@ func (c *Conn) openDownload(ctx context.Context, p string) (*downloadSource, *sh
 		src.name = params["filename"]
 	}
 	if isJSONType(resp.Header.Get("Content-Type")) {
-		raw, err := readLimited(resp.Body, maxScannedResponse)
+		idle := newIdleReader(resp.Body, downloadIdle, cancel)
+		raw, err := readLimited(idle, maxScannedResponse)
+		idle.stop()
 		if err != nil {
 			return nil, &shellErr{codeFailed, "the download could not be read"}
 		}
-		if view, err := splitToken(raw); view.Token != "" || (err != nil && !errors.Is(err, errNotObject)) {
+		view, err := splitToken(raw)
+		if view.Token != "" || (err != nil && !errors.Is(err, errNotObject)) {
+			// Same as a proxied response: a session the shell did not ask for
+			// is ended, not just dropped.
+			if view.Token != "" && view.Token != c.bearer() {
+				c.revokeAsync(view.Token)
+			}
 			return nil, &shellErr{codeRefused, "the instance sent something the app won't save"}
 		}
 		src.head = raw
 		return src, nil
 	}
-	src.body, keep = resp.Body, true
+	src.body, src.cancel, keep, ok = resp.Body, cancel, true, true
 	return src, nil
 }
 

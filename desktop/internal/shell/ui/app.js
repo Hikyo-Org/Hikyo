@@ -86,7 +86,7 @@ function card(c) {
     }
     run('Removing…', async () => {
       const result = await call('/__app/remove', { host: c.host });
-      if (!result.revoked) show(new Error(result.message));
+      if (result.message) show(new Error(result.message));
     });
   });
   actions.append(remove);
