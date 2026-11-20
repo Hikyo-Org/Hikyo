@@ -101,7 +101,7 @@ initialized by the 1.0.0 chart, so it was not a fresh install. No complete stabl
 runbook exists. The [GitOps prerequisites](kubernetes-gitops.md#prerequisites-and-artifact-selection)
 list what changes for a stable chart. To use a stable chart without controllers,
 complete [stable bundle verification](https://hikyo.app/docs/installation/#verify-a-stable-bundle),
-confirm the chart digest against the release notes, then use the
+confirm the chart digest against the release notes, then install that digest with the
 [packaged chart setup](https://hikyo.app/docs/kubernetes-operator/#install-the-operator)
 with the [manual Kubernetes inputs](manual-upgrades.md#compose-and-kubernetes).
 
