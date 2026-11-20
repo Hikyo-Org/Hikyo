@@ -242,24 +242,64 @@ func mentionsNamed(t types.Type, pinned map[string]bool, seen map[types.Type]boo
 // from the check while logging exactly the same content.
 func subexpressionTypes(info *types.Info, arg ast.Expr) []types.Type {
 	var out []types.Type
+	skip := map[ast.Expr]bool{}
 	ast.Inspect(arg, func(n ast.Node) bool {
 		expr, ok := n.(ast.Expr)
 		if !ok {
 			return true
 		}
-		if tv, ok := info.Types[expr]; ok && tv.Type != nil {
-			out = append(out, tv.Type)
+		if !skip[expr] {
+			if tv, ok := info.Types[expr]; ok && tv.Type != nil {
+				out = append(out, tv.Type)
+			}
 		}
-		// A selection passes only what it selects: its receiver is walked only
-		// when the receiver itself is pinned (a field walk or method of a pinned value).
+		// A selection from a holder that is not itself pinned outputs only the
+		// selected value, so the types along the receiver path are skipped. Call
+		// arguments, literals and index keys inside the receiver are still
+		// walked, and a method returning an interface walks its whole receiver.
 		if sel, ok := expr.(*ast.SelectorExpr); ok {
-			if s, ok := info.Selections[sel]; ok {
-				return selectsThroughPinned(s)
+			if s, ok := info.Selections[sel]; ok && !walksWholeReceiver(s) {
+				for x := sel.X; x != nil; {
+					skip[x] = true
+					switch e := x.(type) {
+					case *ast.ParenExpr:
+						x = e.X
+					case *ast.StarExpr:
+						x = e.X
+					case *ast.IndexExpr:
+						x = e.X
+					case *ast.SelectorExpr:
+						x = e.X
+					default:
+						x = nil
+					}
+				}
 			}
 		}
 		return true
 	})
 	return out
+}
+
+func walksWholeReceiver(s *types.Selection) bool {
+	return selectsThroughPinned(s) || (s.Kind() == types.MethodVal && resultsHoldInterface(s))
+}
+
+// resultsHoldInterface reports whether a method returns an interface, which
+// can carry any part of its receiver, so the receiver is walked in full.
+// shortcut: only top-level interface results count ([]any or struct-wrapped any
+// slips through), upgrade when such a method appears on a holder of pinned values.
+func resultsHoldInterface(s *types.Selection) bool {
+	sig, ok := s.Type().(*types.Signature)
+	if !ok {
+		return false
+	}
+	for i := range sig.Results().Len() {
+		if types.IsInterface(sig.Results().At(i).Type()) {
+			return true
+		}
+	}
+	return false
 }
 
 // selectsThroughPinned reports whether the receiver, or any embedded field on

@@ -61,6 +61,23 @@ func Narrowing(h holder) {
 
 func (h holder) count() int { return h.seq }
 
+func (h holder) anyKey() any { return h.keyring }
+func (h holder) evAny() any  { return h.ev }
+
+type anybox struct{ v any }
+
+func box(v any) anybox { return anybox{v: v} }
+
+// Narrowing a selection must not hide a pinned value that reaches the output
+// through a call argument, a composite literal, or a method returning `any`.
+func NarrowingKeepsLeaks(h holder, kr *crypto.Keyring, ev audit.Event) {
+	_ = fmt.Sprintf("%v", h.anyKey())            // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", box(kr).v)             // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", struct{ v any }{kr}.v) // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	slog.Info("audit", "v", box(ev).v)           // want "logs audit content .*internal/audit\\.Event"
+	slog.Info("audit", "v", h.evAny())           // want "passes sensitive type .*internal/crypto\\.Keyring to log/slog" "logs audit content .*internal/audit\\.Event"
+}
+
 type wrap struct{ *crypto.Keyring }
 
 // A method or field promoted from an embedded sensitive value stays flagged.

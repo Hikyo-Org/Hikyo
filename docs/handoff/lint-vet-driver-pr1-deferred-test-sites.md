@@ -24,7 +24,7 @@ The deferred sites are gated by a ratchet, not by the old harness. The old go/pa
 
 ## Counts
 
-Distinct diagnostics (union over the default, ui, darwin and windows contexts, one per file:line:column):
+Distinct diagnostics (union over the default, ui, darwin and windows contexts, one per file:line, since `handles` reports each line once):
 
 | Analyzer | Diagnostics | Files |
 |---|---|---|
@@ -161,7 +161,7 @@ All 10 are legitimate test-harness use under the current rule: tests open an eng
 
 ### redactfmt: resolved
 
-All 84 pinned redactfmt sites, in 25 files in `internal/isolation` and `internal/app`, were false positives. `subexpressionTypes` (`internal/lint/redaction.go`) walked every sub-expression of a format argument, so in `fmt.Sprintf("%d", h.seq)` it also walked the receiver `h` and found a `crypto.Keyring` field in its struct, though only the int is formatted. The rule now walks a selection's receiver only when the receiver, or an embedded field on the selection path, is itself a pinned sensitive type; the selected value's own type is still fully walked. Field walks of `audit.Event`, promoted `Keyring` methods and `h.inner` holding a Keyring stay flagged. Fixture cases in `internal/lint/testdata/badredact/badredact.go` pin both sides (clean: the holder's int field and a holder method; flagged: the Keyring field, `any(h.keyring)`, `h.keyring.String()`, an audit event field walk, an embedded promoted method).
+All 84 pinned redactfmt sites, in 25 files in `internal/isolation` and `internal/app`, were false positives. `subexpressionTypes` (`internal/lint/redaction.go`) walked every sub-expression of a format argument, so in `fmt.Sprintf("%d", h.seq)` it also walked the receiver `h` and found a `crypto.Keyring` field in its struct, though only the int is formatted. The rule now skips the types along a selection's receiver path (through parentheses, dereferences, index bases and nested selections) unless the receiver, or an embedded field on the selection path, is itself a pinned sensitive or audit-content type. The selected value's own type is still checked, call arguments, composite literals and index keys inside the receiver are still walked, and a method whose results include an interface walks its whole receiver, because the interface can carry any part of it. Field walks of `audit.Event`, promoted `Keyring` methods and `h.inner` holding a Keyring stay flagged. Fixture cases in `internal/lint/testdata/badredact/badredact.go` pin both sides (clean: the holder's int field and a holder method; flagged: the Keyring field, `any(h.keyring)`, `h.keyring.String()`, an audit event field walk, an embedded promoted method, `h.anyKey()` and `h.evAny()` returning `any`, `box(kr).v`, `box(ev).v` and `struct{ v any }{kr}.v`). Known limit, marked `shortcut:` in the code: only top-level interface results widen the walk, so a method returning `[]any` that carries a pinned value is missed.
 
 Measured by the reviewer: the unpatched tool over `./internal/isolation ./internal/app` reported exactly the 84 pinned findings; with the fix, 0. The two `json.Marshal(d.enrollment)` sites formerly marked unverified are also no longer reported. `redactfmt` was removed from `strictDeferred` and its entries from `testdata/deferred_sites.json` (`-update-deferred-sites`). The rule is shared with the old harness adapter; its tests pass.
 
