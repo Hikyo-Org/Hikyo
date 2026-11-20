@@ -45,8 +45,20 @@ expect_plan 'core' \
 	'["client","floor-bench","fuzz","generated","headline-guarantee","race","release-snapshot","test","web-go"]' \
 	'internal/service/values.go'
 expect_plan 'API' \
-	'["client","compose-demo","freeze-guard","generated","headline-guarantee","release-snapshot","test","web-go"]' \
+	'["client","compose-demo","desktop","freeze-guard","generated","headline-guarantee","release-snapshot","test","web-go"]' \
 	'api/openapi.yaml'
+# The desktop module is built only by the desktop job, never by the root Go lanes.
+expect_plan 'desktop shell' '["desktop"]' 'desktop/internal/shell/proxy.go'
+expect_plan 'desktop module manifest' '["desktop"]' 'desktop/go.mod' 'desktop/go.sum'
+expect_plan 'desktop readme' '["desktop"]' 'desktop/README.md'
+expect_plan 'desktop macOS source' '["desktop"]' 'desktop/native_darwin.m'
+# Root packages the desktop module compiles also run the desktop job, on top of the core lanes.
+for imported in internal/clientauth/login.go internal/clienttrust/trust.go internal/clienterr/err.go internal/crypto/seal.go; do
+	expect_selected "desktop import $imported" desktop "$imported"
+	expect_selected "desktop import $imported keeps core" test "$imported"
+done
+expect_selected 'desktop import openapi' desktop 'api/openapi.yaml'
+expect_plan 'desktop with unrelated docs' '["desktop","docs"]' 'desktop/README.md' 'docs/adr/desktop-app.md'
 expect_plan 'client' '["client","release-snapshot","web-go"]' \
 	'clients/ts/src/generated/types.gen.ts'
 expect_plan 'release' '["lint","release-snapshot","supply-chain-checks"]' \
@@ -146,7 +158,7 @@ expect_plan 'chart synthetic network destination' '["k8s-e2e","lint"]' 'scripts/
 expect_plan 'chart functional cleanup fixture' '["k8s-e2e","lint"]' 'internal/isolation/network_policy_cleanup_test.go'
 expect_plan 'chart production trust fixture' '["k8s-e2e","lint"]' 'scripts/ci/chartfixture/fixture_test.go'
 expect_plan 'root-key staging runtime' \
-	'["client","floor-bench","fuzz","generated","headline-guarantee","k8s-e2e","race","release-snapshot","test","web-go"]' \
+	'["client","desktop","floor-bench","fuzz","generated","headline-guarantee","k8s-e2e","race","release-snapshot","test","web-go"]' \
 	'internal/crypto/rootkey_stage.go'
 
 for non_web_app_path in \

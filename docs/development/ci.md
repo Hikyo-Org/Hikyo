@@ -8,7 +8,7 @@ one active run finishes, with only the newest pending run retained.
 
 Frozen release candidates target **main** and enter its mandatory single-entry
 queue. **ci-queue-required** admits the exact PR head and then requires complete
-current-base merge-group proof. Branches under `release/` always select all 16
+current-base merge-group proof. Branches under `release/` always select all 17
 domains. Dev movement never cancels a fixed candidate's validation.
 
 Stable consumers and signed nightlies can reuse authenticated complete proof for
@@ -29,8 +29,9 @@ for activation, promotion and operator commands.
 | Run repository invariants before queueing | `ci-advisory-invariants` | Advisory, per PR push touching Go code, the golangci-lint config, workflows, Git hooks, scripts, release policy, or the store, lint fixture and web e2e inputs those suites read. Runs the `internal/boundary`, `internal/lint` and `scripts/ci` suites on the exact PR head. Not a required context; the queue still runs everything. |
 | Run the Storybook suite before merge | `ci-advisory-storybook` | Advisory, per PR push touching `web/`, `clients/ts/`, `.nvmrc`, the root `package.json`, `docs/site/scripts/test-csp.mjs`, `scripts/ci/storybook-suite.sh` or the workflow's setup helpers (`install-corepack.sh`, `export-pnpm-cache.sh`). Runs the same commands as the `storybook` job in `ci.yml` (story tests in both palettes, production build, theme and docs checks, static demo) on the exact PR head in the Playwright container. The pre-push hook runs the same script locally. Not a required context; `ci-dev` and the queue still run the job. |
 | Lint new Go code | `ci-advisory-golangci` | Advisory, per PR push touching Go files, `go.mod`, `go.sum`, `.golangci.yml`, `scripts/ci/golangci-lint-new.sh`, its version pin or `scripts/ci/run-go-tool.sh`. Runs golangci-lint (version in `scripts/ci/golangci-lint-version`, rules in `.golangci.yml`: errcheck, errorlint, errchkjson, noctx, wastedassign, unused, staticcheck `SA*`/`QF1001`/`QF1003`, gosec G115/G204/G306 outside tests) and reports only issues on lines changed since the merge base, so the existing baseline is not enforced. Run it locally with `scripts/ci/golangci-lint-new.sh <base>`; the pre-push hook runs it too (`HIKYO_PREPUSH_GOLANGCI=skip` opts out). Lints only the default build (not other-OS files or `ui`, `k8se2e`, `floor*` tags); type errors are always reported in full. Restores caches only, saves none. Not a required context and in no required job or fast-feedback lane. |
+| Lint the desktop module | `ci-advisory-golangci-desktop` | Advisory, per PR push touching `desktop/`, `.golangci.yml`, `.golangci-strict.yml`, `scripts/ci/golangci-lint-version`, `scripts/ci/run-go-tool.sh` or the workflow itself. Pinned `golangci-lint` over the whole nested module on macOS; a Linux pre-job skips the macOS job where `desktop/go.mod` does not exist. The strict pass runs only where `.golangci-strict.yml` exists. |
 | Validate integrated development | `ci-dev` | Complete read-only graph for the merged dev SHA; finishes one active run and coalesces pending work. |
-| Prove queued release candidates | `ci-merge-group` | Queue `checks_requested` runs the complete graph, including benchmark smoke and all 16 domains. Trusted `ci-queue-required` publication authorizes only the exact current group. |
+| Prove queued release candidates | `ci-merge-group` | Queue `checks_requested` runs the complete graph, including benchmark smoke and all 17 domains. Trusted `ci-queue-required` publication authorizes only the exact current group. |
 | Validate all of main | `ci-main` | Weekly or manual full graph, including development snapshot artifacts. The schedule is the automatic writer of main-scoped compile caches. |
 | Run maintenance checks | `reliability` | Choose `security`, `gitlab`, `reporting`, `race`, `channel`, or `all`. Original schedules run their matching suites. |
 | Prove release hardware/restore acceptance | `release-acceptance` | Choose `backup-restore`, `operator`, or `all`. Existing custody secrets stay confined to the backup step. This does not publish a release. |
@@ -125,6 +126,44 @@ deleted package can leave broken imports that only full validation exposes.
 The runner timeout includes checkout, dependency setup, and execution. A timeout
 is failed feedback, not proof of a completed check. Shared hosted runner queue
 capacity prevents a universal five-minute promise without measured capacity.
+
+### Desktop shell (macOS)
+
+`desktop/` is a nested Go module (the Wails shell, #1215). Wails, cgo and WebKit
+must never reach the root build, so the root lanes and the root module never load it; they cannot
+(`go list ./desktop/...` from the root is an error) and `golangci-lint-new.sh`
+lints it from inside `desktop/` instead. The registry domain `desktop` and the
+`desktop` job in `ci.yml` own it:
+
+1. The runner follows the tree. Where `desktop/go.mod` exists the job runs on a
+   pinned `macos-15` hosted runner (paid minutes), with no cache restored or
+   written and `CGO_CFLAGS` and `CGO_LDFLAGS` set to `-mmacosx-version-min=13.0`.
+   Where it does not (main and dev before the shell lands) a full plan still needs
+   the job to report success, so it runs on `ubuntu-latest`, executes only step 2
+   and costs seconds. The `changes` job publishes `desktop_module` for this.
+2. `scripts/ci/check-desktop-deps.sh` keeps Wails and its platform bindings out of
+   the root `go.mod` and `go.sum` and refuses a `go.work` or a root requirement on
+   `desktop/`. Where `desktop/` exists it also requires `replace
+   github.com/Hikyo-Org/hikyo => ../` in `desktop/go.mod`, and lists every root
+   package `desktop/` compiles (`go list -deps`, darwin, probe tag) and fails when
+   the classifier would not select the desktop job for it.
+3. On macOS: `go test -race ./...`, a `-tags probe` build, a release build, and the
+   driven WKWebView lane, `go run ./probes/driven`, which opens the probe shell
+   against a fake instance (Playwright cannot drive WKWebView).
+4. Lint is advisory, like the root ratchet, and the root `golangci` names must stay
+   out of `ci.yml`: `ci-advisory-golangci-desktop` runs the pinned `golangci-lint`
+   over the whole module on macOS, and `golangci-lint-new.sh` lints `desktop/` from
+   inside it for the pre-push hook and `ci-advisory-golangci`.
+
+The classifier selects the `desktop` domain for `desktop/*`, `api/openapi.yaml`
+(the refusal list derives from it) and the root packages `desktop/` imports, and
+nothing else for `desktop/` changes: those paths do not select `test`, `race`,
+`fuzz` or the other Go domains. A root `go.mod` or `go.sum` change, a workflow
+change and every unknown path still select the full plan, including `desktop`.
+Fast feedback keeps `desktop/` out of the root compile (`go-compile`) and compiles
+it with its own `desktop-compile` check, `go -C desktop test -c`, only where
+`desktop/go.mod` exists. The frozen conservation baseline stays exact: `desktop` is
+the only domain beyond its list, and the baseline jobs are unchanged.
 
 Every merge group selects all domains from the trusted
 [job registry](../../scripts/ci/ci-job-registry.json), using the immutable current
@@ -231,7 +270,7 @@ in [run 38230781293](https://github.com/Hikyo-Org/Hikyo/actions/runs/38230781293
 That verifies the forced active-policy queue-read path, not populated membership
 or full-group merge acceptance. The legitimate policy/guide follow-up provides
 that first hosted acceptance; do not call queue delivery complete before its
-actual group, all 16 domains, trusted publication and landed tree are verified.
+actual group, all 17 domains, trusted publication and landed tree are verified.
 
 For an authorized main-only reconciliation with authenticated administrator
 access, run from the repository root:

@@ -45,7 +45,24 @@ for file in "$@"; do
 		fail "non-GitHub runner reference in $(basename "$file")"
 	fi
 	expected_runner=ubuntu-latest
+	desktop_lint=false
 	case $(basename "$file") in
+		ci-golangci-desktop.yml)
+			# The advisory desktop lint (#1215) builds cgo and darwin-only files: one
+			# pinned macOS runner, no shared caches, and no cache action at all.
+			expected_runner=macos-15
+			if grep -E 'actions/cache(@|/)|cache: true' "$file" >/dev/null; then
+				fail 'desktop lint must not use shared caches'
+			fi
+			require_line "$file" '          cache: false'
+			# One cheap Linux pre-job decides whether the module exists before any paid
+			# macOS minutes; every other job stays on the pinned macOS runner.
+			[ "$(grep -c '^    runs-on: ubuntu-latest$' "$file")" = 1 ] ||
+				fail 'desktop lint must have exactly one ubuntu-latest module pre-job'
+			grep -Fx "    if: \${{ needs.module.outputs.present == 'true' }}" "$file" >/dev/null ||
+				fail 'desktop lint must run on macOS only where the module exists'
+			desktop_lint=true
+			;;
 		ops-floor.yml)
 			# The secret-free operations lane measures both native CPU floors.
 			# Keep its matrix closed to these two GitHub-hosted architectures.
@@ -83,6 +100,10 @@ for file in "$@"; do
 			;;
 	esac
 	runner_source=$file
+	if [ "$desktop_lint" = true ]; then
+		runner_source=$(mktemp)
+		grep -v '^    runs-on: ubuntu-latest$' "$file" >"$runner_source"
+	fi
 	case $(basename "$file") in
 		nightly.yml | release.yml)
 			# Credential-isolated signing and native acceptance require macOS.
@@ -216,6 +237,25 @@ for file in "$@"; do
 			skip && $0 ~ /^  [A-Za-z0-9_-]+:/ { skip = 0 }
 			!skip { print }
 		' "$file" >"$runner_source"
+		# The desktop shell (#1215) is the one native macOS job: one pinned runner,
+		# no shared caches. Everything else in ci.yml stays on ubuntu-latest.
+		desktop=$(workflow_job_block "$file" desktop)
+		[ -n "$desktop" ] || fail 'ci.yml has no desktop job'
+		printf '%s\n' "$desktop" | grep -Fx "    runs-on: \${{ needs.changes.outputs.desktop_module == 'true' && 'macos-15' || 'ubuntu-latest' }}" >/dev/null ||
+			fail 'desktop must run on the pinned macos-15 runner where the module exists and on ubuntu-latest elsewhere'
+		[ "$(printf '%s\n' "$desktop" | grep -c 'runs-on:')" = 1 ] ||
+			fail 'desktop must declare exactly one runner'
+		if printf '%s\n' "$desktop" | grep -E 'actions/cache(@|/)|cache: true|cache-dependency-path' >/dev/null; then
+			fail 'desktop must not use shared caches'
+		fi
+		without_desktop=$(mktemp)
+		awk '
+			$0 == "  desktop:" { skip = 1; next }
+			skip && $0 ~ /^  [A-Za-z0-9_-]+:/ { skip = 0 }
+			!skip { print }
+		' "$runner_source" >"$without_desktop"
+		rm -f "$runner_source"
+		runner_source=$without_desktop
 	fi
 	if grep -E '^[[:space:]]+runs-on:' "$runner_source" |
 		sed 's/^[[:space:]]*runs-on:[[:space:]]*//' |

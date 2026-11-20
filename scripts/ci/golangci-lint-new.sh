@@ -2,7 +2,9 @@
 # New-code-only golangci-lint ratchet: lint the packages that changed since the
 # merge base of BASE and HEAD and report only issues on changed lines. The
 # existing baseline is not enforced. Used by the pre-push hook and by
-# ci-golangci.yml (advisory); never part of a required job.
+# ci-golangci.yml (advisory); never part of a required job. desktop/ is a nested
+# module the root module cannot load: its changes (or a changed lint input) lint all
+# of desktop/ from inside it, after the root packages, where it exists.
 # Usage: scripts/ci/golangci-lint-new.sh BASE
 # It lints the work tree it runs in (the hook runs this script from a detached
 # worktree at the pushed commit, so the tool pin, .golangci.yml and this script
@@ -34,9 +36,14 @@ everything='go.mod go.sum .golangci.yml scripts/ci/golangci-lint-version scripts
 
 # shellcheck disable=SC2086 # the paths contain no whitespace or glob characters
 changed_inputs=$(git diff --name-only "$merge_base" HEAD -- $everything) || fail "git diff failed against $merge_base"
+desktop_lint=false
+# shellcheck disable=SC2086 # no whitespace or glob characters in these paths either
+changed_desktop_modfiles=$(git diff --name-only "$merge_base" HEAD -- desktop/go.mod desktop/go.sum) || fail "git diff failed against $merge_base"
 if [ -n "$changed_inputs" ]; then
 	set -- ./...
+	desktop_lint=true
 else
+	[ -z "$changed_desktop_modfiles" ] || desktop_lint=true
 	files=$(mktemp "${TMPDIR:-/tmp}/golangci-files.XXXXXX") || fail 'cannot create a temporary file'
 	dirs=$(mktemp "${TMPDIR:-/tmp}/golangci-dirs.XXXXXX") || { rm -f "$files"; fail 'cannot create a temporary file'; }
 	trap 'rm -f "$files" "$dirs" "$dirs.raw"' EXIT
@@ -51,6 +58,9 @@ else
 	rm -f "$dirs.raw"
 	set --
 	while IFS= read -r dir; do
+		# A nested module: `go list ./desktop/...` from here is an error, so it is
+		# linted from inside desktop/ below.
+		case "$dir" in (desktop | desktop/*) desktop_lint=true; continue ;; esac
 		# Gone with its last file, or only testdata: nothing to load.
 		[ -d "$dir" ] || continue
 		case "/$dir/" in (*/testdata/*) continue ;; esac
@@ -62,17 +72,32 @@ else
 		if [ "$dir" = . ]; then set -- "$@" .; else set -- "$@" "./$dir"; fi
 	done <"$dirs"
 	rm -f "$files" "$dirs"
-	if [ "$#" -eq 0 ]; then
+	if [ "$#" -eq 0 ] && { [ "$desktop_lint" = false ] || [ ! -f desktop/go.mod ]; }; then
 		printf 'golangci-lint-new: no lintable Go inputs changed since %s; nothing to lint\n' "$base" >&2
 		exit 0
 	fi
 fi
 
-printf 'golangci-lint-new: linting new code since %s (%s)\n' "$base" "$*" >&2
 # golangci-lint finds .golangci.yml at the work tree's root by itself, and then
 # reports paths relative to it. --config is only the fallback for a tree without
 # one: the config of the checkout this script lives in.
-if [ -f .golangci.yml ]; then
-	exec "$script_dir/run-go-tool.sh" golangci-lint run -j 2 --new-from-merge-base="$base" "$@"
+status=0
+if [ "$#" -gt 0 ]; then
+	printf 'golangci-lint-new: linting new code since %s (%s)\n' "$base" "$*" >&2
+	if [ -f .golangci.yml ]; then
+		"$script_dir/run-go-tool.sh" golangci-lint run -j 2 --new-from-merge-base="$base" "$@" || status=$?
+	else
+		"$script_dir/run-go-tool.sh" golangci-lint run -j 2 --config "$config" --new-from-merge-base="$base" "$@" || status=$?
+	fi
 fi
-exec "$script_dir/run-go-tool.sh" golangci-lint run -j 2 --config "$config" --new-from-merge-base="$base" "$@"
+# The whole module: it is small, and a nested module has no per-package list here.
+# The pass runs even when the root pass failed; the first non-zero status wins.
+if [ "$desktop_lint" = true ] && [ -f desktop/go.mod ]; then
+	desktop_config=../.golangci.yml
+	[ -f .golangci.yml ] || desktop_config=$config
+	printf 'golangci-lint-new: linting new code since %s (desktop/...)\n' "$base" >&2
+	desktop_status=0
+	(cd desktop && "$script_dir/run-go-tool.sh" golangci-lint run -j 2 --config "$desktop_config" --new-from-merge-base="$base" ./...) || desktop_status=$?
+	[ "$status" -ne 0 ] || status=$desktop_status
+fi
+exit "$status"
