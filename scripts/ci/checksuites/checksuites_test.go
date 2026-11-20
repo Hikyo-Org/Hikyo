@@ -69,6 +69,30 @@ func TestListingsReadBySuiteOnlyAboveTheMargin(t *testing.T) {
 	}
 }
 
+// Suites added while a commit listing is read can push an older suite out of
+// REST's newest 1000, so the read is refused when the count has grown past the
+// margin, and a per-suite read needs no recount.
+func TestRecheckRefusesACommitListingAfterTheSuitesGrew(t *testing.T) {
+	commit := []string{"commits/abc/check-runs"}
+	for _, tc := range []struct {
+		suites  int
+		wantErr bool
+	}{
+		{suites: Margin},
+		{suites: Margin + 1, wantErr: true},
+	} {
+		var queries []string
+		err := Recheck(context.Background(), source(tc.suites, 7, &queries), "abc", commit)
+		if (err != nil) != tc.wantErr || len(queries) != 1 {
+			t.Fatalf("%d suites: err = %v after %d queries, want error %t after one count", tc.suites, err, len(queries), tc.wantErr)
+		}
+	}
+	var queries []string
+	if err := Recheck(context.Background(), source(Margin+1, 7, &queries), "abc", []string{"check-suites/7/check-runs"}); err != nil || len(queries) != 0 {
+		t.Fatalf("per-suite listing: err = %v after %d queries, want no recount", err, len(queries))
+	}
+}
+
 func TestFindRefusesMissingNamedRunCounts(t *testing.T) {
 	var queries []string
 	s := source(3, 1, &queries)

@@ -34,6 +34,9 @@ type oversizedHead struct {
 	// foreign is what a listing by commit shows of other apps, whose suites the
 	// per-suite reads never open.
 	foreign []check
+	// grown, when set, becomes the suite total once a listing by commit is read,
+	// as if suites were added during that read.
+	grown int
 }
 
 var (
@@ -87,8 +90,16 @@ func (a *oversizedHead) read(ctx context.Context, path string, result any) error
 		if a.countErr != nil {
 			return a.countErr
 		}
-		return queueHistoryJSON(a.suiteResponse(nil, false, ""), result)
+		a.mu.Lock()
+		response := a.suiteResponse(nil, false, "")
+		a.mu.Unlock()
+		return queueHistoryJSON(response, result)
 	case strings.Contains(path, "/commits/"+head+"/check-runs?"):
+		a.mu.Lock()
+		if a.grown > 0 {
+			a.suites = a.grown
+		}
+		a.mu.Unlock()
 		// REST lists the commit's newest 1000 suites only, which exclude the holders.
 		if a.foreign != nil {
 			return queueHistoryJSON(map[string]any{"total_count": len(a.foreign), "check_runs": a.foreign}, result)
@@ -151,6 +162,28 @@ func TestQueueVerdictOwnersSeeChecksOnHeadBeyondRESTSuiteCap(t *testing.T) {
 	group, err := f.q.groupChecks(context.Background(), f.pr)
 	if err != nil || len(group) != 1 || group[0].ID != f.api.checks[0].ID {
 		t.Fatalf("group checks = %+v/%v, want the hidden record", group, err)
+	}
+}
+
+// Suites added while the commit listing is read can push an older suite out of
+// REST's newest 1000, so both owners of the queue verdict count again after the
+// read and refuse.
+func TestOwnersRefuseACommitListingWhenSuitesGrowDuringTheRead(t *testing.T) {
+	for _, owner := range []string{"controller", "queue verdict"} {
+		t.Run(owner, func(t *testing.T) {
+			f, _ := retirementFixture(t, queueCheckName)
+			head := installOversizedHead(f, checksuites.Margin)
+			head.grown = checksuites.Margin + 1
+			var err error
+			if owner == "controller" {
+				_, err = f.c.listOwnedChecks(context.Background(), f.c.expectedHead)
+			} else {
+				_, err = f.q.groupChecks(context.Background(), f.pr)
+			}
+			if err == nil || !strings.Contains(err.Error(), "grew past") {
+				t.Fatalf("error = %v, want a refusal after the recount", err)
+			}
+		})
 	}
 }
 
@@ -293,16 +326,19 @@ func TestOwnedChecksOfHeadBeyondRESTSuiteCapRefuseForeignAppRecords(t *testing.T
 }
 
 // The suite inventory comes from GraphQL, which can lag a run REST already lists.
-// The listing by commit shows runs of the newest suites, so a controller record
-// it shows that the suites did not is refused instead of taken for absent.
+// The listing by commit shows runs of the newest suites, so a github-actions
+// record it shows that the suites did not is refused instead of taken for
+// absent, with or without the controller prefix.
 func TestOwnedChecksRefuseRecordTheSuiteInventoryHasNotIndexed(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		holding []int64
 		dup     bool
+		bare    bool
 		wantErr bool
 	}{
 		{name: "indexed in a holding suite", holding: []int64{1856}},
+		{name: "not indexed, no controller prefix", bare: true, wantErr: true},
 		{name: "not indexed yet", wantErr: true},
 		{name: "commit listing repeats a run", holding: []int64{1856}, dup: true, wantErr: true},
 	} {
@@ -311,6 +347,9 @@ func TestOwnedChecksRefuseRecordTheSuiteInventoryHasNotIndexed(t *testing.T) {
 				f, _ := retirementFixture(t, queueCheckName)
 				head := installOversizedHead(f, 2005, tc.holding...)
 				head.foreign = []check{f.api.checks[0]}
+				if tc.bare {
+					head.foreign[0].ExternalID = "someone-else"
+				}
 				if tc.dup {
 					head.foreign = append(head.foreign, f.api.checks[0])
 				}
