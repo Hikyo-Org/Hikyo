@@ -2,8 +2,9 @@
 
 Status: **plan PRs 1, 2, 3, 4 and 6 merged to `dev`** (#1460 merges with this handoff). The
 owner authorized building the plan on 2026-11-19 ("go ahead, build everything") and merging the
-stack in order on 2026-11-20. That does not cover the release lane (plan PR 5), the
-`Hikyo-Org/hikyo-app` repository, a signing identity, release or deployment. Decisions come from
+stack in order on 2026-11-20. That does not cover the release lane (plan PR 5), release or
+deployment. On 2026-11-20 the owner also chose to release the app from this repository as
+`desktop-v<version>` releases instead of a separate `Hikyo-Org/hikyo-app` repository. Decisions come from
 the [ADR](../adr/desktop-app.md) (D1 to D15) and the
 [plan](../superpowers/plans/2026-11-04-desktop-app.md). Wire contract:
 [desktop shell protocol](../spec/desktop-shell-protocol.md). Refs #1215; no PR closes it.
@@ -34,7 +35,7 @@ being saved (`OnShutdown`); the data directory lock is held for the whole run; r
 | system-architecture.md | yes (#1459) | #22 closed 2026-11-20 |
 | human-auth.md | yes (#1459) | #16 closed 2026-11-20 |
 | threat-model.md | yes (#1459) | #8 closed 2026-11-20 |
-| oss-mechanics.md | when plan PR 5 merges (not built) | #33 stays open |
+| oss-mechanics.md | withdrawn 2026-11-20 (app released from this repository) | #33 closes when the withdrawal merges |
 
 ## Evidence
 
@@ -83,9 +84,10 @@ being saved (`OnShutdown`); the data directory lock is held for the whole run; r
 
 ## Remaining work
 
-1. Owner: create `Hikyo-Org/hikyo-app` and decide the Apple Developer ID signing and
-   notarization identity, then build plan PR 5 (release lane) and its "sole exception" policy
-   sentence. Closing #33 follows that merge.
+1. Build plan PR 5 (release lane): `desktop-v<version>` releases cut by the stable release
+   run with the existing Developer ID ([ADR D13](../adr/desktop-app.md#d13-repository-and-releases)).
+   No `Hikyo-Org/hikyo-app` repository or new identity is needed. The oss-mechanics banner
+   is withdrawn; close #33 when that merges.
 2. Hand acceptance on a signed, notarized build: first launch from Downloads, move to
    Applications, relaunch, connections still open; plus the plan's acceptance list and the two
    unexercised cases under Evidence.

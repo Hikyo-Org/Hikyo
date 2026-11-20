@@ -10,9 +10,10 @@ authorized the implementation PRs ("go ahead, build everything"):
 [#1462](https://github.com/Hikyo-Org/Hikyo/pull/1462) (CI definitions on `main`),
 [#1461](https://github.com/Hikyo-Org/Hikyo/pull/1461) (macOS CI) and
 [#1460](https://github.com/Hikyo-Org/Hikyo/pull/1460) (documentation). That authorization
-does not cover the release lane (plan PR 5), which is blocked until the owner creates
-the `Hikyo-Org/hikyo-app` repository and the signing identity; this ADR still
-authorizes no release, repository or signing identity.
+does not cover the release lane (plan PR 5). On 2026-11-20 the owner moved the app's
+releases into this repository as `desktop-v*` releases at the `hikyo` version
+([D13](#d13-repository-and-releases)); no `Hikyo-Org/hikyo-app` repository is planned.
+This ADR still authorizes no release.
 
 1. **Owner acceptance.** Offered the first three [decisions below](#owner-decisions) and told
    that choosing the waiver and accepting the design would lead to the banners and reopened
@@ -26,7 +27,7 @@ authorizes no release, repository or signing identity.
    this departs from its procedure, as earlier owner-stated waivers did. See the [review record](#review-record).
 3. **Tickets.** [#22](https://github.com/Hikyo-Org/Hikyo/issues/22), [#16](https://github.com/Hikyo-Org/Hikyo/issues/16), [#8](https://github.com/Hikyo-Org/Hikyo/issues/8) and [#33](https://github.com/Hikyo-Org/Hikyo/issues/33) are reopened for
    this amendment only, [#25](https://github.com/Hikyo-Org/Hikyo/issues/25) was already open, and [#1215](https://github.com/Hikyo-Org/Hikyo/issues/1215) tracks the
-   work. Each reopened ticket closes again when its banner is operative.
+   work. Each reopened ticket closes again when its banner is operative or withdrawn.
 
 Evidence: the [decoupling report](../reports/server-webapp-decoupling-2026-11-04.md)
 and the [Wails shell spike](../reports/wails-shell-spike-2026-11-04.md). The
@@ -303,11 +304,31 @@ This has not been built or run.
 - Source lives in this repository as a nested Go module,
   `github.com/Hikyo-Org/hikyo/desktop`. It can import `internal/` packages (tested), and
   SPA and shell changes can land in one PR. Wails and cgo never enter the root `go.mod`.
-- Binaries are published from a separate repository, `Hikyo-Org/hikyo-app`, under their
-  own tags. They never enter the signed `hikyo` manifest or this repository's releases.
-  Field verifiers reject unknown artifact kinds (`internal/releasetrust/release.go`), and
-  field update checks read every release here, so one bad asset fails the listing
-  (`internal/updatecheck/source.go`).
+- **Amended by the owner on 2026-11-20** (replacing a separate `Hikyo-Org/hikyo-app`
+  repository): binaries are published from this repository as their own release series.
+  The same release run that cuts a stable `hikyo` tag such as `v1.4.0` also cuts
+  `desktop-v1.4.0`, so both carry the same version. The desktop release holds only the
+  app's files (`Hikyo-Desktop-<version>-<arch>.dmg`) and its own signed inventory, and is
+  never marked Latest. Nightlies carry no app. The app is signed and notarized with the
+  stable lane's existing Developer ID ([apple-signing.md](../release/apple-signing.md)),
+  so no second repository or signing identity exists.
+- The app never enters a `hikyo` release or its signed manifest. The stable verifier
+  refuses any file outside that manifest (`scripts/release/stable/verify.go`), installed
+  verifiers refuse an unknown artifact kind (`internal/releasetrust/release.go`), and
+  installed nightly self-update refuses extra assets
+  (`internal/selfupdate/nightly_download.go`). An installed binary cannot learn a new
+  kind, so a separate release is the only shape that leaves them all unchanged.
+- Every shipped reader of this repository's release list matches `v`-prefixed SemVer
+  tags only, so it skips `desktop-v*`: update checks
+  (`internal/updatecheck/updatecheck.go`), the nightly installer
+  (`install/upgrade-nightly.sh`) and the release scripts. Desktop releases do take places
+  in the first page of 100 releases that update checks and the nightly installer read,
+  and update checks validate every listed asset's name, URL and size before skipping the
+  tag, so one malformed desktop asset fails the whole listing.
+- The release lane must also add tag protection for `refs/tags/desktop-v*` (the
+  existing rulesets cover `refs/tags/v*` only), keep `make_latest` false on every
+  desktop release, and give users one documented way to verify the app's signed
+  inventory beside Gatekeeper's notarization check.
 - The app ships as a notarized Developer ID build. **v1 has no updater and no update
   check.** An updater is a new root of trust, and
   [threat-model.md](./threat-model.md) allows no unsolicited update check. A later version
@@ -342,7 +363,7 @@ pull request that makes it true merges. No banner is operative before its trigge
 | [system-architecture.md](./system-architecture.md) | Plan PR 3 merges (shell) |
 | [human-auth.md](./human-auth.md) | Plan PR 3 merges |
 | [threat-model.md](./threat-model.md) | Plan PR 3 merges |
-| [oss-mechanics.md](./oss-mechanics.md) | Plan PR 5 merges (release lane), together with both copies of its "sole exception" sentence and their policy check |
+| [oss-mechanics.md](./oss-mechanics.md) | Withdrawn 2026-11-20: the app is released from this repository, so no second release repository or exception exists |
 
 **Deliberately not amended:**
 
@@ -460,12 +481,28 @@ Settled on 2026-11-05:
    regeneration or the enrolment gate in the instance's UI. The server has already replaced
    the codes by then, so the old ones are void and the new ones are never shown.
 
+Settled on 2026-11-20:
+
+6. **D13:** release the app from this repository. The owner asked for the app "inside
+   the same repo, as it's a shared codebase", with versions kept in step and files told
+   apart by name, and first chose the app's files inside the stable `hikyo` release.
+   Review then found that the stable verifier refuses any file outside the signed
+   manifest. Offered a `desktop-v` tag at the same version, a widened verifier, or the
+   separate repository, the owner chose "desktop-v tag, same ver".
+
 Author's note, not part of the owner's reply: the repair is a required row in
 [plan PR 1](../superpowers/plans/2026-11-04-desktop-app.md). The gate fails at its first step,
 which issues the codes. This comes from reading source and matches an iOS simulator run in
 the spike report's third round. It has not been run in the macOS shell.
 
 ## Review record
+
+- **2026-11-20 amendment of D13 and withdrawal of the oss-mechanics banner:** one
+  independent same-provider review by a fresh Claude Opus 5.5 agent, reading source
+  without running anything. It found the stable verifier's closed inventory blocking the
+  first draft (the app inside the stable release), which led to the `desktop-v` shape, and
+  stale text on the public desktop page. Cross-provider review was not requested and did
+  not run, and is not CLEAN.
 
 - **Cross-model review:** not run. SKIPPED by explicit owner instruction (2026-11-04), for
   this decision only, and not CLEAN.

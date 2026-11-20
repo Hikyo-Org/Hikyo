@@ -163,14 +163,18 @@ Size: days. Not yet investigated.
 
 ## PR 5: release lane
 
-Size: 1 to 2 weeks. The owner creates `Hikyo-Org/hikyo-app` and its signing identity.
+Size: 1 to 2 weeks. Amended 2026-11-20 ([ADR D13](../../adr/desktop-app.md#d13-repository-and-releases)):
+the stable release run also cuts `desktop-v<version>` in this repository, reusing the
+existing Developer ID signing and notarization identity.
 
 - `.app` nesting, entitlements and notarization, which
-  `scripts/release/sign-apple-artifacts.sh` doesn't cover.
-- Tags and releases live only in that repository. No updater and no update check.
-- `scripts/ci/check-oss-policy.sh` pins "Metadata-only ecosystem repositories are the sole
-  exception." When the second exception becomes operative, change both copies of that
-  sentence in `docs/adr/oss-mechanics.md` and the check together.
+  `scripts/release/sign-apple-artifacts.sh` doesn't cover yet.
+- A `desktop-v<version>` release holding `Hikyo-Desktop-<version>-<arch>.dmg` and its own
+  signed inventory, with `make_latest` false. Never on nightlies, never inside a `hikyo`
+  release. No updater and no update check.
+- A tag ruleset for `refs/tags/desktop-v*`, and a documented user verification step
+  beside Gatekeeper.
+- `scripts/ci/check-oss-policy.sh` and the "sole exception" sentence stay unchanged.
 
 ## PR 6: public docs
 
