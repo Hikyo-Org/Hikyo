@@ -1,14 +1,16 @@
 package lint
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"golang.org/x/tools/go/analysis"
 )
 
 // stableCopies are the programs that cannot import internal/jsonwire (a
@@ -19,18 +21,58 @@ var stableCopies = []string{
 	"scripts/ci/analysis-shards-go/main.go",
 }
 
+const stableOriginal = "internal/jsonwire/jsonwire.go"
+
+func stableCopiesSpecs(string) ([]InputSpec, error) {
+	specs := []InputSpec{{File: stableOriginal}}
+	for _, rel := range stableCopies {
+		specs = append(specs, InputSpec{File: rel})
+	}
+	return specs, nil
+}
+
+// StableCopies reads the declared jsonwire original and its copies, which are
+// not analyzed packages, and runs once on internal/jsonwire.
+var StableCopies = newStableCopies(flagInputs)
+
+func newStableCopies(provide func(*analysis.Analyzer) inputProvider) *analysis.Analyzer {
+	copies := slices.Clone(stableCopies)
+	declareInputs("stablecopies", stableCopiesSpecs)
+	return fileCheck{
+		name: "stablecopies", doc: "reports a copy of jsonwire.Stable whose options drift from the original",
+		anchor: Module + "/internal/jsonwire", specs: stableCopiesSpecs,
+		flags: func(a *analysis.Analyzer) {
+			a.Flags.Func("copies", "comma-separated copies to compare (default: the registered ones)", func(v string) error {
+				copies = strings.Split(v, ",")
+				return nil
+			})
+		},
+		run: func(src source, root string) ([]string, error) { return checkStableCopies(src, root, copies) },
+	}.analyzer(provide)
+}
+
 // CheckStableCopies reports each copy of jsonwire.Stable whose JoinOptions
 // argument list differs from the original's, so a copy cannot drift out of
 // byte-compatibility with encoding/json (v1) unnoticed.
 func CheckStableCopies(repoRoot string) []string {
-	want, err := joinOptionsArgs(filepath.Join(repoRoot, "internal/jsonwire/jsonwire.go"), "Stable")
+	findings, _ := checkStableCopies(osSource{}, repoRoot, stableCopies)
+	return findings
+}
+
+func checkStableCopies(src source, repoRoot string, copies []string) ([]string, error) {
+	want, err := joinOptionsArgs(src, filepath.Join(repoRoot, stableOriginal), "Stable")
+	if errors.Is(err, ErrUndeclaredInput) {
+		return nil, err
+	}
 	if err != nil {
-		return []string{"stablecopy: " + err.Error()}
+		return []string{"stablecopy: " + err.Error()}, nil
 	}
 	var findings []string
-	for _, rel := range stableCopies {
-		got, err := joinOptionsArgs(filepath.Join(repoRoot, filepath.FromSlash(rel)), "stableJSON")
+	for _, rel := range copies {
+		got, err := joinOptionsArgs(src, filepath.Join(repoRoot, filepath.FromSlash(rel)), "stableJSON")
 		switch {
+		case errors.Is(err, ErrUndeclaredInput):
+			return nil, err
 		case err != nil:
 			findings = append(findings, "stablecopy: "+err.Error())
 		case !slices.Equal(got, want):
@@ -39,18 +81,18 @@ func CheckStableCopies(repoRoot string) []string {
 				rel, strings.Join(got, ", "), strings.Join(want, ", ")))
 		}
 	}
-	return findings
+	return findings, nil
 }
 
 // joinOptionsArgs returns the source text of each argument of the
 // json.JoinOptions call that initializes the package variable name in path.
-func joinOptionsArgs(path, name string) ([]string, error) {
-	src, err := os.ReadFile(path)
+func joinOptionsArgs(src source, path, name string) ([]string, error) {
+	text, err := src.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, path, src, 0)
+	f, err := parser.ParseFile(fset, path, text, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +112,7 @@ func joinOptionsArgs(path, name string) ([]string, error) {
 			}
 			var args []string
 			for _, arg := range call.Args {
-				args = append(args, string(src[fset.Position(arg.Pos()).Offset:fset.Position(arg.End()).Offset]))
+				args = append(args, string(text[fset.Position(arg.Pos()).Offset:fset.Position(arg.End()).Offset]))
 			}
 			return args, nil
 		}

@@ -92,6 +92,15 @@ var vetFixtures = []vetFixture{
 		},
 	},
 	{
+		name: "stablecopies", analyzer: "stablecopies", patterns: []string{fixtureRoot + "badstablecopies"},
+		flags:      []string{"-stablecopies.anchor=" + fixtureImportRoot + "badstablecopies"},
+		targets:    []string{fixtureImportRoot + "badstablecopies"},
+		inputsRoot: "internal/lint/testdata/badstablecopies/root", messages: true,
+		old: func([]*packages.Package) []string {
+			return CheckStableCopies(filepath.Join(moduleRoot(), "internal/lint/testdata/badstablecopies/root"))
+		},
+	},
+	{
 		name: "upgradebuild", analyzer: "upgradebuild", patterns: []string{fixtureRoot + "badupgradebuild"},
 		old: UpgradeBuildAuthority,
 	},
@@ -253,10 +262,14 @@ func (f vetFixture) loadPatterns() []string {
 	return out
 }
 
-func fixtureFlagsAndPatterns(fixtures []vetFixture) (flags, patterns []string) {
+func fixtureFlagsAndPatterns(t *testing.T, fixtures []vetFixture) (flags, patterns []string) {
+	t.Helper()
 	for _, f := range fixtures {
 		flags = append(flags, "-"+f.analyzer)
 		flags = append(flags, f.flags...)
+		if f.inputsRoot != "" {
+			flags = append(flags, inputFlags(t, f.analyzer, filepath.Join(moduleRoot(), filepath.FromSlash(f.inputsRoot)))...)
+		}
 		patterns = append(patterns, f.patterns...)
 	}
 	return flags, patterns
@@ -267,7 +280,7 @@ func fixtureFlagsAndPatterns(fixtures []vetFixture) (flags, patterns []string) {
 // analyzer's diagnostics.
 func TestVetDriverFixtures(t *testing.T) {
 	bin := buildVetTool(t)
-	flags, patterns := fixtureFlagsAndPatterns(vetFixtures)
+	flags, patterns := fixtureFlagsAndPatterns(t, vetFixtures)
 	for _, ctx := range Contexts {
 		t.Run(ctx.Name, func(t *testing.T) {
 			out := runVet(t, bin, ctx, flags, patterns)
@@ -311,16 +324,16 @@ func TestVetDriverReportsMissingObserverTargets(t *testing.T) {
 // harness hides in-package test files, so the driver may report more.
 func TestVetDriverParity(t *testing.T) {
 	bin := buildVetTool(t)
-	flags, patterns := fixtureFlagsAndPatterns(vetFixtures)
+	flags, patterns := fixtureFlagsAndPatterns(t, vetFixtures)
 	for _, ctx := range Contexts {
 		t.Run(ctx.Name, func(t *testing.T) {
-			repo := runVet(t, bin, ctx, nil, []string{Module + "/..."})
+			repo := runVet(t, bin, ctx, repoInputFlags(t), []string{Module + "/..."})
 			pkgs, err := LoadRepoIn(ctx)
 			if err != nil {
 				t.Fatal(err)
 			}
 			for _, c := range Checks() {
-				requireSubset(t, c.Analyzer.Name+" on the repository", RunOver(c, pkgs).Findings, repo.Findings)
+				requireSubset(t, c.Analyzer.Name+" on the repository", RunOver(c.For(moduleRoot()), pkgs).Findings, repo.Findings)
 			}
 			fixtures := runVet(t, bin, ctx, flags, patterns)
 			for _, f := range vetFixtures {
@@ -332,7 +345,11 @@ func TestVetDriverParity(t *testing.T) {
 				if len(old) == 0 {
 					t.Errorf("old harness found nothing in fixture %s: the parity check would be vacuous", f.name)
 				}
-				requireSubset(t, "fixture "+f.name, old, fixtures.Findings)
+				current := fixtures.Findings
+				if f.messages {
+					current = findingMessages(fixtures.Findings, f.analyzer)
+				}
+				requireSubset(t, "fixture "+f.name, old, current)
 			}
 		})
 	}

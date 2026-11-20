@@ -74,6 +74,18 @@ func packagePos(pass *analysis.Pass) token.Pos {
 type Check struct {
 	Analyzer *analysis.Analyzer
 	Targets  []string
+	// OnDisk builds the same analyzer reading its inputs straight from disk
+	// under a root, for the old harness: the registered analyzer refuses to run
+	// without the driver's input flags. Nil when the analyzer reads no inputs.
+	OnDisk func(root string) *analysis.Analyzer
+}
+
+// For returns the check with the analyzer an old-harness run under root uses.
+func (c Check) For(root string) Check {
+	if c.OnDisk != nil {
+		c.Analyzer = c.OnDisk(root)
+	}
+	return c
 }
 
 // MissingTargets renders a finding per required target no analyzer pass reported.
@@ -200,6 +212,7 @@ func Checks() []Check {
 		{Analyzer: ContainmentSetters, Targets: ruleTargets(ContainmentSetterRules)},
 		{Analyzer: ActorSplit, Targets: []string{Module + "/internal/server"}},
 		{Analyzer: RedactPins, Targets: []string{sensitiveOwner}},
+		{Analyzer: StableCopies, Targets: []string{Module + "/internal/jsonwire"}, OnDisk: func(root string) *analysis.Analyzer { return newStableCopies(diskInputs(root)) }},
 	}
 }
 

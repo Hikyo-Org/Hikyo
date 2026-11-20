@@ -321,7 +321,7 @@ func TestVetDriverRepo(t *testing.T) {
 	bin := buildVetTool(t)
 	for _, ctx := range Contexts {
 		t.Run(ctx.Name, func(t *testing.T) {
-			out := runVet(t, bin, ctx, nil, []string{Module + "/..."})
+			out := runVet(t, bin, ctx, repoInputFlags(t), []string{Module + "/..."})
 			for _, finding := range out.Findings {
 				if _, deferred := out.Deferred[finding]; !deferred {
 					t.Error(finding)
@@ -372,4 +372,11 @@ type vetFixture struct {
 	flags    []string
 	targets  []string
 	old      func(pkgs []*packages.Package) []string
+	// inputsRoot is the fixture's repository root, relative to the module root,
+	// for an analyzer that reads declared inputs; the driver adds its -root and
+	// -inputs flags.
+	inputsRoot string
+	// messages compares the old findings with the driver's messages alone: the
+	// old entry point has no positions.
+	messages bool
 }
