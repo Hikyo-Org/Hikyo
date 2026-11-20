@@ -41,7 +41,7 @@ func proveFixture(t *testing.T) (*store.DB, *crypto.Keyring) {
 // plantSecret seals one value cell under the project sealer and inserts it, so
 // SampleSecretEntry returns a genuinely encrypted row bound to its AAD.
 //
-// fence:exempt seeds an isolated fixture database no rotate-dek can race.
+// fence:fixture seeds an isolated fixture database no rotate-dek can race.
 func plantSecret(t *testing.T, db *store.DB, kr *crypto.Keyring, plaintext string) {
 	t.Helper()
 	sealer, err := kr.ForProject(t.Context(), "org_p", "prj_p")

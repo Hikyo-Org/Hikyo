@@ -140,7 +140,7 @@ func TestBuildCurrentStatePresenceEquivalence(t *testing.T) {
 			// A non-name order proves construction follows catalogue order.
 			keys[0], keys[99] = keys[99], keys[0]
 			cat := &presenceCatalogueReader{keys: keys, rows: rows}
-			cur, err := buildCurrentState(t.Context(), cat, presenceEnvironmentReader{}, stubProof)
+			cur, err := buildCurrentState(t.Context(), cat, presenceEnvironmentReader{}, realProof(t))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -158,7 +158,7 @@ func TestBuildCurrentStatePresenceEquivalence(t *testing.T) {
 				}
 			}
 			keys[0].Declaration = "invalid"
-			if _, err := buildCurrentState(t.Context(), cat, presenceEnvironmentReader{}, stubProof); err == nil {
+			if _, err := buildCurrentState(t.Context(), cat, presenceEnvironmentReader{}, realProof(t)); err == nil {
 				t.Fatal("unreadable declaration was silently accepted")
 			}
 		})

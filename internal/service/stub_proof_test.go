@@ -1,7 +1,31 @@
 package service
 
-import "github.com/Hikyo-Org/hikyo/internal/authz"
+import (
+	"context"
+	"testing"
+	"time"
 
-// stubProof stands in for the proof of tests whose stub repositories never
-// read it. Tests of real authorization use proofs minted in a transaction.
-var stubProof authz.Proof
+	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/store"
+	storetx "github.com/Hikyo-Org/hikyo/internal/store/tx"
+)
+
+// realProof authorizes the adapter fixture's principal against the fixture
+// database and returns the proof. It is for tests whose stub repositories
+// never read the proof; tests of real authorization mint proofs in their own
+// transaction.
+func realProof(t *testing.T) authz.Proof {
+	t.Helper()
+	db := adapterServiceDB(t)
+	var proof authz.Proof
+	// WriteResult would return the proof out of its transaction, which txresult
+	// refuses; the stub repositories only pass it along.
+	err := storetx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) (err error) {
+		_, proof, err = authorize(ctx, az, LocalPrincipal("usr_adapter"), authz.OpAdapterConfigure, adapterScope, time.Now())
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return proof
+}

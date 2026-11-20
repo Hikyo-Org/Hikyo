@@ -47,7 +47,7 @@ func seedKey(t *testing.T, db *store.DB, id, name string) {
 // sealAdapterCredential seals value as adp_1's provider credential under the
 // test's project sealer. The AAD matches the adapter fixture every test uses.
 //
-// fence:exempt seeds an isolated fixture database no rotate-dek can race.
+// fence:fixture seeds an isolated fixture database no rotate-dek can race.
 func sealAdapterCredential(t *testing.T, sealer *crypto.ProjectSealer, value string) []byte {
 	t.Helper()
 	sealed, err := sealer.SealField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte(value))

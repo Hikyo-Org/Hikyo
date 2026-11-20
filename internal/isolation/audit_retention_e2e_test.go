@@ -109,14 +109,10 @@ func TestAuditRetentionReceiptFailureRollsBack(t *testing.T) {
 	})
 }
 
-// forgedProof is the one forgeable Proof value: the boundary test below hands
-// it to the store and requires the refusal.
-var forgedProof authz.Proof
-
 func TestAuditRetentionRejectsUnprovedDelete(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		err := tx.Write(t.Context(), db, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-			_, err := r.Retention().PruneAudit(ctx, forgedProof, time.Now(), time.Now())
+			_, err := r.Retention().PruneAudit(ctx, nil, time.Now(), time.Now()) // forgeguard:nil-proof the store boundary must refuse a nil proof; the test asserts it
 			return err
 		})
 		if err == nil {
