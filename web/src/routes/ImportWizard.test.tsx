@@ -4,6 +4,7 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../api/client.ts';
+import { continueInBrowserReason, dismissContinueInBrowser } from '../app/shell.ts';
 import { MAX_FILE_BYTES } from './import-sources.ts';
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -354,5 +355,20 @@ describe('ImportWizard git-managed', () => {
     expect(createKey).not.toHaveBeenCalled();
     const sent = importValues.mock.calls[0]?.[0];
     expect(sent.entries.map((entry: { key: string }) => entry.key)).toEqual(['EXISTING']);
+  });
+});
+
+describe('file inputs in the desktop app', () => {
+  afterEach(() => { dismissContinueInBrowser(); });
+  async function fallback(source: string) {
+    vi.stubGlobal('location', { protocol: 'wails:', origin: 'wails://x' });
+    const { container } = await render();
+    await click([...container.querySelectorAll('button')].find((node) => node.textContent?.includes(source)) ?? container);
+    const offer = button(container, 'File picker not opening? Continue in browser');
+    await click(offer);
+  }
+  it.each(['.env file', 'Kubernetes'])('offers Continue in browser beside the %s picker', async (source) => {
+    await fallback(source);
+    expect(continueInBrowserReason()).toContain('file picker does not open');
   });
 });

@@ -51,3 +51,14 @@ describe('camera scanning in the app', () => {
     expect(continueInBrowserReason()).toBeNull();
   });
 });
+
+describe('image import in the app', () => {
+  it('offers Continue in browser beside the image picker', async () => {
+    mode('wails:');
+    const view = await renderForm(<PairingQrImport onDecoded={() => undefined} revision="" disabled={false} />);
+    const offer = [...view.container.querySelectorAll('button')].find((node) => node.textContent?.startsWith('File picker not opening'));
+    await act(async () => offer?.click());
+    expect(continueInBrowserReason()).toContain('import the QR image');
+    await view.unmount();
+  });
+});

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { reconcileAfterShellHop } from '../api/sessionEpoch.ts';
+
 /**
  * The desktop shell's window, seen from the SPA (desktop-app ADR D8 and D9;
  * wire contract in docs/spec/desktop-shell-protocol.md).
@@ -17,6 +19,10 @@ export function isAppMode(): boolean {
 
 /** The handoff's limit on `key_ids` for a non-adapter purpose (`CLIReauthStartRequest`). */
 export const SHELL_REAUTH_KEY_LIMIT = 500;
+/** The most environments one reauth names (an `adapter` set); a larger set continues in the browser. */
+export const SHELL_REAUTH_ENVIRONMENT_LIMIT = 1000;
+/** The most decoded bytes one `download` carries; the audit export's own cap (`web/src/api/audit.ts`). */
+export const SHELL_DOWNLOAD_BYTES_LIMIT = 64 * 1024 * 1024;
 
 const errorCode = z.enum(['refused', 'busy', 'rate_limited', 'cancelled', 'failed', 'invalid']);
 export type ShellErrorCode = z.infer<typeof errorCode>;
@@ -129,14 +135,19 @@ const zReauthRequest = z.strictObject({
     'approval.vote', 'approval.bypass',
     'self-config.adopt', 'self-config.apply', 'self-config.test',
   ]),
-  environment_ids: z.array(id),
+  environment_ids: z.array(id).max(SHELL_REAUTH_ENVIRONMENT_LIMIT),
   key_ids: z.array(id).max(SHELL_REAUTH_KEY_LIMIT).optional(),
   self_config: zSelfConfigWire.optional(),
 }).superRefine((request, context) => {
   // Mirrors the handoff: self-config names no environment, every other purpose names at least one.
   const selfConfig = request.purpose === 'self-config';
+  const keys = request.key_ids?.length ?? 0;
   if (selfConfig !== (request.self_config !== undefined)) context.addIssue({ code: 'custom', message: 'self_config belongs to the self-config purpose only' });
   if (selfConfig !== (request.environment_ids.length === 0)) context.addIssue({ code: 'custom', message: 'environment_ids must be empty for self-config and present otherwise' });
+  // Key-bound purposes decide over one environment and an exact, non-empty key unit.
+  const keyBound = !selfConfig && request.purpose !== 'adapter';
+  if (keyBound && request.environment_ids.length !== 1) context.addIssue({ code: 'custom', message: 'a key-bound purpose names exactly one environment' });
+  if (keyBound !== (keys > 0)) context.addIssue({ code: 'custom', message: 'key_ids belong to the key-bound purposes and must be non-empty there' });
 });
 export type ShellReauthRequest = z.input<typeof zReauthRequest>;
 
@@ -145,8 +156,13 @@ export async function shellReauth(request: ShellReauthRequest): Promise<void> {
   if (request.purpose !== 'adapter' && (request.key_ids?.length ?? 0) > SHELL_REAUTH_KEY_LIMIT) {
     throw offerContinueInBrowser('This decision covers more keys than the desktop app can hand to your browser.');
   }
+  if (request.environment_ids.length > SHELL_REAUTH_ENVIRONMENT_LIMIT) {
+    throw offerContinueInBrowser('This decision covers more environments than the desktop app can hand to your browser.');
+  }
   try {
     await post('reauth', zReauthRequest.parse(request));
+    // The shell may have changed the session behind the page: prove the owner is the same.
+    await reconcileAfterShellHop();
   } catch (error) {
     if (error instanceof ShellError && error.code === 'refused') throw offerContinueInBrowser('The desktop app will not run this confirmation. Continue in your browser instead.');
     throw error;
@@ -214,6 +230,9 @@ export async function shellDownloadPath(path: string, filename: string): Promise
 
 /** Save bytes the SPA built itself through the shell's save panel. Resolves false when the user cancelled. */
 export async function shellDownloadBytes(bytes: Uint8Array, filename: string, contentType: string): Promise<boolean> {
+  if (bytes.length > SHELL_DOWNLOAD_BYTES_LIMIT) {
+    throw offerContinueInBrowser('This file is larger than the desktop app can save. Continue in your browser to download it.');
+  }
   return downloaded(post('download', zBytesDownload.parse({ bytes_base64: toBase64(bytes), filename, content_type: contentType })));
 }
 
@@ -242,7 +261,7 @@ let knownOrigin: string | undefined;
 export function shellOrigin(): Promise<string> {
   origin ??= (async () => {
     const response = await shellFetch('origin', { method: 'GET' });
-    if (!response.ok) throw await refusal(response);
+    if (response.status !== 200) throw await refusal(response);
     const parsed = zOrigin.safeParse(await response.json().catch(() => undefined));
     if (!parsed.success) throw new ShellError('failed', 'The desktop app answered an origin outside its contract.');
     knownOrigin = parsed.data.origin;

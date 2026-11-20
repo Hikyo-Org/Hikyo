@@ -5,6 +5,7 @@ import { Button } from '../ui/Button.tsx';
 import { Input } from '../ui/Input.tsx';
 import { readPairingInvitation } from './pairingInvitation.ts';
 import { decodeQrPixels, qrFrame, readQrImage } from './pairingQr.ts';
+import { FileInputFallback } from '../app/FileInputFallback.tsx';
 import { isAppMode, offerContinueInBrowser } from '../app/shell.ts';
 
 /** Pixels and decoded invitations stay in this surface only. No URLs, uploads,
@@ -114,6 +115,7 @@ export function PairingQrImport({ onDecoded, revision, disabled }: {
           : <Button type="button" onClick={stop}>{mode === 'camera' ? 'Stop camera' : 'Cancel image import'}</Button>}
       </div>
       <Input id="pairing-qr-image" label="Import QR image" type="file" accept="image/png,image/jpeg" disabled={disabled} onChange={(event) => void importImage(event)} hint="PNG or JPEG, up to 8 MB and 16 million pixels." />
+      <FileInputFallback what="import the QR image" />
       <video ref={video} className="remote-pairing__camera" hidden={mode !== 'camera'} autoPlay muted playsInline aria-label="Invitation camera preview" />
       {mode === 'camera' ? <p role="status">Point the camera at the administrator's invitation QR code. Nothing connects until you confirm.</p> : null}
       {mode === 'image' ? <p role="status">Reading QR image locally…</p> : null}

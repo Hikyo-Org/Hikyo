@@ -1,4 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
+import { FileInputFallback } from '../app/FileInputFallback.tsx';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import {
   applyBundle,
@@ -287,6 +288,7 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
             disabled={busy}
             onChange={(event) => void selectFile(event.currentTarget.files?.[0])}
           />
+          <FileInputFallback what="choose the bundle" />
         </div>
         <p className="settings-note">
           Portable bundles add definitions; a based bundle can rename or delete existing

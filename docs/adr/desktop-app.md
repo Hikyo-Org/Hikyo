@@ -2,9 +2,16 @@
 
 Status: **owner-locked on 2026-11-05; operative when
 [#1214](https://github.com/Hikyo-Org/Hikyo/pull/1214) merges.**
-Each amendment banner has its own [trigger](#amendments). Nothing here is implemented,
-and this ADR authorizes no implementation PR, release, `Hikyo-Org/hikyo-app`
-repository or signing identity.
+Each amendment banner has its own [trigger](#amendments). On 2026-11-19 the owner
+authorized the implementation PRs ("go ahead, build everything"):
+[#1454](https://github.com/Hikyo-Org/Hikyo/pull/1454) (client packages),
+[#1458](https://github.com/Hikyo-Org/Hikyo/pull/1458) (server and SPA app mode),
+[#1459](https://github.com/Hikyo-Org/Hikyo/pull/1459) (the shell),
+[#1461](https://github.com/Hikyo-Org/Hikyo/pull/1461) (macOS CI) and
+[#1460](https://github.com/Hikyo-Org/Hikyo/pull/1460) (documentation). That authorization
+does not cover the release lane (plan PR 5), which is blocked until the owner creates
+the `Hikyo-Org/hikyo-app` repository and the signing identity; this ADR still
+authorizes no release, repository or signing identity.
 
 1. **Owner acceptance.** Offered the first three [decisions below](#owner-decisions) and told
    that choosing the waiver and accepting the design would lead to the banners and reopened

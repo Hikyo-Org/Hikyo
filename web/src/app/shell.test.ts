@@ -108,6 +108,30 @@ describe('reauth', () => {
     await expect(shellReauth({ ...reveal, key_ids: keys.slice(0, 500) })).resolves.toBeUndefined();
   });
 
+  it('refuses a request outside the per-purpose shape before calling the shell', async () => {
+    const adapter: ShellReauthRequest = { purpose: 'adapter', operation: 'adapter.sync', environment_ids: ['a', 'b'] };
+    const bad: ShellReauthRequest[] = [
+      { ...reveal, key_ids: [] },
+      { ...reveal, key_ids: undefined },
+      { ...reveal, environment_ids: ['a', 'b'] },
+      { ...adapter, key_ids: ['k'] },
+      { ...adapter, environment_ids: [] },
+    ];
+    for (const request of bad) await expect(shellReauth(request)).rejects.toThrow();
+    expect(fetcher).not.toHaveBeenCalled();
+    fetcher.mockResolvedValue(noContent());
+    await expect(shellReauth(adapter)).resolves.toBeUndefined();
+  });
+
+  it('refuses more than 1000 environments with a Continue in browser offer', async () => {
+    const environments = Array.from({ length: 1001 }, (_, index) => `e${index}`);
+    await expect(shellReauth({ purpose: 'adapter', operation: 'adapter.sync', environment_ids: environments }))
+      .rejects.toBeInstanceOf(ContinueInBrowserError);
+    expect(fetcher).not.toHaveBeenCalled();
+    fetcher.mockResolvedValue(noContent());
+    await expect(shellReauth({ purpose: 'adapter', operation: 'adapter.sync', environment_ids: environments.slice(0, 1000) })).resolves.toBeUndefined();
+  });
+
   it.each(['busy', 'rate_limited', 'cancelled', 'failed', 'invalid'] as const)('maps the %s error body', async (code) => {
     fetcher.mockResolvedValue(refused(code));
     const error = await shellReauth(reveal).catch((caught: unknown) => caught);
@@ -188,6 +212,12 @@ describe('download', () => {
     expect(atob(String((sent as { bytes_base64: string }).bytes_base64))).toHaveLength(100_000);
   });
 
+  it('refuses a body over 64 MiB with a Continue in browser offer, without calling the shell', async () => {
+    await expect(shellDownloadBytes(new Uint8Array(64 * 1024 * 1024 + 1), 'big', 'application/x-ndjson'))
+      .rejects.toBeInstanceOf(ContinueInBrowserError);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it('resolves false on cancel and rejects on failure', async () => {
     fetcher.mockResolvedValueOnce(refused('cancelled'));
     await expect(shellDownloadPath('/api/v1/x', 'x')).resolves.toBe(false);
@@ -202,6 +232,11 @@ describe('clipboard and origin', () => {
     await shellClipboardCopied();
     expect(fetcher).toHaveBeenCalledWith('/__shell/clipboard', expect.objectContaining({ method: 'POST' }));
     expect(body(fetcher.mock.calls[0]?.[1])).toEqual({});
+  });
+
+  it('requires 200 for the origin, not any 2xx', async () => {
+    fetcher.mockResolvedValue(new Response(JSON.stringify({ origin: 'https://hikyo.example' }), { status: 203 }));
+    await expect(shellOrigin()).rejects.toMatchObject({ code: 'failed' });
   });
 
   it('reads the origin once, parses it, and serves it synchronously afterwards', async () => {
