@@ -383,8 +383,21 @@ func BuildProjectPlan(in ProjectPlanInput) (*ProjectPlan, error) {
 		return nil, failure(in.Source, CodeMalformed, "",
 			"a phase-1 plan targets at least one environment")
 	}
+	// ParseManifest refuses a repeated target, so a plan naming one twice would
+	// write artifacts that cannot be replayed. Ids and created names are
+	// separate namespaces, as in the manifest.
+	existingSeen, createdSeen := map[string]bool{}, map[string]bool{}
 	for i := range in.Envs {
 		e := &in.Envs[i]
+		seen, target := existingSeen, e.EnvID
+		if e.Create {
+			seen, target = createdSeen, e.EnvName
+		}
+		if target != "" && seen[target] {
+			return nil, failure(in.Source, CodeMalformed, "",
+				"environment %s is already mapped", quoteName(target))
+		}
+		seen[target] = true
 		if e.Create && e.EnvName == "" {
 			return nil, failure(in.Source, CodeMalformed, "",
 				"a created environment is named, not id'd")

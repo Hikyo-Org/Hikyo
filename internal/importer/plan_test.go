@@ -308,6 +308,27 @@ func TestBuildProjectPlanRefusesCreatedEnvironmentWithID(t *testing.T) {
 	wantCode(t, err, CodeMalformed)
 }
 
+// TestBuildProjectPlanRefusesRepeatedTargets: ParseManifest refuses a target
+// named twice, so the plan must refuse it up front rather than write an artifact
+// that cannot be replayed. Existing ids and created names are each checked.
+func TestBuildProjectPlanRefusesRepeatedTargets(t *testing.T) {
+	rec := []Record{{SourceName: "API_KEY", Value: "k", Type: schema.TypeString}}
+	for name, envs := range map[string][]EnvInput{
+		"existing": {{EnvID: "env_a", Records: rec}, {EnvID: "env_a", Records: rec}},
+		"created":  {{Create: true, EnvName: "staging", Records: rec}, {Create: true, EnvName: "staging", Records: rec}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := BuildProjectPlan(ProjectPlanInput{
+				Source: k8sSource, Project: "prj_1", DefinitionsRevision: 7, Envs: envs,
+			})
+			wantCode(t, err, CodeMalformed)
+			if !strings.Contains(err.Error(), "already mapped") {
+				t.Errorf("refusal does not name the repeated target: %v", err)
+			}
+		})
+	}
+}
+
 // TestBucketsAreNewAndSetOnly pins the flat-model amendment: two buckets, and a
 // `set` key is skipped by default and listed by name.
 func TestBucketsAreNewAndSetOnly(t *testing.T) {
