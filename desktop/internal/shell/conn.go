@@ -31,9 +31,9 @@ type Conn struct {
 	secret  Secret
 	stopped string
 	// tampered is set when the connection record disagrees with the keychain
-	// item, or the item is open to other applications. Such a connection is
-	// never used or signed in again. Removal revokes only through the item's
-	// own binding, and only when the item passes the access check.
+	// item. Such a connection is never used or signed in again. Removal
+	// revokes only through the item's own binding, and only when the item
+	// passes the access check.
 	tampered bool
 
 	// rotMu serializes token rotation: one at a time (ADR D4).
@@ -80,9 +80,11 @@ func (m *Manager) newConn(info Connection) (*Conn, error) {
 		}
 		c.secret = secret
 	case errors.Is(err, ErrItemUntrusted):
-		c.tampered = true
-		c.stopped = "The keychain item for this connection can be read by other applications. " +
-			"Something changed it outside the app, so it was not used. Remove the connection and add it again."
+		// Not tampered: the item is only unusable, never used or revoked
+		// through. A different build or a moved unsigned app lands here too, so
+		// signing in again (which replaces the item) must stay possible; the
+		// sign-in confirmation names the origin because no item vouches for it.
+		c.stopped = "The saved session was created by a different build or location of this app, or can be read by other applications, so it was not used. Sign in again to replace it."
 		log.Printf("connection %s: keychain item is not restricted to this app", info.Host)
 	case errors.Is(err, ErrNoSecret):
 		c.stopped = "This connection has no stored session. Sign in again."

@@ -163,7 +163,8 @@ func TestRemoveAfterAFailedLaunchReadRevokesOnlyAtTheItemsOrigin(t *testing.T) {
 	}
 }
 
-// An item other applications can read is never used or revoked through, and
+// An item this build may not use (another build or location created it, or
+// other applications can read it) is never used or revoked through, and
 // removal says the session was not revoked.
 func TestUntrustedKeychainItemIsNeverUsedOrRevokedThrough(t *testing.T) {
 	h := newHarness(t)
@@ -175,13 +176,10 @@ func TestUntrustedKeychainItemIsNeverUsedOrRevokedThrough(t *testing.T) {
 	}
 	t.Cleanup(func() { m2.Wait(); m2.Close() })
 	conn := m2.conn(info.Host)
-	if !conn.isTampered() || conn.Stopped() == "" || conn.bearer() != "" {
-		t.Fatalf("untrusted item accepted: tampered %v stopped %q", conn.isTampered(), conn.Stopped())
+	if conn.Stopped() == "" || conn.bearer() != "" || !strings.Contains(conn.Stopped(), "Sign in again") {
+		t.Fatalf("untrusted item accepted or unexplained: stopped %q", conn.Stopped())
 	}
 	before := h.inst.total()
-	if err := m2.SignIn(context.Background(), info.Host, ""); err == nil {
-		t.Error("sign-in on an untrusted item succeeded")
-	}
 	res, err := m2.Remove(context.Background(), info.Host)
 	if err != nil || res.Revoked || res.Message == "" {
 		t.Fatalf("remove: %+v %v", res, err)
@@ -189,4 +187,52 @@ func TestUntrustedKeychainItemIsNeverUsedOrRevokedThrough(t *testing.T) {
 	if h.inst.total() != before {
 		t.Errorf("an untrusted item reached the instance: %d requests", h.inst.total()-before)
 	}
+}
+
+// Signing in again replaces a refused item. The old token is never sent, and
+// the person confirms the origin because no item vouches for the record.
+func TestSignInAgainReplacesAnUntrustedItem(t *testing.T) {
+	h := newHarness(t)
+	c, old := h.connect()
+	info := c.Info()
+	h.playBrowser()
+	h.native.confirmAnswer = true
+	m2, err := NewManager(h.store, &untrustedOnce{SecretStore: h.secrets}, h.native, h.m.opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { m2.Wait(); m2.Close() })
+	if m2.conn(info.Host).Stopped() == "" {
+		t.Fatal("the untrusted item did not stop the connection")
+	}
+	if err := m2.SignIn(context.Background(), info.Host, ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.native.confirms) == 0 || !strings.Contains(h.native.confirms[len(h.native.confirms)-1], info.Origin) {
+		t.Errorf("sign-in did not name the origin: %q", h.native.confirms)
+	}
+	got, err := h.secrets.Get(info.Host)
+	if err != nil || got.Token == old.Token || got.Origin != info.Origin {
+		t.Fatalf("item after sign-in: %+v %v", got, err)
+	}
+	for _, r := range h.inst.requests("POST", "/api/v1/auth/logout") {
+		if r.Header.Get("Authorization") == "Bearer "+old.Token {
+			t.Error("the refused item's token was sent")
+		}
+	}
+}
+
+// untrustedOnce refuses the first read only: the launch-time read of an item
+// another build created.
+type untrustedOnce struct {
+	SecretStore
+	done bool
+}
+
+func (u *untrustedOnce) Get(host string) (Secret, error) {
+	if !u.done {
+		u.done = true
+		return Secret{}, ErrItemUntrusted
+	}
+	return u.SecretStore.Get(host)
 }
