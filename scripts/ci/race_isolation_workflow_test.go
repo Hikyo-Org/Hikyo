@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -217,7 +216,7 @@ exit 0
 				}
 				sort.Strings(selected)
 				if strings.Join(selected, "\n") != strings.Join(analyzers, "\n") {
-					t.Fatalf("serial group must match every LoadRepo caller: got %v, want %v", selected, analyzers)
+					t.Fatalf("serial group must match every whole-module sweep: got %v, want %v", selected, analyzers)
 				}
 				var matrix struct {
 					Include []struct {
@@ -248,8 +247,9 @@ exit 0
 	}
 }
 
-// Keep the serial group tied to source: a new repository-loading invariant must
-// be assigned to the analyzer job rather than quietly reintroducing this race.
+// Keep the serial group tied to source: a new whole-module static sweep must be
+// assigned to the analyzer job rather than quietly joining the runtime shards.
+// A sweep is an isolation test that calls packageScopeNames.
 func raceIsolationAnalyzerTests(t *testing.T) []string {
 	t.Helper()
 	files, err := filepath.Glob("../../internal/isolation/*_test.go")
@@ -262,51 +262,28 @@ func raceIsolationAnalyzerTests(t *testing.T) []string {
 		if err != nil {
 			t.Fatal(err)
 		}
-		lintName := ""
-		for _, spec := range file.Imports {
-			path, err := strconv.Unquote(spec.Path.Value)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if path == "github.com/Hikyo-Org/hikyo/internal/lint" {
-				lintName = "lint"
-				if spec.Name != nil {
-					lintName = spec.Name.Name
-				}
-				if lintName == "." {
-					t.Fatal("lint imports must be qualified for analyzer discovery")
-				}
-			}
-		}
 		for _, decl := range file.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
 			if !ok || !strings.HasPrefix(fn.Name.Name, "Test") {
 				continue
 			}
-			loadsRepo := false
+			sweeps := false
 			ast.Inspect(fn.Body, func(node ast.Node) bool {
-				call, ok := node.(*ast.CallExpr)
-				if !ok {
-					return true
-				}
-				selector, ok := call.Fun.(*ast.SelectorExpr)
-				if !ok {
-					return true
-				}
-				pkg, ok := selector.X.(*ast.Ident)
-				if ok && pkg.Name == lintName && (selector.Sel.Name == "LoadRepo" || selector.Sel.Name == "LoadRepoIn") {
-					loadsRepo = true
+				if call, ok := node.(*ast.CallExpr); ok {
+					if fun, ok := call.Fun.(*ast.Ident); ok && fun.Name == "packageScopeNames" {
+						sweeps = true
+					}
 				}
 				return true
 			})
-			if loadsRepo {
+			if sweeps {
 				names = append(names, fn.Name.Name)
 			}
 		}
 	}
 	sort.Strings(names)
 	if len(names) == 0 {
-		t.Fatal("no repository-loading invariants found")
+		t.Fatal("no whole-module static sweeps found")
 	}
 	return names
 }
