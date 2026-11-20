@@ -376,7 +376,7 @@ func declareCeremonyServer(t *testing.T, window apigen.RevealWindow) (http.Handl
 			_, _ = w.Write([]byte(`{"error":{"code":"forbidden","message":"not permitted"}}`))
 			return
 		}
-		_ = jsonwire.Encode(w, apigen.ValueList{})
+		_ = json.NewEncoder(w).Encode(apigen.ValueList{})
 	}), seen
 }
 
