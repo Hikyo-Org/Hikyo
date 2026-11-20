@@ -51,6 +51,13 @@ describe('in the desktop app', () => {
     expect(ceremonyRefusalText(error)).toContain('needs your browser');
   });
 
+  it.each(['reveal', 'approve'] as const)('offers Continue in browser for %s with no keys, not a schema error', async (decision) => {
+    const error = await runPasskeyCeremony({ operation: decision, environmentId: 'env', keyIds: [] }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ContinueInBrowserError);
+    expect(shell.reauth).not.toHaveBeenCalled();
+    expect(ceremonyRefusalText(error)).toContain('Continue there');
+  });
+
   it('serves the identity-provider button through the same hop', async () => {
     await runAppReauth({ operation: 'reveal', environmentId: 'env', keyIds: ['k'] });
     expect(shell.reauth).toHaveBeenCalledTimes(1);

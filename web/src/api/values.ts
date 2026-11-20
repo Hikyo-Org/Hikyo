@@ -207,6 +207,8 @@ export async function runAppReauth(input: PasskeyCeremonyInput): Promise<void> {
   if (route === undefined) {
     throw offerContinueInBrowser('This confirmation needs your browser. Continue there, then return to the app.');
   }
+  // The handoff needs a non-empty key unit; without one the shell would refuse it as a raw schema error.
+  if (input.keyIds.length === 0) throw offerContinueInBrowser('This confirmation names no keys the desktop app can hand to your browser. Continue there, then return to the app.');
   await shellReauth({ ...route, environment_ids: [input.environmentId], key_ids: [...input.keyIds] });
 }
 
