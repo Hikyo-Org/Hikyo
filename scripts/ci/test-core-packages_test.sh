@@ -20,7 +20,7 @@ elif [[ "$1" == list ]]; then
   esac
 elif [[ "$1" == test && "$2" == -count=1 ]]; then
   shift 2
-  printf '%s\n' "$@" >>"$CORE_TEST_EXECUTED"
+  for arg in "$@"; do [[ "$arg" == -timeout=* ]] || printf '%s\n' "$arg"; done >>"$CORE_TEST_EXECUTED"
   printf 'call\n' >>"$CORE_TEST_CALLS"
   if [[ "$*" == *internal/app* || "$*" == *internal/lint* ]]; then
     [[ -f "$CORE_TEST_PREPARED" ]] || exit 96
@@ -31,7 +31,7 @@ elif [[ "$1" == test && "$2" == -count=1 ]]; then
     [[ "$#" == 1 && $(wc -l <"$CORE_TEST_CALLS") -eq 1 ]] || exit 91
     [[ "$CORE_TEST_FAIL" != app ]] || exit 92
   elif [[ "$*" == *internal/lint* ]]; then
-    [[ "$#" == 1 && $(wc -l <"$CORE_TEST_CALLS") -eq 2 ]] || exit 95
+    [[ "$#" == 2 && "$1" == -timeout=25m && $(wc -l <"$CORE_TEST_CALLS") -eq 2 ]] || exit 95
     [[ "$CORE_TEST_FAIL" != lint ]] || exit 96
   else
     [[ "$CORE_TEST_FAIL" != concurrent ]] || exit 93
