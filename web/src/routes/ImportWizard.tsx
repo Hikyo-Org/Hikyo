@@ -1,4 +1,5 @@
 import { listKeysOp } from '@hikyo/operations';
+import { FileInputFallback } from '../app/FileInputFallback.tsx';
 import { useMemo, useRef, useState } from 'react';
 
 import { parsed } from '../api/client.ts';
@@ -716,6 +717,7 @@ export function ImportWizard({
               commitReset();
             }}
           />
+          <FileInputFallback what="choose the file" />
           {parse === null ? null : (
             <p className="import-wizard__summary" role="status">
               {`${fileName ?? 'file'}: ${String(dotenvEntries.length)} value${dotenvEntries.length === 1 ? '' : 's'} read` +
@@ -822,6 +824,7 @@ export function ImportWizard({
               await readFile(file, envSlug.trim());
             }}
           />
+          <FileInputFallback what="choose the export" />
           {needsSlug && envSlug.trim() === '' ? (
             <p className="import-wizard__summary" role="status">
               Name the source environment slug before choosing the export.

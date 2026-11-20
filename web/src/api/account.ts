@@ -1,4 +1,5 @@
 import { assertSessionEpoch, captureSessionEpoch } from './sessionEpoch.ts';
+import { ContinueInBrowserError, requireBrowser } from '../app/shell.ts';
 import {
   authMethodsOp,
   enrolPasskeyFinishOp,
@@ -210,6 +211,7 @@ export function useSetPassword() {
 export function useEstablishCredential() {
   return useSensitiveMutation({
     mutationFn: async (input: { kind: 'oidc' | 'oauth2'; slug: string }) => {
+      requireBrowser('Adding a sign-in method needs your browser.');
       const result = input.kind === 'oidc'
         ? await parsed(oidcStartOp, { path: { provider: input.slug }, body: { purpose: 'establish', browser: true } })
         : await parsed(oauth2StartOp, { path: { provider: input.slug }, body: { purpose: 'establish', browser: true } });
@@ -311,6 +313,8 @@ export function useUnlinkIdentity() {
 export function useLinkIdentity() {
   return useSensitiveMutation({
     mutationFn: async (input: { provider: string; kind: 'oidc' | 'saml' | 'oauth2'; proof: string }) => {
+      // Linking sets a browser cookie, which the desktop app's proxy strips.
+      requireBrowser('Linking a sign-in provider needs your browser.');
       if (input.kind === 'saml') {
         const result = await parsed(samlStartOp, {
             path: { provider: input.provider },
@@ -345,6 +349,8 @@ export function useEnrolPasskey() {
   const after = useAfterAccountMutation();
   return useSensitiveMutation({
     mutationFn: async (input: { proof: AccountSecurityProof }) => {
+      // A passkey needs the instance's real origin as its RP ID.
+      requireBrowser('Adding a passkey needs your browser.');
       const epoch = captureSessionEpoch();
       const options = await parsed(enrolPasskeyStartOp, { body: proofBody(input.proof) });
       const credential = await navigator.credentials.create({
@@ -582,6 +588,7 @@ export function passkeyCreationOptions(blob: unknown): PublicKeyCredentialCreati
  * "wrong password" unless the server actually refused a credential.
  */
 export function accountFailureText(error: unknown): string {
+  if (error instanceof ContinueInBrowserError) return error.message;
   if (error instanceof ApiError) {
     return statusText(
       error,

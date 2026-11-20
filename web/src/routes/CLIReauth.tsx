@@ -6,6 +6,7 @@ import { useSensitiveMutation, useSensitiveState } from '../api/sensitiveMutatio
 import {
   approveCLIReauth,
   cliReauthCallbackURL,
+  type CliReauthTransaction,
   loadCLIReauthTransaction,
 } from '../api/cliReauth.ts';
 import { useAuthMethods, useSessionOIDCProvider, useTotpStatus } from '../api/account.ts';
@@ -26,7 +27,11 @@ import { ConsentKeys, useConsentNames } from './ConsentScope.tsx';
 import { Login } from './Login.tsx';
 import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
 
-/** Browser half of the CLI's state + PKCE reauthentication handoff. */
+/**
+ * Browser half of the state + PKCE reauthentication handoff, for the CLI and the
+ * desktop app alike. Its wording names neither: the server cannot say which client
+ * asked, so the page names the signed-in person and what is being decided.
+ */
 export function CLIReauth() {
   const auth = useAuth();
   const [state] = useState(
@@ -127,14 +132,14 @@ export function CLIReauth() {
   });
 
   if (state === '') {
-    return <CLIReauthMessage title="Nothing to authorize" text="This page has no CLI transaction. Return to the terminal and start again." />;
+    return <CLIReauthMessage title="Nothing to authorize" text="This page has no pending request. Go back to the app or terminal that started it and start again." />;
   }
   if (auth.state.status === 'checking' || auth.state.status === 'transitioning') {
     // The same card shell as the loaded state, so the page does not jump.
     return (
       <main className="login">
         <div className="login__card">
-          <h1 className="login__title">Authorize CLI</h1>
+          <h1 className="login__title">Authorize this request</h1>
           <p className="login__lede" role="status">
             Loading…
           </p>
@@ -176,10 +181,15 @@ export function CLIReauth() {
   return (
     <main className="login">
       <div className="login__card">
-        <h1 className="login__title">Authorize CLI</h1>
+        <h1 className="login__title">Authorize this request</h1>
+        {/* A browser signed in as someone else only learns "invalid or expired" from the server, so say who this is. */}
+        <p className="login__lede">
+          Signed in as <strong><bdi>{auth.identity?.principal.display_name ?? auth.identity?.principal.id}</bdi></strong>.
+          Approve only a request you started in the Hikyo app or terminal.
+        </p>
         {transaction.isPending ? <p role="status">Loading authorization policy…</p> : null}
         {transaction.isError ? (
-          <Alert>This CLI transaction is invalid, expired, or already used. Return to the terminal and start again.</Alert>
+          <Alert>This request is invalid, expired, or already used, or it belongs to a different account than the one signed in here. Go back to the app or terminal that started it and start again.</Alert>
         ) : null}
         {transaction.data !== undefined ? (
           <>
@@ -194,7 +204,7 @@ export function CLIReauth() {
                 </>
               ) : (
                 <>
-                  The terminal asks to <strong>{transaction.data.purpose}</strong>{' '}
+                  A Hikyo client you started asks to <strong>{transaction.data.purpose}</strong>{' '}
                   {transaction.data.key_ids.length} key
                   {transaction.data.key_ids.length === 1 ? '' : 's'} in the environments below.
                   {offersTOTP
@@ -216,22 +226,7 @@ export function CLIReauth() {
                 <NamedId id={owner.project_id} name={names.project} tail />
               </p>
             )}
-            {transaction.data.environments.length === 0 ? null : (
-              <ul aria-label="Environments this decision covers">
-                {transaction.data.environments.map((environment) => (
-                  <li key={environment.environment_id}>
-                    <NamedId
-                      id={environment.environment_id}
-                      name={owner === undefined ? undefined : names.environmentName(environment.environment_id)}
-                      tail
-                    />{' '}
-                    ({environment.requires_webauthn
-                      ? 'passkey required'
-                      : 'passkey or authenticator code'})
-                  </li>
-                ))}
-              </ul>
-            )}
+            <EnvironmentList environments={transaction.data.environments} />
             {disclosure || developerCredential ? (
               <ConsentKeys keys={names.keys(transaction.data.key_ids)} />
             ) : null}
@@ -245,9 +240,9 @@ export function CLIReauth() {
                 <input id="cli-reauth-totp" required={!hasPasskey} inputMode="numeric" autoComplete="one-time-code" value={totp} onChange={(event) => setTOTP(event.target.value)} />
               </div>
             ) : null}
-            {approve.isError ? <Alert>Authorization failed. No CLI credential was disclosed; return to the terminal and try again.</Alert> : null}
+            {approve.isError ? <Alert>Authorization failed. Nothing was disclosed. Go back to the app or terminal that started this request and try again.</Alert> : null}
             <Button variant="primary" type="button" disabled={approve.isPending || !names.settled || !canUseFactor || (!hasPasskey && totp.trim() === '')} onClick={() => approve.mutate('factor')}>
-              {approve.isPending ? 'Authorizing…' : 'Authorize CLI'}
+              {approve.isPending ? 'Authorizing…' : 'Authorize'}
             </Button>
             {offersOIDC ? (
               <Button type="button" disabled={approve.isPending || !names.settled || !canUseOIDC} onClick={() => approve.mutate('oidc')}>
@@ -260,6 +255,36 @@ export function CLIReauth() {
       </div>
     </main>
   );
+}
+
+type PolicyEnvironment = CliReauthTransaction['environments'][number];
+
+/** Environments by name where this person can read them, one project at a time: a handoff may span several. */
+function EnvironmentList({ environments }: { environments: readonly PolicyEnvironment[] }) {
+  if (environments.length === 0) return null;
+  const projects = new Map<string, PolicyEnvironment[]>();
+  for (const environment of environments) {
+    const key = JSON.stringify([environment.org_id, environment.project_id]);
+    projects.set(key, [...(projects.get(key) ?? []), environment]);
+  }
+  return (
+    <ul aria-label="Environments this decision covers">
+      {[...projects.entries()].map(([key, members]) => (
+        <ProjectEnvironments key={key} environments={members} />
+      ))}
+    </ul>
+  );
+}
+
+function ProjectEnvironments({ environments }: { environments: readonly PolicyEnvironment[] }) {
+  const first = environments[0];
+  const names = useConsentNames(first?.org_id ?? '', first?.project_id ?? '', false);
+  return environments.map((environment) => (
+    <li key={environment.environment_id}>
+      <NamedId id={environment.environment_id} name={names.environmentName(environment.environment_id)} tail />{' '}
+      ({environment.requires_webauthn ? 'passkey required' : 'passkey or authenticator code'})
+    </li>
+  ));
 }
 
 function CLIReauthMessage(input: { title: string; text: string }) {

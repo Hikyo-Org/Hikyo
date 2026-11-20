@@ -4,6 +4,7 @@ import { act } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { continueInBrowserReason, dismissContinueInBrowser } from '../app/shell.ts';
 import { ApiError } from '../api/client.ts';
 import { GIT_DEFINITIONS_NOTICE } from '../api/definitions.ts';
 import { renderForm, settle } from '../testkit/renderForm.tsx';
@@ -188,6 +189,18 @@ describe('applying a plan whose folder moves widen access', () => {
     await act(async () => buttonIn(dialog, 'Cancel').click());
     expect(view.container.querySelector('dialog[open] .access-diff')).toBeNull();
     expect(mocks.apply).toHaveBeenCalledTimes(1);
+    await view.unmount();
+  });
+});
+
+describe('DefinitionsBundlePanel file input in the desktop app', () => {
+  afterEach(() => { dismissContinueInBrowser(); vi.unstubAllGlobals(); });
+  it('offers Continue in browser beside the bundle picker', async () => {
+    vi.stubGlobal('location', { protocol: 'wails:', origin: 'wails://x' });
+    const view = await renderForm(<DefinitionsBundlePanel org="org-1" project="project-1" settings={{ definitions_source: 'db' }} />);
+    await act(async () => [...view.container.querySelectorAll('button')].find((node) => node.textContent === 'Check a bundle')?.click());
+    await act(async () => [...view.container.querySelectorAll('button')].find((node) => node.textContent?.startsWith('File picker not opening'))?.click());
+    expect(continueInBrowserReason()).toContain('choose the bundle');
     await view.unmount();
   });
 });

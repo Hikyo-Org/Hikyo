@@ -18,6 +18,7 @@ import { renderForm, settle, settleTask } from '../testkit/renderForm.tsx';
 import { parsed, parsedPick } from '../api/client.ts';
 import { listMyOrgsOp, localLoginOp, regenerateRecoveryCodesOp, stepUpTotpOp } from '@hikyo/operations';
 import { captureSessionEpoch, SessionChangedError } from '../api/sessionEpoch.ts';
+import { shellReauth } from './shell.ts';
 import { AuthProvider, useAuth, type WhoAmI } from './AuthProvider.tsx';
 
 
@@ -1367,3 +1368,34 @@ it.each(['parsed', 'parsedPick'])(
     expect(container.querySelector('.session-owner')?.hasAttribute('hidden')).toBe(false);
   },
 );
+
+describe('app mode owner proof after a shell hop', () => {
+  async function hop(after: WhoAmI) {
+    vi.stubGlobal('location', { protocol: 'wails:', origin: 'wails://x', pathname: '/', search: '' });
+    const fetchMock = vi.fn().mockResolvedValueOnce(json(identity('00', '10')))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(json(after));
+    vi.stubGlobal('fetch', fetchMock);
+    const { container } = await renderAuth(<AuthProvider><DisclosureProbe clients={[]} /></AuthProvider>);
+    await settle();
+    await act(async () => container.querySelector('button')?.click());
+    const result = shellReauth({ purpose: 'adapter', operation: 'adapter.sync', environment_ids: ['e'] });
+    const settled = result.then(() => 'ok', (error: unknown) => error);
+    await settle();
+    return { container, outcome: await settled, fetchMock };
+  }
+
+  it('keeps the page when whoami shows the same session and principal', async () => {
+    const { container, outcome, fetchMock } = await hop(identity('00', '10'));
+    expect(outcome).toBe('ok');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(text(container, 'disclosure')).toBe('A display-once secret');
+  });
+
+  it('rejects the hop and resets the page when whoami shows another session', async () => {
+    const { container, outcome } = await hop(identity('01', '11'));
+    expect(outcome).toBeInstanceOf(SessionChangedError);
+    expect(text(container, 'disclosure')).toBe('');
+    expect(text(container, 'owner')).toBe('Person 11');
+  });
+});

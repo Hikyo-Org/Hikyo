@@ -9106,7 +9106,10 @@ type Meta struct {
 	// `login` needs before any session exists, and the machine protocols
 	// an integration probes before using them, such as
 	// `delivery-target-report/<vocabulary>` for each delivery-target
-	// report vocabulary this server accepts.
+	// report vocabulary this server accepts. `desktop-app/1` means the
+	// instance serves the embedded web application and that application
+	// implements the desktop shell handoff protocol; an instance built
+	// without it never advertises the token.
 	ProtocolCapabilities []ProtocolCapability `json:"protocol_capabilities"`
 
 	// ServerVersion The build's version string; `dev` for unreleased builds.
