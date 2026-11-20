@@ -212,21 +212,19 @@ func TLSConfig(origin string, mode Mode, pin string, profile Profile) *tls.Confi
 			// publicly-trusted certificate for the same hostname does not
 			// become acceptable just because it chains to a public root.
 			//
-			// The pin is checked against the LEAF ONLY (rawCerts[0]).
+			// The pin is checked against the LEAF ONLY (.
 			// Scanning the whole chain would let an attacker satisfy it by
 			// including the legitimate certificate as an intermediate while
 			// presenting a leaf whose private key they hold — the pin would
 			// match a certificate that is not the one terminating the
 			// connection.
-			VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
-				if len(rawCerts) == 0 {
+			// VerifyConnection, not VerifyPeerCertificate: Go skips the latter
+			// on a resumed session, so a session cache would bypass the pin.
+			VerifyConnection: func(cs tls.ConnectionState) error {
+				if len(cs.PeerCertificates) == 0 {
 					return fmt.Errorf("%s presented no certificate", origin)
 				}
-				leaf, err := x509.ParseCertificate(rawCerts[0])
-				if err != nil {
-					return fmt.Errorf("%s presented an unparseable certificate: %w", origin, err)
-				}
-				if SPKIFingerprint(leaf) == pin {
+				if SPKIFingerprint(cs.PeerCertificates[0]) == pin {
 					return nil
 				}
 				return fmt.Errorf(
