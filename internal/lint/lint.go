@@ -211,7 +211,7 @@ func LoadIn(ctx BuildContext, patterns ...string) ([]*packages.Package, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer os.RemoveAll(dir)
+		defer func() { _ = os.RemoveAll(dir) }() // a leaked temp overlay is harmless
 		overlay, err := ctx.WriteOverlay(dir)
 		if err != nil {
 			return nil, err
