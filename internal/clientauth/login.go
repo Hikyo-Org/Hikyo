@@ -273,12 +273,8 @@ func PollDevice(ctx context.Context, tr Transport, stderr io.Writer, deviceCode 
 			if parseErr != nil || retrySeconds == 0 || retrySeconds > uint64(math.MaxInt64/int64(time.Second)) {
 				return apigen.LoginResult{}, clienterr.Failf(clienterr.ExitRateLimited, "device login throttled without a usable Retry-After")
 			}
-			var limited *clienterr.RateLimitedError
-			throttle := tr.ResponseError(status, header, raw)
-			if !errors.As(throttle, &limited) || limited.RetryAfter <= 0 {
-				return apigen.LoginResult{}, throttle
-			}
-			wait = max(interval, limited.RetryAfter)
+			// The validated header decides the delay, whatever error type the transport maps a 429 to.
+			wait = max(interval, time.Duration(retrySeconds)*time.Second)
 			_, _ = fmt.Fprintf(stderr, "hikyo: throttled by the server; retrying in %d s (Retry-After)\n", int(wait/time.Second))
 			continue
 		}

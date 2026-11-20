@@ -34,13 +34,19 @@ type Conn struct {
 	// item. Such a connection is never used or signed in again. Removal
 	// revokes only through the item's own binding, and only when the item
 	// passes the access check.
+	// It also marks a record that can never be used (an invalid transport, a
+	// removal whose storage wipe is still owed).
 	tampered bool
 
 	// rotMu serializes token rotation: one at a time (ADR D4).
-	rotMu   sync.Mutex
-	removed bool // set under rotMu by Remove: no new session may be stored
-	flights flights
-	proxy   *httputil.ReverseProxy
+	rotMu sync.Mutex
+	// sessGate admits one session change at a time from before the bearer is
+	// chosen until the new session is committed or the change fails (ADR D4).
+	// It is separate from rotMu, which applyRotation takes inside the gate.
+	sessGate gate
+	removed  bool // set under rotMu by Remove: no new session may be stored
+	flights  flights
+	proxy    *httputil.ReverseProxy
 
 	reauthSlot, signInSlot, downloadSlot slot
 	reauthLimit, signInLimit             *limiter
@@ -49,18 +55,11 @@ type Conn struct {
 }
 
 func (m *Manager) newConn(info Connection) (*Conn, error) {
-	inst, err := newInstance(info.Origin, info.Trust, m.userAgent(), m.opts.AllowLoopbackHTTP)
-	if err != nil {
-		return nil, err
-	}
-	u, err := url.Parse(inst.Origin)
-	if err != nil {
-		return nil, err
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &Conn{
 		ctx: ctx, cancel: cancel,
-		m: m, host: info.Host, inst: inst, url: u, info: info,
+		m: m, host: info.Host, info: info,
+		sessGate:      newGate(),
 		reauthLimit:   newLimiter(6, time.Minute, m.now),
 		signInLimit:   newLimiter(6, time.Minute, m.now),
 		openLimit:     newLimiter(10, time.Minute, m.now),
@@ -68,6 +67,26 @@ func (m *Manager) newConn(info Connection) (*Conn, error) {
 		linkLimit:     newLimiter(10, time.Minute, m.now),
 		clipLimit:     newLimiter(30, time.Minute, m.now),
 		alertLimit:    newLimiter(4, time.Minute, m.now),
+	}
+	// A record the transport refuses (a plain-http origin without the
+	// development switch, an edited trust mode) must not stop the app: it is
+	// kept stopped and removable, with no instance to send anything to.
+	inst, err := newInstance(info.Origin, info.Trust, m.userAgent(), m.opts.AllowLoopbackHTTP)
+	if err != nil {
+		c.tampered = true
+		c.stopped = "This connection can't be opened: " + err.Error() + ". Remove it, or fix the setting it needs and restart the app."
+		log.Printf("connection %s: unusable record: %v", info.Host, err)
+		return c, nil
+	}
+	c.inst = inst
+	if c.url, err = url.Parse(inst.Origin); err != nil {
+		return nil, err
+	}
+	if info.WipePending {
+		c.tampered = true
+		c.stopped = "This connection was removed, but its browser data could not be deleted. Remove it again to finish."
+		c.proxy = c.newProxy()
+		return c, nil
 	}
 	switch secret, err := m.secrets.Get(info.Host); {
 	case err == nil:
@@ -159,11 +178,14 @@ func (c *Conn) stop(reason string) {
 }
 
 // setSession stores a fresh session after a sign-in and clears a stop. The
-// keychain write comes first: if it fails nothing in memory changes.
+// session becomes active only after the keychain item and the connection record
+// are both written; if the record write fails the previous keychain state is
+// put back, so memory, keychain and disk never disagree.
 func (c *Conn) setSession(token, sessionID, principalID, principalName string) error {
 	c.mu.RLock()
 	tampered := c.tampered
 	info := c.info
+	prev := c.secret
 	c.mu.RUnlock()
 	if tampered {
 		return errors.New("this connection's saved settings were changed outside the app; remove it and add it again")
@@ -172,7 +194,10 @@ func (c *Conn) setSession(token, sessionID, principalID, principalName string) e
 	s := Secret{Token: token, SessionID: sessionID, Origin: info.Origin,
 		TrustMode: info.Trust.Mode, Pin: info.Trust.Pin, PrincipalID: principalID}
 	if err := c.m.secrets.Put(c.host, s); err != nil {
-		return err
+		return c.putFailed(prev, err)
+	}
+	if err := c.m.store.Put(info); err != nil {
+		return c.rollbackKeychain(prev, err)
 	}
 	c.mu.Lock()
 	c.secret = s
@@ -180,7 +205,41 @@ func (c *Conn) setSession(token, sessionID, principalID, principalName string) e
 	c.info = info
 	c.mu.Unlock()
 	c.flights.cancelStreams()
-	return c.m.store.Put(info)
+	return nil
+}
+
+// putFailed handles a failed keychain replacement. The store deletes the old
+// item before it adds the new one, so the old session survives only if it can
+// still be read back; otherwise the connection stops and asks for a sign-in.
+func (c *Conn) putFailed(prev Secret, err error) error {
+	if prev.Token == "" {
+		return err
+	}
+	if got, gerr := c.m.secrets.Get(c.host); gerr == nil && got.Token == prev.Token {
+		return err
+	}
+	c.stop("The saved session was lost while it was being replaced. Sign in again.")
+	return err
+}
+
+// rollbackKeychain undoes a keychain write whose record write failed: the
+// previous item comes back, or the new one is deleted when there was none. A
+// failure to do so is reported with the original error, and a connection that
+// had a session stops because its keychain state is unknown.
+func (c *Conn) rollbackKeychain(prev Secret, cause error) error {
+	var err error
+	if prev.Token != "" {
+		err = c.m.secrets.Put(c.host, prev)
+	} else {
+		err = c.m.secrets.Delete(c.host)
+	}
+	if err == nil {
+		return cause
+	}
+	if prev.Token != "" {
+		c.stop("The previous session could not be restored after a failed save. Sign in again.")
+	}
+	return fmt.Errorf("%w; the keychain could not be put back: %w", cause, err)
 }
 
 // revoke asks the instance to delete the session behind token. It is best
@@ -218,11 +277,17 @@ func (c *Conn) revokeAsync(token string) {
 	})
 }
 
+// errSuperseded means a sign-in replaced the session that sent the request
+// while it was in flight. Its response is obsolete, not an attack.
+var errSuperseded = errors.New("the session was replaced while this request was running")
+
 // applyRotation runs the ADR D4 checks on a token returned by a listed route
 // and, if they pass, stores it in the keychain, swaps it in, and only then
 // lets the caller release the response. On any failure the connection stops
-// and the new session is revoked.
-func (c *Conn) applyRotation(kind Rotation, view tokenView) error {
+// and the new session is revoked. sent is the bearer the request carried: a
+// response for a session that has since been replaced is discarded without
+// stopping the current one.
+func (c *Conn) applyRotation(kind Rotation, view tokenView, sent string) error {
 	c.rotMu.Lock()
 	defer c.rotMu.Unlock()
 	if c.removed {
@@ -235,6 +300,10 @@ func (c *Conn) applyRotation(kind Rotation, view tokenView) error {
 	c.mu.RUnlock()
 	if tampered {
 		return errors.New("the connection record was changed outside the app")
+	}
+	if stored.Token != sent {
+		c.revokeAsync(view.Token)
+		return errSuperseded
 	}
 	newID, err := checkRotation(kind, view, stored, principal)
 	if err != nil {
@@ -256,6 +325,18 @@ func (c *Conn) applyRotation(kind Rotation, view tokenView) error {
 	return nil
 }
 
+// endSession stops the connection quietly because its session is gone
+// (revoked or deleted) while a removal is still unfinished. The record stays so
+// the removal can be retried, and the list offers a sign-in.
+func (c *Conn) endSession(reason string) {
+	c.mu.Lock()
+	if c.stopped == "" {
+		c.stopped = reason
+	}
+	c.mu.Unlock()
+	c.flights.cancelAll()
+}
+
 func (c *Conn) isTampered() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -272,4 +353,22 @@ func (c *Conn) confirmSignIn() bool {
 	info := c.Info()
 	return c.m.native.Confirm("Sign in to this instance?",
 		fmt.Sprintf("origin: %s\nname: %s\n\nSign in opens your browser at this address. Continue only if it is the instance you added.", info.Origin, logSafe(info.Name)), "Sign in")
+}
+
+// markWipePending turns the connection into one that can't be used while its
+// browser data is still owed a deletion.
+func (c *Conn) markWipePending(info Connection) {
+	c.mu.Lock()
+	c.info = info
+	c.tampered = true
+	c.stopped = "This connection was removed, but its browser data could not be deleted. Remove it again to finish."
+	c.mu.Unlock()
+}
+
+// closeInstance releases the idle connections of a connection that has an
+// instance; one built from an unusable record has none.
+func (c *Conn) closeInstance() {
+	if c.inst != nil {
+		c.inst.close()
+	}
 }

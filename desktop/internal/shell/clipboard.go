@@ -88,14 +88,15 @@ func (g *clipboardGuard) arm(owner string) {
 }
 
 func (g *clipboardGuard) fire(owner string, p *pendingClear) {
-	count := g.native.PasteboardCount()
 	g.mu.Lock()
 	current := g.armed[owner] == p
 	if current {
 		delete(g.armed, owner)
 	}
 	g.mu.Unlock()
-	if current && count == p.count {
-		g.native.ClearPasteboard()
+	if current {
+		// The count is checked where the pasteboard is cleared, so a copy made
+		// after this point is never cleared.
+		g.native.ClearPasteboardIf(p.count)
 	}
 }

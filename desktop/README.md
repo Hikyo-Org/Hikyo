@@ -25,7 +25,9 @@ go build -o hikyo-desktop .          # macOS, needs Xcode command line tools
 ```
 
 `HIKYO_DESKTOP_KEYCHAIN_TEST=1 go test -run Keychain .` also exercises the real
-login keychain; it is opt-in because a locked keychain shows a prompt.
+login keychain; it is opt-in because a locked keychain shows a prompt. The
+tests plant their fixtures into `~/Library/Keychains/login.keychain-db` by path,
+the file the app uses, whichever keychain is your default.
 
 Wails is pinned to `v3.1.0` in `go.mod`. `go build` does not need its CLI. The
 bundled, ad-hoc signed `.app` does:

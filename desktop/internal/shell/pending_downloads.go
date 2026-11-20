@@ -23,6 +23,7 @@ type PendingDownloads struct {
 
 type pendingDownload struct {
 	host, temp, final string
+	replace           bool
 	timer             *time.Timer
 }
 
@@ -31,8 +32,10 @@ func NewPendingDownloads() *PendingDownloads {
 }
 
 // Add registers a download writing to temp for the window bound to host.
-func (p *PendingDownloads) Add(key uintptr, host, temp, final string) {
-	d := &pendingDownload{host: host, temp: temp, final: final}
+// replace is true when the save panel saw a file at final and the person
+// approved replacing it.
+func (p *PendingDownloads) Add(key uintptr, host, temp, final string, replace bool) {
+	d := &pendingDownload{host: host, temp: temp, final: final, replace: replace}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	d.timer = time.AfterFunc(p.lifetime, func() { p.expire(key, d) })
@@ -40,16 +43,16 @@ func (p *PendingDownloads) Add(key uintptr, host, temp, final string) {
 }
 
 // Take removes an entry WebKit reported on and returns its paths.
-func (p *PendingDownloads) Take(key uintptr) (temp, final string, ok bool) {
+func (p *PendingDownloads) Take(key uintptr) (temp, final string, replace, ok bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	d, ok := p.entries[key]
 	if !ok {
-		return "", "", false
+		return "", "", false, false
 	}
 	d.timer.Stop()
 	delete(p.entries, key)
-	return d.temp, d.final, true
+	return d.temp, d.final, d.replace, true
 }
 
 // Drop discards every download of a closed window and removes its temp file.

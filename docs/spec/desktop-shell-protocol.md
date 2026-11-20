@@ -44,8 +44,11 @@ retryable), `invalid` (malformed request).
   is `refused` by the SPA before it calls the shell. `adapter` sends the whole
   environment set in one call and no `key_ids`. The key-bound purposes (`reveal`,
   `copy`, `publish`, `approve`, `reject`, `bypass`) send exactly one environment
-  and non-empty `key_ids` naming exactly the unit the decision covers; a ceremony
-  over a different or empty key set does not authorize the decision. `self-config` carries
+  and non-empty `key_ids` naming exactly the unit the decision covers. For a
+  single-decision window, a ceremony over a different or empty key set does not
+  authorize the decision. A sliding window is environment-scoped and not key-bound:
+  it authorizes any decision in that environment while it is open
+  (`internal/service/cli_reauth.go`). `self-config` carries
   `self_config` and an empty `environment_ids`, because the handoff refuses a
   self-config request that names an environment (`internal/server/cli_reauth.go`);
   every other purpose names at least one environment and carries no `self_config`.

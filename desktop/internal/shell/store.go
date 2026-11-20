@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,6 +38,9 @@ type Connection struct {
 	// in as. A sign-in that returns another principal needs confirmation (D3).
 	PrincipalID   string `json:"principal_id,omitzero"`
 	PrincipalName string `json:"principal_name,omitzero"`
+	// WipePending marks a connection whose removal finished except for its
+	// browser data. It can't be opened or signed in; removing it again retries.
+	WipePending bool `json:"wipe_pending,omitzero"`
 }
 
 const (
@@ -93,8 +97,10 @@ func validHost(h string) bool {
 	if len(h) != len(hostPrefix)+32 || h[:len(hostPrefix)] != hostPrefix {
 		return false
 	}
-	_, err := hex.DecodeString(h[len(hostPrefix):])
-	return err == nil
+	// Lowercase only: the router lowercases a request host before the lookup.
+	suffix := h[len(hostPrefix):]
+	_, err := hex.DecodeString(suffix)
+	return err == nil && suffix == strings.ToLower(suffix)
 }
 
 // NewHost draws a fresh random connection host that no stored connection uses.
@@ -154,6 +160,10 @@ func (s *Store) write(list []Connection) error {
 	data, err := json.Marshal(storeFile{Version: storeVersion, Connections: list})
 	if err != nil {
 		return err
+	}
+	// OpenStore refuses a larger file, so writing one would lock the app out.
+	if len(data) > maxStoreSize {
+		return fmt.Errorf("the connection list would exceed %d bytes", maxStoreSize)
 	}
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return err

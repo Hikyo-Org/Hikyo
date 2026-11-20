@@ -31,7 +31,15 @@ func splitToken(raw []byte) (tokenView, error) {
 	for len(trimmed) > 0 && (trimmed[0] == ' ' || trimmed[0] == '\n' || trimmed[0] == '\t' || trimmed[0] == '\r') {
 		trimmed = trimmed[1:]
 	}
-	if len(trimmed) == 0 || trimmed[0] != '{' {
+	if len(trimmed) == 0 {
+		return tokenView{Body: raw}, errNotObject
+	}
+	if trimmed[0] != '{' {
+		// A valid array or scalar can't carry a token; a truncated one is not
+		// known to be token-free.
+		if !jsontext.Value(trimmed).IsValid() {
+			return tokenView{}, errors.New("the body is not valid JSON")
+		}
 		return tokenView{Body: raw}, errNotObject
 	}
 	top, err := object(raw)

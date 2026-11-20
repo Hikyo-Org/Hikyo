@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -150,7 +152,7 @@ func TestConnectionListUI(t *testing.T) {
 		rec := h.pageFrom(AppHost, "app-win", "GET", path, "")
 		return rec.Code, rec.Body.String(), rec.Header()
 	}
-	code, body, _ := get("/__app/state")
+	code, body, hdr := get("/__app/state")
 	if code != 200 || strings.Contains(body, secret.Token) || strings.Contains(body, secret.SessionID) {
 		t.Fatalf("state %d: %s", code, body)
 	}
@@ -158,9 +160,9 @@ func TestConnectionListUI(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &st); err != nil || len(st.Connections) != 1 || st.Connections[0].Host != c.host {
 		t.Fatalf("state %+v err %v", st, err)
 	}
-	code, _, _ = get("/index.html")
-	if code != 200 && code != 404 {
-		t.Fatalf("index %d", code)
+	code, body, hdr = get("/index.html")
+	if code != 200 || !strings.HasPrefix(http.Header(hdr).Get("Content-Type"), "text/html") || !strings.Contains(body, "<html") {
+		t.Fatalf("the embedded index did not load: %d %q", code, http.Header(hdr).Get("Content-Type"))
 	}
 	// The list's API is not reachable from a connection's window.
 	if rec := h.page(c, "POST", "/__app/remove", `{"host":"`+c.host+`"}`); rec.Code == 200 || len(h.store.List()) != 1 {
@@ -186,15 +188,29 @@ func TestRemovalDuringSignInStoresNothing(t *testing.T) {
 	entered := make(chan struct{})
 	release := make(chan struct{})
 	h.browser = func(string) { close(entered); <-release }
+	var releaseOnce sync.Once
+	free := func() { releaseOnce.Do(func() { close(release) }) }
+	t.Cleanup(free) // a failed assertion must not leave the browser callback blocked
 	errc := make(chan error, 1)
 	go func() { errc <- h.m.SignIn(context.Background(), c.host, "") }()
-	<-entered
+	select {
+	case <-entered:
+	case err := <-errc:
+		t.Fatalf("the sign-in ended before it opened the browser: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("the sign-in never opened the browser")
+	}
 	if _, err := h.m.Remove(context.Background(), c.host); err != nil {
 		t.Fatal(err)
 	}
-	close(release)
-	if err := <-errc; err == nil {
-		t.Error("the sign-in of a removed connection succeeded")
+	free()
+	select {
+	case err := <-errc:
+		if err == nil {
+			t.Error("the sign-in of a removed connection succeeded")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the sign-in did not end after the removal")
 	}
 	h.m.Wait()
 	if _, err := h.secrets.Get(c.host); !errors.Is(err, ErrNoSecret) {
@@ -325,6 +341,20 @@ func TestSameSiteCoversIDNAndIPv6(t *testing.T) {
 		}
 	}
 	for _, in := range []string{"https://bucher.example/x", "https://xn--bcher-kva.example:8443/x", "http://xn--bcher-kva.example/x"} {
+		u, _ := url.Parse(in)
+		if c.sameSite(u) {
+			t.Errorf("%q must not be the connection's origin", in)
+		}
+	}
+	// IPv6: an expanded spelling is the same origin; another address or port is not.
+	c.inst.Origin = "https://[2001:db8::1]:8443"
+	for _, in := range []string{"https://[2001:db8::1]:8443/x", "https://[2001:0db8:0:0:0:0:0:1]:8443/x", "https://[2001:DB8::1]:8443/x"} {
+		u, _ := url.Parse(in)
+		if !c.sameSite(u) {
+			t.Errorf("%q should be the connection's origin", in)
+		}
+	}
+	for _, in := range []string{"https://[2001:db8::2]:8443/x", "https://[2001:db8::1]:443/x", "https://[2001:db8::1]/x", "http://[2001:db8::1]:8443/x"} {
 		u, _ := url.Parse(in)
 		if c.sameSite(u) {
 			t.Errorf("%q must not be the connection's origin", in)

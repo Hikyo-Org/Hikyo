@@ -100,9 +100,12 @@ func (f *fakeNative) PasteboardCountAtActivation() int64 {
 	defer f.mu.Unlock()
 	return f.activation
 }
-func (f *fakeNative) ClearPasteboard() {
+func (f *fakeNative) ClearPasteboardIf(count int64) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.pasteboard != count {
+		return
+	}
 	f.cleared++
 	f.pasteboard++
 }

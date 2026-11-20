@@ -58,11 +58,14 @@ type SecretStore interface {
 }
 
 // MemorySecrets is an in-memory SecretStore for tests and for platforms
-// without a keychain. FailPut makes Put fail, to exercise keychain failures.
+// without a keychain. FailPut makes Put fail before it changes anything;
+// FailPutAfterDelete makes it fail after it removed the old item, as a keychain
+// replacement that deletes first and then cannot add does.
 type MemorySecrets struct {
-	mu      sync.Mutex
-	items   map[string]Secret
-	FailPut error
+	mu                 sync.Mutex
+	items              map[string]Secret
+	FailPut            error
+	FailPutAfterDelete error
 }
 
 // Get implements SecretStore.
@@ -82,6 +85,10 @@ func (m *MemorySecrets) Put(host string, s Secret) error {
 	defer m.mu.Unlock()
 	if m.FailPut != nil {
 		return m.FailPut
+	}
+	if m.FailPutAfterDelete != nil {
+		delete(m.items, host)
+		return m.FailPutAfterDelete
 	}
 	if m.items == nil {
 		m.items = map[string]Secret{}

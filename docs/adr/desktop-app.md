@@ -75,7 +75,10 @@ Sign-in and passkey ceremonies: system browser -> instance's real origin
   that number.
 - Removing a connection revokes its session on the server first. If that fails, the app
   says so plainly, because the credential stays live until it expires.
-- It then deletes the connection's data, browser storage and keychain item together.
+- It then deletes the connection's data, browser storage and keychain item together. If the
+  browser storage can't be deleted, the keychain item is still deleted and the connection stays in
+  the list as a record that can't be opened or signed in, so the removal can be retried; the record
+  is deleted when the wipe succeeds.
 
 ### D3. Session
 
