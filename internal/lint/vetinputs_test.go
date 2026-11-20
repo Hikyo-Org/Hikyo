@@ -2,12 +2,16 @@ package lint
 
 import (
 	"errors"
+	"go/token"
+	"go/types"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"golang.org/x/tools/go/analysis"
 )
 
 // inputFlags are the -root and -inputs flags the driver passes an
@@ -137,6 +141,9 @@ func TestVetDriverRefusesBadInputs(t *testing.T) {
 		{"stale digest", []string{good[0], "-stablecopies.inputs=0000"}, "input digest mismatch"},
 		{"missing flags", nil, "the driver did not pass -root and -inputs"},
 		{"undeclared path", append(slices.Clone(good), "-stablecopies.copies=scripts/ci/undeclared/main.go"), "undeclared input"},
+		// A root that is not the anchor's, with the digest of its own inputs: the
+		// digest matches, so only the root/anchor tie refuses it.
+		{"foreign root with a matching digest", inputFlags(t, "stablecopies", filepath.Join(moduleRoot(), "internal/lint/testdata/badstablecopies")), "-root does not contain the anchor package"},
 	}
 	fixture := vetFixture{name: "refusal", analyzer: "stablecopies", patterns: []string{fixtureRoot + "badinputsrefusal"}}
 	ctx := Contexts[0]
@@ -251,9 +258,9 @@ func checkRefusedDirectories(t *testing.T) {
 		t.Errorf("an empty directory must read as empty, got %v", err)
 	}
 	for name, tc := range map[string]struct {
-		in      *Inputs
-		root    string
-		notExit bool
+		in       *Inputs
+		root     string
+		notExist bool
 	}{
 		"absent":    {absent, absentRoot, true},
 		"symlinked": {link, linkRoot, false},
@@ -263,8 +270,8 @@ func checkRefusedDirectories(t *testing.T) {
 		_, errDir := tc.in.ReadDir(dir)
 		_, errWalk := tc.in.WalkFiles(dir, []string{".sql"})
 		for _, err := range []error{errDir, errWalk} {
-			if err == nil || errors.Is(err, fs.ErrNotExist) != tc.notExit {
-				t.Errorf("%s directory: got %v, want a refusal (not-exist=%t)", name, err, tc.notExit)
+			if err == nil || errors.Is(err, fs.ErrNotExist) != tc.notExist {
+				t.Errorf("%s directory: got %v, want a refusal (not-exist=%t)", name, err, tc.notExist)
 			}
 		}
 		// The disk reader of the old harness refuses the same states.
@@ -275,6 +282,7 @@ func checkRefusedDirectories(t *testing.T) {
 			t.Errorf("%s directory: osSource.WalkFiles returned no error", name)
 		}
 	}
+	t.Run("symlinked parent", checkSymlinkedParent)
 	digests := map[string]string{}
 	for name, in := range map[string]*Inputs{"absent": absent, "empty": empty, "irregular": link} {
 		if other, dup := digests[in.digest]; dup {
@@ -287,48 +295,142 @@ func checkRefusedDirectories(t *testing.T) {
 	}
 }
 
-// With every declared directory absent, each input analyzer's reads fail and
-// its check reports a finding (or refuses), never a clean pass.
+// A symlink in a parent directory of a declared path, pointing outside the
+// root, is never followed: the directory and the file read as irregular and are
+// refused, and the outside content does not reach the snapshot.
+func checkSymlinkedParent(t *testing.T) {
+	outside := t.TempDir()
+	if err := mkdirWrite(filepath.Join(outside, "q", "a.sql"), "select 1;"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mkdirWrite(filepath.Join(outside, "f.json"), "{}"); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "a")); err != nil {
+		t.Fatal(err)
+	}
+	in, err := SnapshotInputs(root, []InputSpec{{Dir: "a/q", Exts: []string{".sql"}, Recursive: true}, {File: "a/f.json"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "a", "q")
+	_, errDir := in.ReadDir(dir)
+	_, errWalk := in.WalkFiles(dir, []string{".sql"})
+	_, errFile := in.ReadFile(filepath.Join(root, "a", "f.json"))
+	for name, err := range map[string]error{"ReadDir": errDir, "WalkFiles": errWalk, "ReadFile": errFile} {
+		if err == nil || errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("%s through a symlinked parent: got %v, want a refusal", name, err)
+		}
+	}
+	empty, err := SnapshotInputs(t.TempDir(), []InputSpec{{Dir: "a/q", Exts: []string{".sql"}, Recursive: true}, {File: "a/f.json"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in.digest == empty.digest {
+		t.Error("a symlinked parent hashes like an absent one")
+	}
+}
+
+// fakePass runs an analyzer on its anchor package with no files: enough for the
+// file-input part, which reads the declared inputs and reports at the package.
+func fakePass(a *analysis.Analyzer) (*analysis.Pass, *[]string) {
+	var messages []string
+	anchor := a.Flags.Lookup("anchor").Value.String()
+	return &analysis.Pass{
+		Analyzer: a, Fset: token.NewFileSet(), Pkg: types.NewPackage(anchor, "anchor"),
+		Report: func(d analysis.Diagnostic) {
+			if d.Category != SummaryCategory {
+				messages = append(messages, d.Message)
+			}
+		},
+	}, &messages
+}
+
+// With every declared directory absent, each input analyzer reports a finding,
+// never a clean pass or a refusal, whichever way it reads: the vet analyzer
+// through a verified snapshot, the same analyzer on the old harness's disk
+// reader, and the old Check* entry point.
 func TestInputAnalyzersReportAbsentDirectories(t *testing.T) {
 	root := t.TempDir()
-	snapshot := func(analyzer string) *Inputs {
-		specs, ok, err := InputDeclaration(analyzer, root)
-		if err != nil || !ok {
-			t.Fatalf("%s: declared=%t err=%v", analyzer, ok, err)
-		}
-		in, err := SnapshotInputs(root, specs)
-		if err != nil {
+	builders := map[string]func(func(*analysis.Analyzer) inputProvider) *analysis.Analyzer{
+		"appendonly":        newAuditAppendOnly,
+		"containmentgates":  newContainmentGates,
+		"reencryptcoverage": newReencryptCoverage,
+		"sqlpredicate":      newSQLPredicates,
+		"stablecopies":      newStableCopies,
+	}
+	run := func(a *analysis.Analyzer) []string {
+		pass, messages := fakePass(a)
+		if _, err := a.Run(pass); err != nil {
 			t.Fatal(err)
 		}
-		return in
+		return *messages
 	}
-	for name, findings := range map[string][]string{
-		"appendonly": append(checkAuditQueries(snapshot("appendonly"), root),
-			checkNoSyncCommitDowngrade(snapshot("appendonly"), root, []string{".sql"})...),
-		"sqlpredicate":      checkSQLPredicates(snapshot("sqlpredicate"), root, true),
-		"reencryptcoverage": checkReencryptCoverage(snapshot("reencryptcoverage"), filepath.Join(root, "internal", "store", "migrations", "sqlite"), reencryptCovered, reencryptExemptBlobs),
+	for name, build := range builders {
+		t.Run(name, func(t *testing.T) {
+			vet := build(flagInputs)
+			for _, flag := range inputFlags(t, name, root) {
+				key, value, _ := strings.Cut(strings.TrimPrefix(flag, "-"+name+"."), "=")
+				if err := vet.Flags.Set(key, value); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for source, a := range map[string]*analysis.Analyzer{"vet": vet, "disk": build(diskInputs(root))} {
+				findings := run(a)
+				if len(findings) == 0 {
+					t.Errorf("%s: no finding with every declared directory absent", source)
+				}
+				for _, f := range findings {
+					if strings.HasPrefix(f, "inputs refused:") {
+						t.Errorf("%s: refused instead of reporting the absent directories: %s", source, f)
+					}
+				}
+			}
+		})
+	}
+	for name, check := range map[string]func() []string{
+		"appendonly":   func() []string { return CheckAuditAppendOnly(root) },
+		"sqlpredicate": func() []string { return CheckSQLPredicates(root) },
+		"reencryptcoverage": func() []string {
+			return CheckReencryptCoverage(filepath.Join(root, "internal", "store", "migrations", "sqlite"))
+		},
+		"stablecopies": func() []string { return CheckStableCopies(root) },
 	} {
-		if len(findings) == 0 {
-			t.Errorf("%s: no finding with every declared directory absent", name)
+		if len(check()) == 0 {
+			t.Errorf("%s: the old entry point reports nothing with every declared directory absent", name)
 		}
 	}
-	in := snapshot("containmentgates")
-	if _, err := parseQueries(in, filepath.Join(root, "internal", "store", "queries", "sqlite")); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("containmentgates: absent query directory = %v, want not-exist (reported as a finding)", err)
-	}
-	for _, name := range []string{"grantlock", "denialwriter"} {
-		src := snapshot(name)
-		var err error
-		if name == "grantlock" {
-			_, err = grantWriters(src, root)
-		} else {
-			_, _, err = mutatingQueries(src, root)
+	// The per-package analyzers have no anchor: their helpers fail on the absent
+	// directories, through both readers.
+	for source, src := range map[string]func(string) source{
+		"vet":  func(name string) source { return snapshotAbsent(t, name, root) },
+		"disk": func(string) source { return osSource{} },
+	} {
+		if _, err := grantWriters(src("grantlock"), root); err == nil {
+			t.Errorf("grantlock (%s): absent query directories produced no error", source)
 		}
-		if err == nil {
-			t.Errorf("%s: absent query directories produced no error", name)
+		if _, _, err := mutatingQueries(src("denialwriter"), root); err == nil {
+			t.Errorf("denialwriter (%s): absent query directories produced no error", source)
 		}
 	}
-	if findings, err := checkStableCopies(snapshot("stablecopies"), root, stableCopies); err != nil || len(findings) == 0 {
-		t.Errorf("stablecopies: absent files gave findings=%v err=%v", findings, err)
+	in := snapshotAbsent(t, "containmentgates", root)
+	for source, src := range map[string]source{"vet": in, "disk": osSource{}} {
+		if _, err := parseQueries(src, filepath.Join(root, "internal", "store", "queries", "sqlite")); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("containmentgates (%s): absent query directory = %v, want not-exist (reported as a finding)", source, err)
+		}
 	}
+}
+
+func snapshotAbsent(t *testing.T, analyzer, root string) *Inputs {
+	t.Helper()
+	specs, ok, err := InputDeclaration(analyzer, root)
+	if err != nil || !ok {
+		t.Fatalf("%s: declared=%t err=%v", analyzer, ok, err)
+	}
+	in, err := SnapshotInputs(root, specs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return in
 }

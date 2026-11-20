@@ -38,7 +38,8 @@ type InputSpec struct {
 }
 
 // Refusals. Both are fail-closed: the analyzer reports them as a finding and
-// does not analyze.
+// does not run its declared-input checks (appendonly's per-package Go scan still
+// reports; it reads no declared input).
 var (
 	ErrUndeclaredInput = errors.New("undeclared input")
 	ErrInputDigest     = errors.New("input digest mismatch")
@@ -56,6 +57,10 @@ type source interface {
 }
 
 // osSource reads the disk directly: the old harness and the helpers' tests.
+// shortcut: it has no root to confine reads to, so a symlinked parent directory
+// is followed (only the final directory component and the file's own directory
+// are checked); Inputs, which has the root, closes that. The old harness goes in
+// PR 4, so this is not widened.
 type osSource struct{}
 
 // ReadFile reads through a handle to the file's directory, so a symlink that
@@ -140,21 +145,33 @@ type Inputs struct {
 }
 
 // SnapshotInputs reads the declared inputs under root and computes their digest.
+// Every read goes through a handle to root (os.OpenRoot), so a symlink in any
+// parent directory that leaves the root, or a swap after the check, is refused
+// instead of followed.
 func SnapshotInputs(root string, specs []InputSpec) (*Inputs, error) {
 	root = filepath.Clean(root)
+	rootHandle, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rootHandle.Close() }()
 	in := &Inputs{files: map[string]inputFile{}, dirs: map[string]inputState{}, lists: map[string][]string{}, recurse: map[string]bool{}}
 	var lines []string
 	read := func(path string) error {
-		info, err := os.Lstat(path)
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		info, state, err := rootLstat(rootHandle, rel)
 		switch {
-		case errors.Is(err, fs.ErrNotExist):
-			in.files[path] = inputFile{state: inputAbsent}
 		case err != nil:
 			return err
+		case state != inputPresent:
+			in.files[path] = inputFile{state: state}
 		case !info.Mode().IsRegular():
 			in.files[path] = inputFile{state: inputIrregular}
 		default:
-			data, err := readSnapshotFile(path, info)
+			data, err := readSnapshotFile(rootHandle, rel, info)
 			if err != nil {
 				return err
 			}
@@ -174,13 +191,13 @@ func SnapshotInputs(root string, specs []InputSpec) (*Inputs, error) {
 			if _, dup := in.dirs[dir]; dup {
 				return nil, fmt.Errorf("input spec %+v names directory %s twice", spec, spec.Dir)
 			}
-			state, err := inputDirState(dir)
+			state, err := inputDirState(rootHandle, filepath.FromSlash(spec.Dir))
 			if err != nil {
 				return nil, err
 			}
 			var names []string
 			if state == inputPresent {
-				list, err := listInputDir(dir, spec)
+				list, err := listInputDir(rootHandle, root, filepath.FromSlash(spec.Dir), spec)
 				if err != nil {
 					return nil, err
 				}
@@ -213,14 +230,39 @@ func SnapshotInputs(root string, specs []InputSpec) (*Inputs, error) {
 	return in, nil
 }
 
-// readSnapshotFile reads a regular file through one handle: it opens the path,
-// checks the handle is the regular file Lstat saw, and reads from that handle,
-// so a swap between the check and the read is refused instead of followed.
-// shortcut: a FIFO swapped in between Lstat and Open would block the open; the
-// declared inputs are repository files, so this is not defended, upgrade with
+// rootLstat classifies rel under the root handle without following a symlink at
+// any component: absent (some component does not exist), irregular (a parent
+// component is a symlink or not a directory) or present, with the final
+// component's Lstat info. The handle's own escape check backs the reads that
+// follow.
+func rootLstat(root *os.Root, rel string) (os.FileInfo, inputState, error) {
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	for i := range parts {
+		info, err := root.Lstat(strings.Join(parts[:i+1], "/"))
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			return nil, inputAbsent, nil
+		case err != nil:
+			return nil, 0, err
+		case i == len(parts)-1:
+			return info, inputPresent, nil
+		case !info.IsDir():
+			return nil, inputIrregular, nil
+		}
+	}
+	return nil, 0, fmt.Errorf("empty input path %q", rel)
+}
+
+// readSnapshotFile reads a regular file through the root handle: it opens the
+// path, checks the handle is the regular file Lstat saw, and reads from that
+// handle, so a swap between the check and the read is refused instead of followed
+// (and a swap to a symlink leaving the root is refused by the handle).
+// shortcut: a FIFO swapped in between Lstat and Open would block the open; a
+// non-regular file present at Lstat time is refused before any open. The declared
+// inputs are repository files, so the swap is not defended; upgrade with
 // O_NONBLOCK if the root ever becomes untrusted.
-func readSnapshotFile(path string, lstat os.FileInfo) ([]byte, error) {
-	f, err := os.Open(path)
+func readSnapshotFile(root *os.Root, rel string, lstat os.FileInfo) ([]byte, error) {
+	f, err := root.Open(rel)
 	if err != nil {
 		return nil, err
 	}
@@ -230,42 +272,44 @@ func readSnapshotFile(path string, lstat os.FileInfo) ([]byte, error) {
 		return nil, err
 	}
 	if !info.Mode().IsRegular() || !os.SameFile(lstat, info) {
-		return nil, fmt.Errorf("%s changed while the inputs were read", path)
+		return nil, fmt.Errorf("%s changed while the inputs were read", rel)
 	}
 	return io.ReadAll(f)
 }
 
 // inputDirState classifies a declared directory: absent, a directory, or
-// irregular (a symlink or another file type, never followed). The state is part
-// of the digest, so an absent directory differs from an empty one and either
-// differs from a symlink.
-func inputDirState(dir string) (inputState, error) {
-	info, err := os.Lstat(dir)
+// irregular (a symlink, a symlinked parent or another file type, never
+// followed). The state is part of the digest, so an absent directory differs
+// from an empty one and either differs from a symlink.
+func inputDirState(root *os.Root, rel string) (inputState, error) {
+	info, state, err := rootLstat(root, rel)
 	switch {
-	case errors.Is(err, fs.ErrNotExist):
-		return inputAbsent, nil
 	case err != nil:
 		return 0, err
+	case state != inputPresent:
+		return state, nil
 	case !info.IsDir():
 		return inputIrregular, nil
 	}
 	return inputPresent, nil
 }
 
-// listInputDir lists the files a Dir spec selects in a directory that exists.
-func listInputDir(dir string, spec InputSpec) ([]string, error) {
+// listInputDir lists the files (absolute) a Dir spec selects in a directory that
+// exists, walking through the root handle.
+func listInputDir(root *os.Root, rootPath, rel string, spec InputSpec) ([]string, error) {
 	var out []string
-	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+	base := filepath.ToSlash(rel)
+	err := fs.WalkDir(root.FS(), base, func(path string, d fs.DirEntry, err error) error {
 		switch {
 		case err != nil:
 			return err
 		case d.IsDir():
-			if path != dir && !spec.Recursive {
+			if path != base && !spec.Recursive {
 				return fs.SkipDir
 			}
 			return nil
 		case hasExt(d.Name(), spec.Exts):
-			out = append(out, path)
+			out = append(out, filepath.Join(rootPath, filepath.FromSlash(path)))
 		}
 		return nil
 	})
@@ -486,6 +530,10 @@ func (c fileCheck) analyzer(provide func(*analysis.Analyzer) inputProvider) *ana
 			reportRefusal(pass, err)
 			return nil, nil
 		}
+		if err := anchorUnderRoot(pass, root); err != nil {
+			reportRefusal(pass, err)
+			return nil, nil
+		}
 		findings, err := c.run(src, root)
 		if err != nil {
 			reportRefusal(pass, err)
@@ -497,6 +545,39 @@ func (c fileCheck) analyzer(provide func(*analysis.Analyzer) inputProvider) *ana
 		return nil, nil
 	}
 	return a
+}
+
+// anchorUnderRoot refuses a -root that does not contain every file of the anchor
+// package, so a digest of another tree's inputs cannot be paired with this
+// anchor. Containment is by os.SameFile along each file's parent directories, not
+// by string prefix, so a symlinked root, ".." segments or a case-insensitive
+// filesystem cannot bypass it.
+func anchorUnderRoot(pass *analysis.Pass, root string) error {
+	rootInfo, err := os.Stat(root)
+	if err != nil {
+		return err
+	}
+	for _, f := range pass.Files {
+		name, err := filepath.Abs(pass.Fset.Position(f.Pos()).Filename)
+		if err != nil {
+			return err
+		}
+		if !fileUnder(rootInfo, name) {
+			return fmt.Errorf("-root does not contain the anchor package file %s", name)
+		}
+	}
+	return nil
+}
+
+func fileUnder(root os.FileInfo, name string) bool {
+	for dir := filepath.Dir(name); ; dir = filepath.Dir(dir) {
+		if info, err := os.Stat(dir); err == nil && os.SameFile(root, info) {
+			return true
+		}
+		if filepath.Dir(dir) == dir {
+			return false
+		}
+	}
 }
 
 // pkgApplies is whether the per-package part runs on path: the anchor's module

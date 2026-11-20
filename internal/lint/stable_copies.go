@@ -35,8 +35,9 @@ func stableCopiesSpecs(string) ([]InputSpec, error) {
 // once on internal/jsonwire. The copies are programs outside the anchor's action
 // ID. The original is the anchor's own file, declared anyway: the fixture keeps
 // its original under its root, not in its anchor package, and the old harness
-// reads it by path, so one reader serves both (the edit re-vets the context
-// either way, since it changes the anchor's own sources).
+// reads it by path, so one reader serves both. The cost: an edit re-vets every
+// package of the context (the flag is in every action ID); undeclared, it would
+// re-vet only jsonwire and the packages whose export data changed.
 var StableCopies = newStableCopies(flagInputs)
 
 func newStableCopies(provide func(*analysis.Analyzer) inputProvider) *analysis.Analyzer {

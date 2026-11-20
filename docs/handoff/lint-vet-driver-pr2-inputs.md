@@ -1,6 +1,6 @@
 # Lint vet driver PR 2: declared inputs and the non-Go-input analyzers
 
-Work: PR 2 of `docs/adr/lint-analysis-driver.md` (branch `dunky13/lint-vettool-inputs`, stacked on `dunky13/lint-vettool-driver`, PR #1464). The step 2 amendment is recorded in the ADR as Accepted (owner decision, 2026-11-20), including the `jsonv1` hybrid's deviation from decision 3.
+Work: PR 2 of `docs/adr/lint-analysis-driver.md` (branch `dunky13/lint-vettool-inputs`, stacked on `dunky13/lint-vettool-driver`, PR #1464). The owner accepted only the `jsonv1` hybrid's deviation from decision 3 (2026-11-20). The rest of the ADR's step 2 amendment is implementation notes for this PR, not owner-accepted decisions.
 
 ## Result
 
@@ -8,7 +8,7 @@ Work: PR 2 of `docs/adr/lint-analysis-driver.md` (branch `dunky13/lint-vettool-i
 - Ported to the vet tool (old harness entry points kept): `containmentgates` (with `sqlscope`), `sqlpredicate`, `reencryptcoverage`, `stablecopies`, `appendonly`, `grantlock`, `denialwriter`, `jsonv1`.
 - Not ported: RawSQL (PR 3). Nothing else from the PR 1 "Not ported" list remains.
 - Newly visible violations: none. `grantlock` (every module package, test files included), `denialwriter`, and the per-package `synchronous_commit` scan found nothing in the in-package test files of any context. `strictDeferred` is unchanged (`handles`, `redactfmt`); `deferred_sites.json` is unchanged. Nothing was allowlisted.
-- Fail-closed checks: every input-reading analyzer has a `// want` fixture under `internal/lint/testdata/` (`badcontainmentgates`, `badsqlpredicate`, `badreencrypt`, `badstablecopies`, `badappendonly`, plus `badgrant` and `badauthn` carrying wants); `jsonv1` has `badjsonv1`. `TestVetDriverEveryInputAnalyzerRefusesStaleDigest` asserts the fixtures with inputs cover exactly `InputAnalyzers()`. `TestVetDriverRefusesBadInputs` (stale digest, absent flags, undeclared path, `badinputsrefusal`) and `TestInputsRefuseUndeclaredPathAndStaleDigest` (including absent, symlinked and non-directory declared directories) cover the refusals; `TestInputAnalyzersReportAbsentDirectories` covers each analyzer with its declared directories absent.
+- Fail-closed checks: every input-reading analyzer has a `// want` fixture under `internal/lint/testdata/` (`badcontainmentgates`, `badsqlpredicate`, `badreencrypt`, `badstablecopies`, `badappendonly`, plus `badgrant` and `badauthn` carrying wants); `jsonv1` has `badjsonv1`. `TestVetDriverEveryInputAnalyzerRefusesStaleDigest` asserts the fixtures with inputs cover exactly `InputAnalyzers()`. `TestVetDriverRefusesBadInputs` (stale digest, absent flags, undeclared path, `badinputsrefusal`) and `TestInputsRefuseUndeclaredPathAndStaleDigest` (including absent, symlinked and non-directory declared directories) cover the refusals; `TestInputAnalyzersReportAbsentDirectories` runs each file-input analyzer and its old `Check*` entry point with its declared directories absent, through both readers.
 
 ## Per-analyzer decisions
 
@@ -29,10 +29,11 @@ See the PR body for command output and measurements. Wall time and memory number
 
 ## Known limits and costs
 
-- Any edit to a declared input re-vets every package of the context (the flag is part of every action ID). Declared inputs are therefore the files the anchor package's action ID does not cover; the exceptions are `internal/jsonwire/jsonwire.go` (the anchor's own file, see the ADR amendment) and the test files cited by the reviewed pins.
+- Any edit to a declared input re-vets every package of the context (the flag is part of every action ID). Declared inputs are therefore the files the anchor package's action ID does not cover; the one exception is `internal/jsonwire/jsonwire.go` (the anchor's own file, see the ADR amendment). The test files cited by the reviewed pins follow the rule: the anchor's action ID does not cover them.
 - `prepare-lint-cache` warms only compiles (`go list -export -test`), not vet results, so CI stays as cold for vet as before; the file was not changed.
 - The unanalyzed-Go-file check runs only when every context ran; a focused `-run 'TestVetDriverRepo/<ctx>'` skips it with a log line.
-- Replacing symlink handling: the disk reader keeps `pathutil.ReadFileWithin`; the snapshot refuses any irregular declared file.
+- Symlinks: the snapshot reads through `os.OpenRoot(root)` and refuses any irregular declared file or a symlinked parent. The old-harness disk reader (`osSource`) has no root, keeps `pathutil.ReadFileWithin` on the file's own directory, and still follows a symlinked parent; it goes in PR 4.
+- The `-root`/anchor tie: file-input analyzers refuse a `-root` that does not contain every file of the anchor package (`TestVetDriverRefusesBadInputs`, "foreign root with a matching digest"). `grantlock` and `denialwriter` have no anchor, so it does not apply; their root is bound only by the digest of the declared query files, and a hand-run vet tool is trusted.
 - `redactfmt` narrowing remains issue #1468; `redaction.go` is untouched.
 
 ## Remaining work

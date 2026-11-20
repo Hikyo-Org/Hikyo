@@ -111,13 +111,15 @@ The spike also established that:
 
 ## Amendment: step 2 (input hashing)
 
-**Status: Accepted.** Decided while implementing step 2. The `jsonv1` hybrid
-below deviates from decision 3's pure-summary shape; the owner accepted that
-deviation.
+**Status.** Only the `jsonv1` hybrid, which deviates from decision 3's
+pure-summary shape, is an owner decision. Every other bullet of this amendment
+(the `-root` rule, the `jsonwire.go` declaration, symlink handling, the
+per-analyzer shapes) is an implementation note for the step 2 PR, not an
+owner-accepted decision, and is open to review.
 
-Owner decision (2026-11-20): the `jsonv1` hybrid is accepted as written below,
-with its known limits (the unanalyzed-file check runs only when every context
-ran, and it runs in the test process, not as a vet result).
+Owner decision (2026-11-20): the `jsonv1` hybrid is accepted as written in its
+bullet below, with its known limits (the unanalyzed-file check runs only when
+every context ran, and it runs in the test process, not as a vet result).
 
 - **Helper.** `internal/lint/inputs.go`. An analyzer declares `InputSpec`s
   (a file, or a directory with extensions, optionally recursive) relative to a
@@ -140,13 +142,26 @@ ran, and it runs in the test process, not as a vet result).
   the anchor's own: `internal/jsonwire/jsonwire.go`, the original `stablecopies`
   compares against. It is declared, not read from `pass.Files`, because the
   fixture keeps its original under its root rather than in its anchor package
-  and the old harness reads it by path, so one reader serves both; the edit
-  re-vets the context either way.
+  and the old harness reads it by path, so one reader serves both. The cost is
+  that an edit re-vets every package of the context; undeclared, an edit would
+  re-vet only `jsonwire` and the packages whose export data changed.
 - **A declared directory is absent, a directory, or irregular, and its state is
   hashed.** An absent directory reads as an error wrapping `fs.ErrNotExist`, a
   symlink or non-directory is refused, and none of the three hashes like an empty
-  directory. `-root` must contain the anchor package's files, or the analyzer
-  refuses.
+  directory. Snapshot reads go through `os.OpenRoot(root)`: a symlink in any
+  parent directory of a declared path (the root itself aside) is irregular, and a
+  non-regular file is refused before it is opened. The old-harness reader
+  (`osSource`) has no root to confine reads to, so it still follows a symlinked
+  parent; it goes with the old harness in PR 4.
+- **`-root` must contain the anchor package's files, or the analyzer refuses**
+  (file-input analyzers, checked by `os.SameFile` along each file's parent
+  directories; test: `TestVetDriverRefusesBadInputs`, case "foreign root with a
+  matching digest"). `grantlock` and `denialwriter` have no anchor, so the tie
+  does not apply to them. Their `-root` is bound only by the digest: it must
+  equal the hash of the declared query files under that root. A root other than
+  the repository's with matching digest flags is analyzed as that root; the
+  driver is the only caller that supplies the flags, and a hand-run vet tool is
+  trusted.
 - **File-input analyzers run once, on an anchor package** (`internal/store`,
   `internal/jsonwire`) and report a target summary, so a renamed anchor is a
   finding. `grantlock` and `denialwriter` are per-package analyzers that open

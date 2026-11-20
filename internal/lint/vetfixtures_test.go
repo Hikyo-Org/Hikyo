@@ -159,7 +159,9 @@ var vetFixtures = []vetFixture{
 	{
 		// The fixture tree also holds an ignore-tagged file and a testdata
 		// directory: vet cannot see the first, which the driver's unanalyzed-file
-		// check finds, and neither tool reads the second.
+		// check finds, and neither tool reads the second. internal/store/.gitkeep
+		// keeps an empty internal/store: CheckUnanalyzedGoFiles also runs the
+		// synchronous_commit walk, which refuses a missing internal/store.
 		name: "jsonv1", analyzer: "jsonv1", patterns: []string{fixtureRoot + "badjsonv1"},
 		flags:    []string{"-jsonv1.root=" + filepath.Join(moduleRoot(), "internal/lint/testdata/badjsonv1")},
 		messages: true,
