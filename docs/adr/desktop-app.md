@@ -83,7 +83,15 @@ Sign-in and passkey ceremonies: system browser -> instance's real origin
   that number.
 - Removing a connection revokes its session on the server first. If that fails, the app
   says so plainly, because the credential stays live until it expires.
-- It then deletes the connection's data, browser storage and keychain item together.
+- Before anything is destroyed, the record is marked as being removed. If that write fails,
+  nothing has changed and the connection stays as it was. From then on the connection can't
+  be opened, signed in or restored, however a later step ends.
+- The app then closes the window, waits for its web view to be torn down, and deletes the
+  browser storage, the keychain item and finally the record. A step that fails (the window
+  doesn't close, the storage can't be wiped, the keychain item or the record can't be
+  deleted) is reported, and the connection stays in the list as an unusable record; removing
+  it again retries. The record is deleted when every step has succeeded. A removal that
+  failed before its marker was saved leaves the connection usable; tell the user to retry.
 
 ### D3. Session
 
