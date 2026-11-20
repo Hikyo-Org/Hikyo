@@ -17,6 +17,10 @@
 > implementation, and the [October 16 reconciliation](../handoff/15-member-access-review.md)
 > distinguishes implemented behavior, remaining target slices, and the scoped review disposition.
 > Where implementation is narrower than these decisions, the decisions remain the target.
+>
+> **Owner decision record (2026-11-20).** The owner settled four open points; see
+> [Owner decisions, 2026-11-20](#owner-decisions-2026-11-20). They decide what this ADR left open
+> or to an implementing ticket and change no D1 to D11 clause.
 
 ## Context
 
@@ -184,6 +188,37 @@ machines, because "who can reach this key?" must include deploy accounts.
 - **API and CLI** need a spelling for `where`; the api-cli-surface ADR owns it.
 - **MVP boundary:** this moves "key-scoped reveal" from fog to a decided
   design; scheduling is a separate call.
+
+## Owner decisions, 2026-11-20
+
+The owner took these decisions after the 2026-11-19 implementation-status audit. Each applies when
+its implementing pull request merges; until then the first slice below stays in force.
+
+- **All-projects rules allow folder selectors only
+  ([#1446](https://github.com/Hikyo-Org/Hikyo/issues/1446)).** A rule whose project axis is *all
+  projects* may narrow keys by folder path (*only* or *except*), because a path means the same in
+  every project; single-key items are refused on such a rule, because a key id belongs to one
+  project. Creating a project needs no notice or confirmation: D3's "including projects created
+  later" is the intended reach.
+- **Environment rename and create that widen access need confirmation
+  ([#1447](https://github.com/Hikyo-Org/Hikyo/issues/1447)).** Once environments match by name
+  (D3), renaming an environment can take it out of an *except* and creating one can put it inside an
+  *only*. Before either commits, the server computes who gains any permission, as D9 does for folder
+  moves. If anyone gains, the change needs explicit confirmation naming them. Who may see the named
+  set and confirm follows the folder-move confirmation as implemented (see the move-widening bullet
+  below), and the confirmation and its named set are audited. Changes that only narrow commit
+  without it.
+- **Machine principals get rules without key narrowing
+  ([#1473](https://github.com/Hikyo-Org/Hikyo/issues/1473)).** A service account's rule may use the
+  project and environment axes, including *all, except* and environments created later, but not
+  the key axis. The machine widening gate counts reach per environment, so it stays exact. Key
+  narrowing for machines would need that gate to count per key and is not decided. The permission
+  ADR's machine allowlists are unchanged, and D11's placement on Machine access stands.
+- **The resolver gets a server-side operation
+  ([#1474](https://github.com/Hikyo-Org/Hikyo/issues/1474)).** D10's "Who can…?" becomes an additive `/api/v1`
+  operation with a CLI spelling, declared as an amendment to
+  [api-cli-surface.md](./api-cli-surface.md) in its implementing pull request. Its evaluation is the
+  `authorize()` chokepoint's, so the answer cannot drift from enforcement.
 
 ## First implementation slice (2026-09-29, historical)
 
