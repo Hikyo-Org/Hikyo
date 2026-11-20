@@ -47,7 +47,7 @@ const faq = [
   {
     question: 'Does self-hosting require a Hikyo cloud account?',
     answer:
-      'No Hikyo cloud account is required. You run the Go binary and embedded web UI on infrastructure you operate, with SQLite or PostgreSQL as the datastore.',
+      'No Hikyo cloud account is required. You run the Go server binary and embedded web UI on infrastructure you operate, with SQLite or PostgreSQL as the datastore. The CLI is a client and needs no server on your Mac; a macOS desktop app is planned and not published yet.',
   },
   {
     question: 'When can a workload receive secret plaintext?',
@@ -202,7 +202,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
       <section class="hero">
         <div class="wrap hero-grid">
           <div class="hero-copy">
-            <p class="eyebrow"><span class="live" aria-hidden="true"></span> {stableVersion} released · one Go binary · self-hosted</p>
+            <p class="eyebrow"><span class="live" aria-hidden="true"></span> {stableVersion} released · one Go server binary · self-hosted</p>
             <h1>Every environment<br /><span>answers for itself.</span></h1>
             <p class="lede">
               Hikyo gives <strong>self-hosting</strong> teams one view of validated configuration and secrets. Every value is
@@ -432,7 +432,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
             <p class="kicker">// runs where you do</p>
             <h2 id="self-host-heading">Own the keys. Own the data.</h2>
             <p class="section-lede">
-              Self-hosting is the product, <strong>not a paid tier</strong>. Run one binary with its embedded web UI, choose SQLite
+              Self-hosting is the product, <strong>not a paid tier</strong>. Run one server binary with its embedded web UI, choose SQLite
               or PostgreSQL, and hold the root key <strong>outside the datastore</strong> it protects.
             </p>
             <div class="section-actions">
@@ -441,7 +441,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
             </div>
           </div>
           <dl class="specs">
-            <div><dt>runtime</dt><dd><strong>One Go binary</strong> with an embedded web interface.</dd></div>
+            <div><dt>runtime</dt><dd><strong>One Go server binary</strong> with an embedded web interface.</dd></div>
             <div><dt>storage</dt><dd><strong>SQLite or PostgreSQL</strong>, selected explicitly.</dd></div>
             <div><dt>encryption</dt><dd>Envelope encryption with <strong>operator-held root key material</strong>.</dd></div>
             <div><dt>deploy</dt><dd>A first-party <strong>Helm chart</strong> for Kubernetes and K3s.</dd></div>

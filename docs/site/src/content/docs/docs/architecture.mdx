@@ -4,13 +4,15 @@ description: Understand Hikyo's process, storage, API, and trust boundaries.
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/architecture.mdx
 ---
 
-Hikyo ships as one Go binary. The same binary serves the web app and API, runs
-migrations, performs host-only recovery, and provides the client CLI.
+The Hikyo server ships as one Go binary. The same binary serves the web app and
+API, runs migrations, performs host-only recovery, and provides the client CLI.
+The [macOS desktop app](/docs/desktop-app/) is a separate artifact: a thin
+client for hosted instances that contains no server.
 
 ## Runtime shape
 
 ```text
-browser or CLI
+browser, CLI or desktop app
       | HTTPS
       v
 reverse proxy
@@ -22,12 +24,12 @@ hikyo server --- datastore
 ```
 
 Only the server and local admin role unwrap the data-encryption key. The
-browser, network CLI, reverse proxy, datastore, backup exporter, and restore
+browser, desktop app, network CLI, reverse proxy, datastore, backup exporter, and restore
 command never receive the operator root key. The one exception is `restore
 drill`, which boots the restored scratch copy with an explicitly supplied root
 key file to prove recovery.
 
-## One binary, several roles
+## One server binary, several roles
 
 | Role | Commands | Boundary |
 | --- | --- | --- |
@@ -36,6 +38,7 @@ key file to prove recovery.
 | Host operator | `hikyo admin`, `backup`, `restore`, `escrow` | Runs only beside the datastore. |
 | Kubernetes operator | `hikyo operator`, `config-rollout` | Separate deployable; reconciles `HikyoSecret` and the in-cluster rollout authority. |
 | Network client | login, hierarchy, values, access, identities | Uses the versioned HTTP API. |
+| Desktop app (separate download) | macOS window for hosted instances | Not a `hikyo` role. Loads each instance's own web UI with a CLI-class session held in the keychain. |
 
 Every role answers `--help`; see [CLI reference](/docs/cli-reference/#getting-help).
 
