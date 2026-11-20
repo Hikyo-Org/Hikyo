@@ -77,11 +77,15 @@ Do not run `build 1.0.0` until designs and final-candidate acceptance are done.
    command to pass.
 4. **Record published trust:** run
    `scripts/release/ceremony.sh sync-trust VERSION`. It re-verifies the public
-   release and opens a PR containing its signed metadata and catalog. Push a
-   commit to that PR that updates `CAP-PUBLIC-RELEASE` in
-   `docs/status/ledger.json` to name the new version and cite its release URL,
-   then run `node scripts/ci/check-doc-status.mjs --write`; docs CI refuses the
-   trust PR until the ledger names the release. Review
+   release and opens a PR containing its signed metadata and catalog. On that
+   PR's branch, update `CAP-PUBLIC-RELEASE` in `docs/status/ledger.json` to
+   name the new version and cite its release URL. Run
+   `pnpm --dir docs/site install --frozen-lockfile` (the checker needs the
+   site's Node dependencies), then
+   `node scripts/ci/check-doc-status.mjs --write`, and push the result as a
+   signed commit. Docs CI refuses the trust PR until the ledger names the
+   release. Rerunning `sync-trust` keeps that ledger commit and refuses any
+   other change on the branch. Review
    and merge it promptly after green CI, then pull main. Merging redeploys
    hikyo.app: the landing page and docs name the new version, and the demo
    is rebuilt with them. That deployment fails unless the live landing page
