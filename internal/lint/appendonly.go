@@ -45,10 +45,9 @@ func appendOnlySpecs(string) ([]InputSpec, error) {
 var AuditAppendOnly = newAuditAppendOnly(flagInputs)
 
 func newAuditAppendOnly(provide func(*analysis.Analyzer) inputProvider) *analysis.Analyzer {
-	declareInputs("appendonly", appendOnlySpecs)
 	return fileCheck{
 		name: "appendonly", doc: "audit tables are append-only at the application layer and no code downgrades commit durability",
-		anchor: Module + "/internal/store", specs: appendOnlySpecs,
+		anchor: Module + "/internal/store",
 		run: func(src source, root string) ([]string, error) {
 			findings := checkAuditQueries(src, root)
 			return append(findings, checkNoSyncCommitDowngrade(src, root, []string{".sql"})...), nil
@@ -511,7 +510,6 @@ const denialSurface = Module + "/internal/store/authn"
 // newDenialWriter builds the analyzer; a fixed mutating set replaces the
 // query-derived one for the old harness's scoped entry point.
 func newDenialWriter(provide func(*analysis.Analyzer) inputProvider, fixed map[string]bool) *analysis.Analyzer {
-	declareInputs("denialwriter", queryInputs)
 	a := &analysis.Analyzer{Name: "denialwriter", Doc: "the resolution surface writes only from its enumerated writers"}
 	surface := denialSurface
 	writers := ResolutionSurfaceWriters

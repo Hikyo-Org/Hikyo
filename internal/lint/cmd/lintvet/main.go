@@ -6,7 +6,10 @@
 // runs it once per analysis context (lint-analysis driver ADR). The driver
 // decodes `go vet -json` and separates the reserved summary diagnostics
 // (target presence, redaction pins) from findings; in text mode those summaries
-// print as ordinary findings, so do not run the tool by hand.
+// print as ordinary findings, so do not run the tool by hand. An analyzer that
+// reads declared inputs also needs -<analyzer>.root and -<analyzer>.inputs (the
+// repository root and the digest of its declared inputs); the driver passes
+// them, and the analyzer refuses to run without them.
 package main
 
 import (

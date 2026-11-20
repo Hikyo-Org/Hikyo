@@ -31,16 +31,19 @@ func stableCopiesSpecs(string) ([]InputSpec, error) {
 	return specs, nil
 }
 
-// StableCopies reads the declared jsonwire original and its copies, which are
-// not analyzed packages, and runs once on internal/jsonwire.
+// StableCopies reads the declared jsonwire original and its copies, and runs
+// once on internal/jsonwire. The copies are programs outside the anchor's action
+// ID. The original is the anchor's own file, declared anyway: the fixture keeps
+// its original under its root, not in its anchor package, and the old harness
+// reads it by path, so one reader serves both (the edit re-vets the context
+// either way, since it changes the anchor's own sources).
 var StableCopies = newStableCopies(flagInputs)
 
 func newStableCopies(provide func(*analysis.Analyzer) inputProvider) *analysis.Analyzer {
 	copies := slices.Clone(stableCopies)
-	declareInputs("stablecopies", stableCopiesSpecs)
 	return fileCheck{
 		name: "stablecopies", doc: "reports a copy of jsonwire.Stable whose options drift from the original",
-		anchor: Module + "/internal/jsonwire", specs: stableCopiesSpecs,
+		anchor: Module + "/internal/jsonwire",
 		flags: func(a *analysis.Analyzer) {
 			a.Flags.Func("copies", "comma-separated copies to compare (default: the registered ones)", func(v string) error {
 				copies = strings.Split(v, ",")
@@ -55,7 +58,10 @@ func newStableCopies(provide func(*analysis.Analyzer) inputProvider) *analysis.A
 // argument list differs from the original's, so a copy cannot drift out of
 // byte-compatibility with encoding/json (v1) unnoticed.
 func CheckStableCopies(repoRoot string) []string {
-	findings, _ := checkStableCopies(osSource{}, repoRoot, stableCopies)
+	findings, err := checkStableCopies(osSource{}, repoRoot, stableCopies)
+	if err != nil {
+		findings = append(findings, "stablecopy: "+err.Error())
+	}
 	return findings
 }
 

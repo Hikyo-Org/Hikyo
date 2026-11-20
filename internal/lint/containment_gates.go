@@ -150,11 +150,10 @@ func CheckContainmentGates(queries []Query, exempt map[string]string) []string {
 var ContainmentGates = newContainmentGates(flagInputs)
 
 func newContainmentGates(provide func(*analysis.Analyzer) inputProvider) *analysis.Analyzer {
-	declareInputs("containmentgates", queryInputs)
 	exempt := ContainmentGateExemptions
 	return fileCheck{
 		name: "containmentgates", doc: "every privacy-active predicate in the query files is paired with the containment condition",
-		anchor: Module + "/internal/store", specs: queryInputs,
+		anchor: Module + "/internal/store",
 		flags: func(a *analysis.Analyzer) {
 			a.Flags.Func("exempt", "comma-separated exempted query names (default: ContainmentGateExemptions)", func(v string) error {
 				exempt = map[string]string{}

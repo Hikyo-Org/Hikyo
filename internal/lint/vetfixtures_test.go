@@ -121,9 +121,9 @@ var vetFixtures = []vetFixture{
 		name: "containmentgates", analyzer: "containmentgates", patterns: []string{fixtureRoot + "badcontainmentgates"},
 		flags:      []string{"-containmentgates.anchor=" + fixtureImportRoot + "badcontainmentgates", "-containmentgates.exempt=Exempted,ExemptedButGated,Vanished"},
 		targets:    []string{fixtureImportRoot + "badcontainmentgates"},
-		inputsRoot: "internal/lint/testdata/badcontainmentgates/root", messages: true,
+		inputsRoot: "internal/lint/testdata/badcontainmentgates", messages: true,
 		old: func([]*packages.Package) []string {
-			root := filepath.Join(moduleRoot(), "internal/lint/testdata/badcontainmentgates/root")
+			root := filepath.Join(moduleRoot(), "internal/lint/testdata/badcontainmentgates")
 			queries, err := ParseQueries(filepath.Join(root, "internal/store/queries/sqlite"))
 			if err != nil {
 				panic(err)
@@ -139,9 +139,9 @@ var vetFixtures = []vetFixture{
 			"-reencryptcoverage.exempt=sealed_things.wrapped_key,both_sets.ambiguous",
 		},
 		targets:    []string{fixtureImportRoot + "badreencrypt"},
-		inputsRoot: "internal/lint/testdata/badreencrypt/root", messages: true,
+		inputsRoot: "internal/lint/testdata/badreencrypt", messages: true,
 		old: func([]*packages.Package) []string {
-			dir := filepath.Join(moduleRoot(), "internal/lint/testdata/badreencrypt/root/internal/store/migrations/sqlite")
+			dir := filepath.Join(moduleRoot(), "internal/lint/testdata/badreencrypt/internal/store/migrations/sqlite")
 			return checkReencryptCoverage(osSource{}, dir,
 				map[string]string{"sealed_things.payload_sealed": "", "both_sets.ambiguous": "", "gone_table.gone_column": ""},
 				map[string]string{"sealed_things.wrapped_key": "", "both_sets.ambiguous": ""})
@@ -151,9 +151,9 @@ var vetFixtures = []vetFixture{
 		name: "sqlpredicate", analyzer: "sqlpredicate", patterns: []string{fixtureRoot + "badsqlpredicate"},
 		flags:      []string{"-sqlpredicate.anchor=" + fixtureImportRoot + "badsqlpredicate", "-sqlpredicate.nopins"},
 		targets:    []string{fixtureImportRoot + "badsqlpredicate"},
-		inputsRoot: "internal/lint/testdata/badsqlpredicate/root", messages: true,
+		inputsRoot: "internal/lint/testdata/badsqlpredicate", messages: true,
 		old: func([]*packages.Package) []string {
-			return checkSQLPredicates(osSource{}, filepath.Join(moduleRoot(), "internal/lint/testdata/badsqlpredicate/root"), true)
+			return checkSQLPredicates(osSource{}, filepath.Join(moduleRoot(), "internal/lint/testdata/badsqlpredicate"), true)
 		},
 	},
 	{
@@ -175,9 +175,24 @@ var vetFixtures = []vetFixture{
 		name: "stablecopies", analyzer: "stablecopies", patterns: []string{fixtureRoot + "badstablecopies"},
 		flags:      []string{"-stablecopies.anchor=" + fixtureImportRoot + "badstablecopies"},
 		targets:    []string{fixtureImportRoot + "badstablecopies"},
-		inputsRoot: "internal/lint/testdata/badstablecopies/root", messages: true,
+		inputsRoot: "internal/lint/testdata/badstablecopies", messages: true,
 		old: func([]*packages.Package) []string {
-			return CheckStableCopies(filepath.Join(moduleRoot(), "internal/lint/testdata/badstablecopies/root"))
+			return CheckStableCopies(filepath.Join(moduleRoot(), "internal/lint/testdata/badstablecopies"))
+		},
+	},
+	{
+		// The fixture tree holds an ignore-tagged Go file under internal/store,
+		// which vet cannot see: the driver's unanalyzed-file check finds it.
+		name: "appendonly", analyzer: "appendonly", patterns: []string{fixtureRoot + "badappendonly"},
+		flags:      []string{"-appendonly.anchor=" + fixtureImportRoot + "badappendonly"},
+		targets:    []string{fixtureImportRoot + "badappendonly"},
+		inputsRoot: "internal/lint/testdata/badappendonly", messages: true,
+		old: func([]*packages.Package) []string {
+			return CheckAuditAppendOnly(filepath.Join(moduleRoot(), "internal/lint/testdata/badappendonly"))
+		},
+		aggregate: func(out *vetOutcome) []string {
+			files, _ := analyzedGoFiles(out)
+			return unanalyzedSyncCommit(filepath.Join(moduleRoot(), "internal/lint/testdata/badappendonly"), func(path string) bool { return files[canonicalPath(path)] })
 		},
 	},
 	{
@@ -300,7 +315,10 @@ func inFixture(f vetFixture, file string) bool {
 }
 
 // checkWants requires every want to match one diagnostic of the fixture's
-// analyzer on its line, and every such diagnostic to match a want.
+// analyzer on its line, and every such diagnostic to match a want. Limit: the
+// inFixture relaxation skips diagnostics in the other packages of a shared run,
+// so a sibling fixture's package is judged only by that fixture's own entry;
+// no entry checks the packages that no fixture lists.
 func checkWants(t *testing.T, f vetFixture, findings []string) {
 	t.Helper()
 	wants := scanWants(t, fixtureDirs(f.patterns))

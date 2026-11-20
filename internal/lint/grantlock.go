@@ -122,7 +122,6 @@ var GrantLock = newGrantLock(flagInputs, nil)
 // newGrantLock builds the analyzer. A fixed writers set replaces the
 // query-derived one for the old harness's scoped entry point.
 func newGrantLock(provide func(*analysis.Analyzer) inputProvider, fixed map[string]bool) *analysis.Analyzer {
-	declareInputs("grantlock", queryInputs)
 	a := &analysis.Analyzer{Name: "grantlock", Doc: "every grant-table writer takes the principal-row lock"}
 	surface := ""
 	a.Flags.StringVar(&surface, "surface", "", "analyze only this package (default: every module package)")

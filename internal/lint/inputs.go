@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -63,7 +64,23 @@ func (osSource) ReadFile(path string) ([]byte, error) {
 	return pathutil.ReadFileWithin(filepath.Dir(path), path)
 }
 
+// requireDir refuses a declared directory that is absent (an error wrapping
+// fs.ErrNotExist), a symlink or not a directory, as Inputs does.
+func requireDir(dir string) error {
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%s is not a directory (a symlink or another file type is refused)", dir)
+	}
+	return nil
+}
+
 func (osSource) ReadDir(dir string) ([]string, error) {
+	if err := requireDir(dir); err != nil {
+		return nil, err
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
@@ -78,6 +95,9 @@ func (osSource) ReadDir(dir string) ([]string, error) {
 }
 
 func (osSource) WalkFiles(dir string, exts []string) ([]string, error) {
+	if err := requireDir(dir); err != nil {
+		return nil, err
+	}
 	var out []string
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -112,18 +132,17 @@ type inputFile struct {
 // snapshot the digest was computed over, so a file edited after the check
 // cannot change what the analyzer sees.
 type Inputs struct {
-	root     string
-	digest   string
-	files    map[string]inputFile
-	lists    map[string][]string // declared directory -> files in it (absolute, sorted)
-	recurse  map[string]bool
-	declared map[string]bool // declared files: those named by a File spec
+	digest  string
+	files   map[string]inputFile
+	dirs    map[string]inputState // declared directory -> its state
+	lists   map[string][]string   // declared directory -> files in it (absolute, sorted)
+	recurse map[string]bool
 }
 
 // SnapshotInputs reads the declared inputs under root and computes their digest.
 func SnapshotInputs(root string, specs []InputSpec) (*Inputs, error) {
 	root = filepath.Clean(root)
-	in := &Inputs{root: root, files: map[string]inputFile{}, lists: map[string][]string{}, recurse: map[string]bool{}, declared: map[string]bool{}}
+	in := &Inputs{files: map[string]inputFile{}, dirs: map[string]inputState{}, lists: map[string][]string{}, recurse: map[string]bool{}}
 	var lines []string
 	read := func(path string) error {
 		info, err := os.Lstat(path)
@@ -135,7 +154,7 @@ func SnapshotInputs(root string, specs []InputSpec) (*Inputs, error) {
 		case !info.Mode().IsRegular():
 			in.files[path] = inputFile{state: inputIrregular}
 		default:
-			data, err := os.ReadFile(path)
+			data, err := readSnapshotFile(path, info)
 			if err != nil {
 				return err
 			}
@@ -150,23 +169,32 @@ func SnapshotInputs(root string, specs []InputSpec) (*Inputs, error) {
 			if err := read(path); err != nil {
 				return nil, err
 			}
-			in.declared[path] = true
 		case spec.Dir != "" && spec.File == "":
 			dir := filepath.Join(root, filepath.FromSlash(spec.Dir))
-			var names []string
-			list, err := listInputDir(dir, spec)
+			if _, dup := in.dirs[dir]; dup {
+				return nil, fmt.Errorf("input spec %+v names directory %s twice", spec, spec.Dir)
+			}
+			state, err := inputDirState(dir)
 			if err != nil {
 				return nil, err
 			}
-			for _, path := range list {
-				if err := read(path); err != nil {
+			var names []string
+			if state == inputPresent {
+				list, err := listInputDir(dir, spec)
+				if err != nil {
 					return nil, err
 				}
-				names = append(names, path)
+				for _, path := range list {
+					if err := read(path); err != nil {
+						return nil, err
+					}
+					names = append(names, path)
+				}
 			}
+			in.dirs[dir] = state
 			in.lists[dir] = names
 			in.recurse[dir] = spec.Recursive
-			lines = append(lines, fmt.Sprintf("dir %s exts=%s recursive=%t", spec.Dir, strings.Join(spec.Exts, ","), spec.Recursive))
+			lines = append(lines, fmt.Sprintf("dir %s state=%d exts=%s recursive=%t", spec.Dir, state, strings.Join(spec.Exts, ","), spec.Recursive))
 		default:
 			return nil, fmt.Errorf("input spec %+v must name exactly one of File and Dir", spec)
 		}
@@ -185,14 +213,50 @@ func SnapshotInputs(root string, specs []InputSpec) (*Inputs, error) {
 	return in, nil
 }
 
-// listInputDir lists the files a Dir spec selects. A directory that does not
-// exist selects nothing and hashes as empty, so creating it changes the digest.
+// readSnapshotFile reads a regular file through one handle: it opens the path,
+// checks the handle is the regular file Lstat saw, and reads from that handle,
+// so a swap between the check and the read is refused instead of followed.
+// shortcut: a FIFO swapped in between Lstat and Open would block the open; the
+// declared inputs are repository files, so this is not defended, upgrade with
+// O_NONBLOCK if the root ever becomes untrusted.
+func readSnapshotFile(path string, lstat os.FileInfo) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || !os.SameFile(lstat, info) {
+		return nil, fmt.Errorf("%s changed while the inputs were read", path)
+	}
+	return io.ReadAll(f)
+}
+
+// inputDirState classifies a declared directory: absent, a directory, or
+// irregular (a symlink or another file type, never followed). The state is part
+// of the digest, so an absent directory differs from an empty one and either
+// differs from a symlink.
+func inputDirState(dir string) (inputState, error) {
+	info, err := os.Lstat(dir)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return inputAbsent, nil
+	case err != nil:
+		return 0, err
+	case !info.IsDir():
+		return inputIrregular, nil
+	}
+	return inputPresent, nil
+}
+
+// listInputDir lists the files a Dir spec selects in a directory that exists.
 func listInputDir(dir string, spec InputSpec) ([]string, error) {
 	var out []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		switch {
-		case errors.Is(err, fs.ErrNotExist) && path == dir:
-			return fs.SkipAll
 		case err != nil:
 			return err
 		case d.IsDir():
@@ -246,11 +310,28 @@ func (in *Inputs) ReadFile(path string) ([]byte, error) {
 	return f.data, nil
 }
 
-func (in *Inputs) ReadDir(dir string) ([]string, error) {
-	dir = filepath.Clean(dir)
-	list, ok := in.lists[dir]
+// declaredDir returns the files of a declared directory, or the refusal: an
+// undeclared directory, an absent one (wrapping fs.ErrNotExist, as the disk
+// reader does) or one that is a symlink or not a directory.
+func (in *Inputs) declaredDir(dir string) ([]string, error) {
+	state, ok := in.dirs[dir]
 	if !ok {
 		return nil, fmt.Errorf("%w: directory %s", ErrUndeclaredInput, dir)
+	}
+	switch state {
+	case inputAbsent:
+		return nil, &fs.PathError{Op: "read", Path: dir, Err: fs.ErrNotExist}
+	case inputIrregular:
+		return nil, fmt.Errorf("%s is not a directory (a symlink or another file type is refused)", dir)
+	}
+	return in.lists[dir], nil
+}
+
+func (in *Inputs) ReadDir(dir string) ([]string, error) {
+	dir = filepath.Clean(dir)
+	list, err := in.declaredDir(dir)
+	if err != nil {
+		return nil, err
 	}
 	var names []string
 	for _, path := range list {
@@ -263,9 +344,12 @@ func (in *Inputs) ReadDir(dir string) ([]string, error) {
 
 func (in *Inputs) WalkFiles(dir string, exts []string) ([]string, error) {
 	dir = filepath.Clean(dir)
-	list, ok := in.lists[dir]
-	if !ok || !in.recurse[dir] {
+	if !in.recurse[dir] {
 		return nil, fmt.Errorf("%w: recursive directory %s", ErrUndeclaredInput, dir)
+	}
+	list, err := in.declaredDir(dir)
+	if err != nil {
+		return nil, err
 	}
 	var out []string
 	for _, path := range list {
@@ -287,12 +371,17 @@ type inputProvider struct {
 // specsFunc declares an analyzer's inputs under a root.
 type specsFunc func(root string) ([]InputSpec, error)
 
-// inputDeclarations maps each input-reading analyzer to its declaration.
-var inputDeclarations = map[string]specsFunc{}
-
-// declareInputs registers an analyzer's declaration; the driver test reads it
-// back to hash the inputs.
-func declareInputs(analyzer string, specs specsFunc) { inputDeclarations[analyzer] = specs }
+// inputDeclarations maps each input-reading analyzer to its declaration: the
+// one source of truth the analyzer reads through and the driver test hashes.
+var inputDeclarations = map[string]specsFunc{
+	"containmentgates":  queryInputs,
+	"appendonly":        appendOnlySpecs,
+	"denialwriter":      queryInputs,
+	"grantlock":         queryInputs,
+	"reencryptcoverage": reencryptSpecs,
+	"sqlpredicate":      sqlPredicateSpecs,
+	"stablecopies":      stableCopiesSpecs,
+}
 
 // InputDeclaration returns an input-reading analyzer's declared inputs under
 // root, or false for an analyzer that reads none.
@@ -361,7 +450,6 @@ func reportRefusal(pass *analysis.Pass, err error) {
 type fileCheck struct {
 	name, doc string
 	anchor    string
-	specs     specsFunc
 	// run returns the findings, in the wording the old harness used, or a
 	// refusal (an undeclared input) that is not a finding about the code.
 	run func(src source, root string) ([]string, error)

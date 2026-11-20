@@ -250,11 +250,10 @@ func sqlPredicateSpecs(string) ([]InputSpec, error) {
 var SQLPredicates = newSQLPredicates(flagInputs)
 
 func newSQLPredicates(provide func(*analysis.Analyzer) inputProvider) *analysis.Analyzer {
-	declareInputs("sqlpredicate", sqlPredicateSpecs)
 	var noPins bool
 	return fileCheck{
 		name: "sqlpredicate", doc: "tenant-chain predicates of every query, scope directives and cross-engine agreement",
-		anchor: Module + "/internal/store", specs: sqlPredicateSpecs,
+		anchor: Module + "/internal/store",
 		flags: func(a *analysis.Analyzer) {
 			a.Flags.BoolVar(&noPins, "nopins", false, "hold the repository to no reviewed scoped queries and no legacy annotations (fixtures)")
 		},

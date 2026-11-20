@@ -110,6 +110,7 @@ func TestInputsRefuseUndeclaredPathAndStaleDigest(t *testing.T) {
 	if after, _ := InputDigest(root, specs); after != before {
 		t.Error("a file outside the declaration changed the digest")
 	}
+	t.Run("directories", checkRefusedDirectories)
 }
 
 func mkdirWrite(path, text string) error {
@@ -125,7 +126,7 @@ func mkdirWrite(path, text string) error {
 // -copies flag, so the fail-closed rule is exercised end to end).
 func TestVetDriverRefusesBadInputs(t *testing.T) {
 	bin := buildVetTool(t)
-	const root = "internal/lint/testdata/badstablecopies/root"
+	const root = "internal/lint/testdata/badinputsrefusal"
 	good := inputFlags(t, "stablecopies", filepath.Join(moduleRoot(), filepath.FromSlash(root)))
 	anchor := "-stablecopies.anchor=" + fixtureImportRoot + "badinputsrefusal"
 	cases := []struct {
@@ -171,14 +172,22 @@ func analyzedGoFiles(out *vetOutcome) (files map[string]bool, exception bool) {
 }
 
 // Every input-reading analyzer refuses a digest that does not match its
-// declared inputs, on its own fixture, and still reports its target.
+// declared inputs, on its own fixture. The fixtures that declare an inputsRoot
+// must cover exactly InputAnalyzers(), so a new input analyzer without a
+// fixture fails here.
 func TestVetDriverEveryInputAnalyzerRefusesStaleDigest(t *testing.T) {
 	bin := buildVetTool(t)
 	var fixtures []vetFixture
+	var covered []string
 	for _, f := range vetFixtures {
 		if f.inputsRoot != "" {
 			fixtures = append(fixtures, f)
+			covered = append(covered, f.analyzer)
 		}
+	}
+	slices.Sort(covered)
+	if want := InputAnalyzers(); !slices.Equal(covered, want) {
+		t.Fatalf("fixtures with inputs cover %v, InputAnalyzers() is %v", covered, want)
 	}
 	flags, patterns := fixtureFlagsAndPatterns(t, fixtures)
 	for i, flag := range flags {
@@ -196,9 +205,130 @@ func TestVetDriverEveryInputAnalyzerRefusesStaleDigest(t *testing.T) {
 			t.Errorf("%s did not refuse a stale digest", f.analyzer)
 		}
 		for _, finding := range findingMessages(out.Findings, f.analyzer) {
-			if !strings.HasPrefix(finding, "inputs refused:") {
+			// appendonly's per-package scan reads the package's own Go files, not
+			// declared inputs, so it still reports under a stale digest.
+			perPackage := f.analyzer == "appendonly" && strings.HasPrefix(finding, "appendonly: sync.go issues SET synchronous_commit")
+			if !strings.HasPrefix(finding, "inputs refused:") && !perPackage {
 				t.Errorf("%s analyzed despite a stale digest: %s", f.analyzer, finding)
 			}
 		}
+	}
+}
+
+// A declared directory that is absent, a symlink or not a directory is a
+// refusal, never an empty listing, and each state hashes differently.
+func checkRefusedDirectories(t *testing.T) {
+	specs := []InputSpec{{Dir: "q", Exts: []string{".sql"}, Recursive: true}}
+	rootWith := func(setup func(root string)) (string, *Inputs) {
+		root := t.TempDir()
+		setup(root)
+		in, err := SnapshotInputs(root, specs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return root, in
+	}
+	absentRoot, absent := rootWith(func(string) {})
+	emptyRoot, empty := rootWith(func(root string) {
+		if err := os.Mkdir(filepath.Join(root, "q"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	})
+	linkRoot, link := rootWith(func(root string) {
+		if err := mkdirWrite(filepath.Join(root, "real", "a.sql"), "select 1;"); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join(root, "real"), filepath.Join(root, "q")); err != nil {
+			t.Fatal(err)
+		}
+	})
+	fileRoot, file := rootWith(func(root string) {
+		if err := mkdirWrite(filepath.Join(root, "q"), "not a directory"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if _, err := empty.ReadDir(filepath.Join(emptyRoot, "q")); err != nil {
+		t.Errorf("an empty directory must read as empty, got %v", err)
+	}
+	for name, tc := range map[string]struct {
+		in      *Inputs
+		root    string
+		notExit bool
+	}{
+		"absent":    {absent, absentRoot, true},
+		"symlinked": {link, linkRoot, false},
+		"file":      {file, fileRoot, false},
+	} {
+		dir := filepath.Join(tc.root, "q")
+		_, errDir := tc.in.ReadDir(dir)
+		_, errWalk := tc.in.WalkFiles(dir, []string{".sql"})
+		for _, err := range []error{errDir, errWalk} {
+			if err == nil || errors.Is(err, fs.ErrNotExist) != tc.notExit {
+				t.Errorf("%s directory: got %v, want a refusal (not-exist=%t)", name, err, tc.notExit)
+			}
+		}
+		// The disk reader of the old harness refuses the same states.
+		if _, err := (osSource{}).ReadDir(dir); err == nil {
+			t.Errorf("%s directory: osSource.ReadDir returned no error", name)
+		}
+		if _, err := (osSource{}).WalkFiles(dir, []string{".sql"}); err == nil {
+			t.Errorf("%s directory: osSource.WalkFiles returned no error", name)
+		}
+	}
+	digests := map[string]string{}
+	for name, in := range map[string]*Inputs{"absent": absent, "empty": empty, "irregular": link} {
+		if other, dup := digests[in.digest]; dup {
+			t.Errorf("%s and %s directories hash the same", name, other)
+		}
+		digests[in.digest] = name
+	}
+	if _, err := SnapshotInputs(emptyRoot, append(specs, specs...)); err == nil {
+		t.Error("two specs naming one directory must be refused")
+	}
+}
+
+// With every declared directory absent, each input analyzer's reads fail and
+// its check reports a finding (or refuses), never a clean pass.
+func TestInputAnalyzersReportAbsentDirectories(t *testing.T) {
+	root := t.TempDir()
+	snapshot := func(analyzer string) *Inputs {
+		specs, ok, err := InputDeclaration(analyzer, root)
+		if err != nil || !ok {
+			t.Fatalf("%s: declared=%t err=%v", analyzer, ok, err)
+		}
+		in, err := SnapshotInputs(root, specs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return in
+	}
+	for name, findings := range map[string][]string{
+		"appendonly": append(checkAuditQueries(snapshot("appendonly"), root),
+			checkNoSyncCommitDowngrade(snapshot("appendonly"), root, []string{".sql"})...),
+		"sqlpredicate":      checkSQLPredicates(snapshot("sqlpredicate"), root, true),
+		"reencryptcoverage": checkReencryptCoverage(snapshot("reencryptcoverage"), filepath.Join(root, "internal", "store", "migrations", "sqlite"), reencryptCovered, reencryptExemptBlobs),
+	} {
+		if len(findings) == 0 {
+			t.Errorf("%s: no finding with every declared directory absent", name)
+		}
+	}
+	in := snapshot("containmentgates")
+	if _, err := parseQueries(in, filepath.Join(root, "internal", "store", "queries", "sqlite")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("containmentgates: absent query directory = %v, want not-exist (reported as a finding)", err)
+	}
+	for _, name := range []string{"grantlock", "denialwriter"} {
+		src := snapshot(name)
+		var err error
+		if name == "grantlock" {
+			_, err = grantWriters(src, root)
+		} else {
+			_, _, err = mutatingQueries(src, root)
+		}
+		if err == nil {
+			t.Errorf("%s: absent query directories produced no error", name)
+		}
+	}
+	if findings, err := checkStableCopies(snapshot("stablecopies"), root, stableCopies); err != nil || len(findings) == 0 {
+		t.Errorf("stablecopies: absent files gave findings=%v err=%v", findings, err)
 	}
 }

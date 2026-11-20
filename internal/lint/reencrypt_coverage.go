@@ -40,7 +40,6 @@ func reencryptSpecs(string) ([]InputSpec, error) {
 var ReencryptCoverage = newReencryptCoverage(flagInputs)
 
 func newReencryptCoverage(provide func(*analysis.Analyzer) inputProvider) *analysis.Analyzer {
-	declareInputs("reencryptcoverage", reencryptSpecs)
 	covered, exempt := reencryptCovered, reencryptExemptBlobs
 	list := func(set *map[string]string) func(string) error {
 		return func(v string) error {
@@ -53,7 +52,7 @@ func newReencryptCoverage(provide func(*analysis.Analyzer) inputProvider) *analy
 	}
 	return fileCheck{
 		name: "reencryptcoverage", doc: "every BLOB column of the schema is classified as reencrypt-covered or exempt",
-		anchor: Module + "/internal/store", specs: reencryptSpecs,
+		anchor: Module + "/internal/store",
 		flags: func(a *analysis.Analyzer) {
 			a.Flags.Func("covered", "comma-separated table.column covered set (default: reencryptCovered)", list(&covered))
 			a.Flags.Func("exempt", "comma-separated table.column exempt set (default: reencryptExemptBlobs)", list(&exempt))

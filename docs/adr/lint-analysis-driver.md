@@ -111,8 +111,10 @@ The spike also established that:
 
 ## Amendment: step 2 (input hashing)
 
-Decided while implementing step 2; accepted by the same owner decision that
-accepted the ADR, as an implementation of decision 2 and 3.
+**Status: Proposed (pending owner acceptance).** Decided while implementing
+step 2. Decision 3 is deviated from by the `jsonv1` hybrid below; the owner has
+not accepted this amendment, so nothing here is accepted by the decision that
+accepted the ADR.
 
 - **Helper.** `internal/lint/inputs.go`. An analyzer declares `InputSpec`s
   (a file, or a directory with extensions, optionally recursive) relative to a
@@ -123,13 +125,25 @@ accepted the ADR, as an implementation of decision 2 and 3.
   a missing flag and a digest mismatch are refusals, reported as findings at
   the anchor's package clause (not as a vet error, so `// want` can state
   them). A declared file that is absent hashes as absent and reads as not-exist.
-- **Never declare analyzed Go files.** Vet flags are part of every package's
-  action ID, so any edit to a declared input re-vets every package of the
-  context. Declared inputs are therefore limited to files vet does not key on
-  (`.sql`, the generated query APIs, the `scripts/ci` copies) plus the test
-  files that `reviewed_pins.json` cites for scoped queries (read by
-  `sqlpredicate`; an edit to one of them re-vets the context, which is the cost
-  of that check's old behavior).
+- **Declare only files the anchor package's action ID does not cover.** Vet
+  flags are part of every package's action ID, so any edit to a declared input
+  re-vets every package of the context. The anchor's own Go sources are keyed by
+  vet already, and a dependency's sources reach its ID only through export data,
+  so declared inputs are the files vet does not key on: `.sql`, the
+  generated query packages' unexported SQL text (`sqlitegen`, `pggen`), the
+  `scripts/ci` programs and the test files that `reviewed_pins.json` cites for
+  scoped queries (read by `sqlpredicate`; an edit to one of them re-vets the
+  context, which is the cost of that check's old behavior). One declared file is
+  the anchor's own: `internal/jsonwire/jsonwire.go`, the original `stablecopies`
+  compares against. It is declared, not read from `pass.Files`, because the
+  fixture keeps its original under its root rather than in its anchor package
+  and the old harness reads it by path, so one reader serves both; the edit
+  re-vets the context either way.
+- **A declared directory is absent, a directory, or irregular, and its state is
+  hashed.** An absent directory reads as an error wrapping `fs.ErrNotExist`, a
+  symlink or non-directory is refused, and none of the three hashes like an empty
+  directory. `-root` must contain the anchor package's files, or the analyzer
+  refuses.
 - **File-input analyzers run once, on an anchor package** (`internal/store`,
   `internal/jsonwire`) and report a target summary, so a renamed anchor is a
   finding. `grantlock` and `denialwriter` are per-package analyzers that open

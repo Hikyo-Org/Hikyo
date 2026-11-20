@@ -1,6 +1,6 @@
 # Lint vet driver PR 2: declared inputs and the non-Go-input analyzers
 
-Work: PR 2 of `docs/adr/lint-analysis-driver.md` (branch `dunky13/lint-vettool-inputs`, stacked on `dunky13/lint-vettool-driver`, PR #1464). Step 2 amendment is recorded in the ADR.
+Work: PR 2 of `docs/adr/lint-analysis-driver.md` (branch `dunky13/lint-vettool-inputs`, stacked on `dunky13/lint-vettool-driver`, PR #1464). The step 2 amendment is recorded in the ADR as Proposed, pending owner acceptance.
 
 ## Result
 
@@ -8,7 +8,7 @@ Work: PR 2 of `docs/adr/lint-analysis-driver.md` (branch `dunky13/lint-vettool-i
 - Ported to the vet tool (old harness entry points kept): `containmentgates` (with `sqlscope`), `sqlpredicate`, `reencryptcoverage`, `stablecopies`, `appendonly`, `grantlock`, `denialwriter`, `jsonv1`.
 - Not ported: RawSQL (PR 3). Nothing else from the PR 1 "Not ported" list remains.
 - Newly visible violations: none. `grantlock` (every module package, test files included), `denialwriter`, and the per-package `synchronous_commit` scan found nothing in the in-package test files of any context. `strictDeferred` is unchanged (`handles`, `redactfmt`); `deferred_sites.json` is unchanged. Nothing was allowlisted.
-- Fail-closed checks: each analyzer has a `// want` fixture under `internal/lint/testdata/` (`badcontainmentgates`, `badsqlpredicate`, `badreencrypt`, `badstablecopies`, `badjsonv1`, plus the existing `badgrant` and `badauthn` now carrying wants). `TestVetDriverRefusesBadInputs` (stale digest, absent flags, undeclared path, with the `badinputsrefusal` want fixture) and `TestVetDriverEveryInputAnalyzerRefusesStaleDigest` cover the refusals; `TestInputsRefuseUndeclaredPathAndStaleDigest` covers the helper.
+- Fail-closed checks: every input-reading analyzer has a `// want` fixture under `internal/lint/testdata/` (`badcontainmentgates`, `badsqlpredicate`, `badreencrypt`, `badstablecopies`, `badappendonly`, plus `badgrant` and `badauthn` carrying wants); `jsonv1` has `badjsonv1`. `TestVetDriverEveryInputAnalyzerRefusesStaleDigest` asserts the fixtures with inputs cover exactly `InputAnalyzers()`. `TestVetDriverRefusesBadInputs` (stale digest, absent flags, undeclared path, `badinputsrefusal`) and `TestInputsRefuseUndeclaredPathAndStaleDigest` (including absent, symlinked and non-directory declared directories) cover the refusals; `TestInputAnalyzersReportAbsentDirectories` covers each analyzer with its declared directories absent.
 
 ## Per-analyzer decisions
 
@@ -29,7 +29,7 @@ See the PR body for command output and measurements. Wall time and memory number
 
 ## Known limits and costs
 
-- Any edit to a declared input re-vets every package of the context (the flag is part of every action ID). Declared inputs are therefore never analyzed Go files, except the test files cited by the reviewed pins, which `sqlpredicate` reads from disk as it always did.
+- Any edit to a declared input re-vets every package of the context (the flag is part of every action ID). Declared inputs are therefore the files the anchor package's action ID does not cover; the exceptions are `internal/jsonwire/jsonwire.go` (the anchor's own file, see the ADR amendment) and the test files cited by the reviewed pins.
 - `prepare-lint-cache` warms only compiles (`go list -export -test`), not vet results, so CI stays as cold for vet as before; the file was not changed.
 - The unanalyzed-Go-file check runs only when every context ran; a focused `-run 'TestVetDriverRepo/<ctx>'` skips it with a log line.
 - Replacing symlink handling: the disk reader keeps `pathutil.ReadFileWithin`; the snapshot refuses any irregular declared file.
@@ -42,6 +42,6 @@ See the PR body for command output and measurements. Wall time and memory number
 
 ## Next steps
 
-1. `go test -count=1 -timeout 40m ./internal/lint/` (queue it: `/Users/developwent/.local/bin/agent-heavy run --label 'lint full' -- go test -count=1 -timeout 40m -p 2 ./internal/lint/`).
+1. `go test -count=1 -timeout 40m ./internal/lint/` (queue it as your environment requires; it takes 10 to 16 minutes).
 2. `go test ./internal/boundary/` and `scripts/ci/golangci-lint-new.sh origin/dev`.
 3. Start PR 3 from this branch.
