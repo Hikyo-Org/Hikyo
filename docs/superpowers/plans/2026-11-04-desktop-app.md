@@ -172,9 +172,15 @@ existing Developer ID signing and notarization identity.
 - A `desktop-v<version>` release holding `Hikyo-Desktop-<version>-<arch>.dmg` and its own
   signed inventory, with `make_latest` false. Never on nightlies, never inside a `hikyo`
   release. No updater and no update check.
-- A tag ruleset for `refs/tags/desktop-v*`, and a documented user verification step
-  beside Gatekeeper.
-- `scripts/ci/check-oss-policy.sh` and the "sole exception" sentence stay unchanged.
+- Publish the desktop release only after `v<version>` is published; none for release
+  candidates.
+- Make `scripts/release/latest-stable-version.sh` and `.github/workflows/security-release.yml`
+  skip `desktop-v*` first; both misread it today.
+- Pin GoReleaser's tag (`GORELEASER_CURRENT_TAG`), since two tags share a commit.
+- A tag ruleset for `refs/tags/desktop-v*`, an inventory signed by the stable workflow's
+  keyless identity, and a documented user verification step beside Gatekeeper.
+- The oss-mechanics banner becomes operative with this PR; close #33 then. The "sole
+  exception" sentence and `scripts/ci/check-oss-policy.sh` stay unchanged.
 
 ## PR 6: public docs
 

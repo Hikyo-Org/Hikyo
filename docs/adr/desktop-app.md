@@ -27,7 +27,7 @@ This ADR still authorizes no release.
    this departs from its procedure, as earlier owner-stated waivers did. See the [review record](#review-record).
 3. **Tickets.** [#22](https://github.com/Hikyo-Org/Hikyo/issues/22), [#16](https://github.com/Hikyo-Org/Hikyo/issues/16), [#8](https://github.com/Hikyo-Org/Hikyo/issues/8) and [#33](https://github.com/Hikyo-Org/Hikyo/issues/33) are reopened for
    this amendment only, [#25](https://github.com/Hikyo-Org/Hikyo/issues/25) was already open, and [#1215](https://github.com/Hikyo-Org/Hikyo/issues/1215) tracks the
-   work. Each reopened ticket closes again when its banner is operative or withdrawn.
+   work. Each reopened ticket closes again when its banner is operative.
 
 Evidence: the [decoupling report](../reports/server-webapp-decoupling-2026-11-04.md)
 and the [Wails shell spike](../reports/wails-shell-spike-2026-11-04.md). The
@@ -318,17 +318,26 @@ This has not been built or run.
   installed nightly self-update refuses extra assets
   (`internal/selfupdate/nightly_download.go`). An installed binary cannot learn a new
   kind, so a separate release is the only shape that leaves them all unchanged.
-- Every shipped reader of this repository's release list matches `v`-prefixed SemVer
-  tags only, so it skips `desktop-v*`: update checks
-  (`internal/updatecheck/updatecheck.go`), the nightly installer
-  (`install/upgrade-nightly.sh`) and the release scripts. Desktop releases do take places
-  in the first page of 100 releases that update checks and the nightly installer read,
-  and update checks validate every listed asset's name, URL and size before skipping the
-  tag, so one malformed desktop asset fails the whole listing.
+- Most readers of this repository's release list match `v`-prefixed SemVer tags or one
+  exact tag, so they skip `desktop-v*`: update checks (`internal/updatecheck`), the
+  nightly installer (`install/upgrade-nightly.sh`) and most release scripts. Two do not
+  and must change first. `scripts/release/latest-stable-version.sh` takes the first
+  published release that is not a prerelease, whatever its tag, and would stop nightly
+  version selection (`.github/workflows/nightly.yml`). `.github/workflows/security-release.yml`
+  runs on every published release and fails on a tag that is not `v` SemVer.
+- Desktop releases take slots among the 100 releases that update checks read (in pages
+  of 20) and the nightly installer reads. Update checks validate every listed asset's
+  name, URL, size and digest (`internal/updatecheck/source.go`) before skipping the tag,
+  so one malformed desktop asset fails the whole listing.
+- Publication order: the desktop release is published only after `v<version>` is
+  published, so a version burned before publication leaves no desktop release. Release
+  candidates and nightlies get no desktop release.
 - The release lane must also add tag protection for `refs/tags/desktop-v*` (the
   existing rulesets cover `refs/tags/v*` only), keep `make_latest` false on every
-  desktop release, and give users one documented way to verify the app's signed
-  inventory beside Gatekeeper's notarization check.
+  desktop release, pin GoReleaser's tag (`GORELEASER_CURRENT_TAG`) because two tags
+  share a commit, and sign the desktop inventory with the stable release workflow's
+  keyless identity, verified against the same pinned trust root, with one documented
+  user verification step beside Gatekeeper's notarization check.
 - The app ships as a notarized Developer ID build. **v1 has no updater and no update
   check.** An updater is a new root of trust, and
   [threat-model.md](./threat-model.md) allows no unsolicited update check. A later version
@@ -363,7 +372,7 @@ pull request that makes it true merges. No banner is operative before its trigge
 | [system-architecture.md](./system-architecture.md) | Plan PR 3 merges (shell) |
 | [human-auth.md](./human-auth.md) | Plan PR 3 merges |
 | [threat-model.md](./threat-model.md) | Plan PR 3 merges |
-| [oss-mechanics.md](./oss-mechanics.md) | Withdrawn 2026-11-20: the app is released from this repository, so no second release repository or exception exists |
+| [oss-mechanics.md](./oss-mechanics.md) | Plan PR 5 merges (`desktop-v*` release series). Revised 2026-11-20 from a second release repository |
 
 **Deliberately not amended:**
 
@@ -481,6 +490,11 @@ Settled on 2026-11-05:
    regeneration or the enrolment gate in the instance's UI. The server has already replaced
    the codes by then, so the old ones are void and the new ones are never shown.
 
+Author's note, not part of the owner's reply: the repair is a required row in
+[plan PR 1](../superpowers/plans/2026-11-04-desktop-app.md). The gate fails at its first step,
+which issues the codes. This comes from reading source and matches an iOS simulator run in
+the spike report's third round. It has not been run in the macOS shell.
+
 Settled on 2026-11-20:
 
 6. **D13:** release the app from this repository. The owner asked for the app "inside
@@ -490,20 +504,18 @@ Settled on 2026-11-20:
    manifest. Offered a `desktop-v` tag at the same version, a widened verifier, or the
    separate repository, the owner chose "desktop-v tag, same ver".
 
-Author's note, not part of the owner's reply: the repair is a required row in
-[plan PR 1](../superpowers/plans/2026-11-04-desktop-app.md). The gate fails at its first step,
-which issues the codes. This comes from reading source and matches an iOS simulator run in
-the spike report's third round. It has not been run in the macOS shell.
-
 ## Review record
 
-- **2026-11-20 amendment of D13 and withdrawal of the oss-mechanics banner:** one
-  independent same-provider review by a fresh Claude Opus 5.5 agent, reading source
-  without running anything. It found the stable verifier's closed inventory blocking the
-  first draft (the app inside the stable release), which led to the `desktop-v` shape, and
-  stale text on the public desktop page. Cross-provider review was not requested and did
-  not run, and is not CLEAN.
-
+- **2026-11-20 amendment of D13 and the revised oss-mechanics banner:** two independent
+  same-provider reviews by fresh Claude Opus 5.5 agents, reading source without running
+  anything. The first found that the stable verifier's closed inventory blocks the app
+  inside a `hikyo` release, which led to the `desktop-v` shape. The second, at
+  `a87fb99c5`, found two release readers that do not skip `desktop-v*`, that withdrawing
+  the oss-mechanics banner would reinterpret locked text instead of amending it, and that
+  the publication order was unstated; this revision repairs those. Cross-provider review
+  did not run. GOVERNANCE.md's procedure asks for it; the owner's standing review policy
+  since 2026-10-29 makes it optional and it was not requested, so this departs from that
+  procedure as item 2 of the header records for the original decision. Not CLEAN.
 - **Cross-model review:** not run. SKIPPED by explicit owner instruction (2026-11-04), for
   this decision only, and not CLEAN.
 - **Independent same-provider review:** three rounds by separate fresh Claude Opus 5.5

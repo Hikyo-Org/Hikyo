@@ -35,7 +35,7 @@ being saved (`OnShutdown`); the data directory lock is held for the whole run; r
 | system-architecture.md | yes (#1459) | #22 closed 2026-11-20 |
 | human-auth.md | yes (#1459) | #16 closed 2026-11-20 |
 | threat-model.md | yes (#1459) | #8 closed 2026-11-20 |
-| oss-mechanics.md | withdrawn 2026-11-20 (app released from this repository) | #33 closes when the withdrawal merges |
+| oss-mechanics.md | when plan PR 5 merges (revised 2026-11-20 to a `desktop-v*` series here) | #33 stays open until then |
 
 ## Evidence
 
@@ -86,8 +86,9 @@ being saved (`OnShutdown`); the data directory lock is held for the whole run; r
 
 1. Build plan PR 5 (release lane): `desktop-v<version>` releases cut by the stable release
    run with the existing Developer ID ([ADR D13](../adr/desktop-app.md#d13-repository-and-releases)).
-   No `Hikyo-Org/hikyo-app` repository or new identity is needed. The oss-mechanics banner
-   is withdrawn; close #33 when that merges.
+   No `Hikyo-Org/hikyo-app` repository or new identity is needed. Its list includes making
+   `latest-stable-version.sh` and `security-release.yml` skip `desktop-v*`. Close #33 when
+   plan PR 5 merges.
 2. Hand acceptance on a signed, notarized build: first launch from Downloads, move to
    Applications, relaunch, connections still open; plus the plan's acceptance list and the two
    unexercised cases under Evidence.
