@@ -557,8 +557,8 @@ func TestSyntheticChecksCannotSupplyJobCoverage(t *testing.T) {
 
 func TestClosedRegistryAndExecutionInventory(t *testing.T) {
 	f := newFixture(t, "dev", devProducer)
-	if len(f.jobLists[100]) != 54 {
-		t.Fatalf("full schema must conserve 54 native executions: %d", len(f.jobLists[100]))
+	if len(f.jobLists[100]) != 55 {
+		t.Fatalf("full schema must conserve 55 native executions: %d", len(f.jobLists[100]))
 	}
 	for _, name := range []string{"validation / web (desktop, 4)", "validation / web (mobile, 4)", "validation / race shard (11)", "validation / isolation shard (2)", "validation / fuzz shard (2)", "validation / isolation shard (5)", "validation / fuzz shard (5)", "validation / floor-bench / measure", "validation / scan-xplat (windows-latest)", "validation / source-artifact-security"} {
 		found := false

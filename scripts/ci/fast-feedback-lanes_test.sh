@@ -68,6 +68,8 @@ if [ "$1" = env ]; then
 	exit
 fi
 case "$1" in
+	# The nested desktop module (api/openapi.yaml feeds it) is compiled from inside it.
+	-C) [ "$2" = desktop ] && [ "$3" = test ] || exit 34; printf 'desktop-compile\n' >>"$FIXTURE_WORK/checks" ;;
 	test) printf 'go-compile\n' >>"$FIXTURE_WORK/checks" ;;
 	mod) printf 'go-mod-verify\n' >>"$FIXTURE_WORK/checks" ;;
 	*) exit 34 ;;
