@@ -1951,7 +1951,8 @@ function useAnchoredTip(anchor: RefObject<HTMLElement | null>, eligible: () => b
   useLayoutEffect(() => {
     if (isOpen() && !eligibleRef.current()) close();
   });
-  return { tip, isOpen, open, openOnHover, blur, close, dismiss, anchorLeave, tipLeave };
+  const cancelHover = () => window.clearTimeout(timer.current);
+  return { tip, isOpen, open, openOnHover, cancelHover, blur, close, dismiss, anchorLeave, tipLeave };
 }
 
 /**
@@ -1980,7 +1981,7 @@ function MatrixKeyLink({
   const link = useRef<HTMLAnchorElement>(null);
   // The pointer that started the click: not every engine delivers click as a PointerEvent.
   const pressedBy = useRef('');
-  const { tip, isOpen: tipOpen, open: openTip, openOnHover, blur, close: closeTip, anchorLeave, tipLeave } = useAnchoredTip(link, () => iconOnly);
+  const { tip, isOpen: tipOpen, open: openTip, openOnHover, cancelHover, blur, close: closeTip, anchorLeave, tipLeave } = useAnchoredTip(link, () => iconOnly);
 
   return (
     <>
@@ -1997,6 +1998,9 @@ function MatrixKeyLink({
         }}
         onPointerDown={(event: PointerEvent<HTMLAnchorElement>) => {
           pressedBy.current = event.pointerType;
+          // A pen enters before it presses: a press held past the hover delay
+          // must not open the name, or this tap's click would navigate.
+          cancelHover();
         }}
         onPointerLeave={(event: PointerEvent<HTMLAnchorElement>) => {
           // Touch can synthesize mouseleave after opening the first-tap

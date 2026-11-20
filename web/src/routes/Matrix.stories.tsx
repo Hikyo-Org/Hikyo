@@ -1162,6 +1162,18 @@ export const PhoneCompactKeyColumn: Story = {
       await waitFor(() => expect(tip).not.toBeVisible());
       penTap(link);
       await waitFor(() => expect(tip).toBeVisible());
+      // A pen enters the link before it presses it, which arms the hover
+      // delay. A press held past that delay must not let the delay open the
+      // name under the pen, or the tap's click would navigate on first contact.
+      await userEvent.keyboard('{Escape}');
+      await waitFor(() => expect(tip).not.toBeVisible());
+      link.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'pen' }));
+      link.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'pen' }));
+      link.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'pen' }));
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      penTap(link);
+      await waitFor(() => expect(tip).toBeVisible());
+      await expect(link).toBeInTheDocument();
       // The second tap, with the name shown, opens the declaration detail: the
       // matrix route unmounts (this story mounts only the matrix route). The
       // real-touch proof (an auto popover light-dismissing between the tap's
