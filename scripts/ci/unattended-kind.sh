@@ -18,7 +18,7 @@ test -f "$fixture/root.key"
 work=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-unattended-kind.XXXXXX")
 CLUSTER="hikyo-unattended-$(date +%s)-$$"
 NAMESPACE=hikyo-unattended
-NODE_IMAGE='kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5'
+NODE_IMAGE='kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed'
 POSTGRES_IMAGE='postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941'
 kubeconfig="$work/kubeconfig"
 export KUBECONFIG="$kubeconfig"

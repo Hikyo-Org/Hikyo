@@ -28,7 +28,7 @@ for path in SECURITY.md SUPPORT.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LI
 	cp "$owner/$path" "$path"
 done
 cp "$owner/.nvmrc" .nvmrc
-printf '{"packageManager":"pnpm@11.24.0"}\n' >package.json
+printf '{"packageManager":"pnpm@12.21.0"}\n' >package.json
 printf 'module fixture.invalid/lanes\n\ngo 1.27.2\n' >go.mod
 commit_fixture
 FAST_FEEDBACK_BASE=$(git rev-parse HEAD)
@@ -80,7 +80,7 @@ cat >"$work/bin/pnpm" <<'STUB'
 set -eu
 if [ "$1" = --version ]; then
 	[ "${FIXTURE_FAILURE:-}" != pnpm-version ] || { printf '0.0.0\n'; exit; }
-	printf '11.24.0\n'
+	printf '12.21.0\n'
 	[ "${FIXTURE_FAILURE:-}" != pnpm-status ] || exit 38
 	exit
 fi

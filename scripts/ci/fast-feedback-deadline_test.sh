@@ -22,7 +22,7 @@ commit_fixture() {
 	git update-ref HEAD "$revision"
 }
 printf '26.7.0\n' >.nvmrc
-printf '{"packageManager":"pnpm@11.24.0"}\n' >package.json
+printf '{"packageManager":"pnpm@12.21.0"}\n' >package.json
 printf 'module fixture.invalid/check\n\ngo 1.27.2\n' >go.mod
 commit_fixture
 FAST_FEEDBACK_BASE=$(git rev-parse HEAD)
@@ -57,7 +57,7 @@ STUB
 cat >"$work/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 set -eu
-if [ "$1" = --version ]; then printf '11.24.0\n'; exit; fi
+if [ "$1" = --version ]; then printf '12.21.0\n'; exit; fi
 printf '%s\n' "$*" >>"$FIXTURE_WORK/frontend.commands"
 touch "$FIXTURE_WORK/frontend.started"
 case "$FIXTURE_MODE" in
