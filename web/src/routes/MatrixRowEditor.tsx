@@ -675,7 +675,7 @@ function useCellDisclosure(
   // this hook) on a cell change, which re-masks by dropping all disclosure state.
 
   const clipboardMessage = useCallback(
-    (value: string, audited: boolean) => writeExpiringClipboard(value, audited),
+    (value: string, audited: boolean, isCurrent?: () => boolean) => writeExpiringClipboard(value, audited, isCurrent),
     [],
   );
 
@@ -711,7 +711,9 @@ function useCellDisclosure(
 
   const discloseValue = useCallback(async (
     task: CeremonyTask,
-    onValue: (value: string) => Promise<void> | void,
+    // `recorded`: the server wrote a disclosure event, which it does only for a
+    // key it holds as secret. A row masked from a stale cell may already be config.
+    onValue: (value: string, recorded: boolean) => Promise<void> | void,
   ) => {
     try {
       const fresh = await revealOne.mutateAsync(keyRecord.name);
@@ -719,7 +721,7 @@ function useCellDisclosure(
         ceremony.commit(task, () => setError('The server disclosed no value for that key.'));
         return;
       }
-      if (ceremony.isCurrent(task)) await onValue(fresh.value);
+      if (ceremony.isCurrent(task)) await onValue(fresh.value, fresh.classification === 'secret');
     } catch (caught) {
       ceremony.commit(task, () => {
         setPlaintext(null);
@@ -738,16 +740,16 @@ function useCellDisclosure(
       if (!await waitForDisclosureFocus(task.signal) || !ceremony.isCurrent(task)) return;
       ceremony.commit(task, () => setNotice(null));
       const generation = focusGeneration.current;
-      await discloseValue(task, (value) => {
+      await discloseValue(task, (value, recorded) => {
         ceremony.commit(task, () => {
           if (generation !== focusGeneration.current || document.hidden || !document.hasFocus()) {
-            setNotice(`Disclosure recorded. ${FOCUS_REMASK_NOTICE}`);
+            setNotice(recorded ? `Disclosure recorded. ${FOCUS_REMASK_NOTICE}` : FOCUS_REMASK_NOTICE);
             return;
           }
           const revealedAt = Date.now();
           setNow(revealedAt);
           setPlaintext({ value, until: revealedAt + REMASK_MS });
-          setNotice('Disclosure recorded.');
+          setNotice(recorded ? 'Disclosure recorded.' : null);
           setAnnouncement((current) => ({
             id: (current?.id ?? 0) + 1,
             message: `${keyRecord.name} revealed, re-masks in ${duration(REMASK_MS / 1000)}`,
@@ -762,8 +764,8 @@ function useCellDisclosure(
       void clipboardMessage(sourceRow.cell?.value ?? '', false).then(setNotice);
       return;
     }
-    void withDisclosure('clipboard', (task) => discloseValue(task, async (value) => {
-      const message = await clipboardMessage(value, true);
+    void withDisclosure('clipboard', (task) => discloseValue(task, async (value, recorded) => {
+      const message = await clipboardMessage(value, recorded, () => ceremony.isCurrent(task));
       ceremony.commit(task, () => setNotice(message));
     }));
   }, [ceremony, clipboardMessage, discloseValue, secret, sourceRow.cell?.value, withDisclosure]);

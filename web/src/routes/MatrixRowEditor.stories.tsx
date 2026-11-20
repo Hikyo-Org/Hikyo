@@ -393,6 +393,41 @@ export const SecretCellUnderConfigKeyRevealable: Story = {
     await expect(canvasElement.innerHTML).not.toContain(CELL_LEAK);
     await userEvent.click(canvas.getByRole('button', { name: 'Reveal LOG_LEVEL' }));
     await expect(await canvas.findByText('audited-reveal-value')).toBeVisible();
+    await expect(canvas.getByText('Disclosure recorded.')).toBeVisible();
+  },
+};
+
+// The masked cell was stale: the server already holds the key as config, so its
+// reveal writes no disclosure event, and the editor does not claim one.
+export const SecretCellUnderConfigKeyNowConfig: Story = {
+  args: SecretCellUnderConfigKey.args ?? {},
+  parameters: {
+    app: {
+      responses: [
+        {
+          url: `${SECRET_ENV_URL}/reveal-window`,
+          body: {
+            effective_window_seconds: 600,
+            protected: false,
+            totp_offered: false,
+            live: true,
+            single_decision: false,
+            can_reveal: true,
+            expires_at: new Date(Date.now() + 9 * 60_000).toISOString(),
+          },
+        },
+        {
+          url: `${SECRET_ENV_URL}/values/LOG_LEVEL/reveal`,
+          method: 'POST',
+          body: { key_id: keyRecord.id, name: keyRecord.name, classification: 'config', set: true, revealed: true, value: 'config-reveal-value' },
+        },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Reveal LOG_LEVEL' }));
+    await expect(await canvas.findByText('config-reveal-value')).toBeVisible();
+    await expect(canvas.queryByText(/Disclosure recorded/)).toBeNull();
   },
 };
 

@@ -514,6 +514,7 @@ const LEAK_CELL = 'leaky-secret-cell-sentinel';
 const tipDevValues = values(devValues.items.map((item): Values['items'][number] => {
   if (item.key_id === keyId(6)) return { ...item, revealed: true, value: LEAK };
   if (item.key_id === keyId(11)) return { ...item, classification: 'secret', revealed: true, value: LEAK_CELL };
+  if (item.key_id === keyId(2)) return { ...item, value: `https://${'preview-'.repeat(12)}app.example.com` };
   return item;
 }));
 
@@ -564,6 +565,25 @@ export const ValueTip: Story = {
     await expect(tip.matches(':popover-open')).toBe(true);
     await userEvent.keyboard('{Escape}');
     await expect(tip.matches(':popover-open')).toBe(false);
+    // Escape also cancels another cell's pending hover open.
+    const baseUrl = canvas.getByRole('button', { name: /^PUBLIC_BASE_URL in development:/ });
+    const baseTip = tipOf(baseUrl);
+    if (baseTip === null) throw new Error('PUBLIC_BASE_URL is not clipped');
+    // Control: an ordinary hover opens it, once the pointer has moved since the
+    // last Escape.
+    baseUrl.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse' }));
+    baseUrl.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }));
+    await waitFor(() => expect(baseTip.matches(':popover-open')).toBe(true));
+    baseUrl.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, pointerType: 'mouse' }));
+    await waitFor(() => expect(baseTip.matches(':popover-open')).toBe(false));
+    flags.blur();
+    flags.focus();
+    await expect(isOpen()).toBe(true);
+    baseUrl.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }));
+    await userEvent.keyboard('{Escape}');
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    await expect(baseTip.matches(':popover-open')).toBe(false);
+    baseUrl.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, pointerType: 'mouse' }));
     flags.blur();
     // Escape holds hover off until the pointer really moves.
     await userEvent.hover(canvasElement);
@@ -1000,6 +1020,11 @@ export const PhoneLegendStaysOnScreenMinimum: Story = {
 // A touch tap: the click a finger produces, which a mouse click is not.
 const tap = (element: HTMLElement) =>
   element.dispatchEvent(new PointerEvent('click', { bubbles: true, cancelable: true, composed: true, detail: 1, pointerType: 'touch' }));
+const penTap = (element: HTMLElement) => {
+  element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'pen' }));
+  element.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, pointerType: 'pen', relatedTarget: document.body }));
+  element.dispatchEvent(new PointerEvent('click', { bubbles: true, cancelable: true, composed: true, detail: 1, pointerType: 'pen' }));
+};
 
 export const PhoneCompactKeyColumn: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
@@ -1124,11 +1149,17 @@ export const PhoneCompactKeyColumn: Story = {
       await waitFor(() => expect(tip).not.toBeVisible());
       tap(link);
       await waitFor(() => expect(tip).toBeVisible());
+      // A pen that cannot hover leaves the link before each tap's click lands:
+      // its first tap shows the name, and that leave must not hide it again.
+      await userEvent.keyboard('{Escape}');
+      await waitFor(() => expect(tip).not.toBeVisible());
+      penTap(link);
+      await waitFor(() => expect(tip).toBeVisible());
       // The second tap, with the name shown, opens the declaration detail: the
       // matrix route unmounts (this story mounts only the matrix route). The
       // real-touch proof (an auto popover light-dismissing between the tap's
       // pointer events and its click) is in e2e/matrix.spec.ts.
-      tap(link);
+      penTap(link);
       await waitFor(() => expect(link).not.toBeInTheDocument());
     } finally {
       window.matchMedia = realMatchMedia;

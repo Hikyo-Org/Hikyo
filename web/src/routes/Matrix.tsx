@@ -1928,7 +1928,8 @@ function useAnchoredTip(anchor: RefObject<HTMLElement | null>, eligible: () => b
   const openOnHover = () => {
     if (hoverSuppressed) return;
     window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(open, TIP_HOVER_DELAY_MS);
+    // Escape on another tip may land while this waits: it holds every hover off.
+    timer.current = window.setTimeout(() => { if (!hoverSuppressed) open(); }, TIP_HOVER_DELAY_MS);
   };
   useEffect(() => () => {
     watching.current?.abort();
@@ -1982,6 +1983,7 @@ function MatrixKeyLink({
         // A mouse or pen can hover; a tap's compatibility mouse events are not a
         // hover, which would open the preview that the first tap opens itself.
         onPointerEnter={(event: PointerEvent<HTMLAnchorElement>) => {
+          pressedBy.current = '';
           if (event.pointerType !== 'touch') openOnHover();
         }}
         onPointerDown={(event: PointerEvent<HTMLAnchorElement>) => {
@@ -1989,8 +1991,9 @@ function MatrixKeyLink({
         }}
         onPointerLeave={(event: PointerEvent<HTMLAnchorElement>) => {
           // Touch can synthesize mouseleave after opening the first-tap
-          // preview. Only non-touch pointer exits should dismiss it here.
-          if (event.pointerType !== 'touch') anchorLeave(event);
+          // preview, and a pen that cannot hover leaves before its tap's click:
+          // only a hover's exit dismisses it here.
+          if (event.pointerType !== 'touch' && pressedBy.current !== 'pen') anchorLeave(event);
         }}
         onBlur={blur}
         onClick={(event: MouseEvent<HTMLAnchorElement>) => {
