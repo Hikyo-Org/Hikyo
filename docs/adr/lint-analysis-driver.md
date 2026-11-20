@@ -81,7 +81,7 @@ The spike also established that:
       (with its `sqlscope` scanner), `sqlpredicate`, `reencryptcoverage`,
       `stablecopies`, `appendonly`, `grantlock`, `denialwriter` and `jsonv1`.
       RawSQL stays in step 3. See the step 2 amendment below;
-   3. RawSQL with facts and summaries;
+   3. RawSQL with facts and summaries (see the step 3 amendment below);
    4. removal of `LoadRepo`, `flatten`, and the old harness, including the
       `internal/isolation` callers.
 
@@ -190,3 +190,44 @@ every context ran, and it runs in the test process, not as a vet result).
 - `Check.OnDisk` builds the same analyzer reading straight from disk, for the
   old harness and the parity leg; the registered analyzers refuse without the
   driver's flags.
+
+## Amendment: step 3 (RawSQL)
+
+**Status.** Proposed, not accepted by the owner. Every bullet is an
+implementation note for the step 3 PR, and the `_test.go` bullet is a
+proposed deviation from decision 4 that needs an owner decision.
+
+- **Facts are self-contained object facts.** vet gives a package the facts of its
+  direct imports and of methods only; package-level object facts and package
+  facts of deeper imports are not re-exported. So each production function
+  another package can name (an exported function or method) carries an object
+  fact: its owner key (`file:Name` relative to the root), its body hash and the
+  helpers it reaches, cut at reviewed protocol owners. An owner in package P
+  resolves a helper two imports away through the closure its direct import
+  exported. The check judges what follows imports from those facts alone, so
+  the whole-module declaration table of the old harness is no longer needed.
+  Declaring a fact type makes vet run the analyzer on the standard library and
+  dependencies too; the analyzer returns at once outside the module.
+- **Summaries.** An owner no package declares, a reviewed caller nothing
+  references, and a helper dependency pin that is absent or no longer reached
+  are summary diagnostics (`rawowner`, `rawcaller`, `rawhelper`,
+  `rawunreached`) that `RawSQLSummaryFindings` aggregates per context, in the
+  old harness's wording. The aggregate reads the pins through the same verified
+  inputs the passes used.
+- **Inputs and context.** The analyzer declares `reviewed_pins.json` and the
+  query directories (generated-source detection). The driver passes
+  `-rawsql.context` per context: the cache key, `BuildHelpers`,
+  `BuildDependencies` and `build_contexts` depend on it. GOOS-specific protocol
+  expansion follows the host through `runtime.GOOS`, as before.
+- **`_test.go` files stay excluded (proposed deviation from decision 4).**
+  RawSQL's "production ownership" rule has always excluded test files and
+  generated sqlc files, so the port keeps it, using the on-disk file name so a
+  `//line` directive cannot move a production file out of scope. Decision 4
+  says analyzers judge test files of the variant they are given. If the owner
+  wants RawSQL to judge in-package test files, that is a new rule with its own
+  pin policy for test fixtures, not a port; no violation is hidden by the
+  exclusion today (the old harness never judged them either).
+- **Registration.** RawSQL is registered in `Analyzers()` but not in `Checks()`,
+  because `RunOver` cannot supply facts. Its parity
+  leg is inside `TestVetDriverParity` (`requireRawSQLParity` on the repository
+  and the `badrawsql` fixture's `oldIn`, under every context).
