@@ -1077,3 +1077,39 @@ func TestOpenDirRootRefusesFIFOWithoutBlocking(t *testing.T) {
 	}
 	_ = gen.Close()
 }
+
+// A symlink planted at a still-configured name is replaced from the plan
+// without being read, like a planted hard link.
+func TestPublishRepublishesOverSymlinkPlantedInCurrentGeneration(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.mustPublish(file("a", "A"), file("b", "B"))
+	_, planted := currentGenPath(t, f, "a")
+	if err := os.Remove(planted); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("b", planted); err != nil {
+		t.Fatal(err)
+	}
+	res, err := f.publish(nil, file("a", "A"), file("b", "B"))
+	if err != nil || !res.Changed {
+		t.Fatalf("publish over a planted symlink = %+v, %v; want a fresh generation", res, err)
+	}
+	if got := f.read("a"); got != "A" {
+		t.Fatalf("a = %q, want the published content", got)
+	}
+}
+
+// A symlink at a removed name is never copied when retaining it.
+func TestRetainRefusesSymlinkPlantedBeforePublication(t *testing.T) {
+	t.Parallel()
+	f, old := retainFixture(t)
+	if err := os.Remove(old); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("a", old); err != nil {
+		t.Fatal(err)
+	}
+	_, err := f.publish(nil, file("a", "A2"))
+	assertNotLeaked(t, f, err)
+}

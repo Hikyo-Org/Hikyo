@@ -647,7 +647,10 @@ func (d *Destination) currentGeneration() (string, error) {
 	return target, nil
 }
 
-// generationFiles lists a generation's published names, sorted.
+// generationFiles lists a generation's published names, sorted. Listing is not
+// trust: an entry the recipient replaced with a symlink is still listed, so a
+// still-configured name is rebuilt from the plan, and every content read goes
+// through readGenFile, which refuses it (retaining a removed name included).
 func (d *Destination) generationFiles(gen string) ([]string, error) {
 	entries, err := d.readDir(d.gen, gen)
 	if err != nil {
@@ -657,9 +660,6 @@ func (d *Destination) generationFiles(gen string) ([]string, error) {
 	for _, e := range entries {
 		if e.Name() == completeName || e.Name() == previousName {
 			continue
-		}
-		if !e.Type().IsRegular() {
-			return nil, fmt.Errorf("%w: %s in generation %s is not a regular file", ErrForeign, e.Name(), gen)
 		}
 		names = append(names, e.Name())
 	}
