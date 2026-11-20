@@ -1,6 +1,6 @@
 //go:build !darwin && !linux && !windows
 
-package cli
+package clientauth
 
 import "fmt"
 

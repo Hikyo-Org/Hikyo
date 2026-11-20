@@ -111,6 +111,17 @@ page need these changes, with no server change:
 Size: days. No behaviour change. Importing `internal/cli` pulls in most of its 88.8 MB,
 so move the login and trust code into small packages the shell can import.
 
+Result (#1215): the shell imports these, none of which depends on `internal/cli` or the
+server (`internal/boundary` `TestClientPackagesStayOffTheCLIAndServer` fails if one does):
+
+- `internal/clienterr`: the closed exit-code set, `Error`, `RateLimitedError`.
+- `internal/clientauth`: loopback PKCE login, device flow, CLI reauth handoff, over a
+  caller-supplied `Transport`. The caller stores the session.
+- `internal/clienttrust`: system CA or SPKI pin policy, `TLSConfig`, `InspectIdentity`,
+  `FirstContactPrompt`. It never prompts; the shell supplies its own confirmation.
+- The CLI token grammar (`hik_<v>_cli_...`) already lives in `internal/crypto`
+  (`ParseArtifact`), a leaf package, so it did not move.
+
 ## PR 3: the shell
 
 Size: 2 to 3 weeks. New directory `desktop/`, module
