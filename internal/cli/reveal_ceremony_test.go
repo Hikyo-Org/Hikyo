@@ -376,7 +376,7 @@ func declareCeremonyServer(t *testing.T, window apigen.RevealWindow) (http.Handl
 			_, _ = w.Write([]byte(`{"error":{"code":"forbidden","message":"not permitted"}}`))
 			return
 		}
-		_ = json.NewEncoder(w).Encode(apigen.ValueList{})
+		encodeOrFail(t, w, apigen.ValueList{})
 	}), seen
 }
 
@@ -434,9 +434,9 @@ func TestDeclareHandsOffBoundToTheDeclaredKeyID(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
-			_ = json.NewEncoder(w).Encode(apigen.RevealWindow{CanReveal: false, Protected: true, EffectiveWindowSeconds: 0, Live: live})
+			encodeOrFail(t, w, apigen.RevealWindow{CanReveal: false, Protected: true, EffectiveWindowSeconds: 0, Live: live})
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/environments/env_70/values"):
-			_ = json.NewEncoder(w).Encode(apigen.ValueList{Items: []apigen.ValueCell{
+			encodeOrFail(t, w, apigen.ValueList{Items: []apigen.ValueCell{
 				{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_pw", Set: true},
 				{Name: "LOG_LEVEL", Classification: "config", KeyId: "key_ll", Set: true},
 			}})
@@ -453,7 +453,7 @@ func TestDeclareHandsOffBoundToTheDeclaredKeyID(t *testing.T) {
 				_, _ = w.Write([]byte(`{"error":{"code":"forbidden","message":"not permitted"}}`))
 				return
 			}
-			_ = json.NewEncoder(w).Encode(apigen.ValueList{})
+			encodeOrFail(t, w, apigen.ValueList{})
 		default:
 			// Includes GET keys/DATABASE_PASSWORD: the route matches ids only.
 			http.NotFound(w, r)
@@ -463,8 +463,12 @@ func TestDeclareHandsOffBoundToTheDeclaredKeyID(t *testing.T) {
 	ios.ReadPassword = func(string) (string, error) { t.Fatal("a 0-window handoff must not prompt for a code"); return "", nil }
 	ios.OpenURL = func(string) error {
 		go func() {
-			resp, _ := http.Get(callbackURI + "?code=hik_1_hc_declare&state=hik_1_hs_declare")
-			if resp != nil {
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, callbackURI+"?code=hik_1_hc_declare&state=hik_1_hs_declare", nil)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if resp, err := http.DefaultClient.Do(req); err == nil {
 				_ = resp.Body.Close()
 			}
 		}()
@@ -479,5 +483,14 @@ func TestDeclareHandsOffBoundToTheDeclaredKeyID(t *testing.T) {
 	keys, _ := startBody["key_ids"].([]any)
 	if len(keys) != 1 || keys[0] != "key_pw" {
 		t.Fatalf("handoff bound key set %v, want the declared key's id", keys)
+	}
+}
+
+// encodeOrFail writes v as the stub's JSON reply and fails the test if it
+// cannot be encoded.
+func encodeOrFail(t *testing.T, w http.ResponseWriter, v any) {
+	t.Helper()
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		t.Errorf("encode stub reply: %v", err)
 	}
 }
