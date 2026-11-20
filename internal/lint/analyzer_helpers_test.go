@@ -52,7 +52,7 @@ func loadFixture(ctx BuildContext, tests bool, patterns ...string) ([]*packages.
 	}
 	for _, p := range pkgs {
 		for _, e := range p.Errors {
-			return nil, fmt.Errorf("load %s under %s: %s", p.PkgPath, ctx.Name, e)
+			return nil, fmt.Errorf("load %s under %s: %w", p.PkgPath, ctx.Name, e)
 		}
 	}
 	return pkgs, nil
