@@ -166,6 +166,46 @@ func ReachableFrom(scope domain.Scope, envs []domain.EnvID, grants []domain.Gran
 	return out
 }
 
+// MachineRulesOf returns the rules a machine principal of class holds, under
+// the chokepoint's gates and the class's live rule check.
+func (a *TxAuthorizer) MachineRulesOf(ctx context.Context, p domain.PrincipalID, class domain.PrincipalClass) ([]domain.Rule, error) {
+	if !domain.IsServiceAccountKind(class) {
+		return nil, nil
+	}
+	rules, err := a.r.MachineRules(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	return admittedMachineRules(class, rules), nil
+}
+
+// RuleGrants projects rules onto one project as the grants they are
+// equivalent to there: a project-scope grant where a rule reaches every
+// environment (including later ones), else one environment-scope grant per
+// environment it reaches. Only rules that pass no key are projected exactly;
+// a key-narrowed rule projects to nothing, so it must never reach a
+// post-state (machine rules cannot narrow keys).
+func RuleGrants(rules []domain.Rule, project domain.Scope, envs []domain.EnvID) []domain.Grant {
+	at := domain.Scope{Org: project.Org, Project: project.Project}
+	var out []domain.Grant
+	for _, r := range rules {
+		if r.Validate() != nil {
+			continue
+		}
+		if r.Reaches(r.Capability, domain.LevelProject, at, nil) {
+			out = append(out, domain.Grant{Capability: r.Capability, Scope: at})
+			continue
+		}
+		for _, env := range envs {
+			s := domain.Scope{Org: at.Org, Project: at.Project, Env: env}
+			if r.Reaches(r.Capability, domain.LevelEnv, s, nil) {
+				out = append(out, domain.Grant{Capability: r.Capability, Scope: s})
+			}
+		}
+	}
+	return out
+}
+
 // coveredBy reuses the chokepoint's own coverage rule, so reachability and
 // authorization cannot disagree about what a grant reaches.
 func coveredBy(grants []domain.Grant, cap domain.Capability, at domain.Scope) bool {

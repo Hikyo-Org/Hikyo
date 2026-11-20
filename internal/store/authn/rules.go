@@ -112,14 +112,35 @@ func rulesOf(stored []StoredRule) []domain.Rule {
 // same gates as Grants (active, reconciled) plus human kind. A recovery
 // resolver bound to a schema older than the rule tables answers none.
 func (r *Resolver) Rules(ctx context.Context, p domain.PrincipalID) ([]domain.Rule, error) {
+	return r.principalRules(ctx, p, false)
+}
+
+// MachineRules returns a machine principal's rules under the same gates as
+// Rules. The caller applies domain.CheckMachineRule to every rule it uses.
+func (r *Resolver) MachineRules(ctx context.Context, p domain.PrincipalID) ([]domain.Rule, error) {
+	return r.principalRules(ctx, p, true)
+}
+
+func (r *Resolver) principalRules(ctx context.Context, p domain.PrincipalID, machine bool) ([]domain.Rule, error) {
 	if r.historicalRecoveryBeforeRules {
 		return nil, nil
 	}
 	var rows []ruleRow
 	if r.sq != nil {
-		got, err := r.sq.ListRulesForPrincipal(ctx, string(p))
-		if err != nil {
-			return nil, err
+		var got []sqlitegen.ListRulesForPrincipalRow
+		if machine {
+			machineRows, err := r.sq.ListMachineRulesForPrincipal(ctx, string(p))
+			if err != nil {
+				return nil, err
+			}
+			for _, g := range machineRows {
+				got = append(got, sqlitegen.ListRulesForPrincipalRow(g))
+			}
+		} else {
+			var err error
+			if got, err = r.sq.ListRulesForPrincipal(ctx, string(p)); err != nil {
+				return nil, err
+			}
 		}
 		for _, g := range got {
 			rows = append(rows, ruleRow{id: g.ID, principal: string(p), capability: g.Capability, org: g.OrgID,
@@ -127,9 +148,20 @@ func (r *Resolver) Rules(ctx context.Context, p domain.PrincipalID) ([]domain.Ru
 				item: StoredRuleItem{Axis: g.Axis, Project: domain.ProjectID(g.ProjectID), Env: domain.EnvID(g.EnvID), KeyID: g.KeyID, Folder: g.FolderPath}})
 		}
 	} else {
-		got, err := r.pg.ListRulesForPrincipal(ctx, string(p))
-		if err != nil {
-			return nil, err
+		var got []pggen.ListRulesForPrincipalRow
+		if machine {
+			machineRows, err := r.pg.ListMachineRulesForPrincipal(ctx, string(p))
+			if err != nil {
+				return nil, err
+			}
+			for _, g := range machineRows {
+				got = append(got, pggen.ListRulesForPrincipalRow(g))
+			}
+		} else {
+			var err error
+			if got, err = r.pg.ListRulesForPrincipal(ctx, string(p)); err != nil {
+				return nil, err
+			}
 		}
 		for _, g := range got {
 			rows = append(rows, ruleRow{id: g.ID, principal: string(p), capability: g.Capability, org: g.OrgID,

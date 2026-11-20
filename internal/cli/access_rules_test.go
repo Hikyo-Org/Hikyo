@@ -159,3 +159,77 @@ func TestAccessRuleVerbsNeedHumanSession(t *testing.T) {
 		t.Fatalf("exit=%d writes=%d stderr=%s", code, writes, stderr)
 	}
 }
+
+// A machine rule that widens plaintext reach is refused once per environment
+// without a live window. The verb opens the window the refusal names and
+// sends the rule again, and stops when the server names the same environment
+// twice.
+func TestAccessRuleAddReauthenticatesMachineWidening(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		refusals int
+		wantCode int
+		wantPost int
+	}{
+		{"retries_after_the_window_opens", 1, ExitOK, 2},
+		{"stops_on_a_repeated_environment", 2, ExitRefused, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			posts, windows := 0, 0
+			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch {
+				case r.URL.Path == api.PathPrefix+"/meta":
+					_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+				case r.URL.Path == api.PathPrefix+"/orgs/org_one/projects/prj_one/environments/env_dev/reveal-window":
+					windows++
+					_ = json.NewEncoder(w).Encode(apigen.RevealWindow{Live: true, CanReveal: true})
+				case r.Method == http.MethodPost:
+					posts++
+					if posts <= tc.refusals {
+						detail := "reauthenticate over the environments this operation makes reachable, then retry (env_dev)"
+						var body apigen.Error
+						body.Error.Code = apigen.ErrorCodeConflict
+						body.Error.Message = "conflict"
+						body.Error.Detail = &detail
+						w.WriteHeader(http.StatusConflict)
+						_ = json.NewEncoder(w).Encode(body)
+						return
+					}
+					w.WriteHeader(http.StatusCreated)
+					_ = json.NewEncoder(w).Encode(apigen.Rule{Id: "rul_1", PrincipalId: "mch_one", Capability: "read"})
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer srv.Close()
+			st, stateDir := machineState(t, srv.URL, SPKIFingerprint(srv.Certificate()))
+			if err := st.PutSession(SessionArtifact{Instance: "local", Origin: srv.URL, Token: "fixture-human", SessionID: "ses_fixture", Principal: "usr_fixture", ExpiresAt: "2030-01-01T00:00:00Z"}); err != nil {
+				t.Fatal(err)
+			}
+			ios, stdout, stderr := composeIO(stateDir, t.TempDir(), "", nil)
+			code := Run(t.Context(), ios, []string{"access", "rule", "add", "--instance", "local", "--org", "org_one", "--project", "prj_one",
+				"--principal", "mch_one", "--capability", "read", "--only-env", "env_dev"})
+			if code != tc.wantCode || posts != tc.wantPost || windows != 1 {
+				t.Fatalf("exit=%d posts=%d windows=%d, want exit=%d posts=%d windows=1; out=%s%s",
+					code, posts, windows, tc.wantCode, tc.wantPost, stdout, stderr)
+			}
+		})
+	}
+}
+
+func TestWideningEnvReadsOnlyTheWideningRefusal(t *testing.T) {
+	widening := failf(ExitRefused, "conflict (reauthenticate over the environments this operation makes reachable, then retry (env_a))")
+	if got := wideningEnv(widening); got != "env_a" {
+		t.Fatalf("wideningEnv = %q, want env_a", got)
+	}
+	for _, err := range []error{
+		nil,
+		failf(ExitRefused, "not permitted"),
+		failf(ExitAuth, "conflict (reauthenticate over the environments this operation makes reachable, then retry (env_a))"),
+	} {
+		if got := wideningEnv(err); got != "" {
+			t.Errorf("wideningEnv(%v) = %q, want empty", err, got)
+		}
+	}
+}

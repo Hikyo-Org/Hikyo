@@ -443,36 +443,17 @@ func (s *Grants) checkMachineWidening(
 	if err != nil {
 		return nil, err
 	}
-	pre, err := az.GrantsOf(ctx, spec.Target)
+	// The pre-state counts the machine's rules too: a rule-held `read`
+	// left out of it would hide the plaintext a `reveal` grant now reaches.
+	pre, err := machineAuthority(ctx, az, spec.Target, class, project, envs)
 	if err != nil {
 		return nil, err
 	}
 	post := append(append([]domain.Grant{}, pre...), domain.Grant{
 		Capability: spec.Capability, Scope: spec.Scope,
 	})
-	before := authz.ReachableFrom(project, envs, pre)
-	after := authz.ReachableFrom(project, envs, post)
-
-	current := newlyReachable(before.Current, after.Current)
-	historical := newlyReachable(before.Historical, after.Historical)
-	if len(current) == 0 && len(historical) == 0 {
-		return nil, nil
-	}
-
-	if s.Auth == nil {
-		return nil, errors.New("service: the grant surface has no reauthentication seam wired")
-	}
-	// The full formula, not two thirds of it: the ADR's widening row is
-	// `manage-identities(project)` ∧ disclosure ∧ reauthentication, and the
-	// grant route's own chokepoint asked only the `manage-members` question.
-	// Where the two disagree the stricter refuses, so an org member manager
-	// who does not administer this project's identities cannot re-scope its
-	// credentials by granting.
-	if !holds(actorGrants, domain.CapManageIdentities, project) {
-		return nil, fmt.Errorf("%w: %s over %s", ErrDisclosureAuthority,
-			domain.CapManageIdentities, renderScope(project))
-	}
-	if err := s.Auth.RequireDisclosureAuthority(ctx, az, caller, actorGrants, project, current, historical, s.now()); err != nil {
+	current, historical, err := gateMachineWidening(ctx, az, s.Auth, caller, actorGrants, project, envs, pre, post, s.now())
+	if err != nil || len(current) == 0 && len(historical) == 0 {
 		return nil, err
 	}
 	return &grantEventInput{
@@ -486,6 +467,57 @@ func (s *Grants) checkMachineWidening(
 			"newly_reachable_historical": envStrings(historical),
 		},
 	}, nil
+}
+
+// machineAuthority is the grant set ReachableFrom takes for a machine
+// principal in one project: its grants plus its rules as authz.RuleGrants
+// projects them. Reach over grants alone would miss a rule-held `read`, and
+// a gate diffing it would undercount the delta.
+func machineAuthority(ctx context.Context, az *authz.TxAuthorizer, p domain.PrincipalID, class domain.PrincipalClass,
+	project domain.Scope, envs []domain.EnvID) ([]domain.Grant, error) {
+	grants, err := az.GrantsOf(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	rules, err := az.MachineRulesOf(ctx, p, class)
+	if err != nil {
+		return nil, err
+	}
+	return append(grants, authz.RuleGrants(rules, project, envs)...), nil
+}
+
+// gateMachineWidening is the widening row over one project, shared by the
+// grant and rule surfaces: the delta from pre to post, per authority class,
+// needs `manage-identities(project)`, the matching disclosure capability and
+// a live reauthentication window. It returns the delta; an empty delta
+// passes with no conjunct asked.
+func gateMachineWidening(ctx context.Context, az *authz.TxAuthorizer, auth *Auth, caller authz.Identity,
+	actorGrants []authz.GrantRow, project domain.Scope, envs []domain.EnvID, pre, post []domain.Grant,
+	now time.Time) (current, historical []domain.EnvID, err error) {
+	before := authz.ReachableFrom(project, envs, pre)
+	after := authz.ReachableFrom(project, envs, post)
+	current = newlyReachable(before.Current, after.Current)
+	historical = newlyReachable(before.Historical, after.Historical)
+	if len(current) == 0 && len(historical) == 0 {
+		return nil, nil, nil
+	}
+	if auth == nil {
+		return nil, nil, errors.New("service: the machine widening gate has no reauthentication seam wired")
+	}
+	// The full formula, not two thirds of it: the ADR's widening row is
+	// `manage-identities(project)` ∧ disclosure ∧ reauthentication, and the
+	// route's own chokepoint asked only the `manage-members` question.
+	// Where the two disagree the stricter refuses, so an org member manager
+	// who does not administer this project's identities cannot re-scope its
+	// credentials by granting.
+	if !holds(actorGrants, domain.CapManageIdentities, project) {
+		return nil, nil, fmt.Errorf("%w: %s over %s", ErrDisclosureAuthority,
+			domain.CapManageIdentities, renderScope(project))
+	}
+	if err := auth.RequireDisclosureAuthority(ctx, az, caller, actorGrants, project, current, historical, now); err != nil {
+		return nil, nil, err
+	}
+	return current, historical, nil
 }
 
 // RequireDisclosureAuthority is the shared conjunct of the MINT row and the
