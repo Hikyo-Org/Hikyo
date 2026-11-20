@@ -54,6 +54,14 @@ func canonicalOrigin(raw string) (string, error) {
 	}
 	scheme := strings.ToLower(u.Scheme)
 	port := u.Port()
+	if port != "" {
+		// 0443 and 443 are one port; 0 and out-of-range ports are not ports.
+		n, err := strconv.ParseUint(port, 10, 16)
+		if err != nil || n == 0 {
+			return "", errors.New("instance URL has an invalid port")
+		}
+		port = strconv.FormatUint(n, 10)
+	}
 	if (scheme == "https" && port == "443") || (scheme == "http" && port == "80") {
 		port = ""
 	}

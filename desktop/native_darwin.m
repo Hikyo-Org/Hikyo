@@ -39,6 +39,8 @@ static void asyncMainRL(void (^block)(void)) {
 	CFRunLoopWakeUp(CFRunLoopGetMain());
 }
 
+static void reapDismissed(void);
+
 static void note(NSString *format, ...) NS_FORMAT_FUNCTION(1, 2);
 static void note(NSString *format, ...) {
 	va_list args;
@@ -194,6 +196,7 @@ int hikyoConfirm(const char *title, const char *message, const char *label) {
 		no.keyEquivalent = @"\r";
 		[NSApp activateIgnoringOtherApps:YES];
 		ok = [alert runModal] == NSAlertFirstButtonReturn;
+		reapDismissed();
 	});
 	return ok;
 }
@@ -207,6 +210,7 @@ void hikyoAlert(const char *title, const char *message) {
 		alert.informativeText = m;
 		[NSApp activateIgnoringOtherApps:YES];
 		[alert runModal];
+		reapDismissed();
 	});
 }
 
@@ -222,11 +226,24 @@ char *hikyoSavePanel(const char *name, const char *source) {
 		if ([panel runModal] == NSModalResponseOK && panel.URL.path != nil) {
 			out = strdup(panel.URL.path.UTF8String);
 		}
+		reapDismissed();
 	});
 	return out;
 }
 
 static NSMutableDictionary<NSNumber *, NSAlert *> *codeAlerts;
+// Code dialogs dismissed while another modal was on top of them: their own
+// modal session is ended as soon as they are on top again (see reapDismissed).
+static NSMutableSet<NSAlert *> *dismissedCodes;
+
+static void reapDismissed(void) {
+	for (NSAlert *alert in [dismissedCodes copy]) {
+		if (NSApp.modalWindow == alert.window) {
+			[dismissedCodes removeObject:alert];
+			[NSApp abortModal];
+		}
+	}
+}
 
 void hikyoShowCode(long id, const char *url, const char *code) {
 	NSString *u = [NSString stringWithUTF8String:url], *c = [NSString stringWithUTF8String:code];
@@ -244,6 +261,8 @@ void hikyoShowCode(long id, const char *url, const char *code) {
 			[codeAlerts removeObjectForKey:@(id)];
 			hikyoCodeCancelled(id);
 		}
+		[dismissedCodes removeObject:alert];
+		reapDismissed();
 	});
 }
 
@@ -258,7 +277,8 @@ void hikyoDismissCode(long id) {
 			if (NSApp.modalWindow == alert.window) {
 				[NSApp abortModal];
 			} else {
-				[alert.window orderOut:nil];
+				if (dismissedCodes == nil) dismissedCodes = [NSMutableSet new];
+				[dismissedCodes addObject:alert];
 			}
 		}
 	});

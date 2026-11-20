@@ -229,6 +229,7 @@ func TestCanonicalOriginHasOneSpelling(t *testing.T) {
 		"https://hikyo.example:8443": "https://hikyo.example:8443",
 		"http://127.0.0.1:80":        "http://127.0.0.1",
 		"http://[::1]:8080":          "http://[::1]:8080",
+		"https://hikyo.example:0443": "https://hikyo.example",
 	} {
 		if got, err := canonicalOrigin(in); err != nil || got != want {
 			t.Errorf("%q = %q, %v; want %q", in, got, err, want)

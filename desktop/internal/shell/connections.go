@@ -78,7 +78,7 @@ func (m *Manager) Add(ctx context.Context, req AddRequest) (string, error) {
 		return "", &shellErr{codeInvalid, "choose a trust mode first"}
 	}
 	for _, c := range m.store.List() {
-		if existing, err := canonicalOrigin(c.Origin); err == nil && existing == origin {
+		if existing, err := canonicalOrigin(c.Origin); c.Origin == origin || (err == nil && existing == origin) {
 			return "", &shellErr{codeInvalid, "this instance is already connected"}
 		}
 	}
