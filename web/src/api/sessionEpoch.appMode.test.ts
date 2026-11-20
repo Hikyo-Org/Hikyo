@@ -36,7 +36,8 @@ describe('reconcileAfterShellHop', () => {
 
   it('fails closed with no identity check installed', async () => {
     uninstall();
-    await expect(reconcileAfterShellHop(0)).rejects.toBeInstanceOf(SessionChangedError);
+    const captured = captureSessionEpoch();
+    await expect(reconcileAfterShellHop(captured)).rejects.toBeInstanceOf(SessionChangedError);
     uninstall = installSessionFence(() => undefined, () => undefined, identityCheck);
   });
 

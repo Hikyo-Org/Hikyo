@@ -1,5 +1,5 @@
 import { assertSessionEpoch, captureSessionEpoch } from './sessionEpoch.ts';
-import { requireBrowser } from '../app/shell.ts';
+import { ContinueInBrowserError, requireBrowser } from '../app/shell.ts';
 import {
   authMethodsOp,
   enrolPasskeyFinishOp,
@@ -588,6 +588,7 @@ export function passkeyCreationOptions(blob: unknown): PublicKeyCredentialCreati
  * "wrong password" unless the server actually refused a credential.
  */
 export function accountFailureText(error: unknown): string {
+  if (error instanceof ContinueInBrowserError) return error.message;
   if (error instanceof ApiError) {
     return statusText(
       error,

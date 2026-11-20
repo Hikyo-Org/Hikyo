@@ -68,7 +68,11 @@ import { SidePanel } from '../ui/SidePanel.tsx';
 import { PanelForm } from './Sections.tsx';
 import { RemotePairing } from './RemotePairing.tsx';
 import { NamedId } from '../ui/NamedId.tsx';
-import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
+import {
+  appModeWorkspaceReason,
+  useWorkspaceHandoff,
+  workspaceHandoffAction,
+} from './useWorkspaceHandoff.ts';
 import { Glyph, type GlyphName } from '../ui/Glyph.tsx';
 
 /**
@@ -215,7 +219,7 @@ export function RemoteCard({
         : duplicateIdentity
         ? { kind: 'refused', message: remoteRecoveryText(remote, 'duplicate-identity') ?? '' }
         : isAppMode()
-          ? { kind: 'refused', message: 'Workspaces open in your browser, not in the desktop app.' }
+          ? { kind: 'refused', message: appModeWorkspaceReason }
         : live === undefined
           ? { kind: 'establishment' }
           : { kind: 'refused', message: 'This workspace is already open in another tab.' },

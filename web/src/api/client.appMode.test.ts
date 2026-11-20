@@ -65,6 +65,24 @@ describe('recovery-code regeneration', () => {
     expect(rotated).toHaveBeenCalledWith({ session: 'ses_123e4567-e89b-12d3-a456-426614174099', principal: authenticatedIdentity.principal.id });
   });
 
+  it('holds the codes until the reconciliation settles, and withholds them if it fails', async () => {
+    mode('wails:');
+    respondWith('cli');
+    let finish: () => void = () => undefined;
+    rotated.mockImplementationOnce(() => new Promise<void>((resolve) => { finish = () => { settleSessionEpoch(); resolve(); }; }));
+    let settled = false;
+    const pending = parsed(regenerateRecoveryCodesOp, { body: { proof: 'p' } }).finally(() => { settled = true; });
+    await vi.waitFor(() => expect(rotated).toHaveBeenCalledOnce());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(settled).toBe(false);
+    finish();
+    await expect(pending).resolves.toMatchObject({ recovery_codes: ['aaaa-bbbb'] });
+
+    respondWith('cli');
+    rotated.mockRejectedValueOnce(new Error('whoami failed'));
+    await expect(parsed(regenerateRecoveryCodesOp, { body: { proof: 'p' } })).rejects.toThrow();
+  });
+
   it('in a browser, still verifies a browser reissue and ignores a cli one, as before', async () => {
     mode('https:');
     respondWith('browser');

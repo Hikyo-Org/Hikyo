@@ -264,6 +264,26 @@ it('in the app, hands the verified export bytes to the shell save panel instead 
   expect(objectUrl).not.toHaveBeenCalled();
 });
 
+it('in the app, drops an export whose filter changed while the bytes were being read', async () => {
+  let release: (bytes: ArrayBuffer) => void = () => undefined;
+  const blob = new Blob(['{"seq":1}\n']);
+  vi.spyOn(blob, 'arrayBuffer').mockReturnValue(new Promise<ArrayBuffer>((resolve) => { release = resolve; }));
+  vi.spyOn(auditApi, 'downloadAuditExport').mockResolvedValue(blob);
+  const { container, release: loaded, unmount } = await renderAudit([]);
+  vi.stubGlobal('location', { protocol: 'wails:', origin: 'wails://x' });
+  try {
+    await act(async () => loaded());
+    await settleTask();
+    const byText = (text: string) => [...container.querySelectorAll('button')].find((b) => b.textContent === text);
+    await act(async () => byText('Export JSONL')?.click());
+    await settleTask();
+    await act(async () => byText('Clear')?.click());
+    await act(async () => release(new ArrayBuffer(1)));
+    await settleTask();
+    expect(shell.bytes).not.toHaveBeenCalled();
+  } finally { await unmount(); }
+});
+
 it('in a browser, saves the export through a blob link and never calls the shell', async () => {
   const objectUrl = vi.fn(() => 'blob:x');
   stubObjectUrls(objectUrl);

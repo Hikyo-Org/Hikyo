@@ -49,3 +49,17 @@ it('closes on Not now without calling the shell', async () => {
   expect(view.container.querySelector('dialog')).toBeNull();
   await view.unmount();
 });
+
+it('ignores the completion of a request whose offer was dismissed, so a newer offer stays', async () => {
+  vi.stubGlobal('location', { protocol: 'wails:', pathname: '/x', search: '' });
+  let answer: (response: Response) => void = () => undefined;
+  vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => { answer = resolve; })));
+  const view = await mount();
+  await act(async () => { offerContinueInBrowser('first'); });
+  await act(async () => button(view.container, 'Continue in browser')?.click());
+  await act(async () => button(view.container, 'Not now')?.click());
+  await act(async () => { offerContinueInBrowser('second'); });
+  await act(async () => answer(new Response(null, { status: 204 })));
+  expect(view.container.textContent).toContain('second');
+  await view.unmount();
+});

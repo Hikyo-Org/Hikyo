@@ -150,7 +150,9 @@ function AuditTrail({ org, project, instance = false }: { readonly org: string; 
       if (controller.signal.aborted) return;
       if (isAppMode()) {
         // The save panel is the consent; the blob was verified complete above.
-        await shellDownloadBytes(new Uint8Array(await blob.arrayBuffer()), auditExportFilename(scope), blob.type === '' ? 'application/x-ndjson' : blob.type);
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        if (controller.signal.aborted) return;
+        await shellDownloadBytes(bytes, auditExportFilename(scope), blob.type === '' ? 'application/x-ndjson' : blob.type);
         return;
       }
       const url = URL.createObjectURL(blob);

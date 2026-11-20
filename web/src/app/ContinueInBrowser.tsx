@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -19,14 +19,25 @@ import {
 export function ContinueInBrowser() {
   const reason = useSyncExternalStore(subscribeContinueInBrowser, continueInBrowserReason, continueInBrowserReason);
   const [failure, setFailure] = useState<string | null>(null);
+  // Only the newest request may close the offer or set its error: dismissing or retrying invalidates the rest.
+  const latest = useRef(0);
   if (reason === null) return null;
   const close = () => {
+    latest.current += 1;
     setFailure(null);
     dismissContinueInBrowser();
   };
   const open = () => {
     setFailure(null);
-    shellOpenCurrentPage().then(close, () => setFailure('The desktop app could not open your browser. Try again.'));
+    const mine = ++latest.current;
+    shellOpenCurrentPage().then(
+      () => {
+        if (latest.current === mine) close();
+      },
+      () => {
+        if (latest.current === mine) setFailure('The desktop app could not open your browser. Try again.');
+      },
+    );
   };
   return (
     <Dialog
