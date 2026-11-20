@@ -70,6 +70,7 @@ import { RemotePairing } from './RemotePairing.tsx';
 import { NamedId } from '../ui/NamedId.tsx';
 import {
   appModeWorkspaceReason,
+  continueInBrowserAction,
   useWorkspaceHandoff,
   workspaceHandoffAction,
 } from './useWorkspaceHandoff.ts';
@@ -238,17 +239,20 @@ export function RemoteCard({
     updateJob.data === undefined ? undefined : updateJobOutcome(updateJob.data);
   const staleness = stalenessText(remote);
   useWorkspaceLiveness(live, () => setEnded(true));
-  const handoffAction = workspaceHandoffAction(
-    handoff,
-    {
-      ready: `Continue to ${origin} to sign in`,
-      authorising: 'Waiting for sign-in…',
-    },
-    () => {
-      setEnded(false);
-      handoff.retry();
-    },
-  );
+  // The desktop app cannot run the popup handoff; its only way forward is the browser.
+  const handoffAction = isAppMode()
+    ? continueInBrowserAction
+    : workspaceHandoffAction(
+        handoff,
+        {
+          ready: `Continue to ${origin} to sign in`,
+          authorising: 'Waiting for sign-in…',
+        },
+        () => {
+          setEnded(false);
+          handoff.retry();
+        },
+      );
 
   const applyUpdate = async () => {
     if (update?.latest_version === undefined) {
@@ -384,8 +388,7 @@ export function RemoteCard({
       ) : null}
 
       <div className="actions remote__actions">
-        {/* A workspace is a popup handoff between two browser origins, which the desktop app's window cannot run. */}
-        {live === undefined && !isAppMode() ? (
+        {live === undefined ? (
           <Button
             variant="primary"
             type="button"
