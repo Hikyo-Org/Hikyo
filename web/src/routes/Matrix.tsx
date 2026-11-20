@@ -505,14 +505,14 @@ export function Matrix({
   const visibleEnvironments = environments.filter((environment) =>
     visibleEnvironmentIds.includes(environment.id),
   );
-  // Each environment's longest cell text, from the data rather than the DOM:
-  // the table is virtualised, so the longest value may not be rendered. Its
-  // length sizes the column header (app.css, `--chars`).
   // The longest key name's length sizes a key column fitted by a tap (app.css, `--matrix-key-fit`).
   const longestKeyName = useMemo(
     () => groups.reduce((most, group) => group.keys.reduce((longest, key) => Math.max(longest, key.name.length), most), 0),
     [groups],
   );
+  // Each environment's longest cell text, from the data rather than the DOM:
+  // the table is virtualised, so the longest value may not be rendered. Its
+  // length sizes the column header (app.css, `--chars`).
   const longestByEnvironment = useMemo(() => {
     const keys = groups.flatMap((group) => group.keys);
     return new Map(environments.map((environment) => {
@@ -1164,9 +1164,9 @@ export function Matrix({
                 // leave it less than its full width (app.css, .matrix__table).
                 style={{
                   '--env-count': visibleEnvironments.length,
+                  '--key-chars': longestKeyName,
                   // Clamped in CSS, so a rotation or narrower window re-fits it: never under
                   // the column's floor, and always a touch target of values beside it.
-                  '--key-chars': longestKeyName,
                   ...(keyWidth === undefined
                     ? {}
                     : { '--matrix-key': `clamp(var(--matrix-key-min), ${keyWidth === 'fit' ? 'var(--matrix-key-fit)' : `${String(keyWidth)}px`}, 100cqi - var(--touch))` }),

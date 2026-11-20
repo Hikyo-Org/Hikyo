@@ -565,6 +565,15 @@ export const CompactKeyColumn: Story = {
     await expect(overflows).toBe(true);
     await expect(fillerWidth).toBeLessThanOrEqual(1);
     await expect(truncated.length).toBeGreaterThan(0);
+    // A click on that value's column handle fits the column to it; a second click restores the shrink.
+    const cut = truncated[0];
+    const column = cut?.closest('td')?.cellIndex;
+    const envHandle = column === undefined ? null : canvasElement.querySelector<HTMLElement>(`.matrix__table thead th:nth-child(${String(column + 1)}) .matrix__resizer`);
+    if (cut === undefined || envHandle === null) throw new Error('truncated value column missing');
+    await userEvent.click(envHandle);
+    await waitFor(() => expect(cut.scrollWidth).toBeLessThanOrEqual(cut.clientWidth + 1));
+    await userEvent.click(envHandle);
+    await waitFor(() => expect(cut.scrollWidth).toBeGreaterThan(cut.clientWidth + 1));
     // Desktop still: pencils stay.
     await expect(canvasElement.querySelector('.matrix-cell__edit')).toBeVisible();
   },

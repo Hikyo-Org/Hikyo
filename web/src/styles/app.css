@@ -2224,19 +2224,20 @@ fieldset.field > legend {
   --matrix-key-max: var(--matrix-key-full);
   /* A key column fitted by a tap on its handle (Matrix.tsx): the full width
      holds 20 characters, plus one mono advance per extra character of the
-     longest name (`--key-chars`). shortcut: estimates the proportional name
-     with mono advances and ignores row marks; measure the names if fitted
-     names still ellipsise. */
-  --matrix-key-fit: calc(var(--matrix-key-full) + (var(--key-chars, 20) - 20) * var(--matrix-char));
+     longest name (`--key-chars`), never narrower than the default width.
+     shortcut: estimates the proportional name with mono advances and ignores
+     row marks; measure the names if fitted names still ellipsise. */
+  --matrix-key-fit: max(var(--matrix-key-auto), var(--matrix-key-full) + (var(--key-chars, 20) - 20) * var(--matrix-char));
   /* The floor: the header's start padding, Key label and envs picker
      (164px), then its end padding, which is the resize handle's width. */
   --matrix-key-min: calc(164px + var(--matrix-resizer));
   --matrix-env-max: 260px;
-  --matrix-key: clamp(
+  --matrix-key-auto: clamp(
     var(--matrix-key-min),
     100cqi - var(--env-count, 0) * var(--matrix-env-max),
     var(--matrix-key-max)
   );
+  --matrix-key: var(--matrix-key-auto);
   /* The row's glyphs (lock, linked keys, cell marks, group chevron) are 40%
      of the row height. One knob: the factor. */
   --matrix-row: var(--row);

@@ -5,7 +5,7 @@ Branch `dunky13/matrix-column-resize`, PR #1455, based on `dev` at `6d8db0f4d`.
 ## Changed
 
 - Every matrix column header has a resize handle (`ColumnResizer`, `web/src/routes/Matrix.tsx`): drag it, focus it and use the arrow keys, or tap it (or press Enter).
-- A tap on a handle (or Enter) on a column at its default width fits it to its content: the longest value, or the longest key name (`--matrix-key-fit`, estimated from mono advances), capped to the well. A tap on any other width restores the default. This is the WCAG 2.5.7 single-pointer alternative to dragging.
+- A tap on a handle (or Enter) on a column at its default width, or on a phone key column narrowed to icon-only, fits it to its content: the longest value, or the longest key name (`--matrix-key-fit`, estimated from mono advances, never narrower than the default), capped to the well. A tap on any other width restores the default. A fitted environment column changes visibly only when the table overflows. This is the WCAG 2.5.7 single-pointer alternative to dragging.
 - Phone: a fitted or widened key column (at least 88px) shows key names, the Key label and row marks, and a tap on a name then opens the key directly.
 - Phone environment headers centre their name beside the icon-only history button.
 - The key width is clamped in CSS (`clamp(var(--matrix-key-min), Npx, 100cqi - var(--touch))`), so rotation or a narrower window re-fits it.
