@@ -34,7 +34,7 @@ func main() {
 
 func run(args []string, output io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("require policy, preflight, candidate, prepare, or verify")
+		return errors.New("require policy, preflight, candidate, prepare, verify, or verify-desktop")
 	}
 	fs := flag.NewFlagSet("stable", flag.ContinueOnError)
 	trust := fs.String("trust", "release/trust", "independently pinned public trust directory")
@@ -78,6 +78,8 @@ func run(args []string, output io.Writer) error {
 		return writeCandidate(*out, candidate)
 	case "prepare":
 		return prepare(loaded, *directory)
+	case "verify-desktop":
+		return verifyDesktop(loaded, *directory, *version, *commit, output)
 	case "verify":
 		if *trustOnly {
 			return verifyTrustOnly(loaded, *state, output)
