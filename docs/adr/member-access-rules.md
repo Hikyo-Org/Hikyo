@@ -230,8 +230,8 @@ this slice is narrower than D1 to D11:
 
 ## Machine rules (2026-11-20)
 
-This settles the machine open point above for the API and CLI; the editor on
-Machine access (D11) follows separately.
+This settles the machine open point above for the API, the CLI and the
+editor on Machine access (D11).
 
 - **Who and what.** Workload and automation principals may hold rules. The
   capability must be on the class's allowlist (`MachineMayHold`). `reveal` and
@@ -260,6 +260,14 @@ Machine access (D11) follows separately.
   lookup and applies the same class check on every read: a stored machine
   rule that fails it reaches nothing. Every other coverage check (delivery's
   per-key projection, SSH, federation) stays blind to rules, as for people.
+- **Editor (D11).** A service account's side panel on Machine access lists its
+  rules and opens the Members rule editor for its class. The editor disables
+  each permission the class may not hold and shows the reason on the row. It
+  does not offer key limits, and for a workload it offers only "Only..."
+  environments. A save that the widening gate refuses for a missing
+  reauthentication runs one passkey reauthentication over the named
+  environment and sends the same change again. Members and "Who can...?" show
+  machine rules with the machine mark, read-only, and point to Machine access.
 
 ## Rejected alternatives
 

@@ -97,5 +97,9 @@
         "project": ["read"]
       }
     }
-  ]
+  ],
+  "machine_rule_capabilities": {
+    "automation": ["definitions-edit", "edit", "publish", "read"],
+    "workload": ["read"]
+  }
 }

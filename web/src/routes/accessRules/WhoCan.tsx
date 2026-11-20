@@ -4,7 +4,7 @@ import { Button } from '../../ui/Button.tsx';
 import { Disclosure } from '../../ui/Disclosure.tsx';
 import { Glyph, type GlyphName } from '../../ui/Glyph.tsx';
 import { Select } from '../../ui/Select.tsx';
-import { label, perm, PERM_GROUPS, PERMS, projectById, resolve, type Person, type PermId, type Rule, type World } from './model.ts';
+import { label, MACHINE_RULE_HINT, perm, PERM_GROUPS, PERMS, projectById, resolve, type Person, type PermId, type Rule, type World } from './model.ts';
 import { Lock, MachineBadge, RulePerms, RuleWhere } from './parts.tsx';
 
 export type Question = { readonly perm: PermId; readonly project: string; readonly env: string; readonly key: string };
@@ -19,8 +19,9 @@ type Row = { person: Person; rule: Rule; note?: ReactNode };
  * permission, project, environment, key (the project decides the other two).
  * Answered as tables in the Members page's anatomy, one per outcome: the
  * member, the deciding rule or grant, and for a rule an action that opens it
- * in the editor. People and machines both answer, machines marked. Members
- * nothing reaches appear in a collapsed outcome, alongside the other reasons.
+ * in the editor. People and machines both answer, machines marked; a
+ * machine's rule opens on Machine access, not here (D11). Members nothing
+ * reaches appear in a collapsed outcome, alongside the other reasons.
  *
  * Key names come from the project's key catalogue, which needs See; without
  * it the question falls back to the whole environment and says so.
@@ -232,9 +233,10 @@ function AnswerTable({
                 <RuleWhere world={world} rule={rule} />
                 {note === undefined ? null : <p className="access-table__note">{note}</p>}
                 {rule.source.kind === 'grant' ? <p className="access-table__note">Scope-wide access: edit its card in Members.</p> : null}
+                {rule.source.kind === 'rule' && person.kind === 'machine' ? <p className="access-table__note">{MACHINE_RULE_HINT}</p> : null}
               </td>
               <td>
-                {onEditRule !== undefined && rule.source.kind === 'rule' && !rule.source.otherProjects ? (
+                {onEditRule !== undefined && rule.source.kind === 'rule' && !rule.source.otherProjects && person.kind === 'person' ? (
                   <Button type="button" variant="quiet" onClick={() => onEditRule(rule)}>
                     Edit rule<span className="visually-hidden"> of {person.name}</span>
                   </Button>
