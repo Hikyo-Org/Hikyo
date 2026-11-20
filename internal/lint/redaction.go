@@ -250,9 +250,51 @@ func subexpressionTypes(info *types.Info, arg ast.Expr) []types.Type {
 		if tv, ok := info.Types[expr]; ok && tv.Type != nil {
 			out = append(out, tv.Type)
 		}
+		// A selection passes only what it selects: its receiver is walked only
+		// when the receiver itself is pinned (a field walk or method of a pinned value).
+		if sel, ok := expr.(*ast.SelectorExpr); ok {
+			if s, ok := info.Selections[sel]; ok {
+				return selectsThroughPinned(s)
+			}
+		}
 		return true
 	})
 	return out
+}
+
+// selectsThroughPinned reports whether the receiver, or any embedded field on
+// the implicit path to the selected field or method, is itself pinned.
+func selectsThroughPinned(s *types.Selection) bool {
+	t := s.Recv()
+	path := s.Index()
+	for i := 0; ; i++ {
+		if directlyPinned(t) {
+			return true
+		}
+		if i >= len(path)-1 {
+			return false
+		}
+		if p, ok := t.Underlying().(*types.Pointer); ok {
+			t = p.Elem()
+		}
+		st, ok := t.Underlying().(*types.Struct)
+		if !ok {
+			return false
+		}
+		t = st.Field(path[i]).Type()
+	}
+}
+
+func directlyPinned(t types.Type) bool {
+	if p, ok := types.Unalias(t).(*types.Pointer); ok {
+		t = p.Elem()
+	}
+	n, ok := types.Unalias(t).(*types.Named)
+	if !ok {
+		return false
+	}
+	key := namedKey(n)
+	return SensitiveTypes[key] || auditContentTypes[key]
 }
 
 // mentionsAny reports the first pinned type reachable from any of ts.

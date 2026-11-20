@@ -148,7 +148,7 @@ func collect(t testing.TB, typ reflect.Type, path string, excluded map[string]st
 		var out []Leaf
 		for i := 0; i < typ.NumField(); i++ {
 			f := typ.Field(i)
-			if reason, excluded := excluded[typ.Name()+"."+f.Name]; excluded {
+			if reason, isExcluded := excluded[typ.Name()+"."+f.Name]; isExcluded {
 				if !isContentLeafType(f.Type) {
 					t.Errorf("coverage walk: exclusion %s.%s is an aggregate, not a leaf (%s): %s", typ.Name(), f.Name, f.Type, reason)
 				} else {

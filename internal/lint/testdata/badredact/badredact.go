@@ -41,3 +41,29 @@ func LeakLocalKeys(value crypto.LocalKeys, pointer *crypto.LocalKeys) {
 	_, _ = json.Marshal(value)               // want "passes sensitive type .*internal/crypto\\.LocalKeys to encoding/json"
 	slog.Info("local keys", "keys", pointer) // want "passes sensitive type .*internal/crypto\\.LocalKeys to log/slog"
 }
+
+type holder struct {
+	keyring *crypto.Keyring
+	seq     int
+	ev      audit.Event
+}
+
+// A field of a struct that merely holds a sensitive value is not the value;
+// the sensitive field itself and a field walk of audit content still are.
+func Narrowing(h holder) {
+	_ = fmt.Sprintf("id_%d", h.seq)
+	_ = fmt.Sprintf("%v", h.keyring)      // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", any(h.keyring)) // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%d", h.count())
+	_ = fmt.Sprintf("%v", h.keyring.String()) // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	slog.Info("audit", "actor", h.ev.Actor)   // want "logs audit content .*internal/audit\\.Event"
+}
+
+func (h holder) count() int { return h.seq }
+
+type wrap struct{ *crypto.Keyring }
+
+// A method or field promoted from an embedded sensitive value stays flagged.
+func Promoted(w wrap) {
+	_ = fmt.Sprintf("%v", w.String()) // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+}

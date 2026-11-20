@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -129,8 +130,8 @@ func TestAuditRetentionRejectsUnprovedDelete(t *testing.T) {
 			_, err := r.Retention().PruneAudit(ctx, stale, time.Now(), time.Now())
 			return err
 		})
-		if err == nil {
-			t.Fatal("pruning with a proof from another transaction allowed")
+		if err == nil || !strings.Contains(err.Error(), "outside its transaction") {
+			t.Fatalf("pruning with a proof from another transaction = %v, want the outside-its-transaction refusal", err)
 		}
 	})
 }

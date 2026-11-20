@@ -100,7 +100,7 @@ The spike also established that:
   contexts for the process and the vet driver runs on top of it, so PRs 1 to 3
   raise the peak memory and wall time of `go test ./internal/lint` compared
   with the base, and the CI budgets are sized for that interim cost. The stack
-  (PRs 1 to 4) merges to main together, once PR 4 is green.
+  (PRs 1 to 4) merges to `dev` together, once PR 4 is green.
 - Acceptance for the final stack: the full `go test ./internal/lint` stays
   green, and its measured peak whole-tree RSS stays under 1.5 GB with no single
   process above 0.8 GB.

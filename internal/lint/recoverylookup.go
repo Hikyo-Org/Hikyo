@@ -168,8 +168,9 @@ func runConfinement(pass *analysis.Pass, rules []RecoveryRule, where string) {
 }
 
 // confinementFlag carries the rules through a vet flag as
-// "Name=pkg:Func,Func|pkg:Func;Name=...", so a changed allowlist changes the
-// vet cache key.
+// "Name=pkg:Func,Func|pkg:Func;Name=...". The flag exists to inject fixture
+// rules; the production rules are compiled in, and unitchecker's -V=full
+// hashes the tool binary, so a changed allowlist already changes the cache key.
 type confinementFlag []RecoveryRule
 
 func (f *confinementFlag) String() string {

@@ -40,10 +40,9 @@ type BuildContext struct {
 	BuildFlags []string
 	// GOOS overrides the target operating system; empty keeps the host's.
 	GOOS string
-	// ProductionOnly leaves test packages out of the load. The windows
-	// context needs it: internal/upgradecustody's test package only
-	// typechecks on unix (local_test.go names a helper declared in a
-	// unix-only test file), so windows-only test files are not analysed.
+	// ProductionOnly leaves test packages out of the load. The darwin and
+	// windows contexts set it (the boundary test and prepare-lint-cache use
+	// them); the field stays until the old harness is removed (PR 4 of docs/adr/lint-analysis-driver.md).
 	ProductionOnly bool
 }
 
