@@ -173,10 +173,11 @@ func TestTLSConfigPinIsEnforcedOnResumedSessions(t *testing.T) {
 	dial := func(pin string) (*tls.Conn, error) {
 		config := TLSConfig(server.URL, ModeSPKI, pin, "")
 		config.ClientSessionCache = cache
-		conn, err := tls.Dial("tcp", addr, config)
+		raw, err := (&tls.Dialer{Config: config}).DialContext(t.Context(), "tcp", addr)
 		if err != nil {
 			return nil, err
 		}
+		conn := raw.(*tls.Conn)
 		// TLS 1.3 tickets arrive after the handshake; one read drains them.
 		_ = conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 		_, _ = conn.Read(make([]byte, 1))
