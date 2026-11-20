@@ -118,6 +118,60 @@ var vetFixtures = []vetFixture{
 		},
 	},
 	{
+		name: "containmentgates", analyzer: "containmentgates", patterns: []string{fixtureRoot + "badcontainmentgates"},
+		flags:      []string{"-containmentgates.anchor=" + fixtureImportRoot + "badcontainmentgates", "-containmentgates.exempt=Exempted,ExemptedButGated,Vanished"},
+		targets:    []string{fixtureImportRoot + "badcontainmentgates"},
+		inputsRoot: "internal/lint/testdata/badcontainmentgates/root", messages: true,
+		old: func([]*packages.Package) []string {
+			root := filepath.Join(moduleRoot(), "internal/lint/testdata/badcontainmentgates/root")
+			queries, err := ParseQueries(filepath.Join(root, "internal/store/queries/sqlite"))
+			if err != nil {
+				panic(err)
+			}
+			return CheckContainmentGates(queries, map[string]string{"Exempted": "fixture", "ExemptedButGated": "fixture", "Vanished": "fixture"})
+		},
+	},
+	{
+		name: "reencryptcoverage", analyzer: "reencryptcoverage", patterns: []string{fixtureRoot + "badreencrypt"},
+		flags: []string{
+			"-reencryptcoverage.anchor=" + fixtureImportRoot + "badreencrypt",
+			"-reencryptcoverage.covered=sealed_things.payload_sealed,both_sets.ambiguous,gone_table.gone_column",
+			"-reencryptcoverage.exempt=sealed_things.wrapped_key,both_sets.ambiguous",
+		},
+		targets:    []string{fixtureImportRoot + "badreencrypt"},
+		inputsRoot: "internal/lint/testdata/badreencrypt/root", messages: true,
+		old: func([]*packages.Package) []string {
+			dir := filepath.Join(moduleRoot(), "internal/lint/testdata/badreencrypt/root/internal/store/migrations/sqlite")
+			return checkReencryptCoverage(osSource{}, dir,
+				map[string]string{"sealed_things.payload_sealed": "", "both_sets.ambiguous": "", "gone_table.gone_column": ""},
+				map[string]string{"sealed_things.wrapped_key": "", "both_sets.ambiguous": ""})
+		},
+	},
+	{
+		name: "sqlpredicate", analyzer: "sqlpredicate", patterns: []string{fixtureRoot + "badsqlpredicate"},
+		flags:      []string{"-sqlpredicate.anchor=" + fixtureImportRoot + "badsqlpredicate", "-sqlpredicate.nopins"},
+		targets:    []string{fixtureImportRoot + "badsqlpredicate"},
+		inputsRoot: "internal/lint/testdata/badsqlpredicate/root", messages: true,
+		old: func([]*packages.Package) []string {
+			return checkSQLPredicates(osSource{}, filepath.Join(moduleRoot(), "internal/lint/testdata/badsqlpredicate/root"), true)
+		},
+	},
+	{
+		// The fixture tree also holds an ignore-tagged file and a testdata
+		// directory: vet cannot see the first, which the driver's unanalyzed-file
+		// check finds, and neither tool reads the second.
+		name: "jsonv1", analyzer: "jsonv1", patterns: []string{fixtureRoot + "badjsonv1"},
+		flags:    []string{"-jsonv1.root=" + filepath.Join(moduleRoot(), "internal/lint/testdata/badjsonv1")},
+		messages: true,
+		old: func([]*packages.Package) []string {
+			return CheckJSONv1Imports(filepath.Join(moduleRoot(), "internal/lint/testdata/badjsonv1"))
+		},
+		aggregate: func(out *vetOutcome) []string {
+			files, exception := analyzedGoFiles(out)
+			return CheckUnanalyzedGoFiles(filepath.Join(moduleRoot(), "internal/lint/testdata/badjsonv1"), files, exception)
+		},
+	},
+	{
 		name: "stablecopies", analyzer: "stablecopies", patterns: []string{fixtureRoot + "badstablecopies"},
 		flags:      []string{"-stablecopies.anchor=" + fixtureImportRoot + "badstablecopies"},
 		targets:    []string{fixtureImportRoot + "badstablecopies"},
@@ -386,6 +440,9 @@ func TestVetDriverParity(t *testing.T) {
 				current := fixtures.Findings
 				if f.messages {
 					current = findingMessages(fixtures.Findings, f.analyzer)
+				}
+				if f.aggregate != nil {
+					current = append(slices.Clone(current), f.aggregate(fixtures)...)
 				}
 				requireSubset(t, "fixture "+f.name, old, current)
 			}

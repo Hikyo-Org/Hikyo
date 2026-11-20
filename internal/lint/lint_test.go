@@ -471,6 +471,7 @@ func TestCrossEngineQueryContractsRequireGeneratedAPIs(t *testing.T) {
 		map[string][]Query{"sqlite": {query}, "postgres": {query}},
 		map[string]map[string]TableRule{},
 		map[string]map[string]generatedContract{},
+		false,
 	)
 	assertFindings(t, findings, []string{`query "GetEnvironment" has no generated API contract`})
 }

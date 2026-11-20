@@ -318,6 +318,8 @@ func TestVetDriverRepo(t *testing.T) {
 	}
 	observed := deferredCounts{Contexts: map[string]map[string]map[string]int{}}
 	ran := 0
+	analyzed := map[string]bool{}
+	exceptionSeen := false
 	bin := buildVetTool(t)
 	for _, ctx := range Contexts {
 		t.Run(ctx.Name, func(t *testing.T) {
@@ -343,11 +345,22 @@ func TestVetDriverRepo(t *testing.T) {
 			for _, finding := range missingTargets(out, Checks()) {
 				t.Error(finding)
 			}
+			files, exception := analyzedGoFiles(out)
+			maps.Copy(analyzed, files)
+			exceptionSeen = exceptionSeen || exception
 			pins := pinSet(t, out.Summaries[RedactPins.Name])
 			for _, finding := range compareRedactionPins(pins, SensitiveTypes) {
 				t.Error(finding)
 			}
 		})
+	}
+	// Go files no context's packages contain are judged here, in the test process.
+	if ran == len(Contexts) {
+		for _, finding := range CheckUnanalyzedGoFiles(moduleRoot(), analyzed, exceptionSeen) {
+			t.Error(finding)
+		}
+	} else {
+		t.Logf("ran %d of %d contexts: the unanalyzed Go file check needs every context", ran, len(Contexts))
 	}
 	if *updateDeferredSites && ran != len(Contexts) {
 		t.Fatalf("-update-deferred-sites ran %d of %d contexts; run it without -run filters so no context's pin is dropped", ran, len(Contexts))
@@ -379,4 +392,7 @@ type vetFixture struct {
 	// messages compares the old findings with the driver's messages alone: the
 	// old entry point has no positions.
 	messages bool
+	// aggregate returns the findings the test process adds to the vet run's
+	// (see CheckUnanalyzedGoFiles), in the old harness's wording.
+	aggregate func(out *vetOutcome) []string
 }

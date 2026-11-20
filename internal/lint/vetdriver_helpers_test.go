@@ -97,6 +97,8 @@ func TestDecodeVetOutput(t *testing.T) {
 			},
 		},
 		{name: "pin summary from another analyzer", raw: tree("fence", summary("pin x")), wantErr: "only redactpins may"},
+		{name: "gofile summary from another analyzer", raw: tree("fence", summary("gofile /r/a.go")), wantErr: "only jsonv1 may"},
+		{name: "exception summary from jsonv1", raw: tree("jsonv1", summary("exception "+Module+"/api/apigen"))},
 		{name: "unknown summary kind", raw: tree("fence", summary("surprise x")), wantErr: "unknown summary kind"},
 		{name: "malformed summary", raw: tree("fence", summary("target")), wantErr: "malformed summary"},
 	}

@@ -2,11 +2,12 @@ package lint
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
+
+	"golang.org/x/tools/go/analysis"
 )
 
 // CheckReencryptCoverage is the reencrypt-coverage gate (encryption-model ADR
@@ -27,7 +28,44 @@ import (
 // short-lived FLOW artifact (OAuth/SAML/WebAuthn transaction state), or PUBLIC
 // material (certificates, public keys, opaque handles).
 func CheckReencryptCoverage(sqliteMigrationsDir string) []string {
-	found, err := scanBlobColumns(sqliteMigrationsDir)
+	return checkReencryptCoverage(osSource{}, sqliteMigrationsDir, reencryptCovered, reencryptExemptBlobs)
+}
+
+func reencryptSpecs(string) ([]InputSpec, error) {
+	return []InputSpec{{Dir: "internal/store/migrations/sqlite", Exts: []string{".sql"}}}, nil
+}
+
+// ReencryptCoverage runs CheckReencryptCoverage over the declared sqlite
+// migrations, once, on internal/store.
+var ReencryptCoverage = newReencryptCoverage(flagInputs)
+
+func newReencryptCoverage(provide func(*analysis.Analyzer) inputProvider) *analysis.Analyzer {
+	declareInputs("reencryptcoverage", reencryptSpecs)
+	covered, exempt := reencryptCovered, reencryptExemptBlobs
+	list := func(set *map[string]string) func(string) error {
+		return func(v string) error {
+			*set = map[string]string{}
+			for _, tc := range strings.Split(v, ",") {
+				(*set)[tc] = "set by flag"
+			}
+			return nil
+		}
+	}
+	return fileCheck{
+		name: "reencryptcoverage", doc: "every BLOB column of the schema is classified as reencrypt-covered or exempt",
+		anchor: Module + "/internal/store", specs: reencryptSpecs,
+		flags: func(a *analysis.Analyzer) {
+			a.Flags.Func("covered", "comma-separated table.column covered set (default: reencryptCovered)", list(&covered))
+			a.Flags.Func("exempt", "comma-separated table.column exempt set (default: reencryptExemptBlobs)", list(&exempt))
+		},
+		run: func(src source, root string) ([]string, error) {
+			return checkReencryptCoverage(src, filepath.Join(root, "internal", "store", "migrations", "sqlite"), covered, exempt), nil
+		},
+	}.analyzer(provide)
+}
+
+func checkReencryptCoverage(src source, sqliteMigrationsDir string, reencryptCovered, reencryptExemptBlobs map[string]string) []string {
+	found, err := scanBlobColumns(src, sqliteMigrationsDir)
 	if err != nil {
 		return []string{"reencrypt-coverage: " + err.Error()}
 	}
@@ -167,17 +205,17 @@ var (
 
 // scanBlobColumns returns the sorted, de-duplicated "table.column" list of every
 // BLOB/BYTEA column defined across the migration files.
-func scanBlobColumns(dir string) ([]string, error) {
-	entries, err := os.ReadDir(dir)
+func scanBlobColumns(src source, dir string) ([]string, error) {
+	names, err := src.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("read migrations: %w", err)
 	}
 	seen := map[string]bool{}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") {
+	for _, name := range names {
+		if !strings.HasSuffix(name, ".sql") {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		data, err := src.ReadFile(filepath.Join(dir, name))
 		if err != nil {
 			return nil, err
 		}

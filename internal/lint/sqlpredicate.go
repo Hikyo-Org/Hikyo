@@ -4,11 +4,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 	"sync"
+
+	"golang.org/x/tools/go/analysis"
 )
 
 // This file is analyzer 2 (tenant-isolation ADR, invariant 8): sqlc queries
@@ -212,12 +215,64 @@ func parseQueries(fsrc source, dir string) ([]Query, error) {
 	return out, nil
 }
 
+func sqlPredicateSpecs(string) ([]InputSpec, error) {
+	specs, _ := queryInputs("")
+	for _, engine := range []string{"sqlite", "postgres"} {
+		specs = append(specs,
+			InputSpec{Dir: "internal/store/migrations/" + engine, Exts: []string{".sql"}},
+			InputSpec{Dir: "internal/store/" + map[string]string{"sqlite": "sqlitegen", "postgres": "pggen"}[engine], Exts: []string{".go"}})
+	}
+	// The reviewed scoped queries name the test files that exercise them. A pin
+	// file that does not decode is the check's own finding, not a declaration.
+	reviews, err := readScopedQueryReviews()
+	if err != nil {
+		return specs, nil
+	}
+	tests := map[string]bool{}
+	for _, byName := range reviews {
+		for _, review := range byName {
+			for _, evidence := range append(slices.Clone(review.Tests), review.FlowTests...) {
+				if clean, _, ok := scopedEvidencePath(evidence); ok {
+					tests[filepath.ToSlash(clean)] = true
+				}
+			}
+		}
+	}
+	for _, rel := range slices.Sorted(maps.Keys(tests)) {
+		specs = append(specs, InputSpec{File: rel})
+	}
+	return specs, nil
+}
+
+// SQLPredicates runs CheckSQLPredicates over the declared migrations, queries,
+// generated query APIs and the test files the reviewed pins cite, once, on
+// internal/store.
+var SQLPredicates = newSQLPredicates(flagInputs)
+
+func newSQLPredicates(provide func(*analysis.Analyzer) inputProvider) *analysis.Analyzer {
+	declareInputs("sqlpredicate", sqlPredicateSpecs)
+	var noPins bool
+	return fileCheck{
+		name: "sqlpredicate", doc: "tenant-chain predicates of every query, scope directives and cross-engine agreement",
+		anchor: Module + "/internal/store", specs: sqlPredicateSpecs,
+		flags: func(a *analysis.Analyzer) {
+			a.Flags.BoolVar(&noPins, "nopins", false, "hold the repository to no reviewed scoped queries and no legacy annotations (fixtures)")
+		},
+		run: func(src source, root string) ([]string, error) { return checkSQLPredicates(src, root, noPins), nil },
+	}.analyzer(provide)
+}
+
 // CheckSQLPredicates runs analyzer 2 over both engines' migration and query
 // directories under repoRoot, including the cross-engine agreement checks
 // (same tables, directives, and query contracts on both engines).
-func CheckSQLPredicates(repoRoot string) []string { return checkSQLPredicates(osSource{}, repoRoot) }
+func CheckSQLPredicates(repoRoot string) []string {
+	return checkSQLPredicates(osSource{}, repoRoot, false)
+}
 
-func checkSQLPredicates(src source, repoRoot string) []string {
+// checkSQLPredicates is the check; noPins holds the repository to no reviewed
+// scoped queries and no legacy annotation names, for a fixture that carries
+// only the queries under test.
+func checkSQLPredicates(src source, repoRoot string, noPins bool) []string {
 	var findings []string
 	perEngine := map[string][]Query{}
 	perEngineRules := map[string]map[string]TableRule{}
@@ -225,6 +280,10 @@ func checkSQLPredicates(src source, repoRoot string) []string {
 	reviews, err := readScopedQueryReviews()
 	if err != nil {
 		return []string{"sqlpredicate: cannot read scoped query reviews: " + err.Error()}
+	}
+	legacy := legacyAnnotationNames
+	if noPins {
+		reviews, legacy = map[string]map[string]scopedQueryReview{}, map[string]bool{}
 	}
 
 	for _, engine := range []string{"sqlite", "postgres"} {
@@ -267,7 +326,7 @@ func checkSQLPredicates(src source, repoRoot string) []string {
 		}
 		perEngineContracts[engine] = contracts
 		for _, q := range queries {
-			if q.Annotation != "" && q.Reason == "" && !legacyAnnotationNames[q.Name] {
+			if q.Annotation != "" && q.Reason == "" && !legacy[q.Name] {
 				findings = append(findings, fmt.Sprintf("sqlpredicate(%s): %s: new annotation requires an explicit hikyo:reason authority justification", engine, q.Name))
 			}
 			if reviewed, ok := reviews[engine][q.Name]; ok {
@@ -292,7 +351,7 @@ func checkSQLPredicates(src source, repoRoot string) []string {
 			}
 		}
 	}
-	for name := range legacyAnnotationNames {
+	for name := range legacy {
 		live := false
 		for _, queries := range perEngine {
 			for _, q := range queries {
@@ -306,7 +365,7 @@ func checkSQLPredicates(src source, repoRoot string) []string {
 		}
 	}
 
-	findings = append(findings, crossEngine(perEngine, perEngineRules, perEngineContracts)...)
+	findings = append(findings, crossEngine(perEngine, perEngineRules, perEngineContracts, noPins)...)
 	return findings
 }
 
@@ -516,7 +575,7 @@ func checkSet(label, sql, upper string, chainCols []string) []string {
 	return out
 }
 
-func crossEngine(queries map[string][]Query, rules map[string]map[string]TableRule, contracts map[string]map[string]generatedContract) []string {
+func crossEngine(queries map[string][]Query, rules map[string]map[string]TableRule, contracts map[string]map[string]generatedContract, noPins bool) []string {
 	var out []string
 	byName := map[string]map[string]Query{}
 	allNames := map[string]bool{}
@@ -555,6 +614,9 @@ func crossEngine(queries map[string][]Query, rules map[string]map[string]TableRu
 		out = append(out, compareQueryContracts(name, sqQuery, pgQuery, sqContract, pgContract)...)
 	}
 	for engine, pins := range approvedEngineOnlyQueries {
+		if noPins {
+			break
+		}
 		for name := range pins {
 			if _, exists := byName[engine][name]; !exists {
 				out = append(out, fmt.Sprintf("sqlpredicate: %s-only query %q was removed; retire its engine protocol pin", engine, name))

@@ -152,3 +152,52 @@ func TestVetDriverRefusesBadInputs(t *testing.T) {
 		})
 	}
 }
+
+// analyzedGoFiles are the Go files (canonical paths) the run's jsonv1 passes
+// reported, and whether the exception package reported importing
+// encoding/json.
+func analyzedGoFiles(out *vetOutcome) (files map[string]bool, exception bool) {
+	files = map[string]bool{}
+	for _, s := range out.Summaries[JSONv1.Name] {
+		switch s.Kind {
+		case summaryGoFile:
+			files[canonicalPath(s.Subject)] = true
+		case summaryException:
+			exception = true
+		}
+	}
+	return files, exception
+}
+
+// Every input-reading analyzer refuses a digest that does not match its
+// declared inputs, on its own fixture, and still reports its target.
+func TestVetDriverEveryInputAnalyzerRefusesStaleDigest(t *testing.T) {
+	bin := buildVetTool(t)
+	var fixtures []vetFixture
+	for _, f := range vetFixtures {
+		if f.inputsRoot != "" {
+			fixtures = append(fixtures, f)
+		}
+	}
+	flags, patterns := fixtureFlagsAndPatterns(t, fixtures)
+	for i, flag := range flags {
+		if strings.Contains(flag, ".inputs=") {
+			flags[i] = flag[:strings.Index(flag, ".inputs=")] + ".inputs=stale"
+		}
+	}
+	out := runVet(t, bin, Contexts[0], flags, patterns)
+	for _, f := range fixtures {
+		found := false
+		for _, finding := range findingMessages(out.Findings, f.analyzer) {
+			found = found || strings.HasPrefix(finding, "inputs refused: input digest mismatch")
+		}
+		if !found {
+			t.Errorf("%s did not refuse a stale digest", f.analyzer)
+		}
+		for _, finding := range findingMessages(out.Findings, f.analyzer) {
+			if !strings.HasPrefix(finding, "inputs refused:") {
+				t.Errorf("%s analyzed despite a stale digest: %s", f.analyzer, finding)
+			}
+		}
+	}
+}

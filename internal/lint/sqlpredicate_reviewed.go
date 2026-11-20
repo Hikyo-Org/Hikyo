@@ -38,6 +38,17 @@ func expandScopedQueryReviews(records map[string]reviewedQueryPin) map[string]ma
 	return reviews
 }
 
+// scopedEvidencePath splits a "path:TestName" evidence reference into its
+// cleaned repository-relative test file and test name, or reports it invalid.
+func scopedEvidencePath(evidence string) (clean, name string, ok bool) {
+	path, name, ok := strings.Cut(evidence, ":")
+	clean = filepath.Clean(path)
+	if !ok || filepath.IsAbs(path) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || !strings.HasSuffix(path, "_test.go") || !strings.HasPrefix(name, "Test") {
+		return "", "", false
+	}
+	return clean, name, true
+}
+
 func checkScopedQueryReview(src source, engine string, q Query, api generatedContract, generated bool, review scopedQueryReview, root string) []string {
 	label := fmt.Sprintf("sqlpredicate(%s): %s", engine, q.Name)
 	if q.Annotation != "" || !generated || !api.BindSitesKnown || strings.TrimSpace(review.Authority) == "" || review.SQLHash != q.Hash() || review.APIHash != api.hash() || len(review.Tests) == 0 {
@@ -47,9 +58,8 @@ func checkScopedQueryReview(src source, engine string, q Query, api generatedCon
 	queryReferenced := false
 	evidenceRefs := append(append([]string{}, review.Tests...), review.FlowTests...)
 	for index, evidence := range evidenceRefs {
-		path, name, ok := strings.Cut(evidence, ":")
-		clean := filepath.Clean(path)
-		if !ok || filepath.IsAbs(path) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || !strings.HasSuffix(path, "_test.go") || !strings.HasPrefix(name, "Test") {
+		clean, name, ok := scopedEvidencePath(evidence)
+		if !ok {
 			findings = append(findings, label+": invalid scoped-query test reference "+evidence)
 			continue
 		}

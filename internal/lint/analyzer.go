@@ -25,6 +25,12 @@ const (
 	summaryTarget = "target"
 	// summaryPin records one compile-time redaction pin found in crypto.
 	summaryPin = "pin"
+	// summaryGoFile records one Go file an analyzed package contains, from
+	// jsonv1: the driver compares them with the repository's files.
+	summaryGoFile = "gofile"
+	// summaryException records that the package allowed to import
+	// encoding/json does, so its exception is not stale.
+	summaryException = "exception"
 )
 
 // Summary is one decoded summary diagnostic.
@@ -49,6 +55,11 @@ func (s Summary) validate(analyzer string) error {
 	case summaryPin:
 		if analyzer != RedactPins.Name {
 			return fmt.Errorf("analyzer %s reported a %s summary; only %s may", analyzer, summaryPin, RedactPins.Name)
+		}
+		return nil
+	case summaryGoFile, summaryException:
+		if analyzer != JSONv1.Name {
+			return fmt.Errorf("analyzer %s reported a %s summary; only %s may", analyzer, s.Kind, JSONv1.Name)
 		}
 		return nil
 	}
@@ -215,6 +226,16 @@ func Checks() []Check {
 		{Analyzer: GrantLock, Targets: []string{Module + "/internal/store/authn"}, OnDisk: func(root string) *analysis.Analyzer { return newGrantLock(diskInputs(root), nil) }},
 		{Analyzer: DenialWriter, Targets: []string{denialSurface}, OnDisk: func(root string) *analysis.Analyzer { return newDenialWriter(diskInputs(root), nil) }},
 		{Analyzer: AuditAppendOnly, Targets: []string{Module + "/internal/store"}, OnDisk: func(root string) *analysis.Analyzer { return newAuditAppendOnly(diskInputs(root)) }},
+		{Analyzer: ContainmentGates, Targets: []string{Module + "/internal/store"}, OnDisk: func(root string) *analysis.Analyzer { return newContainmentGates(diskInputs(root)) }},
+		{Analyzer: ReencryptCoverage, Targets: []string{Module + "/internal/store"}, OnDisk: func(root string) *analysis.Analyzer { return newReencryptCoverage(diskInputs(root)) }},
+		{Analyzer: SQLPredicates, Targets: []string{Module + "/internal/store"}, OnDisk: func(root string) *analysis.Analyzer { return newSQLPredicates(diskInputs(root)) }},
+		{Analyzer: JSONv1, OnDisk: func(root string) *analysis.Analyzer {
+			a := newJSONv1()
+			if err := a.Flags.Set("root", root); err != nil {
+				panic(err)
+			}
+			return a
+		}},
 		{Analyzer: StableCopies, Targets: []string{Module + "/internal/jsonwire"}, OnDisk: func(root string) *analysis.Analyzer { return newStableCopies(diskInputs(root)) }},
 	}
 }
