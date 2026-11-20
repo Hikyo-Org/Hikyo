@@ -55,8 +55,8 @@ func TestListingsReadBySuiteOnlyAboveTheMargin(t *testing.T) {
 	} {
 		var queries []string
 		got, err := Listings(context.Background(), source(tc.suites, 7, &queries), "abc", "report")
-		if err != nil || fmt.Sprint(got) != fmt.Sprint(tc.want) || len(queries) != 1 {
-			t.Fatalf("%d suites: %v/%v after %d queries, want %v after one", tc.suites, got, err, len(queries), tc.want)
+		if err != nil || fmt.Sprint(got) != fmt.Sprint(tc.want) || len(queries) != 2 {
+			t.Fatalf("%d suites: %v/%v after %d queries, want %v after two counts", tc.suites, got, err, len(queries), tc.want)
 		}
 	}
 	// Past the margin only the suite that holds the check is listed, and the scan
@@ -65,6 +65,28 @@ func TestListingsReadBySuiteOnlyAboveTheMargin(t *testing.T) {
 	got, err := Listings(context.Background(), source(Margin+1, 7, &queries), "abc", "report")
 	if err != nil || fmt.Sprint(got) != "[check-suites/7/check-runs]" || !strings.Contains(queries[len(queries)-1], `checkName:"report"`) {
 		t.Fatalf("listings = %v/%v", got, err)
+	}
+}
+
+// Suites added between the count and the read must not leave an older suite out
+// of the commit endpoint's newest 1000: the second count decides.
+func TestListingsFallBackWhenSuitesGrowAfterTheCount(t *testing.T) {
+	var queries []string
+	counts := 0
+	s := source(Margin+1, 7, &queries)
+	read := s.Read
+	s.Read = func(ctx context.Context, query string, out any) error {
+		if !strings.Contains(query, "checkSuites(") {
+			counts++
+			if counts == 1 {
+				return source(Margin, 7, &queries).Read(ctx, query, out)
+			}
+		}
+		return read(ctx, query, out)
+	}
+	got, err := Listings(context.Background(), s, "abc", "report")
+	if err != nil || fmt.Sprint(got) != "[check-suites/7/check-runs]" {
+		t.Fatalf("listings = %v/%v, want the per-suite listing", got, err)
 	}
 }
 

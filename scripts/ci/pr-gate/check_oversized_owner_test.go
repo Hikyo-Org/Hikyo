@@ -300,9 +300,11 @@ func TestOwnedChecksRefuseRecordTheSuiteInventoryHasNotIndexed(t *testing.T) {
 		name    string
 		holding []int64
 		dup     bool
+		bare    bool
 		wantErr bool
 	}{
 		{name: "indexed in a holding suite", holding: []int64{1856}},
+		{name: "not indexed, no controller prefix", bare: true, wantErr: true},
 		{name: "not indexed yet", wantErr: true},
 		{name: "commit listing repeats a run", holding: []int64{1856}, dup: true, wantErr: true},
 	} {
@@ -311,6 +313,9 @@ func TestOwnedChecksRefuseRecordTheSuiteInventoryHasNotIndexed(t *testing.T) {
 				f, _ := retirementFixture(t, queueCheckName)
 				head := installOversizedHead(f, 2005, tc.holding...)
 				head.foreign = []check{f.api.checks[0]}
+				if tc.bare {
+					head.foreign[0].ExternalID = "someone-else"
+				}
 				if tc.dup {
 					head.foreign = append(head.foreign, f.api.checks[0])
 				}

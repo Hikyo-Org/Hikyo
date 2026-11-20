@@ -244,6 +244,13 @@ func Listings(ctx context.Context, s Source, head, name string) ([]string, error
 		return nil, err
 	}
 	if count <= Margin {
+		// Suites added since the first count could push an older one out of the
+		// commit endpoint's newest 1000, so count again and fall back if it grew.
+		if count, err = Count(ctx, s, head); err != nil {
+			return nil, err
+		}
+	}
+	if count <= Margin {
 		return []string{fmt.Sprintf("commits/%s/check-runs", head)}, nil
 	}
 	suites, err := Find(ctx, s, head, Selector{Name: name})
