@@ -173,3 +173,30 @@ func TestDownloadBytesUpToTheSPALimitAndTypeHint(t *testing.T) {
 		t.Errorf("bad content_type: %d", rec.Code)
 	}
 }
+
+func TestRefusalAlertsAreRateLimited(t *testing.T) {
+	h := newHarness(t)
+	c, _ := h.connect()
+	for range 30 {
+		h.m.Navigate(NavRequest{PageHost: c.host, URL: PageScheme + "://" + c.host + "/api/v1/x", Download: true, Method: "POST"})
+	}
+	if n := len(h.native.alerts); n == 0 || n > 4 {
+		t.Fatalf("%d alerts for 30 refusals", n)
+	}
+}
+
+func TestSignInWithoutASessionNamesTheOriginFirst(t *testing.T) {
+	h := newHarness(t)
+	c, _ := h.connect()
+	_ = h.secrets.Delete(c.host)
+	m2 := h.reload()
+	h.native.confirmAnswer = false
+	before := h.inst.total()
+	if err := m2.SignIn(t.Context(), c.host, ""); err == nil {
+		t.Fatal("declined sign-in went ahead")
+	}
+	last := h.native.confirms[len(h.native.confirms)-1]
+	if !strings.Contains(last, c.Info().Origin) || h.inst.total() != before || len(h.openedURLs()) != 0 {
+		t.Errorf("confirm %q, requests %d", last, h.inst.total()-before)
+	}
+}

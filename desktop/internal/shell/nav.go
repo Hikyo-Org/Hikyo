@@ -97,7 +97,7 @@ func (m *Manager) Navigate(req NavRequest) NavAction {
 // replayed as a request the page never made.
 func (c *Conn) startProxiedDownload(u *url.URL, req NavRequest) {
 	if req.Method != "" && !strings.EqualFold(req.Method, http.MethodGet) {
-		c.m.native.Alert("Download not saved", "The app saves downloads that start from a link, not from a form submission, because it would have to send the request again.")
+		c.say("The app saves downloads that start from a link, not from a form submission, because it would have to send the request again.")
 		return
 	}
 	c.m.background(func() { c.saveProxiedURL(u, req.Filename) })
@@ -111,7 +111,7 @@ func (c *Conn) saveProxiedURL(u *url.URL, name string) {
 	if u.RawQuery != "" {
 		p += "?" + u.RawQuery
 	}
-	say := func(message string) { c.m.native.Alert("Download not saved", message) }
+	say := c.say
 	if e := c.checkDownloadPath(p); e != nil {
 		say(e.message)
 		return
@@ -129,5 +129,13 @@ func (c *Conn) saveProxiedURL(u *url.URL, name string) {
 	fallback := u.Path[strings.LastIndex(u.Path, "/")+1:]
 	if e := c.download(c.life(), p, nil, name, fallback, ""); e != nil && e.code != codeCancelled {
 		say(e.message)
+	}
+}
+
+// say shows why a download was not saved. A page can trigger refusals in a
+// loop, so the alerts themselves are rate limited.
+func (c *Conn) say(message string) {
+	if c.alertLimit.allow() {
+		c.m.native.Alert("Download not saved", message)
 	}
 }

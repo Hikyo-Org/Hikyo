@@ -44,7 +44,7 @@ type Conn struct {
 	reauthSlot, signInSlot, downloadSlot slot
 	reauthLimit, signInLimit             *limiter
 	openLimit, downloadLimit             *limiter
-	linkLimit, clipLimit                 *limiter
+	linkLimit, clipLimit, alertLimit     *limiter
 }
 
 func (m *Manager) newConn(info Connection) (*Conn, error) {
@@ -66,6 +66,7 @@ func (m *Manager) newConn(info Connection) (*Conn, error) {
 		downloadLimit: newLimiter(20, time.Minute, m.now),
 		linkLimit:     newLimiter(10, time.Minute, m.now),
 		clipLimit:     newLimiter(30, time.Minute, m.now),
+		alertLimit:    newLimiter(4, time.Minute, m.now),
 	}
 	switch secret, err := m.secrets.Get(info.Host); {
 	case err == nil:
@@ -84,13 +85,6 @@ func (m *Manager) newConn(info Connection) (*Conn, error) {
 	}
 	c.proxy = c.newProxy()
 	return c, nil
-}
-
-// secretFor builds the keychain item for a token, bound to the record as it
-// is now. The caller holds mu or owns c exclusively.
-func (c *Conn) secretFor(token, sessionID string) Secret {
-	return Secret{Token: token, SessionID: sessionID, Origin: c.info.Origin,
-		TrustMode: c.info.Trust.Mode, Pin: c.info.Trust.Pin, PrincipalID: c.info.PrincipalID}
 }
 
 // life is the context that ends when the connection is removed.
@@ -260,4 +254,16 @@ func (c *Conn) isTampered() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.tampered
+}
+
+// confirmSignIn names the origin before a sign-in that has no stored session to
+// vouch for it. Without a session the keychain can't say the record is the one
+// the person added, so the person says so.
+func (c *Conn) confirmSignIn() bool {
+	if c.bearer() != "" {
+		return true
+	}
+	info := c.Info()
+	return c.m.native.Confirm("Sign in to this instance?",
+		fmt.Sprintf("%s\n    origin: %s\n\nSign in opens your browser at this address. Continue only if it is the instance you added.", info.Name, info.Origin), "Sign in")
 }

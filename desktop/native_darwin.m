@@ -122,10 +122,11 @@ static void decideAction(id self, SEL _cmd, WKWebView *webView, WKNavigationActi
 	if (action.targetFrame == nil) flags |= flagNewWindow;
 	if (action.shouldPerformDownload) flags |= flagDownload;
 	if (action.navigationType == WKNavigationTypeLinkActivated || action.navigationType == WKNavigationTypeFormSubmitted) flags |= flagGesture;
-	if (action.targetFrame.isMainFrame) {
+	int verdict = decide(webView, action.request.URL, flags, action.request.HTTPMethod, action.shouldPerformDownload ? downloadAttribute(action) : nil);
+	if (verdict == 1 && action.targetFrame.isMainFrame) {
+		// Only a navigation that will actually load can produce the next response.
 		objc_setAssociatedObject(webView, kLastMethod, action.request.HTTPMethod, OBJC_ASSOCIATION_COPY_NONATOMIC);
 	}
-	int verdict = decide(webView, action.request.URL, flags, action.request.HTTPMethod, action.shouldPerformDownload ? downloadAttribute(action) : nil);
 	if (verdict == 1) {
 		handler(WKNavigationActionPolicyAllow);
 	} else if (verdict == 2) {
@@ -148,6 +149,11 @@ static void decideResponse(id self, SEL _cmd, WKWebView *webView, WKNavigationRe
 	BOOL download = !navResponse.canShowMIMEType || [kind hasPrefix:@"attachment"];
 	if (!download) {
 		handler(WKNavigationResponsePolicyAllow);
+		return;
+	}
+	if (!navResponse.isForMainFrame) {
+		// Only a main-frame response is ever saved; a subframe's request method is unknown.
+		handler(WKNavigationResponsePolicyCancel);
 		return;
 	}
 	NSString *method = objc_getAssociatedObject(webView, kLastMethod);

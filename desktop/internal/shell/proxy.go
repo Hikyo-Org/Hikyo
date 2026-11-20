@@ -306,7 +306,7 @@ func (c *Conn) modifyResponse(resp *http.Response) error {
 		if view.Token != c.bearer() {
 			c.revokeAsync(view.Token)
 		}
-		log.Printf("connection %s: removed an unexpected session token from %s", c.host, resp.Request.URL.Path)
+		log.Printf("connection %s: removed an unexpected session token from %s", c.host, logSafe(resp.Request.URL.Path))
 		return errBlocked{"the instance returned a session token where none is allowed"}
 	case view.Token != "":
 		// A failed check has already stopped the connection and revoked the new
@@ -346,13 +346,13 @@ func (c *Conn) rewriteLocation(resp *http.Response) {
 func (c *Conn) proxyError(w http.ResponseWriter, r *http.Request, err error) {
 	var blocked errBlocked
 	if errors.As(err, &blocked) {
-		log.Printf("connection %s: blocked %s %s: %s", c.host, r.Method, r.URL.Path, blocked.msg)
+		log.Printf("connection %s: blocked %s %s: %s", c.host, r.Method, logSafe(r.URL.Path), blocked.msg)
 		jsonError(w, http.StatusBadGateway, "failed", blocked.msg)
 		return
 	}
 	if errors.Is(err, context.Canceled) {
 		return
 	}
-	log.Printf("connection %s: %s %s: instance unreachable: %v", c.host, r.Method, r.URL.Path, err)
+	log.Printf("connection %s: %s %s: instance unreachable: %v", c.host, r.Method, logSafe(r.URL.Path), logSafe(err.Error()))
 	jsonError(w, http.StatusBadGateway, "failed", "the instance could not be reached")
 }

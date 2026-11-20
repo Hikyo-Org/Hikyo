@@ -20,6 +20,16 @@ static CFMutableDictionaryRef hkQuery(const char *account) {
 	CFDictionarySetValue(q, kSecAttrAccount, acct);
 	CFRelease(service);
 	CFRelease(acct);
+	// Only the user's default keychain: a keychain file another process put
+	// at the front of the search list must not answer for our item.
+	SecKeychainRef def = NULL;
+	if (SecKeychainCopyDefault(&def) == errSecSuccess && def != NULL) {
+		CFArrayRef list = CFArrayCreate(NULL, (const void **)&def, 1, &kCFTypeArrayCallBacks);
+		CFDictionarySetValue(q, kSecMatchSearchList, list);
+		CFDictionarySetValue(q, kSecUseKeychain, def);
+		CFRelease(list);
+		CFRelease(def);
+	}
 	return q;
 }
 

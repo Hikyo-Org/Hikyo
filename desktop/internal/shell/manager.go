@@ -234,12 +234,12 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if origin := r.Header.Get("Origin"); origin != "" && origin != PageScheme+"://"+host {
 		// Without this, connection A could spend connection B's session on a
 		// blind request.
-		log.Printf("refused cross-connection request %s -> %s %s", origin, host, r.URL.Path)
+		log.Printf("refused cross-connection request %s -> %s %s", origin, host, logSafe(r.URL.Path))
 		jsonError(w, http.StatusForbidden, codeRefused, "cross-connection request refused")
 		return
 	}
 	if m.windowHost(r.Header.Get("X-Wails-Window-Id")) != host {
-		log.Printf("refused request from another window to %s %s", host, r.URL.Path)
+		log.Printf("refused request from another window to %s %s", host, logSafe(r.URL.Path))
 		jsonError(w, http.StatusForbidden, codeRefused, "this window belongs to another connection")
 		return
 	}
