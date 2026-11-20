@@ -441,7 +441,9 @@ func TestDeclareHandsOffBoundToTheDeclaredKeyID(t *testing.T) {
 				{Name: "LOG_LEVEL", Classification: "config", KeyId: "key_ll", Set: true},
 			}})
 		case strings.HasSuffix(r.URL.Path, "/auth/cli-reauth/start"):
-			_ = json.NewDecoder(r.Body).Decode(&startBody)
+			if err := json.NewDecoder(r.Body).Decode(&startBody); err != nil {
+				t.Errorf("decode handoff start: %v", err)
+			}
 			callbackURI, _ = startBody["redirect_uri"].(string)
 			_, _ = w.Write([]byte(`{"state":"hik_1_hs_declare","expires_at":"2030-01-01T00:00:00Z"}`))
 		case strings.HasSuffix(r.URL.Path, "/auth/cli-reauth/redeem"):
