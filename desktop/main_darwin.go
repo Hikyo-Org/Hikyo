@@ -100,6 +100,8 @@ func run() error {
 		// The shell is the outermost handler; the fallback never answers.
 		Assets: application.AssetOptions{Handler: http.NotFoundHandler(), Middleware: probeMiddleware(manager.Middleware())},
 		Mac:    application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
+		// AppKit exits right after shutdown, so a download being saved finishes first.
+		OnShutdown: shell.FinishDownloads,
 	})
 	native.app = app
 
