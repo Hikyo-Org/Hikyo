@@ -193,9 +193,18 @@ every context ran, and it runs in the test process, not as a vet result).
 
 ## Amendment: step 3 (RawSQL)
 
-**Status.** Proposed, not accepted by the owner. Every bullet is an
-implementation note for the step 3 PR, and the `_test.go` bullet is a
-proposed deviation from decision 4 that needs an owner decision.
+**Status.** Proposed, not accepted by the owner, except the production-only
+scope below, which the owner accepted. Every other bullet is an implementation
+note for the step 3 PR.
+
+Owner decision (2026-11-20): RawSQL's production-ownership scope is accepted.
+RawSQL keeps excluding `_test.go` files and generated sqlc files. The exclusion
+keeps about 1,100 raw-SQL-shaped call sites in about 212 in-package test files
+out of scope (a grep estimate and an upper bound, not a typed count), as well as
+those files' references to restricted protocols and the SQL-outside-a-named-
+function check. The exclusion pre-dates the vet driver: the old harness skipped
+them too. This is a deviation from decision 4 (analyzers judge test files of the
+variant they are given) that the owner accepted for RawSQL only.
 
 - **Facts are self-contained object facts.** vet gives a package the facts of its
   direct imports and of methods only; package-level object facts and package
@@ -219,14 +228,16 @@ proposed deviation from decision 4 that needs an owner decision.
   `-rawsql.context` per context: the cache key, `BuildHelpers`,
   `BuildDependencies` and `build_contexts` depend on it. GOOS-specific protocol
   expansion follows the host through `runtime.GOOS`, as before.
-- **`_test.go` files stay excluded (proposed deviation from decision 4).**
-  RawSQL's "production ownership" rule has always excluded test files and
-  generated sqlc files, so the port keeps it, using the on-disk file name so a
-  `//line` directive cannot move a production file out of scope. Decision 4
-  says analyzers judge test files of the variant they are given. If the owner
-  wants RawSQL to judge in-package test files, that is a new rule with its own
-  pin policy for test fixtures, not a port; no violation is hidden by the
-  exclusion today (the old harness never judged them either).
+- **`_test.go` files stay excluded (owner-accepted, see above).** The port keeps
+  the "production ownership" rule, using the on-disk file name so a `//line`
+  directive cannot move a production file out of scope. Judging in-package test
+  files would be a new rule with its own pin policy for test fixtures, not a
+  port.
+- **Cache costs.** Every module package opens the declared inputs, so an edit to
+  `reviewed_pins.json` or a `.sql` query changes flags that apply to every
+  package and re-vets every package of the context, standard library and
+  dependencies included, in all four contexts. An edit to any exported
+  function's body changes its package's facts and re-vets its direct importers.
 - **Registration.** RawSQL is registered in `Analyzers()` but not in `Checks()`,
   because `RunOver` cannot supply facts. Its parity
   leg is inside `TestVetDriverParity` (`requireRawSQLParity` on the repository

@@ -57,6 +57,9 @@ func rawSQLAggregate(out *vetOutcome, root string) ([]string, error) {
 // aggregate together.
 func requireRawSQLParity(t *testing.T, ctx BuildContext, repo *vetOutcome, pkgs []*packages.Package) {
 	t.Helper()
+	if reviewedPinsError != nil {
+		t.Fatal(reviewedPinsError)
+	}
 	protocols, err := reviewedPins.rawProtocols()
 	if err != nil {
 		t.Fatal(err)
@@ -87,6 +90,9 @@ func TestRawSQLSummaryFindingsRefusals(t *testing.T) {
 	}{
 		{"malformed caller summary", "default", "malformed rawcaller summary", []Summary{{Kind: summaryRawCaller, Subject: "only-one-field"}}},
 		{"malformed unreached summary", "default", "malformed rawunreached summary", []Summary{{Kind: summaryRawUnreached, Subject: "a b c"}}},
+		{"multi-field owner summary", "default", "malformed rawowner summary", []Summary{{Kind: summaryRawOwner, Subject: "a b"}}},
+		{"multi-field helper summary", "default", "malformed rawhelper summary", []Summary{{Kind: summaryRawHelper, Subject: "a b"}}},
+		{"unknown kind", "default", `unknown rawsql summary kind "rawbogus"`, []Summary{{Kind: "rawbogus", Subject: "a"}}},
 		{"unknown context", "plan9", `unknown build context "plan9"`, nil},
 		{"no context", "", "did not pass -rawsql.context", nil},
 	}

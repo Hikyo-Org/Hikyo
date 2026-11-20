@@ -51,3 +51,14 @@ func Caller(ctx context.Context, db *sql.DB) {
 func Intruder(ctx context.Context, db *sql.DB) {
 	Restricted(ctx, db) // want "owner/owner.go:Intruder references protocol owner/owner.go:Restricted outside its reviewed caller body"
 }
+
+// ViaMethod reaches a method of a package it does not import (deep.Q.Lit)
+// through helper.NewQ.
+func ViaMethod(ctx context.Context, db *sql.DB) { // want `changed reviewed helper dependency deep/deep.go:Q.Lit \(hash `
+	_, _ = db.ExecContext(ctx, helper.NewQ().Lit("a"))
+}
+
+// ViaUnexported reaches deep.Quote through the unexported helper.quote2.
+func ViaUnexported(ctx context.Context, db *sql.DB) { // want `changed reviewed helper dependency helper/helper.go:quote2 \(hash `
+	_, _ = db.ExecContext(ctx, helper.Build2("a"))
+}

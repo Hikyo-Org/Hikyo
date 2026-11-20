@@ -440,10 +440,15 @@ func RawSQLSummaryFindings(src source, root, context string, summaries []Summary
 	for _, s := range summaries {
 		fields := strings.Fields(s.Subject)
 		switch s.Kind {
-		case summaryRawOwner:
-			owners[s.Subject] = true
-		case summaryRawHelper:
-			helpers[s.Subject] = true
+		case summaryRawOwner, summaryRawHelper:
+			if len(fields) != 1 {
+				return nil, fmt.Errorf("malformed %s summary %q", s.Kind, s.Subject)
+			}
+			if s.Kind == summaryRawOwner {
+				owners[s.Subject] = true
+			} else {
+				helpers[s.Subject] = true
+			}
 		case summaryRawCaller, summaryRawUnreached:
 			if len(fields) != 2 {
 				return nil, fmt.Errorf("malformed %s summary %q", s.Kind, s.Subject)
@@ -456,6 +461,8 @@ func RawSQLSummaryFindings(src source, root, context string, summaries []Summary
 			} else {
 				unreached = append(unreached, [2]string{fields[0], fields[1]})
 			}
+		default:
+			return nil, fmt.Errorf("unknown rawsql summary kind %q", s.Kind)
 		}
 	}
 	var findings []string
