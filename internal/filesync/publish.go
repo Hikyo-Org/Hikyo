@@ -1005,7 +1005,7 @@ func (d *Destination) readGenFile(name string, limit int64) (fs.FileInfo, []byte
 	return fi, content, err
 }
 
-// markerLimit bounds .complete and .previous, which hold one stamp or name.
+// markerLimit bounds .complete, which holds one stamp.
 const markerLimit = 4096
 
 // predecessorLimit bounds .previous, which holds one generation name and its
