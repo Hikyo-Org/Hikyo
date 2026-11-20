@@ -297,8 +297,9 @@ follow, the CLI prints the `--after` value that continues the list. It needs onl
 Each rotation also carries a summary of its runs, so a list or a show tells you at a
 glance without reading the run history: `last_run` (its id, phase, error code and last
 change) and two counts. `owed_drop_runs` is the number of runs that need your attention because they owe a
-provider role a drop Hikyo will not carry out on its own: every run in the phase
-`revoke_refused` or `quarantine`, whatever its error code (the same runs the per-run
+provider role a drop: every run in the phase `revoke_refused` (held on purpose;
+Hikyo does not drop the role) or `quarantine` (Hikyo may still retry the drop, but
+it needs a person to look), whatever its error code (the same runs the per-run
 `ATTENTION` lines and the `hikyo_rotation_runs_{quarantined,revoke_refused}` gauges
 count). A run still in flight (`published`, `overlap` or `revoking`) also owes a drop,
 but the executor carries it out itself, so it is not counted and a zero does not mean

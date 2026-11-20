@@ -297,8 +297,8 @@ func TestRotationAssertionReadErrorDoesNotBlockAnExpiredRole(t *testing.T) {
 			}
 			x.advance(7 * time.Hour)
 		}
-		if got := x.phase(run2); got == "revoke_refused" {
-			t.Fatalf("an expired role stayed revoke_refused behind a failed assertion read (role %s)", role1)
+		if got, code := x.phase(run2), x.lastRun(rotID, "last_error"); got != "done" || code != "expired" {
+			t.Fatalf("an expired role did not settle behind a failed assertion read: %s / %q (role %s)", got, code, role1)
 		}
 	})
 }
