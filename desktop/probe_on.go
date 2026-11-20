@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -28,12 +29,12 @@ import (
 // <host>.js run once in that host's window (the connection list is "app").
 func installProbe(w *application.WebviewWindow, host string) {
 	path := os.Getenv("HIKYO_DESKTOP_PROBE_JS")
-	ready := false
+	var ready atomic.Bool
 	w.OnWindowEvent(events.Mac.WebViewDidFinishNavigation, func(*application.WindowEvent) {
 		// ExecJS queues until the Wails runtime reports ready, which this shell never loads.
-		if !ready {
+		if !ready.Load() {
 			w.HandleMessage("wails:runtime:ready")
-			ready = true
+			ready.Store(true)
 		}
 		if path == "" {
 			return
@@ -57,7 +58,7 @@ func installProbe(w *application.WebviewWindow, host string) {
 		file := filepath.Join(dir, name+".js")
 		for range time.Tick(250 * time.Millisecond) {
 			script, err := os.ReadFile(file)
-			if err != nil || !ready {
+			if err != nil || !ready.Load() {
 				continue
 			}
 			_ = os.Remove(file)

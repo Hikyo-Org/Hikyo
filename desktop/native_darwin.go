@@ -259,6 +259,8 @@ func hikyoDownloadDestination(key C.uintptr_t, pageHost, suggested *C.char) *C.c
 func hikyoDownloadFinished(key C.uintptr_t) {
 	temp, final, ok := pendingDownloads.Take(uintptr(key))
 	if !ok {
+		// The entry expired or its window closed, and its file was removed.
+		failDownload("The download took too long or its window was closed, so it was not saved.")
 		return
 	}
 	if err := shell.Quarantine(temp); err != nil {
