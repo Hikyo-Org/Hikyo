@@ -1,7 +1,6 @@
 package importer
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -17,9 +16,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"filippo.io/age"
-	"filippo.io/age/armor"
 
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 )
@@ -431,35 +427,19 @@ func TestSOPSVaultDecryptsThroughThePinnedVault(t *testing.T) {
 	}
 }
 
-// fixtureDataKey unwraps the data key of sops-age.yaml with the test identity.
+// fixtureDataKey is the data key of sops-age.yaml, unwrapped once with
+// sops-age-identity.txt and kept as testdata: age is confined to internal/crypto.
 func fixtureDataKey(t *testing.T) []byte {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("testdata", "sops-age-identity.txt"))
+	raw, err := os.ReadFile(filepath.Join("testdata", "sops-age-datakey.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids, err := age.ParseIdentities(bytes.NewReader(raw))
-	if err != nil {
-		t.Fatal(err)
+	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(raw)))
+	if err != nil || len(key) != 32 {
+		t.Fatalf("sops-age-datakey.txt: %d-byte key, %v; want 32 bytes", len(key), err)
 	}
-	in := string(read(t, "sops-age.yaml").Data)
-	begin, stop := strings.Index(in, "-----BEGIN AGE ENCRYPTED FILE-----"), strings.Index(in, "-----END AGE ENCRYPTED FILE-----")
-	if begin < 0 || stop < begin {
-		t.Fatal("sops-age.yaml has no armored age stanza")
-	}
-	var block strings.Builder
-	for line := range strings.Lines(in[begin : stop+len("-----END AGE ENCRYPTED FILE-----")]) {
-		block.WriteString(strings.TrimSpace(line) + "\n")
-	}
-	r, err := age.Decrypt(armor.NewReader(strings.NewReader(block.String())), ids...)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var key bytes.Buffer
-	if _, err := key.ReadFrom(r); err != nil {
-		t.Fatal(err)
-	}
-	return key.Bytes()
+	return key
 }
 
 // ---------------------------------------------------------------------------
