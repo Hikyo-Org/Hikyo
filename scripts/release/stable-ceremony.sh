@@ -62,6 +62,10 @@ signed_pr() (
 		base=$(git merge-base origin/main "$branch")
 		git diff --name-only "$base" "$branch" >"$pr_state/changed"
 		for name do printf 'release/trust/%s\n' "$name"; done >"$pr_state/allowed"
+		# The coordinator's required ledger commit must not block a sync-trust retry.
+		case "$branch" in release/sync-trust-*)
+			printf '%s\n' docs/status/ledger.json docs/status/README.md README.md >>"$pr_state/allowed" ;;
+		esac
 		while IFS= read -r changed; do
 			grep -Fx "$changed" "$pr_state/allowed" >/dev/null || fail 'existing trust branch contains unrelated changes'
 		done <"$pr_state/changed"
@@ -208,6 +212,10 @@ case "${1:-help}" in
 		download_verify "$version"
 		signed_pr "release/sync-trust-$version" "chore(release): record published $version trust" "$download" \
 			metadata.json metadata.sigstore.json catalog.json catalog.sigstore.json
+		printf 'On that PR, update CAP-PUBLIC-RELEASE in docs/status/ledger.json to name v%s\n' "$version"
+		printf 'and cite its release URL, then run pnpm --dir docs/site install --frozen-lockfile\n'
+		printf 'and node scripts/ci/check-doc-status.mjs --write.\n'
+		printf 'Docs CI refuses the trust PR until the ledger names the release.\n'
 		printf 'Merge the trust PR after review and green CI before building another release.\n'
 		;;
 	homebrew)

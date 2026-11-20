@@ -241,6 +241,28 @@ async function validateObligationSources(root, entries) {
 	}
 }
 
+// The ceremony's sync-trust PR records each published stable release in
+// release/trust/metadata.json; this makes that PR fail until the ledger names it.
+async function validateStableRelease(root, entries) {
+	let metadata;
+	try {
+		metadata = z
+			.object({ highest_release: z.string().regex(/^\d+\.\d+\.\d+$/) })
+			.parse(JSON.parse(await readFile(resolve(root, 'release/trust/metadata.json'), 'utf8')));
+	} catch (error) {
+		fail(`cannot parse release/trust/metadata.json: ${error.message}`);
+	}
+	const tag = `v${metadata.highest_release}`;
+	const entry = entries.find((candidate) => candidate.id === 'CAP-PUBLIC-RELEASE');
+	if (entry === undefined) fail('CAP-PUBLIC-RELEASE must record the published stable release');
+	const url = `https://github.com/Hikyo-Org/Hikyo/releases/tag/${tag}`;
+	// Whole-version match: v1.1.0 must not satisfy v1.1.10 or v1.1.0-rc.1.
+	const named = new RegExp(`(?<![\\w.])${tag.replaceAll('.', '\\.')}(?![\\w-]|\\.\\d)`);
+	if (!entry.evidence.some((evidence) => evidence.url === url) || !named.test(entry.implemented)) {
+		fail(`CAP-PUBLIC-RELEASE must name stable ${tag} from release/trust/metadata.json and cite ${url}`);
+	}
+}
+
 async function validateImmutableDocumentCheckboxes(root) {
 	for (const directory of ['docs/adr', 'docs/spec']) {
 		const directoryPath = resolve(root, directory);
@@ -352,6 +374,7 @@ async function main() {
 	const entries = await loadLedger(root);
 	await validateObligationSources(root, entries);
 	await validateImmutableDocumentCheckboxes(root);
+	await validateStableRelease(root, entries);
 
 	const readmePath = resolve(root, 'README.md');
 	const statusPath = resolve(root, 'docs/status/README.md');

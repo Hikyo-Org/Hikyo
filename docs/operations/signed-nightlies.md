@@ -308,8 +308,9 @@ Sequences only increase and the verification floor never moves back, so each ste
 needs a higher sequence than the last published metadata and catalog.
 
 Warning: plan a stable release alongside any re-authorization. The latest stable
-release's assets embed the trust sequences current when it was built (v1.0.0
-carries metadata 2 and catalog 4). Once main moves past them, `install.sh` runs
+release's assets embed the trust sequences current when it was built (for
+example, v1.0.0 carries metadata 2 and catalog 4). Once main moves past them,
+`install.sh` runs
 `stable verify --latest` against that older embedded state and refuses every new
 stable install with `metadata: trust rollback refused` until the next stable
 release is published with newer trust. Historical verification keeps passing.

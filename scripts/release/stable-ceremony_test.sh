@@ -26,18 +26,24 @@ case "$*" in
   'status --porcelain') [ "$FIXTURE_MODE" != dirty ] || printf ' M user-file\n' ;;
   'fetch '*) ;;
   'config --get commit.gpgsign') printf 'true\n' ;;
-  'show-ref --verify --quiet refs/heads/'*) case "$FIXTURE_MODE" in existing*|unrelated|different-policy|diverged) exit 0 ;; *) exit 1 ;; esac ;;
-  'ls-remote --heads '*) case "$FIXTURE_MODE" in existing*|unrelated|different-policy|diverged) printf '2222222222222222222222222222222222222222 refs/heads/release/authorize-stable-workflow\n' ;; esac ;;
+  'show-ref --verify --quiet refs/heads/'*) case "$FIXTURE_MODE" in existing*|unrelated|different-policy|diverged|setup-ledger|sync-*) exit 0 ;; *) exit 1 ;; esac ;;
+  'ls-remote --heads '*) case "$FIXTURE_MODE" in existing*|unrelated|different-policy|diverged|setup-ledger|sync-*) printf '2222222222222222222222222222222222222222 refs/heads/release/authorize-stable-workflow\n' ;; esac ;;
   'rev-parse refs/remotes/'*) printf '2222222222222222222222222222222222222222\n' ;;
   'rev-parse release/'*) if [ "$FIXTURE_MODE" = diverged ]; then printf '3333333333333333333333333333333333333333\n'; else printf '2222222222222222222222222222222222222222\n'; fi ;;
   'rev-parse '*|'merge-base '*) printf '1111111111111111111111111111111111111111\n' ;;
   'diff --name-only '*)
-    printf 'release/trust/stable-policy.json\nrelease/trust/stable-policy.sigstore.json\nrelease/trust/stable-trusted-root.json\n'
-    [ "$FIXTURE_MODE" != unrelated ] || printf 'user-file\n' ;;
+    case "$FIXTURE_MODE" in
+      sync-*) printf 'release/trust/metadata.json\nrelease/trust/catalog.json\ndocs/status/ledger.json\ndocs/status/README.md\nREADME.md\n' ;;
+      *) printf 'release/trust/stable-policy.json\nrelease/trust/stable-policy.sigstore.json\nrelease/trust/stable-trusted-root.json\n' ;;
+    esac
+    case "$FIXTURE_MODE" in unrelated|sync-unrelated) printf 'user-file\n' ;; setup-ledger) printf 'docs/status/ledger.json\n' ;; esac ;;
   'worktree add --detach '*)
     directory=$4
     mkdir "$directory"
     cp -R "$FIXTURE_SOURCE/." "$directory/"
+    for name in metadata.json metadata.sigstore.json catalog.json catalog.sigstore.json; do
+      printf 'published\n' >"$directory/release/trust/$name"
+    done
     printf '{"schema":"test-policy"}\n' >"$directory/release/trust/stable-policy.json"
     [ "$FIXTURE_MODE" != different-policy ] || printf '{"schema":"other-policy"}\n' >"$directory/release/trust/stable-policy.json"
     printf 'existing recovery signature\n' >"$directory/release/trust/stable-policy.sigstore.json"
@@ -72,7 +78,10 @@ case "$*" in
   'release view '*) printf 'false\n' ;;
   'release download '*)
     for directory; do :; done
-    printf '{"source_commit":"1111111111111111111111111111111111111111"}\n' >"$directory/release-manifest.json" ;;
+    printf '{"source_commit":"1111111111111111111111111111111111111111"}\n' >"$directory/release-manifest.json"
+    for name in metadata.json metadata.sigstore.json catalog.json catalog.sigstore.json; do
+      printf 'published\n' >"$directory/$name"
+    done ;;
   *) printf 'unexpected GitHub mutation\n' >&2; exit 2 ;;
 esac
 SH
@@ -109,7 +118,7 @@ export FIXTURE_MODE=invalid-signature
 if printf 'authorize stable release workflow\n' | "$ceremony" setup >"$fixture/output" 2>&1; then exit 1; fi
 [ ! -e "$fixture/repo/release/trust/stable-policy.json" ] || exit 1
 if grep -E '^git (commit|push|tag)|^gh' "$FIXTURE_LOG" >/dev/null; then exit 1; fi
-for FIXTURE_MODE in unrelated different-policy diverged existing-push-fails existing; do
+for FIXTURE_MODE in unrelated setup-ledger different-policy diverged existing-push-fails existing; do
   export FIXTURE_MODE
   : >"$FIXTURE_LOG"
   if "$ceremony" setup >"$fixture/output" 2>&1; then
@@ -121,6 +130,21 @@ for FIXTURE_MODE in unrelated different-policy diverged existing-push-fails exis
     printf 'ceremony fixture: retry signed, overwrote, or duplicated work\n' >&2; exit 1
   fi
   [ ! -e "$fixture/repo/release/trust/stable-policy.json" ] || exit 1
+done
+grep -F 'https://example.test/existing-pr' "$fixture/output" >/dev/null
+# A sync-trust retry accepts the coordinator's ledger commit but nothing else.
+for FIXTURE_MODE in sync-unrelated sync-ledger; do
+  export FIXTURE_MODE
+  : >"$FIXTURE_LOG"
+  if "$ceremony" sync-trust 1.1.0 >"$fixture/output" 2>&1; then
+    [ "$FIXTURE_MODE" = sync-ledger ] || { cat "$fixture/output" >&2; exit 1; }
+  else
+    [ "$FIXTURE_MODE" != sync-ledger ] || { cat "$fixture/output" >&2; exit 1; }
+    grep -F 'existing trust branch contains unrelated changes' "$fixture/output" >/dev/null
+  fi
+  if grep -E '^git (commit|add)|^gh pr create|--force' "$FIXTURE_LOG" >/dev/null; then
+    printf 'ceremony fixture: sync-trust retry rewrote the trust PR\n' >&2; exit 1
+  fi
 done
 grep -F 'https://example.test/existing-pr' "$fixture/output" >/dev/null
 export FIXTURE_MODE=valid HIKYO_RELEASE_TRUST_STATE="$fixture/persistent-trust.json"
