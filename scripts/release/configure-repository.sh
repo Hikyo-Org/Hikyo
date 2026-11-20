@@ -111,6 +111,8 @@ fi
 
 upsert_ruleset "$repo_root/release/repository/release-tag-immutability.json"
 upsert_ruleset "$repo_root/release/repository/release-tag-creation.json"
+upsert_ruleset "$repo_root/release/repository/desktop-tag-immutability.json"
+upsert_ruleset "$repo_root/release/repository/desktop-tag-creation.json"
 upsert_ruleset "$repo_root/release/repository/nightly-tag-creation.json"
 upsert_ruleset "$repo_root/release/repository/nightly-promotion-branches.json"
 configure_main
@@ -142,6 +144,7 @@ printf '%s\n' "$rulesets" | jq -e '
 printf '%s\n' "$rulesets" | jq -e '
 	[.[] | select(.name == "main requires PR and release CI" and .enforcement == "active")] | length == 1
 ' >/dev/null
+"$repo_root/scripts/release/check-desktop-rulesets.sh" "$repository"
 immutability_id=$(printf '%s\n' "$rulesets" | jq -r '.[] | select(.name == "release tags are immutable") | .id')
 immutability=$($GH_BIN api "repos/$repository/rulesets/$immutability_id")
 printf '%s\n' "$immutability" | jq -e '
@@ -220,4 +223,4 @@ fi
 		"$repo_root/scripts/release/probe-tag-move.sh" "$repository" "$probe_tag" "$replacement"
 )
 
-printf 'repository policy: PR/CI main gate, immutable releases, protected stable/nightly tags, live move probe, SHA-pinned actions, CodeQL default setup active\n'
+printf 'repository policy: PR/CI main gate, immutable releases, protected stable/desktop/nightly tags, live move probe, SHA-pinned actions, CodeQL default setup active\n'
