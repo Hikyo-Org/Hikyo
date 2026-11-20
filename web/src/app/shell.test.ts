@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { installSessionFence, settleSessionEpoch } from '../api/sessionEpoch.ts';
 import {
   type ShellReauthRequest,
   ContinueInBrowserError,
@@ -32,12 +33,16 @@ const noContent = () => new Response(null, { status: 204 });
 const refused = (error: string, status = 409) =>
   new Response(JSON.stringify({ error, message: 'no' }), { status, headers: { 'Content-Type': 'application/json' } });
 
+let uninstall: () => void;
 beforeEach(() => {
   fetcher.mockReset();
   vi.stubGlobal('fetch', fetcher);
   appMode();
+  // A reauth proves the owner afterwards; the identity check here always finds it unchanged.
+  uninstall = installSessionFence(() => undefined, () => undefined, async () => { settleSessionEpoch(); });
 });
 afterEach(() => {
+  uninstall();
   vi.unstubAllGlobals();
   dismissContinueInBrowser();
 });

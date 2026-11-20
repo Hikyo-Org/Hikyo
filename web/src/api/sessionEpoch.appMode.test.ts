@@ -29,21 +29,36 @@ describe('reconcileAfterShellHop', () => {
   it('runs the identity check and keeps the epoch when the owner is unchanged', async () => {
     identityCheck.mockImplementation(async () => { settleSessionEpoch(); });
     const captured = captureSessionEpoch();
-    await reconcileAfterShellHop();
+    await reconcileAfterShellHop(captured);
     expect(identityCheck).toHaveBeenCalledOnce();
     expect(() => assertSessionEpoch(captured)).not.toThrow();
+  });
+
+  it('fails closed with no identity check installed', async () => {
+    uninstall();
+    await expect(reconcileAfterShellHop(0)).rejects.toBeInstanceOf(SessionChangedError);
+    uninstall = installSessionFence(() => undefined, () => undefined, identityCheck);
+  });
+
+  it('fails closed when another check settled a different owner during the hop', async () => {
+    identityCheck.mockImplementation(async () => { settleSessionEpoch(); });
+    const captured = captureSessionEpoch();
+    blockSessionEpoch();
+    settleSessionEpoch();
+    await expect(reconcileAfterShellHop(captured)).rejects.toBeInstanceOf(SessionChangedError);
+    expect(identityCheck).not.toHaveBeenCalled();
   });
 
   it('fails closed when the owner changed', async () => {
     identityCheck.mockImplementation(async () => { blockSessionEpoch(); settleSessionEpoch(); });
     const captured = captureSessionEpoch();
-    await expect(reconcileAfterShellHop()).rejects.toBeInstanceOf(SessionChangedError);
+    await expect(reconcileAfterShellHop(captured)).rejects.toBeInstanceOf(SessionChangedError);
     expect(() => assertSessionEpoch(captured)).toThrow(SessionChangedError);
   });
 
   it('fails closed when the identity check itself fails', async () => {
     identityCheck.mockImplementation(async () => { blockSessionEpoch(); throw new Error('whoami down'); });
-    await expect(reconcileAfterShellHop()).rejects.toThrow('whoami down');
+    await expect(reconcileAfterShellHop(captureSessionEpoch())).rejects.toThrow('whoami down');
     expect(() => captureSessionEpoch()).toThrow(SessionChangedError);
   });
 });
@@ -60,6 +75,16 @@ describe('shellReauth', () => {
     fetcher.mockResolvedValue(new Response(JSON.stringify({ error: 'cancelled', message: 'x' }), { status: 409 }));
     await expect(shellReauth(request)).rejects.toMatchObject({ code: 'cancelled' });
     expect(identityCheck).toHaveBeenCalledOnce();
+  });
+
+  it('rejects the hop when another check settled a different owner while it waited', async () => {
+    identityCheck.mockImplementation(async () => { settleSessionEpoch(); });
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockImplementation(async () => {
+      blockSessionEpoch();
+      settleSessionEpoch();
+      return new Response(null, { status: 204 });
+    }));
+    await expect(shellReauth(request)).rejects.toBeInstanceOf(SessionChangedError);
   });
 
   it('rejects the hop when the session changed behind it', async () => {

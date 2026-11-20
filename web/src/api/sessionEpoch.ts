@@ -150,14 +150,16 @@ export async function reconcileSessionResponse(
 /**
  * App mode has no companion cookie to watch: the shell holds the session, so the
  * cookie fence above stays inert. The shell can still change the session during
- * a hop (a reauth redeems for the app's session while the page waits), so after
- * every hop the page proves with whoami that the owner is unchanged before it
+ * a hop (a reauth redeems for the app's session while the page waits), so the
+ * epoch is captured before the hop and, after it, the page proves with whoami that the owner is unchanged before it
  * uses the result. A changed owner or a failed check blocks the epoch, and the
  * caller's `assertSessionEpoch` then fails closed like the browser fence does.
  * Anything the shell changes outside a hop is caught by the focus revalidation.
  */
-export async function reconcileAfterShellHop(): Promise<void> {
-  await reconcileSessionResponse(epoch, undefined, true);
+export async function reconcileAfterShellHop(captured: number): Promise<void> {
+  // No identity check installed means no proof is possible: fail closed.
+  if (onRotation === undefined) throw new SessionChangedError();
+  await reconcileSessionResponse(captured, undefined, true);
 }
 
 export function isPeerSessionMessage(event: MessageEvent): boolean {

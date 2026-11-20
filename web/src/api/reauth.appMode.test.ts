@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { dismissContinueInBrowser } from '../app/shell.ts';
 import { reauthenticateSelfConfig, type SelfConfigIntent } from './selfConfig.ts';
-import { settleSessionEpoch } from './sessionEpoch.ts';
+import { installSessionFence, settleSessionEpoch } from './sessionEpoch.ts';
 import { runAdapterPasskeyCeremony } from './values.ts';
 
 // The shell is real here and only `fetch` is stubbed, so these pin the exact
@@ -14,13 +14,15 @@ function sent(): { url: string; body: unknown } {
   return { url, body: typeof init.body === 'string' ? JSON.parse(init.body) : undefined };
 }
 
+let uninstall: () => void;
 beforeEach(() => {
+  uninstall = installSessionFence(() => undefined, () => undefined, async () => { settleSessionEpoch(); });
   fetcher.mockReset().mockResolvedValue(new Response(null, { status: 204 }));
   vi.stubGlobal('fetch', fetcher);
   vi.stubGlobal('location', { protocol: 'wails:', origin: 'wails://x' });
   settleSessionEpoch();
 });
-afterEach(() => { vi.unstubAllGlobals(); dismissContinueInBrowser(); settleSessionEpoch(); });
+afterEach(() => { uninstall(); vi.unstubAllGlobals(); dismissContinueInBrowser(); settleSessionEpoch(); });
 
 describe('adapter reauth in the app', () => {
   it('sends one hop over the whole environment set, with no key_ids', async () => {

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { reconcileAfterShellHop } from '../api/sessionEpoch.ts';
+import { captureSessionEpoch, reconcileAfterShellHop } from '../api/sessionEpoch.ts';
 
 /**
  * The desktop shell's window, seen from the SPA (desktop-app ADR D8 and D9;
@@ -147,7 +147,7 @@ const zReauthRequest = z.strictObject({
   // Key-bound purposes decide over one environment and an exact, non-empty key unit.
   const keyBound = !selfConfig && request.purpose !== 'adapter';
   if (keyBound && request.environment_ids.length !== 1) context.addIssue({ code: 'custom', message: 'a key-bound purpose names exactly one environment' });
-  if (keyBound !== (keys > 0)) context.addIssue({ code: 'custom', message: 'key_ids belong to the key-bound purposes and must be non-empty there' });
+  if (keyBound !== (keys > 0) || (!keyBound && request.key_ids !== undefined)) context.addIssue({ code: 'custom', message: 'key_ids belong to the key-bound purposes and must be non-empty there' });
 });
 export type ShellReauthRequest = z.input<typeof zReauthRequest>;
 
@@ -160,9 +160,11 @@ export async function shellReauth(request: ShellReauthRequest): Promise<void> {
     throw offerContinueInBrowser('This decision covers more environments than the desktop app can hand to your browser.');
   }
   try {
-    await post('reauth', zReauthRequest.parse(request));
+    const body = zReauthRequest.parse(request);
+    const epoch = captureSessionEpoch();
+    await post('reauth', body);
     // The shell may have changed the session behind the page: prove the owner is the same.
-    await reconcileAfterShellHop();
+    await reconcileAfterShellHop(epoch);
   } catch (error) {
     if (error instanceof ShellError && error.code === 'refused') throw offerContinueInBrowser('The desktop app will not run this confirmation. Continue in your browser instead.');
     throw error;
