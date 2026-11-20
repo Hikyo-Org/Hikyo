@@ -18,7 +18,7 @@ Work: PR 3 of `docs/adr/lint-analysis-driver.md` (branch `dunky13/lint-vettool-r
 - Parity: `TestVetDriverParity` compares old `CheckRawSQL` with the driver (per-package findings plus the aggregate) on the repository and on the fixture, under every context. The repository leg is vacuous when the repository is clean; the fixture leg is not (the guard fails on an empty old result).
 - Stale digest: `TestVetDriverEveryInputAnalyzerRefusesStaleDigest` now covers `rawsql` (every rawsql finding is an `inputs refused:` refusal).
 - Summary kind validation: `TestDecodeVetOutput` cases; aggregate refusals: `TestRawSQLSummaryFindingsRefusals`.
-- Measurements (this machine, queued): `TestVetDriverRepo` cold (new tool binary, vet results not cached) 307 s wall, 609 MB max RSS of the test process; warm 37.5 s. `TestVetDriverParity` plus the stale-digest, bad-input and decode tests: 308 s wall, 4.57 GB max RSS of the test process (the old loader holds all four contexts). No baseline comparison was run for PR 2 and no reduction is claimed; PRs 1 to 3 run both harnesses, so these numbers are interim.
+- Measurements (this machine, queued): `TestVetDriverRepo` cold (new tool binary, vet results not cached) 307 s wall, 609 MB max RSS of the test process; warm 37.5 s. `TestVetDriverParity` plus the stale-digest, bad-input and decode tests: 308 s wall, 4.57 GB max RSS of the test process (the old loader holds all four contexts). Full `go test -count=1 -timeout 40m -p 2 ./internal/lint/` (queued, passing): 421 s wall, 4.67 GB max RSS of the test process. No baseline comparison was run for PR 2 and no reduction is claimed; PRs 1 to 3 run both harnesses, so these numbers are interim.
 
 ## Newly visible violations
 
