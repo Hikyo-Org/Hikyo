@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 	"testing"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	storetx "github.com/Hikyo-Org/hikyo/internal/store/tx"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 func generatedAdapterRuntime(db *store.DB) *store.AdapterRuntime {
@@ -80,7 +80,7 @@ func TestAdapterRuntimeGeneratedActivationScopeAndEnvironmentBridge(t *testing.T
 			if err := runtime.Activate(t.Context(), forged, connection, now.Add(2*time.Second)); !errors.Is(err, adapter.ErrSuperseded) {
 				t.Fatalf("%s forged activation: %v", name, err)
 			}
-			if after := snapshot(); !reflect.DeepEqual(before, after) {
+			if after := snapshot(); !reflectx.Equal(before, after) {
 				t.Fatalf("%s refusal wrote state/audit: before=%v after=%v", name, before, after)
 			}
 		}
@@ -89,7 +89,7 @@ func TestAdapterRuntimeGeneratedActivationScopeAndEnvironmentBridge(t *testing.T
 		if err := execRawErr(t, db, "UPDATE adapter_route_move_targets SET environment_id='env_gitlab_second' WHERE move_id='arm_runtime_scope'"); err == nil {
 			t.Fatal("environment identity bridge accepted a different target environment")
 		}
-		if after := snapshot(); !reflect.DeepEqual(before, after) {
+		if after := snapshot(); !reflectx.Equal(before, after) {
 			t.Fatalf("environment refusal wrote state/audit: %v -> %v", before, after)
 		}
 		if err := runtime.Activate(t.Context(), job, connection, now.Add(2*time.Second)); err != nil {
@@ -154,7 +154,7 @@ func TestAdapterRuntimeGeneratedJournalScopeAndLeaseRefusal(t *testing.T) {
 			if err := runtime.Succeed(t.Context(), forged, 0, nil, now.Add(2*time.Second)); !errors.Is(err, adapter.ErrSuperseded) {
 				t.Fatalf("%s finish: %v", name, err)
 			}
-			if after := snapshot(); !reflect.DeepEqual(before, after) {
+			if after := snapshot(); !reflectx.Equal(before, after) {
 				t.Fatalf("%s refusal wrote: %v -> %v", name, before, after)
 			}
 		}

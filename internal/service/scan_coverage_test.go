@@ -1,10 +1,10 @@
 package service
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 // SS3 field-coverage matrix (#74, secret-scanning ADR §2). The Surface-2 scan is
@@ -46,8 +46,6 @@ var excludedContentFields = map[string]string{
 	"KeyGroup.ID":    "server-generated group identifier, not composed content",
 }
 
-const coverageSentinel = "AKIAIOSFODNN7EXAMPLE_sentinel"
-
 func leafSetContains(leaves []scanLeaf, sentinel string) bool {
 	for _, l := range leaves {
 		if string(l.Content) == sentinel {
@@ -57,127 +55,13 @@ func leafSetContains(leaves []scanLeaf, sentinel string) bool {
 	return false
 }
 
-// coverageLeaf is one author-controlled content leaf discovered by the walk: its
-// dotted path from the root type (for diagnostics and the anti-vacuity guard)
-// and a setter that plants the sentinel at exactly that leaf in a fresh,
-// addressable root value — allocating pointers and one-element slices along the
-// way so the containing entry actually exists for the extractor to see.
-type coverageLeaf struct {
-	path string
-	set  func(root reflect.Value)
-}
-
-// navFn returns the addressable slot for the current position, given the
-// addressable root. Composing navFns is how the walk threads pointer allocation
-// and slice materialisation down to a deep leaf.
-type navFn func(root reflect.Value) reflect.Value
-
-func isContentLeafType(typ reflect.Type) bool {
-	if typ.Kind() == reflect.String {
-		return true
-	}
-	return typ.Kind() == reflect.Slice && (typ.Elem().Kind() == reflect.String || typ.Elem().Kind() == reflect.Uint8)
-}
-
-// collectContentLeaves recursively enumerates the author-controlled content
-// leaves of typ. It FAILS CLOSED: any reflect kind it does not recognise is a
-// t.Errorf, not a silent skip — "prove by construction" means an unhandled shape
-// cannot pass as a no-op. Numeric and boolean scalars are the only silent skips,
-// because a credential is a string and a number/bool field cannot carry one.
-func collectContentLeaves(t *testing.T, typ reflect.Type, path string, nav navFn) []coverageLeaf {
-	t.Helper()
-	switch typ.Kind() {
-	case reflect.String:
-		return []coverageLeaf{{path, func(root reflect.Value) {
-			nav(root).SetString(coverageSentinel)
-		}}}
-
-	case reflect.Pointer:
-		return collectContentLeaves(t, typ.Elem(), path, func(root reflect.Value) reflect.Value {
-			slot := nav(root)
-			if slot.IsNil() {
-				slot.Set(reflect.New(typ.Elem()))
-			}
-			return slot.Elem()
-		})
-
-	case reflect.Slice:
-		elem := typ.Elem()
-		switch {
-		case elem.Kind() == reflect.Uint8:
-			// []byte / json.RawMessage is a NAMED TERMINAL-BLOB boundary: the
-			// scanner runs one rule pass over the whole blob (declarationLeaves
-			// emits it verbatim) and never parses its interior, so the walk stops
-			// here rather than descending into the JSON structure.
-			return []coverageLeaf{{path, func(root reflect.Value) {
-				nav(root).SetBytes([]byte(coverageSentinel))
-			}}}
-		case elem.Kind() == reflect.String:
-			return []coverageLeaf{{path, func(root reflect.Value) {
-				slot := nav(root)
-				slot.Set(reflect.MakeSlice(typ, 1, 1))
-				slot.Index(0).SetString(coverageSentinel)
-			}}}
-		case elem.Kind() == reflect.Struct || (elem.Kind() == reflect.Pointer && elem.Elem().Kind() == reflect.Struct):
-			// A slice of structs (e.g. any_of []Rule, bundle Keys []Key): recurse
-			// into element 0, materialising a one-element slice so it exists.
-			return collectContentLeaves(t, elem, path, func(root reflect.Value) reflect.Value {
-				slot := nav(root)
-				if slot.Len() == 0 {
-					slot.Set(reflect.MakeSlice(typ, 1, 1))
-				}
-				return slot.Index(0)
-			})
-		default:
-			t.Errorf("coverage walk: unhandled slice element kind %s at %s", elem.Kind(), path)
-			return nil
-		}
-
-	case reflect.Struct:
-		var out []coverageLeaf
-		for i := 0; i < typ.NumField(); i++ {
-			f := typ.Field(i)
-			if reason, excluded := excludedContentFields[typ.Name()+"."+f.Name]; excluded {
-				if !isContentLeafType(f.Type) {
-					t.Errorf("coverage walk: exclusion %s.%s is an aggregate, not a leaf (%s): %s", typ.Name(), f.Name, f.Type, reason)
-				} else {
-					continue // named terminal-leaf exclusion, justified above
-				}
-			}
-			idx := i
-			childNav := func(root reflect.Value) reflect.Value { return nav(root).Field(idx) }
-			out = append(out, collectContentLeaves(t, f.Type, path+"."+f.Name, childNav)...)
-		}
-		return out
-
-	case reflect.Bool,
-		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return nil // scalar constraint field: structurally cannot carry a credential string
-
-	default:
-		t.Errorf("coverage walk: unhandled kind %s at %s", typ.Kind(), path)
-		return nil
-	}
-}
-
-// rootLeaves walks a root type and returns its content leaves.
-func rootLeaves(t *testing.T, root any) []coverageLeaf {
-	t.Helper()
-	typ := reflect.TypeOf(root)
-	return collectContentLeaves(t, typ, typ.Name(), func(r reflect.Value) reflect.Value { return r })
-}
-
 // assertEachLeafScanned plants the sentinel at each leaf in a fresh root and
 // asserts the extractor surfaces it.
-func assertEachLeafScanned(t *testing.T, rootType any, leaves []coverageLeaf, extract func(root reflect.Value) []scanLeaf) {
+func assertEachLeafScanned[T any](t *testing.T, leaves []reflectx.Leaf, extract func(root T) []scanLeaf) {
 	t.Helper()
-	rt := reflect.TypeOf(rootType)
 	for _, leaf := range leaves {
-		root := reflect.New(rt).Elem()
-		leaf.set(root)
-		if !leafSetContains(extract(root), coverageSentinel) {
-			t.Errorf("author-controlled leaf %s is not scan-covered and is not on the exclusion list", leaf.path)
+		if !leafSetContains(extract(reflectx.Plant[T](leaf)), reflectx.Sentinel) {
+			t.Errorf("author-controlled leaf %s is not scan-covered and is not on the exclusion list", leaf.Path)
 		}
 	}
 }
@@ -185,14 +69,10 @@ func assertEachLeafScanned(t *testing.T, rootType any, leaves []coverageLeaf, ex
 func TestSurface2FieldCoverageMatrix(t *testing.T) {
 	// KeySpec: every content leaf, recursively (including the whole
 	// Declaration → Rule / any_of tree), one sentinel at a time.
-	assertEachLeafScanned(t, KeySpec{}, rootLeaves(t, KeySpec{}), func(root reflect.Value) []scanLeaf {
-		return keySpecLeaves(root.Interface().(KeySpec))
-	})
+	assertEachLeafScanned(t, reflectx.ContentLeaves(t, KeySpec{}, excludedContentFields), keySpecLeaves)
 
 	// KeyMetadataUpdate: the PATCH members (pointer content leaves).
-	assertEachLeafScanned(t, KeyMetadataUpdate{}, rootLeaves(t, KeyMetadataUpdate{}), func(root reflect.Value) []scanLeaf {
-		return keyMetadataLeaves(root.Interface().(KeyMetadataUpdate))
-	})
+	assertEachLeafScanned(t, reflectx.ContentLeaves(t, KeyMetadataUpdate{}, excludedContentFields), keyMetadataLeaves)
 
 	// The hierarchy name inputs are single-string ingresses handled directly by
 	// the Folders/Environments/KeyGroups services (not a struct field), so assert
@@ -214,9 +94,7 @@ func TestSurface2FieldCoverageMatrix(t *testing.T) {
 // that is neither covered nor excluded fails here, so it cannot ship unscanned
 // through the Git flow.
 func TestBundleLeafCoverageMatrix(t *testing.T) {
-	assertEachLeafScanned(t, definitions.Bundle{}, rootLeaves(t, definitions.Bundle{}), func(root reflect.Value) []scanLeaf {
-		return bundleLeaves(root.Interface().(definitions.Bundle))
-	})
+	assertEachLeafScanned(t, reflectx.ContentLeaves(t, definitions.Bundle{}, excludedContentFields), bundleLeaves)
 }
 
 // TestCoverageWalkReachesDeepLeaves is the anti-vacuity guard: it pins that the
@@ -229,11 +107,11 @@ func TestBundleLeafCoverageMatrix(t *testing.T) {
 // and terminal-blob (JSON Schema) shapes all work.
 func TestCoverageWalkReachesDeepLeaves(t *testing.T) {
 	paths := map[string]bool{}
-	for _, l := range rootLeaves(t, KeySpec{}) {
-		paths[l.path] = true
+	for _, l := range reflectx.ContentLeaves(t, KeySpec{}, excludedContentFields) {
+		paths[l.Path] = true
 	}
-	for _, l := range rootLeaves(t, definitions.Bundle{}) {
-		paths[l.path] = true
+	for _, l := range reflectx.ContentLeaves(t, definitions.Bundle{}, excludedContentFields) {
+		paths[l.Path] = true
 	}
 	for _, want := range []string{
 		"KeySpec.Declaration.Rule.Pattern",        // pointer → struct → string

@@ -5,9 +5,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -69,7 +69,7 @@ func TestRestoreSQLiteDirectoryDurabilityPreservesCommittedMutations(t *testing.
 				if !errors.Is(err, ErrRestoreDurabilityUnconfirmed) || !errors.Is(err, injected) || !strings.Contains(err.Error(), target) {
 					t.Fatalf("error = %v, want named retained target and durability failure", err)
 				}
-				if !reflect.DeepEqual(manifest, Manifest{}) {
+				if !reflectx.Equal(manifest, Manifest{}) {
 					t.Fatalf("failed restore returned a manifest: %+v", manifest)
 				}
 				if len(synced) != test.failAt+1 {

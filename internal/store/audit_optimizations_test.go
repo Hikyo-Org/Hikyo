@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 func TestAuditActorLookupFailuresAndLifetime(t *testing.T) {
@@ -59,7 +59,7 @@ func TestAuditMatcherSnapshot(t *testing.T) {
 	f := AuditFilter{Actor: "actor", Type: "value.*", ObjectType: "k*y", ObjectID: "id**", Outcomes: []string{"success"}, CorrelationID: "cor", Limit: 20}
 	before := f.Normalized()
 	matcher := f.Compile()
-	if !reflect.DeepEqual(before, f.Normalized()) {
+	if !reflectx.Equal(before, f.Normalized()) {
 		t.Fatal("compile changed normalized filter")
 	}
 	e := AuditEvent{Event: audit.Event{Type: "value.set", Actor: audit.Actor{ID: "actor"}, Object: audit.Object{Type: "key", ID: "id1"}, Outcome: audit.OutcomeSuccess, CorrelationID: "cor"}}

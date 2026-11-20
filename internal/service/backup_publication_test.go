@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -14,6 +13,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 func TestExportDirectorySyncFailurePreservesPublishedArtifact(t *testing.T) {
@@ -57,7 +57,7 @@ func exportDirectorySyncFailure(t *testing.T, generate func() (string, string, e
 			if !errors.Is(err, ErrBackupDurabilityUnconfirmed) || !errors.Is(err, injected) || !strings.Contains(err.Error(), published) {
 				t.Fatalf("error = %v, want named published artifact and durability failure", err)
 			}
-			if !reflect.DeepEqual(result, ExportResult{}) {
+			if !reflectx.Equal(result, ExportResult{}) {
 				t.Fatalf("failed publication returned a successful result: %+v", result)
 			}
 			if calls != failAt+1 {
@@ -128,7 +128,7 @@ func TestExportSyncsDirectoryAncestryWithoutOverwriting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(synced, firstSynced) {
+	if !reflectx.Equal(synced, firstSynced) {
 		t.Fatalf("existing directory ancestry = %v, want %v", synced, firstSynced)
 	}
 	if first.Path == second.Path || !strings.HasSuffix(second.Path, "-2.age") {

@@ -24,7 +24,7 @@ func TestCopySourceKeyResolverQueriesCatalogueOnce(t *testing.T) {
 		},
 	}
 
-	resolved, err := resolver.resolve(t.Context(), nil, []string{"TOKEN", "REGION"})
+	resolved, err := resolver.resolve(t.Context(), stubProof, []string{"TOKEN", "REGION"})
 	if err != nil {
 		t.Fatal(err)
 	}

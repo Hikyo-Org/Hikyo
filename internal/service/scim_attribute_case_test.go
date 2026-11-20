@@ -3,12 +3,12 @@ package service
 import (
 	"errors"
 	"fmt"
-	"reflect"
 	"runtime"
 	"testing"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 func TestSCIMAttributePatchMatchesStoredCase(t *testing.T) {
@@ -20,10 +20,10 @@ func TestSCIMAttributePatchMatchesStoredCase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(got.Attributes, map[string]any{"title": "Director"}) {
+	if !reflectx.Equal(got.Attributes, map[string]any{"title": "Director"}) {
 		t.Fatalf("case-variant patch left stale or duplicate attributes: %#v", got.Attributes)
 	}
-	if !reflect.DeepEqual(stored.Attributes, map[string]any{"title": "Engineer", "displayName": "Before"}) {
+	if !reflectx.Equal(stored.Attributes, map[string]any{"title": "Engineer", "displayName": "Before"}) {
 		t.Fatal("patch mutated stored attributes")
 	}
 }
@@ -50,7 +50,7 @@ func TestSCIMPreserveSubjectSourceKeepsOneCaseVariantLeaf(t *testing.T) {
 	if err := checkSCIMAttributeNames(got, 0); err != nil {
 		t.Fatalf("preserved subject created duplicate leaves: %v", err)
 	}
-	if want := map[string]any{"URN:EXAMPLE:USER": map[string]any{"employeeNumber": "subject", "department": "Ops"}}; !reflect.DeepEqual(got, want) {
+	if want := map[string]any{"URN:EXAMPLE:USER": map[string]any{"employeeNumber": "subject", "department": "Ops"}}; !reflectx.Equal(got, want) {
 		t.Fatalf("preserved attributes = %#v, want %#v", got, want)
 	}
 	if len(desired["URN:EXAMPLE:USER"].(map[string]any)) != 2 {

@@ -9,10 +9,10 @@ package isolation
 import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -27,6 +27,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/multicall"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 var facts = authz.RegistryFacts{}
@@ -152,24 +153,8 @@ func TestInvariant02ProbeFixtureAxes(t *testing.T) {
 // registered to operation(s), every operation to a non-empty formula, and
 // the registry names no store method that does not exist.
 func TestInvariant06OperationRegistryCompleteness(t *testing.T) {
-	expected := map[string]bool{}
-	collect := func(bundle reflect.Type) {
-		for i := range bundle.NumMethod() {
-			acc := bundle.Method(i)
-			if acc.Type.NumIn() != 0 || acc.Type.NumOut() != 1 {
-				continue
-			}
-			agg := acc.Type.Out(0)
-			if agg.Kind() != reflect.Interface {
-				continue
-			}
-			for j := range agg.NumMethod() {
-				expected[strings.ToLower(acc.Name)+"."+agg.Method(j).Name] = true
-			}
-		}
-	}
-	collect(reflect.TypeOf((*store.Repos)(nil)).Elem())
-	collect(reflect.TypeOf((*store.ReadRepos)(nil)).Elem())
+	expected := reflectx.AggregateMethods[store.Repos]()
+	maps.Copy(expected, reflectx.AggregateMethods[store.ReadRepos]())
 
 	registered := facts.StoreOps()
 	// A store method is reachable either through an ordinary operation

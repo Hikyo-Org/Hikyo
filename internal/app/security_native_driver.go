@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"time"
 
@@ -271,7 +270,7 @@ func (d *nativeSecurityDriver) observe(ctx context.Context) (nativeSecurityObser
 	}
 	digest, err := claim.Migrations.Digest()
 	if err != nil || actual.Source != state.Applied || actual.SchemaDigest != claim.SchemaSHA256 || actual.MigrationDigest != digest ||
-		actual.InstanceID != state.InstanceID || actual.RestoreEpoch != state.RestoreEpoch || actual.Ledger == nil || !reflect.DeepEqual(*actual.Ledger, state) {
+		actual.InstanceID != state.InstanceID || actual.RestoreEpoch != state.RestoreEpoch || actual.Ledger == nil || !actual.Ledger.Equal(state) {
 		return result, errors.New("actual native source schema, migration inventory or recovery incarnation differs from verified release state")
 	}
 	if observed.Ready {
@@ -280,7 +279,7 @@ func (d *nativeSecurityDriver) observe(ctx context.Context) (nativeSecurityObser
 		}
 	}
 	current, err := installation.Inspection.Control(ctx)
-	if err != nil || !reflect.DeepEqual(current, state) {
+	if err != nil || !current.Equal(state) {
 		return result, errors.Join(err, errors.New("native source changed during identity and readiness observation"))
 	}
 	return nativeSecurityObservation{Observation: observed, Installation: installation, State: state, BinarySHA256: source.Target.BinarySHA256}, nil

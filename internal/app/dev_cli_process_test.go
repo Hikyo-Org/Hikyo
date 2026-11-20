@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 	"github.com/Hikyo-Org/hikyo/internal/upgradegate"
 )
 
@@ -62,7 +62,7 @@ func TestActualDefaultDevCLIStartsAndRestarts(t *testing.T) {
 				t.Fatal("host command implicitly adopted development datastore")
 			}
 			afterRefusal, err := upgrade.InspectControl(t.Context(), upgrade.Config{Engine: releaseidentity.SQLite, Path: filepath.Join(directory, "hikyo-dev.db")})
-			if err != nil || !reflect.DeepEqual(state, afterRefusal) {
+			if err != nil || !reflectx.Equal(state, afterRefusal) {
 				stop()
 				t.Fatal("omitted dev flag changed datastore authority", err)
 			}

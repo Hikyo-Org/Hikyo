@@ -4,11 +4,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 func TestPlanPruneKeepsNewestAndDeletesOldestFirst(t *testing.T) {
@@ -33,7 +33,7 @@ func TestPlanPruneKeepsNewestAndDeletesOldestFirst(t *testing.T) {
 		"hikyo-sqlite-" + day(41) + "-2.age",
 		"hikyo-sqlite-" + day(40) + ".age",
 	}
-	if !reflect.DeepEqual(got, want) {
+	if !reflectx.Equal(got, want) {
 		t.Fatalf("delete = %v, want %v", got, want)
 	}
 	if kept != 4 {
@@ -91,7 +91,7 @@ func TestPlanPruneOrdersByNameNotListing(t *testing.T) {
 	}
 	got, _ := planPrune(names, store.EngineSQLite, now, PrunePolicy{RetainCount: 1, RetainDays: 180}, "")
 	want := []string{"hikyo-sqlite-" + stamp(200) + ".age", "hikyo-sqlite-" + stamp(190) + ".age"}
-	if !reflect.DeepEqual(got, want) {
+	if !reflectx.Equal(got, want) {
 		t.Fatalf("delete = %v, want %v", got, want)
 	}
 }

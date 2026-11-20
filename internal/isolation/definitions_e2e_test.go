@@ -4,7 +4,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 func TestDefinitions(t *testing.T) {
@@ -114,7 +114,7 @@ func definitionsRoundTrip(t *testing.T, db *store.DB) {
 		t.Fatalf("apply result = %+v", result)
 	}
 	afterApply := captureDefinitionsState(t, db, f.project)
-	if !reflect.DeepEqual(afterApply, beforeApply) {
+	if !reflectx.Equal(afterApply, beforeApply) {
 		t.Fatalf("no-op apply changed state\nbefore=%+v\nafter=%+v", beforeApply, afterApply)
 	}
 	if got := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE project_id = '"+string(f.project)+"' AND type = 'definitions.applied'"); got != 0 {
@@ -300,7 +300,7 @@ func definitionsGitMode(t *testing.T, db *store.DB) {
 		t.Run(check.name, func(t *testing.T) {
 			err := check.call()
 			assertSafeDetail(t, err, "Definitions for this project are managed in Git: changes arrive through `definitions plan` / `definitions apply`.")
-			if got := captureDefinitionsState(t, db, f.project); !reflect.DeepEqual(got, baseline) {
+			if got := captureDefinitionsState(t, db, f.project); !reflectx.Equal(got, baseline) {
 				t.Fatalf("guarded write changed state\nbefore=%+v\nafter=%+v", baseline, got)
 			}
 		})
@@ -768,7 +768,7 @@ func assertRefusalUnchanged(t *testing.T, db *store.DB, f definitionsFixture, be
 		t.Fatalf("refusal = %v (safe %q), want text %q", err, safeError(err), contains)
 	}
 	after := captureDefinitionsState(t, db, f.project)
-	if !reflect.DeepEqual(after, before) {
+	if !reflectx.Equal(after, before) {
 		t.Fatalf("refusal changed state\nbefore=%+v\nafter=%+v", before, after)
 	}
 }

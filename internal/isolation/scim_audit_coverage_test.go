@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 // SCIM audit, origin and invariant fixtures (#73 SC3.a/c/e/f/i/n, SC4.a/i/k/m/n).
@@ -1043,12 +1043,12 @@ func TestSCIMMakesNoOutboundCalls(t *testing.T) {
 func TestAuthorizeNeverReadsOrigins(t *testing.T) {
 	// 1. The decision VALUE carries no origin. `evaluate()` sees
 	// []domain.Grant, and that type is the whole vocabulary a formula has.
-	if n := reflect.TypeFor[domain.Grant]().NumField(); n != 2 {
+	if n := reflectx.FieldCount[domain.Grant](); n != 2 {
 		t.Fatalf("domain.Grant has %d fields; the decision input is the bare "+
 			"(capability, scope) pair with the principal implicit", n)
 	}
 	for _, name := range []string{"Capability", "Scope"} {
-		if _, ok := reflect.TypeFor[domain.Grant]().FieldByName(name); !ok {
+		if ok := reflectx.HasField[domain.Grant](name); !ok {
 			t.Fatalf("domain.Grant lost its %s field", name)
 		}
 	}

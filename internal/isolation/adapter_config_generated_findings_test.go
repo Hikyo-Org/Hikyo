@@ -2,13 +2,13 @@ package isolation
 
 import (
 	"context"
-	"reflect"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	storetx "github.com/Hikyo-Org/hikyo/internal/store/tx"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 func TestAdapterConfigGeneratedFindingsLatestCompletedGeneration(t *testing.T) {
@@ -55,11 +55,11 @@ func TestAdapterConfigGeneratedFindingsLatestCompletedGeneration(t *testing.T) {
 			}
 			return findings
 		}
-		if got, want := read(), []store.AdapterFinding{{Surface: "variable", EffectiveName: "P_TOKEN", Finding: "owned_missing"}}; !reflect.DeepEqual(got, want) {
+		if got, want := read(), []store.AdapterFinding{{Surface: "variable", EffectiveName: "P_TOKEN", Finding: "owned_missing"}}; !reflectx.Equal(got, want) {
 			t.Fatalf("current findings=%+v want %+v", got, want)
 		}
 		execRealAdoption(t, db, `UPDATE adapter_targets SET generation=2 WHERE id='tgt_gitlab_a'`)
-		if got, want := read(), []store.AdapterFinding{{Surface: "secret", EffectiveName: "NEXT", Finding: "crash_window"}}; !reflect.DeepEqual(got, want) {
+		if got, want := read(), []store.AdapterFinding{{Surface: "secret", EffectiveName: "NEXT", Finding: "crash_window"}}; !reflectx.Equal(got, want) {
 			t.Fatalf("next generation findings=%+v want %+v", got, want)
 		}
 		execRealAdoption(t, db, `UPDATE adapter_targets SET generation=3 WHERE id='tgt_gitlab_a'`)
