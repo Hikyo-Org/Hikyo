@@ -39,12 +39,3 @@ func exemptSeal(s *crypto.ProjectSealer) []byte {
 	b, _ := s.SealField(aad(), nil)
 	return b
 }
-
-// productionFixture claims the test-only marker in a production file: the
-// marker is a finding and the seal stays unfenced.
-//
-// fence:fixture seeds a database nobody can race.
-func productionFixture(s *crypto.ProjectSealer) []byte { // want "productionFixture carries fence:fixture, which is honoured only in _test\\.go files" "productionFixture seals ciphertext but never calls the writer fence"
-	b, _ := s.SealField(aad(), nil)
-	return b
-}

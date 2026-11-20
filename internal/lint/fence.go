@@ -3,7 +3,6 @@ package lint
 import (
 	"go/ast"
 	"go/types"
-	"regexp"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -32,9 +31,6 @@ import (
 //     generateSPKey helpers).
 //   - a `fence:exempt` marker: the sealed bytes are never written to any table
 //     (the recovery timing-equalisation dummy), so no row can be stranded.
-//   - a `fence:fixture <reason>` marker, honoured only in _test.go files: a test
-//     helper that seeds an isolated fixture database no rotation can race. In a
-//     production file the marker is itself a finding.
 //
 // reencrypt.go is exempt wholesale: it IS the mover, re-sealing rows under the
 // new active version; fencing it against the version it is installing would be
@@ -51,7 +47,7 @@ import (
 //     unfenced. Proving transaction co-location needs dataflow this type-only
 //     pass does not attempt; all current sealing sites were verified in-tx by
 //     hand (each fences immediately before its write, in the write's own tx).
-//   - `fence:delegated` / `fence:exempt` / `fence:fixture` markers are trusted, not verified: a
+//   - `fence:delegated` / `fence:exempt` markers are trusted, not verified: a
 //     reviewer owns that a delegated helper's version truly reaches a fencing
 //     caller, and that an exempt seal truly never reaches a table.
 func CheckFenceCompleteness(pkgs []*packages.Package, servicePath string) []string {
@@ -91,16 +87,6 @@ func runFence(pass *analysis.Pass, servicePath string) {
 			if marked(fn, "fence:delegated") || marked(fn, "fence:exempt") {
 				continue
 			}
-			if marked(fn, fenceFixtureMarker) {
-				switch {
-				case !isTestFile(fileName(pass, file.Pos())):
-					pass.Reportf(fn.Pos(), "%s carries %s, which is honoured only in _test.go files", fn.Name.Name, fenceFixtureMarker)
-				case !fixtureReason.MatchString(fn.Doc.Text()):
-					pass.Reportf(fn.Pos(), "%s carries %s without a reason", fn.Name.Name, fenceFixtureMarker)
-				default:
-					continue
-				}
-			}
 			seals, fences := false, false
 			ast.Inspect(fn.Body, func(n ast.Node) bool {
 				call, ok := n.(*ast.CallExpr)
@@ -126,18 +112,9 @@ func runFence(pass *analysis.Pass, servicePath string) {
 	}
 }
 
-// fenceFixtureMarker exempts a test helper that seeds a fixture database.
-const fenceFixtureMarker = "fence:fixture"
-
-var fixtureReason = regexp.MustCompile(`(^|\s)fence:fixture\s+\S`)
-
 // marked reports whether a function's doc comment carries a marker token.
 func marked(fn *ast.FuncDecl, token string) bool {
-	if fn.Doc == nil {
-		return false
-	}
-	// A word boundary on both sides: `fence:fixtureX` is not the marker.
-	return regexp.MustCompile(`(^|\s)` + regexp.QuoteMeta(token) + `($|\s)`).MatchString(fn.Doc.Text())
+	return fn.Doc != nil && strings.Contains(fn.Doc.Text(), token)
 }
 
 // sealCall reports a call to ProjectSealer.SealValue/SealField/SealPersonalValue or

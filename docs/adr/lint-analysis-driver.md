@@ -56,19 +56,16 @@ The spike also established that:
    package handles `authz.Proof`" is decided from those files. Violations that
    become visible are fixed in the port PRs, not allowlisted.
 
-   Amendment (PR 1): a test whose subject is a nil `authz.Proof` (a boundary
-   test asserting the store refuses it), or that can reach no real proof, may
-   carry an inline `// forgeguard:nil-proof <reason>` marker on the flagged
-   line. forgeguard honours it only in `_test.go` files and requires a reason;
-   a marker in a production file, or without a reason, is a finding of its own.
-   It is a reviewed, reasoned, test-only exemption at the site, not an inventory
-   entry. forgeguard's stated limits: an unassigned local `Proof` passed on, an
-   omitted `Proof` struct field, a naked named return and a generic zero value
-   each still yield a nil proof that the guard does not see; the store refuses
-   it at runtime, which is the enforcement. Test helpers that seed an isolated
-   fixture database may likewise
-   carry `fence:fixture <reason>`, honoured by the fence analyzer only in
-   `_test.go` files; `fence:exempt` keeps its original meaning.
+   Owner decision (2026-11-20): no inline exemption markers. A nil
+   `authz.Proof` is spelled only in `internal/authz`, which forgeguard exempts
+   with its tests. Store-boundary tests present a real but invalid proof (for
+   example one captured from a finished transaction), and test helpers that
+   seed an isolated fixture database seal through `internal/testutil/sealfixture`
+   instead of carrying an exemption in `internal/service`. forgeguard's stated
+   limits: an unassigned local `Proof` passed on, an omitted `Proof` struct
+   field, a naked named return and a generic zero value each still yield a nil
+   proof that the guard does not see; the store refuses it at runtime, which is
+   the enforcement.
 5. **Rollout.** A stack of PRs, each runs both harnesses for the analyzers it
    moves until every old finding is also reported by the new driver. The parity
    leg runs the same analyzer core through the old loader, so it detects only
@@ -93,7 +90,8 @@ The spike also established that:
   (PR 4 of the rollout). Until then `LoadRepoIn` still caches all four
   contexts for the process and the vet driver runs on top of it, so PRs 1 to 3
   raise the peak memory and wall time of `go test ./internal/lint` compared
-  with the base, and the CI budgets are sized for that interim cost.
+  with the base, and the CI budgets are sized for that interim cost. The stack
+  (PRs 1 to 4) merges to main together, once PR 4 is green.
 - Acceptance for the final stack: the full `go test ./internal/lint` stays
   green, and its measured peak whole-tree RSS stays under 1.5 GB with no single
   process above 0.8 GB.

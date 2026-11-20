@@ -35,12 +35,6 @@ func localAssigned() {
 	take(proof)
 }
 
-// The marker is honoured only in _test.go files: here it is a finding of its
-// own, and the nil stays flagged.
-func markedInProduction() {
-	take(nil) /* forgeguard:nil-proof not honoured here */ // want "marker is honoured only in _test\\.go files" "nil in an authz\\.Proof position"
-}
-
 // A package handling Proof values while importing reflect is itself a
 // finding, independent of the nil literals.
 var _ = reflect.TypeOf(returnsNil())

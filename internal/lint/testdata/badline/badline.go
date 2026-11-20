@@ -1,28 +1,10 @@
-// Package badline is a fixture whose production file claims, through a //line
-// directive, to be a _test.go file. Every diagnostic below must still be
-// judged as a production-file diagnostic.
+// Package badline is a fixture whose production files claim, through //line
+// directives, to be a _test.go file or the exempt reencrypt.go. Every
+// diagnostic must still be judged by the file on disk.
 //
 //line claimed_test.go:1
 package badline
 
-import (
-	"github.com/Hikyo-Org/hikyo/internal/authz"
-	"github.com/Hikyo-Org/hikyo/internal/crypto"
-	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
-)
+import "github.com/Hikyo-Org/hikyo/internal/store/pggen"
 
 var _ = pggen.New
-
-func aad() crypto.ProjectFieldAAD { return crypto.ProjectFieldAAD{} }
-
-func take(p authz.Proof) { _ = p }
-
-func markedNil() {
-	take(nil) /* forgeguard:nil-proof claimed to be a test file */
-}
-
-// fence:fixture claimed to be a test file.
-func seed(s *crypto.ProjectSealer) []byte {
-	b, _ := s.SealField(aad(), nil)
-	return b
-}

@@ -325,18 +325,16 @@ func requireSubset(t *testing.T, what string, old, current []string) {
 }
 
 // A `//line` directive cannot move a production file into the test-file
-// exemptions: markers stay refused and the deferred gate stays strict.
+// deferral or into fence's wholesale reencrypt.go exemption.
 func TestVetDriverIgnoresLineDirectives(t *testing.T) {
 	bin := buildVetTool(t)
-	flags := []string{"-forgeguard", "-fence", "-fence.service=" + fixtureImportRoot + "badline", "-handles"}
+	flags := []string{"-fence", "-fence.service=" + fixtureImportRoot + "badline", "-handles"}
 	for _, ctx := range Contexts {
 		t.Run(ctx.Name, func(t *testing.T) {
 			out := runVet(t, bin, ctx, flags, []string{fixtureRoot + "badline"})
 			joined := strings.Join(out.Findings, "\n")
 			for _, want := range []string{
-				"forgeguard: forgeguard:nil-proof marker is honoured only in _test.go files",
-				"forgeguard: nil in an authz.Proof position",
-				"fence: seed carries fence:fixture, which is honoured only in _test.go files",
+				"fence: seal seals ciphertext but never calls the writer fence",
 				"handles: ",
 			} {
 				if !strings.Contains(joined, want) {

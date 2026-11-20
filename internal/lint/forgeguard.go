@@ -5,7 +5,6 @@ import (
 	"go/token"
 	"go/types"
 	"strings"
-	"unicode"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
@@ -33,13 +32,12 @@ import (
 // The authorization package itself (and its tests) are exempt: boundary
 // tests must construct exactly these invalid values.
 //
-// A test whose subject is the nil proof (the store boundary refusing it), or
-// that can reach no real proof, carries an inline `forgeguard:nil-proof
-// <reason>` marker on the flagged line. The marker is honoured only in
-// _test.go files (judged by the file on disk, not a `//line` directive) and
-// needs a reason; one in a production file is itself a finding. It never
-// exempts the package-level uninitialised variable, which one marker would
-// otherwise cover for every use.
+// There is no inline exemption: a test that needs a nil proof lives in
+// internal/authz, and tests of the store boundary present a real but invalid
+// proof instead. Stated limits: an unassigned local Proof passed on, an omitted
+// Proof struct field, a naked named return and a generic zero value each still
+// yield a nil proof that this guard does not see; the store refuses it at
+// runtime, which is the enforcement.
 func CheckProofForgery(pkgs []*packages.Package) []string {
 	return RunOver(Check{Analyzer: ForgeGuard}, pkgs).Findings
 }
@@ -110,40 +108,8 @@ func isAuthzProof(t types.Type) bool {
 // which is the enforcement; this guard just surfaces the common spellings
 // earlier.
 func nilProofLiterals(p *analysis.Pass) {
-	// markerLines are the lines of valid markers; a marker in a production file,
-	// or without a reason, is a finding of its own.
-	markerLines := map[string]map[int]bool{}
-	for _, file := range p.Files {
-		for _, group := range file.Comments {
-			for _, c := range group.List {
-				reason, ok := nilProofReason(c.Text)
-				position := p.Fset.PositionFor(c.Pos(), false)
-				switch {
-				case !ok:
-				case !isTestFile(position.Filename):
-					p.Reportf(c.Pos(), "%s marker is honoured only in _test.go files", nilProofMarker)
-				case reason == "":
-					p.Reportf(c.Pos(), "%s marker needs a reason", nilProofMarker)
-				default:
-					if markerLines[position.Filename] == nil {
-						markerLines[position.Filename] = map[int]bool{}
-					}
-					markerLines[position.Filename][position.Line] = true
-				}
-			}
-		}
-	}
-	marked := func(pos token.Pos) bool {
-		position := p.Fset.PositionFor(pos, false)
-		return markerLines[position.Filename][position.Line]
-	}
 	report := func(n ast.Node) {
 		p.Reportf(n.Pos(), "nil in an authz.Proof position — the one forgeable value; get a proof from authorize()")
-	}
-	flag := func(n ast.Node) {
-		if !marked(n.Pos()) {
-			report(n)
-		}
 	}
 	isNil := func(e ast.Expr) bool {
 		id, ok := e.(*ast.Ident)
@@ -164,7 +130,7 @@ func nilProofLiterals(p *analysis.Pass) {
 				}
 				for _, name := range vs.Names {
 					if obj := p.TypesInfo.Defs[name]; obj != nil && isAuthzProof(obj.Type()) {
-						report(name) // never marker-exempt: one marker would cover every use
+						report(name)
 					}
 				}
 			}
@@ -218,18 +184,18 @@ func nilProofLiterals(p *analysis.Pass) {
 				results := enclosingResults(node.Pos())
 				for i, e := range node.Results {
 					if i < len(results) && isNil(e) && isAuthzProof(results[i]) {
-						flag(e)
+						report(e)
 					}
 				}
 			case *ast.CallExpr:
 				fun := p.TypesInfo.Types[node.Fun]
 				if fun.IsType() && isAuthzProof(fun.Type) && len(node.Args) == 1 && isNil(node.Args[0]) {
-					flag(node)
+					report(node)
 					break
 				}
 				if id, ok := node.Fun.(*ast.Ident); ok && len(node.Args) == 1 && p.TypesInfo.Uses[id] == types.Universe.Lookup("new") {
 					if tv, ok := p.TypesInfo.Types[node.Args[0]]; ok && tv.IsType() && isAuthzProof(tv.Type) {
-						flag(node)
+						report(node)
 						break
 					}
 				}
@@ -249,7 +215,7 @@ func nilProofLiterals(p *analysis.Pass) {
 						pt = sig.Params().At(i).Type()
 					}
 					if pt != nil && isAuthzProof(pt) {
-						flag(arg)
+						report(arg)
 					}
 				}
 			case *ast.ValueSpec:
@@ -257,7 +223,7 @@ func nilProofLiterals(p *analysis.Pass) {
 					if isNil(v) {
 						for _, name := range node.Names {
 							if obj := p.TypesInfo.Defs[name]; obj != nil && isAuthzProof(obj.Type()) {
-								flag(v)
+								report(v)
 							}
 						}
 					}
@@ -266,7 +232,7 @@ func nilProofLiterals(p *analysis.Pass) {
 				for i, rhs := range node.Rhs {
 					if isNil(rhs) && i < len(node.Lhs) {
 						if tv, ok := p.TypesInfo.Types[node.Lhs[i]]; ok && isAuthzProof(tv.Type) {
-							flag(rhs)
+							report(rhs)
 						}
 					}
 				}
@@ -274,7 +240,7 @@ func nilProofLiterals(p *analysis.Pass) {
 				if isNil(node.Value) {
 					if id, ok := node.Key.(*ast.Ident); ok {
 						if obj := p.TypesInfo.Uses[id]; obj != nil && isAuthzProof(obj.Type()) {
-							flag(node.Value)
+							report(node.Value)
 						}
 					}
 				}
@@ -283,19 +249,3 @@ func nilProofLiterals(p *analysis.Pass) {
 		})
 	}
 }
-
-// nilProofMarker is the inline marker that exempts one nil proof in a test.
-const nilProofMarker = "forgeguard:nil-proof"
-
-// nilProofReason extracts the reason after the marker when a comment starts
-// with it; prose that merely mentions the marker is not one.
-func nilProofReason(comment string) (reason string, ok bool) {
-	body := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(comment, "//"), "/*"), "*/"))
-	rest, ok := strings.CutPrefix(body, nilProofMarker)
-	if ok && rest != "" && !unicode.IsSpace(rune(rest[0])) {
-		return "", false // forgeguard:nil-proofx is not the marker
-	}
-	return strings.TrimSpace(rest), ok
-}
-
-func isTestFile(name string) bool { return strings.HasSuffix(name, "_test.go") }

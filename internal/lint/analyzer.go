@@ -247,3 +247,5 @@ func deferTestSites(a *analysis.Analyzer) *analysis.Analyzer {
 func fileName(pass *analysis.Pass, pos token.Pos) string {
 	return pass.Fset.PositionFor(pos, false).Filename
 }
+
+func isTestFile(name string) bool { return strings.HasSuffix(name, "_test.go") }
