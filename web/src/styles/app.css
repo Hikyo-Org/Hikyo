@@ -2220,14 +2220,24 @@ fieldset.field > legend {
      column is budgeted at 260px for this choice; the floor holds the
      header's Key label and environment chooser. The name ellipsises, the
      full name stays in the row's title and the link's accessible name. */
-  --matrix-key-max: 236px;
-  --matrix-key-min: 160px;
+  --matrix-key-full: 236px;
+  --matrix-key-max: var(--matrix-key-full);
+  /* A key column fitted by a tap on its handle (Matrix.tsx): the full width
+     holds 20 characters, plus one mono advance per extra character of the
+     widest key row, name and marks (`--key-chars`), never narrower than the
+     default width. shortcut: estimates proportional text with mono advances;
+     measure the rows if fitted names still ellipsise. */
+  --matrix-key-fit: max(var(--matrix-key-auto), var(--matrix-key-full) + (var(--key-chars, 20) - 20) * var(--matrix-char));
+  /* The floor: the header's start padding, Key label and envs picker
+     (164px), then its end padding, which is the resize handle's width. */
+  --matrix-key-min: calc(164px + var(--matrix-resizer));
   --matrix-env-max: 260px;
-  --matrix-key: clamp(
+  --matrix-key-auto: clamp(
     var(--matrix-key-min),
     100cqi - var(--env-count, 0) * var(--matrix-env-max),
     var(--matrix-key-max)
   );
+  --matrix-key: var(--matrix-key-auto);
   /* The row's glyphs (lock, linked keys, cell marks, group chevron) are 40%
      of the row height. One knob: the factor. */
   --matrix-row: var(--row);
@@ -2276,7 +2286,14 @@ fieldset.field > legend {
    7.8px, and an unrounded width cuts the longest value by a few pixels. One
    mark slot fits the common case. */
 .matrix__table thead th:not(:first-child, .matrix__filler) {
-  width: calc(var(--chars, 0) * var(--matrix-char) + var(--matrix-cell-inset) + var(--matrix-mark-slots) * (var(--matrix-icon) + var(--matrix-icon-gap)));
+  --matrix-env-content: calc(var(--chars, 0) * var(--matrix-char) + var(--matrix-cell-inset) + var(--matrix-mark-slots) * (var(--matrix-icon) + var(--matrix-icon-gap)));
+  width: var(--matrix-env-content);
+}
+
+/* A tap on the column's handle (Matrix.tsx) holds it at that content width,
+   so it no longer shrinks under overflow, capped to the well beside the key column. */
+.matrix__table thead th.matrix__column--fit {
+  min-width: min(var(--matrix-env-content), 100cqi - var(--matrix-key));
 }
 
 .matrix__table .matrix__filler {
@@ -2346,6 +2363,54 @@ fieldset.field > legend {
   --sticky-bg: var(--bg);
   background: var(--sticky-bg);
   box-shadow: -1px 0 0 0 var(--sticky-bg);
+}
+
+/* A column's resize handle (ColumnResizer, Matrix.tsx) on its header's
+   trailing edge, inside the cell so the next sticky header never covers it.
+   A hit target (DESIGN.md: `--hit-min` on a fine pointer, `--touch` on a
+   coarse one), and each header reserves its width as end padding, so the
+   handle never takes a tap meant for the header's own controls. */
+.matrix__table {
+  --matrix-resizer: var(--hit-min);
+}
+
+@media (pointer: coarse) {
+  .matrix__table {
+    --matrix-resizer: var(--touch);
+  }
+}
+
+.matrix__table thead th:not(.matrix__filler) {
+  padding-inline-end: var(--matrix-resizer);
+}
+
+.matrix__resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--matrix-resizer);
+  cursor: col-resize;
+  /* A drag on the handle resizes; it must not scroll the matrix instead. */
+  touch-action: none;
+}
+
+/* The visible grip: a short bar on the column's edge. */
+.matrix__resizer::after {
+  position: absolute;
+  top: 25%;
+  right: 2px;
+  bottom: 25%;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--line);
+  content: '';
+}
+
+.matrix__resizer:hover::after,
+.matrix__resizer:active::after,
+.matrix__resizer:focus-visible::after {
+  background: var(--accent);
 }
 
 /* The environment chooser opens out of the sticky key header. Keep that
@@ -3164,7 +3229,8 @@ fieldset.field > legend {
 
   /* The sticky key column drops to the touch target, one
      glyph per key (lock / config, MatrixKeyLink in Matrix.tsx); the name moves
-     into the tap/hover popover above (.matrix__key-tip) and the envs picker
+     into the tap/hover popover above (.matrix__key-tip) until the column is
+     widened (`.matrix__table--key-names` below), and the envs picker
      moves out of the now icon-only header into the head row (`phoneMatrix` in
      Matrix.tsx places the one `environmentPicker` element). Equal min and max
      collapse the clamp() in .matrix__table to a fixed width regardless of
@@ -3194,8 +3260,7 @@ fieldset.field > legend {
     padding: 0;
   }
 
-  .matrix__key-cell > .matrix__linked-keys,
-  .matrix__key-cell > .matrix__required {
+  .matrix__table:not(.matrix__table--key-names) .matrix__key-cell > :is(.matrix__linked-keys, .matrix__required) {
     display: none;
   }
 
@@ -3227,6 +3292,21 @@ fieldset.field > legend {
     border-right: 1px solid color-mix(in oklch, var(--line), var(--accent) 25%);
   }
 
+  /* A key column the user widened past icon-only (ColumnResizer) shows
+     names again: the link takes the column, left-aligned and ellipsised. */
+  .matrix__table--key-names .matrix__key {
+    width: auto;
+    max-width: 100%;
+    padding-inline: var(--space-2);
+    text-align: left;
+  }
+
+  /* Its header glyph lines up with the row glyphs below it. */
+  .matrix__table--key-names .matrix__key-heading {
+    justify-content: flex-start;
+    padding-inline: var(--space-2);
+  }
+
   /* With the text clipped out of flow, the heading's one remaining visible
      child is its Glyph; centre it the same way a key row centres its own. */
   .matrix__key-heading {
@@ -3236,10 +3316,13 @@ fieldset.field > legend {
   /* `.btn--icon-phone` already pins width to `--control`; `.btn--compact`'s
      own fine-pointer rule pins height to the smaller `--hit-min` instead,
      which left the icon-only button wider than it was tall. Match height
-     to the same `--control` token so it is square regardless of pointer type. */
+     to the same `--control` token so it is square regardless of pointer type.
+     With its label hidden, its baseline is the glyph's bottom, which dropped
+     the environment name beside it below centre; align by middle instead. */
   .matrix__history-link {
     height: var(--control);
     min-height: var(--control);
+    vertical-align: middle;
   }
 }
 
@@ -3320,10 +3403,10 @@ fieldset.field > legend {
 }
 
 /* Visually hidden at the phone width only, still in the accessibility tree:
-   the label of a `btn--icon-phone` button, the matrix key heading's word and
-   each key name (the key column is icons there). */
+   the label of a `btn--icon-phone` button and the headers of tables that go
+   to cards. (The matrix key names hide in JS, `.visually-hidden`, since a
+   widened key column shows them again.) */
 @media (max-width: 700px) {
-  .visually-hidden-phone,
   .values .values__table thead th,
   .table--cards thead th,
   .btn--icon-phone > .btn__label {
