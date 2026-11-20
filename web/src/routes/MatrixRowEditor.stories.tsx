@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, fn, userEvent, waitFor } from 'storybook/test';
+import { expect, fn, spyOn, userEvent, waitFor } from 'storybook/test';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 import { MatrixRowEditor } from './MatrixRowEditor.tsx';
@@ -314,5 +314,206 @@ export const RevealedSecret: Story = {
     const countdown = canvasElement.querySelector('.matrix-editor__revealed small');
     await expect(countdown?.textContent).toMatch(/^re-masks in \d+ seconds?$/);
     await expect(canvasElement.querySelector('.visually-hidden[role="status"]')).toHaveTextContent('API_TOKEN revealed, re-masks in 10 seconds');
+  },
+};
+
+// A secret cell under a config key is a secret everywhere the matrix says so:
+// the editor opens it write-only, with no plaintext in the DOM or a textarea and
+// no unaudited Copy (or copy-to-environments), whatever the key's classification.
+const CELL_LEAK = 'leaky-secret-cell-sentinel';
+export const SecretCellUnderConfigKey: Story = {
+  args: {
+    rows: rows.map((row) => ({
+      ...row,
+      cell: { key_id: keyRecord.id, name: keyRecord.name, classification: 'secret', set: true, revealed: true, value: CELL_LEAK },
+    })),
+  },
+  parameters: {
+    app: {
+      responses: [
+        {
+          url: `${SECRET_ENV_URL}/reveal-window`,
+          body: {
+            effective_window_seconds: 600,
+            protected: false,
+            totp_offered: false,
+            live: false,
+            single_decision: false,
+            can_reveal: false,
+          },
+        },
+      ],
+    },
+  },
+  play: async ({ canvas, canvasElement }) => {
+    await canvas.findByText(/No reveal for your role here/);
+    const field = canvas.getByRole('textbox', { name: /value$/ });
+    await expect(field).toHaveValue('');
+    await expect(field).toHaveAttribute('placeholder', 'Write-only · replace current secret');
+    await expect(field).toHaveClass('matrix-editor__value--masked');
+    await expect(canvasElement.querySelector('.matrix-editor__eyebrow')).toHaveTextContent('secret');
+    await expect(canvasElement.innerHTML).not.toContain(CELL_LEAK);
+    await expect(canvas.queryByRole('button', { name: /^Copy/ })).toBeNull();
+    await expect(canvas.queryByRole('button', { name: /^Reveal/ })).toBeNull();
+    await expect(canvas.getByRole('checkbox', { name: 'Show while typing' })).toBeVisible();
+  },
+};
+
+// The same cell for a role that may reveal: Copy is the audited disclosure, not
+// a plain copy of the (empty) value, and Reveal goes through the audited call.
+export const SecretCellUnderConfigKeyRevealable: Story = {
+  args: SecretCellUnderConfigKey.args ?? {},
+  parameters: {
+    app: {
+      responses: [
+        {
+          url: `${SECRET_ENV_URL}/reveal-window`,
+          body: {
+            effective_window_seconds: 600,
+            protected: false,
+            totp_offered: false,
+            live: true,
+            single_decision: false,
+            can_reveal: true,
+            expires_at: new Date(Date.now() + 9 * 60_000).toISOString(),
+          },
+        },
+        {
+          url: `${SECRET_ENV_URL}/values/LOG_LEVEL/reveal`,
+          method: 'POST',
+          body: { key_id: keyRecord.id, name: keyRecord.name, classification: 'secret', set: true, revealed: true, value: 'audited-reveal-value' },
+        },
+      ],
+    },
+  },
+  play: async ({ canvas, canvasElement }) => {
+    await expect(await canvas.findByRole('button', { name: 'Copy LOG_LEVEL (audited if still secret)' })).toBeVisible();
+    await expect(canvas.queryByRole('button', { name: 'Copy LOG_LEVEL' })).toBeNull();
+    await expect(canvas.queryByRole('button', { name: /^Copy published/ })).toBeNull();
+    await expect(canvasElement.innerHTML).not.toContain(CELL_LEAK);
+    await userEvent.click(canvas.getByRole('button', { name: 'Reveal LOG_LEVEL' }));
+    await expect(await canvas.findByText('audited-reveal-value')).toBeVisible();
+    await expect(canvas.getByText('Disclosure recorded.')).toBeVisible();
+    // The audited control: a secret response makes Copy a recorded disclosure.
+    const write = spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+    try {
+      await userEvent.click(canvas.getByRole('button', { name: 'Copy LOG_LEVEL (audited if still secret)' }));
+      await expect(await canvas.findByText(/^Copied, and recorded as a disclosure\./)).toBeVisible();
+      await expect(write).toHaveBeenCalledWith('audited-reveal-value');
+    } finally {
+      write.mockRestore();
+    }
+  },
+};
+
+// The masked cell was stale: the server already holds the key as config, so its
+// reveal writes no disclosure event, and the editor does not claim one.
+export const SecretCellUnderConfigKeyNowConfig: Story = {
+  args: SecretCellUnderConfigKey.args ?? {},
+  parameters: {
+    app: {
+      responses: [
+        {
+          url: `${SECRET_ENV_URL}/reveal-window`,
+          body: {
+            effective_window_seconds: 600,
+            protected: false,
+            totp_offered: false,
+            live: true,
+            single_decision: false,
+            can_reveal: true,
+            expires_at: new Date(Date.now() + 9 * 60_000).toISOString(),
+          },
+        },
+        {
+          url: `${SECRET_ENV_URL}/values/LOG_LEVEL/reveal`,
+          method: 'POST',
+          body: { key_id: keyRecord.id, name: keyRecord.name, classification: 'config', set: true, revealed: true, value: 'config-reveal-value' },
+        },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Reveal LOG_LEVEL' }));
+    await expect(await canvas.findByText('config-reveal-value')).toBeVisible();
+    await expect(canvas.queryByText(/Disclosure recorded/)).toBeNull();
+    // Copy reads the same response: the value is copied, and no disclosure claimed.
+    const write = spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+    try {
+      await userEvent.click(canvas.getByRole('button', { name: 'Copy LOG_LEVEL (audited if still secret)' }));
+      await expect(await canvas.findByText('Copied. This value is not a secret, so no disclosure was recorded.')).toBeVisible();
+      await expect(write).toHaveBeenCalledWith('config-reveal-value');
+    } finally {
+      write.mockRestore();
+    }
+  },
+};
+
+// The same stale view under a key held as secret: another session made the key
+// config before this catalogue refreshed. Copy promises no audit beforehand, and
+// the config response records none.
+export const SecretKeyNowConfig: Story = {
+  args: RevealedSecret.args ?? {},
+  parameters: {
+    app: {
+      responses: [
+        {
+          url: `${SECRET_ENV_URL}/reveal-window`,
+          body: {
+            effective_window_seconds: 600,
+            protected: false,
+            totp_offered: false,
+            live: true,
+            single_decision: false,
+            can_reveal: true,
+            expires_at: new Date(Date.now() + 9 * 60_000).toISOString(),
+          },
+        },
+        {
+          url: `${SECRET_ENV_URL}/values/API_TOKEN/reveal`,
+          method: 'POST',
+          body: { key_id: keyRecord.id, name: 'API_TOKEN', classification: 'config', set: true, revealed: true, value: 'now-config-value' },
+        },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('button', { name: 'Copy API_TOKEN (audited if still secret)' })).toBeVisible();
+    await expect(canvas.queryByRole('button', { name: /audited disclosure/ })).toBeNull();
+    const write = spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+    try {
+      await userEvent.click(canvas.getByRole('button', { name: 'Copy API_TOKEN (audited if still secret)' }));
+      await expect(await canvas.findByText('Copied. This value is not a secret, so no disclosure was recorded.')).toBeVisible();
+      await expect(write).toHaveBeenCalledWith('now-config-value');
+    } finally {
+      write.mockRestore();
+    }
+    await expect(canvas.queryByText(/Disclosure recorded/)).toBeNull();
+  },
+};
+
+// Edit-all with a secret row beside a config row: every row is masked, so Fill
+// all cannot show a typed value in the config row that a secret row hides.
+const otherEnvironmentId = 'env_01989abc-def0-7123-8123-123456789abd';
+export const MixedRowsEditAllMasked: Story = {
+  args: {
+    rows: [
+      ...(SecretCellUnderConfigKey.args?.rows ?? []),
+      ...rows.map((row) => ({
+        ...row,
+        environmentId: otherEnvironmentId,
+        environment: { ...environment, id: otherEnvironmentId, name: 'staging', display_order: 1 },
+      })),
+    ],
+  },
+  parameters: SecretCellUnderConfigKey.parameters,
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Edit all environments' }));
+    const fields = await canvas.findAllByRole('textbox', { name: /value$/ });
+    await expect(fields).toHaveLength(2);
+    for (const field of fields) await expect(field).toHaveClass('matrix-editor__value--masked');
+    await expect(canvas.getByRole('textbox', { name: 'Fill all environments' })).toHaveClass('matrix-editor__value--masked');
+    // The checkbox that unmasks them all is on offer.
+    await expect(canvas.getByRole('checkbox', { name: 'Show while typing' })).toBeVisible();
   },
 };

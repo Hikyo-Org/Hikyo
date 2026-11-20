@@ -10,6 +10,7 @@ import {
   blockedPublishEnvironmentIds,
   canClearMatrixCell,
   draftValueForMatrixCell,
+  isSecret,
   normalizeMatrixDraftValue,
   matrixDraftChanges,
   requiredInEnvironment,
@@ -269,4 +270,14 @@ it('keeps indexed problems identical across published, pending, presence and val
       }]);
     }
   }
+});
+
+describe('isSecret', () => {
+  it('treats a secret cell under a config key as secret, and either side alone is enough', () => {
+    expect(isSecret({ classification: 'secret' }, { classification: 'config' })).toBe(true);
+    expect(isSecret({ classification: 'config' }, { classification: 'secret' })).toBe(true);
+    expect(isSecret(undefined, { classification: 'secret' })).toBe(true);
+    expect(isSecret({ classification: 'config' }, { classification: 'config' })).toBe(false);
+    expect(isSecret(undefined, { classification: 'config' })).toBe(false);
+  });
 });

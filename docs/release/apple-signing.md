@@ -254,8 +254,10 @@ This preserves the exact signed bytes for inspection after an Apple service
 failure; it does not authorize rebuilding, resubmitting an uncertain upload,
 or adding files to an already-published manifest.
 
-Hikyo is a command-line executable with an embedded web UI. Each DMG contains
-`hikyo` and `LICENSE`; it is not a macOS application bundle. Download the DMG
+The `hikyo` DMG holds a command-line executable with an embedded web UI. Each
+DMG contains `hikyo` and `LICENSE`; it is not a macOS application bundle. The
+desktop app is a separate artifact, planned for its own `desktop-v*` releases in
+this repository, and never part of these DMGs. Download the DMG
 matching the Mac's architecture from the verified public release. After opening
 it, copy `hikyo` to a writable directory on the user's executable search path,
 preserving its signature and execute permission, and run `hikyo --help`.

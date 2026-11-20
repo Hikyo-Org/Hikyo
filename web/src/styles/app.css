@@ -2594,7 +2594,7 @@ fieldset.field > legend {
   position: fixed;
   top: var(--tip-y, 0);
   left: var(--tip-x, 0);
-  margin: var(--space-1) 0 0;
+  margin: 0;
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
@@ -2604,6 +2604,23 @@ fieldset.field > legend {
   font-size: var(--fs-sm);
   white-space: nowrap;
   box-shadow: var(--overlay-shadow);
+}
+
+/* A cell's full value: wraps and is capped so a PEM or JSON value is not
+   viewport-tall. Past the cap it scrolls (the pointer can rest on it), and a
+   fade says there is more; a tip that fits keeps its border and shadow. */
+.matrix__key-tip--value {
+  width: max-content;
+  max-width: min(var(--measure), calc(100vw - var(--space-4)));
+  max-height: 30vh;
+  overflow: hidden auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.matrix__key-tip--value[data-cut] {
+  padding-block-end: var(--space-4);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - var(--space-4)), transparent);
 }
 
 .matrix__required {
