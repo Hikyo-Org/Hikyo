@@ -5,8 +5,10 @@ import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { useWorkspaceContext } from '../api/transport.tsx';
 import { useAuthMethods, useSessionOIDCProvider, useTotpStatus } from '../api/account.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
+import { isAppMode } from '../app/shell.ts';
 import {
   ceremonyRefusalText,
+  runAppReauth,
   runPasskeyCeremony,
   runOIDCCeremony,
   runTOTPCeremony,
@@ -246,7 +248,10 @@ export function Ceremony({
   const onOIDC = () => {
     if (oidcProvider === null) return;
     void attempt('oidc', async () => {
-      await runOIDCCeremony(oidcProvider.slug, request.environmentId);
+      // The popup's BroadcastChannel cannot cross into the app window; the
+      // browser hop offers the identity provider at its far end.
+      if (isAppMode()) await runAppReauth({ operation: signed, environmentId: request.environmentId, keyIds: request.keys.map((k) => k.id) });
+      else await runOIDCCeremony(oidcProvider.slug, request.environmentId);
       await auth.refreshSession();
     });
   };

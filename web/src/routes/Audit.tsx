@@ -26,6 +26,7 @@ import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
 import type { GlyphName } from '../ui/Glyph.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
 import { Panel } from './Sections.tsx';
+import { isAppMode, shellDownloadBytes } from '../app/shell.ts';
 
 /** The tag each outcome wears, in the events list and the filter alike. */
 const OUTCOME_TAG: Record<AuditEvent['outcome'], { tone: BadgeTone; icon: GlyphName }> = {
@@ -147,6 +148,13 @@ function AuditTrail({ org, project, instance = false }: { readonly org: string; 
     try {
       const blob = await downloadAuditExport(auditExportUrl(scope, applied), controller.signal);
       if (controller.signal.aborted) return;
+      if (isAppMode()) {
+        // The save panel is the consent; the blob was verified complete above.
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        if (controller.signal.aborted) return;
+        await shellDownloadBytes(bytes, auditExportFilename(scope), blob.type === '' ? 'application/x-ndjson' : blob.type);
+        return;
+      }
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;

@@ -50,7 +50,9 @@ var ErrItemUntrusted = errors.New("the keychain item is not restricted to this a
 // signed app (ADR D3), and Get refuses (ErrItemUntrusted) an item whose access
 // list is anything else. Put replaces the item as a whole: it deletes any
 // existing item first, so a pre-planted item's access list is never kept, and
-// a failure leaves no item rather than a half-written one.
+// never leaves a half-written one. A failed Put leaves either the previous item
+// intact (it failed before the delete) or no item (it failed after), so a caller
+// that needs the old session must read it back (Conn.putFailed).
 type SecretStore interface {
 	Get(host string) (Secret, error)
 	Put(host string, s Secret) error

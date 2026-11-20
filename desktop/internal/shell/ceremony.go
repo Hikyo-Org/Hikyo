@@ -90,12 +90,21 @@ func (c *Conn) runSignIn(ctx context.Context) *shellErr {
 	if !c.confirmSignIn() {
 		return &shellErr{codeCancelled, "cancelled"}
 	}
+	// A session change that commits while the check is in flight makes the old
+	// bearer fail; the new session is the one to judge, not this answer.
+	sent := c.bearer()
 	alive, err := c.sessionAlive(ctx)
 	if err != nil {
 		return &shellErr{codeFailed, "the instance could not be reached to check the session"}
 	}
 	if alive {
 		return nil
+	}
+	if now := c.bearer(); now != sent {
+		if now == "" {
+			return &shellErr{codeFailed, c.Stopped()} // stopped or being removed meanwhile
+		}
+		return nil // a newer session was committed while the check ran
 	}
 	result, err := c.m.login(ctx, c.inst, "")
 	if err != nil {
@@ -151,7 +160,8 @@ func (m *Manager) acceptLogin(ctx context.Context, c *Conn, result apigen.LoginR
 	if result.Principal.DisplayName != nil && *result.Principal.DisplayName != "" {
 		name = *result.Principal.DisplayName
 	}
-	if before := c.Info(); before.PrincipalID != "" && before.PrincipalID != principalID {
+	before := c.Info()
+	if before.PrincipalID != "" && before.PrincipalID != principalID {
 		if !m.native.Confirm("Sign in as a different account?",
 			fmt.Sprintf("%s was signed in as %s. This sign-in is for %s. Use the new account on this connection?", before.Name, labelOf(before), name),
 			"Use new account") {
@@ -159,17 +169,22 @@ func (m *Manager) acceptLogin(ctx context.Context, c *Conn, result apigen.LoginR
 			return context.Canceled
 		}
 	}
-	c.rotMu.Lock()
-	defer c.rotMu.Unlock()
-	if c.removed {
+	c.lifeMu.Lock()
+	defer c.lifeMu.Unlock()
+	if c.state != lifeActive {
 		c.revokeAsync(token)
 		return errRemoved
 	}
-	// A sign-in whose connection was removed and then restored by a failed
-	// removal must not complete: its own context was cancelled.
 	if err := ctx.Err(); err != nil {
 		c.revokeAsync(token)
 		return err
+	}
+	// The prompt above ran outside the lock. The account the person approved
+	// replacing must still be the connection's account, or this commit would
+	// switch accounts without a prompt.
+	if c.Info().PrincipalID != before.PrincipalID {
+		c.revokeAsync(token)
+		return clienterr.Failf(clienterr.ExitInternal, "the account on this connection changed while you were signing in; try again")
 	}
 	if err := c.setSession(token, string(result.Session.Id), principalID, name); err != nil {
 		c.revokeAsync(token)

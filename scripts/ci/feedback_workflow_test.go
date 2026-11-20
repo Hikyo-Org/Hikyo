@@ -162,7 +162,7 @@ func requireFeedbackWorkflow(raw []byte) error {
 		}
 		if strings.Contains(step.Uses, "setup-node@") {
 			setupCounts["node"]++
-			if step.If != feedbackPrerequisiteCondition("node") || step.Uses != "actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903" || step.With["node-version-file"] != "source/.nvmrc" {
+			if step.If != feedbackPrerequisiteCondition("node") || step.Uses != "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1" || step.With["node-version-file"] != "source/.nvmrc" {
 				return fmt.Errorf("planned frontend and docs prerequisites must retain the pinned Node runtime")
 			}
 		}

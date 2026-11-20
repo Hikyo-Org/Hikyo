@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -145,6 +146,9 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	if err := normalizeTestCoreSerial(workflow.Jobs); err != nil {
 		return err
 	}
+	if err := normalizeDesktopJob(workflow.Jobs); err != nil {
+		return err
+	}
 	if err := normalizeGitOpsFixtureAddition(workflow.Jobs["supply-chain-checks"]); err != nil {
 		return err
 	}
@@ -155,7 +159,7 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	// owner runtime before the fixtures, and normalize only this exact addition.
 	expectedNode := map[string]any{
 		"name": "Select pinned Node for feedback fixtures",
-		"uses": "actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903",
+		"uses": "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
 		"with": map[string]any{"node-version-file": ".nvmrc"},
 	}
 	// #1046 adds mandatory trusted-release fixtures. Require their complete
@@ -254,11 +258,12 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 		}
 		workflow.Jobs[jobName]["steps"] = kept
 	}
-	// Accept only the reviewed artifact runtime upgrades, then restore their
+	// Accept only the reviewed action runtime upgrades, then restore their
 	// frozen pins for hashing. Every other step setting remains fingerprinted.
-	artifactPins := map[string][2]string{
+	actionPins := map[string][2]string{
 		"actions/upload-artifact@":   {"cf430e030ddbb5b0abf93d22962f4752f3646cd9", "ea165f8d65b6e75b540449e92b4886f43607fa02"},
 		"actions/download-artifact@": {"9000827ccba6bdab643e8b6fd33ac0654aef8333", "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"},
+		"actions/setup-node@":        {"949feb2413d6458794dcd2491c4babbbce0c15c1", "2028fbc5c25fe9cf00d9f06a71cc4710d4507903"},
 	}
 	for name, job := range workflow.Jobs {
 		steps, _ := job["steps"].([]any)
@@ -268,10 +273,10 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 				return fmt.Errorf("%s has malformed step configuration", name)
 			}
 			uses, _ := step["uses"].(string)
-			for prefix, pins := range artifactPins {
+			for prefix, pins := range actionPins {
 				if strings.HasPrefix(uses, prefix) {
 					if uses != prefix+pins[0] {
-						return fmt.Errorf("%s requires the reviewed artifact action pin: %s", name, uses)
+						return fmt.Errorf("%s requires the reviewed action pin: %s", name, uses)
 					}
 					step["uses"] = prefix + pins[1]
 				}
@@ -453,7 +458,13 @@ func TestFullValidationConservesBaselineCoverage(t *testing.T) {
 	if err = json.Unmarshal(data, &registry); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(registry.Classes["full"], baseline.Domains) {
+	// #1215 adds the macOS desktop domain. It is additive: every baseline domain
+	// must still be present, in order, and nothing else may join them.
+	if !slices.Contains(registry.Classes["full"], "desktop") {
+		t.Fatal("full validation lost the desktop domain")
+	}
+	baselineDomains := slices.DeleteFunc(slices.Clone(registry.Classes["full"]), func(domain string) bool { return domain == "desktop" })
+	if !reflect.DeepEqual(baselineDomains, baseline.Domains) {
 		t.Fatal("full validation must preserve all baseline validation domains")
 	}
 	if err = requireBaselineCoverage(raw, baseline); err != nil {

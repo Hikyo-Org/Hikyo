@@ -17,6 +17,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
+	"github.com/Hikyo-Org/hikyo/internal/webui"
 )
 
 // Delivery-target condition reporting (#788) at the transport: every refusal
@@ -225,6 +226,26 @@ func TestMetaAdvertisesTheDeliveryTargetReportCapability(t *testing.T) {
 	}
 	if meta.ApiRevision != api.Revision {
 		t.Fatalf("api_revision = %d, want %d", meta.ApiRevision, api.Revision)
+	}
+}
+
+// TestMetaAdvertisesDesktopAppOnlyWithTheEmbeddedSPA: the token promises the
+// SPA's shell behaviour (desktop-app ADR D8), so it appears exactly when this
+// binary embeds the SPA. Default builds (no `ui` tag) must not advertise it;
+// CI runs the same test under `-tags ui`, where it must.
+func TestMetaAdvertisesDesktopAppOnlyWithTheEmbeddedSPA(t *testing.T) {
+	srv := federationServer(t, stubFederation{}, stubDelivery{})
+	resp, payload := call(t, srv, http.MethodGet, api.PathPrefix+"/meta", "", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("meta -> %d: %s", resp.StatusCode, payload)
+	}
+	var meta apigen.Meta
+	if err := json.Unmarshal(payload, &meta); err != nil {
+		t.Fatal(err)
+	}
+	got := slices.Contains(meta.ProtocolCapabilities, apigen.ProtocolCapability("desktop-app/1"))
+	if got != uiBuild || (webui.Assets() != nil) != uiBuild {
+		t.Fatalf("desktop-app/1 advertised = %t, SPA embedded = %t, ui build = %t: %v", got, webui.Assets() != nil, uiBuild, meta.ProtocolCapabilities)
 	}
 }
 

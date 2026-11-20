@@ -2,13 +2,21 @@
 INSERT INTO rotations (id,org_id,project_id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at) VALUES (sqlc.arg(id),sqlc.arg(chain_org),sqlc.arg(chain_project),sqlc.arg(chain_env),sqlc.arg(provider_id),sqlc.arg(key_id),sqlc.arg(username_key_id),sqlc.arg(interval_seconds),sqlc.arg(revocation_delay_seconds),sqlc.arg(authority_principal_id),sqlc.arg(authority_principal_id),'active',sqlc.arg(next_run_at),1,sqlc.arg(at),sqlc.arg(at));
 
 -- name: RotationGet :one
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env);
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env);
 
+-- Live rotations only: the environment delete's read of what blocks it. The API's
+-- default list uses RotationListOrOwed, which also keeps a deleted rotation that owes a drop.
 -- name: RotationList :many
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state<>'disabled' AND id > sqlc.arg(after_id) ORDER BY id LIMIT sqlc.arg(page_limit);
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state<>'disabled' AND id > sqlc.arg(after_id) ORDER BY id LIMIT sqlc.arg(page_limit);
+
+-- Live rotations, plus a deleted one that owns a run still owing a provider role a
+-- drop (phase revoke_refused or quarantine): the default list of the API, so the
+-- warning that run owes is not lost with the delete.
+-- name: RotationListOrOwed :many
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE rotations.org_id=sqlc.arg(chain_org) AND rotations.project_id=sqlc.arg(chain_project) AND rotations.environment_id=sqlc.arg(chain_env) AND (rotations.state<>'disabled' OR EXISTS (SELECT 1 FROM rotation_runs owed WHERE owed.rotation_id=rotations.id AND owed.org_id=rotations.org_id AND owed.project_id=rotations.project_id AND owed.environment_id=rotations.environment_id AND owed.phase IN ('revoke_refused','quarantine'))) AND rotations.id > sqlc.arg(after_id) ORDER BY rotations.id LIMIT sqlc.arg(page_limit);
 
 -- name: RotationListAll :many
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND id > sqlc.arg(after_id) ORDER BY id LIMIT sqlc.arg(page_limit);
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND id > sqlc.arg(after_id) ORDER BY id LIMIT sqlc.arg(page_limit);
 
 -- name: RotationSetState :execrows
 UPDATE rotations SET deferred_from=NULL,state=sqlc.arg(state),halt_reason=NULL,manual_run_id=NULL,manual_skip_overlap=FALSE,restore_hold=CASE WHEN sqlc.arg(state)='disabled' THEN FALSE ELSE restore_hold END,next_run_at=sqlc.narg(next_run_at),generation=generation+1,updated_at=sqlc.arg(at) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(expected_generation) AND state<>'disabled';
@@ -48,6 +56,28 @@ SELECT key_id AS key_id,run_id AS run_id,expires_at AS expires_at,published_revi
  WHERE ru.org_id=sqlc.arg(chain_org) AND ru.project_id=sqlc.arg(chain_project) AND ru.environment_id=sqlc.arg(chain_env) AND ro.username_key_id = ANY(sqlc.arg(key_ids)::text[]) AND ru.published_revision IS NOT NULL
  ) ranked WHERE ordinal=1 ORDER BY key_id;
 
+-- The newest run of each rotation of a page (the top row of its runs list), and the count of
+-- runs that still owe a provider role a drop. One query each for the whole page, never one per
+-- rotation. The newest run is the one with the latest started_at, id breaking a tie: run ids are
+-- UUIDv7 stamped from the same clock as started_at and a rotation has at most one open run, so it is
+-- the runs list's first row (id DESC), and the read is one probe of rotation_runs_rotation
+-- (rotation_id, started_at) per rotation, never a scan of its history.
+-- A run owes a drop in exactly the phases the CLI ATTENTION lines, the web notice and the
+-- hikyo_rotation_runs_{quarantined,revoke_refused} gauges count: revoke_refused and quarantine,
+-- whatever their error code. versions_changed is the part of that count a restore refused
+-- (published_versions_changed): its role may be served again.
+-- name: RotationLastRuns :many
+SELECT ro.id AS rotation_id,ru.id AS id,ru.phase AS phase,ru.last_error AS last_error,ru.phase_at AS phase_at
+FROM rotations ro JOIN rotation_runs ru ON ru.rotation_id=ro.id AND ru.org_id=ro.org_id AND ru.project_id=ro.project_id AND ru.environment_id=ro.environment_id
+WHERE ro.org_id=sqlc.arg(chain_org) AND ro.project_id=sqlc.arg(chain_project) AND ro.environment_id=sqlc.arg(chain_env) AND ro.id = ANY(sqlc.arg(rotation_ids)::text[])
+AND ru.id=(SELECT latest.id FROM rotation_runs latest WHERE latest.rotation_id=ro.id AND latest.org_id=ro.org_id AND latest.project_id=ro.project_id AND latest.environment_id=ro.environment_id ORDER BY latest.started_at DESC,latest.id DESC LIMIT 1)
+ORDER BY ro.id;
+
+-- name: RotationOwedDropCounts :many
+SELECT rotation_id AS rotation_id,COUNT(*) AS owed,COUNT(CASE WHEN last_error='published_versions_changed' THEN 1 END) AS versions_changed FROM rotation_runs
+WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND rotation_id = ANY(sqlc.arg(rotation_ids)::text[]) AND phase IN ('revoke_refused','quarantine')
+GROUP BY rotation_id ORDER BY rotation_id;
+
 -- A run blocks an environment delete while it may hold a live role: every phase
 -- except done and failed (quarantine and revoke_refused included), plus a failed
 -- run that had already published. A failed run that never published had its
@@ -73,16 +103,16 @@ DELETE FROM rotation_key_claims WHERE org_id=sqlc.arg(chain_org) AND project_id=
 DELETE FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env);
 
 -- name: RotationListActiveByProvider :many
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND provider_id=sqlc.arg(provider_id) AND state='active' ORDER BY id;
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND provider_id=sqlc.arg(provider_id) AND state='active' ORDER BY id;
 
 -- name: RotationPauseActive :execrows
 UPDATE rotations SET deferred_from=NULL,state='paused',next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=FALSE,generation=generation+1,updated_at=sqlc.arg(at) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state='active';
 
 -- name: RotationListActiveInEnvironment :many
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(environment_id) AND state='active' ORDER BY id;
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(environment_id) AND state='active' ORDER BY id;
 
 -- name: RotationListActiveInProject :many
-SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state='active' ORDER BY id;
+SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state='active' ORDER BY id;
 
 -- Abandon closes every unsettled run and bumps the claim token, so a worker still
 -- holding the run loses its fence. A pre-publish run becomes quarantine and is due
@@ -99,9 +129,10 @@ SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,rev
 -- no superseded role owes nothing, so it settles straight to done; left in
 -- quarantine it would hold its provider and environment forever. RETURNING is the
 -- list of the rows this statement actually changed, so the audit rows the caller
--- writes match them one to one.
+-- writes match them one to one. A run holding published_versions_changed keeps that
+-- code: an abandoning delete must not turn the do-not-drop signal into a plain abandon.
 -- name: RotationAbandonOpenRuns :many
-UPDATE rotation_runs SET phase=CASE WHEN published_revision IS NOT NULL AND superseded_handle IS NULL THEN 'done' ELSE 'quarantine' END,phase_at=sqlc.arg(at),last_error='abandoned',next_attempt_at=CASE WHEN published_revision IS NULL THEN sqlc.arg(at) WHEN phase='published' AND superseded_handle IS NOT NULL THEN sqlc.arg(published_due_at) ELSE next_attempt_at END,lease_owner=CASE WHEN published_revision IS NULL THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN published_revision IS NULL AND lease_owner IS NOT NULL THEN sqlc.arg(at) ELSE NULL END,lease_claim_token=lease_claim_token+1 WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND phase NOT IN ('done','quarantine','failed') RETURNING id,phase,candidate_handle,superseded_handle;
+UPDATE rotation_runs SET phase=CASE WHEN published_revision IS NOT NULL AND superseded_handle IS NULL THEN 'done' ELSE 'quarantine' END,phase_at=sqlc.arg(at),last_error=CASE WHEN last_error='published_versions_changed' THEN last_error ELSE 'abandoned' END,next_attempt_at=CASE WHEN published_revision IS NULL THEN sqlc.arg(at) WHEN phase='published' AND superseded_handle IS NOT NULL THEN sqlc.arg(published_due_at) ELSE next_attempt_at END,lease_owner=CASE WHEN published_revision IS NULL THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN published_revision IS NULL AND lease_owner IS NOT NULL THEN sqlc.arg(at) ELSE NULL END,lease_claim_token=lease_claim_token+1 WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND phase NOT IN ('done','quarantine','failed') RETURNING id,phase,candidate_handle,superseded_handle;
 
 -- A failed run that never published only stops holding a live role once its
 -- candidate drop is recorded: the fenced claim write fails the run before the drop.

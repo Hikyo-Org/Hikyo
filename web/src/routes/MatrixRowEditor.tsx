@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { generatePath, Link } from 'react-router';
 
 import { isDemo, demoRole, demoCanEdit } from '../demo/config.ts';
@@ -109,6 +109,7 @@ export function MatrixRowEditor({
   const [fillAll, setFillAll] = useSensitiveState('');
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
+  const formId = useId();
   const [copyOpen, setCopyOpen] = useState(false);
   const [editAll, setEditAll] = useState(false);
   // Secret inputs are masked while typing (a shoulder-surfer reads a textarea as
@@ -197,6 +198,50 @@ export function MatrixRowEditor({
         };
       });
 
+  const actions = (
+    <>
+      {/* Keep the footer exit alongside the opt-in corner close. */}
+      <Button type="button" onClick={onClose}>
+        Close
+      </Button>
+      {sourceSet && secret && disclosure.canReveal ? (
+        <Button type="button" onClick={disclosure.reveal}>
+          {`Reveal ${keyRecord.name}`}
+        </Button>
+      ) : null}
+      {sourceSet && (!secret || disclosure.canReveal) ? (
+        <Button type="button" onClick={disclosure.copy}>
+          {secret ? `Copy ${keyRecord.name} (audited disclosure)` : `Copy ${keyRecord.name}`}
+        </Button>
+      ) : null}
+      <Link className="btn" to={declarationHref} onClick={onClose}>
+        {isDemo ? 'View declaration' : 'Edit declaration'}
+      </Link>
+      {/*
+        The per-key history entry point. Per-key history is a FILTER over
+        the same lineage, so it is the history surface with `key` set,
+        never a second surface, and never a second fetch.
+      */}
+      <Link
+        className="btn"
+        to={withRemote(
+          historyHref({ ...refData, env: environment.id, keyId: keyRecord.id }),
+          workspace?.remote ?? '',
+        )}
+      >
+        {`History for ${keyRecord.name}`}
+      </Link>
+      <Button
+        type="submit"
+        form={formId}
+        variant="primary"
+        disabled={(isDemo && demoRole() === 'viewer') || changes.length === 0 || busy || applying}
+      >
+        {busy || applying ? 'Saving drafts…' : `Save ${String(changes.length)} draft${changes.length === 1 ? '' : 's'}`}
+      </Button>
+    </>
+  );
+
   return (
     <>
       <Dialog
@@ -210,8 +255,11 @@ export function MatrixRowEditor({
         }}
         onBackdropClick={onClose}
         onClose={onClose}
+        pinActions
+        actions={actions}
       >
         <form
+          id={formId}
           onSubmit={(event) => {
             event.preventDefault();
             if (changes.length === 0) return;
@@ -550,50 +598,6 @@ export function MatrixRowEditor({
               )}</pre>
             </details>
           </details>
-
-          {/* One action row, and it is last: everything the dialog asks for sits
-              above it, the way ui/Dialog's own anatomy reads. */}
-          <div className="dialog__actions">
-            {/* Keep the footer exit alongside the opt-in corner close. */}
-            <Button type="button" onClick={onClose}>
-              Close
-            </Button>
-            {sourceSet && secret && disclosure.canReveal ? (
-              <Button type="button" onClick={disclosure.reveal}>
-                {`Reveal ${keyRecord.name}`}
-              </Button>
-            ) : null}
-            {sourceSet && (!secret || disclosure.canReveal) ? (
-              <Button type="button" onClick={disclosure.copy}>
-                {secret ? `Copy ${keyRecord.name} (audited disclosure)` : `Copy ${keyRecord.name}`}
-              </Button>
-            ) : null}
-            <Link className="btn" to={declarationHref} onClick={onClose}>
-              {isDemo ? 'View declaration' : 'Edit declaration'}
-            </Link>
-            {/*
-              The per-key history entry point. Per-key history is a FILTER over
-              the same lineage, so it is the history surface with `key` set, 
-              never a second surface, and never a second fetch.
-            */}
-            <Link
-              className="btn"
-              to={withRemote(
-                historyHref({ ...refData, env: environment.id, keyId: keyRecord.id }),
-                workspace?.remote ?? '',
-              )}
-            >
-              {`History for ${keyRecord.name}`}
-            </Link>
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={(isDemo && demoRole() === 'viewer') || changes.length === 0 || busy || applying}
-            >
-              {busy || applying ? 'Saving drafts…' : `Save ${String(changes.length)} draft${changes.length === 1 ? '' : 's'}`}
-            </Button>
-          </div>
-
         </form>
       </Dialog>
       {protectedGuard.request === null ? null : (

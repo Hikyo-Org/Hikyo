@@ -5,7 +5,8 @@ const $ = (id) => document.getElementById(id);
 const list = $('connections');
 const form = $('add');
 let busy = false;
-let lastOrigin = '';
+// The instance whose refusal the error box is showing: the one the browser button opens.
+let refusedOrigin = '';
 
 async function call(path, body) {
   const response = await fetch(path, {
@@ -77,7 +78,10 @@ function card(c) {
   if (c.stopped) {
     actions.append(button('Sign in', '', () => run('Waiting for you to sign in in your browser…', () => call('/__app/sign-in', { host: c.host }))));
   }
-  actions.append(button('Open', c.stopped ? 'secondary' : '', () => run('', () => call('/__app/open', { host: c.host }))));
+  actions.append(button('Open', c.stopped ? 'secondary' : '', () => run('', async () => {
+    refusedOrigin = c.origin;
+    await call('/__app/open', { host: c.host });
+  })));
   const remove = button('Remove', 'danger', () => {
     if (remove.dataset.armed !== '1') {
       remove.dataset.armed = '1';
@@ -104,10 +108,10 @@ async function refresh() {
 form.addEventListener('submit', (event) => {
   event.preventDefault();
   const data = new FormData(form);
-  lastOrigin = String(data.get('origin') || '');
+  refusedOrigin = String(data.get('origin') || '');
   run('Check the fingerprint in the confirmation window, then finish signing in in your browser…', async () => {
     await call('/__app/add', {
-      origin: lastOrigin,
+      origin: refusedOrigin,
       name: String(data.get('name') || ''),
       trust_mode: String(data.get('trust')),
       method: data.get('device') ? 'device' : 'browser',
@@ -117,5 +121,5 @@ form.addEventListener('submit', (event) => {
 });
 
 $('cancel').addEventListener('click', () => call('/__app/cancel', {}).catch(() => {}));
-$('open-browser').addEventListener('click', () => call('/__app/open-browser', { origin: lastOrigin }).catch(show));
+$('open-browser').addEventListener('click', () => call('/__app/open-browser', { origin: refusedOrigin }).catch(show));
 refresh().catch(show);

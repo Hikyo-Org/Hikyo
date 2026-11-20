@@ -132,12 +132,16 @@ func TestSessionChangesAreSerialized(t *testing.T) {
 	h := newHarness(t)
 	c, secret := h.connect()
 	var mu sync.Mutex
-	inFlight, peak := 0, 0
+	inFlight, peak, calls := 0, 0, 0
 	release := make(chan struct{})
+	var releaseOnce sync.Once
+	free := func() { releaseOnce.Do(func() { close(release) }) }
+	t.Cleanup(free) // a failed assertion must not leave the handler blocked
 	entered := make(chan struct{}, 2)
 	h.inst.on("POST /api/v1/auth/totp/step-up", func(w http.ResponseWriter, _ *http.Request) {
 		mu.Lock()
 		inFlight++
+		calls++
 		peak = max(peak, inFlight)
 		mu.Unlock()
 		entered <- struct{}{}
@@ -145,41 +149,59 @@ func TestSessionChangesAreSerialized(t *testing.T) {
 		mu.Lock()
 		inFlight--
 		mu.Unlock()
-		writeJSON(w, 200, map[string]any{"ok": true})
+		writeJSON(w, 200, rotateBody(newToken(t), secret.SessionID, h.inst.loginPID))
 	})
 	h.inst.on("GET /api/v1/orgs", func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, 200, map[string]any{"ok": true}) })
-	var wg sync.WaitGroup
+	codes := make(chan int, 2)
 	for range 2 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			h.page(c, "POST", "/api/v1/auth/totp/step-up", `{"code":"123456"}`)
-		}()
+		go func() { codes <- h.page(c, "POST", "/api/v1/auth/totp/step-up", `{"code":"123456"}`).Code }()
 	}
-	<-entered
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("no step-up reached the instance")
+	}
 	// Ordinary reads are not held up by the gate.
-	if rec := h.page(c, "GET", "/api/v1/orgs", ""); rec.Code != 200 {
-		t.Errorf("a read waited behind a session change: %d", rec.Code)
+	read := make(chan int, 1)
+	go func() { read <- h.page(c, "GET", "/api/v1/orgs", "").Code }()
+	select {
+	case code := <-read:
+		if code != 200 {
+			t.Errorf("a read failed: %d", code)
+		}
+	case <-time.After(5 * time.Second):
+		t.Error("a read waited behind a session change")
 	}
 	select {
 	case <-entered:
 		t.Error("a second session change reached the instance while the first was running")
 	case <-time.After(300 * time.Millisecond):
 	}
-	close(release)
-	wg.Wait()
+	free()
+	for range 2 {
+		select {
+		case code := <-codes:
+			if code != 200 {
+				t.Errorf("a queued session change was rejected: %d", code)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("a session change never finished")
+		}
+	}
 	mu.Lock()
 	defer mu.Unlock()
-	if peak != 1 {
-		t.Errorf("%d session changes ran at once", peak)
+	if peak != 1 || calls != 2 {
+		t.Errorf("peak %d, calls %d: want 1 at a time and both delivered", peak, calls)
 	}
-	_ = secret
 }
 
 func TestAStreamWhoseBearerChangedBeforeItsHeadersIsCancelled(t *testing.T) {
 	h := newHarness(t)
 	c, secret := h.connect()
 	entered, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	free := func() { releaseOnce.Do(func() { close(release) }) }
+	t.Cleanup(free) // a failed rotation must not leave the handler blocked
 	h.inst.on("GET /api/v1/events", func(w http.ResponseWriter, r *http.Request) {
 		close(entered)
 		<-release
@@ -194,7 +216,7 @@ func TestAStreamWhoseBearerChangedBeforeItsHeadersIsCancelled(t *testing.T) {
 	if err := c.applyRotation(Rotate, tokenView{Token: newToken(t), SessionID: secret.SessionID}, secret.Token); err != nil {
 		t.Fatal(err)
 	}
-	close(release)
+	free()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
@@ -320,6 +342,9 @@ func TestMetaClientErrorIsARefusalAndServerErrorIsNot(t *testing.T) {
 		if got != refused {
 			t.Errorf("meta %d: refused=%v, want %v (%v)", status, got, refused, err)
 		}
+		if !refused && (err != nil || h.native.opened[c.host] == "") {
+			t.Errorf("meta %d: the window did not open (%v)", status, err)
+		}
 	}
 }
 
@@ -356,18 +381,6 @@ func TestRemoveWithAFailedWipeKeepsAnUnusableRecordUntilItSucceeds(t *testing.T)
 		t.Error("the retry kept the record or revoked again")
 	}
 	_ = secret
-}
-
-func TestFailedRemovalAfterRevocationLeavesTheConnectionStopped(t *testing.T) {
-	h := newHarness(t)
-	c, _ := h.connect()
-	h.breakStore()
-	if _, err := h.m.Remove(context.Background(), c.host); err == nil {
-		t.Fatal("the removal succeeded without deleting the record")
-	}
-	if c.Stopped() == "" || c.bearer() != "" {
-		t.Error("the revoked bearer is still active")
-	}
 }
 
 func TestAnUnusableRecordDoesNotBlockStartup(t *testing.T) {

@@ -1203,12 +1203,13 @@ func (q *Queries) RotationRtSetNextRun(ctx context.Context, arg RotationRtSetNex
 }
 
 const rotationRtSettleRun = `-- name: RotationRtSettleRun :execrows
-UPDATE rotation_runs SET phase=$1,phase_at=$2,last_error=$3,next_attempt_at=$4,candidate_valid_until=COALESCE($5,candidate_valid_until),revoke_not_before_at=COALESCE($6,revoke_not_before_at),published_revision=COALESCE($7,published_revision),not_converged_adapter_targets=COALESCE($8,not_converged_adapter_targets),lease_owner=CASE WHEN $9::bigint=1 THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN $9::bigint=1 THEN lease_expires_at ELSE NULL END WHERE id=$10 AND org_id=$11 AND project_id=$12 AND environment_id=$13 AND lease_owner=$14 AND lease_expires_at>$2 AND lease_claim_token=$15 AND phase = ANY($16::text[])
+UPDATE rotation_runs SET phase=$1,phase_at=$2,last_error=CASE WHEN last_error='published_versions_changed' AND phase IN ('revoke_refused','quarantine') AND ($1='revoke_refused' OR $1='quarantine') AND $3::bigint=0 THEN last_error ELSE $4 END,next_attempt_at=$5,candidate_valid_until=COALESCE($6,candidate_valid_until),revoke_not_before_at=COALESCE($7,revoke_not_before_at),published_revision=COALESCE($8,published_revision),not_converged_adapter_targets=COALESCE($9,not_converged_adapter_targets),lease_owner=CASE WHEN $10::bigint=1 THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN $10::bigint=1 THEN lease_expires_at ELSE NULL END WHERE id=$11 AND org_id=$12 AND project_id=$13 AND environment_id=$14 AND lease_owner=$15 AND lease_expires_at>$2 AND lease_claim_token=$16 AND phase = ANY($17::text[])
 `
 
 type RotationRtSettleRunParams struct {
 	Phase                      string
 	Now                        pgtype.Timestamptz
+	RestoreChecked             int64
 	LastError                  pgtype.Text
 	NextAttemptAt              pgtype.Timestamptz
 	ValidUntilAt               pgtype.Timestamptz
@@ -1229,10 +1230,16 @@ type RotationRtSettleRunParams struct {
 // exact-row fence and the "fenced claim write" of crash-safety rule 8: it waits on
 // a row lock a publish transaction holds, and matches zero rows once the run has
 // left those phases. A settle that keeps the lease passes keep_lease.
+// A run held in revoke_refused or quarantine with published_versions_changed (a
+// restore may have put the superseded role back in service) keeps that code through
+// any settle that leaves it in those phases, so an extend failure or a wake never
+// replaces the do-not-drop signal; only a settle that passes restore_checked (the
+// revoke step, after it re-read the restore assertion) may change it.
 func (q *Queries) RotationRtSettleRun(ctx context.Context, arg RotationRtSettleRunParams) (int64, error) {
 	result, err := q.db.Exec(ctx, rotationRtSettleRun,
 		arg.Phase,
 		arg.Now,
+		arg.RestoreChecked,
 		arg.LastError,
 		arg.NextAttemptAt,
 		arg.ValidUntilAt,

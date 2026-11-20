@@ -3,9 +3,14 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useProjectKeys } from '../../api/adapters.ts';
 import type { DynamicProvider } from '../../api/dynamic.ts';
 import {
+  haltCause,
+  haltReasonField,
   MAX_RUN_PAGES,
+  owedBadgeText,
   owedRunText,
+  owedSummaryText,
   owesDrop,
+  owesDropSummary,
   restoreHoldText,
   VERSIONS_CHANGED_CODE,
   rotationRefusalText,
@@ -21,7 +26,7 @@ import { Alert } from '../../ui/Alert.tsx';
 import { Badge, type BadgeTone } from '../../ui/Badge.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { Checkbox } from '../../ui/Checkbox.tsx';
-import { NamedId } from '../../ui/NamedId.tsx';
+import { Breakable, NamedId } from '../../ui/NamedId.tsx';
 import { Select } from '../../ui/Select.tsx';
 import { NoEnvironments, type EnvironmentsRead } from './EnvironmentsRead.tsx';
 
@@ -55,6 +60,23 @@ function span(seconds: bigint): string {
 /** at renders an optional instant, or the words that say why there is none. */
 function at(value: string | null | undefined, none: string): string {
   return value === undefined || value === null ? none : formatWhen(value);
+}
+
+/** CodeText is a sentence whose snake_case words (error codes, halt reasons) are Breakable. */
+function CodeText({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/([a-z]+(?:_[a-z]+)+)/).map((part, index) =>
+        index % 2 === 1 ? (
+          <span key={`${String(index)}-${part}`} className="rotations__code">
+            <Breakable text={part} />
+          </span>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
 }
 
 /**
@@ -154,7 +176,7 @@ function RotationList({
   return (
     <>
       <Checkbox
-        label="Include deleted rotations"
+        label="Include all deleted rotations"
         checked={includeDisabled}
         onChange={(event) => {
           setIncludeDisabled(event.target.checked);
@@ -173,6 +195,12 @@ function RotationList({
           the server stopped {halted.length === 1 ? 'it' : 'them'} and starts no run until a person
           resumes {halted.length === 1 ? 'it' : 'them'} with <code>hikyo rotation resume</code>. A
           halted rotation does not extend the credential already delivered.
+          {halted.map((rotation) => (
+            <span key={`cause-${rotation.id}`}>
+              {' '}
+              Rotation {rotation.id} is <CodeText text={haltCause(rotation)} />.
+            </span>
+          ))}
           {halted
             .filter((rotation) => rotation.restore_hold)
             .map((rotation) => (
@@ -204,6 +232,8 @@ function RotationList({
                 const isHeld = rotation.restore_hold && rotation.state !== 'disabled';
                 const label = keyName(rotation.key_id) ?? rotation.id;
                 const open = selected === rotation.id;
+                // A deleted rotation can still owe a drop: the role stays live, so the CLI warns for it too.
+                const owed = owesDropSummary(rotation);
                 return (
                   <tr key={rotation.id} data-rotation={rotation.id}>
                     <th scope="row">
@@ -212,10 +242,10 @@ function RotationList({
                           <span className="mono rotations__id" title={rotation.id}>{rotation.id}</span>
                         </Fact>
                         <Fact label="Password key">
-                          <NamedId id={rotation.key_id} name={keyName(rotation.key_id)} />
+                          <NamedId breakable id={rotation.key_id} name={keyName(rotation.key_id)} />
                         </Fact>
                         <Fact label="Role name key">
-                          <NamedId id={rotation.username_key_id} name={keyName(rotation.username_key_id)} />
+                          <NamedId breakable id={rotation.username_key_id} name={keyName(rotation.username_key_id)} />
                         </Fact>
                         <Fact label="Provider">
                           {minter === undefined ? (
@@ -231,12 +261,33 @@ function RotationList({
                       </Facts>
                     </th>
                     <td>
-                      <Badge tone={STATE_TONE[rotation.state]}>{rotation.state}</Badge>
+                      <Badge tone={STATE_TONE[rotation.state]}>{rotation.state === 'disabled' ? 'deleted' : rotation.state}</Badge>
                       {isHeld ? (
                         <>
                           {' '}
                           <Badge tone="danger">Restore hold</Badge>
                         </>
+                      ) : null}
+                      {owed ? (
+                        <>
+                          {' '}
+                          {/* A restore may have put the role back: the badge must not say to drop it. */}
+                          <Badge tone="danger">{owedBadgeText(rotation)}</Badge>
+                        </>
+                      ) : null}
+                      {rotation.state === 'halted' || owed ? (
+                        <Facts>
+                          {rotation.state === 'halted' ? (
+                            <Fact label="Halt reason">
+                              <span className="rotations__note"><CodeText text={haltReasonField(rotation)} /></span>
+                            </Fact>
+                          ) : null}
+                          {owed ? (
+                            <Fact label="Attention">
+                              <span className="rotations__note"><CodeText text={owedSummaryText(rotation)} /></span>
+                            </Fact>
+                          ) : null}
+                        </Facts>
                       ) : null}
                       <div className="rotations__runs">
                         <Button
@@ -272,6 +323,25 @@ function RotationList({
                         </Fact>
                         <Fact label="Created by">
                           <span className="mono rotations__id">{rotation.created_by}</span>
+                        </Fact>
+                        <Fact label="Last run">
+                          {rotation.last_run === undefined ? (
+                            'No run yet'
+                          ) : (
+                            <>
+                              <span className="mono rotations__id">{rotation.last_run.id}</span>{' '}
+                              <span className="rotations__code"><Breakable text={rotation.last_run.phase} /></span>
+                              {rotation.last_run.error_code === undefined || rotation.last_run.error_code === null ? (
+                                ''
+                              ) : (
+                                <>
+                                  {' '}
+                                  (<span className="mono rotations__code"><Breakable text={rotation.last_run.error_code} /></span>)
+                                </>
+                              )}
+                              , {formatWhen(rotation.last_run.phase_at)}
+                            </>
+                          )}
                         </Fact>
                         <Fact label="Generation">{String(rotation.generation)}</Fact>
                         <Fact label="Created">{formatWhen(rotation.created_at)}</Fact>
@@ -355,7 +425,7 @@ function RunTimeline({ env, rotation, name }: { env: EnvironmentRef; rotation: R
         </Alert>
       ) : null}
       {owed.map((run) => (
-        <Alert key={run.id}>{owedRunText(run)}</Alert>
+        <Alert key={run.id}><CodeText text={owedRunText(run)} /></Alert>
       ))}
       {query.isSuccess && runs.length === 0 ? (
         <p role="status">This rotation has not run yet.</p>
@@ -400,7 +470,7 @@ function RunTimeline({ env, rotation, name }: { env: EnvironmentRef; rotation: R
                         {run.error_code === undefined || run.error_code === null ? (
                           'None'
                         ) : (
-                          <span className="mono">{run.error_code}</span>
+                          <span className="mono rotations__code"><Breakable text={run.error_code} /></span>
                         )}
                       </Fact>
                       <Fact label="Owed role valid until">

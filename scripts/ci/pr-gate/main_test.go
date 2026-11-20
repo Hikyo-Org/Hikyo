@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -183,7 +184,11 @@ type fakeAPI struct {
 	writeHook         func(context.Context, map[string]any) error
 	checks            []check
 	nextID            int64
+	// repoID answers the check suite count queries, which name this repository.
+	repoID func() int64
 }
+
+var suiteCountHead = regexp.MustCompile(`object\(oid:"([0-9a-f]{40})"\)`)
 
 func (f *fakeAPI) read(_ context.Context, path string, result any) error {
 	f.mu.Lock()
@@ -197,7 +202,14 @@ func (f *fakeAPI) read(_ context.Context, path string, result any) error {
 		return &githubReadError{path: path, status: 404}
 	}
 	var response any
-	if strings.Contains(path, "/check-runs?") {
+	if strings.HasPrefix(path, "graphql:") && strings.Contains(path, "checkSuites{totalCount}") && !strings.Contains(path, "checkSuites(") && f.responses[path] == nil {
+		// A commit well under REST's suite cap, unless a fixture installs its own.
+		head := suiteCountHead.FindStringSubmatch(path)
+		if f.repoID == nil || head == nil {
+			return fmt.Errorf("unexpected API read %s", path)
+		}
+		response = map[string]any{"data": map[string]any{"repository": map[string]any{"databaseId": f.repoID(), "object": map[string]any{"oid": head[1], "checkSuites": map[string]any{"totalCount": 1}}}}}
+	} else if strings.Contains(path, "/check-runs?") {
 		checks := f.checks
 		if f.scopeChecksToHead {
 			checks = nil
@@ -359,6 +371,7 @@ func newFixture(t *testing.T) *fixture {
 	}{Path: repo.FullName + "/.github/workflows/ci.yml@" + f.pr.MergeCommitSHA, Ref: "refs/pull/7/merge", SHA: f.pr.MergeCommitSHA})
 	f.api = &fakeAPI{responses: make(map[string]any), reads: make(map[string]int), checks: []check{}}
 	f.c = &controller{api: f.api, repoName: repo.FullName, checkName: "ci-required-next", output: &bytes.Buffer{}}
+	f.api.repoID = func() int64 { return f.c.repo.ID }
 	f.c.verify = func(context.Context, int, string) (policyDecision, error) {
 		f.verifyCalls++
 		return policyDecision{Code: f.verifyCode, WorkflowChangeAuthorized: f.workflowAuthorized}, nil

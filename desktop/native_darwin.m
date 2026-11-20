@@ -242,7 +242,11 @@ void hikyoAlert(const char *title, const char *message) {
 	});
 }
 
-char *hikyoSavePanel(const char *name, const char *source, const char *mime) {
+// replace reports that a file was at the chosen path when the panel answered
+// (so the panel asked about replacing it). It is looked up in the same
+// main-thread step as the answer; a file created in that instant is the one
+// remaining gap.
+char *hikyoSavePanel(const char *name, const char *source, const char *mime, int *replace) {
 	__block char *out = NULL;
 	NSString *n = [NSString stringWithUTF8String:name], *from = [NSString stringWithUTF8String:source];
 	NSString *type = [NSString stringWithUTF8String:mime];
@@ -260,6 +264,7 @@ char *hikyoSavePanel(const char *name, const char *source, const char *mime) {
 		[NSApp activateIgnoringOtherApps:YES];
 		if ([panel runModal] == NSModalResponseOK && panel.URL.path != nil) {
 			out = strdup(panel.URL.path.UTF8String);
+			*replace = [[NSFileManager defaultManager] fileExistsAtPath:panel.URL.path] ? 1 : 0;
 		}
 		reapDismissed();
 	});

@@ -171,14 +171,17 @@ func (m *Manager) serveApp(w http.ResponseWriter, r *http.Request) {
 // pending runs a long operation from the list, one at a time. The user can
 // cancel it with /__app/cancel, and closing the page cancels it too.
 func (m *Manager) pending(w http.ResponseWriter, r *http.Request, run func(context.Context) (any, error)) error {
+	// The slot is taken and the cancel registered under one lock, so a cancel
+	// can't see the slot busy before there is something to cancel.
+	m.pendingMu.Lock()
 	release, ok := m.appSlot.take()
 	if !ok {
+		m.pendingMu.Unlock()
 		return &shellErr{codeBusy, "another sign-in is already waiting"}
 	}
 	defer release()
 	ctx, cancel := context.WithTimeout(r.Context(), 11*time.Minute)
 	defer cancel()
-	m.pendingMu.Lock()
 	m.pendingEnd = cancel
 	m.pendingMu.Unlock()
 	defer func() {

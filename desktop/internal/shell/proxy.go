@@ -262,6 +262,13 @@ func (c *Conn) modifyResponse(resp *http.Response) error {
 	h.Del("Set-Cookie")
 	c.rewriteLocation(resp)
 	fl, _ := resp.Request.Context().Value(flightKey{}).(*flight)
+	// A response that fails here stops the connection only while the session the
+	// request carried is still the current one (stopSent).
+	sent := c.bearer()
+	if fl != nil {
+		sent = fl.sentBearer()
+	}
+	stop := func(reason string) { c.stopSent(sent, reason) }
 	rot := c.m.policy.RotationFor(resp.Request.Method, resp.Request.URL.EscapedPath())
 	ok2xx := resp.StatusCode/100 == 2
 	// sessionChange: a success on a route that carries a new session. Anything
@@ -272,7 +279,7 @@ func (c *Conn) modifyResponse(resp *http.Response) error {
 		// A stream is passed through unscanned, so it can't carry a session change.
 		if rot != NotRotating {
 			if sessionChange {
-				c.stop("The instance answered a session change with a stream the app can't read. Sign in again.")
+				stop("The instance answered a session change with a stream the app can't read. Sign in again.")
 			}
 			return errBlocked{"unreadable session response"}
 		}
@@ -294,7 +301,7 @@ func (c *Conn) modifyResponse(resp *http.Response) error {
 		zr, err := gzip.NewReader(resp.Body)
 		if err != nil {
 			if sessionChange {
-				c.stop("The response to a session change could not be read. Sign in again.")
+				stop("The response to a session change could not be read. Sign in again.")
 			}
 			return errBlocked{"the instance sent an unreadable response"}
 		}
@@ -307,19 +314,19 @@ func (c *Conn) modifyResponse(resp *http.Response) error {
 		resp.ContentLength = -1
 	default:
 		if sessionChange {
-			c.stop("The response to a session change could not be read. Sign in again.")
+			stop("The response to a session change could not be read. Sign in again.")
 		}
 		return errBlocked{"the instance used an encoding the app can't read"}
 	}
 	if resp.Request.Method == http.MethodHead || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusResetContent {
-		if ok2xx && rot == Reissue {
-			c.stop("The instance ended every session but returned no new one. Sign in again.")
+		if sessionChange {
+			stop("The instance answered a session change without a new session. Sign in again.")
 		}
 		return nil
 	}
 	if !isJSONType(h.Get("Content-Type")) {
 		if sessionChange {
-			c.stop("The instance answered a session change with something the app can't read. Sign in again.")
+			stop("The instance answered a session change with something the app can't read. Sign in again.")
 			return errBlocked{"unreadable session response"}
 		}
 		return nil
@@ -330,7 +337,7 @@ func (c *Conn) modifyResponse(resp *http.Response) error {
 	_ = resp.Body.Close()
 	if err != nil {
 		if sessionChange {
-			c.stop("The response to a session change could not be read. Sign in again.")
+			stop("The response to a session change could not be read. Sign in again.")
 		}
 		return errBlocked{"the response could not be read"}
 	}
@@ -341,7 +348,7 @@ func (c *Conn) modifyResponse(resp *http.Response) error {
 		return nil
 	case err != nil:
 		if sessionChange {
-			c.stop("The instance sent a malformed session response. Sign in again.")
+			stop("The instance sent a malformed session response. Sign in again.")
 		}
 		return errBlocked{"the instance sent a malformed JSON response"}
 	case view.Token != "" && (rot == NotRotating || !ok2xx):
@@ -354,16 +361,14 @@ func (c *Conn) modifyResponse(resp *http.Response) error {
 	case !ok2xx:
 		setBody(resp, raw)
 		return nil
-	case view.Token == "" && rot == Reissue:
-		c.stop("The instance ended every session but returned no new one. Sign in again.")
+	case view.Token == "" && rot != NotRotating:
+		// Both kinds of session change return the new session; a success without
+		// one leaves the old bearer in use for a session the instance replaced.
+		stop("The instance answered a session change without a new session. Sign in again.")
 	case view.Token != "":
 		// A failed check has already stopped the connection and revoked the new
 		// session. The body is still released without the token, because
 		// recovery codes in it can't be fetched again (ADR D4).
-		sent := ""
-		if fl != nil {
-			sent = fl.sentBearer()
-		}
 		_ = c.applyRotation(rot, view, sent)
 	}
 	setBody(resp, view.Body)

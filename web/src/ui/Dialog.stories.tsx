@@ -1,7 +1,7 @@
 import { interactionOnce } from '../../.storybook/interactionCoverage.ts';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import type { SyntheticEvent } from 'react';
-import { expect, fn, userEvent } from 'storybook/test';
+import { expect, fn, userEvent, waitFor } from 'storybook/test';
 
 import { safeArea } from '../../.storybook/layout.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -256,5 +256,34 @@ export const InFlightScrollerReachable: Story = {
     const dialog = canvas.getByRole('dialog', { name: 'Saving rule' });
     await expect(dialog.scrollHeight).toBeGreaterThan(dialog.clientHeight);
     await expect(dialog.tabIndex).toBe(0);
+  },
+};
+
+/** Too short for the minimum body: the dialog scrolls as a whole, the body keeps its height, Save is reachable. */
+export const PinnedActionsShortViewport: Story = {
+  ...PinnedActions,
+  globals: { viewport: { value: 'zoom400', isRotated: false } },
+  play: async ({ canvas }) => {
+    const dialog = canvas.getByRole('dialog', { name: 'Edit rule' });
+    const body = dialog.querySelector('.dialog__body');
+    if (!(body instanceof HTMLElement)) throw new Error('no dialog body');
+    await expect(getComputedStyle(dialog).overflowY).toBe('auto');
+    await expect(dialog.scrollHeight).toBeGreaterThan(dialog.clientHeight);
+    // The body is not squeezed to nothing: 10rem, or 30% of a short window.
+    await expect(body.getBoundingClientRect().height).toBeGreaterThanOrEqual(Math.min(10 * Number.parseFloat(getComputedStyle(document.documentElement).fontSize), window.innerHeight * 0.3) - 1);
+    // Scrolling the dialog itself brings Save into its box.
+    dialog.scrollTop = dialog.scrollHeight;
+    const save = canvas.getByRole('button', { name: 'Save' }).getBoundingClientRect();
+    const box = dialog.getBoundingClientRect();
+    await expect(save.top).toBeGreaterThanOrEqual(box.top);
+    await expect(save.bottom).toBeLessThanOrEqual(box.bottom);
+    // A re-measure (a child resizing) keeps the reader at the bottom.
+    const bottom = dialog.scrollTop;
+    const child = body.firstElementChild;
+    if (!(child instanceof HTMLElement)) throw new Error('no body child');
+    const fit = body.style.getPropertyValue('--body-fit');
+    child.style.minHeight = `${String(child.getBoundingClientRect().height + 1)}px`;
+    await waitFor(() => expect(body.style.getPropertyValue('--body-fit')).not.toBe(fit));
+    await expect(dialog.scrollTop).toBeGreaterThanOrEqual(bottom);
   },
 };

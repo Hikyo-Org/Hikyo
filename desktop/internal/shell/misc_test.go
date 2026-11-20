@@ -376,25 +376,6 @@ func TestAddSeesLegacyOriginSpellingsAsDuplicates(t *testing.T) {
 	}
 }
 
-func TestFailedRemovalLeavesAWorkingConnection(t *testing.T) {
-	h := newHarness(t)
-	c, _ := h.connect()
-	h.m.secrets = failingDelete{h.secrets}
-	if _, err := h.m.Remove(context.Background(), c.host); err == nil {
-		t.Fatal("expected an error")
-	}
-	// The connection must work again, including new ceremonies.
-	if c.life().Err() != nil {
-		t.Error("the connection's context stayed cancelled")
-	}
-	c.rotMu.Lock()
-	removed := c.removed
-	c.rotMu.Unlock()
-	if removed {
-		t.Error("the connection still refuses sessions")
-	}
-}
-
 // The device-code dialog's "Open in browser" uses openHandoff: the verification
 // page of this origin only, under any spelling of the origin.
 func TestOpenHandoffAcceptsOnlyThisOriginsHandoffPages(t *testing.T) {

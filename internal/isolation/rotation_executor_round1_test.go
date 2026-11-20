@@ -32,7 +32,8 @@ func (x *rotExec) groupKey(keyID string) {
 // restorer is a Revisions service that can consume the reveal ceremony a restore
 // of historical secret values requires.
 func (x *rotExec) restorer() *service.Revisions {
-	execRaw(x.t, x.db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_rot_reveal_history','usr_alice','reveal-history','org_a',NULL,NULL,`+ts+`)`)
+	// A second restore in one test finds the grant already there.
+	_ = execRawErr(x.t, x.db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_rot_reveal_history','usr_alice','reveal-history','org_a',NULL,NULL,`+ts+`)`)
 	auth := authService(x.t, x.db)
 	auth.ReauthWindow = 15 * time.Minute
 	return &service.Revisions{DB: x.db, Keyring: probeKeyring(x.t, x.db), Auth: auth}

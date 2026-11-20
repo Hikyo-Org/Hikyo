@@ -41,6 +41,7 @@ import { Dialog } from '../ui/Dialog.tsx';
 import { useMintLifecycle, type MintBoundaryFields } from './mintLifecycle.ts';
 import { duration } from '../app/duration.ts';
 import { NamedId } from '../ui/NamedId.tsx';
+import { DownloadLink } from '../app/DownloadLink.tsx';
 
 /**
  * The SSH tab of the machine-access page (#155): an environment's SSH user
@@ -250,9 +251,9 @@ export function SSHCertificatesPanel({
                     </Button>
                     {workspace === null ? (
                       isDemo ? <Button type="button" disabled title="Downloads are unavailable in the demo">Download KRL</Button> : (
-                        <a className="btn" href={sshKRLPath(env, ca.id)} download={`${ca.name}.krl`}>
+                        <DownloadLink href={sshKRLPath(env, ca.id)} filename={`${ca.name}.krl`}>
                           Download KRL
-                        </a>
+                        </DownloadLink>
                       )
                     ) : null}
                     <Button type="button" disabled={!canAct} onClick={() => setDialog({ kind: 'rotate', ca })}>

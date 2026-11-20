@@ -39,7 +39,9 @@ import { useModalDialog } from './useModalDialog.ts';
  *
  * `pinActions` keeps the action row in view: the title and actions stay put
  * and only the body between them scrolls, so an editor longer than the
- * viewport can be cancelled or saved without scrolling to its end. Opt-in,
+ * viewport can be cancelled or saved without scrolling to its end. The body
+ * keeps a minimum height; where even that cannot fit (a short window, high
+ * zoom) the whole dialog scrolls instead of clipping the row. Opt-in,
  * for editors whose body can outgrow the dialog.
  */
 const FOCUSABLE = 'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])';
@@ -96,6 +98,30 @@ export function Dialog({
     if (pinActions !== true || initialFocus !== undefined) return;
     body.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
   }, [pinActions, initialFocus]);
+  // The body's minimum height may not exceed its content, or a short body
+  // would sit in empty space. The minimum is lifted before measuring, since
+  // scrollHeight never reads below the body's current height. Only the
+  // children are observed: the body resizing to its own minimum must not
+  // re-trigger the measurement. No dependency list: a render can add or swap
+  // children, and re-observing them each render avoids a DOM child-list
+  // observer, whose name the sensitivity inventory scan would flag.
+  useLayoutEffect(() => {
+    const element = body.current;
+    if (pinActions !== true || element === null) return;
+    const fit = () => {
+      // Lifting the minimum shrinks the dialog for one layout, which would clamp
+      // its scroll offset: keep the reader where they were.
+      const scroller = ref.current;
+      const offset = scroller?.scrollTop ?? 0;
+      element.style.setProperty('--body-fit', '0px');
+      element.style.setProperty('--body-fit', `${String(element.scrollHeight)}px`);
+      if (scroller !== null) scroller.scrollTop = offset;
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    for (const child of element.children) observer.observe(child);
+    return () => observer.disconnect();
+  });
   const titleId = useId();
   const pressedScrim = useRef(false);
   const onScrim = (event: MouseEvent<HTMLDialogElement>) => {
