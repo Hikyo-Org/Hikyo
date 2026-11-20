@@ -88,6 +88,8 @@ export const Default: Story = {
       'published',
     );
     await expect(canvas.getByRole('button', { name: /^Save/ })).toBeDisabled();
+    // A pinned dialog opens on its first body control, as the other pinned dialogs do.
+    await expect(canvasElement.querySelector('.dialog__body :is(button, input, select, textarea, a[href]):not(:disabled)')).toHaveFocus();
     // The eyebrow names environment and classification with the shared separator.
     await expect(canvas.getByText(dottedText(/^development\s*·\s*config$/))).toHaveClass('matrix-editor__eyebrow');
     // Both nested disclosures wear the button skin, not a bare label with the
@@ -186,6 +188,20 @@ export const UpdatedByIdOnly: Story = {
   },
 };
 
+// The action row is pinned: inside the dialog's visible box, the dialog itself
+// not scrolling (only its body does).
+const expectActionsPinned = async (canvasElement: HTMLElement) => {
+  const dialog = canvasElement.querySelector('dialog');
+  const save = [...canvasElement.querySelectorAll('button')].find((button) => /^Save/.test(button.textContent));
+  const body = dialog?.querySelector('.dialog__body');
+  if (dialog === null || dialog === undefined || save === undefined || !(body instanceof HTMLElement)) throw new Error('dialog, body or save button missing');
+  // Squeeze the dialog so the body has to scroll; then the checks below fail on an unpinned dialog.
+  dialog.style.maxHeight = '24rem';
+  await expect(body.scrollHeight).toBeGreaterThan(body.clientHeight);
+  await expect(save.getBoundingClientRect().bottom).toBeLessThanOrEqual(dialog.getBoundingClientRect().bottom);
+  await expect(dialog.scrollHeight).toBe(dialog.clientHeight);
+};
+
 export const LongValue: Story = {
   args: {
     rows: rows.map((row) => ({
@@ -193,10 +209,11 @@ export const LongValue: Story = {
       cell: row.cell === undefined ? undefined : { ...row.cell, value: longValue },
     })),
   },
-  play: async ({ canvas }) => {
+  play: async ({ canvas, canvasElement }) => {
     const textarea = canvas.getByRole('textbox', { name: 'development value' });
     await expect(textarea).toHaveValue(longValue);
     await expectNoHorizontalOverflow(textarea);
+    await expectActionsPinned(canvasElement);
   },
 };
 
@@ -215,13 +232,14 @@ export const LongSecretValue: Story = {
       },
     })),
   },
-  play: async ({ canvas }) => {
+  play: async ({ canvas, canvasElement }) => {
     const textarea = canvas.getByRole('textbox', { name: 'development value' });
     await expect(textarea).toHaveClass('matrix-editor__value--masked');
     await userEvent.click(textarea);
     await userEvent.paste(longValue);
     await expect(textarea).toHaveValue(longValue);
     await expectNoHorizontalOverflow(textarea);
+    await expectActionsPinned(canvasElement);
   },
 };
 
