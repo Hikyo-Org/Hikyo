@@ -5,8 +5,8 @@
 # the zero-baseline rules (wastedassign, unused, SA4006, SA4009) for every whole
 # changed package. Used by the pre-push hook and by ci-golangci.yml (advisory);
 # never part of a required job. desktop/ is a nested module the root module cannot
-# load: its changes (or a changed lint input) lint all of desktop/ (new code only)
-# from inside it, after the root passes, where it exists.
+# load: its changes (or a changed lint input) lint all of desktop/ from inside it,
+# after the root passes and in the same two passes, where it exists.
 # Usage: scripts/ci/golangci-lint-new.sh BASE
 # It lints the work tree it runs in (the hook runs this script from a detached
 # worktree at the pushed commit, so the tool pin, both configs and this script
@@ -113,6 +113,12 @@ if [ "$desktop_lint" = true ] && [ -f desktop/go.mod ]; then
 	[ -f .golangci.yml ] || desktop_config=$config
 	printf 'golangci-lint-new: linting new code since %s (desktop/...)\n' "$base" >&2
 	(cd desktop && "$script_dir/run-go-tool.sh" golangci-lint run -j 2 --config "$desktop_config" --new-from-merge-base="$base" ./...) || desktop_status=$?
+	if [ -f .golangci-strict.yml ]; then
+		printf 'golangci-lint-new: strict rules on the whole desktop module\n' >&2
+		desktop_strict=0
+		(cd desktop && "$script_dir/run-go-tool.sh" golangci-lint run -j 2 --config ../.golangci-strict.yml ./...) || desktop_strict=$?
+		[ "$desktop_status" -ne 0 ] || desktop_status=$desktop_strict
+	fi
 fi
 [ "$new_status" -eq 0 ] || exit "$new_status"
 [ "$strict_status" -eq 0 ] || exit "$strict_status"

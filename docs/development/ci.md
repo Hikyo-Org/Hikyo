@@ -139,6 +139,12 @@ range opts out. On failure, the check names the page that usually needs the
 update. Feedback tooling comes from the PR's integration merge, so the check
 applies to a PR once the check is on that PR's base branch.
 
+The `docs-impact` check also covers the desktop shell: a change to
+`desktop/internal/shell/shellroutes.go` (the `/__shell` routes) or
+`desktop/main_darwin.go` (the launch environment) needs a change to
+`docs/spec/desktop-shell-protocol.md` or `desktop/README.md`, or the same opt-out
+trailer. User docs under `docs/site/src/content/docs/` also satisfy it.
+
 ### Desktop shell (macOS)
 
 `desktop/` is a nested Go module (the Wails shell, #1215). Wails, cgo and WebKit
@@ -165,7 +171,8 @@ lints it from inside `desktop/` instead. The registry domain `desktop` and the
 4. Lint is advisory, like the root ratchet, and the root `golangci` names must stay
    out of `ci.yml`: `ci-advisory-golangci-desktop` runs the pinned `golangci-lint`
    over the whole module on macOS, and `golangci-lint-new.sh` lints `desktop/` from
-   inside it for the pre-push hook and `ci-advisory-golangci`.
+   inside it, new code and then the strict rules on the whole module, for the
+   pre-push hook and `ci-advisory-golangci`.
 
 The classifier selects the `desktop` domain for `desktop/*`, `api/openapi.yaml`
 (the refusal list derives from it) and the root packages `desktop/` imports, and

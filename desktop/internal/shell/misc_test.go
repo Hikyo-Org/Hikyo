@@ -152,7 +152,7 @@ func TestConnectionListUI(t *testing.T) {
 		rec := h.pageFrom(AppHost, "app-win", "GET", path, "")
 		return rec.Code, rec.Body.String(), rec.Header()
 	}
-	code, body, hdr := get("/__app/state")
+	code, body, _ := get("/__app/state")
 	if code != 200 || strings.Contains(body, secret.Token) || strings.Contains(body, secret.SessionID) {
 		t.Fatalf("state %d: %s", code, body)
 	}
@@ -160,7 +160,7 @@ func TestConnectionListUI(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &st); err != nil || len(st.Connections) != 1 || st.Connections[0].Host != c.host {
 		t.Fatalf("state %+v err %v", st, err)
 	}
-	code, body, hdr = get("/index.html")
+	code, body, hdr := get("/index.html")
 	if code != 200 || !strings.HasPrefix(http.Header(hdr).Get("Content-Type"), "text/html") || !strings.Contains(body, "<html") {
 		t.Fatalf("the embedded index did not load: %d %q", code, http.Header(hdr).Get("Content-Type"))
 	}

@@ -101,9 +101,8 @@ func TestReauthSucceedsForEveryPurposeClass(t *testing.T) {
 			if len(got) != 1 || got[0].Purpose != tc.purpose || len(got[0].EnvironmentIds) != tc.envs {
 				t.Fatalf("handoff start %+v", got)
 			}
-			if keys := 0; got[0].KeyIds != nil {
-				keys = len(*got[0].KeyIds)
-				if keys != tc.keys {
+			if got[0].KeyIds != nil {
+				if keys := len(*got[0].KeyIds); keys != tc.keys {
 					t.Errorf("keys %d", keys)
 				}
 			} else if tc.keys != 0 {

@@ -97,5 +97,29 @@ that downloads save once, named and gated as the ADR requires.
 
 ## Not shipped yet
 
-Code signing and notarization are later work (plan PR 5) and so is CI. v1 has
-no updater (ADR D13); adding one needs its own decision.
+Code signing and notarization are later work (plan PR 5). v1 has no updater
+(ADR D13); adding one needs its own decision.
+
+## CI
+
+The CI definitions for this module (the pinned-macOS `desktop` job in
+`.github/workflows/ci.yml`, the advisory `.github/workflows/ci-golangci-desktop.yml`
+lint, `scripts/ci/check-desktop-deps.sh` and the
+[Desktop shell (macOS)](../docs/development/ci.md#desktop-shell-macos) section of the
+CI guide) run for this module wherever `desktop/go.mod` exists. The `desktop` job
+runs the module boundary check, `go test -race ./...`, the probe and release builds
+and the driven WKWebView lane.
+
+Run the same checks locally from `desktop/`:
+
+```sh
+export CGO_CFLAGS=-mmacosx-version-min=13.0 CGO_LDFLAGS=-mmacosx-version-min=13.0
+go test -race ./...
+go build -tags probe -o /tmp/hikyo-desktop-probe .
+go build -o /tmp/hikyo-desktop .   # the release build, without the probe tag
+go run ./probes/driven -app /tmp/hikyo-desktop-probe   # opens a window briefly
+../scripts/ci/check-desktop-deps.sh
+```
+
+The driven lane seeds one login-keychain item for a fake connection and deletes it
+when the run ends.
