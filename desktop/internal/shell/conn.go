@@ -31,8 +31,9 @@ type Conn struct {
 	secret  Secret
 	stopped string
 	// tampered is set when the connection record disagrees with the keychain
-	// item. Such a connection is never used, signed in again or revoked: the
-	// record can't be trusted to say where the bearer goes.
+	// item. Such a connection is never used or signed in again. Removal
+	// revokes only through the item's own binding, and only when the item
+	// passes the access check.
 	tampered bool
 
 	// rotMu serializes token rotation: one at a time (ADR D4).
@@ -78,6 +79,13 @@ func (m *Manager) newConn(info Connection) (*Conn, error) {
 			break
 		}
 		c.secret = secret
+	case errors.Is(err, ErrItemUntrusted):
+		// Not tampered: the item is only unusable, never used or revoked
+		// through. A different build or a moved unsigned app lands here too, so
+		// signing in again (which replaces the item) must stay possible; the
+		// sign-in confirmation names the origin because no item vouches for it.
+		c.stopped = "The saved session was created by a different build or location of this app, or can be read by other applications, so it was not used. Sign in again to replace it."
+		log.Printf("connection %s: keychain item is not restricted to this app", info.Host)
 	case errors.Is(err, ErrNoSecret):
 		c.stopped = "This connection has no stored session. Sign in again."
 	default:
@@ -178,12 +186,16 @@ func (c *Conn) setSession(token, sessionID, principalID, principalName string) e
 // revoke asks the instance to delete the session behind token. It is best
 // effort and bounded.
 func (c *Conn) revoke(ctx context.Context, token string) error {
+	return revokeOn(ctx, c.inst, token)
+}
+
+func revokeOn(ctx context.Context, inst *Instance, token string) error {
 	if token == "" {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	status, _, _, err := c.inst.call(ctx, http.MethodPost, "/api/v1/auth/logout", token, nil, "")
+	status, _, _, err := inst.call(ctx, http.MethodPost, "/api/v1/auth/logout", token, nil, "")
 	if err != nil {
 		return err
 	}

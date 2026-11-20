@@ -58,6 +58,24 @@ static CFMutableDictionaryRef hkQuery(const char *account) {
 	return q;
 }
 
+// hkRemove deletes the item by reference. SecItemDelete on the query fails
+// with errSecInvalidOwnerEdit for an item that another build (or location) of
+// this app created, which would leave a refused connection impossible to sign
+// in again or remove; deleting the found reference works for the user's own
+// item and never reads its data.
+static int hkRemove(CFMutableDictionaryRef q) {
+	CFDictionarySetValue(q, kSecReturnRef, kCFBooleanTrue);
+	CFDictionarySetValue(q, kSecMatchLimit, kSecMatchLimitOne);
+	CFTypeRef item = NULL;
+	OSStatus status = SecItemCopyMatching(q, &item);
+	if (status != errSecSuccess) {
+		return (int)status;
+	}
+	status = SecKeychainItemDelete((SecKeychainItemRef)item);
+	CFRelease(item);
+	return (int)status;
+}
+
 // hkPut replaces the item. It always deletes first and then adds with an
 // explicit access list naming only this application. SecItemUpdate would keep
 // the access list of whatever item already exists, so an item another process
@@ -71,11 +89,13 @@ static int hkPut(const char *account, const void *data, int len) {
 	if (q == NULL) {
 		return HK_NO_KEYCHAIN;
 	}
-	OSStatus status = SecItemDelete(q);
+	OSStatus status = hkRemove(q);
 	if (status != errSecSuccess && status != errSecItemNotFound) {
 		CFRelease(q);
 		return (int)status;
 	}
+	CFDictionaryRemoveValue(q, kSecReturnRef);
+	CFDictionaryRemoveValue(q, kSecMatchLimit);
 	SecTrustedApplicationRef self = NULL;
 	status = SecTrustedApplicationCreateFromPath(NULL, &self);
 	if (status != errSecSuccess) {
@@ -103,17 +123,126 @@ static int hkPut(const char *account, const void *data, int len) {
 	return (int)status;
 }
 
-// hkGet returns a malloc'd copy of the item's data and its length.
+#define HK_UNTRUSTED (-1) // not an OSStatus: the item's access list is not exactly this app
+
+// Exported by Security.framework, declared in its private SecTrustedApplicationPriv.h.
+// SecTrustedApplicationCopyData returns only the path the entry was created
+// with, which changes when the app is moved or translocated; the requirement
+// is what securityd enforces on decrypt.
+// Weak, so a macOS that stops exporting it refuses every item instead of
+// failing to launch.
+extern OSStatus SecTrustedApplicationCopyRequirement(SecTrustedApplicationRef app, SecRequirementRef *requirement) __attribute__((weak_import));
+
+// hkRequirementString renders a requirement as its canonical text.
+static CFStringRef hkRequirementString(SecRequirementRef req) {
+	CFStringRef text = NULL;
+	if (SecRequirementCopyString(req, kSecCSDefaultFlags, &text) != errSecSuccess) {
+		return NULL;
+	}
+	return text;
+}
+
+// hkSelfRequirement is this running application's designated requirement, or
+// NULL if it has none (an unsigned binary): then nothing can match.
+static CFStringRef hkSelfRequirement(void) {
+	SecCodeRef code = NULL;
+	SecRequirementRef req = NULL;
+	CFStringRef text = NULL;
+	if (SecCodeCopySelf(kSecCSDefaultFlags, &code) == errSecSuccess) {
+		if (SecCodeCopyDesignatedRequirement(code, kSecCSDefaultFlags, &req) == errSecSuccess) {
+			text = hkRequirementString(req);
+			CFRelease(req);
+		}
+		CFRelease(code);
+	}
+	return text;
+}
+
+// hkOnlyUs reports whether this application, and nothing else, may decrypt the
+// item. The entry is matched by code requirement, not path, so a signed app
+// that was moved still matches while another signer does not. An ad-hoc build's
+// requirement is its own cdhash, so only the identical binary matches. A NULL
+// application list means any application can decrypt, which is what an item
+// planted with `security add-generic-password -A` has. Every failure to
+// establish the list counts as "not only us".
+static int hkOnlyUs(SecKeychainItemRef item) {
+	if (SecTrustedApplicationCopyRequirement == NULL) {
+		return 0;
+	}
+	CFStringRef selfReq = hkSelfRequirement();
+	if (selfReq == NULL) {
+		return 0;
+	}
+	SecAccessRef access = NULL;
+	if (SecKeychainItemCopyAccess(item, &access) != errSecSuccess || access == NULL) {
+		CFRelease(selfReq);
+		return 0;
+	}
+	CFArrayRef acls = SecAccessCopyMatchingACLList(access, kSecACLAuthorizationDecrypt);
+	int ok = acls != NULL && CFArrayGetCount(acls) > 0;
+	for (CFIndex i = 0; ok && i < CFArrayGetCount(acls); i++) {
+		CFArrayRef apps = NULL;
+		CFStringRef desc = NULL;
+		SecKeychainPromptSelector selector;
+		if (SecACLCopyContents((SecACLRef)CFArrayGetValueAtIndex(acls, i), &apps, &desc, &selector) != errSecSuccess || apps == NULL || CFArrayGetCount(apps) != 1) {
+			ok = 0;
+		} else {
+			SecRequirementRef req = NULL;
+			CFStringRef text = NULL;
+			if (SecTrustedApplicationCopyRequirement((SecTrustedApplicationRef)CFArrayGetValueAtIndex(apps, 0), &req) != errSecSuccess || req == NULL) {
+				ok = 0;
+			} else if ((text = hkRequirementString(req)) == NULL || !CFEqual(text, selfReq)) {
+				ok = 0;
+			}
+			if (text != NULL) {
+				CFRelease(text);
+			}
+			if (req != NULL) {
+				CFRelease(req);
+			}
+		}
+		if (apps != NULL) {
+			CFRelease(apps);
+		}
+		if (desc != NULL) {
+			CFRelease(desc);
+		}
+	}
+	if (acls != NULL) {
+		CFRelease(acls);
+	}
+	CFRelease(access);
+	CFRelease(selfReq);
+	return ok;
+}
+
+// hkGet returns a malloc'd copy of the item's data and its length. It finds the
+// item by reference first, checks its access list, and reads the data from that
+// same reference, so an item swapped in between is not the one read.
 static int hkGet(const char *account, void **out, int *len) {
 	CFMutableDictionaryRef q = hkQuery(account);
 	if (q == NULL) {
 		return HK_NO_KEYCHAIN;
 	}
-	CFDictionarySetValue(q, kSecReturnData, kCFBooleanTrue);
+	CFDictionarySetValue(q, kSecReturnRef, kCFBooleanTrue);
 	CFDictionarySetValue(q, kSecMatchLimit, kSecMatchLimitOne);
-	CFTypeRef result = NULL;
-	OSStatus status = SecItemCopyMatching(q, &result);
+	CFTypeRef item = NULL;
+	OSStatus status = SecItemCopyMatching(q, &item);
 	CFRelease(q);
+	if (status != errSecSuccess) {
+		return (int)status;
+	}
+	if (!hkOnlyUs((SecKeychainItemRef)item)) {
+		CFRelease(item);
+		return HK_UNTRUSTED;
+	}
+	CFMutableDictionaryRef rq = CFDictionaryCreateMutable(NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+	CFDictionarySetValue(rq, kSecValueRef, item);
+	CFDictionarySetValue(rq, kSecReturnData, kCFBooleanTrue);
+	CFTypeRef result = NULL;
+	status = SecItemCopyMatching(rq, &result);
+	CFRelease(rq);
+	CFRelease(item);
 	if (status != errSecSuccess) {
 		return (int)status;
 	}
@@ -130,7 +259,7 @@ static int hkDelete(const char *account) {
 	if (q == NULL) {
 		return HK_NO_KEYCHAIN;
 	}
-	OSStatus status = SecItemDelete(q);
+	OSStatus status = hkRemove(q);
 	CFRelease(q);
 	return (int)status;
 }
@@ -183,6 +312,9 @@ func (keychain) Get(host string) (shell.Secret, error) {
 	if status := C.hkGet(account, &data, &n); status != 0 {
 		if int(status) == errSecItemNotFound {
 			return shell.Secret{}, shell.ErrNoSecret
+		}
+		if int(status) == C.HK_UNTRUSTED {
+			return shell.Secret{}, shell.ErrItemUntrusted
 		}
 		return shell.Secret{}, statusError("read", status)
 	}

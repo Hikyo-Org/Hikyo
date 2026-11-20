@@ -53,11 +53,26 @@ and adds a new one whose access list names only this application, so an item
 planted under the same name never keeps access. The legacy file keychain is
 used on purpose: it needs no entitlements or provisioning profile.
 
-- A **signed** (Developer ID) build keeps access across updates signed by the
-  same identity.
-- An **unsigned or ad-hoc** dev build works, but the item is tied to that exact
-  binary. After a rebuild macOS asks once whether the new binary may use the
-  item; choose "Always Allow", or sign in again from the connection list.
+The shell reads an item only if its decrypt access list names exactly one
+application and that application's code-signing requirement equals this app's.
+It compares requirements, not paths, so moving the app (including App
+Translocation) does not matter. An item open to any application, or to a
+different signer or build, is refused and the connection shows "Sign in again";
+signing in replaces the item. Removal still deletes it.
+
+- A **signed** (Developer ID) build keeps access across moves and across
+  updates signed by the same identity and identifier.
+- An **unsigned or ad-hoc** dev build's requirement is its own code hash, so the
+  same binary keeps access wherever it sits, but a rebuild is another app: its
+  items are refused until you sign in again.
+
+The requirement is read with `SecTrustedApplicationCopyRequirement`, exported
+by Security.framework but declared only in a private header. If a macOS update
+removes it every item is refused rather than the check being weakened.
+
+`HIKYO_DESKTOP_KEYCHAIN_TEST=1` also runs the moved/other-build cases from
+copies of the test binary; add `HIKYO_DESKTOP_SIGN_IDENTITY=<codesign identity>`
+for the signed-requirement case.
 
 ## Developing against a local server
 
