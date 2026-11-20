@@ -161,7 +161,9 @@ to declare a key and set its first value.
 ## CLI at a glance
 
 The `hikyo` binary handles both operator and day-to-day client workflows. Against
-a hosted instance the CLI needs no server on your Mac: run `hikyo login` and go.
+a hosted instance the CLI needs no server on your Mac: run
+`hikyo login <instance-url> --tls-mode system-ca` (for a publicly trusted
+certificate) and go.
 
 ```bash
 # Operate the instance
