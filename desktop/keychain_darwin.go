@@ -129,7 +129,9 @@ static int hkPut(const char *account, const void *data, int len) {
 // SecTrustedApplicationCopyData returns only the path the entry was created
 // with, which changes when the app is moved or translocated; the requirement
 // is what securityd enforces on decrypt.
-extern OSStatus SecTrustedApplicationCopyRequirement(SecTrustedApplicationRef app, SecRequirementRef *requirement);
+// Weak, so a macOS that stops exporting it refuses every item instead of
+// failing to launch.
+extern OSStatus SecTrustedApplicationCopyRequirement(SecTrustedApplicationRef app, SecRequirementRef *requirement) __attribute__((weak_import));
 
 // hkRequirementString renders a requirement as its canonical text.
 static CFStringRef hkRequirementString(SecRequirementRef req) {
@@ -164,6 +166,9 @@ static CFStringRef hkSelfRequirement(void) {
 // planted with `security add-generic-password -A` has. Every failure to
 // establish the list counts as "not only us".
 static int hkOnlyUs(SecKeychainItemRef item) {
+	if (SecTrustedApplicationCopyRequirement == NULL) {
+		return 0;
+	}
 	CFStringRef selfReq = hkSelfRequirement();
 	if (selfReq == NULL) {
 		return 0;

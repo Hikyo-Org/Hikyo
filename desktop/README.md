@@ -68,7 +68,7 @@ signing in replaces the item. Removal still deletes it.
 
 The requirement is read with `SecTrustedApplicationCopyRequirement`, exported
 by Security.framework but declared only in a private header. If a macOS update
-removes it the build fails to link rather than weakening the check.
+removes it every item is refused rather than the check being weakened.
 
 `HIKYO_DESKTOP_KEYCHAIN_TEST=1` also runs the moved/other-build cases from
 copies of the test binary; add `HIKYO_DESKTOP_SIGN_IDENTITY=<codesign identity>`
