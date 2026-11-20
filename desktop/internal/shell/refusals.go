@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"sync"
 
@@ -244,6 +245,12 @@ func IsAPIPath(rawPath string) bool {
 // the request's escaped path. Non-API paths are the instance's SPA assets.
 func (p *Policy) Classify(method, rawPath string) Verdict {
 	if !IsAPIPath(rawPath) {
+		// A spelling that is not under /api/v1 as written but decodes or
+		// cleans to it (%61pi, /./api, /x/../api, \api) is something the
+		// instance's router could route to the API, so it is refused here.
+		if reachesAPI(rawPath) {
+			return Malformed
+		}
 		return Allowed
 	}
 	segs, ok := Segments(rawPath)
@@ -268,6 +275,17 @@ func (p *Policy) Classify(method, rawPath string) Verdict {
 		}
 	}
 	return Allowed
+}
+
+// reachesAPI reports whether a non-API-looking path resolves to the API after
+// percent-decoding, backslash folding and dot-segment removal.
+func reachesAPI(rawPath string) bool {
+	decoded, err := url.PathUnescape(rawPath)
+	if err != nil {
+		return true // the instance may decode it differently; fail closed
+	}
+	decoded = strings.ReplaceAll(decoded, "\\", "/")
+	return IsAPIPath(path.Clean("/" + decoded))
 }
 
 func (p *Policy) rotationOf(method string, segs []string) Rotation {

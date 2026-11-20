@@ -175,8 +175,16 @@ func TestExternalLinkPolicy(t *testing.T) {
 	h2 := newHarness(t)
 	c2, _ := h2.connect()
 	c2.inst.Origin = "https://hikyo.example"
-	if _, err := c2.ExternalLink("https://hikyo.example/login/cli?x=1"); err == nil {
-		t.Error("handoff page opened through a link")
+	for _, spelling := range []string{
+		"https://hikyo.example/login/cli?x=1", "https://HIKYO.example/login/cli", "https://hikyo.example:443/login/cli",
+		"https://hikyo.example./login/cli", "https://hikyo.example:443/reauth/cli",
+	} {
+		if got, err := c2.ExternalLink(spelling); err == nil {
+			t.Errorf("handoff page opened through %q as %q", spelling, got)
+		}
+	}
+	if got, err := c2.ExternalLink("https://hikyo.example.:443/orgs"); err != nil || got != "https://hikyo.example/orgs" {
+		t.Errorf("own-origin spelling: %q %v", got, err)
 	}
 	if got, err := c2.ExternalLink("https://hikyo.example/orgs#x"); err != nil || got != "https://hikyo.example/orgs" {
 		t.Errorf("own-origin link: %q %v", got, err)

@@ -102,7 +102,7 @@ func (c *Conn) ExternalLink(raw string) (string, error) {
 		return "", errRefusedPath
 	}
 	u.Fragment, u.RawFragment = "", ""
-	if strings.EqualFold(u.Scheme+"://"+u.Host, c.inst.Origin) {
+	if c.sameSite(u) {
 		rel := u.EscapedPath()
 		if rel == "" {
 			rel = "/"
@@ -113,4 +113,27 @@ func (c *Conn) ExternalLink(raw string) (string, error) {
 		return c.BrowserURL(rel)
 	}
 	return u.String(), nil
+}
+
+// sameSite reports whether u is this connection's origin under any spelling:
+// case, a default port, or a trailing dot on the host must not turn a link to
+// the instance into an "external" one that skips the D9 refusals.
+func (c *Conn) sameSite(u *url.URL) bool {
+	own, err := url.Parse(c.inst.Origin)
+	if err != nil {
+		return false
+	}
+	return u.Scheme == own.Scheme && siteHost(u) == siteHost(own) && sitePort(u) == sitePort(own)
+}
+
+func siteHost(u *url.URL) string { return strings.TrimSuffix(strings.ToLower(u.Hostname()), ".") }
+
+func sitePort(u *url.URL) string {
+	if p := u.Port(); p != "" {
+		return p
+	}
+	if u.Scheme == "https" {
+		return "443"
+	}
+	return "80"
 }

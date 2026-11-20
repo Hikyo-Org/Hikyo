@@ -91,6 +91,16 @@ func TestClassifyRefusesWhatTheADRNames(t *testing.T) {
 		{"GET", "/api/v1/auth\\login", Malformed},
 		{"GET", "/api/v1/au\x01th", Malformed},
 		{"GET", "/api/v1/%zz", Malformed},
+		{"POST", "/%61pi/v1/auth/local/login", Malformed},
+		{"POST", "/%2561pi/v1/orgs", Allowed},
+		{"POST", "/api%2Fv1/auth/local/login", Malformed},
+		{"POST", "/./api/v1/auth/local/login", Malformed},
+		{"POST", "//api/v1/auth/local/login", Malformed},
+		{"POST", "/x/../api/v1/auth/local/login", Malformed},
+		{"POST", "/x/%2e%2e/api/v1/auth/local/login", Malformed},
+		{"POST", "/\\api/v1/auth/local/login", Malformed},
+		{"GET", "/assets/app.js", Allowed},
+		{"GET", "/orgs/a/", Allowed},
 	}
 	for _, tc := range cases {
 		if got := p.Classify(tc.method, tc.path); got != tc.want {
