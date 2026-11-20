@@ -95,7 +95,7 @@ func TestRotationKeepsTheBinding(t *testing.T) {
 	h := newHarness(t)
 	c, secret := h.connect()
 	next := newToken(t)
-	if err := c.applyRotation(Rotate, tokenView{Token: next, SessionID: secret.SessionID}); err != nil {
+	if err := c.applyRotation(Rotate, tokenView{Token: next, SessionID: secret.SessionID}, secret.Token); err != nil {
 		t.Fatal(err)
 	}
 	got, err := h.secrets.Get(c.host)

@@ -211,3 +211,38 @@ func TestLoginDeviceNotifyMatchesPrintedPrompt(t *testing.T) {
 		t.Fatalf("printed %q", out.String())
 	}
 }
+
+// throttledTransport answers the first token poll with a 429 and the second with
+// an approval; its ResponseError never returns a clienterr.RateLimitedError.
+type throttledTransport struct {
+	fakeTransport
+	polls int
+	waits []time.Duration
+}
+
+func (f *throttledTransport) PostForm(context.Context, string, url.Values) (int, http.Header, []byte, error) {
+	f.polls++
+	if f.polls == 1 {
+		return http.StatusTooManyRequests, http.Header{"Retry-After": {"60"}}, nil, nil
+	}
+	return http.StatusOK, nil, []byte(`{"access_token":"tok","token_type":"Bearer","expires_in":60}`), nil
+}
+
+func (f *throttledTransport) Wait(_ context.Context, d time.Duration) error {
+	f.waits = append(f.waits, d)
+	return nil
+}
+
+func TestPollDeviceHonorsRetryAfterWithoutRateLimitedError(t *testing.T) {
+	tr := &throttledTransport{fakeTransport: fakeTransport{t: t}}
+	result, err := PollDevice(t.Context(), tr, io.Discard, "device-code", 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.SessionToken == nil || *result.SessionToken != "tok" {
+		t.Fatalf("result %+v", result)
+	}
+	if len(tr.waits) != 2 || tr.waits[0] != 5*time.Second || tr.waits[1] != 60*time.Second {
+		t.Fatalf("waits = %v, want [5s 60s]", tr.waits)
+	}
+}

@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
+	"golang.org/x/sys/unix"
 
 	"github.com/Hikyo-Org/hikyo/desktop/internal/shell"
 	"github.com/Hikyo-Org/hikyo/internal/clientauth"
@@ -43,9 +45,37 @@ func dataDir() (string, error) {
 	return filepath.Join(base, "Hikyo Desktop"), nil
 }
 
+// dataLock is held for the life of the process.
+var dataLock *os.File
+
+// lockDataDir takes exclusive ownership of the connection store: two shells
+// each holding their own copy of the list would drop each other's connections
+// on save, and leave a keychain item with no record.
+func lockDataDir(dir string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(filepath.Join(dir, ".lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		_ = f.Close()
+		if errors.Is(err, unix.EWOULDBLOCK) {
+			return errors.New("Hikyo Desktop is already running")
+		}
+		return err
+	}
+	dataLock = f
+	return nil
+}
+
 func run() error {
 	dir, err := dataDir()
 	if err != nil {
+		return err
+	}
+	if err := lockDataDir(dir); err != nil {
 		return err
 	}
 	store, err := shell.OpenStore(filepath.Join(dir, "connections.json"))

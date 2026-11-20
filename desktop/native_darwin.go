@@ -17,7 +17,7 @@ void hikyoShowCode(long id, const char *url, const char *code);
 void hikyoDismissCode(long id);
 long hikyoPasteboardCount(void);
 long hikyoPasteboardCountAtActivation(void);
-void hikyoClearPasteboard(void);
+void hikyoClearPasteboardIf(long count);
 int hikyoWipeStorage(const char *host);
 */
 import "C"
@@ -60,6 +60,10 @@ type macNative struct {
 
 	mu      sync.Mutex
 	windows map[string]*application.WebviewWindow
+	// opening holds a host while its window is being made, so two opens of one
+	// host can't both create one. It is separate from mu, which the window
+	// callbacks take during creation. Close waits on it.
+	opening map[string]chan struct{}
 }
 
 var _ shell.Native = (*macNative)(nil)
@@ -68,7 +72,7 @@ var _ shell.Native = (*macNative)(nil)
 var theNative atomic.Pointer[macNative]
 
 func newMacNative() *macNative {
-	n := &macNative{windows: map[string]*application.WebviewWindow{}}
+	n := &macNative{windows: map[string]*application.WebviewWindow{}, opening: map[string]chan struct{}{}}
 	theNative.Store(n)
 	return n
 }
@@ -77,6 +81,8 @@ func (n *macNative) OpenWindow(host, title string, bind func(string)) error {
 	if !delegatesInstalled {
 		return errors.New("the native window handlers are missing; refusing to open a window")
 	}
+	release := n.reserve(host)
+	defer release()
 	n.mu.Lock()
 	if w, ok := n.windows[host]; ok {
 		n.mu.Unlock()
@@ -101,6 +107,7 @@ func (n *macNative) OpenWindow(host, title string, bind func(string)) error {
 	id := strconv.FormatUint(uint64(w.ID()), 10)
 	bind(id)
 	if C.hikyoHardenWindow(w.NativeWindow()) != 1 {
+		n.manager.UnbindWindow(id)
 		w.Close()
 		return errors.New("could not harden the window's web view; refusing to open it")
 	}
@@ -121,7 +128,32 @@ func (n *macNative) OpenWindow(host, title string, bind func(string)) error {
 	return nil
 }
 
+// reserve waits until no other open or close of host is running, then holds
+// the host until release is called.
+func (n *macNative) reserve(host string) (release func()) {
+	for {
+		n.mu.Lock()
+		wait, busy := n.opening[host]
+		if !busy {
+			done := make(chan struct{})
+			n.opening[host] = done
+			n.mu.Unlock()
+			return func() {
+				n.mu.Lock()
+				delete(n.opening, host)
+				n.mu.Unlock()
+				close(done)
+			}
+		}
+		n.mu.Unlock()
+		<-wait
+	}
+}
+
 func (n *macNative) CloseWindow(host string) {
+	// An open still creating this host's window finishes first, so the close
+	// below sees it and no window outlives the removal.
+	defer n.reserve(host)()
 	n.mu.Lock()
 	w := n.windows[host]
 	delete(n.windows, host)
@@ -194,7 +226,7 @@ func (n *macNative) PasteboardCount() int64 { return int64(C.hikyoPasteboardCoun
 func (n *macNative) PasteboardCountAtActivation() int64 {
 	return int64(C.hikyoPasteboardCountAtActivation())
 }
-func (n *macNative) ClearPasteboard() { C.hikyoClearPasteboard() }
+func (n *macNative) ClearPasteboardIf(count int64) { C.hikyoClearPasteboardIf(C.long(count)) }
 
 // ---- callbacks from Objective-C ----
 
@@ -250,16 +282,19 @@ func hikyoDownloadDestination(key C.uintptr_t, pageHost, suggested *C.char) *C.c
 		log.Printf("download: %v", err)
 		return nil
 	}
+	// The panel asks before replacing a file it saw; one that appears later
+	// is not replaced (PublishDownload).
+	_, statErr := os.Lstat(final)
 	temp := f.Name()
 	_ = f.Close()
 	_ = os.Remove(temp) // WKDownload needs a destination that does not exist
-	pendingDownloads.Add(uintptr(key), host, temp, final)
+	pendingDownloads.Add(uintptr(key), host, temp, final, statErr == nil)
 	return C.CString(temp) // freed by the caller
 }
 
 //export hikyoDownloadFinished
 func hikyoDownloadFinished(key C.uintptr_t) {
-	temp, final, ok := pendingDownloads.Take(uintptr(key))
+	temp, final, replace, ok := pendingDownloads.Take(uintptr(key))
 	if !ok {
 		// The entry expired or its window closed, and its file was removed.
 		failDownload("The download took too long or its window was closed, so it was not saved.")
@@ -271,10 +306,17 @@ func hikyoDownloadFinished(key C.uintptr_t) {
 		failDownload("The file could not be marked as downloaded.")
 		return
 	}
-	if err := os.Rename(temp, final); err != nil {
+	saved, err := shell.PublishDownload(temp, final, replace)
+	if err != nil {
 		log.Printf("download: could not save %s: %v", final, err)
 		_ = os.Remove(temp)
 		failDownload("The file could not be saved there.")
+		return
+	}
+	if saved != final {
+		if n := theNative.Load(); n != nil {
+			n.Alert("Download saved under another name", "A file with that name appeared while the download ran, so it was saved as "+filepath.Base(saved)+".")
+		}
 	}
 }
 
@@ -286,7 +328,7 @@ func failDownload(message string) {
 
 //export hikyoDownloadFailed
 func hikyoDownloadFailed(key C.uintptr_t, message *C.char) {
-	if temp, _, ok := pendingDownloads.Take(uintptr(key)); ok {
+	if temp, _, _, ok := pendingDownloads.Take(uintptr(key)); ok {
 		_ = os.Remove(temp)
 	}
 	if n := theNative.Load(); n != nil {

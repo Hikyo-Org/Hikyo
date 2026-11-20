@@ -26,10 +26,10 @@ func TestPendingDownloadRemovedAfterLifetime(t *testing.T) {
 	p := NewPendingDownloads()
 	p.lifetime = 20 * time.Millisecond
 	tmp := partial(t)
-	p.Add(1, "h", tmp, "/dest")
+	p.Add(1, "h", tmp, "/dest", false)
 	time.Sleep(200 * time.Millisecond)
 	gone(t, tmp)
-	if _, _, ok := p.Take(1); ok {
+	if _, _, _, ok := p.Take(1); ok {
 		t.Error("a late finish must find nothing and write nothing")
 	}
 }
@@ -37,17 +37,17 @@ func TestPendingDownloadRemovedAfterLifetime(t *testing.T) {
 func TestPendingDownloadRemovedWithItsWindow(t *testing.T) {
 	p := NewPendingDownloads()
 	a, b := partial(t), partial(t)
-	p.Add(1, "h1", a, "/a")
-	p.Add(2, "h2", b, "/b")
+	p.Add(1, "h1", a, "/a", false)
+	p.Add(2, "h2", b, "/b", false)
 	p.Drop("h1")
 	gone(t, a)
 	if _, err := os.Stat(b); err != nil {
 		t.Errorf("another window's download touched: %v", err)
 	}
-	if _, _, ok := p.Take(1); ok {
+	if _, _, _, ok := p.Take(1); ok {
 		t.Error("dropped entry still taken")
 	}
-	if tmp, final, ok := p.Take(2); !ok || tmp != b || final != "/b" {
+	if tmp, final, _, ok := p.Take(2); !ok || tmp != b || final != "/b" {
 		t.Errorf("take = %q %q %v", tmp, final, ok)
 	}
 }
@@ -56,7 +56,7 @@ func TestPendingDownloadTakeStopsTimer(t *testing.T) {
 	p := NewPendingDownloads()
 	p.lifetime = 20 * time.Millisecond
 	tmp := partial(t)
-	p.Add(1, "h", tmp, "/d")
+	p.Add(1, "h", tmp, "/d", false)
 	p.Take(1)
 	time.Sleep(100 * time.Millisecond)
 	if _, err := os.Stat(tmp); err != nil {

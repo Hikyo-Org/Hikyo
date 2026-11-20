@@ -357,8 +357,13 @@ int hikyoAppActive(void) {
 	return active;
 }
 
-void hikyoClearPasteboard(void) {
-	onMain(^{ [NSPasteboard.generalPasteboard clearContents]; });
+// Clears only if nothing was copied since count was read; the check and the
+// clear run in one main-thread block.
+void hikyoClearPasteboardIf(long count) {
+	onMain(^{
+		NSPasteboard *pb = NSPasteboard.generalPasteboard;
+		if (pb.changeCount == count) [pb clearContents];
+	});
 }
 
 // ---- Storage ----
@@ -394,7 +399,7 @@ void hikyoClearPasteboard(void) {
 static NSString *const wipeScript =
 	@"localStorage.clear(); sessionStorage.clear();"
 	@"if (indexedDB.databases) { for (const d of await indexedDB.databases()) {"
-	@"  await new Promise(r => { const q = indexedDB.deleteDatabase(d.name); q.onsuccess = q.onerror = q.onblocked = r; }); } }"
+	@"  await new Promise((r, j) => { const q = indexedDB.deleteDatabase(d.name); q.onsuccess = r; q.onerror = () => j(q.error); }); } }"
 	@"if (window.caches) { for (const k of await caches.keys()) await caches.delete(k); }"
 	@"for (const c of document.cookie.split(';')) { const n = c.split('=')[0].trim();"
 	@"  if (n) document.cookie = n + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'; }"

@@ -53,7 +53,9 @@ type Native interface {
 	// PasteboardCountAtActivation is the change count the instant the app last
 	// became frontmost. Changes up to it were made elsewhere (ADR D12).
 	PasteboardCountAtActivation() int64
-	ClearPasteboard()
+	// ClearPasteboardIf clears the pasteboard only if its change count is still
+	// count, checked and cleared as one step.
+	ClearPasteboardIf(count int64)
 }
 
 // Options configure a Manager.
@@ -107,7 +109,7 @@ func NewManager(store *Store, secrets SecretStore, native Native, opts Options) 
 	m.clip = newClipboardGuard(native, m.now)
 	for _, info := range store.List() {
 		c, err := m.newConn(info)
-		if err != nil {
+		if err != nil { // an unusable record doesn't get here; see newConn
 			return nil, fmt.Errorf("connection %s: %w", info.Name, err)
 		}
 		m.conns[info.Host] = c
@@ -226,7 +228,7 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	host := strings.ToLower(r.Host)
 	var c *Conn
 	if host != AppHost {
-		if c = m.conn(host); c == nil {
+		if c = m.conn(host); c == nil || c.inst == nil { // no instance: an unusable record
 			http.NotFound(w, r)
 			return
 		}
@@ -260,6 +262,6 @@ func (m *Manager) Close() {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for _, c := range m.conns {
-		c.inst.close()
+		c.closeInstance()
 	}
 }

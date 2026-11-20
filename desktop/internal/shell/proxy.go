@@ -27,6 +27,15 @@ const (
 type flight struct {
 	cancel context.CancelFunc
 	stream atomic.Bool
+	// sent is the bearer the latest attempt of this request carried.
+	sent atomic.Pointer[string]
+}
+
+func (fl *flight) sentBearer() string {
+	if p := fl.sent.Load(); p != nil {
+		return *p
+	}
+	return ""
 }
 
 type flights struct {
@@ -109,7 +118,11 @@ func (c *Conn) rewrite(pr *httputil.ProxyRequest) {
 type bearerTransport struct{ c *Conn }
 
 func (b bearerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	fl, _ := req.Context().Value(flightKey{}).(*flight)
 	sent := b.c.bearer()
+	if fl != nil {
+		fl.sent.Store(&sent)
+	}
 	resp, err := b.c.inst.rt.RoundTrip(withBearer(req, sent))
 	if err != nil || resp.StatusCode != http.StatusUnauthorized || !idempotentWithoutBody(req) {
 		return resp, err
@@ -117,6 +130,9 @@ func (b bearerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if now := b.c.bearer(); now != "" && now != sent {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
 		_ = resp.Body.Close()
+		if fl != nil {
+			fl.sent.Store(&now)
+		}
 		return b.c.inst.rt.RoundTrip(withBearer(req, now))
 	}
 	return resp, nil
@@ -158,6 +174,16 @@ func (c *Conn) serveProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if IsAPIPath(r.URL.Path) {
+		// One session change at a time, from before the bearer is chosen until
+		// the new session is committed or the change fails (ADR D4). Reads stay
+		// outside the gate.
+		if c.m.policy.RotationFor(r.Method, r.URL.EscapedPath()) != NotRotating {
+			release, err := c.sessGate.acquire(r.Context())
+			if err != nil {
+				return
+			}
+			defer release()
+		}
 		if reason := c.Stopped(); reason != "" {
 			jsonError(w, http.StatusUnauthorized, "unauthenticated", reason)
 			return
@@ -237,14 +263,26 @@ func (c *Conn) modifyResponse(resp *http.Response) error {
 	c.rewriteLocation(resp)
 	fl, _ := resp.Request.Context().Value(flightKey{}).(*flight)
 	rot := c.m.policy.RotationFor(resp.Request.Method, resp.Request.URL.EscapedPath())
+	ok2xx := resp.StatusCode/100 == 2
+	// sessionChange: a success on a route that carries a new session. Anything
+	// the shell can't read there has already changed the session on the
+	// instance, so the connection stops.
+	sessionChange := ok2xx && rot != NotRotating
 	if mt, _, _ := mime.ParseMediaType(h.Get("Content-Type")); mt == "text/event-stream" {
 		// A stream is passed through unscanned, so it can't carry a session change.
 		if rot != NotRotating {
-			c.stop("The instance answered a session change with a stream the app can't read. Sign in again.")
+			if sessionChange {
+				c.stop("The instance answered a session change with a stream the app can't read. Sign in again.")
+			}
 			return errBlocked{"unreadable session response"}
 		}
 		if fl != nil {
+			// Marked first, then compared: a rotation between the send and
+			// this point is seen here, and one after it by cancelStreams.
 			fl.stream.Store(true)
+			if fl.sentBearer() != c.bearer() {
+				fl.cancel()
+			}
 		}
 		return nil
 	}
@@ -255,6 +293,9 @@ func (c *Conn) modifyResponse(resp *http.Response) error {
 		// can't scan what it can't read.
 		zr, err := gzip.NewReader(resp.Body)
 		if err != nil {
+			if sessionChange {
+				c.stop("The response to a session change could not be read. Sign in again.")
+			}
 			return errBlocked{"the instance sent an unreadable response"}
 		}
 		resp.Body = struct {
@@ -265,54 +306,65 @@ func (c *Conn) modifyResponse(resp *http.Response) error {
 		h.Del("Content-Length")
 		resp.ContentLength = -1
 	default:
+		if sessionChange {
+			c.stop("The response to a session change could not be read. Sign in again.")
+		}
 		return errBlocked{"the instance used an encoding the app can't read"}
 	}
-	ok2xx := resp.StatusCode/100 == 2
-	if !ok2xx || resp.Request.Method == http.MethodHead || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusResetContent {
+	if resp.Request.Method == http.MethodHead || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusResetContent {
 		if ok2xx && rot == Reissue {
 			c.stop("The instance ended every session but returned no new one. Sign in again.")
 		}
 		return nil
 	}
 	if !isJSONType(h.Get("Content-Type")) {
-		if rot != NotRotating {
+		if sessionChange {
 			c.stop("The instance answered a session change with something the app can't read. Sign in again.")
 			return errBlocked{"unreadable session response"}
 		}
 		return nil
 	}
+	// A JSON body is scanned whatever its status: an error response carries no
+	// session either (ADR D4). Only a success may install one.
 	raw, err := readLimited(resp.Body, maxScannedResponse)
 	_ = resp.Body.Close()
 	if err != nil {
-		if rot != NotRotating {
+		if sessionChange {
 			c.stop("The response to a session change could not be read. Sign in again.")
 		}
 		return errBlocked{"the response could not be read"}
 	}
 	view, err := splitToken(raw)
 	switch {
-	case errors.Is(err, errNotObject) && rot == NotRotating:
+	case errors.Is(err, errNotObject) && !sessionChange:
 		setBody(resp, raw)
 		return nil
 	case err != nil:
-		if rot != NotRotating {
+		if sessionChange {
 			c.stop("The instance sent a malformed session response. Sign in again.")
 		}
 		return errBlocked{"the instance sent a malformed JSON response"}
-	case view.Token == "" && rot == Reissue:
-		c.stop("The instance ended every session but returned no new one. Sign in again.")
-	case view.Token != "" && rot == NotRotating:
+	case view.Token != "" && (rot == NotRotating || !ok2xx):
 		// Unexpected tokens never reach the page, and are treated as an error.
 		if view.Token != c.bearer() {
 			c.revokeAsync(view.Token)
 		}
 		log.Printf("connection %s: removed an unexpected session token from %s", c.host, logSafe(resp.Request.URL.Path))
 		return errBlocked{"the instance returned a session token where none is allowed"}
+	case !ok2xx:
+		setBody(resp, raw)
+		return nil
+	case view.Token == "" && rot == Reissue:
+		c.stop("The instance ended every session but returned no new one. Sign in again.")
 	case view.Token != "":
 		// A failed check has already stopped the connection and revoked the new
 		// session. The body is still released without the token, because
 		// recovery codes in it can't be fetched again (ADR D4).
-		_ = c.applyRotation(rot, view)
+		sent := ""
+		if fl != nil {
+			sent = fl.sentBearer()
+		}
+		_ = c.applyRotation(rot, view, sent)
 	}
 	setBody(resp, view.Body)
 	return nil
@@ -338,6 +390,11 @@ func (c *Conn) rewriteLocation(resp *http.Response) {
 		rel := url.URL{Path: u.Path, RawPath: u.RawPath, RawQuery: u.RawQuery, Fragment: u.Fragment}
 		if rel.Path == "" {
 			rel.Path = "/"
+		}
+		if strings.HasPrefix(rel.Path, "//") {
+			// A bare "//x" would read as a reference to another host, possibly
+			// another connection's: write the scheme and host out.
+			rel.Scheme, rel.Host = PageScheme, c.host
 		}
 		resp.Header.Set("Location", rel.String())
 	}

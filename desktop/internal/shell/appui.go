@@ -46,6 +46,9 @@ func (m *Manager) State() stateView {
 	out := stateView{Version: m.opts.Version, Connections: []connectionView{}, Busy: m.appSlot.busy.Load()}
 	for _, host := range m.Hosts() {
 		c := m.conn(host)
+		if c == nil {
+			continue // removed after the host snapshot
+		}
 		info := c.Info()
 		out.Connections = append(out.Connections, connectionView{
 			Host: host, Name: info.Name, Origin: info.Origin, Trust: string(info.Trust.Mode),
