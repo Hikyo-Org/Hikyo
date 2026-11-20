@@ -109,8 +109,13 @@ export function Dialog({
     const element = body.current;
     if (pinActions !== true || element === null) return;
     const fit = () => {
+      // Lifting the minimum shrinks the dialog for one layout, which would clamp
+      // its scroll offset: keep the reader where they were.
+      const scroller = ref.current;
+      const offset = scroller?.scrollTop ?? 0;
       element.style.setProperty('--body-fit', '0px');
       element.style.setProperty('--body-fit', `${String(element.scrollHeight)}px`);
+      if (scroller !== null) scroller.scrollTop = offset;
     };
     fit();
     const observer = new ResizeObserver(fit);

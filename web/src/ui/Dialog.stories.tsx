@@ -1,7 +1,7 @@
 import { interactionOnce } from '../../.storybook/interactionCoverage.ts';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import type { SyntheticEvent } from 'react';
-import { expect, fn, userEvent } from 'storybook/test';
+import { expect, fn, userEvent, waitFor } from 'storybook/test';
 
 import { safeArea } from '../../.storybook/layout.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -277,5 +277,13 @@ export const PinnedActionsShortViewport: Story = {
     const box = dialog.getBoundingClientRect();
     await expect(save.top).toBeGreaterThanOrEqual(box.top);
     await expect(save.bottom).toBeLessThanOrEqual(box.bottom);
+    // A re-measure (a child resizing) keeps the reader at the bottom.
+    const bottom = dialog.scrollTop;
+    const child = body.firstElementChild;
+    if (!(child instanceof HTMLElement)) throw new Error('no body child');
+    const fit = body.style.getPropertyValue('--body-fit');
+    child.style.minHeight = `${String(child.getBoundingClientRect().height + 1)}px`;
+    await waitFor(() => expect(body.style.getPropertyValue('--body-fit')).not.toBe(fit));
+    await expect(dialog.scrollTop).toBeGreaterThanOrEqual(bottom);
   },
 };
