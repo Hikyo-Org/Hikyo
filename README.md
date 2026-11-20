@@ -92,7 +92,7 @@ or `absent`; production never silently borrows a development default.
 | `SENTRY_DSN` | ○ absent | ● secret set | ● secret set |
 
 The same model is available through the embedded web UI, CLI, API, and the
-macOS [desktop app](https://hikyo.app/docs/desktop-app/). The Hikyo server ships
+macOS [desktop app](https://hikyo.app/docs/desktop-app/) (not published yet). The Hikyo server ships
 as one Go binary and supports both SQLite and PostgreSQL. The desktop app is a
 separate client for hosted instances and contains no server.
 

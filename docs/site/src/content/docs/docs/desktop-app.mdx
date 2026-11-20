@@ -32,17 +32,17 @@ goal of version 1 to do so.
 
 - macOS 13 or newer.
 - An instance whose server advertises the `desktop-app/1` capability in
-  `GET /api/v1/meta`. That needs the Hikyo release that ships the desktop-app
-  capability ([#1458](https://github.com/Hikyo-Org/Hikyo/pull/1458)), and a
-  server built with the embedded web UI. An older instance is refused by name.
+  `GET /api/v1/meta`. That needs the first Hikyo release that includes the desktop-app
+  capability (planned in [#1458](https://github.com/Hikyo-Org/Hikyo/pull/1458),
+  not released yet), and a server built with the embedded web UI. An older instance is refused by name.
   The app tells you which server version it needs and offers to open the
   instance in your browser instead. There is no partly working mode.
 - A browser on the same Mac, for sign-in and passkeys.
 
 ## Install the app
 
-The app is published from its own repository, `Hikyo-Org/hikyo-app`, under its
-own tags. It is never part of the signed `hikyo` releases, and the `hikyo` DMGs
+The app will be published from its own repository, `Hikyo-Org/hikyo-app`, under
+its own tags. It is never part of the signed `hikyo` releases, and the `hikyo` DMGs
 do not contain it.
 
 > **Download location: not published yet.** The release channel does not exist
@@ -73,7 +73,7 @@ the new release by hand.
 Sign-in always happens in your system browser, on the instance's real address.
 The web UI's login form never runs in the app. Hikyo opens your browser, you
 finish signing in there, and the app receives the result on a loopback address
-on your Mac. Passkeys, OIDC and SAML work the way they do in the browser.
+on your Mac. Your instance's passkey, OIDC and SAML sign-in methods run in that browser.
 
 If the loopback sign-in cannot run, the app falls back to a device code. You can
 also choose it up front with the option to sign in with a code on another
@@ -86,8 +86,8 @@ which session records and the audit view show as a label. That label is
 asserted by the client, so operators cannot rely on it to tell the app from the
 CLI.
 
-The session token lives in your login keychain, in an item only the signed app
-can read. It is not shared with the CLI, and the page in the window never sees
+The session token lives in your login keychain, in an item whose access list
+trusts only the app that created it. It is not shared with the CLI, and the page in the window never sees
 it. If a sign-in returns a different account than the connection used before,
 the app asks you to confirm before it uses it.
 
@@ -107,14 +107,14 @@ instance in your browser, because the browser holds your passkeys:
   the app.
 - **Passkey mint and access** without TOTP, **session step-up by passkey**,
   **passkey enrolment** and **identity linking.** The app offers
-  **Continue in the browser**, which opens the same page on the instance's real
+  **Continue in browser**, which opens the same page on the instance's real
   address, under a separate browser session.
 
 Passkey enrolment and identity linking in the browser end every session of
 that account, including the app's. After either, sign in to the app again.
 
-The app also hides workspace launch, and it will not open the instance's login
-and approval pages from a link on the page, which narrows the ways a hostile
+The app also hides workspace launch, and it will not open the instance's handoff and approval pages
+(`/login/cli`, `/reauth/cli` and `/workspace/approve`) from a link on the page, which narrows the ways a hostile
 page can steer you into approving a login you did not start.
 
 ## Downloads and the clipboard
@@ -150,7 +150,8 @@ absolute. Revoke it from another signed-in session.
   key IDs, not names, and a hostile page chooses them in the app. Check what
   you approve.
 - **A process running as you** may be able to reach the keychain item through a
-  prompt. It is the same boundary as your browser profile.
+  prompt or by bypassing the app's code signature. It is the same boundary as
+  your browser profile.
 - **A session can outlive the app.** If a revocation fails, or the app crashes
   at the wrong moment, a session can stay valid with no holder, up to 30 days
   idle and 90 days absolute, until you revoke it from another signed-in session.
@@ -159,9 +160,13 @@ absolute. Revoke it from another signed-in session.
 - **No telemetry.** The app connects only to the instances you configured and
   sends no crash reports. An instance's own page can still request other
   addresses, as far as its Content Security Policy allows.
-- **Not verified on real hardware yet.** The decision record lists checks, such
-  as Touch ID, a hosted instance with a pin and a real download, that must be
-  observed on a signed build before release.
+- **Depends on Wails internals.** The app adds native navigation and download
+  handling on Wails' internals, and refuses to open a window if they are not as
+  expected, so a framework upgrade can break it until it is rechecked.
+- **Not verified on real hardware yet.** Only the passkey reveal has been run
+  through the browser hop, and only against a local instance. Real Touch ID, a
+  hosted instance, a pinned key, OIDC and SAML sign-in, the other browser hops
+  and real downloads must be observed on a signed build before release.
 
 Windows and Linux are not supported.
 
