@@ -181,12 +181,15 @@ func (m *Manager) Remove(ctx context.Context, host string) (RemoveResult, error)
 	const ended = "This connection's session was ended while it was being removed. Sign in again, or remove it again to finish."
 	var revokeErr error
 	switch token := c.bearer(); {
-	case c.Info().WipePending:
-		// Revoked and deleted by the earlier removal; only the data is left.
 	case token != "":
 		revokeErr = c.revoke(ctx, token)
 	default:
 		revokeErr = m.revokeStored(ctx, host)
+	}
+	if c.Info().WipePending && errors.Is(revokeErr, ErrNoSecret) {
+		// Revoked and deleted by the earlier removal; only the data is left.
+		// The flag is a file edit away, so an item that is still there is revoked.
+		revokeErr = nil
 	}
 	result := RemoveResult{Revoked: revokeErr == nil}
 	switch {

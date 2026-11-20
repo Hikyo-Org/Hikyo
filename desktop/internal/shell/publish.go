@@ -29,7 +29,8 @@ func PublishDownload(temp, final string, replaceApproved bool) (string, error) {
 		err := os.Link(temp, name)
 		switch {
 		case err == nil:
-			return name, os.Remove(temp)
+			_ = os.Remove(temp) // the file is saved; the caller removes a leftover temp
+			return name, nil
 		case errors.Is(err, fs.ErrExist):
 			continue
 		}

@@ -43,7 +43,9 @@ func (c *Conn) runReauth(ctx context.Context, in reauthIn) *shellErr {
 	}
 	defer release()
 	sent := c.bearer()
-	rotated, err := clientauth.Reauth(ctx, c.transport(), clientauth.ReauthRequest{
+	// Every request of the ceremony carries the bearer the gate was taken with.
+	fixed := authTransport{in: c.inst, bearer: func() string { return sent }}
+	rotated, err := clientauth.Reauth(ctx, fixed, clientauth.ReauthRequest{
 		Purpose: in.Purpose, Operation: in.Operation,
 		EnvironmentIDs: in.EnvironmentIDs, KeyIDs: in.KeyIDs, SelfConfig: in.SelfConfig,
 	}, func(target string) error { return c.m.openHandoff(c.inst.Origin, target) })

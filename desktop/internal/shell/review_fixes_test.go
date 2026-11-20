@@ -403,7 +403,7 @@ func TestAnUnusableRecordDoesNotBlockStartup(t *testing.T) {
 				t.Error("an unusable connection opened")
 			}
 			if rec := httptest.NewRecorder(); true {
-				req := httptest.NewRequest("GET", "http://"+info.Host+"/", nil)
+				req := httptest.NewRequestWithContext(context.Background(), "GET", "http://"+info.Host+"/", nil)
 				req.Host = info.Host
 				m2.BindWindow("w", info.Host)
 				req.Header.Set("X-Wails-Window-Id", "w")

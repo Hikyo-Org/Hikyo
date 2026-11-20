@@ -245,7 +245,7 @@ func (c *Conn) rollbackKeychain(prev Secret, cause error) error {
 	if prev.Token != "" {
 		c.stop("The previous session could not be restored after a failed save. Sign in again.")
 	}
-	return fmt.Errorf("%w; the keychain could not be put back: %v", cause, err)
+	return fmt.Errorf("%w; the keychain could not be put back: %w", cause, err)
 }
 
 // revoke asks the instance to delete the session behind token. It is best
