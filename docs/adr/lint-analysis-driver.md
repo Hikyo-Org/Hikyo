@@ -150,13 +150,17 @@ every context ran, and it runs in the test process, not as a vet result).
   symlink or non-directory is refused, and none of the three hashes like an empty
   directory. Snapshot reads go through `os.OpenRoot(root)`: a symlink in any
   parent directory of a declared path (the root itself aside) is irregular, and a
-  non-regular file is refused before it is opened. The old-harness reader
+  non-regular file is refused before it is opened. A symlink or other irregular
+  entry inside a declared directory fails the snapshot instead of being skipped.
+  The old-harness reader
   (`osSource`) has no root to confine reads to, so it still follows a symlinked
-  parent; it goes with the old harness in PR 4.
+  parent and skips a symlinked subdirectory; it goes with the old harness in PR 4.
 - **`-root` must contain the anchor package's files, or the analyzer refuses**
   (file-input analyzers, checked by `os.SameFile` along each file's parent
   directories; test: `TestVetDriverRefusesBadInputs`, case "foreign root with a
-  matching digest"). `grantlock` and `denialwriter` have no anchor, so the tie
+  matching digest"). A directory that encloses the repository also contains the
+  anchor and passes; its inputs are then read at the wrong paths and reported
+  absent, not clean. `grantlock` and `denialwriter` have no anchor, so the tie
   does not apply to them. Their `-root` is bound only by the digest: it must
   equal the hash of the declared query files under that root. A root other than
   the repository's with matching digest flags is analyzed as that root; the

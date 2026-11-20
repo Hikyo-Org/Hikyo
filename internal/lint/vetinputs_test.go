@@ -330,6 +330,29 @@ func checkSymlinkedParent(t *testing.T) {
 	if in.digest == empty.digest {
 		t.Error("a symlinked parent hashes like an absent one")
 	}
+
+	// A symlink that stays inside the root is refused as well.
+	inner := t.TempDir()
+	if err := mkdirWrite(filepath.Join(inner, "real", "q", "a.sql"), "select 1;"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(inner, "real"), filepath.Join(inner, "b")); err != nil {
+		t.Fatal(err)
+	}
+	if in, err := SnapshotInputs(inner, []InputSpec{{Dir: "b/q", Exts: []string{".sql"}}}); err != nil {
+		t.Fatal(err)
+	} else if _, err := in.ReadDir(filepath.Join(inner, "b", "q")); err == nil || errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("ReadDir through an in-root symlinked parent: got %v, want a refusal", err)
+	}
+
+	// A symlinked subdirectory inside a recursive declared directory is refused,
+	// not skipped unhashed.
+	if err := os.Symlink(filepath.Join(inner, "real", "q"), filepath.Join(inner, "real", "linked")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SnapshotInputs(inner, []InputSpec{{Dir: "real", Exts: []string{".sql"}, Recursive: true}}); err == nil {
+		t.Error("a symlinked subdirectory in a declared directory was accepted")
+	}
 }
 
 // fakePass runs an analyzer on its anchor package with no files: enough for the

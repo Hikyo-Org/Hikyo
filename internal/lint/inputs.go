@@ -59,7 +59,8 @@ type source interface {
 // osSource reads the disk directly: the old harness and the helpers' tests.
 // shortcut: it has no root to confine reads to, so a symlinked parent directory
 // is followed (only the final directory component and the file's own directory
-// are checked); Inputs, which has the root, closes that. The old harness goes in
+// are checked), and a walk skips a symlinked subdirectory; Inputs, which has the
+// root, refuses both. The old harness goes in
 // PR 4, so this is not widened.
 type osSource struct{}
 
@@ -145,9 +146,9 @@ type Inputs struct {
 }
 
 // SnapshotInputs reads the declared inputs under root and computes their digest.
-// Every read goes through a handle to root (os.OpenRoot), so a symlink in any
-// parent directory that leaves the root, or a swap after the check, is refused
-// instead of followed.
+// Every read goes through a handle to root (os.OpenRoot), and any symlink on a
+// declared path or inside a declared directory is refused, whether it points
+// inside or outside the root.
 func SnapshotInputs(root string, specs []InputSpec) (*Inputs, error) {
 	root = filepath.Clean(root)
 	rootHandle, err := os.OpenRoot(root)
@@ -303,6 +304,9 @@ func listInputDir(root *os.Root, rootPath, rel string, spec InputSpec) ([]string
 		switch {
 		case err != nil:
 			return err
+		case !d.IsDir() && !d.Type().IsRegular():
+			// A symlinked subdirectory would otherwise be skipped unhashed.
+			return fmt.Errorf("declared directory %s holds a symlink or irregular entry %s", rel, path)
 		case d.IsDir():
 			if path != base && !spec.Recursive {
 				return fs.SkipDir
@@ -548,8 +552,9 @@ func (c fileCheck) analyzer(provide func(*analysis.Analyzer) inputProvider) *ana
 }
 
 // anchorUnderRoot refuses a -root that does not contain every file of the anchor
-// package, so a digest of another tree's inputs cannot be paired with this
-// anchor. Containment is by os.SameFile along each file's parent directories, not
+// package, so a digest of an unrelated tree's inputs cannot be paired with this
+// anchor. An enclosing directory also contains the anchor and passes; its inputs
+// are then read at the wrong paths, which reports them absent rather than clean. Containment is by os.SameFile along each file's parent directories, not
 // by string prefix, so a symlinked root, ".." segments or a case-insensitive
 // filesystem cannot bypass it.
 func anchorUnderRoot(pass *analysis.Pass, root string) error {
@@ -558,7 +563,7 @@ func anchorUnderRoot(pass *analysis.Pass, root string) error {
 		return err
 	}
 	for _, f := range pass.Files {
-		name, err := filepath.Abs(pass.Fset.Position(f.Pos()).Filename)
+		name, err := filepath.Abs(pass.Fset.PositionFor(f.Pos(), false).Filename)
 		if err != nil {
 			return err
 		}
