@@ -47,12 +47,13 @@ var reviewedPinsJSON []byte
 var reviewedPins, reviewedPinsError = parseReviewedPins(reviewedPinsJSON)
 var approvedContractDifferences, approvedEngineOnlyQueries = queryContractPins(reviewedPins, reviewedPinsError)
 
-// parseReviewedPins decodes the inventory: an unknown or duplicate member, a
+// parseReviewedPins decodes the inventory (a failed decode returns what was
+// decoded with the error; callers must not use it): an unknown or duplicate member, a
 // malformed document and trailing content are refused.
 func parseReviewedPins(source []byte) (reviewedPinInventory, error) {
 	var inventory reviewedPinInventory
 	if err := jsonwire.Decode(bytes.NewReader(source), &inventory, json.RejectUnknownMembers(true)); err != nil {
-		return reviewedPinInventory{}, fmt.Errorf("reviewed pins: %w", err)
+		return inventory, fmt.Errorf("reviewed pins: %w", err)
 	}
 	for kind, records := range map[string]map[string]reviewedQueryPin{"contract difference": inventory.ContractDifferences, "engine protocol": inventory.EngineQueries, "scoped query": inventory.ScopedQueries} {
 		for name, pin := range records {
