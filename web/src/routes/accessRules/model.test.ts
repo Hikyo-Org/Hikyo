@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { zRuleCapability } from '@hikyo/zod';
 import { describe, expect, it } from 'vitest';
 
@@ -314,10 +316,15 @@ describe('where labels', () => {
 
 describe('machine rules (D11)', () => {
   const where = { projects: [PAY], envs: { mode: 'only' as const, items: [{ project: PAY, environment: STAGING }] }, keys: ALL };
-  it('a workload holds See only, an automation See, Edit, Publish and Define keys', () => {
-    const ids = PERMS.map((p) => p.id);
-    expect(ids.filter((id) => allowed(id, where, 'workload'))).toEqual(['read']);
-    expect(ids.filter((id) => allowed(id, where, 'automation'))).toEqual(['read', 'edit', 'publish', 'definitions-edit']);
+  it('pins what each class may hold to internal/domain CheckMachineRule', () => {
+    const fixture = JSON.parse(readFileSync(new URL('../../../../internal/domain/testdata/capabilities.json', import.meta.url), 'utf8')) as {
+      machine_rule_capabilities: Record<string, string[]>;
+    };
+    expect(Object.keys(fixture.machine_rule_capabilities).sort()).toEqual(['automation', 'workload']);
+    for (const machine of ['workload', 'automation'] as const) {
+      const held = PERMS.map((p) => p.id).filter((id) => allowed(id, where, machine));
+      expect(held.sort()).toEqual(fixture.machine_rule_capabilities[machine]);
+    }
   });
   it('a permission the class may not hold is refused with its reason, before any Where reason', () => {
     expect(availability('edit', where, 'workload')).toEqual({ ok: false, why: 'Not for a workload account: it holds See only.' });
