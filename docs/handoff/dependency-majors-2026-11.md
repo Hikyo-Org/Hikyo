@@ -13,6 +13,10 @@ dependency was compared against its registry's latest release.
   pnpm 12 records the `packageManager` pin there on any root invocation, and
   `--frozen-lockfile` fails without it. `export-pnpm-cache.sh` now requires `12.*` (the store path
   is still `v11`).
+- Feedback CI runs `install-corepack.sh` from the merge commit but runs pnpm in
+  the PR head. The script now pins from the checkout it runs in, so heads still
+  on pnpm 11 pass until rebased, and `export-pnpm-cache.sh` accepts pnpm 11 and
+  12 (same `v11` store, separate cache keys). Drop 11 once no open PR needs it.
 - With the global virtual store (`virtualStoreType: global`), pnpm 12 injects an
   ESM resolve hook through `NODE_OPTIONS` into `pnpm run` scripts. `clients/ts/src/installJsonParser.test.ts` spawned a child node outside
   any package and failed with `ERR_REQUIRE_CYCLE_MODULE`; the child now runs
