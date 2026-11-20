@@ -569,11 +569,25 @@ func TestGzipHelperIsStillAccepted(t *testing.T) {
 func TestFinishDownloadsWaitsForAPublicationInProgress(t *testing.T) {
 	publishing.RLock() // a publication in progress
 	done := make(chan struct{})
-	go func() { FinishDownloads(); close(done) }()
+	go func() {
+		FinishDownloads()
+		close(done)
+		publishing.Unlock() // later tests publish again, whatever the test saw
+	}()
+	// A pending writer makes TryRLock fail, so FinishDownloads is now waiting.
+	deadline := time.Now().Add(5 * time.Second)
+	for publishing.TryRLock() {
+		publishing.RUnlock()
+		if time.Now().After(deadline) {
+			publishing.RUnlock()
+			t.Fatal("FinishDownloads never started waiting")
+		}
+		time.Sleep(time.Millisecond)
+	}
 	select {
 	case <-done:
 		t.Fatal("FinishDownloads returned while a publication was in progress")
-	case <-time.After(50 * time.Millisecond):
+	default:
 	}
 	publishing.RUnlock()
 	select {
@@ -581,5 +595,4 @@ func TestFinishDownloadsWaitsForAPublicationInProgress(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("FinishDownloads did not return after the publication ended")
 	}
-	publishing.Unlock() // later tests publish again
 }
