@@ -45,6 +45,7 @@ for file in "$@"; do
 		fail "non-GitHub runner reference in $(basename "$file")"
 	fi
 	expected_runner=ubuntu-latest
+	desktop_lint=false
 	case $(basename "$file") in
 		ci-golangci-desktop.yml)
 			# The advisory desktop lint (#1215) builds cgo and darwin-only files: one
@@ -54,6 +55,13 @@ for file in "$@"; do
 				fail 'desktop lint must not use shared caches'
 			fi
 			require_line "$file" '          cache: false'
+			# One cheap Linux pre-job decides whether the module exists before any paid
+			# macOS minutes; every other job stays on the pinned macOS runner.
+			[ "$(grep -c '^    runs-on: ubuntu-latest$' "$file")" = 1 ] ||
+				fail 'desktop lint must have exactly one ubuntu-latest module pre-job'
+			grep -Fx "    if: \${{ needs.module.outputs.present == 'true' }}" "$file" >/dev/null ||
+				fail 'desktop lint must run on macOS only where the module exists'
+			desktop_lint=true
 			;;
 		ops-floor.yml)
 			# The secret-free operations lane measures both native CPU floors.
@@ -92,6 +100,10 @@ for file in "$@"; do
 			;;
 	esac
 	runner_source=$file
+	if [ "$desktop_lint" = true ]; then
+		runner_source=$(mktemp)
+		grep -v '^    runs-on: ubuntu-latest$' "$file" >"$runner_source"
+	fi
 	case $(basename "$file") in
 		nightly.yml | release.yml)
 			# Credential-isolated signing and native acceptance require macOS.

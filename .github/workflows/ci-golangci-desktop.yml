@@ -24,8 +24,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The workflow's own and the shared lint inputs trigger it everywhere, but the
+  # module exists only once the shell has landed: skip paid macOS minutes before that.
+  module:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      present: ${{ steps.present.outputs.present }}
+    steps:
+      - name: Check out the exact PR head without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Detect the desktop module
+        id: present
+        run: |
+          if [ -f desktop/go.mod ]; then echo present=true; else echo present=false; fi >>"$GITHUB_OUTPUT"
+
   golangci-desktop:
     name: golangci-lint on the desktop module
+    needs: module
+    if: ${{ needs.module.outputs.present == 'true' }}
     runs-on: macos-15
     timeout-minutes: 20
     env:
@@ -49,8 +69,9 @@ jobs:
         working-directory: desktop
         run: |
           ../scripts/ci/run-go-tool.sh golangci-lint run -j 2 --config ../.golangci.yml ./...
+      # .golangci-strict.yml exists on dev only until main carries it.
       - name: golangci-lint strict rules, desktop module
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && hashFiles('.golangci-strict.yml') != '' }}
         working-directory: desktop
         run: |
           ../scripts/ci/run-go-tool.sh golangci-lint run -j 2 --config ../.golangci-strict.yml ./...

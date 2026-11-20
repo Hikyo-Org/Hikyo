@@ -72,7 +72,7 @@ else
 		if [ "$dir" = . ]; then set -- "$@" .; else set -- "$@" "./$dir"; fi
 	done <"$dirs"
 	rm -f "$files" "$dirs"
-	if [ "$#" -eq 0 ] && { [ "$desktop_lint" = false ] || [ ! -d desktop ]; }; then
+	if [ "$#" -eq 0 ] && { [ "$desktop_lint" = false ] || [ ! -f desktop/go.mod ]; }; then
 		printf 'golangci-lint-new: no lintable Go inputs changed since %s; nothing to lint\n' "$base" >&2
 		exit 0
 	fi
@@ -92,7 +92,7 @@ if [ "$#" -gt 0 ]; then
 fi
 # The whole module: it is small, and a nested module has no per-package list here.
 # The pass runs even when the root pass failed; the first non-zero status wins.
-if [ "$desktop_lint" = true ] && [ -d desktop ]; then
+if [ "$desktop_lint" = true ] && [ -f desktop/go.mod ]; then
 	desktop_config=../.golangci.yml
 	[ -f .golangci.yml ] || desktop_config=$config
 	printf 'golangci-lint-new: linting new code since %s (desktop/...)\n' "$base" >&2

@@ -2332,7 +2332,9 @@ jobs:
           # this known addition for the older base. Delete this block and the
           # predates-desktop test cases once the base registry contains desktop.
           jq -e --argjson plan "$PLAN_JSON" '
-            (if $plan.desktop == true then "success" else "skipped" end) as $expected |
+            (if $plan.desktop == true then "success"
+             elif $plan.desktop == false or $plan.desktop == null then "skipped"
+             else error("desktop plan must be boolean") end) as $expected |
             type == "object" and has("desktop") and .desktop.result == $expected
           ' <<<"$NEEDS_JSON" >/dev/null
           if jq -e '.version == 2 and (.jobs | has("desktop") | not)' "$trusted_registry" >/dev/null; then
