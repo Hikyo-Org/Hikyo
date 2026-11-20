@@ -57,8 +57,8 @@ The spike also established that:
    become visible are fixed in the port PRs, not allowlisted.
 5. **Rollout.** A stack of PRs, each runs both harnesses for the analyzers it
    moves until every old finding is also reported by the new driver:
-   1. driver, input hashing, and the per-package analyzers;
-   2. the analyzers that read non-Go inputs;
+   1. driver, summary aggregation, and the per-package analyzers;
+   2. input hashing and the analyzers that read non-Go inputs;
    3. RawSQL with facts and summaries;
    4. removal of `LoadRepo`, `flatten`, and the old harness, including the
       `internal/isolation` callers.
