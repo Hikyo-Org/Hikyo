@@ -156,15 +156,18 @@ func (m *Manager) Remove(ctx context.Context, host string) (RemoveResult, error)
 	}
 	// No ceremony may store a session after this point (ADR D2).
 	undo := c.beginRemoval()
-	result := RemoveResult{Revoked: true}
+	const notRevoked = "The session could not be revoked on the instance, so it stays valid until it expires. Revoke it from another signed-in session."
+	var revokeErr error
 	if token := c.bearer(); token != "" {
-		if err := c.revoke(ctx, token); err != nil {
-			result = RemoveResult{Message: "The session could not be revoked on the instance, so it stays valid until it expires. Revoke it from another signed-in session."}
-		}
-	} else if secret, err := m.secrets.Get(host); err == nil && secret.Token != "" && !c.isTampered() {
-		if err := c.revoke(ctx, secret.Token); err != nil {
-			result = RemoveResult{Message: "The session could not be revoked on the instance, so it stays valid until it expires. Revoke it from another signed-in session."}
-		}
+		revokeErr = c.revoke(ctx, token)
+	} else {
+		revokeErr = m.revokeStored(ctx, host)
+	}
+	result := RemoveResult{Revoked: revokeErr == nil}
+	if errors.Is(revokeErr, ErrNoSecret) {
+		result.Message = "There was no stored session to revoke."
+	} else if revokeErr != nil {
+		result.Message = notRevoked
 	}
 	m.native.CloseWindow(host)
 	var failures []string
@@ -190,6 +193,23 @@ func (m *Manager) Remove(ctx context.Context, host string) (RemoveResult, error)
 		result.Message = strings.TrimSpace(result.Message + " Some data could not be deleted (" + strings.Join(failures, "; ") + ").")
 	}
 	return result, nil
+}
+
+// revokeStored revokes the keychain item's session through an instance built
+// from the item's own origin, trust mode and pin. connections.json is editable
+// by any process of the same user, so no instance built from it may carry a
+// bearer. The store refuses items that another application could read.
+func (m *Manager) revokeStored(ctx context.Context, host string) error {
+	secret, err := m.secrets.Get(host)
+	if err != nil {
+		return err
+	}
+	inst, err := newInstance(secret.Origin, Trust{Mode: secret.TrustMode, Pin: secret.Pin}, m.userAgent(), m.opts.AllowLoopbackHTTP)
+	if err != nil {
+		return err
+	}
+	defer inst.close()
+	return revokeOn(ctx, inst, secret.Token)
 }
 
 // SignIn signs an existing connection in again from the list.

@@ -9,7 +9,15 @@ seeded=""
 server=""
 cd "$(dirname "$0")/.."
 work=$(mktemp -d)
-trap '[ -z "$server" ] || kill $server 2>/dev/null || true; pkill -f "$work/probe" 2>/dev/null || true; [ -z "${seeded:-}" ] || for h in $seeded; do security delete-generic-password -s io.hikyo.desktop -a "$h" >/dev/null 2>&1 || true; done; rm -rf "$work"' EXIT
+cleanup() {
+	[ -z "$server" ] || kill "$server" 2>/dev/null || true
+	pkill -f "$work/probe" 2>/dev/null || true
+	for h in $seeded; do
+		security delete-generic-password -s io.hikyo.desktop -a "$h" >/dev/null 2>&1 || true
+	done
+	rm -rf "$work"
+}
+trap cleanup EXIT
 go build -tags probe -o "$work/probe" . 2>/dev/null
 python3 probe/instance.py 2>"$work/server.log" &
 server=$!

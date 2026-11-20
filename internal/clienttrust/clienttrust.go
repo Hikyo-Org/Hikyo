@@ -212,7 +212,7 @@ func TLSConfig(origin string, mode Mode, pin string, profile Profile) *tls.Confi
 			// publicly-trusted certificate for the same hostname does not
 			// become acceptable just because it chains to a public root.
 			//
-			// The pin is checked against the LEAF ONLY (.
+			// The pin is checked against the LEAF ONLY (PeerCertificates[0]).
 			// Scanning the whole chain would let an attacker satisfy it by
 			// including the legitimate certificate as an intermediate while
 			// presenting a leaf whose private key they hold — the pin would
