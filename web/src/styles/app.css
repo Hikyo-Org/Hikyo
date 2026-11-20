@@ -2220,7 +2220,14 @@ fieldset.field > legend {
      column is budgeted at 260px for this choice; the floor holds the
      header's Key label and environment chooser. The name ellipsises, the
      full name stays in the row's title and the link's accessible name. */
-  --matrix-key-max: 236px;
+  --matrix-key-full: 236px;
+  --matrix-key-max: var(--matrix-key-full);
+  /* A key column fitted by a tap on its handle (Matrix.tsx): the full width
+     holds 20 characters, plus one mono advance per extra character of the
+     longest name (`--key-chars`). shortcut: estimates the proportional name
+     with mono advances and ignores row marks; measure the names if fitted
+     names still ellipsise. */
+  --matrix-key-fit: calc(var(--matrix-key-full) + (var(--key-chars, 20) - 20) * var(--matrix-char));
   /* The floor: the header's start padding, Key label and envs picker
      (164px), then its end padding, which is the resize handle's width. */
   --matrix-key-min: calc(164px + var(--matrix-resizer));
@@ -2278,7 +2285,14 @@ fieldset.field > legend {
    7.8px, and an unrounded width cuts the longest value by a few pixels. One
    mark slot fits the common case. */
 .matrix__table thead th:not(:first-child, .matrix__filler) {
-  width: calc(var(--chars, 0) * var(--matrix-char) + var(--matrix-cell-inset) + var(--matrix-mark-slots) * (var(--matrix-icon) + var(--matrix-icon-gap)));
+  --matrix-env-content: calc(var(--chars, 0) * var(--matrix-char) + var(--matrix-cell-inset) + var(--matrix-mark-slots) * (var(--matrix-icon) + var(--matrix-icon-gap)));
+  width: var(--matrix-env-content);
+}
+
+/* A tap on the column's handle (Matrix.tsx) holds it at that content width,
+   so it no longer shrinks under overflow, capped to the well beside the key column. */
+.matrix__table thead th.matrix__column--fit {
+  min-width: min(var(--matrix-env-content), 100cqi - var(--matrix-key));
 }
 
 .matrix__table .matrix__filler {

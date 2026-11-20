@@ -294,11 +294,12 @@ export function Matrix({
   // into the head row above the table.
   const phone = useMediaQuery(`(max-width: ${String(BREAKPOINTS.phone)}px)`);
 
-  // Column widths the user dragged (ColumnResizer). Widening the key column
-  // past icon-only brings the key names back on a phone.
-  const [keyWidth, setKeyWidth] = useState<number>();
-  const [environmentWidths, setEnvironmentWidths] = useState<ReadonlyMap<string, number>>(new Map());
-  const keyNamesShown = !phone || (keyWidth !== undefined && keyWidth >= KEY_NAME_WIDTH);
+  // Column widths the user dragged (ColumnResizer), or 'fit' after a tap: the
+  // column's content width (app.css). Widening the key column past icon-only
+  // brings the key names back on a phone.
+  const [keyWidth, setKeyWidth] = useState<number | 'fit'>();
+  const [environmentWidths, setEnvironmentWidths] = useState<ReadonlyMap<string, number | 'fit'>>(new Map());
+  const keyNamesShown = !phone || keyWidth === 'fit' || (keyWidth ?? 0) >= KEY_NAME_WIDTH;
 
   // The legend and environment-picker are native <details> popovers. Native
   // <details> only close by re-clicking their summary, so, like the prototype's
@@ -507,6 +508,11 @@ export function Matrix({
   // Each environment's longest cell text, from the data rather than the DOM:
   // the table is virtualised, so the longest value may not be rendered. Its
   // length sizes the column header (app.css, `--chars`).
+  // The longest key name's length sizes a key column fitted by a tap (app.css, `--matrix-key-fit`).
+  const longestKeyName = useMemo(
+    () => groups.reduce((most, group) => group.keys.reduce((longest, key) => Math.max(longest, key.name.length), most), 0),
+    [groups],
+  );
   const longestByEnvironment = useMemo(() => {
     const keys = groups.flatMap((group) => group.keys);
     return new Map(environments.map((environment) => {
@@ -1160,9 +1166,10 @@ export function Matrix({
                   '--env-count': visibleEnvironments.length,
                   // Clamped in CSS, so a rotation or narrower window re-fits it: never under
                   // the column's floor, and always a touch target of values beside it.
+                  '--key-chars': longestKeyName,
                   ...(keyWidth === undefined
                     ? {}
-                    : { '--matrix-key': `clamp(var(--matrix-key-min), ${String(keyWidth)}px, 100cqi - var(--touch))` }),
+                    : { '--matrix-key': `clamp(var(--matrix-key-min), ${keyWidth === 'fit' ? 'var(--matrix-key-fit)' : `${String(keyWidth)}px`}, 100cqi - var(--touch))` }),
                 } as CSSProperties}
               >
                 <thead ref={setMatrixHead}>
@@ -1183,22 +1190,25 @@ export function Matrix({
                       <ColumnResizer
                         label="Key"
                         onResize={setKeyWidth}
-                        // A tap on the icon-only phone column shows the names; otherwise it restores the default.
-                        onTap={() => setKeyWidth(phone && !keyNamesShown ? KEY_NAMES_TAP_WIDTH : undefined)}
+                        // A tap fits the column to its names (showing them on a phone, even after a narrowing
+                        // to icon-only); a second restores the default.
+                        onTap={() => setKeyWidth(keyWidth === undefined || !keyNamesShown ? 'fit' : undefined)}
                       />
                     </th>
                     {visibleEnvironments.map((environment) => {
+                      const width = environmentWidths.get(environment.id);
                       const revision = revisionsByEnvironment.get(environment.id);
                       const degraded = degradedByEnvironment.get(environment.id);
                       return (
                         <th
                           scope="col"
                           key={environment.id}
+                          className={width === 'fit' ? 'matrix__column--fit' : undefined}
                           style={{
                             '--chars': longestByEnvironment.get(environment.id)?.length ?? 0,
                             // min-width too: an overflowing table otherwise shrinks it back toward the header.
-                            width: environmentWidths.get(environment.id),
-                            minWidth: environmentWidths.get(environment.id),
+                            width: width === 'fit' ? undefined : width,
+                            minWidth: width === 'fit' ? undefined : width,
                           } as CSSProperties}
                         >
                           <span>{environment.name}</span>
@@ -1244,10 +1254,11 @@ export function Matrix({
                             onResize={(width) => {
                               setEnvironmentWidths((current) => new Map(current).set(environment.id, width));
                             }}
+                            // A tap fits the column to its longest value; a second restores the default.
                             onTap={() => {
                               setEnvironmentWidths((current) => {
                                 const next = new Map(current);
-                                next.delete(environment.id);
+                                if (!next.delete(environment.id)) next.set(environment.id, 'fit');
                                 return next;
                               });
                             }}
@@ -1813,8 +1824,6 @@ function MatrixKeyLink({
 
 /** A phone key column at least this wide shows key names: twice `--touch` (44px, tokens.css), the icon-only width. */
 const KEY_NAME_WIDTH = 88;
-/** The width a tap on the icon-only phone key column's handle opens it to: about 16 key-name characters. */
-const KEY_NAMES_TAP_WIDTH = 180;
 /** Pointer travel under this many pixels is a tap on the handle, not a drag (a finger wobbles more). */
 const TAP_SLOP = { touch: 10, other: 4 };
 /** One arrow-key press on a focused handle, in pixels. */
@@ -1823,7 +1832,7 @@ const KEY_STEP = 16;
 /**
  * A column's resize handle on its header cell's trailing edge: drag it
  * (mouse, pen or touch), or focus it and press the arrow keys; a tap or Enter
- * is the column's `onTap`. Matrix-only (DESIGN.md, Column resize).
+ * is the column's `onTap`, the single-pointer way to widen it (WCAG 2.5.7). Matrix-only (DESIGN.md, Column resize).
  * Its range is 0 to the matrix well's width, the most a column can usefully take.
  * Reports the header cell's new width or the tap; the matrix decides how
  * either applies to its column.

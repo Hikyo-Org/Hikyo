@@ -552,6 +552,13 @@ export const CompactKeyColumn: Story = {
     const handle = heading.querySelector('.matrix__resizer');
     if (picker === null || handle === null) throw new Error('envs picker or resize handle missing');
     await expect(picker.getBoundingClientRect().right).toBeLessThanOrEqual(handle.getBoundingClientRect().left + 0.5);
+    // A click on the handle fits the column to its names (WCAG 2.5.7's
+    // single-pointer widen), capped to the well; a second click restores the floor.
+    const nameRoom = link.clientWidth;
+    await userEvent.click(handle);
+    await waitFor(() => expect(link.clientWidth).toBeGreaterThan(nameRoom + 100));
+    await userEvent.click(handle);
+    await waitFor(() => expect(Math.abs(heading.getBoundingClientRect().width - floor)).toBeLessThanOrEqual(1));
     // Short of room: the table scrolls, the filler has nothing left, and a
     // value ellipsises rather than widening its column.
     const { overflows, truncated, fillerWidth } = await expectColumnLayout(canvasElement);
@@ -930,7 +937,7 @@ export const PhoneWidenedKeyColumn: Story = {
     for (let step = 0; step < 24; step += 1) await userEvent.keyboard('{ArrowLeft}');
     await iconOnly();
 
-    // A tap opens it to show the names; a second tap closes it again. Enter does the same.
+    // A tap fits it to the names; a second tap closes it again. Enter does the same.
     await userEvent.click(handle);
     await namesShown();
     await userEvent.click(handle);
@@ -947,6 +954,11 @@ export const PhoneWidenedKeyColumn: Story = {
     const before = envHeading.getBoundingClientRect().width;
     await dragBy(envHandle, 32);
     await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeCloseTo(before + 32, 0));
+    await userEvent.click(envHandle);
+    await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeCloseTo(before, 0));
+    // From the default, a tap fits the column to its longest value; a second tap restores it.
+    await userEvent.click(envHandle);
+    await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeGreaterThan(before + 32));
     await userEvent.click(envHandle);
     await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeCloseTo(before, 0));
 

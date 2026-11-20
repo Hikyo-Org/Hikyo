@@ -5,8 +5,9 @@ Branch `dunky13/matrix-column-resize`, PR #1455, based on `dev` at `6d8db0f4d`.
 ## Changed
 
 - Every matrix column header has a resize handle (`ColumnResizer`, `web/src/routes/Matrix.tsx`): drag it, focus it and use the arrow keys, or tap it (or press Enter).
-- Phone: a tap on the icon-only key column's handle opens it to 180px and shows key names, the Key label and row marks; a second tap closes it. Any key column at least 88px wide shows names, and a tap on a name then opens the key directly.
-- A tap on any other handle resets that column to its default width.
+- A tap on a handle (or Enter) on a column at its default width fits it to its content: the longest value, or the longest key name (`--matrix-key-fit`, estimated from mono advances), capped to the well. A tap on any other width restores the default. This is the WCAG 2.5.7 single-pointer alternative to dragging.
+- Phone: a fitted or widened key column (at least 88px) shows key names, the Key label and row marks, and a tap on a name then opens the key directly.
+- Phone environment headers centre their name beside the icon-only history button.
 - The key width is clamped in CSS (`clamp(var(--matrix-key-min), Npx, 100cqi - var(--touch))`), so rotation or a narrower window re-fits it.
 - Handles are `--hit-min` (fine pointer) or `--touch` (coarse) wide, and each header reserves that width as end padding. The desktop key floor is now 188px, so the envs picker no longer overruns the key header.
 - `DESIGN.md` documents the behaviour. The unused `.visually-hidden-phone` class is removed.
@@ -20,7 +21,7 @@ Branch `dunky13/matrix-column-resize`, PR #1455, based on `dev` at `6d8db0f4d`.
 
 ## Open
 
-- WCAG 2.5.7: widening an environment column, or the desktop key column, has no single-pointer alternative to dragging. The keyboard path covers it. This needs a tracking accessibility issue or a follow-up widen control.
+- The key fit estimates proportional names with mono advances and ignores row marks; a name that still ellipsises after a fit means measuring the names instead.
 - On a coarse pointer the 44px handle reserve makes header-limited environment columns about 34px wider. The knob is `--matrix-resizer` in `app.css`.
 - Widths are not persisted; they reset on reload.
 - The e2e flow suite (`pnpm e2e`) was not run locally.
