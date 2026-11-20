@@ -159,6 +159,10 @@ func (m *Manager) acceptLogin(ctx context.Context, c *Conn, result apigen.LoginR
 	}
 	c.rotMu.Lock()
 	defer c.rotMu.Unlock()
+	if c.removed {
+		c.revokeAsync(token)
+		return errRemoved
+	}
 	if err := c.setSession(Secret{Token: token, SessionID: string(result.Session.Id)}, principalID, name); err != nil {
 		c.revokeAsync(token)
 		return clienterr.Failf(clienterr.ExitInternal, "the session could not be saved to the keychain: %v", err)

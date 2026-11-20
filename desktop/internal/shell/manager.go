@@ -39,8 +39,11 @@ type Native interface {
 	Confirm(title, message, confirmLabel string) bool
 	// Alert shows a non-blocking native message.
 	Alert(title, message string)
-	// SavePanel shows a blocking save panel with a suggested name.
-	SavePanel(suggestedName string) (path string, ok bool)
+	// SavePanel shows a blocking save panel with a suggested name. source
+	// names the connection asking, so the user can tell which one it is.
+	SavePanel(suggestedName, source string) (path string, ok bool)
+	// AppActive reports whether the app is the frontmost application.
+	AppActive() bool
 	// ShowDeviceCode shows a device-flow code until dismiss is called. cancel
 	// ends the sign-in when the user closes it.
 	ShowDeviceCode(verificationURL, code string, cancel func()) (dismiss func())

@@ -16,6 +16,29 @@ static void onMain(void (^block)(void)) {
 	}
 }
 
+// onMainRL runs block on the main thread from a run loop source rather than
+// the GCD main queue. A modal dialog opened inside a GCD main-queue block
+// stops libdispatch from draining the main queue until it closes, which would
+// stall every other onMain caller (and so the clipboard timer).
+static void onMainRL(void (^block)(void)) {
+	if ([NSThread isMainThread]) {
+		block();
+		return;
+	}
+	dispatch_semaphore_t done = dispatch_semaphore_create(0);
+	CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{
+		block();
+		dispatch_semaphore_signal(done);
+	});
+	CFRunLoopWakeUp(CFRunLoopGetMain());
+	dispatch_semaphore_wait(done, DISPATCH_TIME_FOREVER);
+}
+
+static void asyncMainRL(void (^block)(void)) {
+	CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, block);
+	CFRunLoopWakeUp(CFRunLoopGetMain());
+}
+
 static void note(NSString *format, ...) NS_FORMAT_FUNCTION(1, 2);
 static void note(NSString *format, ...) {
 	va_list args;
@@ -45,24 +68,22 @@ static NSString *pageHost(WKWebView *webView) {
 @implementation HikyoDownloads
 - (void)download:(WKDownload *)download decideDestinationUsingResponse:(NSURLResponse *)response suggestedFilename:(NSString *)name completionHandler:(void (^)(NSURL *))handler {
 	NSString *host = pageHost(download.webView);
-	char *chosen = hikyoDownloadDestination((char *)host.UTF8String, (char *)name.UTF8String);
+	char *chosen = hikyoDownloadDestination((uintptr_t)(__bridge void *)download, (char *)host.UTF8String, (char *)name.UTF8String);
 	if (chosen == NULL) {
 		handler(nil); // cancels the download
 		return;
 	}
 	NSURL *destination = [NSURL fileURLWithPath:[NSString stringWithUTF8String:chosen]];
 	free(chosen);
-	// The user already confirmed replacing the file in the save panel, and
-	// WKDownload refuses an existing destination.
-	[[NSFileManager defaultManager] removeItemAtURL:destination error:nil];
+	// Go chose a fresh temporary file next to the user's choice; it is marked
+	// and renamed into place when the download finishes.
 	handler(destination);
 }
 - (void)downloadDidFinish:(WKDownload *)download {
-	// The destination is not exposed by WKDownload; Go remembers it.
-	hikyoDownloadFinished();
+	hikyoDownloadFinished((uintptr_t)(__bridge void *)download);
 }
 - (void)download:(WKDownload *)download didFailWithError:(NSError *)error resumeData:(NSData *)resumeData {
-	hikyoDownloadFailed((char *)error.localizedDescription.UTF8String);
+	hikyoDownloadFailed((uintptr_t)(__bridge void *)download, (char *)error.localizedDescription.UTF8String);
 }
 @end
 
@@ -162,7 +183,7 @@ int hikyoHardenWindow(void *nswindow) {
 int hikyoConfirm(const char *title, const char *message, const char *label) {
 	__block int ok = 0;
 	NSString *t = [NSString stringWithUTF8String:title], *m = [NSString stringWithUTF8String:message], *l = [NSString stringWithUTF8String:label];
-	onMain(^{
+	onMainRL(^{
 		NSAlert *alert = [NSAlert new];
 		alert.messageText = t;
 		alert.informativeText = m;
@@ -179,7 +200,7 @@ int hikyoConfirm(const char *title, const char *message, const char *label) {
 
 void hikyoAlert(const char *title, const char *message) {
 	NSString *t = [NSString stringWithUTF8String:title], *m = [NSString stringWithUTF8String:message];
-	dispatch_async(dispatch_get_main_queue(), ^{
+	asyncMainRL(^{
 		NSAlert *alert = [NSAlert new];
 		alert.alertStyle = NSAlertStyleWarning;
 		alert.messageText = t;
@@ -189,12 +210,13 @@ void hikyoAlert(const char *title, const char *message) {
 	});
 }
 
-char *hikyoSavePanel(const char *name) {
+char *hikyoSavePanel(const char *name, const char *source) {
 	__block char *out = NULL;
-	NSString *n = [NSString stringWithUTF8String:name];
-	onMain(^{
+	NSString *n = [NSString stringWithUTF8String:name], *from = [NSString stringWithUTF8String:source];
+	onMainRL(^{
 		NSSavePanel *panel = [NSSavePanel savePanel];
 		panel.nameFieldStringValue = n;
+		panel.message = [NSString stringWithFormat:@"Save a file from %@", from];
 		panel.canCreateDirectories = YES;
 		[NSApp activateIgnoringOtherApps:YES];
 		if ([panel runModal] == NSModalResponseOK && panel.URL.path != nil) {
@@ -208,7 +230,7 @@ static NSMutableDictionary<NSNumber *, NSAlert *> *codeAlerts;
 
 void hikyoShowCode(long id, const char *url, const char *code) {
 	NSString *u = [NSString stringWithUTF8String:url], *c = [NSString stringWithUTF8String:code];
-	dispatch_async(dispatch_get_main_queue(), ^{
+	asyncMainRL(^{
 		if (codeAlerts == nil) codeAlerts = [NSMutableDictionary new];
 		NSAlert *alert = [NSAlert new];
 		alert.messageText = @"Finish signing in in your browser";
@@ -240,6 +262,12 @@ long hikyoPasteboardCount(void) {
 	__block long count = 0;
 	onMain(^{ count = NSPasteboard.generalPasteboard.changeCount; });
 	return count;
+}
+
+int hikyoAppActive(void) {
+	__block int active = 0;
+	onMain(^{ active = NSApp.isActive; });
+	return active;
 }
 
 void hikyoClearPasteboard(void) {

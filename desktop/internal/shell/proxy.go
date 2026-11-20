@@ -314,7 +314,7 @@ func (c *Conn) rewriteLocation(resp *http.Response) {
 	if err != nil || !u.IsAbs() {
 		return
 	}
-	if u.Scheme+"://"+u.Host == c.inst.Origin && u.User == nil {
+	if c.sameSite(u) && u.User == nil {
 		rel := url.URL{Path: u.Path, RawPath: u.RawPath, RawQuery: u.RawQuery, Fragment: u.Fragment}
 		if rel.Path == "" {
 			rel.Path = "/"

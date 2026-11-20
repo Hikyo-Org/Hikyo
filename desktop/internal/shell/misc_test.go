@@ -1,7 +1,9 @@
 package shell
 
 import (
+	"context"
 	"encoding/json/v2"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -175,5 +177,60 @@ func TestConnectionListUI(t *testing.T) {
 	}
 	if rec := h.pageFrom(AppHost, "app-win", "POST", "/__app/open-browser", `{"url":"javascript:alert(1)"}`); rec.Code < 400 {
 		t.Errorf("javascript accepted: %d", rec.Code)
+	}
+}
+
+func TestRemovalDuringSignInStoresNothing(t *testing.T) {
+	h := newHarness(t)
+	c, _ := h.connect()
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	h.browser = func(string) { close(entered); <-release }
+	errc := make(chan error, 1)
+	go func() { errc <- h.m.SignIn(context.Background(), c.host, "") }()
+	<-entered
+	if _, err := h.m.Remove(context.Background(), c.host); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	if err := <-errc; err == nil {
+		t.Error("the sign-in of a removed connection succeeded")
+	}
+	h.m.Wait()
+	if _, err := h.secrets.Get(c.host); !errors.Is(err, ErrNoSecret) {
+		t.Errorf("a keychain item came back after removal: %v", err)
+	}
+	if len(h.store.List()) != 0 {
+		t.Error("the record came back after removal")
+	}
+}
+
+func TestClipboardIgnoresCopiesMadeInOtherApps(t *testing.T) {
+	n := newFakeNative()
+	g := newClipboardGuard(n, time.Now)
+	armed := false
+	g.after = func(time.Duration, func()) func() { armed = true; return func() {} }
+	n.inactive = true
+	n.pasteboard++
+	g.observe()
+	g.arm()
+	if armed {
+		t.Fatal("armed for a copy made while another app was frontmost")
+	}
+}
+
+func TestCanonicalOriginHasOneSpelling(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://Hikyo.example":      "https://hikyo.example",
+		"https://hikyo.example:443":  "https://hikyo.example",
+		"https://hikyo.example.":     "https://hikyo.example",
+		"https://hikyo.example.:443": "https://hikyo.example",
+		"https://hikyo.example:8443": "https://hikyo.example:8443",
+		"http://127.0.0.1:80":        "http://127.0.0.1",
+		"http://[::1]:8080":          "http://[::1]:8080",
+	} {
+		if got, err := canonicalOrigin(in); err != nil || got != want {
+			t.Errorf("%q = %q, %v; want %q", in, got, err, want)
+		}
 	}
 }

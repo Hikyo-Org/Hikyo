@@ -5,12 +5,14 @@ package main
 /*
 #cgo CFLAGS: -fobjc-arc -mmacosx-version-min=13.0
 #cgo LDFLAGS: -framework Cocoa -framework WebKit -mmacosx-version-min=13.0
+#include <stdint.h>
 #include <stdlib.h>
 int hikyoInstallDelegates(void);
 int hikyoHardenWindow(void *nswindow);
 int hikyoConfirm(const char *title, const char *message, const char *label);
 void hikyoAlert(const char *title, const char *message);
-char *hikyoSavePanel(const char *name);
+char *hikyoSavePanel(const char *name, const char *source);
+int hikyoAppActive(void);
 void hikyoShowCode(long id, const char *url, const char *code);
 void hikyoDismissCode(long id);
 long hikyoPasteboardCount(void);
@@ -23,6 +25,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -149,10 +153,11 @@ func (n *macNative) Alert(title, message string) {
 	C.hikyoAlert(t, m)
 }
 
-func (n *macNative) SavePanel(name string) (string, bool) {
-	cName := C.CString(name)
+func (n *macNative) SavePanel(name, source string) (string, bool) {
+	cName, cSource := C.CString(name), C.CString(source)
 	defer C.free(unsafe.Pointer(cName))
-	chosen := C.hikyoSavePanel(cName)
+	defer C.free(unsafe.Pointer(cSource))
+	chosen := C.hikyoSavePanel(cName, cSource)
 	if chosen == nil {
 		return "", false
 	}
@@ -178,6 +183,7 @@ func (n *macNative) ShowDeviceCode(url, code string, cancel func()) func() {
 	}
 }
 
+func (n *macNative) AppActive() bool        { return C.hikyoAppActive() == 1 }
 func (n *macNative) PasteboardCount() int64 { return int64(C.hikyoPasteboardCount()) }
 func (n *macNative) ClearPasteboard()       { C.hikyoClearPasteboard() }
 
@@ -207,35 +213,65 @@ func hikyoNavigate(pageHost, rawURL *C.char, flags C.int) C.int {
 	return 0
 }
 
-var pendingDownload atomic.Pointer[string]
+// pendingDownloads maps a WKDownload to where it is writing and where the
+// file goes when it finishes. Concurrent downloads never share an entry.
+var pendingDownloads sync.Map // uintptr -> download
+
+type download struct{ temp, final string }
 
 //export hikyoDownloadDestination
-func hikyoDownloadDestination(pageHost, suggested *C.char) *C.char {
+func hikyoDownloadDestination(key C.uintptr_t, pageHost, suggested *C.char) *C.char {
 	n := theNative.Load()
 	host := C.GoString(pageHost)
 	if n == nil || n.manager == nil || (host != shell.AppHost && n.manager.Conn(host) == nil) {
 		return nil
 	}
-	path, ok := n.SavePanel(shell.SanitizeFilename(C.GoString(suggested)))
+	source := "a connection"
+	if c := n.manager.Conn(host); c != nil {
+		source = c.Info().Name
+	}
+	final, ok := n.SavePanel(shell.SanitizeFilename(C.GoString(suggested)), source)
 	if !ok {
 		return nil
 	}
-	pendingDownload.Store(&path)
-	return C.CString(path) // freed by the caller
+	// WebKit writes to a fresh file beside the chosen name, so a failed or
+	// cancelled download never touches an existing file and the finished one
+	// is quarantined before it takes its final name.
+	f, err := os.CreateTemp(filepath.Dir(final), ".hikyo-download-*")
+	if err != nil {
+		log.Printf("download: %v", err)
+		return nil
+	}
+	temp := f.Name()
+	_ = f.Close()
+	_ = os.Remove(temp) // WKDownload needs a destination that does not exist
+	pendingDownloads.Store(uintptr(key), download{temp: temp, final: final})
+	return C.CString(temp) // freed by the caller
 }
 
 //export hikyoDownloadFinished
-func hikyoDownloadFinished() {
-	if p := pendingDownload.Swap(nil); p != nil {
-		if err := shell.Quarantine(*p); err != nil {
-			log.Printf("download: could not mark %s as quarantined: %v", *p, err)
-		}
+func hikyoDownloadFinished(key C.uintptr_t) {
+	v, ok := pendingDownloads.LoadAndDelete(uintptr(key))
+	if !ok {
+		return
+	}
+	d := v.(download)
+	if err := shell.Quarantine(d.temp); err != nil {
+		log.Printf("download: could not mark the file as downloaded: %v", err)
+		_ = os.Remove(d.temp)
+		return
+	}
+	if err := os.Rename(d.temp, d.final); err != nil {
+		log.Printf("download: could not save %s: %v", d.final, err)
+		_ = os.Remove(d.temp)
 	}
 }
 
 //export hikyoDownloadFailed
-func hikyoDownloadFailed(message *C.char) {
-	pendingDownload.Store(nil)
+func hikyoDownloadFailed(key C.uintptr_t, message *C.char) {
+	if v, ok := pendingDownloads.LoadAndDelete(uintptr(key)); ok {
+		_ = os.Remove(v.(download).temp)
+	}
 	if n := theNative.Load(); n != nil {
 		n.Alert("Download failed", fmt.Sprint(C.GoString(message)))
 	}

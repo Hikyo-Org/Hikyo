@@ -31,6 +31,7 @@ type fakeNative struct {
 	wipeErr       error
 	deviceCodes   []string
 	pasteboard    int64
+	inactive      bool // another app is frontmost
 	cleared       int
 	opened        map[string]string // host -> window id
 }
@@ -69,7 +70,9 @@ func (f *fakeNative) Alert(title, message string) {
 	defer f.mu.Unlock()
 	f.alerts = append(f.alerts, title+"\n"+message)
 }
-func (f *fakeNative) SavePanel(name string) (string, bool) {
+func (f *fakeNative) AppActive() bool { f.mu.Lock(); defer f.mu.Unlock(); return !f.inactive }
+
+func (f *fakeNative) SavePanel(name, _ string) (string, bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.saveNames = append(f.saveNames, name)

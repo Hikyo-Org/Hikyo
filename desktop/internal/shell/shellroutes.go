@@ -143,6 +143,9 @@ func (c *Conn) routeClipboard(w http.ResponseWriter, r *http.Request) *shellErr 
 	if e := decodeBody(r, 1<<10, &in); e != nil {
 		return e
 	}
+	if !c.clipLimit.allow() {
+		return &shellErr{codeRateLimited, "too many copies; try again shortly"}
+	}
 	c.m.clip.arm()
 	return noContent(w)
 }
@@ -231,7 +234,7 @@ func (c *Conn) routeReauth(w http.ResponseWriter, r *http.Request) *shellErr {
 	done := make(chan *shellErr, 1)
 	c.m.background(func() {
 		defer release()
-		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
+		ctx, cancel := context.WithTimeout(c.ctx, 6*time.Minute)
 		defer cancel()
 		done <- c.runReauth(ctx, in)
 	})
@@ -261,7 +264,7 @@ func (c *Conn) routeSignIn(w http.ResponseWriter, r *http.Request) *shellErr {
 	done := make(chan *shellErr, 1)
 	c.m.background(func() {
 		defer release()
-		ctx, cancel := context.WithTimeout(context.Background(), 11*time.Minute)
+		ctx, cancel := context.WithTimeout(c.ctx, 11*time.Minute)
 		defer cancel()
 		done <- c.runSignIn(ctx)
 	})
@@ -283,6 +286,16 @@ func (c *Conn) routeDownload(w http.ResponseWriter, r *http.Request) *shellErr {
 		ContentType string `json:"content_type,omitzero"`
 		Filename    string `json:"filename"`
 	}
+	// The limiter and the slot come before the body is read, so a page can't
+	// make the shell buffer many large bodies at once.
+	if !c.downloadLimit.allow() {
+		return &shellErr{codeRateLimited, "too many downloads; try again shortly"}
+	}
+	release, ok := c.downloadSlot.take()
+	if !ok {
+		return &shellErr{codeBusy, "a download is already waiting on this connection"}
+	}
+	defer release()
 	if e := decodeBody(r, maxDownloadBytes*4/3+4096, &in); e != nil {
 		return e
 	}
@@ -298,14 +311,6 @@ func (c *Conn) routeDownload(w http.ResponseWriter, r *http.Request) *shellErr {
 	} else if e := c.checkDownloadPath(in.Path); e != nil {
 		return e
 	}
-	if !c.downloadLimit.allow() {
-		return &shellErr{codeRateLimited, "too many downloads; try again shortly"}
-	}
-	release, ok := c.downloadSlot.take()
-	if !ok {
-		return &shellErr{codeBusy, "a download is already waiting on this connection"}
-	}
-	defer release()
 	return c.saveDownload(r.Context(), w, in.Path, data, SanitizeFilename(in.Filename))
 }
 

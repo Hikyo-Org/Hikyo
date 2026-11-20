@@ -21,6 +21,10 @@ type Conn struct {
 	inst *Instance
 	url  *url.URL
 
+	// ctx ends when the connection is removed, which ends its ceremonies.
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	mu      sync.RWMutex
 	info    Connection
 	secret  Secret
@@ -28,13 +32,14 @@ type Conn struct {
 
 	// rotMu serializes token rotation: one at a time (ADR D4).
 	rotMu   sync.Mutex
+	removed bool // set under rotMu by Remove: no new session may be stored
 	flights flights
 	proxy   *httputil.ReverseProxy
 
 	reauthSlot, signInSlot, downloadSlot slot
 	reauthLimit, signInLimit             *limiter
 	openLimit, downloadLimit             *limiter
-	linkLimit                            *limiter
+	linkLimit, clipLimit                 *limiter
 }
 
 func (m *Manager) newConn(info Connection) (*Conn, error) {
@@ -46,13 +51,16 @@ func (m *Manager) newConn(info Connection) (*Conn, error) {
 	if err != nil {
 		return nil, err
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	c := &Conn{
+		ctx: ctx, cancel: cancel,
 		m: m, host: info.Host, inst: inst, url: u, info: info,
 		reauthLimit:   newLimiter(6, time.Minute, m.now),
 		signInLimit:   newLimiter(6, time.Minute, m.now),
 		openLimit:     newLimiter(10, time.Minute, m.now),
 		downloadLimit: newLimiter(20, time.Minute, m.now),
 		linkLimit:     newLimiter(10, time.Minute, m.now),
+		clipLimit:     newLimiter(30, time.Minute, m.now),
 	}
 	switch secret, err := m.secrets.Get(info.Host); {
 	case err == nil:
@@ -65,6 +73,9 @@ func (m *Manager) newConn(info Connection) (*Conn, error) {
 	c.proxy = c.newProxy()
 	return c, nil
 }
+
+// errRemoved means the connection was removed while a ceremony was running.
+var errRemoved = errors.New("the connection was removed")
 
 func (c *Conn) bearer() string {
 	c.mu.RLock()
@@ -160,6 +171,10 @@ func (c *Conn) revokeAsync(token string) {
 func (c *Conn) applyRotation(kind Rotation, view tokenView) error {
 	c.rotMu.Lock()
 	defer c.rotMu.Unlock()
+	if c.removed {
+		c.revokeAsync(view.Token)
+		return errRemoved
+	}
 	c.mu.RLock()
 	stored, principal := c.secret, c.info.PrincipalID
 	c.mu.RUnlock()

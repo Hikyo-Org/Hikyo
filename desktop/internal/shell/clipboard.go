@@ -39,11 +39,16 @@ func newClipboardGuard(native Native, now func() time.Time) *clipboardGuard {
 // observe records the pasteboard's change count. The shell calls it on a short
 // timer while it runs; arm compares against what it saw.
 func (g *clipboardGuard) observe() {
-	count := g.native.PasteboardCount()
+	count, active := g.native.PasteboardCount(), g.native.AppActive()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if count != g.lastCount {
-		g.lastCount, g.lastChange = count, g.now()
+		g.lastCount = count
+		// A change made while another app was frontmost is not the page's
+		// copy and must never be cleared (ADR D12).
+		if active {
+			g.lastChange = g.now()
+		}
 	}
 }
 
@@ -51,6 +56,9 @@ func (g *clipboardGuard) observe() {
 // a pasteboard change was observed, and clears only if the count is unchanged
 // when the timer fires.
 func (g *clipboardGuard) arm() {
+	if !g.native.AppActive() {
+		return
+	}
 	count := g.native.PasteboardCount()
 	g.mu.Lock()
 	defer g.mu.Unlock()

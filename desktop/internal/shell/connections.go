@@ -70,7 +70,7 @@ func checkCapability(ctx context.Context, in *Instance) error {
 // before the user confirms the fingerprint, and the capability check comes
 // before sign-in.
 func (m *Manager) Add(ctx context.Context, req AddRequest) (string, error) {
-	origin, err := clienttrust.CanonicalOrigin(req.Origin)
+	origin, err := canonicalOrigin(req.Origin)
 	if err != nil {
 		return "", &shellErr{codeInvalid, "that is not a valid instance origin"}
 	}
@@ -154,13 +154,20 @@ func (m *Manager) Remove(ctx context.Context, host string) (RemoveResult, error)
 	if c == nil {
 		return RemoveResult{}, &shellErr{codeInvalid, "unknown connection"}
 	}
+	// No ceremony may store a session after this point (ADR D2).
+	c.rotMu.Lock()
+	c.removed = true
+	c.rotMu.Unlock()
+	c.cancel()
 	result := RemoveResult{Revoked: true}
 	if token := c.bearer(); token != "" {
 		if err := c.revoke(ctx, token); err != nil {
 			result = RemoveResult{Message: "The session could not be revoked on the instance, so it stays valid until it expires. Revoke it from another signed-in session."}
 		}
 	} else if secret, err := m.secrets.Get(host); err == nil && secret.Token != "" {
-		_ = c.revoke(ctx, secret.Token)
+		if err := c.revoke(ctx, secret.Token); err != nil {
+			result = RemoveResult{Message: "The session could not be revoked on the instance, so it stays valid until it expires. Revoke it from another signed-in session."}
+		}
 	}
 	m.native.CloseWindow(host)
 	var failures []string
@@ -192,6 +199,10 @@ func (m *Manager) SignIn(ctx context.Context, host, method string) error {
 	if c == nil {
 		return &shellErr{codeInvalid, "unknown connection"}
 	}
+	// Removing the connection ends its sign-in.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	defer context.AfterFunc(c.ctx, cancel)()
 	result, err := m.login(ctx, c.inst, method)
 	if err != nil {
 		return failureOf(err)

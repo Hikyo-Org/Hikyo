@@ -49,6 +49,9 @@ func (m *Manager) Navigate(req NavRequest) NavAction {
 		case scheme == PageScheme && conn != nil && strings.EqualFold(u.Host, ownHost):
 			m.background(func() { conn.saveProxiedURL(u) })
 		case scheme == "blob" && known && strings.HasPrefix(req.URL, "blob:"+PageScheme+"://"+ownHost+"/"):
+			if conn != nil && !conn.downloadLimit.allow() {
+				return NavCancel
+			}
 			return NavDownload
 		}
 		return NavCancel
@@ -95,7 +98,7 @@ func (c *Conn) saveProxiedURL(u *url.URL) {
 	}
 	defer release()
 	name := SanitizeFilename(u.Path[strings.LastIndex(u.Path, "/")+1:])
-	dest, ok := c.m.native.SavePanel(name)
+	dest, ok := c.m.native.SavePanel(name, c.Info().Name)
 	if !ok {
 		return
 	}

@@ -51,7 +51,7 @@ func SanitizeFilename(name string) string {
 // chosen name and renames it into place, so cancel or failure writes nothing
 // (ADR D11). Exactly one of proxiedPath and data is used.
 func (c *Conn) saveDownload(ctx context.Context, w http.ResponseWriter, proxiedPath string, data []byte, name string) *shellErr {
-	dest, ok := c.m.native.SavePanel(name)
+	dest, ok := c.m.native.SavePanel(name, c.Info().Name)
 	if !ok {
 		return &shellErr{codeCancelled, "the download was cancelled"}
 	}
@@ -79,12 +79,12 @@ func (c *Conn) writeDownload(ctx context.Context, dest, proxiedPath string, data
 	if werr != nil {
 		return &shellErr{codeFailed, "the download failed"}
 	}
+	// Marked before it gets its final name, so it is never there unmarked.
+	if err := setQuarantine(tmp.Name()); err != nil {
+		return &shellErr{codeFailed, "the file could not be marked as downloaded"}
+	}
 	if err := os.Rename(tmp.Name(), dest); err != nil {
 		return &shellErr{codeFailed, "the file could not be saved there"}
-	}
-	if err := setQuarantine(dest); err != nil {
-		_ = os.Remove(dest)
-		return &shellErr{codeFailed, "the file could not be marked as downloaded"}
 	}
 	return nil
 }

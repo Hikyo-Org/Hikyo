@@ -30,10 +30,40 @@ type Instance struct {
 	client    *http.Client
 }
 
+// canonicalOrigin is clienttrust.CanonicalOrigin without the spellings that
+// name the same site differently: a default port and a trailing dot. One
+// spelling per instance keeps the duplicate check and every origin comparison
+// honest (ADR D8, D9).
+func canonicalOrigin(raw string) (string, error) {
+	origin, err := clienttrust.CanonicalOrigin(raw)
+	if err != nil {
+		return "", err
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return "", err
+	}
+	host := strings.TrimSuffix(u.Hostname(), ".")
+	if host == "" {
+		return "", errors.New("instance URL has no host")
+	}
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	port := u.Port()
+	if (u.Scheme == "https" && port == "443") || (u.Scheme == "http" && port == "80") {
+		port = ""
+	}
+	if port != "" {
+		host += ":" + port
+	}
+	return u.Scheme + "://" + host, nil
+}
+
 // newInstance builds the channel for a canonical origin. It refuses plain
 // HTTP unless the origin is loopback and the caller allows it (development).
 func newInstance(origin string, trust Trust, userAgent string, allowLoopbackHTTP bool) (*Instance, error) {
-	canonical, err := clienttrust.CanonicalOrigin(origin)
+	canonical, err := canonicalOrigin(origin)
 	if err != nil {
 		return nil, err
 	}
