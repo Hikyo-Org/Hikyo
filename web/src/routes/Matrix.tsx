@@ -505,10 +505,14 @@ export function Matrix({
   const visibleEnvironments = environments.filter((environment) =>
     visibleEnvironmentIds.includes(environment.id),
   );
-  // The longest key name's length sizes a key column fitted by a tap (app.css, `--matrix-key-fit`).
-  const longestKeyName = useMemo(
-    () => groups.reduce((most, group) => group.keys.reduce((longest, key) => Math.max(longest, key.name.length), most), 0),
-    [groups],
+  // The widest key row, in characters, sizes a key column fitted by a tap (app.css,
+  // `--matrix-key-fit`): the name, then the linked-keys glyph and required label beside it.
+  const keyRowChars = useMemo(
+    () => groups.reduce((most, group) => group.keys.reduce((widest, key) => {
+      const required = requiredLabel(key, environments);
+      return Math.max(widest, key.name.length + (key.group_id === '' ? 0 : LINKED_MARK_CHARS) + (required === '' ? 0 : required.length + 1));
+    }, most), 0),
+    [groups, environments],
   );
   // Each environment's longest cell text, from the data rather than the DOM:
   // the table is virtualised, so the longest value may not be rendered. Its
@@ -1164,7 +1168,7 @@ export function Matrix({
                 // leave it less than its full width (app.css, .matrix__table).
                 style={{
                   '--env-count': visibleEnvironments.length,
-                  '--key-chars': longestKeyName,
+                  '--key-chars': keyRowChars,
                   // Clamped in CSS, so a rotation or narrower window re-fits it: never under
                   // the column's floor, and always a touch target of values beside it.
                   ...(keyWidth === undefined
@@ -1822,6 +1826,8 @@ function MatrixKeyLink({
   );
 }
 
+/** The linked-keys glyph and its gap in a key row, in mono characters (`--matrix-icon` plus a gap). */
+const LINKED_MARK_CHARS = 3;
 /** A phone key column at least this wide shows key names: twice `--touch` (44px, tokens.css), the icon-only width. */
 const KEY_NAME_WIDTH = 88;
 /** Pointer travel under this many pixels is a tap on the handle, not a drag (a finger wobbles more). */
@@ -1843,6 +1849,10 @@ function ColumnResizer({ label, onResize, onTap }: { label: string; onResize: (w
   const [now, setNow] = useState(0);
   const [max, setMax] = useState(0);
   const cellWidth = () => handle.current?.parentElement?.getBoundingClientRect().width ?? 0;
+  // Every reported width stays in the separator's range, 0 to the well's width.
+  const resize = (width: number) => {
+    onResize(Math.max(0, Math.min(width, handle.current?.closest('.matrix__scroll')?.clientWidth ?? width)));
+  };
   // The separator's value is the column's rendered width, whatever set it.
   useEffect(() => {
     const cell = handle.current?.parentElement;
@@ -1882,7 +1892,7 @@ function ColumnResizer({ label, onResize, onTap }: { label: string; onResize: (w
         const dx = event.clientX - start.x;
         if (!start.moved && Math.abs(dx) < start.slop) return;
         start.moved = true;
-        onResize(Math.max(0, start.width + dx));
+        resize(start.width + dx);
       }}
       onPointerUp={() => {
         if (drag.current?.moved === false) onTap();
@@ -1899,7 +1909,7 @@ function ColumnResizer({ label, onResize, onTap }: { label: string; onResize: (w
         const step = event.key === 'ArrowRight' ? KEY_STEP : event.key === 'ArrowLeft' ? -KEY_STEP : 0;
         if (step === 0) return;
         event.preventDefault();
-        onResize(Math.max(0, cellWidth() + step));
+        resize(cellWidth() + step);
       }}
     />
   );

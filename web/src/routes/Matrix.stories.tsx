@@ -970,6 +970,11 @@ export const PhoneWidenedKeyColumn: Story = {
     await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeGreaterThan(before + 32));
     await userEvent.click(envHandle);
     await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeCloseTo(before, 0));
+    // A drag far past the well stops at the well's width.
+    await dragBy(envHandle, 2000);
+    await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeCloseTo(well.clientWidth, 0));
+    await userEvent.click(envHandle);
+    await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeCloseTo(before, 0));
 
     // With the names shown, the first tap on a key opens it: no name preview.
     await userEvent.click(handle);

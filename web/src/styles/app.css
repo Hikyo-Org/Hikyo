@@ -2224,9 +2224,9 @@ fieldset.field > legend {
   --matrix-key-max: var(--matrix-key-full);
   /* A key column fitted by a tap on its handle (Matrix.tsx): the full width
      holds 20 characters, plus one mono advance per extra character of the
-     longest name (`--key-chars`), never narrower than the default width.
-     shortcut: estimates the proportional name with mono advances and ignores
-     row marks; measure the names if fitted names still ellipsise. */
+     widest key row, name and marks (`--key-chars`), never narrower than the
+     default width. shortcut: estimates proportional text with mono advances;
+     measure the rows if fitted names still ellipsise. */
   --matrix-key-fit: max(var(--matrix-key-auto), var(--matrix-key-full) + (var(--key-chars, 20) - 20) * var(--matrix-char));
   /* The floor: the header's start padding, Key label and envs picker
      (164px), then its end padding, which is the resize handle's width. */
