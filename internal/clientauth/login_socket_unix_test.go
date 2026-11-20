@@ -1,6 +1,6 @@
 //go:build darwin || linux
 
-package cli
+package clientauth
 
 import (
 	"net"
@@ -10,7 +10,7 @@ import (
 )
 
 func TestLoginListenerDisablesReuseBeforeBind(t *testing.T) {
-	listener, err := listenLoginLoopback(t.Context())
+	listener, err := ListenLoopback(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}

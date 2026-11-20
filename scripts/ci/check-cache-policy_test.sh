@@ -301,7 +301,7 @@ for file in "$@"; do
 done
 
 require_line "$tool_modules" 'github.com/rhysd/actionlint@v1.7.12'
-require_line "$tool_modules" 'golang.org/x/vuln@v1.7.0'
+require_line "$tool_modules" 'golang.org/x/vuln@v1.10.0'
 require_line "$workflow" 'done < "$GITHUB_WORKSPACE/scripts/ci/go-tool-modules.txt"'
 require_line "$workflow" 'go mod download all'
 require_line "$workflow" 'run: ./scripts/ci/run-go-tool.sh actionlint'

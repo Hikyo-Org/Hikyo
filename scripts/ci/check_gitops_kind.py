@@ -26,7 +26,7 @@ import render_gitops as gitops
 from nightly_chart import prepare
 
 
-NODE = "kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
+NODE = "kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed"
 REGISTRY = "registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373"
 CONTROLLERS = {
     "flux": ("https://github.com/fluxcd/flux2/releases/download/v2.10.0/install.yaml",

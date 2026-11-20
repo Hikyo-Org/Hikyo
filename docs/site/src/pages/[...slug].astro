@@ -4,6 +4,7 @@ import type { TOCItemType } from 'fumadocs-core/toc';
 import defaultMdxComponents from 'fumadocs-ui/mdx';
 import { Docs } from '../components/Docs';
 import DocsLayout from '../components/DocsLayout.astro';
+import DocsTable from '../components/DocsTable.astro';
 import { source } from '../lib/source';
 import '../styles/docs.css';
 
@@ -38,6 +39,6 @@ const toc: TOCItemType[] = headings.map((heading) => ({
     page={{ toc }}
     client:load
   >
-    <Content components={{ ...defaultMdxComponents }} />
+    <Content components={{ ...defaultMdxComponents, table: DocsTable }} />
   </Docs>
 </DocsLayout>

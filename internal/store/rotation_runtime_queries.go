@@ -114,7 +114,11 @@ func (q pgRotationRuntimeQueries) settleRun(ctx context.Context, run RotationRun
 	if s.KeepLease {
 		keep = 1
 	}
-	return q.q.RotationRtSettleRun(ctx, pggen.RotationRtSettleRunParams{Phase: s.Phase, Now: pgRequiredTime(s.Now), LastError: pgText(s.LastError), NextAttemptAt: pgRequiredTime(s.NextAttempt), ValidUntilAt: pgNullTimestamp(s.ValidUntil), RevokeNotBeforeAt: pgNullTimestamp(s.RevokeNotBefore), PublishedRevision: pgtype.Int8{Int64: s.PublishedRevision, Valid: s.PublishedRevision != 0}, NotConvergedAdapterTargets: pgNullInt8(s.NotConverged), KeepLease: keep, ID: run.ID, ChainOrg: run.OrgID, ChainProject: run.ProjectID, ChainEnv: run.EnvironmentID, Worker: pgText(run.LeaseOwner), ClaimToken: run.ClaimToken, FromPhases: s.FromPhases})
+	checked := int64(0)
+	if s.RestoreChecked {
+		checked = 1
+	}
+	return q.q.RotationRtSettleRun(ctx, pggen.RotationRtSettleRunParams{Phase: s.Phase, Now: pgRequiredTime(s.Now), LastError: pgText(s.LastError), NextAttemptAt: pgRequiredTime(s.NextAttempt), ValidUntilAt: pgNullTimestamp(s.ValidUntil), RevokeNotBeforeAt: pgNullTimestamp(s.RevokeNotBefore), PublishedRevision: pgtype.Int8{Int64: s.PublishedRevision, Valid: s.PublishedRevision != 0}, NotConvergedAdapterTargets: pgNullInt8(s.NotConverged), KeepLease: keep, RestoreChecked: checked, ID: run.ID, ChainOrg: run.OrgID, ChainProject: run.ProjectID, ChainEnv: run.EnvironmentID, Worker: pgText(run.LeaseOwner), ClaimToken: run.ClaimToken, FromPhases: s.FromPhases})
 }
 
 func (q pgRotationRuntimeQueries) getRun(ctx context.Context, c domain.Scope, runID string) (RotationRun, error) {
@@ -283,7 +287,11 @@ func (q sqliteRotationRuntimeQueries) settleRun(ctx context.Context, run Rotatio
 	if s.KeepLease {
 		keep = 1
 	}
-	return q.q.RotationRtSettleRun(ctx, sqlitegen.RotationRtSettleRunParams{Phase: s.Phase, Now: fixedStamp(s.Now), LastError: sqlText(s.LastError), NextAttemptAt: fixedStamp(s.NextAttempt), ValidUntilAt: nullTimeString(s.ValidUntil), RevokeNotBeforeAt: nullTimeString(s.RevokeNotBefore), PublishedRevision: sql.NullInt64{Int64: s.PublishedRevision, Valid: s.PublishedRevision != 0}, NotConvergedAdapterTargets: sqlNullInt(s.NotConverged), KeepLease: keep, ID: run.ID, ChainOrg: run.OrgID, ChainProject: run.ProjectID, ChainEnv: run.EnvironmentID, Worker: sqlText(run.LeaseOwner), ClaimToken: run.ClaimToken, FromPhases: s.FromPhases})
+	checked := int64(0)
+	if s.RestoreChecked {
+		checked = 1
+	}
+	return q.q.RotationRtSettleRun(ctx, sqlitegen.RotationRtSettleRunParams{Phase: s.Phase, Now: fixedStamp(s.Now), LastError: sqlText(s.LastError), NextAttemptAt: fixedStamp(s.NextAttempt), ValidUntilAt: nullTimeString(s.ValidUntil), RevokeNotBeforeAt: nullTimeString(s.RevokeNotBefore), PublishedRevision: sql.NullInt64{Int64: s.PublishedRevision, Valid: s.PublishedRevision != 0}, NotConvergedAdapterTargets: sqlNullInt(s.NotConverged), KeepLease: keep, RestoreChecked: checked, ID: run.ID, ChainOrg: run.OrgID, ChainProject: run.ProjectID, ChainEnv: run.EnvironmentID, Worker: sqlText(run.LeaseOwner), ClaimToken: run.ClaimToken, FromPhases: s.FromPhases})
 }
 
 func (q sqliteRotationRuntimeQueries) getRun(ctx context.Context, c domain.Scope, runID string) (RotationRun, error) {

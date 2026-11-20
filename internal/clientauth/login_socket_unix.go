@@ -1,6 +1,6 @@
 //go:build darwin || linux
 
-package cli
+package clientauth
 
 import "golang.org/x/sys/unix"
 

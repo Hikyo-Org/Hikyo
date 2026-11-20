@@ -59,7 +59,7 @@ a row proves. "Read" means the primary source was read for this document on
 4. **The strict profile reaches no external hop, and not every selector is
    deployable.** Each selector: the server reads `HIKYO_TLS_PROFILE`
    (`internal/config/config.go:537`) for the listener only; the CLI uses the
-   per-origin trust entry field `tls_profile` (`internal/cli/trust.go:96`); the
+   per-origin trust entry field `tls_profile` (`internal/cli/trust.go:87`); the
    operator client has a library option `WithTLSProfile` that its
    `defaultClientFactory` (`internal/operator/clientadapter.go:22`) never
    passes, so **no deployed operator can select strict** (as
@@ -128,7 +128,7 @@ below or local-only:
 the CLI and operator clients to Hikyo (I11, owned, #1127), `internal/updater`
 (unix socket), `internal/hostupgrade` and `internal/app/unattended_process.go`
 (local health probes configured by the operator), `internal/netpolicy` (library),
-`internal/mailtest`, `internal/tlstest` (fixtures), `internal/diagnostics` (a wrapper; three of its four callers pass an `updatecheck` client, and `internal/cli/client.go:224` wraps the CLI trust-entry transport, I11, #1127). `internal/repscan` runs a
+`internal/mailtest`, `internal/tlstest` (fixtures), `internal/diagnostics` (a wrapper; three of its four callers pass an `updatecheck` client, and `internal/cli/client.go:162` wraps the CLI trust-entry transport, I11, #1127). `internal/repscan` runs a
 local `git` with remote access disabled. Inbound listeners are I09 (#1127). The
 re-sweep with the `DefaultTransport` and `LoadDefaultConfig` terms found the SAML
 metadata proxy leg (X11), the AWS STS and ambient credential chain (X23), and
