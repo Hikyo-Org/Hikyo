@@ -3,6 +3,7 @@
 package main
 
 /*
+#cgo CFLAGS: -Wno-deprecated-declarations
 #cgo LDFLAGS: -framework Security -framework CoreFoundation
 #include <stdlib.h>
 #include <string.h>
@@ -22,22 +23,44 @@ static CFMutableDictionaryRef hkQuery(const char *account) {
 	return q;
 }
 
-// hkPut stores or replaces the item. The legacy file keychain is used on
-// purpose: its default access control trusts only the application that
-// created the item, which is the signed app (ADR D3). The data protection
-// keychain would need entitlements and a provisioning profile.
+// hkPut replaces the item. It always deletes first and then adds with an
+// explicit access list naming only this application. SecItemUpdate would keep
+// the access list of whatever item already exists, so an item another process
+// pre-planted under our name, with itself in the list, would keep reading
+// every token we later stored. The legacy file keychain is used on purpose:
+// the data protection keychain would need entitlements and a provisioning
+// profile (ADR D3). If the add fails, no item remains: a signed-out
+// connection is the safe failure.
 static int hkPut(const char *account, const void *data, int len) {
 	CFMutableDictionaryRef q = hkQuery(account);
-	CFDataRef value = CFDataCreate(NULL, data, len);
-	CFMutableDictionaryRef update = CFDictionaryCreateMutable(NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-	CFDictionarySetValue(update, kSecValueData, value);
-	OSStatus status = SecItemUpdate(q, update);
-	if (status == errSecItemNotFound) {
-		CFDictionarySetValue(q, kSecValueData, value);
-		status = SecItemAdd(q, NULL);
+	OSStatus status = SecItemDelete(q);
+	if (status != errSecSuccess && status != errSecItemNotFound) {
+		CFRelease(q);
+		return (int)status;
 	}
-	CFRelease(update);
+	SecTrustedApplicationRef self = NULL;
+	status = SecTrustedApplicationCreateFromPath(NULL, &self);
+	if (status != errSecSuccess) {
+		CFRelease(q);
+		return (int)status;
+	}
+	CFArrayRef trusted = CFArrayCreate(NULL, (const void **)&self, 1, &kCFTypeArrayCallBacks);
+	SecAccessRef access = NULL;
+	CFStringRef label = CFStringCreateWithCString(NULL, "Hikyo Desktop session", kCFStringEncodingUTF8);
+	status = SecAccessCreate(label, trusted, &access);
+	CFRelease(label);
+	CFRelease(trusted);
+	CFRelease(self);
+	if (status != errSecSuccess) {
+		CFRelease(q);
+		return (int)status;
+	}
+	CFDataRef value = CFDataCreate(NULL, data, len);
+	CFDictionarySetValue(q, kSecValueData, value);
+	CFDictionarySetValue(q, kSecAttrAccess, access);
+	status = SecItemAdd(q, NULL);
 	CFRelease(value);
+	CFRelease(access);
 	CFRelease(q);
 	return (int)status;
 }
@@ -95,8 +118,8 @@ import (
 
 const errSecItemNotFound = -25300
 
-// keychain stores one generic-password item per connection, holding the token
-// and its session id together (ADR D3).
+// keychain stores one generic-password item per connection, holding the token,
+// its session id and the origin, trust and account they are bound to (ADR D3).
 type keychain struct{}
 
 func statusError(op string, status C.int) error {
@@ -124,7 +147,7 @@ func (keychain) Get(host string) (shell.Secret, error) {
 	if err := json.Unmarshal(C.GoBytes(data, n), &secret, json.RejectUnknownMembers(true)); err != nil {
 		return shell.Secret{}, errors.New("the stored session is unreadable")
 	}
-	if secret.Token == "" || secret.SessionID == "" {
+	if secret.Token == "" || secret.SessionID == "" || secret.Origin == "" || secret.TrustMode == "" {
 		return shell.Secret{}, errors.New("the stored session is incomplete")
 	}
 	return secret, nil

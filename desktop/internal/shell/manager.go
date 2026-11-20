@@ -41,7 +41,8 @@ type Native interface {
 	Alert(title, message string)
 	// SavePanel shows a blocking save panel with a suggested name. source
 	// names the connection asking, so the user can tell which one it is.
-	SavePanel(suggestedName, source string) (path string, ok bool)
+	// mimeType, when set, is the page's type hint for the file.
+	SavePanel(suggestedName, source, mimeType string) (path string, ok bool)
 	// AppActive reports whether the app is the frontmost application.
 	AppActive() bool
 	// ShowDeviceCode shows a device-flow code until dismiss is called. cancel
@@ -192,6 +193,18 @@ func (m *Manager) OpenConnection(host string) error {
 	c := m.conn(host)
 	if c == nil {
 		return errors.New("unknown connection")
+	}
+	if c.isTampered() {
+		return &shellErr{codeRefused, c.Stopped()}
+	}
+	// The instance may have been downgraded since the connection was added
+	// (ADR D8): check on every open and refuse by name. An instance that can't
+	// be reached is not refused here; its window shows that itself.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	var missing capabilityError
+	if err := checkCapability(ctx, c.inst); errors.As(err, &missing) {
+		return &shellErr{codeCapabilityMissing, c.Info().Name + ": " + missing.Error()}
 	}
 	return m.native.OpenWindow(host, "Hikyo: "+c.Info().Name, func(id string) { m.BindWindow(id, host) })
 }

@@ -33,7 +33,7 @@ func main() {
 
 // dataDir is where the connection list lives. Secrets are never stored there.
 func dataDir() (string, error) {
-	if dir := os.Getenv("HIKYO_DESKTOP_HOME"); dir != "" {
+	if dir := devDataDir(); dir != "" {
 		return dir, nil
 	}
 	base, err := os.UserConfigDir()
@@ -56,8 +56,8 @@ func run() error {
 	native := newMacNative()
 	manager, err := shell.NewManager(store, keychain{}, probeNative(native), shell.Options{
 		Version: version,
-		// Development only: plain http to a loopback instance.
-		AllowLoopbackHTTP: os.Getenv("HIKYO_DESKTOP_ALLOW_LOOPBACK_HTTP") == "1",
+		// Development builds only: plain http to a loopback instance.
+		AllowLoopbackHTTP: devAllowLoopbackHTTP(),
 		OpenURL:           probeOpener(clientauth.OpenBrowser),
 	})
 	if err != nil {

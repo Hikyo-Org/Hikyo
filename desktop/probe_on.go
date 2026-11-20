@@ -24,6 +24,13 @@ import (
 // Probe builds (`-tags probe`) exist for driven checks of the renderer policy
 // (ADR D10). They are never part of a release.
 
+// devDataDir and devAllowLoopbackHTTP read the development variables, in dev
+// and probe builds only (see probe_off.go).
+func devDataDir() string { return os.Getenv("HIKYO_DESKTOP_HOME") }
+func devAllowLoopbackHTTP() bool {
+	return os.Getenv("HIKYO_DESKTOP_ALLOW_LOOPBACK_HTTP") == "1"
+}
+
 // installProbe runs the script in HIKYO_DESKTOP_PROBE_JS after every
 // navigation of a window. Scripts dropped into HIKYO_DESKTOP_PROBE_CMD_DIR as
 // <host>.js run once in that host's window (the connection list is "app").
@@ -84,7 +91,7 @@ func probeSeed(s *shell.Store) string {
 	if err := s.Put(info); err != nil {
 		log.Fatal(err)
 	}
-	if err := (keychain{}).Put(host, shell.Secret{Token: "probe-token", SessionID: "ses_probe"}); err != nil {
+	if err := (keychain{}).Put(host, shell.Secret{Token: "probe-token", SessionID: "ses_probe", Origin: origin, TrustMode: clienttrust.ModeSystemCA, PrincipalID: "usr_probe"}); err != nil {
 		log.Fatal(err)
 	}
 	return host
@@ -116,10 +123,10 @@ func (p probeDialogs) Confirm(title, message, label string) bool {
 	return true
 }
 
-func (p probeDialogs) SavePanel(name, source string) (string, bool) {
+func (p probeDialogs) SavePanel(name, source, mimeType string) (string, bool) {
 	dir := os.Getenv("HIKYO_DESKTOP_PROBE_SAVE_DIR")
 	if dir == "" {
-		return p.Native.SavePanel(name, source)
+		return p.Native.SavePanel(name, source, mimeType)
 	}
 	log.Printf("probe: save panel for %q from %q", name, source)
 	return filepath.Join(dir, name), true

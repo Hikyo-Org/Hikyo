@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/clienterr"
@@ -63,7 +64,7 @@ func writeShellError(w http.ResponseWriter, e *shellErr) {
 
 const (
 	maxShellBody     = 1 << 20
-	maxDownloadBytes = 48 << 20 // decoded bytes_base64 a page may hand over
+	maxDownloadBytes = 64 << 20 // decoded bytes_base64 a page may hand over (the SPA's audit export cap)
 	maxDownloadFile  = 2 << 30  // a proxied download's size
 	maxEnvironments  = 1000
 	maxKeyIDs        = 500
@@ -146,7 +147,7 @@ func (c *Conn) routeClipboard(w http.ResponseWriter, r *http.Request) *shellErr 
 	if !c.clipLimit.allow() {
 		return &shellErr{codeRateLimited, "too many copies; try again shortly"}
 	}
-	c.m.clip.arm()
+	c.m.clip.arm(c.host)
 	return noContent(w)
 }
 
@@ -201,12 +202,23 @@ func (in reauthIn) validate() *shellErr {
 		return &shellErr{codeRefused, "developer credentials are minted from a terminal"}
 	case !slices.Contains(reauthPurposes, purpose) || !apigen.CLIReauthStartRequestOperation(in.Operation).Valid():
 		return &shellErr{codeInvalid, "unknown purpose or operation"}
-	case len(in.EnvironmentIDs) == 0 || !validIDs(in.EnvironmentIDs, maxEnvironments) || !validIDs(in.KeyIDs, maxKeyIDs):
+	case !validIDs(in.EnvironmentIDs, maxEnvironments) || !validIDs(in.KeyIDs, maxKeyIDs):
 		return &shellErr{codeInvalid, "the environment or key list is invalid"}
-	case purpose == apigen.CLIReauthStartRequestPurposeAdapter && len(in.KeyIDs) > 0:
-		return &shellErr{codeInvalid, "an adapter ceremony takes no keys"}
 	case (purpose == apigen.CLIReauthStartRequestPurposeSelfConfig) != (in.SelfConfig != nil):
 		return &shellErr{codeInvalid, "self_config belongs to the self-config purpose only"}
+	case purpose == apigen.CLIReauthStartRequestPurposeSelfConfig:
+		// The handoff refuses a self-config request that names an environment.
+		if len(in.EnvironmentIDs) != 0 || len(in.KeyIDs) != 0 {
+			return &shellErr{codeInvalid, "a self-config ceremony takes no environments or keys"}
+		}
+	case purpose == apigen.CLIReauthStartRequestPurposeAdapter:
+		if len(in.EnvironmentIDs) == 0 || len(in.KeyIDs) > 0 {
+			return &shellErr{codeInvalid, "an adapter ceremony takes environments and no keys"}
+		}
+	default: // the key-bound purposes: one environment, the decision's keys
+		if len(in.EnvironmentIDs) != 1 || len(in.KeyIDs) == 0 {
+			return &shellErr{codeInvalid, "this ceremony takes exactly one environment and its keys"}
+		}
 	}
 	return nil
 }
@@ -311,7 +323,15 @@ func (c *Conn) routeDownload(w http.ResponseWriter, r *http.Request) *shellErr {
 	} else if e := c.checkDownloadPath(in.Path); e != nil {
 		return e
 	}
-	return c.saveDownload(r.Context(), w, in.Path, data, SanitizeFilename(in.Filename))
+	mimeType := ""
+	if in.ContentType != "" {
+		mt, _, err := mime.ParseMediaType(in.ContentType)
+		if err != nil {
+			return &shellErr{codeInvalid, "content_type is not a media type"}
+		}
+		mimeType = mt
+	}
+	return c.saveDownload(r.Context(), w, in.Path, data, in.Filename, "download", mimeType)
 }
 
 // checkDownloadPath holds a proxied download to D4's refusals.
@@ -355,7 +375,7 @@ func failureOf(err error) *shellErr {
 	case errors.As(err, &coded) && coded.Code == clienterr.ExitAuth:
 		return &shellErr{codeFailed, "the sign-in expired or was not approved"}
 	default:
-		log.Printf("shell route failed: %v", err)
+		log.Printf("shell route failed: %s", logSafe(err.Error()))
 		return &shellErr{codeFailed, fmt.Sprintf("the operation failed (%s)", shortErr(err))}
 	}
 }
@@ -366,4 +386,20 @@ func shortErr(err error) string {
 		return fmt.Sprintf("exit %d", coded.Code)
 	}
 	return "unexpected error"
+}
+
+// logSafe bounds text that may come from the instance and strips control
+// characters, so a hostile instance can't forge log lines.
+func logSafe(s string) string {
+	const limit = 200
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || unicode.Is(unicode.Cf, r) {
+			return '?'
+		}
+		return r
+	}, s)
+	if len(s) > limit {
+		s = strings.ToValidUTF8(s[:limit], "") + "..."
+	}
+	return s
 }

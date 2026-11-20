@@ -22,12 +22,18 @@ type clipboardGuard struct {
 	mu         sync.Mutex
 	lastCount  int64
 	lastChange time.Time
-	armedCount int64
-	stopArmed  func()
+	// armed holds one pending clear per connection, so arming one connection
+	// never cancels another's.
+	armed map[string]*pendingClear
+}
+
+type pendingClear struct {
+	count int64
+	stop  func()
 }
 
 func newClipboardGuard(native Native, now func() time.Time) *clipboardGuard {
-	g := &clipboardGuard{native: native, now: now}
+	g := &clipboardGuard{native: native, now: now, armed: map[string]*pendingClear{}}
 	g.after = func(d time.Duration, f func()) func() {
 		t := time.AfterFunc(d, f)
 		return func() { t.Stop() }
@@ -54,10 +60,10 @@ func (g *clipboardGuard) observe() {
 	}
 }
 
-// arm is called after the page copies a secret. It schedules a clear only if
-// a pasteboard change was observed, and clears only if the count is unchanged
-// when the timer fires.
-func (g *clipboardGuard) arm() {
+// arm is called after a connection's page copies a secret. It schedules a
+// clear only if a pasteboard change was observed, and clears only if the count
+// is unchanged when the timer fires.
+func (g *clipboardGuard) arm(owner string) {
 	if !g.native.AppActive() {
 		return
 	}
@@ -73,20 +79,23 @@ func (g *clipboardGuard) arm() {
 	// lastChange is not refreshed here: a page that arms repeatedly must not
 	// keep the "recent" window open for a copy made elsewhere.
 	g.lastCount = count
-	if g.stopArmed != nil {
-		g.stopArmed()
+	if prev := g.armed[owner]; prev != nil {
+		prev.stop()
 	}
-	g.armedCount = count
-	g.stopArmed = g.after(clipboardClearAfter, g.fire)
+	p := &pendingClear{count: count}
+	g.armed[owner] = p
+	p.stop = g.after(clipboardClearAfter, func() { g.fire(owner, p) })
 }
 
-func (g *clipboardGuard) fire() {
+func (g *clipboardGuard) fire(owner string, p *pendingClear) {
 	count := g.native.PasteboardCount()
 	g.mu.Lock()
-	armed := g.armedCount
-	g.armedCount, g.stopArmed = 0, nil
+	current := g.armed[owner] == p
+	if current {
+		delete(g.armed, owner)
+	}
 	g.mu.Unlock()
-	if count == armed {
+	if current && count == p.count {
 		g.native.ClearPasteboard()
 	}
 }

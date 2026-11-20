@@ -193,12 +193,27 @@ func (c *Conn) guardTOTPReauth(w http.ResponseWriter, r *http.Request) bool {
 		jsonError(w, http.StatusForbidden, "refused", "the reauthentication request could not be read")
 		return false
 	}
-	if purpose, ok := stringMember(members, "purpose"); ok && strings.EqualFold(strings.TrimSpace(purpose), "developer-credential") {
-		jsonError(w, http.StatusForbidden, "refused", "developer credentials are minted from a terminal")
-		return false
+	// encoding/json v1 on the instance matches member names case-insensitively
+	// (and folds a few non-ASCII letters), so every spelling of "purpose" is
+	// the purpose, and two spellings are ambiguous: refuse both.
+	var purposeKey string
+	for key := range members {
+		if !strings.EqualFold(key, "purpose") {
+			continue
+		}
+		if purposeKey != "" {
+			jsonError(w, http.StatusForbidden, "refused", "the reauthentication request could not be read")
+			return false
+		}
+		purposeKey = key
 	}
-	if raw, ok := members["purpose"]; ok {
-		if _, isString := stringMember(members, "purpose"); !isString && !isNull(raw) {
+	if purposeKey != "" {
+		purpose, isString := stringMember(members, purposeKey)
+		switch {
+		case isString && strings.EqualFold(strings.TrimSpace(purpose), "developer-credential"):
+			jsonError(w, http.StatusForbidden, "refused", "developer credentials are minted from a terminal")
+			return false
+		case !isString && !isNull(members[purposeKey]):
 			jsonError(w, http.StatusForbidden, "refused", "the reauthentication request could not be read")
 			return false
 		}
@@ -221,7 +236,13 @@ func (c *Conn) modifyResponse(resp *http.Response) error {
 	h.Del("Set-Cookie")
 	c.rewriteLocation(resp)
 	fl, _ := resp.Request.Context().Value(flightKey{}).(*flight)
+	rot := c.m.policy.RotationFor(resp.Request.Method, resp.Request.URL.EscapedPath())
 	if mt, _, _ := mime.ParseMediaType(h.Get("Content-Type")); mt == "text/event-stream" {
+		// A stream is passed through unscanned, so it can't carry a session change.
+		if rot != NotRotating {
+			c.stop("The instance answered a session change with a stream the app can't read. Sign in again.")
+			return errBlocked{"unreadable session response"}
+		}
 		if fl != nil {
 			fl.stream.Store(true)
 		}
@@ -246,7 +267,6 @@ func (c *Conn) modifyResponse(resp *http.Response) error {
 	default:
 		return errBlocked{"the instance used an encoding the app can't read"}
 	}
-	rot := c.m.policy.RotationFor(resp.Request.Method, resp.Request.URL.EscapedPath())
 	ok2xx := resp.StatusCode/100 == 2
 	if !ok2xx || resp.Request.Method == http.MethodHead || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusResetContent {
 		if ok2xx && rot == Reissue {

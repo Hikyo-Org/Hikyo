@@ -20,3 +20,9 @@ func probeMiddleware(next func(http.Handler) http.Handler) func(http.Handler) ht
 }
 func probeSeed(*shell.Store) string    { return "" }
 func probeOpen(*shell.Manager, string) {}
+
+// Release builds ignore the development environment variables: a same-user
+// process must not be able to move the connection list or allow plain http by
+// setting them.
+func devDataDir() string         { return "" }
+func devAllowLoopbackHTTP() bool { return false }
