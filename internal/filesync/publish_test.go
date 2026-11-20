@@ -1146,6 +1146,35 @@ func TestRetainRefusesSymlinkPlantedBeforePublication(t *testing.T) {
 	assertNotLeaked(t, f, err)
 }
 
+// A Destination reused across Intact and Publish (one CLI pass) must not vouch
+// for a .hikyo-gen that moved after the first pin: the public links resolve
+// through the name, not the handle.
+func TestReusedDestinationRefusesMovedGenDir(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.mustPublish(file("a", "A"))
+	d, err := OpenDestination(f.dir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = d.Close() }()
+	for range 2 { // the second call reuses the pinned handle
+		if _, ok, err := d.Intact(f.keys, testTarget, f.pol, []string{"a"}); err != nil || !ok {
+			t.Fatalf("intact on an unchanged destination = %v, %v; want true", ok, err)
+		}
+	}
+	if err := os.Rename(filepath.Join(f.dir, genDir), filepath.Join(f.dir, "away")); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := d.Intact(f.keys, testTarget, f.pol, []string{"a"}); !errors.Is(err, ErrForeign) || ok {
+		t.Fatalf("intact after %s moved = %v, %v; want ErrForeign", genDir, ok, err)
+	}
+	res, err := d.Publish(context.Background(), f.plan(file("a", "A")), nil)
+	if !errors.Is(err, ErrForeign) || res.Changed {
+		t.Fatalf("same-content publish after %s moved = %+v, %v; want ErrForeign", genDir, res, err)
+	}
+}
+
 // Moving .hikyo-gen after pinGen leaves the pinned handle on the moved
 // directory while the public links still resolve through the name. Committing
 // there would report a publication no reader can see.

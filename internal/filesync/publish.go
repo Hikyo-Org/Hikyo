@@ -535,7 +535,9 @@ func (d *Destination) claimBinding(target string) error {
 // fs.ErrNotExist.
 func (d *Destination) pinGen() error {
 	if d.gen != nil {
-		return nil
+		// A reused handle must still be the directory the public name resolves
+		// through, or Intact and a same-content Publish would vouch for a moved one.
+		return d.genStillNamed()
 	}
 	fi, err := d.root.Lstat(genDir)
 	if err != nil {
@@ -896,15 +898,28 @@ func (d *Destination) linkCurrent(gen string, staged fs.FileInfo) error {
 // .hikyo-gen and the generation by name, while staging went through the pinned
 // handles. A move after this check is a later tamper that Intact reports.
 func (d *Destination) stillNamed(gen string, staged fs.FileInfo) error {
+	if err := d.genStillNamed(); err != nil {
+		return err
+	}
+	if named, err := d.gen.Lstat(gen); err != nil || !os.SameFile(staged, named) {
+		return fmt.Errorf("%w: generation %s moved during publication", ErrForeign, gen)
+	}
+	return nil
+}
+
+// genStillNamed refuses a pinned .hikyo-gen that its name no longer names: moved,
+// removed, or replaced by a symlink.
+func (d *Destination) genStillNamed() error {
 	pinned, err := d.gen.Stat(".")
 	if err != nil {
 		return err
 	}
-	if named, err := d.root.Lstat(genDir); err != nil || !os.SameFile(pinned, named) {
-		return fmt.Errorf("%w: %s moved during publication", ErrForeign, path.Join(d.dir, genDir))
+	named, err := d.root.Lstat(genDir)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
 	}
-	if named, err := d.gen.Lstat(gen); err != nil || !os.SameFile(staged, named) {
-		return fmt.Errorf("%w: generation %s moved during publication", ErrForeign, gen)
+	if err != nil || !os.SameFile(pinned, named) {
+		return fmt.Errorf("%w: %s moved after it was pinned", ErrForeign, path.Join(d.dir, genDir))
 	}
 	return nil
 }
