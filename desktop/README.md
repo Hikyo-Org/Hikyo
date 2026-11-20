@@ -27,12 +27,19 @@ go build -o hikyo-desktop .          # macOS, needs Xcode command line tools
 `HIKYO_DESKTOP_KEYCHAIN_TEST=1 go test -run Keychain .` also exercises the real
 login keychain; it is opt-in because a locked keychain shows a prompt.
 
-Wails is pinned to `v3.1.0` in `go.mod`. The CLI (`wails3`) is not needed for
-`go build`; for a bundled `.app`:
+Wails is pinned to `v3.1.0` in `go.mod`. `go build` does not need its CLI. The
+bundled, ad-hoc signed `.app` does:
 
 ```sh
 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+cd desktop
+wails3 package        # runs the Taskfile's build, writes bin/hikyo-desktop.app
+open bin/hikyo-desktop.app
 ```
+
+`wails3 build` alone writes `bin/hikyo-desktop`. `Taskfile.yml` and
+`build/darwin/Info.plist` are all it reads: no icons, Developer ID signing or
+notarization yet (plan PR 4). `bin/` is ignored by Git.
 
 ## Signing and the keychain
 

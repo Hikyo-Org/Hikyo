@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -19,10 +20,16 @@ import (
 // connection's origin. clientauth builds those URLs; this is the second check.
 func (m *Manager) openHandoff(origin, target string) error {
 	u, err := url.Parse(target)
-	if err != nil || u.Scheme+"://"+u.Host != origin || u.User != nil || (u.Path != "/reauth/cli" && u.Path != "/login/cli") {
+	if err != nil || !sameOrigin(u, origin) || u.User != nil || (u.Path != "/reauth/cli" && u.Path != "/login/cli") {
 		return errors.New("refusing to open an unexpected handoff URL")
 	}
 	return m.opts.OpenURL(target)
+}
+
+// sameOrigin reports whether u is on the canonical origin, under any spelling.
+func sameOrigin(u *url.URL, origin string) bool {
+	got, err := originOf(u)
+	return err == nil && got == origin
 }
 
 func (c *Conn) transport() authTransport { return authTransport{in: c.inst, bearer: c.bearer} }
@@ -124,7 +131,12 @@ func (m *Manager) login(ctx context.Context, in *Instance, method string) (apige
 	defer cancel()
 	var dismiss func()
 	prompt := &devicePrompt{show: func(verificationURL, code string) {
-		dismiss = m.native.ShowDeviceCode(verificationURL, code, cancel)
+		open := func() {
+			if err := m.openHandoff(in.Origin, verificationURL); err != nil {
+				log.Printf("sign-in: opening the verification page failed: %v", err)
+			}
+		}
+		dismiss = m.native.ShowDeviceCode(verificationURL, code, cancel, open)
 	}}
 	result, err := clientauth.LoginDevice(ctx, tr, prompt, "")
 	if dismiss != nil {

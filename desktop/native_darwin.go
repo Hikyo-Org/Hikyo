@@ -16,6 +16,7 @@ int hikyoAppActive(void);
 void hikyoShowCode(long id, const char *url, const char *code);
 void hikyoDismissCode(long id);
 long hikyoPasteboardCount(void);
+long hikyoPasteboardCountAtActivation(void);
 void hikyoClearPasteboard(void);
 int hikyoWipeStorage(const char *host);
 */
@@ -113,6 +114,7 @@ func (n *macNative) OpenWindow(host, title string, bind func(string)) error {
 		}
 		n.mu.Unlock()
 		n.manager.UnbindWindow(id)
+		pendingDownloads.Drop(host)
 	})
 	installProbe(w)
 	w.SetURL(shell.PageScheme + "://" + host + "/")
@@ -168,24 +170,30 @@ func (n *macNative) SavePanel(name, source string) (string, bool) {
 var (
 	codeSeq     atomic.Int64
 	codeCancels sync.Map // id -> func()
+	codeOpens   sync.Map // id -> func()
 )
 
-func (n *macNative) ShowDeviceCode(url, code string, cancel func()) func() {
+func (n *macNative) ShowDeviceCode(url, code string, cancel, open func()) func() {
 	id := codeSeq.Add(1)
 	codeCancels.Store(id, cancel)
+	codeOpens.Store(id, open)
 	u, c := C.CString(url), C.CString(code)
 	defer C.free(unsafe.Pointer(u))
 	defer C.free(unsafe.Pointer(c))
 	C.hikyoShowCode(C.long(id), u, c)
 	return func() {
 		codeCancels.Delete(id)
+		codeOpens.Delete(id)
 		C.hikyoDismissCode(C.long(id))
 	}
 }
 
 func (n *macNative) AppActive() bool        { return C.hikyoAppActive() == 1 }
 func (n *macNative) PasteboardCount() int64 { return int64(C.hikyoPasteboardCount()) }
-func (n *macNative) ClearPasteboard()       { C.hikyoClearPasteboard() }
+func (n *macNative) PasteboardCountAtActivation() int64 {
+	return int64(C.hikyoPasteboardCountAtActivation())
+}
+func (n *macNative) ClearPasteboard() { C.hikyoClearPasteboard() }
 
 // ---- callbacks from Objective-C ----
 
@@ -215,9 +223,7 @@ func hikyoNavigate(pageHost, rawURL *C.char, flags C.int) C.int {
 
 // pendingDownloads maps a WKDownload to where it is writing and where the
 // file goes when it finishes. Concurrent downloads never share an entry.
-var pendingDownloads sync.Map // uintptr -> download
-
-type download struct{ temp, final string }
+var pendingDownloads = shell.NewPendingDownloads()
 
 //export hikyoDownloadDestination
 func hikyoDownloadDestination(key C.uintptr_t, pageHost, suggested *C.char) *C.char {
@@ -245,26 +251,25 @@ func hikyoDownloadDestination(key C.uintptr_t, pageHost, suggested *C.char) *C.c
 	temp := f.Name()
 	_ = f.Close()
 	_ = os.Remove(temp) // WKDownload needs a destination that does not exist
-	pendingDownloads.Store(uintptr(key), download{temp: temp, final: final})
+	pendingDownloads.Add(uintptr(key), host, temp, final)
 	return C.CString(temp) // freed by the caller
 }
 
 //export hikyoDownloadFinished
 func hikyoDownloadFinished(key C.uintptr_t) {
-	v, ok := pendingDownloads.LoadAndDelete(uintptr(key))
+	temp, final, ok := pendingDownloads.Take(uintptr(key))
 	if !ok {
 		return
 	}
-	d := v.(download)
-	if err := shell.Quarantine(d.temp); err != nil {
+	if err := shell.Quarantine(temp); err != nil {
 		log.Printf("download: could not mark the file as downloaded: %v", err)
-		_ = os.Remove(d.temp)
+		_ = os.Remove(temp)
 		failDownload("The file could not be marked as downloaded.")
 		return
 	}
-	if err := os.Rename(d.temp, d.final); err != nil {
-		log.Printf("download: could not save %s: %v", d.final, err)
-		_ = os.Remove(d.temp)
+	if err := os.Rename(temp, final); err != nil {
+		log.Printf("download: could not save %s: %v", final, err)
+		_ = os.Remove(temp)
 		failDownload("The file could not be saved there.")
 	}
 }
@@ -277,11 +282,18 @@ func failDownload(message string) {
 
 //export hikyoDownloadFailed
 func hikyoDownloadFailed(key C.uintptr_t, message *C.char) {
-	if v, ok := pendingDownloads.LoadAndDelete(uintptr(key)); ok {
-		_ = os.Remove(v.(download).temp)
+	if temp, _, ok := pendingDownloads.Take(uintptr(key)); ok {
+		_ = os.Remove(temp)
 	}
 	if n := theNative.Load(); n != nil {
 		n.Alert("Download failed", fmt.Sprint(C.GoString(message)))
+	}
+}
+
+//export hikyoCodeOpenBrowser
+func hikyoCodeOpenBrowser(id C.long) {
+	if open, ok := codeOpens.Load(int64(id)); ok {
+		go open.(func())() // off the main thread: the dialog must stay responsive
 	}
 }
 

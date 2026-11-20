@@ -31,6 +31,9 @@ type fakeNative struct {
 	wipeErr       error
 	deviceCodes   []string
 	pasteboard    int64
+	activation    int64
+	deviceURLs    []string
+	deviceOpen    func()
 	inactive      bool // another app is frontmost
 	cleared       int
 	opened        map[string]string // host -> window id
@@ -78,16 +81,23 @@ func (f *fakeNative) SavePanel(name, _ string) (string, bool) {
 	f.saveNames = append(f.saveNames, name)
 	return f.savePath, f.saveOK
 }
-func (f *fakeNative) ShowDeviceCode(_, code string, _ func()) func() {
+func (f *fakeNative) ShowDeviceCode(url, code string, _, open func()) func() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.deviceCodes = append(f.deviceCodes, code)
+	f.deviceURLs = append(f.deviceURLs, url)
+	f.deviceOpen = open
 	return func() {}
 }
 func (f *fakeNative) PasteboardCount() int64 {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.pasteboard
+}
+func (f *fakeNative) PasteboardCountAtActivation() int64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.activation
 }
 func (f *fakeNative) ClearPasteboard() {
 	f.mu.Lock()

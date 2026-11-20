@@ -252,10 +252,16 @@ void hikyoShowCode(long id, const char *url, const char *code) {
 		NSAlert *alert = [NSAlert new];
 		alert.messageText = @"Finish signing in in your browser";
 		alert.informativeText = [NSString stringWithFormat:@"Open %@ and enter this code:\n\n%@\n\nOnly enter it if you started this sign-in.", u, c];
+		[alert addButtonWithTitle:@"Open in browser"];
 		[alert addButtonWithTitle:@"Cancel"];
 		codeAlerts[@(id)] = alert;
 		[NSApp activateIgnoringOtherApps:YES];
-		[alert runModal];
+		// The code stays on screen while the browser opens: Go opens the
+		// validated verification URL and the dialog runs again.
+		NSModalResponse response;
+		while ((response = [alert runModal]) == NSAlertFirstButtonReturn && codeAlerts[@(id)] != nil) {
+			hikyoCodeOpenBrowser(id);
+		}
 		if (codeAlerts[@(id)] != nil) {
 			// Closed by the user, not by dismissCode.
 			[codeAlerts removeObjectForKey:@(id)];
@@ -292,6 +298,24 @@ long hikyoPasteboardCount(void) {
 	return count;
 }
 
+// The change count when the app last became frontmost, taken in the
+// activation notification itself so a copy made in another app is always at
+// or below it, however the 250 ms poll falls.
+static long activationCount;
+
+__attribute__((constructor)) static void trackActivation(void) {
+	activationCount = NSPasteboard.generalPasteboard.changeCount;
+	[NSNotificationCenter.defaultCenter addObserverForName:NSApplicationDidBecomeActiveNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+		activationCount = NSPasteboard.generalPasteboard.changeCount;
+	}];
+}
+
+long hikyoPasteboardCountAtActivation(void) {
+	__block long count = 0;
+	onMain(^{ count = activationCount; });
+	return count;
+}
+
 int hikyoAppActive(void) {
 	__block int active = 0;
 	onMain(^{ active = NSApp.isActive; });
@@ -304,27 +328,85 @@ void hikyoClearPasteboard(void) {
 
 // ---- Storage ----
 
-// Removes the website data of one connection host. Returns the number of
-// records removed, or -1 when the data store did not answer. Must not run on
-// the main thread: WebKit answers there.
+// ---- Storage wipe ----
+//
+// Website data of a custom-scheme origin (wails://<host>) is not listed by
+// -fetchDataRecordsOfTypes: (verified on macOS 27: localStorage survives a
+// relaunch while the data store reports zero records). So the origin is
+// cleared from inside: a hidden web view of the same default data store loads
+// wails://<host>/ from a handler of its own and deletes what the origin holds.
+@interface HikyoWipePage : NSObject <WKURLSchemeHandler>
+@end
+
+@implementation HikyoWipePage
+- (void)webView:(WKWebView *)webView startURLSchemeTask:(id<WKURLSchemeTask>)task {
+	NSData *body = [@"<!doctype html><title>wipe</title>" dataUsingEncoding:NSUTF8StringEncoding];
+	NSURLResponse *response = [[NSURLResponse alloc] initWithURL:task.request.URL MIMEType:@"text/html" expectedContentLength:body.length textEncodingName:@"utf-8"];
+	[task didReceiveResponse:response];
+	[task didReceiveData:body];
+	[task didFinish];
+}
+- (void)webView:(WKWebView *)webView stopURLSchemeTask:(id<WKURLSchemeTask>)task {}
+@end
+
+@interface HikyoWipeRun : NSObject <WKNavigationDelegate>
+@property (strong) WKWebView *webView;
+@property (strong) HikyoWipePage *page;
+@property (copy) void (^done)(int);
+- (void)finish:(int)result;
+@end
+
+static NSString *const wipeScript =
+	@"localStorage.clear(); sessionStorage.clear();"
+	@"if (indexedDB.databases) { for (const d of await indexedDB.databases()) {"
+	@"  await new Promise(r => { const q = indexedDB.deleteDatabase(d.name); q.onsuccess = q.onerror = q.onblocked = r; }); } }"
+	@"if (window.caches) { for (const k of await caches.keys()) await caches.delete(k); }"
+	@"for (const c of document.cookie.split(';')) { const n = c.split('=')[0].trim();"
+	@"  if (n) document.cookie = n + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'; }"
+	@"return 'wiped';";
+
+@implementation HikyoWipeRun
+- (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+	[webView callAsyncJavaScript:wipeScript arguments:@{} inFrame:nil inContentWorld:WKContentWorld.pageWorld completionHandler:^(id result, NSError *error) {
+		if (error != nil) NSLog(@"hikyo: storage wipe script failed: %@", error);
+		[self finish:error == nil && [result isEqual:@"wiped"] ? 1 : -1];
+	}];
+}
+- (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+	NSLog(@"hikyo: storage wipe page failed: %@", error);
+	[self finish:-1];
+}
+- (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+	[self finish:-1];
+}
+// The first outcome wins; late callbacks after the caller left are ignored.
+- (void)finish:(int)result {
+	void (^done)(int) = self.done;
+	self.done = nil;
+	if (done != nil) done(result);
+}
+@end
+
+// Deletes the browser storage of one connection host. Returns 1 when done and
+// -1 when it could not be confirmed. Must not run on the main thread.
 int hikyoWipeStorage(const char *host) {
-	NSString *needle = [NSString stringWithUTF8String:host];
+	NSString *name = [NSString stringWithUTF8String:host];
 	dispatch_semaphore_t done = dispatch_semaphore_create(0);
-	__block int removed = -1;
+	__block int result = -1;
+	HikyoWipeRun *keep = [HikyoWipeRun new];
+	keep.done = ^(int r) {
+		result = r;
+		dispatch_semaphore_signal(done);
+	};
 	dispatch_async(dispatch_get_main_queue(), ^{
-		WKWebsiteDataStore *store = WKWebsiteDataStore.defaultDataStore;
-		NSSet *types = WKWebsiteDataStore.allWebsiteDataTypes;
-		[store fetchDataRecordsOfTypes:types completionHandler:^(NSArray<WKWebsiteDataRecord *> *records) {
-			NSMutableArray *match = [NSMutableArray new];
-			for (WKWebsiteDataRecord *record in records) {
-				if ([record.displayName containsString:needle]) [match addObject:record];
-			}
-			[store removeDataOfTypes:types forDataRecords:match completionHandler:^{
-				removed = (int)match.count;
-				dispatch_semaphore_signal(done);
-			}];
-		}];
+		WKWebViewConfiguration *config = [WKWebViewConfiguration new];
+		keep.page = [HikyoWipePage new];
+		[config setURLSchemeHandler:keep.page forURLScheme:@"wails"];
+		keep.webView = [[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 10, 10) configuration:config];
+		keep.webView.navigationDelegate = keep;
+		[keep.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:[NSString stringWithFormat:@"wails://%@/", name]]]];
 	});
-	if (dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC)) != 0) return -1;
-	return removed;
+	int waited = dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC));
+	dispatch_async(dispatch_get_main_queue(), ^{ keep.webView = nil; [keep finish:-1]; });
+	return waited != 0 ? -1 : result;
 }

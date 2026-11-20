@@ -39,14 +39,16 @@ func newClipboardGuard(native Native, now func() time.Time) *clipboardGuard {
 // observe records the pasteboard's change count. The shell calls it on a short
 // timer while it runs; arm compares against what it saw.
 func (g *clipboardGuard) observe() {
-	count, active := g.native.PasteboardCount(), g.native.AppActive()
+	count, active, base := g.native.PasteboardCount(), g.native.AppActive(), g.native.PasteboardCountAtActivation()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if count != g.lastCount {
 		g.lastCount = count
 		// A change made while another app was frontmost is not the page's
-		// copy and must never be cleared (ADR D12).
-		if active {
+		// copy and must never be cleared (ADR D12). The count at activation
+		// closes the poll gap: a copy made elsewhere just before switching
+		// back is at or below it, whenever this poll runs.
+		if active && count != base {
 			g.lastChange = g.now()
 		}
 	}
@@ -59,7 +61,10 @@ func (g *clipboardGuard) arm() {
 	if !g.native.AppActive() {
 		return
 	}
-	count := g.native.PasteboardCount()
+	count, base := g.native.PasteboardCount(), g.native.PasteboardCountAtActivation()
+	if count == base {
+		return // nothing changed since the app came to the front
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if count == g.lastCount && (g.lastChange.IsZero() || g.now().Sub(g.lastChange) > clipboardRecentWithin) {

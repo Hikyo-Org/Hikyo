@@ -45,9 +45,13 @@ type Native interface {
 	// AppActive reports whether the app is the frontmost application.
 	AppActive() bool
 	// ShowDeviceCode shows a device-flow code until dismiss is called. cancel
-	// ends the sign-in when the user closes it.
-	ShowDeviceCode(verificationURL, code string, cancel func()) (dismiss func())
+	// ends the sign-in when the user closes it; open opens the verification
+	// URL in the browser and leaves the code on screen.
+	ShowDeviceCode(verificationURL, code string, cancel, open func()) (dismiss func())
 	PasteboardCount() int64
+	// PasteboardCountAtActivation is the change count the instant the app last
+	// became frontmost. Changes up to it were made elsewhere (ADR D12).
+	PasteboardCountAtActivation() int64
 	ClearPasteboard()
 }
 
