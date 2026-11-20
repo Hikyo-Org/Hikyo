@@ -171,7 +171,8 @@ lints it from inside `desktop/` instead. The registry domain `desktop` and the
 4. Lint is advisory, like the root ratchet, and the root `golangci` names must stay
    out of `ci.yml`: `ci-advisory-golangci-desktop` runs the pinned `golangci-lint`
    over the whole module on macOS, and `golangci-lint-new.sh` lints `desktop/` from
-   inside it for the pre-push hook and `ci-advisory-golangci`.
+   inside it, new code and then the strict rules on the whole module, for the
+   pre-push hook and `ci-advisory-golangci`.
 
 The classifier selects the `desktop` domain for `desktop/*`, `api/openapi.yaml`
 (the refusal list derives from it) and the root packages `desktop/` imports, and

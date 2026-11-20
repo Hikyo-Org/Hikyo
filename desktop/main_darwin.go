@@ -45,29 +45,25 @@ func dataDir() (string, error) {
 	return filepath.Join(base, "Hikyo Desktop"), nil
 }
 
-// dataLock is held for the life of the process.
-var dataLock *os.File
-
 // lockDataDir takes exclusive ownership of the connection store: two shells
 // each holding their own copy of the list would drop each other's connections
 // on save, and leave a keychain item with no record.
-func lockDataDir(dir string) error {
+func lockDataDir(dir string) (*os.File, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
+		return nil, err
 	}
 	f, err := os.OpenFile(filepath.Join(dir, ".lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
 		_ = f.Close()
 		if errors.Is(err, unix.EWOULDBLOCK) {
-			return errors.New("Hikyo Desktop is already running")
+			return nil, errors.New("Hikyo Desktop is already running")
 		}
-		return err
+		return nil, err
 	}
-	dataLock = f
-	return nil
+	return f, nil
 }
 
 func run() error {
@@ -75,9 +71,12 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if err := lockDataDir(dir); err != nil {
+	lock, err := lockDataDir(dir)
+	if err != nil {
 		return err
 	}
+	// Held until run returns: a collected *os.File closes and releases the lock.
+	defer func() { _ = lock.Close() }()
 	store, err := shell.OpenStore(filepath.Join(dir, "connections.json"))
 	if err != nil {
 		return err
