@@ -23,25 +23,25 @@ func TestTLSConfigPinAcceptsOnlyTheExactLeaf(t *testing.T) {
 	leaf := server.Certificate()
 	pin := SPKIFingerprint(leaf)
 	config := TLSConfig(server.URL, ModeSPKI, pin, "")
-	if err := config.VerifyPeerCertificate([][]byte{leaf.Raw}, nil); err != nil {
+	if err := config.VerifyConnection(peers(leaf)); err != nil {
 		t.Fatalf("matching pin refused: %v", err)
 	}
-	if err := TLSConfig(server.URL, ModeSPKI, "AAAA", "").VerifyPeerCertificate([][]byte{leaf.Raw}, nil); err == nil || !strings.Contains(err.Error(), "does not match the pin") {
+	if err := TLSConfig(server.URL, ModeSPKI, "AAAA", "").VerifyConnection(peers(leaf)); err == nil || !strings.Contains(err.Error(), "does not match the pin") {
 		t.Fatalf("wrong pin = %v", err)
 	}
-	if err := config.VerifyPeerCertificate(nil, nil); err == nil {
+	if err := config.VerifyConnection(peers()); err == nil {
 		t.Fatal("empty chain accepted")
 	}
 	// The pin is checked against the leaf only: the pinned certificate as a
 	// later chain element must not satisfy it.
-	if err := config.VerifyPeerCertificate([][]byte{selfSigned(t), leaf.Raw}, nil); err == nil {
+	if err := config.VerifyConnection(peers(parseCert(t, selfSigned(t)), leaf)); err == nil {
 		t.Fatal("pin satisfied by a non-leaf certificate")
 	}
 }
 
 func TestTLSConfigSystemCAKeepsChainVerification(t *testing.T) {
 	config := TLSConfig("https://hikyo.example", ModeSystemCA, "", "")
-	if config.InsecureSkipVerify || config.VerifyPeerCertificate != nil || config.MinVersion != tls.VersionTLS12 {
+	if config.InsecureSkipVerify || config.VerifyConnection != nil || config.MinVersion != tls.VersionTLS12 {
 		t.Fatalf("system-ca config %+v", config)
 	}
 }
@@ -148,4 +148,56 @@ func selfSigned(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	return raw
+}
+
+func peers(certs ...*x509.Certificate) tls.ConnectionState {
+	return tls.ConnectionState{PeerCertificates: certs}
+}
+
+func parseCert(t *testing.T, der []byte) *x509.Certificate {
+	t.Helper()
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cert
+}
+
+// A resumed session skips VerifyPeerCertificate; the pin must still hold.
+func TestTLSConfigPinIsEnforcedOnResumedSessions(t *testing.T) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	server.StartTLS()
+	defer server.Close()
+	addr := server.Listener.Addr().String()
+	cache := tls.NewLRUClientSessionCache(4)
+	dial := func(pin string) (*tls.Conn, error) {
+		config := TLSConfig(server.URL, ModeSPKI, pin, "")
+		config.ClientSessionCache = cache
+		conn, err := tls.Dial("tcp", addr, config)
+		if err != nil {
+			return nil, err
+		}
+		// TLS 1.3 tickets arrive after the handshake; one read drains them.
+		_ = conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		_, _ = conn.Read(make([]byte, 1))
+		return conn, nil
+	}
+	good := SPKIFingerprint(server.Certificate())
+	first, err := dial(good)
+	if err != nil {
+		t.Fatalf("first handshake: %v", err)
+	}
+	_ = first.Close()
+	second, err := dial(good)
+	if err != nil {
+		t.Fatalf("second handshake: %v", err)
+	}
+	if !second.ConnectionState().DidResume {
+		t.Fatal("test premise broken: session was not resumed")
+	}
+	_ = second.Close()
+	if conn, err := dial("AAAA"); err == nil {
+		_ = conn.Close()
+		t.Fatal("wrong pin accepted on a resumed session")
+	}
 }
