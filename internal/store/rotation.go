@@ -148,8 +148,8 @@ type RotationListQuery struct {
 	// still owing a provider role a drop. The API's default list sets it; the
 	// environment delete's "live rotations" read does not.
 	KeepOwed bool
-	After           string
-	Limit           int
+	After    string
+	Limit    int
 }
 
 // RotationRunRequest is one run-now request: the run the rotation will start (its
