@@ -336,6 +336,12 @@ export const KeyMoveCountOnly: Story = {
     await expect(dialog.getByText('Gains access: 3 people')).toBeVisible();
     await expect(dialog.getByText(/ask one of them to make this move/)).toBeVisible();
     await expect(dialog.queryByRole('button', { name: 'Move and give access' })).toBeNull();
+    // A short pinned body hugs its content: its minimum never adds empty space.
+    const body = document.querySelector<HTMLElement>('.dialog__body');
+    const last = body?.lastElementChild;
+    if (!body || !last) throw new Error('pinned dialog body not rendered');
+    const padding = Number.parseFloat(getComputedStyle(body).paddingBottom);
+    await expect(Math.abs(body.getBoundingClientRect().bottom - last.getBoundingClientRect().bottom - padding)).toBeLessThanOrEqual(1);
   },
 };
 

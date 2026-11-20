@@ -3621,10 +3621,11 @@ fieldset.field > legend {
   background: color-mix(in oklch, var(--bg), var(--accent) 8%);
 }
 
-/* A form as the dialog's direct child is a column of fields. This beats
+/* A form as the dialog's direct child, or the pinned body's, is a column of fields. This beats
    `.ceremony__totp` on flex-direction by specificity, which is how that form
    has always rendered. */
-.dialog > form {
+.dialog > form,
+.dialog__body > form {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -3705,20 +3706,20 @@ fieldset.field > legend {
    and only its body does, between the title and the action row. The body is
    pulled out by exactly one focus ring (width plus offset) and padded back
    in, so a ring on a control at the body's edge is not clipped by the scroll
-   box, whatever padding the dialog has at this width. */
-.dialog--pinned {
-  overflow: hidden;
-}
-
+   box, whatever padding the dialog has at this width. The body keeps a
+   minimum height, never more than its content (`--body-fit`, set by Dialog);
+   when even that cannot fit (a short window, high zoom) the dialog itself
+   scrolls, as `.dialog` does, instead of clipping the actions. */
 .dialog--pinned .dialog__body {
   /* Keeps `.visually-hidden` labels inside this scroller. Against the dialog,
-     which hides its overflow, focusing one scrolls the pinned actions away. */
+     which scrolls as a whole when the body cannot keep its minimum, focusing
+     one scrolls the pinned actions away. */
   position: relative;
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   gap: var(--space-3);
-  min-height: 0;
+  min-height: min(var(--body-fit, 10rem), 10rem, 30vh);
   margin: 0 calc(-1 * (var(--ring-width) + var(--ring-offset)));
   padding: var(--space-1) calc(var(--ring-width) + var(--ring-offset));
   overflow: auto;

@@ -258,3 +258,24 @@ export const InFlightScrollerReachable: Story = {
     await expect(dialog.tabIndex).toBe(0);
   },
 };
+
+/** Too short for the minimum body: the dialog scrolls as a whole, the body keeps its height, Save is reachable. */
+export const PinnedActionsShortViewport: Story = {
+  ...PinnedActions,
+  globals: { viewport: { value: 'zoom400', isRotated: false } },
+  play: async ({ canvas }) => {
+    const dialog = canvas.getByRole('dialog', { name: 'Edit rule' });
+    const body = dialog.querySelector('.dialog__body');
+    if (!(body instanceof HTMLElement)) throw new Error('no dialog body');
+    await expect(getComputedStyle(dialog).overflowY).toBe('auto');
+    await expect(dialog.scrollHeight).toBeGreaterThan(dialog.clientHeight);
+    // The body is not squeezed to nothing: 10rem, or 30% of a short window.
+    await expect(body.getBoundingClientRect().height).toBeGreaterThanOrEqual(Math.min(10 * Number.parseFloat(getComputedStyle(document.documentElement).fontSize), window.innerHeight * 0.3) - 1);
+    // Scrolling the dialog itself brings Save into its box.
+    dialog.scrollTop = dialog.scrollHeight;
+    const save = canvas.getByRole('button', { name: 'Save' }).getBoundingClientRect();
+    const box = dialog.getBoundingClientRect();
+    await expect(save.top).toBeGreaterThanOrEqual(box.top);
+    await expect(save.bottom).toBeLessThanOrEqual(box.bottom);
+  },
+};
