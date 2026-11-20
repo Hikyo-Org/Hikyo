@@ -555,8 +555,9 @@ func (c fileCheck) analyzer(provide func(*analysis.Analyzer) inputProvider) *ana
 // package, so a digest of an unrelated tree's inputs cannot be paired with this
 // anchor. An enclosing directory also contains the anchor and passes; its inputs
 // are then read at its own paths, normally absent (so reported, not clean)
-// unless that directory is itself a checkout, as with a nested worktree. Containment is by os.SameFile along each file's parent directories, not
-// by string prefix, so a symlinked root, ".." segments or a case-insensitive
+// unless that directory is itself a checkout, as with a nested worktree.
+// Containment is by os.SameFile along each file's parent directories, not by
+// string prefix, so a symlinked root, ".." segments or a case-insensitive
 // filesystem cannot bypass it.
 func anchorUnderRoot(pass *analysis.Pass, root string) error {
 	rootInfo, err := os.Stat(root)
