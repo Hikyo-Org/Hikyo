@@ -383,8 +383,21 @@ func BuildProjectPlan(in ProjectPlanInput) (*ProjectPlan, error) {
 		return nil, failure(in.Source, CodeMalformed, "",
 			"a phase-1 plan targets at least one environment")
 	}
+	// ParseTemplate refuses a repeated target, existing ids and created names in
+	// one set, so a plan naming one twice would write artifacts that cannot be
+	// replayed.
+	seen := map[string]bool{}
 	for i := range in.Envs {
 		e := &in.Envs[i]
+		target := e.EnvID
+		if e.Create {
+			target = e.EnvName
+		}
+		if target != "" && seen[target] {
+			return nil, failure(in.Source, CodeMalformed, "",
+				"environment %s is already mapped", quoteName(target))
+		}
+		seen[target] = true
 		if e.Create && e.EnvName == "" {
 			return nil, failure(in.Source, CodeMalformed, "",
 				"a created environment is named, not id'd")

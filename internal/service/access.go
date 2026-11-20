@@ -409,20 +409,20 @@ func (s *Access) Queue(ctx context.Context, actor Actor, scope domain.Scope) (Ac
 		if err != nil {
 			return err
 		}
-		policy, ok, err := r.Access().CoveringPolicy(ctx, p, string(scope.Env))
+		covering, ok, err := r.Access().CoveringPolicy(ctx, p, string(scope.Env))
 		if err != nil {
 			return err
 		}
 		if ok {
-			bypasser, err := r.Access().IsBypasser(ctx, p, policy.ID, string(caller.Principal))
+			bypasser, err := r.Access().IsBypasser(ctx, p, covering.ID, string(caller.Principal))
 			if err != nil {
 				return err
 			}
 			out.Offer = &AccessOffer{
-				PolicyID: policy.ID, PolicyVersion: policy.Version,
-				Capabilities: slices.Clone(policy.Capabilities), MaxDurationSeconds: policy.MaxDurationSeconds,
-				MinApprovals: policy.MinApprovals, Enabled: policy.Enabled,
-				CallerMayBypass: bypasser && policy.Enabled,
+				PolicyID: covering.ID, PolicyVersion: covering.Version,
+				Capabilities: slices.Clone(covering.Capabilities), MaxDurationSeconds: covering.MaxDurationSeconds,
+				MinApprovals: covering.MinApprovals, Enabled: covering.Enabled,
+				CallerMayBypass: bypasser && covering.Enabled,
 			}
 		}
 		requests, err := r.Access().ListRequests(ctx, p)
@@ -432,7 +432,7 @@ func (s *Access) Queue(ctx context.Context, actor Actor, scope domain.Scope) (Ac
 		out.Requests = make([]AccessRequestView, 0, len(requests))
 		views := newAccessRequestViews()
 		if ok {
-			views.policies[policy.ID] = &accessPolicyVotes{policy: policy, eligible: make(map[domain.PrincipalID]bool)}
+			views.policies[covering.ID] = &accessPolicyVotes{policy: covering, eligible: make(map[domain.PrincipalID]bool)}
 		}
 		for _, req := range requests {
 			view, err := views.view(ctx, r, az, p, scope, req)
@@ -445,6 +445,7 @@ func (s *Access) Queue(ctx context.Context, actor Actor, scope domain.Scope) (Ac
 					return err
 				}
 				if policy != nil && policy.policy.Enabled && policy.policy.Version == req.PolicyVersion &&
+					ok && covering.ID == policy.policy.ID && covering.Version == policy.policy.Version &&
 					(req.RequesterPrincipalID != string(caller.Principal) || policy.policy.AllowSelfApproval) {
 					view.CanApprove, err = views.canApprove(ctx, r, az, p, scope, policy, caller.Principal, req.Capabilities)
 					if err != nil {
@@ -540,7 +541,7 @@ func (s *Access) Request(ctx context.Context, actor Actor, scope domain.Scope, i
 // identical decision returns the current view without requiring renewed approver
 // eligibility; a conflicting one wraps domain.ErrConflict. A rejection resolves
 // the request immediately. New votes require an open, unexpired review window.
-// A missing, disabled, or changed policy commits invalidation before returning
+// A missing, disabled, changed, or superseded (no longer covering) policy commits invalidation before returning
 // domain.ErrConflict. Invalid decisions wrap domain.ErrInvalid; human-session,
 // eligibility, authorization, storage, and audit errors are propagated.
 func (s *Access) Vote(ctx context.Context, actor Actor, scope domain.Scope, requestID, decisionRaw string) (AccessRequestView, error) {
@@ -592,6 +593,21 @@ func (s *Access) Vote(ctx context.Context, actor Actor, scope domain.Scope, requ
 			cause = "policy_disabled"
 		case policy.Version != req.PolicyVersion:
 			cause = "policy_changed"
+		}
+		if cause == "" {
+			// A pinned policy that is no longer the environment's covering one
+			// (a new or disabled environment policy now takes precedence) must
+			// not grant on its stale terms.
+			covering, ok, err := r.Access().CoveringPolicy(ctx, p, string(scope.Env))
+			if err != nil {
+				return err
+			}
+			switch {
+			case ok && !covering.Enabled:
+				cause = "policy_disabled"
+			case !ok || covering.ID != policy.ID || covering.Version != policy.Version:
+				cause = "policy_changed"
+			}
 		}
 		if cause != "" {
 			// Commit the invalidation, refuse after the transaction.

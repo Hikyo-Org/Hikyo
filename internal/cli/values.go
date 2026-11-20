@@ -321,10 +321,26 @@ func runValues(ctx context.Context, ios IO, args []string) (returnErr error) {
 		// environments, authorized per destination and all-or-nothing. The
 		// environments are named explicitly rather than taken from the target
 		// resolution, because this verb addresses several of them at once.
+		// A protected destination needs the publish ceremony bound to this key,
+		// exactly as an ordinary publish does, so the human completes it here.
 		var list apigen.ValueList
-		if err := client.Do(ctx, http.MethodPost, project+"/values/declare", apigen.DeclareValuesRequest{
-			Key: flags.positional(), EnvironmentIds: splitList(environments), Value: value,
-		}, &list); err != nil {
+		// The key-read route takes an id, not the name this verb is given, so
+		// the unit is resolved by name from the non-revealing value list.
+		declared := disclosure{purpose: "publish", protectedOnly: true, keys: func(ctx context.Context, env string) ([]string, error) {
+			ids, err := declaredKeyIDs(ctx, client, project, env, flags.positional())
+			if err != nil {
+				return nil, err
+			}
+			if len(ids) == 0 {
+				return nil, failf(ExitNotFound, "key %q is not declared in %s", flags.positional(), env)
+			}
+			return ids, nil
+		}}
+		if err := ceremony(splitList(environments), declared, func() error {
+			return client.Do(ctx, http.MethodPost, project+"/values/declare", apigen.DeclareValuesRequest{
+				Key: flags.positional(), EnvironmentIds: splitList(environments), Value: value,
+			}, &list)
+		}); err != nil {
 			return err
 		}
 		warnFindings(ios, list.Findings)

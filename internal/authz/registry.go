@@ -3532,7 +3532,7 @@ var operationTable = map[Operation]opSpec{
 			StoreAccessRequestGet: true, StoreAccessRequestGrant: true,
 			StoreAccessRequestResolve: true, StoreAccessVoteGet: true,
 			StoreAccessVoteInsert: true, StoreAccessVoteList: true,
-			StoreAccessPolicyGet: true, StoreAccessApproverList: true,
+			StoreAccessPolicyGet: true, StoreAccessPolicyCovering: true, StoreAccessApproverList: true,
 			StoreSCIMUserByAccount: true, StoreSCIMMembershipsForUser: true,
 			StoreAuditTenantInsert: true,
 		},

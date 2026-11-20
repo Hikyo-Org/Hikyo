@@ -78,6 +78,9 @@ func newWithDialer(cfg Config, resolver netpolicy.Resolver, dialer netpolicy.Dia
 	if err != nil {
 		return nil, fmt.Errorf("postgres: parse origin: %w", err)
 	}
+	if len(connConfig.Fallbacks) != 0 {
+		return nil, errors.New("postgres: origin must name exactly one host")
+	}
 	publicDialer, err := netpolicy.NewPublicDialer(cfg.AllowedCIDRs, resolver, dialer)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: egress policy: %w", err)
@@ -128,6 +131,12 @@ func canonicalDSN(origin, password string) (string, string, error) {
 	host := u.Hostname()
 	if host == "" {
 		return "", "", fmt.Errorf("postgres: origin %q must carry a host", origin)
+	}
+	// url.Parse accepts "h1:5432,h2:5432"; pgx would turn it into a primary plus
+	// fallbacks that this provider's TLS pinning does not cover. It also accepts
+	// "h1:5432:5433", whose Hostname "h1:5432" pgx then refuses as a bad port.
+	if strings.Contains(u.Host, ",") || (strings.Contains(u.Hostname(), ":") && !strings.HasPrefix(u.Host, "[")) {
+		return "", "", fmt.Errorf("postgres: origin %q must name exactly one host", origin)
 	}
 	if strings.Trim(u.Path, "/") == "" {
 		return "", "", fmt.Errorf("postgres: origin %q must name a database", origin)

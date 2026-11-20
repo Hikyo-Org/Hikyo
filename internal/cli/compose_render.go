@@ -100,7 +100,7 @@ func composeRenderLocked(ctx context.Context, ios IO, stack *composeStack, lock 
 
 	// 1. Recover incomplete (torn) generations before anything reads them.
 	if err := lock.Recover(stack.runtimeDir); err != nil {
-		return false, stack, failf(ExitInternal, "compose render: recover: %v", err)
+		return false, stack, failf(runtimeExit(err), "compose render: recover: %v", err)
 	}
 	// 2. Flush-before-fetch.
 	if err := stack.flushOffline(ctx); err != nil {
@@ -160,9 +160,9 @@ func (s *composeStack) renderApply(ios IO, lock *compose.RenderLock, keys *crypt
 	published, err := publishRenderPlan(lock, s.runtimeDir, keys, plan)
 	if err != nil {
 		if pendingErr := persistCommittedPublish(s.stateDir, s.runtimeDir, plan, currentStamps, published); pendingErr != nil {
-			return false, failf(ExitInternal, "compose render: publish: %v", errors.Join(err, fmt.Errorf("persist apply-pending: %w", pendingErr)))
+			return false, failf(runtimeExit(err), "compose render: publish: %v", errors.Join(err, fmt.Errorf("persist apply-pending: %w", pendingErr)))
 		}
-		return false, failf(ExitInternal, "compose render: publish: %v", err)
+		return false, failf(runtimeExit(err), "compose render: publish: %v", err)
 	}
 	finalStamps := published.Stamps
 	moved, lines := publishOutcome(s.runtimeDir, plan, currentStamps, published)
@@ -248,9 +248,9 @@ func (s *composeStack) renderOffline(ctx context.Context, ios IO, lock *compose.
 	published, err := publishRenderPlan(lock, s.runtimeDir, keys, plan)
 	if err != nil {
 		if pendingErr := persistCommittedPublish(s.stateDir, s.runtimeDir, plan, currentStamps, published); pendingErr != nil {
-			return false, failf(ExitInternal, "compose render: publish: %v", errors.Join(err, fmt.Errorf("persist apply-pending: %w", pendingErr)))
+			return false, failf(runtimeExit(err), "compose render: publish: %v", errors.Join(err, fmt.Errorf("persist apply-pending: %w", pendingErr)))
 		}
-		return false, failf(ExitInternal, "compose render: publish: %v", err)
+		return false, failf(runtimeExit(err), "compose render: publish: %v", err)
 	}
 	for _, target := range plan.Targets {
 		stamp := published.Stamps[target.Name]
@@ -267,6 +267,15 @@ func (s *composeStack) renderOffline(ctx context.Context, ios IO, lock *compose.
 		fmt.Fprintln(ios.Stderr, l)
 	}
 	return moved, nil
+}
+
+// runtimeExit maps a runtime-dir custody refusal to ExitRefused; any other
+// runtime-dir failure is internal.
+func runtimeExit(err error) int {
+	if errors.Is(err, compose.ErrRuntimeCustody) {
+		return ExitRefused
+	}
+	return ExitInternal
 }
 
 // publishRenderPlan adapts the pure render plan to the one filesystem-owner

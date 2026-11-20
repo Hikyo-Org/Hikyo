@@ -771,3 +771,56 @@ func TestAccessQueueSelfApprovalAffordance(t *testing.T) {
 		check(current, false) // Already granted.
 	})
 }
+
+// A request pinned to the project-wide policy must not be granted once an
+// environment policy takes precedence: a disabled one shuts access off, and a
+// stricter one's terms replace the pinned policy's.
+func TestAccessVoteRefusesSupersededPolicy(t *testing.T) {
+	variants := map[string]struct {
+		tighten func(in *service.AccessPolicyInput)
+		cause   string
+	}{
+		"disabled": {func(in *service.AccessPolicyInput) { in.Enabled = false }, "policy_disabled"},
+		"stricter": {func(in *service.AccessPolicyInput) { in.MinApprovals = 2 }, "policy_changed"},
+	}
+	for name, variant := range variants {
+		t.Run(name, func(t *testing.T) {
+			forEngines(t, func(t *testing.T, db *store.DB) {
+				h := newAccessHarness(t, db)
+				admin := service.LocalPrincipal(orgAdmin)
+				wide := h.policy(nil, custodian)
+				wide.EnvironmentID = ""
+				if _, err := h.access.CreatePolicy(t.Context(), admin, h.proj, wide); err != nil {
+					t.Fatalf("create project policy: %v", err)
+				}
+				id := h.request("read")
+				envPolicy := h.policy(nil, custodian)
+				variant.tighten(&envPolicy)
+				if _, err := h.access.CreatePolicy(t.Context(), admin, h.proj, envPolicy); err != nil {
+					t.Fatalf("create environment policy: %v", err)
+				}
+				queue, err := h.access.Queue(t.Context(), h.session(custodian, false), h.scope)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, req := range queue.Requests {
+					if req.ID == id && req.CanApprove {
+						t.Fatal("queue offers approval of a request pinned to a superseded policy")
+					}
+				}
+				if _, err := h.access.Vote(t.Context(), h.session(custodian, false), h.scope, id, "approve"); !errors.Is(err, domain.ErrConflict) {
+					t.Fatalf("vote on a superseded policy = %v, want conflict", err)
+				}
+				if got := h.state(id); got != "invalidated" {
+					t.Fatalf("request state = %s, want invalidated", got)
+				}
+				if n := h.liveRows(id); n != 0 {
+					t.Fatalf("%d grant rows written for a superseded policy", n)
+				}
+				if got := queryString(t, db, "SELECT invalidated_cause FROM access_requests WHERE id = '"+id+"'"); got != variant.cause {
+					t.Fatalf("invalidated cause = %s, want %s", got, variant.cause)
+				}
+			})
+		})
+	}
+}

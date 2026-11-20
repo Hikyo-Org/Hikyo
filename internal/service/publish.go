@@ -846,6 +846,20 @@ func republishWithStorage(ctx context.Context, r store.Repos, az *authz.TxAuthor
 	return republishAuthorized(ctx, r, az, caller, sealer, kr, scope, now, trigger, groups, storage, p)
 }
 
+// refuseCoveredEnvironment returns ErrApprovalRequired when an approval policy
+// covers env. Callers that ask for a ceremony check it first, so a covered
+// environment refuses before prompting for one.
+func refuseCoveredEnvironment(ctx context.Context, r store.Repos, p authz.Proof, env domain.EnvID) error {
+	_, covered, err := r.Approvals().CoveringPolicy(ctx, p, string(env))
+	if err != nil {
+		return err
+	}
+	if covered {
+		return ErrApprovalRequired
+	}
+	return nil
+}
+
 // republishAuthorized materializes after the changed-key authority has been
 // checked in this transaction. Schema deletion uses a proof minted before the
 // key and its selector rows disappear; no broader authority is substituted.
@@ -853,19 +867,16 @@ func republishAuthorized(ctx context.Context, r store.Repos, az *authz.TxAuthori
 	sealer *crypto.ProjectSealer, kr *crypto.Keyring, scope domain.Scope,
 	now time.Time, trigger string, groups *groupIndexPhase, storage *schemaPublishStorage, p authz.Proof) (PublishedEnvironment, error) {
 	// Secret-change approvals (#151): the out-of-band value-change paths (copy,
-	// bulk-apply, clone-onto-an-existing-env, import) write cells and publish
-	// directly, sidestepping the draft→publish gate. Where a policy covers the
-	// destination they are refused with ErrApprovalRequired: a covered
-	// environment's changes must go through the reviewed draft flow. The
-	// structural fan-outs (schema `declare`, `environment-create`, and the
-	// draft `values`/`restore` publishes that already ran the gate) are exempt.
+	// bulk-apply, clone-onto-an-existing-env, import, supplied-value declare)
+	// write cells and publish directly, sidestepping the draft→publish gate.
+	// Where a policy covers the destination they are refused with
+	// ErrApprovalRequired: a covered environment's changes must go through the
+	// reviewed draft flow. The structural fan-outs (`environment-create`, the
+	// schema key triggers, and the draft `values`/`restore` publishes that
+	// already ran the gate) are exempt.
 	if approvalGatedTrigger(trigger) {
-		_, covered, err := r.Approvals().CoveringPolicy(ctx, p, string(scope.Env))
-		if err != nil {
+		if err := refuseCoveredEnvironment(ctx, r, p, scope.Env); err != nil {
 			return PublishedEnvironment{}, err
-		}
-		if covered {
-			return PublishedEnvironment{}, ErrApprovalRequired
 		}
 	}
 	groupIndex, err := groups.snapshot(ctx, r.Catalogue(), p)

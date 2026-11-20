@@ -464,7 +464,12 @@ func (s *Values) Import(ctx context.Context, actor Actor, scope domain.Scope, re
 			if err != nil {
 				return err
 			}
-			if settings.Protected && !skipsCeremony(caller) {
+			if settings.Protected && skipsCeremony(caller) {
+				// Import has no field to confirm a protected write, and a machine
+				// confirmation is explicit, never implied (permission-model ADR).
+				return ProtectedDestinationRefusal(scope.Env)
+			}
+			if settings.Protected {
 				unit := make([]string, 0, len(result.Imported))
 				for _, name := range result.Imported {
 					key, err := keyByName(keys, name)
