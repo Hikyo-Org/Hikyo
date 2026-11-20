@@ -242,10 +242,10 @@ void hikyoAlert(const char *title, const char *message) {
 	});
 }
 
-// replace reports that the panel asked about, and the person accepted,
-// replacing a file at the chosen path: the check runs in the same step that
-// returns the panel's answer, so it is the panel's own decision and not a later
-// look at the disk.
+// replace reports that a file was at the chosen path when the panel answered
+// (so the panel asked about replacing it). It is looked up in the same
+// main-thread step as the answer; a file created in that instant is the one
+// remaining gap.
 char *hikyoSavePanel(const char *name, const char *source, const char *mime, int *replace) {
 	__block char *out = NULL;
 	NSString *n = [NSString stringWithUTF8String:name], *from = [NSString stringWithUTF8String:source];

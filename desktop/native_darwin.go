@@ -55,6 +55,12 @@ var delegatesInstalled = func() bool {
 }()
 
 // macNative is the shell.Native for macOS, plus the window registry.
+// closing is what CloseWindow waits for.
+type closing struct {
+	gone chan struct{}
+	id   uint
+}
+
 type macNative struct {
 	app     *application.App
 	manager *shell.Manager
@@ -65,9 +71,9 @@ type macNative struct {
 	// host can't both create one. It is separate from mu, which the window
 	// callbacks take during creation. Close waits on it.
 	opening map[string]chan struct{}
-	// closed is closed once the window of host has been torn down; CloseWindow
-	// waits on it.
-	closed map[string]chan struct{}
+	// closed holds, per host, the channel closed by the window's closing handler
+	// and the window id; CloseWindow waits on both.
+	closed map[string]closing
 }
 
 var _ shell.Native = (*macNative)(nil)
@@ -76,7 +82,7 @@ var _ shell.Native = (*macNative)(nil)
 var theNative atomic.Pointer[macNative]
 
 func newMacNative() *macNative {
-	n := &macNative{windows: map[string]*application.WebviewWindow{}, opening: map[string]chan struct{}{}, closed: map[string]chan struct{}{}}
+	n := &macNative{windows: map[string]*application.WebviewWindow{}, opening: map[string]chan struct{}{}, closed: map[string]closing{}}
 	theNative.Store(n)
 	return n
 }
@@ -118,11 +124,12 @@ func (n *macNative) OpenWindow(host, title string, bind func(string)) error {
 	gone := make(chan struct{})
 	n.mu.Lock()
 	n.windows[host] = w
-	n.closed[host] = gone
+	n.closed[host] = closing{gone: gone, id: w.ID()}
 	n.mu.Unlock()
 	var once sync.Once
-	// Wails runs its own listener first (it closes the native window), so this
-	// one runs after the web view is gone.
+	// Wails' own listener runs concurrently with this one, so this only says the
+	// close was requested; CloseWindow also waits for Wails to drop the window,
+	// which it does after the native close has run.
 	w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
 		n.mu.Lock()
 		if n.windows[host] == w {
@@ -167,20 +174,37 @@ func (n *macNative) CloseWindow(host string) error {
 	// a renderer that is still alive.
 	defer n.reserve(host)()
 	n.mu.Lock()
-	w, gone := n.windows[host], n.closed[host]
+	w, c := n.windows[host], n.closed[host]
+	n.mu.Unlock()
+	if c.gone == nil {
+		return nil
+	}
+	if w != nil {
+		w.Close() // queues WindowClosing; it does not wait for it
+	}
+	// The entries stay until the teardown is seen, so a retry after a timeout
+	// waits again instead of finding nothing to wait for.
+	deadline := time.After(10 * time.Second)
+	select {
+	case <-c.gone:
+	case <-deadline:
+		return errors.New("the window did not finish closing")
+	}
+	for {
+		if _, exists := n.app.Window.GetByID(c.id); !exists {
+			break
+		}
+		select {
+		case <-deadline:
+			return errors.New("the window did not finish closing")
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+	n.mu.Lock()
 	delete(n.windows, host)
 	delete(n.closed, host)
 	n.mu.Unlock()
-	if w == nil {
-		return nil
-	}
-	w.Close() // queues WindowClosing; it does not wait for it
-	select {
-	case <-gone:
-		return nil
-	case <-time.After(10 * time.Second):
-		return errors.New("the window did not finish closing")
-	}
+	return nil
 }
 
 func (n *macNative) WipeStorage(host string) error {

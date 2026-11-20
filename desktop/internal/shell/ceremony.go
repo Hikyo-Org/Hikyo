@@ -97,8 +97,14 @@ func (c *Conn) runSignIn(ctx context.Context) *shellErr {
 	if err != nil {
 		return &shellErr{codeFailed, "the instance could not be reached to check the session"}
 	}
-	if alive || c.bearer() != sent {
+	if alive {
 		return nil
+	}
+	if now := c.bearer(); now != sent {
+		if now == "" {
+			return &shellErr{codeFailed, c.Stopped()} // stopped or being removed meanwhile
+		}
+		return nil // a newer session was committed while the check ran
 	}
 	result, err := c.m.login(ctx, c.inst, "")
 	if err != nil {
