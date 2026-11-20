@@ -181,15 +181,22 @@ const RotationErrorUnknown = "unknown"
 // so a value outside that list, whatever wrote it, is shown as unknown and never
 // passed on. Empty stays empty: the run has no code.
 func rotationErrorWord(stored string) string {
-	switch stored {
-	case "":
+	switch {
+	case stored == "":
 		return ""
-	case rotCodeInterrupted, rotCodeProvider, rotCodeMintFailed, rotCodeMintAmbiguous, rotCodePublishFailed,
-		rotCodeBudget, rotCodePaused, rotCodeHeld, rotCodeDropFailed, rotCodeOwnsObjects, rotCodeVersionsChanged,
-		rotCodeRevokeFailed, rotCodeExtendFailed, rotCodeExtendSkipped, rotCodeExpired, rotCodeInfra, "abandoned":
+	case slices.Contains(rotationRunErrorWords, stored):
 		return stored
 	}
 	return RotationErrorUnknown
+}
+
+// rotationRunErrorWords is the one list of the words a run's error code may carry:
+// every rotCode constant plus abandoned. A test ties it to the constants, so a new
+// code cannot be added and silently shown as unknown.
+var rotationRunErrorWords = []string{
+	rotCodeInterrupted, rotCodeProvider, rotCodeMintFailed, rotCodeMintAmbiguous, rotCodePublishFailed,
+	rotCodeBudget, rotCodePaused, rotCodeHeld, rotCodeDropFailed, rotCodeOwnsObjects, rotCodeVersionsChanged,
+	rotCodeRevokeFailed, rotCodeExtendFailed, rotCodeExtendSkipped, rotCodeExpired, rotCodeInfra, "abandoned",
 }
 
 // RotationHaltUnknown is the halt reason of a halted rotation whose stored reason is

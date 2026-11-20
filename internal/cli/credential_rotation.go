@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"time"
 
@@ -23,19 +24,25 @@ func credentialRotationTable(list apigen.CredentialRotationList) Table {
 		if r.CredentialExpiresAt != nil {
 			expires = r.CredentialExpiresAt.UTC().Format(time.RFC3339)
 		}
+		// The cell follows the state, like the HALTED line: a halted rotation always
+		// says why, a missing reason reading as unknown.
 		halt := "-"
-		if r.HaltReason != nil {
+		if r.State == apigen.CredentialRotationStateHalted {
 			halt = haltReasonWord(r.HaltReason)
+		}
+		state := string(r.State)
+		if r.State == apigen.CredentialRotationStateDisabled {
+			state = "deleted"
 		}
 		last := "-"
 		if r.LastRun != nil {
-			last = string(r.LastRun.Phase)
+			last = runWord(string(r.LastRun.Phase), rotationRunPhaseWords)
 			if r.LastRun.ErrorCode != nil {
-				last += " (" + *r.LastRun.ErrorCode + ")"
+				last += " (" + runWord(*r.LastRun.ErrorCode, rotationRunErrorWords) + ")"
 			}
 		}
 		rows = append(rows, []string{
-			string(r.Id), string(r.State), halt, string(r.ProviderId), string(r.KeyId), string(r.UsernameKeyId),
+			string(r.Id), state, halt, string(r.ProviderId), string(r.KeyId), string(r.UsernameKeyId),
 			(time.Duration(r.IntervalSeconds) * time.Second).String(),
 			(time.Duration(r.RevocationDelaySeconds) * time.Second).String(),
 			next, expires, strconv.FormatInt(r.Generation, 10), last, strconv.FormatInt(r.OwedDropRuns, 10),
@@ -58,13 +65,13 @@ func rotationRunsTable(list apigen.RotationRunList) Table {
 			revision = strconv.FormatInt(*r.PublishedRevision, 10)
 		}
 		if r.ErrorCode != nil {
-			code = *r.ErrorCode
+			code = runWord(*r.ErrorCode, rotationRunErrorWords)
 		}
 		if r.NotConvergedAdapterTargets != nil {
 			converged = strconv.FormatInt(*r.NotConvergedAdapterTargets, 10)
 		}
 		rows = append(rows, []string{
-			string(r.Id), string(r.Trigger), string(r.Phase), revision,
+			string(r.Id), string(r.Trigger), runWord(string(r.Phase), rotationRunPhaseWords), revision,
 			(time.Duration(r.RevocationDelaySeconds) * time.Second).String(),
 			r.StartedAt.UTC().Format(time.RFC3339), r.PhaseAt.UTC().Format(time.RFC3339), code, converged,
 		})
@@ -428,11 +435,32 @@ func noteOwedRuns(ios IO, runs apigen.RotationRunList) {
 		if r.ErrorCode != nil && *r.ErrorCode == versionsChangedCode {
 			// A restore put an older value back, so the keys may be serving this very
 			// role again: dropping it now would cut off the consumers.
-			_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: run %s is %s (%s): a restore put an earlier value back, so the keys may be serving the role it owes a drop again (%s); do NOT drop it at the provider until the keys have moved off it\n", r.Id, r.Phase, versionsChangedCode, until)
+			_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: run %s is %s (%s): a restore put an earlier value back, so the keys may be serving the role it owes a drop again (%s); do NOT drop it at the provider until the keys have moved off it\n", r.Id, runWord(string(r.Phase), rotationRunPhaseWords), versionsChangedCode, until)
 			continue
 		}
-		_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: run %s is %s and a provider role it owes a drop is still live (%s); before you drop it at the provider, check that neither key serves that role, because a revision restore can put it back\n", r.Id, r.Phase, until)
+		_, _ = fmt.Fprintf(ios.Stderr, "ATTENTION: run %s is %s and a provider role it owes a drop is still live (%s); before you drop it at the provider, check that neither key serves that role, because a revision restore can put it back\n", r.Id, runWord(string(r.Phase), rotationRunPhaseWords), until)
 	}
+}
+
+// rotationRunPhaseWords and rotationRunErrorWords are the fixed words a run's phase
+// and error code may carry (the server maps anything else to unknown). Like the halt
+// reason, a value outside them is printed quoted: a newer server, or a bug, can never
+// put control characters or a sentence on the terminal as if it were a word.
+var rotationRunPhaseWords = []string{"staged", "minting", "minted", "published", "overlap", "revoking", "revoke_refused", "quarantine", "done", "failed"}
+
+var rotationRunErrorWords = []string{
+	"interrupted", "provider_unavailable", "mint_failed", "mint_ambiguous", "publish_failed",
+	"publish_budget_exceeded", "rotation_paused", "rotation_held", "drop_failed", "role_owns_objects",
+	"published_versions_changed", "revoke_failed", "extend_failed", "extend_skipped", "expired",
+	"infrastructure_unavailable", "abandoned", "unknown",
+}
+
+// runWord prints a known word bare and anything else quoted.
+func runWord(word string, known []string) string {
+	if slices.Contains(known, word) {
+		return word
+	}
+	return strconv.Quote(word)
 }
 
 // haltReasonSentence says in words why a halted rotation stopped. The sentences are

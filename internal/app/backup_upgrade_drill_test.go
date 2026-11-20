@@ -316,7 +316,7 @@ func TestLegacyDrillFixtureRefusesProjectCapacityEvidence(t *testing.T) {
 	}
 }
 
-// The runtime-created fixture includes migrations 45 through 87 (88 on PostgreSQL), then 89, 90, 91, 92, 93 and 94, while the
+// The runtime-created fixture includes migrations 45 through 87 (88 on PostgreSQL), then 89, 90, 91, 92, 93, 94, 95 and 96, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -343,10 +343,11 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	}
 	// 00089 (principal containment), 00090 (incident ledger), 00091 (credential
 	// rotation), 00092 (rotation revoke deadline), 00093 (rotation manual run),
-	// 00094 (rotation restore hold) and 00095 (OIDC lifecycle) are on both engines.
-	versions = append(versions, 89, 90, 91, 92, 93, 94, 95)
+	// 00094 (rotation restore hold), 00095 (OIDC lifecycle) and 00096 (owed-run index
+	// on rotation_runs, which goes with that table) are on both engines.
+	versions = append(versions, 89, 90, 91, 92, 93, 94, 95, 96)
 	if len(current.Entries) != len(legacy.Entries)+len(versions) || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 87 (88 on PostgreSQL), then 89, 90, 91, 92, 93, 94 and 95 only")
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 87 (88 on PostgreSQL), then 89, 90, 91, 92, 93, 94, 95 and 96 only")
 	}
 	for i, version := range versions {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
@@ -480,7 +481,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	// secret's CHECK names the profile column, so it goes first.
 	drillExec(t, db, "ALTER TABLE oidc_providers DROP COLUMN lifecycle_secret")
 	drillExec(t, db, "ALTER TABLE oidc_providers DROP COLUMN lifecycle_profile")
-	// Reverse 00091 (and with it 00092 to 00094, whose columns live on these tables) only
+	// Reverse 00091 (and with it 00092 to 00094 and 00096, whose columns live on these tables) only
 	// after proving no rotation is configured. Effects, runs and key claims
 	// reference rotations, so they go first.
 	drillExec(t, db, "DROP TABLE rotation_key_claims")
@@ -747,7 +748,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		}
 		drillExec(t, db, "DELETE FROM goose_db_version WHERE version_id = 88")
 	}
-	drillExec(t, db, "DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,89,90,91,92,93,94,95)")
+	drillExec(t, db, "DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,89,90,91,92,93,94,95,96)")
 }
 
 // reverseAWSAdapter undoes 00067 on a pristine fixture. On PostgreSQL only

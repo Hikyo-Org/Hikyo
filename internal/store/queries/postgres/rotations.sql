@@ -4,8 +4,8 @@ INSERT INTO rotations (id,org_id,project_id,environment_id,provider_id,key_id,us
 -- name: RotationGet :one
 SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env);
 
--- Live rotations, plus a deleted one that still owns a run owing a provider role a drop (a quarantine
--- an abandoning delete leaves): an operator must still see what is owed after the delete.
+-- Live rotations only: the environment delete's read of what blocks it. The API's
+-- default list uses RotationListOrOwed, which also keeps a deleted rotation that owes a drop.
 -- name: RotationList :many
 SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state<>'disabled' AND id > sqlc.arg(after_id) ORDER BY id LIMIT sqlc.arg(page_limit);
 
@@ -129,9 +129,10 @@ SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,rev
 -- no superseded role owes nothing, so it settles straight to done; left in
 -- quarantine it would hold its provider and environment forever. RETURNING is the
 -- list of the rows this statement actually changed, so the audit rows the caller
--- writes match them one to one.
+-- writes match them one to one. A run holding published_versions_changed keeps that
+-- code: an abandoning delete must not turn the do-not-drop signal into a plain abandon.
 -- name: RotationAbandonOpenRuns :many
-UPDATE rotation_runs SET phase=CASE WHEN published_revision IS NOT NULL AND superseded_handle IS NULL THEN 'done' ELSE 'quarantine' END,phase_at=sqlc.arg(at),last_error='abandoned',next_attempt_at=CASE WHEN published_revision IS NULL THEN sqlc.arg(at) WHEN phase='published' AND superseded_handle IS NOT NULL THEN sqlc.arg(published_due_at) ELSE next_attempt_at END,lease_owner=CASE WHEN published_revision IS NULL THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN published_revision IS NULL AND lease_owner IS NOT NULL THEN sqlc.arg(at) ELSE NULL END,lease_claim_token=lease_claim_token+1 WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND phase NOT IN ('done','quarantine','failed') RETURNING id,phase,candidate_handle,superseded_handle;
+UPDATE rotation_runs SET phase=CASE WHEN published_revision IS NOT NULL AND superseded_handle IS NULL THEN 'done' ELSE 'quarantine' END,phase_at=sqlc.arg(at),last_error=CASE WHEN last_error='published_versions_changed' THEN last_error ELSE 'abandoned' END,next_attempt_at=CASE WHEN published_revision IS NULL THEN sqlc.arg(at) WHEN phase='published' AND superseded_handle IS NOT NULL THEN sqlc.arg(published_due_at) ELSE next_attempt_at END,lease_owner=CASE WHEN published_revision IS NULL THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN published_revision IS NULL AND lease_owner IS NOT NULL THEN sqlc.arg(at) ELSE NULL END,lease_claim_token=lease_claim_token+1 WHERE rotation_id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND phase NOT IN ('done','quarantine','failed') RETURNING id,phase,candidate_handle,superseded_handle;
 
 -- A failed run that never published only stops holding a live role once its
 -- candidate drop is recorded: the fenced claim write fails the run before the drop.

@@ -12,7 +12,7 @@ import (
 )
 
 const rotationAbandonOpenRuns = `-- name: RotationAbandonOpenRuns :many
-UPDATE rotation_runs SET phase=CASE WHEN published_revision IS NOT NULL AND superseded_handle IS NULL THEN 'done' ELSE 'quarantine' END,phase_at=$1,last_error='abandoned',next_attempt_at=CASE WHEN published_revision IS NULL THEN $1 WHEN phase='published' AND superseded_handle IS NOT NULL THEN $2 ELSE next_attempt_at END,lease_owner=CASE WHEN published_revision IS NULL THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN published_revision IS NULL AND lease_owner IS NOT NULL THEN $1 ELSE NULL END,lease_claim_token=lease_claim_token+1 WHERE rotation_id=$3 AND org_id=$4 AND project_id=$5 AND environment_id=$6 AND phase NOT IN ('done','quarantine','failed') RETURNING id,phase,candidate_handle,superseded_handle
+UPDATE rotation_runs SET phase=CASE WHEN published_revision IS NOT NULL AND superseded_handle IS NULL THEN 'done' ELSE 'quarantine' END,phase_at=$1,last_error=CASE WHEN last_error='published_versions_changed' THEN last_error ELSE 'abandoned' END,next_attempt_at=CASE WHEN published_revision IS NULL THEN $1 WHEN phase='published' AND superseded_handle IS NOT NULL THEN $2 ELSE next_attempt_at END,lease_owner=CASE WHEN published_revision IS NULL THEN lease_owner ELSE NULL END,lease_expires_at=CASE WHEN published_revision IS NULL AND lease_owner IS NOT NULL THEN $1 ELSE NULL END,lease_claim_token=lease_claim_token+1 WHERE rotation_id=$3 AND org_id=$4 AND project_id=$5 AND environment_id=$6 AND phase NOT IN ('done','quarantine','failed') RETURNING id,phase,candidate_handle,superseded_handle
 `
 
 type RotationAbandonOpenRunsParams struct {
@@ -46,7 +46,8 @@ type RotationAbandonOpenRunsRow struct {
 // no superseded role owes nothing, so it settles straight to done; left in
 // quarantine it would hold its provider and environment forever. RETURNING is the
 // list of the rows this statement actually changed, so the audit rows the caller
-// writes match them one to one.
+// writes match them one to one. A run holding published_versions_changed keeps that
+// code: an abandoning delete must not turn the do-not-drop signal into a plain abandon.
 func (q *Queries) RotationAbandonOpenRuns(ctx context.Context, arg RotationAbandonOpenRunsParams) ([]RotationAbandonOpenRunsRow, error) {
 	rows, err := q.db.Query(ctx, rotationAbandonOpenRuns,
 		arg.At,
@@ -523,8 +524,8 @@ type RotationListRow struct {
 	HaltReason             pgtype.Text
 }
 
-// Live rotations, plus a deleted one that still owns a run owing a provider role a drop (a quarantine
-// an abandoning delete leaves): an operator must still see what is owed after the delete.
+// Live rotations only: the environment delete's read of what blocks it. The API's
+// default list uses RotationListOrOwed, which also keeps a deleted rotation that owes a drop.
 func (q *Queries) RotationList(ctx context.Context, arg RotationListParams) ([]RotationListRow, error) {
 	rows, err := q.db.Query(ctx, rotationList,
 		arg.ChainOrg,

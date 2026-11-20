@@ -186,3 +186,47 @@ func TestRotationShowSummarisesOwedDrops(t *testing.T) {
 		t.Errorf("show lacks the halt line:\n%s", out)
 	}
 }
+
+// A deleted rotation is `deleted` in the table, like its ATTENTION line, not the wire's
+// `disabled`; a halted one always fills the HALT REASON cell (a missing reason reads as
+// unknown, as on the HALTED line) and a live one never does; a run phase or error code
+// outside the fixed words is printed quoted, never raw.
+func TestRotationListStateHaltCellAndQuotedRunWords(t *testing.T) {
+	items := []apigen.CredentialRotation{
+		summaryRotation("rot_gone", apigen.CredentialRotationStateDisabled, nil),
+		summaryRotation("rot_noreason", apigen.CredentialRotationStateHalted, nil),
+		summaryRotation("rot_live", apigen.CredentialRotationStateActive, func(r *apigen.CredentialRotation) {
+			r.HaltReason = ptr("authority_lost") // a live rotation's stale reason is not believed
+			r.LastRun = &apigen.RotationLastRun{Id: "run_1", Phase: apigen.RotationRunPhase("done\x1b[31m"), ErrorCode: ptr("secret=hunter2")}
+		}),
+		summaryRotation("rot_known", apigen.CredentialRotationStateActive, func(r *apigen.CredentialRotation) {
+			r.LastRun = &apigen.RotationLastRun{Id: "run_2", Phase: apigen.RotationRunPhaseRevokeRefused, ErrorCode: ptr("published_versions_changed")}
+		}),
+	}
+	ios, stdout, stderr := definitionsTestIO(t, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		_ = jsonwire.Encode(rw, apigen.CredentialRotationList{Items: items})
+	}))
+	if code := cli.Run(t.Context(), ios, append([]string{"rotation", "list", "--include-disabled"}, rotationScope...)); code != cli.ExitOK {
+		t.Fatalf("exit %d; stderr=%s", code, stderr)
+	}
+	out := stdout.String()
+	if row := lineWith(out, "rot_gone"); !strings.Contains(row, "deleted") || strings.Contains(row, "disabled") {
+		t.Errorf("a deleted rotation's row says %q, want deleted", row)
+	}
+	if row := lineWith(out, "rot_noreason"); !strings.Contains(row, "unknown") {
+		t.Errorf("a halted rotation with no reason has no HALT REASON cell: %q", row)
+	}
+	if row := lineWith(out, "rot_live"); strings.Contains(row, "authority_lost") {
+		t.Errorf("a live rotation printed a halt reason: %q", row)
+	}
+	if !strings.Contains(out, `"done\x1b[31m" ("secret=hunter2")`) {
+		t.Errorf("an unknown phase and code were not quoted:\n%s", out)
+	}
+	if strings.Contains(out, "\x1b") {
+		t.Errorf("a control character reached stdout:\n%q", out)
+	}
+	if row := lineWith(out, "rot_known"); !strings.Contains(row, "revoke_refused (published_versions_changed)") {
+		t.Errorf("a known phase and code were not printed bare: %q", row)
+	}
+}
