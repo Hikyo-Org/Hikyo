@@ -34,7 +34,7 @@ import {
 } from './keys.ts';
 import { useTransport } from './transport.tsx';
 import { environmentListQueryOptions } from './hierarchyQueries.ts';
-import { ContinueInBrowserError, ShellError, isAppMode, offerContinueInBrowser, shellReauth, type ShellReauthRequest } from '../app/shell.ts';
+import { isAppMode, offerContinueInBrowser, shellFailureText, shellReauth, type ShellReauthRequest } from '../app/shell.ts';
 
 /**
  * The value surface and the reveal ceremony, as the SPA sees them (#58).
@@ -473,8 +473,9 @@ export async function runOIDCCeremony(
  * that was fine.
  */
 export function ceremonyRefusalText(error: unknown): string {
-  if (error instanceof OIDCCeremonyError || error instanceof ContinueInBrowserError) return error.message;
-  if (error instanceof ShellError) return shellRefusalText(error);
+  if (error instanceof OIDCCeremonyError) return error.message;
+  const shell = shellFailureText(error);
+  if (shell !== undefined) return shell;
   if (error instanceof ApiError) {
     return statusText(
       error,
@@ -490,16 +491,6 @@ export function ceremonyRefusalText(error: unknown): string {
     return 'The passkey prompt was dismissed or timed out. Nothing was disclosed.';
   }
   return 'The reauthentication could not be completed.';
-}
-
-function shellRefusalText(error: ShellError): string {
-  switch (error.code) {
-    case 'cancelled': return 'The confirmation was cancelled. Nothing was authorised.';
-    case 'busy': return 'Another confirmation is already open in your browser. Finish or close it, then try again.';
-    case 'rate_limited': return 'Too many confirmations just now. Wait a moment, then try again.';
-    case 'refused': return 'The desktop app will not run this confirmation. Continue in your browser instead.';
-    default: return 'The confirmation could not be completed in your browser. Try again.';
-  }
 }
 
 /**

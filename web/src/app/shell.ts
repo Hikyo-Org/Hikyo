@@ -145,7 +145,24 @@ export async function shellReauth(request: ShellReauthRequest): Promise<void> {
   if (request.purpose !== 'adapter' && (request.key_ids?.length ?? 0) > SHELL_REAUTH_KEY_LIMIT) {
     throw offerContinueInBrowser('This decision covers more keys than the desktop app can hand to your browser.');
   }
-  await post('reauth', zReauthRequest.parse(request));
+  try {
+    await post('reauth', zReauthRequest.parse(request));
+  } catch (error) {
+    if (error instanceof ShellError && error.code === 'refused') throw offerContinueInBrowser('The desktop app will not run this confirmation. Continue in your browser instead.');
+    throw error;
+  }
+}
+
+/** Text for a failure that came from the shell or from refusing to hop; undefined for anything else. */
+export function shellFailureText(error: unknown): string | undefined {
+  if (error instanceof ContinueInBrowserError) return error.message;
+  if (!(error instanceof ShellError)) return undefined;
+  switch (error.code) {
+    case 'cancelled': return 'The confirmation was cancelled. Nothing was authorised.';
+    case 'busy': return 'Another confirmation is already open in your browser. Finish or close it, then try again.';
+    case 'rate_limited': return 'Too many confirmations just now. Wait a moment, then try again.';
+    default: return 'The confirmation could not be completed in your browser. Try again.';
+  }
 }
 
 let signingIn: Promise<void> | undefined;

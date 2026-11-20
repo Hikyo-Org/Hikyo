@@ -10,6 +10,7 @@ import {
   isAppMode,
   knownShellOrigin,
   requireBrowser,
+  shellFailureText,
   shellClipboardCopied,
   shellDownloadBytes,
   shellDownloadPath,
@@ -107,11 +108,23 @@ describe('reauth', () => {
     await expect(shellReauth({ ...reveal, key_ids: keys.slice(0, 500) })).resolves.toBeUndefined();
   });
 
-  it.each(['refused', 'busy', 'rate_limited', 'cancelled', 'failed', 'invalid'] as const)('maps the %s error body', async (code) => {
+  it.each(['busy', 'rate_limited', 'cancelled', 'failed', 'invalid'] as const)('maps the %s error body', async (code) => {
     fetcher.mockResolvedValue(refused(code));
     const error = await shellReauth(reveal).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(ShellError);
     expect(error).toMatchObject({ code });
+  });
+
+  it('offers Continue in browser when the shell refuses a reauth', async () => {
+    fetcher.mockResolvedValue(refused('refused'));
+    await expect(shellReauth(reveal)).rejects.toBeInstanceOf(ContinueInBrowserError);
+    expect(continueInBrowserReason()).not.toBeNull();
+  });
+
+  it('words each shell failure and leaves other errors alone', () => {
+    expect(shellFailureText(new ShellError('cancelled', 'x'))).toContain('cancelled');
+    expect(shellFailureText(new ShellError('busy', 'x'))).toContain('already open');
+    expect(shellFailureText(new Error('x'))).toBeUndefined();
   });
 
   it('treats a body outside the contract as a failed hop', async () => {

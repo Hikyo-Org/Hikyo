@@ -22,7 +22,7 @@ with unknown fields refused on both sides. Errors use one body:
 { "error": "<code>", "message": "<human text>" }
 ```
 
-Error codes: `refused` (the shell will not do this; the SPA offers
+Error codes: `refused` (the shell will not do this; for a reauth the SPA offers
 "Continue in browser"), `busy` (one already running), `rate_limited`,
 `cancelled` (the user cancelled, nothing happened), `failed` (the hop failed;
 retryable), `invalid` (malformed request).

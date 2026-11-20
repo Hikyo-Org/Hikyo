@@ -14,6 +14,7 @@ import {
 } from '../api/workspace.ts';
 import { createWorkspaceClient } from '../api/workspaceClient.ts';
 import { makeQueryClient, retireQueryClient } from '../app/queryClient.ts';
+import { isAppMode } from '../app/shell.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
@@ -242,7 +243,9 @@ function WorkspaceBanner({ origin }: { origin: string }) {
  */
 export function Reconnect({ origin, name }: { origin: string; name: string }) {
   const handoff = useWorkspaceHandoff(origin, {
-    preparation: { kind: 'establishment' },
+    preparation: isAppMode()
+      ? { kind: 'refused', message: 'Workspaces open in your browser, not in the desktop app.' }
+      : { kind: 'establishment' },
     onFailMessage: (error) =>
       error instanceof WorkspaceError
         ? error.message

@@ -142,7 +142,11 @@ export async function writeExpiringClipboard(
   if (audited && isAppMode()) {
     // WebKit refuses the clipboard read the timer above relies on, so the shell
     // clears it, and only if it saw this copy and nothing else was copied since.
-    await shellClipboardCopied().catch(() => notifyFailure('The desktop app could not arm clipboard clearing. Clear your clipboard manually.'));
+    const armed = await shellClipboardCopied().then(() => true, () => false);
+    if (!armed) {
+      notifyFailure('The desktop app could not arm clipboard clearing. Clear your clipboard manually.');
+      return 'Copied, and recorded as a disclosure. Clipboard managers may keep this copy.';
+    }
     return 'Copied, and recorded as a disclosure. The desktop app clears the clipboard later if you have not copied anything else. Clipboard managers may keep this copy.';
   }
   if (audited) {

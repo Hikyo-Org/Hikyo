@@ -10,7 +10,7 @@ import { forgetWorkspace } from './workspace.ts';
 import { useTransport, useWorkspaceContext, type TransportOptions } from './transport.tsx';
 import { assertSessionEpoch, captureSessionEpoch } from './sessionEpoch.ts';
 import { requestOptions, toBase64URL } from './values.ts';
-import { isAppMode, shellReauth } from '../app/shell.ts';
+import { isAppMode, shellFailureText, shellReauth } from '../app/shell.ts';
 
 const SELF_CONFIG_OPERATION = { adopt: 'self-config.adopt', apply: 'self-config.apply', 'mail-test': 'self-config.test', 'rollout-restore': 'self-config.apply' } as const;
 
@@ -97,6 +97,8 @@ export function useSelfConfigActions() {
 }
 
 export function selfConfigFailure(error: Error): string {
+  const shell = shellFailureText(error);
+  if (shell !== undefined) return shell;
   return statusText(
     error,
     {

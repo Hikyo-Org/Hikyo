@@ -214,6 +214,8 @@ export function RemoteCard({
         ? { kind: 'refused', message: 'Remote connections are read-only in this demo.' }
         : duplicateIdentity
         ? { kind: 'refused', message: remoteRecoveryText(remote, 'duplicate-identity') ?? '' }
+        : isAppMode()
+          ? { kind: 'refused', message: 'Workspaces open in your browser, not in the desktop app.' }
         : live === undefined
           ? { kind: 'establishment' }
           : { kind: 'refused', message: 'This workspace is already open in another tab.' },
