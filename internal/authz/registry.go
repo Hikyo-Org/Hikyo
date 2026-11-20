@@ -1004,9 +1004,13 @@ const (
 
 	// Scheduled credential rotation configuration (#148, S1). Proof-carrying,
 	// environment-bound; the run state machine (S2) adds its own ops.
-	StoreRotationsCreate        StoreOp = "rotations.Create"
-	StoreRotationsGet           StoreOp = "rotations.Get"
-	StoreRotationsList          StoreOp = "rotations.List"
+	StoreRotationsCreate StoreOp = "rotations.Create"
+	StoreRotationsGet    StoreOp = "rotations.Get"
+	StoreRotationsList   StoreOp = "rotations.List"
+	// StoreRotationsSummarize reads the run summary (last run, owed-drop counts) of
+	// the rotations a response returns (#148 S4). Only the operations whose response
+	// carries a rotation hold it; the executor and the gates never do.
+	StoreRotationsSummarize     StoreOp = "rotations.Summarize"
 	StoreRotationsSetState      StoreOp = "rotations.SetState"
 	StoreRotationsCountOpenRuns StoreOp = "rotations.CountOpenRuns"
 	// StoreRotationsPurgeEnvironment removes a deleted environment's rotation
@@ -1553,6 +1557,7 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	// Rotation inspect is a bare-read (`read@env`) (#148).
 	StoreRotationsGet:           true,
 	StoreRotationsList:          true,
+	StoreRotationsSummarize:     true,
 	StoreRotationsCountOpenRuns: true,
 	StoreRotationsListRuns:      true,
 	// SSH reads of public trust material and certificate metadata (#155).
@@ -5514,13 +5519,13 @@ var operationTable = map[Operation]opSpec{
 	OpRotationInspect: {
 		class: ClassTenant, level: domain.LevelEnv,
 		formula:     Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
-		storeOps:    map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsList: true},
+		storeOps:    map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsList: true, StoreRotationsSummarize: true},
 		auditedNone: true,
 	},
 	OpRotationPause: {
 		class: ClassTenant, level: domain.LevelEnv,
 		formula:  Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
-		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSetState: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSummarize: true, StoreRotationsSetState: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventRotationConfigured},
 	},
 	OpRotationResume: {
@@ -5539,13 +5544,13 @@ var operationTable = map[Operation]opSpec{
 		postGrantForbidden: true,
 		// Resume re-checks the provider can mint and both keys still exist and are
 		// secret-classified before the per-key authority checks.
-		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSetState: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StorePendingListForOwnerInEnvironment: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSummarize: true, StoreRotationsSetState: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StorePendingListForOwnerInEnvironment: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventRotationConfigured},
 	},
 	OpRotationDelete: {
 		class: ClassTenant, level: domain.LevelEnv,
 		formula:  Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
-		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSetState: true, StoreRotationsCountOpenRuns: true, StoreRotationsAbandonOpenRuns: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSummarize: true, StoreRotationsSetState: true, StoreRotationsCountOpenRuns: true, StoreRotationsAbandonOpenRuns: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventRotationConfigured, audit.EventRotationQuarantined, audit.EventRotationRunOutcome},
 	},
 	OpRotationRunNow: {
@@ -5577,7 +5582,7 @@ var operationTable = map[Operation]opSpec{
 			{Cap: domain.CapReveal, At: domain.LevelEnv},
 		},
 		postGrantForbidden: true,
-		storeOps:           map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsReleaseHold: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StorePendingListForOwnerInEnvironment: true, StoreAuditTenantInsert: true},
+		storeOps:           map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSummarize: true, StoreRotationsReleaseHold: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StorePendingListForOwnerInEnvironment: true, StoreAuditTenantInsert: true},
 		events:             []audit.EventType{audit.EventRotationConfigured},
 	},
 	OpRotationRuns: {

@@ -6917,6 +6917,9 @@ type CredentialRotation struct {
 	EnvironmentId ID    `json:"environment_id"`
 	Generation    int64 `json:"generation"`
 
+	// HaltReason Present only while the state is halted: why the server stopped the rotation, as a fixed word.
+	HaltReason *RotationHaltReason `json:"halt_reason,omitzero"`
+
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id              ID    `json:"id"`
 	IntervalSeconds int64 `json:"interval_seconds"`
@@ -6924,8 +6927,17 @@ type CredentialRotation struct {
 	// KeyId A prefixed UUIDv7, e.g. `org_0198…`.
 	KeyId ID `json:"key_id"`
 
+	// LastRun The newest run, the top row of the runs list. Absent when the rotation has never run.
+	LastRun *RotationLastRun `json:"last_run,omitzero"`
+
 	// NextRunAt Set only while the rotation is active.
 	NextRunAt *time.Time `json:"next_run_at,omitzero"`
+
+	// OwedDropRuns How many of the rotation's runs, over its whole history, need an operator's attention because they still owe a provider role a drop: those in phase revoke_refused (held on purpose, Hikyo does not drop the role) or quarantine (Hikyo may still retry the drop, but it needs a person to look), whatever their error code. It is the count `hikyo rotation runs` lists as ATTENTION, and the hikyo_rotation_runs_revoke_refused and hikyo_rotation_runs_quarantined gauges sum the same runs. Hikyo has no operator action that releases such a role; it lapses on its own unless dropped at the provider. Zero means no run needs an operator's attention for a role: a run still in flight (published, overlap or revoking) also owes a drop, which the executor carries out itself, and is not counted here. A deleted rotation keeps the count of the runs its delete closed.
+	OwedDropRuns int64 `json:"owed_drop_runs"`
+
+	// OwedDropRunsVersionsChanged The part of owed_drop_runs a restore refused (error_code `published_versions_changed`): the keys may be serving that role again, so it must not be dropped until they have moved off it. Whenever this is above zero, never tell an operator to drop; tell them to read the runs first.
+	OwedDropRunsVersionsChanged int64 `json:"owed_drop_runs_versions_changed"`
 
 	// ProviderId A prefixed UUIDv7, e.g. `org_0198…`.
 	ProviderId ID `json:"provider_id"`
@@ -6936,8 +6948,10 @@ type CredentialRotation struct {
 
 	// State `paused` is an operator or cascade pause (a deleted provider, a protected
 	// environment or an approval policy pauses the rotations it would break);
-	// `halted` is the executor's named stop after a failed authority gate. Only a
-	// full resume authorization leaves either. `disabled` is the soft delete.
+	// `halted` is the executor's named stop (a failed authority or pre-publish
+	// gate, or an exhausted retry window); the rotation's `halt_reason` names
+	// which. Only a full resume authorization leaves either. `disabled` is the
+	// soft delete.
 	State CredentialRotationState `json:"state"`
 
 	// UpdatedAt RFC 3339 UTC, microsecond precision.
@@ -6957,8 +6971,10 @@ type CredentialRotationList struct {
 
 // CredentialRotationState `paused` is an operator or cascade pause (a deleted provider, a protected
 // environment or an approval policy pauses the rotations it would break);
-// `halted` is the executor's named stop after a failed authority gate. Only a
-// full resume authorization leaves either. `disabled` is the soft delete.
+// `halted` is the executor's named stop (a failed authority or pre-publish
+// gate, or an exhausted retry window); the rotation's `halt_reason` names
+// which. Only a full resume authorization leaves either. `disabled` is the
+// soft delete.
 type CredentialRotationState string
 
 // DEKRotation defines model for DEKRotation.
@@ -10963,6 +10979,34 @@ type RotateSSHCARequest struct {
 	PrivateKey *string `json:"private_key,omitzero"`
 }
 
+// RotationHaltReason Why a halted rotation stopped, as a fixed word, never free text and never
+// provider detail. `retries_exhausted`: the cycle's retry window ran out
+// before a run could publish or extend the credential, so the delivered
+// credential is not extended. `authority_lost`: the recorded person no longer
+// holds the access the rotation needs, or one of its keys or its environment
+// is gone. `gate_failed`: a pre-publish gate refused, for example the
+// environment became protected, a key changed or a draft appeared. `unknown`: the stored reason is not one of the words the
+// server writes (a legacy or restored value). OPEN enum: a later release may
+// add a word, so a client keeps an unrecognised one and says only that the
+// rotation is halted.
+type RotationHaltReason = string
+
+// RotationLastRun The newest run of a rotation, the top row of its runs list: metadata only.
+// Neither a role handle nor any provider detail is carried.
+type RotationLastRun struct {
+	// ErrorCode The fixed-word code of the run's last failure, if any, exactly as the runs list carries it. Never provider detail.
+	ErrorCode *string `json:"error_code,omitzero"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id ID `json:"id"`
+
+	// Phase The run's state-machine phase. `quarantine` and `failed` are terminal; `done` is a settled run.
+	Phase RotationRunPhase `json:"phase"`
+
+	// PhaseAt RFC 3339 UTC, microsecond precision.
+	PhaseAt Timestamp `json:"phase_at"`
+}
+
 // RotationRun defines model for RotationRun.
 type RotationRun struct {
 	// CredentialValidUntil For a revoke_refused or quarantine run that published, when the superseded role it still owes a drop expires on its own (its candidate is the serving credential and is never named here); for a quarantine run that never published, when its candidate role does. Null for every other phase, or when no expiry was recorded. The role is owed a drop, not necessarily safe to drop: before dropping it, check that neither key serves it, because a revision restore can put it back (error_code `published_versions_changed` says one already did). A lower bound when credential_valid_until_lower_bound is true.
@@ -14020,7 +14064,7 @@ type ListRevisionsParams struct {
 
 // ListRotationsParams defines parameters for ListRotations.
 type ListRotationsParams struct {
-	// IncludeDisabled List deleted (disabled) rotations as well. Off by default.
+	// IncludeDisabled List every deleted (disabled) rotation as well. Off by default, which still lists a deleted rotation that owns a run owing a provider role a drop.
 	IncludeDisabled *bool `form:"include_disabled" json:"include_disabled,omitzero"`
 
 	// Limit Maximum rotations on this page, in id order.

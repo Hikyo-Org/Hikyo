@@ -6,8 +6,13 @@ import type { MockRoute } from '../../.storybook/withApp.tsx';
 import { ORG, PRJ, PROD, STAGING } from '../testkit/ids.ts';
 import { dynamicProvider } from '../testkit/machineAccess.ts';
 import {
+  deletedOwedRotation,
+  GONE_ROTATION,
   haltedRotation,
+  HALTED_ROTATION,
   HELD_ROTATION,
+  LONG_PASSWORD_NAME,
+  longKeyNameRotation,
   owedRuns,
   ROTATION,
   rotationKeys,
@@ -42,7 +47,7 @@ const meta = {
   },
   parameters: {
     ...topLayerDocs,
-    app: { responses: [keys, list([...rotationList().items, haltedRotation()]), runs(ROTATION, owedRuns), runs(HELD_ROTATION, { items: [] })] },
+    app: { responses: [keys, list([...rotationList().items, haltedRotation(), deletedOwedRotation()]), runs(ROTATION, owedRuns), runs(HELD_ROTATION, { items: [] })] },
     docs: {
       ...topLayerDocs.docs,
       description: {
@@ -58,17 +63,47 @@ type Story = StoryObj<typeof meta>;
 export const Populated: Story = {
   play: async ({ canvas }) => {
     const table = await canvas.findByRole('table', { name: /credential rotations/ });
-    await expect(within(table).getAllByRole('row')).toHaveLength(4);
+    await expect(within(table).getAllByRole('row')).toHaveLength(5);
     // Status is a word, never only a colour, and the table has no act to take.
     await expect(within(table).getByText('halted')).toBeVisible();
-    await expect(within(table).getAllByRole('button').map((button) => button.textContent)).toEqual(['Show runs', 'Show runs', 'Show runs']);
+    await expect(within(table).getAllByRole('button').map((button) => button.textContent)).toEqual(['Show runs', 'Show runs', 'Show runs', 'Show runs']);
     await expect(within(table).getByRole('button', { name: 'Show runs of ANALYTICS_PASSWORD' })).toBeVisible();
     // The id is labelled (the CLI takes it) and the record fields are on the row.
-    await expect(within(table).getAllByText('Rotation', { selector: 'dt' })).toHaveLength(3);
+    await expect(within(table).getAllByText('Rotation', { selector: 'dt' })).toHaveLength(4);
     await expect(within(table).getByText(ROTATION)).toBeVisible();
     for (const label of ['Authority principal', 'Created by', 'Generation', 'Created', 'Updated']) {
-      await expect(within(table).getAllByText(label, { selector: 'dt' })).toHaveLength(3);
+      await expect(within(table).getAllByText(label, { selector: 'dt' })).toHaveLength(4);
     }
+  },
+};
+
+// S4: a halted rotation says why, in the CLI's words, on the notice and on its row.
+export const HaltedWithReason: Story = {
+  play: async ({ canvas, canvasElement }) => {
+    const table = await canvas.findByRole('table', { name: /credential rotations/ });
+    const row = within(table).getByText(HALTED_ROTATION).closest('tr')!;
+    await expect(within(row).getByText('Halt reason', { selector: 'dt' })).toBeVisible();
+    // The reason's code is its own word (it breaks only after an underscore), so the sentence spans elements.
+    await expect(row).toHaveTextContent('retries_exhausted: the retry window ran out');
+    await expect(canvasElement).toHaveTextContent('is halted (retries_exhausted): the retry window ran out');
+  },
+};
+
+// S4: a rotation that owes a drop says so in words. When a restore refused one of them the
+// badge and line say not to drop it, and no row anywhere reads "drop it" for that case.
+export const OwedDropSummary: Story = {
+  play: async ({ canvas }) => {
+    const table = await canvas.findByRole('table', { name: /credential rotations/ });
+    const row = within(table).getByText(ROTATION).closest('tr')!;
+    await expect(within(row).getByText('Do not drop: restore')).toBeVisible();
+    await expect(within(row).queryByText('Owes a drop')).toBeNull();
+    await expect(within(row).getByText(/do NOT drop it at the provider until the keys have moved off it/)).toBeVisible();
+    await expect(within(row).getByText('Last run', { selector: 'dt' })).toBeVisible();
+    // The other line is the deleted rotation that still owes a drop: the default list keeps it, marked deleted.
+    await expect(within(table).queryAllByText(/^ATTENTION: rotation /)).toHaveLength(2);
+    const gone = within(table).getByText(GONE_ROTATION).closest('tr')!;
+    await expect(within(gone).getByText('deleted')).toBeVisible();
+    await expect(within(gone).getByText(/\(deleted\) has 1 run\(s\) that owe a provider role a drop/)).toBeVisible();
   },
 };
 
@@ -97,7 +132,15 @@ export const RunTimelineWithOwedDrops: Story = {
 };
 
 export const SettledRuns: Story = {
-  parameters: { app: { responses: [keys, list(rotationList().items), runs(ROTATION, settledRuns)] } },
+  parameters: {
+    app: {
+      responses: [
+        keys,
+        list(rotationList().items.map((r) => ({ ...r, owed_drop_runs: 0, owed_drop_runs_versions_changed: 0 }))),
+        runs(ROTATION, settledRuns),
+      ],
+    },
+  },
   play: async ({ canvas }) => {
     await userEvent.click(await canvas.findByRole('button', { name: 'Show runs of DATABASE_PASSWORD' }));
     await expect(await canvas.findByRole('table', { name: /Runs of this rotation/ })).toBeVisible();
@@ -177,12 +220,58 @@ export const DesktopNoSideScroll: Story = {
     await userEvent.click(await canvas.findByRole('button', { name: 'Show runs of DATABASE_PASSWORD' }));
     await canvas.findByRole('table', { name: /Runs of this rotation/ });
     expectNoSideScroll(canvasElement);
-    // A key name keeps its room: it never splits mid-word to fit a narrow column.
-    for (const name of canvasElement.querySelectorAll('.rotations__table .kv bdi')) {
-      const range = document.createRange();
-      range.selectNodeContents(name);
-      await expect(range.getClientRects().length).toBe(1);
-    }
+    expectKeyNamesFit(canvasElement);
     await expect(canvas.getAllByText(/Owed role valid until/)[0]).toBeVisible();
+  },
+};
+
+/**
+ * A key name breaks only after an underscore, and its right edge stays inside its own
+ * cell: a name that runs over the next cell is caught here, not by one line of text.
+ */
+function expectKeyNamesFit(root: HTMLElement) {
+  const names = root.querySelectorAll('.rotations__table .kv bdi');
+  expect(names.length).toBeGreaterThan(0);
+  for (const name of names) {
+    for (const node of name.childNodes) {
+      if (node.nodeType !== Node.TEXT_NODE) continue;
+      const text = node.textContent ?? '';
+      const range = document.createRange();
+      for (let i = 1; i < text.length; i += 1) {
+        range.setStart(node, i - 1);
+        range.setEnd(node, i);
+        const before = range.getBoundingClientRect().top;
+        range.setStart(node, i);
+        range.setEnd(node, i + 1);
+        // A line break inside a word, at anything but an underscore.
+        if (range.getBoundingClientRect().top > before + 1) expect(text[i - 1]).toBe('_');
+      }
+    }
+    const cell = name.closest('th, td');
+    expect(cell).not.toBeNull();
+    expect(name.getBoundingClientRect().right).toBeLessThanOrEqual((cell?.getBoundingClientRect().right ?? 0) + 0.5);
+  }
+}
+
+// A key name about 45 characters long wraps after an underscore and stays in its cell, at a
+// phone's width and at a laptop's.
+export const LongKeyNamePhone: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  parameters: { app: { responses: [keys, list([longKeyNameRotation()]), runs(ROTATION, owedRuns)] } },
+  play: async ({ canvas, canvasElement }) => {
+    await canvas.findByRole('table', { name: /credential rotations/ });
+    await expect(canvas.getAllByText(LONG_PASSWORD_NAME, { selector: 'bdi' })[0]).toBeVisible();
+    expectNoSideScroll(canvasElement);
+    expectKeyNamesFit(canvasElement);
+  },
+};
+
+export const LongKeyNameDesktop: Story = {
+  parameters: { app: { responses: [keys, list([longKeyNameRotation()]), runs(ROTATION, owedRuns)] } },
+  play: async ({ canvas, canvasElement }) => {
+    await canvas.findByRole('table', { name: /credential rotations/ });
+    await expect(canvas.getAllByText(LONG_PASSWORD_NAME, { selector: 'bdi' })[0]).toBeVisible();
+    expectNoSideScroll(canvasElement);
+    expectKeyNamesFit(canvasElement);
   },
 };
