@@ -151,7 +151,9 @@ every context ran, and it runs in the test process, not as a vet result).
   directory. Snapshot reads go through `os.OpenRoot(root)`: a symlink in any
   parent directory of a declared path (the root itself aside) is irregular, and a
   non-regular file is refused before it is opened. A symlink or other irregular
-  entry inside a declared directory fails the snapshot instead of being skipped.
+  entry inside a declared directory fails the snapshot instead of being skipped,
+  so an untracked symlink there (an editor lock file, say) fails a local run
+  with an error naming the path.
   The old-harness reader
   (`osSource`) has no root to confine reads to, so it still follows a symlinked
   parent and skips a symlinked subdirectory; it goes with the old harness in PR 4.
@@ -159,8 +161,9 @@ every context ran, and it runs in the test process, not as a vet result).
   (file-input analyzers, checked by `os.SameFile` along each file's parent
   directories; test: `TestVetDriverRefusesBadInputs`, case "foreign root with a
   matching digest"). A directory that encloses the repository also contains the
-  anchor and passes; its inputs are then read at the wrong paths and reported
-  absent, not clean. `grantlock` and `denialwriter` have no anchor, so the tie
+  anchor and passes; its inputs are then read at its own paths, normally
+  absent and so reported, unless that directory is itself a checkout (for
+  example one holding a nested worktree), which the driver never passes. `grantlock` and `denialwriter` have no anchor, so the tie
   does not apply to them. Their `-root` is bound only by the digest: it must
   equal the hash of the declared query files under that root. A root other than
   the repository's with matching digest flags is analyzed as that root; the

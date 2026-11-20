@@ -336,7 +336,8 @@ func checkSymlinkedParent(t *testing.T) {
 	if err := mkdirWrite(filepath.Join(inner, "real", "q", "a.sql"), "select 1;"); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(filepath.Join(inner, "real"), filepath.Join(inner, "b")); err != nil {
+	// Relative target: os.Root would refuse an absolute one as an escape anyway.
+	if err := os.Symlink("real", filepath.Join(inner, "b")); err != nil {
 		t.Fatal(err)
 	}
 	if in, err := SnapshotInputs(inner, []InputSpec{{Dir: "b/q", Exts: []string{".sql"}}}); err != nil {
