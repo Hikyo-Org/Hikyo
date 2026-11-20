@@ -5,25 +5,24 @@ import (
 	"testing"
 )
 
-func TestDeferredSite(t *testing.T) {
-	const inPackage = Module + "/internal/store [" + Module + "/internal/store.test]"
-	const external = Module + "/internal/store_test [" + Module + "/internal/store.test]"
+func TestRaisedDeferred(t *testing.T) {
+	pinned := map[string]map[string]int{"handles": {"a_test.go": 2}}
 	tests := []struct {
-		name, pkgID, analyzer, posn string
-		want                        bool
+		name     string
+		observed map[string]map[string]int
+		want     int
 	}{
-		{"handles in an in-package test file", inPackage, "handles", "/r/internal/store/a_test.go:3:4", true},
-		{"redactfmt in an in-package test file", inPackage, "redactfmt", "/r/internal/store/a_test.go:3:4", true},
-		{"production file of the test variant stays strict", inPackage, "handles", "/r/internal/store/a.go:3:4", false},
-		{"external test package stays strict", external, "handles", "/r/internal/store/a_test.go:3:4", false},
-		{"other analyzers stay strict", inPackage, "forgeguard", "/r/internal/store/a_test.go:3:4", false},
-		{"malformed position stays strict", inPackage, "handles", "a_test.go", false},
-		{"position without a line stays strict", inPackage, "handles", "/r/a_test.go:x:4", false},
+		{"lowered", map[string]map[string]int{"handles": {"a_test.go": 1}}, 0},
+		{"removed", map[string]map[string]int{}, 0},
+		{"unchanged", map[string]map[string]int{"handles": {"a_test.go": 2}}, 0},
+		{"raised", map[string]map[string]int{"handles": {"a_test.go": 3}}, 1},
+		{"new file", map[string]map[string]int{"handles": {"a_test.go": 2, "b_test.go": 1}}, 1},
+		{"new analyzer", map[string]map[string]int{"redactfmt": {"a_test.go": 1}}, 1},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := deferredSite(tc.pkgID, tc.analyzer, tc.posn); got != tc.want {
-				t.Fatalf("deferredSite = %v, want %v", got, tc.want)
+			if got := raisedDeferred("linux", pinned, tc.observed); len(got) != tc.want {
+				t.Fatalf("raisedDeferred = %v, want %d findings", got, tc.want)
 			}
 		})
 	}
@@ -34,9 +33,10 @@ func TestDecodeVetOutput(t *testing.T) {
 	tree := func(analyzer, result string) string {
 		return `{"` + pkg + `":{"` + analyzer + `":` + result + `}}`
 	}
-	diag := func(extra string) string {
-		return `[{"category":"","posn":"/r/a_test.go:1:2","end":"/r/a_test.go:1:3","message":"m"` + extra + `}]`
+	diagIn := func(category, extra string) string {
+		return `[{"category":"` + category + `","posn":"/r/a_test.go:1:2","end":"/r/a_test.go:1:3","message":"m"` + extra + `}]`
 	}
+	diag := func(extra string) string { return diagIn("", extra) }
 	summary := func(message string) string {
 		return `[{"category":"summary","posn":"/r/a.go:1:1","end":"/r/a.go:1:1","message":"` + message + `"}]`
 	}
@@ -46,22 +46,33 @@ func TestDecodeVetOutput(t *testing.T) {
 	}{
 		{name: "empty output", raw: ""},
 		{
-			name: "findings after a header line", raw: "# " + pkg + "\n" + tree("handles", diag("")),
+			name: "deferred category after a header line", raw: "# " + pkg + "\n" + tree("handles", diagIn(deferredCategory, "")),
 			check: func(t *testing.T, out *vetOutcome) {
 				want := "/r/a_test.go:1:2: handles: m"
-				if len(out.Findings) != 1 || out.Findings[0] != want || !out.Deferred[want] {
+				if len(out.Findings) != 1 || out.Findings[0] != want || out.Deferred[want] != "handles" {
 					t.Fatalf("findings = %v, deferred = %v", out.Findings, out.Deferred)
 				}
 			},
 		},
 		{
-			name: "related and suggested fixes are accepted", raw: tree("forgeguard", diag(`,"related":[{"posn":"x","message":"y"}],"suggested_fixes":[{"message":"z"}]`)),
+			name: "a test-file position without the category stays strict", raw: tree("handles", diag("")),
 			check: func(t *testing.T, out *vetOutcome) {
-				if len(out.Findings) != 1 || out.Deferred[out.Findings[0]] {
+				if len(out.Findings) != 1 || len(out.Deferred) != 0 {
 					t.Fatalf("findings = %v, deferred = %v", out.Findings, out.Deferred)
 				}
 			},
 		},
+		{
+			name: "related and suggested fixes are accepted", raw: tree("forgeguard", diag(`,"related":[{"posn":"x","end":"y","message":"y"}],"suggested_fixes":[{"message":"z","edits":[{"filename":"f","start":1,"end":2,"new":"n"}]}]`)),
+			check: func(t *testing.T, out *vetOutcome) {
+				if len(out.Findings) != 1 || len(out.Deferred) != 0 {
+					t.Fatalf("findings = %v, deferred = %v", out.Findings, out.Deferred)
+				}
+			},
+		},
+		{name: "unknown related field", raw: tree("forgeguard", diag(`,"related":[{"posn":"x","extra":1}]`)), wantErr: "unknown field"},
+		{name: "unknown edit field", raw: tree("forgeguard", diag(`,"suggested_fixes":[{"message":"z","edits":[{"filename":"f","extra":1}]}]`)), wantErr: "unknown field"},
+		{name: "mistyped edit offset", raw: tree("forgeguard", diag(`,"suggested_fixes":[{"message":"z","edits":[{"start":"1"}]}]`)), wantErr: "decode vet output"},
 		{name: "analyzer error object", raw: tree("handles", `{"error":"boom"}`), wantErr: "analyzer handles failed"},
 		{name: "empty error object", raw: tree("handles", `{}`), wantErr: "neither a diagnostic list nor an error"},
 		{name: "unknown diagnostic field", raw: tree("handles", diag(`,"extra":1`)), wantErr: "unknown field"},

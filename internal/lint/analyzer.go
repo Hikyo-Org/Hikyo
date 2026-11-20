@@ -207,11 +207,43 @@ func Analyzers() []*analysis.Analyzer {
 	out := make([]*analysis.Analyzer, len(checks))
 	for i, c := range checks {
 		out[i] = c.Analyzer
+		if strictDeferred[c.Analyzer.Name] {
+			out[i] = deferTestSites(c.Analyzer)
+		}
 	}
 	return out
 }
 
-// fileName is the filename of the file containing pos.
+// strictDeferred are the analyzers whose in-package test sites the vet driver
+// reports but does not yet gate: the old harness never saw those files, and
+// the sites await a reviewed follow-up (docs/handoff/lint-vet-driver-pr1-deferred-test-sites.md).
+// Production files and external test packages stay strict.
+var strictDeferred = map[string]bool{"handles": true, "redactfmt": true}
+
+// deferredCategory marks a diagnostic in an in-package _test.go file of a
+// strictDeferred analyzer. The analyzer decides it from the file on disk
+// (`//line` directives cannot move a site into a test file), and an external
+// test package, whose path ends in "_test", stays strict.
+const deferredCategory = "deferred-test-site"
+
+func deferTestSites(a *analysis.Analyzer) *analysis.Analyzer {
+	wrapped := *a
+	wrapped.Run = func(pass *analysis.Pass) (any, error) {
+		inPackage := !strings.HasSuffix(pass.Pkg.Path(), "_test")
+		p := *pass
+		p.Report = func(d analysis.Diagnostic) {
+			if d.Category == "" && inPackage && isTestFile(pass.Fset.PositionFor(d.Pos, false).Filename) {
+				d.Category = deferredCategory
+			}
+			pass.Report(d)
+		}
+		return a.Run(&p)
+	}
+	return &wrapped
+}
+
+// fileName is the filename of the file containing pos, ignoring `//line`
+// directives so a production file cannot present itself as a test file.
 func fileName(pass *analysis.Pass, pos token.Pos) string {
-	return pass.Fset.Position(pos).Filename
+	return pass.Fset.PositionFor(pos, false).Filename
 }

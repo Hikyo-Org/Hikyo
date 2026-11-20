@@ -24,16 +24,34 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-// vetDiagnostic is one entry of `go vet -json`; unknown fields fail the decode.
+// vetDiagnostic is one entry of `go vet -json`, mirroring the JSON shapes of
+// golang.org/x/tools/internal/analysis/driverutil; unknown fields fail the
+// decode.
 type vetDiagnostic struct {
-	Category string `json:"category"`
-	Posn     string `json:"posn"`
-	End      string `json:"end"`
-	Message  string `json:"message"`
-	// Related and SuggestedFixes are legitimate vet fields; the driver reads
-	// neither, but an unknown field still fails the decode.
-	Related        json.RawMessage `json:"related"`
-	SuggestedFixes json.RawMessage `json:"suggested_fixes"`
+	Category       string            `json:"category"`
+	Posn           string            `json:"posn"`
+	End            string            `json:"end"`
+	Message        string            `json:"message"`
+	Related        []vetRelated      `json:"related"`
+	SuggestedFixes []vetSuggestedFix `json:"suggested_fixes"`
+}
+
+type vetRelated struct {
+	Posn    string `json:"posn"`
+	End     string `json:"end"`
+	Message string `json:"message"`
+}
+
+type vetSuggestedFix struct {
+	Message string        `json:"message"`
+	Edits   []vetTextEdit `json:"edits"`
+}
+
+type vetTextEdit struct {
+	Filename string `json:"filename"`
+	Start    int    `json:"start"`
+	End      int    `json:"end"`
+	New      string `json:"new"`
 }
 
 // vetResult is one analyzer's output for one package: diagnostics, or the
@@ -68,9 +86,9 @@ type vetTree map[string]map[string]vetResult
 // vetOutcome is a decoded vet run: findings separated from summaries.
 type vetOutcome struct {
 	Findings []string
-	// Deferred are the findings of strictDeferred analyzers in in-package
-	// _test.go files; they stay in Findings for parity.
-	Deferred map[string]bool
+	// Deferred maps the findings the analyzer marked deferredCategory (see
+	// strictDeferred) to their analyzer; they stay in Findings for parity.
+	Deferred map[string]string
 	// Targets is analyzer -> package paths its passes reported as analyzed.
 	Targets   map[string]map[string]bool
 	Summaries map[string][]Summary
@@ -87,7 +105,7 @@ func decodeVetOutput(raw []byte) (*vetOutcome, error) {
 		}
 		kept = append(kept, line...)
 	}
-	out := &vetOutcome{Deferred: map[string]bool{}, Targets: map[string]map[string]bool{}, Summaries: map[string][]Summary{}}
+	out := &vetOutcome{Deferred: map[string]string{}, Targets: map[string]map[string]bool{}, Summaries: map[string][]Summary{}}
 	dec := json.NewDecoder(bytes.NewReader(kept))
 	for {
 		var tree vetTree
@@ -105,8 +123,8 @@ func decodeVetOutput(raw []byte) (*vetOutcome, error) {
 					if d.Category != SummaryCategory {
 						finding := FormatFinding(d.Posn, analyzer, d.Message)
 						out.Findings = append(out.Findings, finding)
-						if deferredSite(pkg, analyzer, d.Posn) {
-							out.Deferred[finding] = true
+						if d.Category == deferredCategory {
+							out.Deferred[finding] = analyzer
 						}
 						continue
 					}
@@ -130,24 +148,6 @@ func decodeVetOutput(raw []byte) (*vetOutcome, error) {
 	}
 	slices.Sort(out.Findings)
 	return out, nil
-}
-
-// strictDeferred are the analyzers whose in-package test sites the vet driver
-// reports but does not yet gate: the old harness never saw those files, and
-// the sites await a reviewed follow-up (docs/handoff/lint-vet-driver-pr1-deferred-test-sites.md).
-// Production files and external test packages stay strict.
-var strictDeferred = map[string]bool{"handles": true, "redactfmt": true}
-
-// deferredSite reports whether a diagnostic is in a _test.go file of an
-// in-package test variant: vet keys that variant by the plain package path,
-// while an external test package's key ends in "_test".
-func deferredSite(pkgID, analyzer, posn string) bool {
-	path, _, _ := strings.Cut(pkgID, " [")
-	if !strictDeferred[analyzer] || strings.HasSuffix(path, "_test") {
-		return false
-	}
-	file, _, err := splitPosn(posn)
-	return err == nil && strings.HasSuffix(file, "_test.go")
 }
 
 // buildVetTool builds the vet tool into the test's temp dir.
@@ -242,10 +242,10 @@ func decodeDeferredCounts(raw []byte) (deferredCounts, error) {
 func observedDeferred(out *vetOutcome) (map[string]map[string]int, error) {
 	counts := map[string]map[string]int{}
 	for _, finding := range out.Findings {
-		if !out.Deferred[finding] {
+		analyzer, ok := out.Deferred[finding]
+		if !ok {
 			continue
 		}
-		analyzer := deferredAnalyzer(finding)
 		cut := strings.Index(finding, ": "+analyzer+": ")
 		if cut < 0 {
 			return nil, fmt.Errorf("deferred finding %q has no analyzer", finding)
@@ -293,6 +293,21 @@ func checkDeferredCeiling(context string, pinned, observed map[string]map[string
 	return findings
 }
 
+// raisedDeferred reports what an update would add or raise. The update only
+// lowers or removes pins; adding a file or raising a ceiling is a hand edit
+// that review sees.
+func raisedDeferred(context string, pinned, observed map[string]map[string]int) []string {
+	var findings []string
+	for _, analyzer := range slices.Sorted(maps.Keys(observed)) {
+		for _, file := range slices.Sorted(maps.Keys(observed[analyzer])) {
+			if ceiling, ok := pinned[analyzer][file]; !ok || observed[analyzer][file] > ceiling {
+				findings = append(findings, fmt.Sprintf("%s: %s: %s has %d deferred diagnostics, above its pin (%d, 0 when absent); -update-deferred-sites only lowers pins, so edit %s by hand or fix the sites", context, analyzer, file, observed[analyzer][file], ceiling, deferredSitesFile))
+			}
+		}
+	}
+	return findings
+}
+
 // The ported analyzers run over the whole module under every context. Test
 // files are analyzed in every context, so the windows and darwin source sets
 // are no longer production-only here.
@@ -302,12 +317,13 @@ func TestVetDriverRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 	observed := deferredCounts{Contexts: map[string]map[string]map[string]int{}}
+	ran := 0
 	bin := buildVetTool(t)
 	for _, ctx := range Contexts {
 		t.Run(ctx.Name, func(t *testing.T) {
 			out := runVet(t, bin, ctx, nil, []string{Module + "/..."})
 			for _, finding := range out.Findings {
-				if !out.Deferred[finding] {
+				if _, deferred := out.Deferred[finding]; !deferred {
 					t.Error(finding)
 				}
 			}
@@ -316,10 +332,13 @@ func TestVetDriverRepo(t *testing.T) {
 				t.Fatal(err)
 			}
 			observed.Contexts[ctx.Name] = counts
-			if !*updateDeferredSites {
-				for _, finding := range checkDeferredCeiling(ctx.Name, pinned.Contexts[ctx.Name], counts) {
-					t.Error(finding)
-				}
+			ran++
+			findings := checkDeferredCeiling(ctx.Name, pinned.Contexts[ctx.Name], counts)
+			if *updateDeferredSites {
+				findings = raisedDeferred(ctx.Name, pinned.Contexts[ctx.Name], counts)
+			}
+			for _, finding := range findings {
+				t.Error(finding)
 			}
 			for _, finding := range missingTargets(out, Checks()) {
 				t.Error(finding)
@@ -330,6 +349,9 @@ func TestVetDriverRepo(t *testing.T) {
 			}
 		})
 	}
+	if *updateDeferredSites && ran != len(Contexts) {
+		t.Fatalf("-update-deferred-sites ran %d of %d contexts; run it without -run filters so no context's pin is dropped", ran, len(Contexts))
+	}
 	if *updateDeferredSites && !t.Failed() {
 		raw, err := json.MarshalIndent(observed, "", "  ")
 		if err != nil {
@@ -339,15 +361,6 @@ func TestVetDriverRepo(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-}
-
-func deferredAnalyzer(finding string) string {
-	for name := range strictDeferred {
-		if strings.Contains(finding, ": "+name+": ") {
-			return name
-		}
-	}
-	return "?"
 }
 
 // vetFixture is one negative fixture: the analyzer it exercises, its flags, and

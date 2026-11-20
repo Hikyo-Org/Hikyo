@@ -13,7 +13,9 @@ import (
 // realProof authorizes the adapter fixture's principal against the fixture
 // database and returns the proof. It is for tests whose stub repositories
 // never read the proof; tests of real authorization mint proofs in their own
-// transaction.
+// transaction. The returned proof belongs to an already-committed transaction;
+// the stub repositories in these tests never verify it. Take one proof per test
+// and reuse it: each call opens a new fixture database.
 func realProof(t *testing.T) authz.Proof {
 	t.Helper()
 	db := adapterServiceDB(t)

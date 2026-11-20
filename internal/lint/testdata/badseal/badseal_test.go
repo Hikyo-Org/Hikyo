@@ -23,3 +23,11 @@ func unmarkedSeed(s *crypto.ProjectSealer) []byte { // want "unmarkedSeed seals 
 	b, _ := s.SealField(aad(), nil)
 	return b
 }
+
+// seedPrefix carries a longer word, which is not the marker.
+//
+// fence:fixturex seeds an isolated fixture database no rotation can race.
+func seedPrefix(s *crypto.ProjectSealer) []byte { // want "seedPrefix seals ciphertext but never calls the writer fence"
+	b, _ := s.SealField(aad(), nil)
+	return b
+}

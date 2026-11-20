@@ -163,11 +163,12 @@ func TestGroupIndexPhaseReadsCatalogueAndPresenceOnce(t *testing.T) {
 		keys: []store.CatalogueKey{{ID: "key_a", RequiredMode: string(schema.PresenceNone), ForbiddenMode: string(schema.PresenceNone)}},
 	}
 	phase := &groupIndexPhase{}
-	first, err := phase.snapshot(t.Context(), cat, realProof(t))
+	proof := realProof(t)
+	first, err := phase.snapshot(t.Context(), cat, proof)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := phase.snapshot(t.Context(), cat, realProof(t))
+	second, err := phase.snapshot(t.Context(), cat, proof)
 	if err != nil {
 		t.Fatal(err)
 	}

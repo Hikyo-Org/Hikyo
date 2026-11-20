@@ -151,7 +151,7 @@ func permittedHandlePosition(fset *token.FileSet, base string, pos token.Pos) bo
 	if base == Module+"/internal/store/pggen" || base == Module+"/internal/store/sqlitegen" || base == Module+"/internal/dynamic/postgres" {
 		return true
 	}
-	filename := filepath.ToSlash(fset.Position(pos).Filename)
+	filename := filepath.ToSlash(fset.PositionFor(pos, false).Filename)
 	if base == Module+"/scripts/security/artifact-harness" && strings.HasSuffix(filename, "/"+artifactHarnessRuntimeFile) {
 		return driverFiles[artifactHarnessRuntimeFile]
 	}
@@ -184,7 +184,7 @@ func permittedGuardedTransaction(fset *token.FileSet, base string, pos token.Pos
 	if named != Module+"/internal/store.SQLiteTransaction" && named != Module+"/internal/store.PostgresTransaction" {
 		return false
 	}
-	filename := filepath.ToSlash(fset.Position(pos).Filename)
+	filename := filepath.ToSlash(fset.PositionFor(pos, false).Filename)
 	return base == Module+"/internal/store" && (strings.HasSuffix(filename, "/internal/store/coordination.go") || strings.HasSuffix(filename, "/internal/store/coordination_self_config.go"))
 }
 
@@ -192,7 +192,7 @@ func permittedRawConstructor(fset *token.FileSet, base string, pos token.Pos) bo
 	if base != Module+"/internal/store" {
 		return false
 	}
-	filename := filepath.ToSlash(fset.Position(pos).Filename)
+	filename := filepath.ToSlash(fset.PositionFor(pos, false).Filename)
 	for _, name := range []string{"store.go", "preparation.go", "recovery.go", "restore_destination.go", "pool_test.go"} {
 		if strings.HasSuffix(filename, "/internal/store/"+name) {
 			return true

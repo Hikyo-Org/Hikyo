@@ -129,11 +129,15 @@ func runFence(pass *analysis.Pass, servicePath string) {
 // fenceFixtureMarker exempts a test helper that seeds a fixture database.
 const fenceFixtureMarker = "fence:fixture"
 
-var fixtureReason = regexp.MustCompile(`fence:fixture\s+\S`)
+var fixtureReason = regexp.MustCompile(`(^|\s)fence:fixture\s+\S`)
 
 // marked reports whether a function's doc comment carries a marker token.
 func marked(fn *ast.FuncDecl, token string) bool {
-	return fn.Doc != nil && strings.Contains(fn.Doc.Text(), token)
+	if fn.Doc == nil {
+		return false
+	}
+	// A word boundary on both sides: `fence:fixtureX` is not the marker.
+	return regexp.MustCompile(`(^|\s)` + regexp.QuoteMeta(token) + `($|\s)`).MatchString(fn.Doc.Text())
 }
 
 // sealCall reports a call to ProjectSealer.SealValue/SealField/SealPersonalValue or
