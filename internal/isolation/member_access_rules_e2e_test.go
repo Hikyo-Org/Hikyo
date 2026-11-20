@@ -192,12 +192,29 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 		}
 	})
 
-	t.Run("machine_rule_refused", func(t *testing.T) {
-		_, err := f.rules.Create(t.Context(), service.LocalPrincipal(orgAdmin), service.RuleSpec{
-			Target: mchA1, Capability: domain.CapRead, Org: orgA, Where: whereIn(domain.AxisAll, nil, domain.AxisAll)})
-		if !errors.Is(err, service.ErrRuleMachine) {
-			t.Fatalf("machine rule = %v, want ErrRuleMachine", err)
+	t.Run("machine_rules_follow_the_class_rules", func(t *testing.T) {
+		// mch_a1 is an automation principal bound to project A1.
+		bothProjects := whereIn(domain.AxisAll, nil, domain.AxisAll)
+		bothProjects.Projects = []domain.ProjectID{prjA1, prjA2}
+		foreign := domain.Where{Projects: []domain.ProjectID{prjA2}, EnvMode: domain.AxisAll, KeyMode: domain.AxisAll}
+		for name, tc := range map[string]struct {
+			spec service.RuleSpec
+			want error
+		}{
+			"key items":       {service.RuleSpec{Capability: domain.CapEdit, Where: whereIn(domain.AxisAll, nil, domain.AxisOnly, folderItem("db"))}, service.ErrRuleMachineKeys},
+			"reveal":          {service.RuleSpec{Capability: domain.CapReveal, Where: whereIn(domain.AxisAll, nil, domain.AxisAll)}, service.ErrMachineCapability},
+			"manage-members":  {service.RuleSpec{Capability: domain.CapManageMembers, Where: whereIn(domain.AxisAll, nil, domain.AxisAll)}, service.ErrMachineCapability},
+			"two projects":    {service.RuleSpec{Capability: domain.CapRead, Where: bothProjects}, service.ErrMachineScope},
+			"foreign project": {service.RuleSpec{Capability: domain.CapRead, Where: foreign}, service.ErrMachineProject},
+		} {
+			tc.spec.Target, tc.spec.Org = mchA1, orgA
+			if _, err := f.rules.Create(t.Context(), service.LocalPrincipal(orgAdmin), tc.spec); !errors.Is(err, tc.want) {
+				t.Errorf("%s: machine rule = %v, want %v", name, err, tc.want)
+			}
 		}
+		// The control: the same principal takes an allowlisted, whole-key rule.
+		f.create(t, orgAdmin, service.RuleSpec{Target: mchA1, Capability: domain.CapEdit, Org: orgA,
+			Where: whereIn(domain.AxisAll, nil, domain.AxisAll)})
 	})
 
 	t.Run("shape_refusals", func(t *testing.T) {

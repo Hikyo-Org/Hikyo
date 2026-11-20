@@ -853,7 +853,7 @@ func (s *Identities) postStateReach(ctx context.Context, az *authz.TxAuthorizer,
 	if err != nil {
 		return authz.Reachable{}, err
 	}
-	grants, err := az.GrantsOf(ctx, sa.PrincipalID)
+	grants, err := machineAuthority(ctx, az, sa.PrincipalID, sa.Kind, scope, envs)
 	if err != nil {
 		return authz.Reachable{}, err
 	}
