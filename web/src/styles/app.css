@@ -3301,10 +3301,13 @@ fieldset.field > legend {
   /* `.btn--icon-phone` already pins width to `--control`; `.btn--compact`'s
      own fine-pointer rule pins height to the smaller `--hit-min` instead,
      which left the icon-only button wider than it was tall. Match height
-     to the same `--control` token so it is square regardless of pointer type. */
+     to the same `--control` token so it is square regardless of pointer type.
+     With its label hidden, its baseline is the glyph's bottom, which dropped
+     the environment name beside it below centre; align by middle instead. */
   .matrix__history-link {
     height: var(--control);
     min-height: var(--control);
+    vertical-align: middle;
   }
 }
 
