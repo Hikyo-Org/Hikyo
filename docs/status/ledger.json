@@ -407,11 +407,13 @@
       "id": "OBL-OPS-SUPERSESSION",
       "kind": "obligation",
       "title": "Reissue ops-spec supersession wording",
-      "status": "open",
-      "summary": "Editorial consolidation remains optional when ops-spec is next reissued.",
+      "status": "implemented",
+      "summary": "Satisfied without a reissue: the ops-spec signing re-key/revocation clause states inline that it supersedes the earlier one-release-overlap sketch (owner decision, #32, 2026-11-20).",
       "source": "docs/spec/open-items.md",
-      "nonBlocking": "The amendment banner already resolves the contract; this is editorial reissue hygiene.",
-      "evidence": [{ "label": "operations contract", "path": "docs/adr/ops-spec.md" }]
+      "evidence": [
+        { "label": "operations contract", "path": "docs/adr/ops-spec.md" },
+        { "label": "#32 handoff", "path": "docs/handoff/32-ops-spec-row-numbering.md" }
+      ]
     },
     {
       "id": "OBL-DOCS-SITE",
@@ -427,11 +429,13 @@
       "id": "OBL-OPS-ROW-NUMBERING",
       "kind": "obligation",
       "title": "Renumber duplicate ops-spec inventory rows",
-      "status": "open",
-      "summary": "Editorial row renumbering remains for the next ops-spec amendment.",
+      "status": "implemented",
+      "summary": "The 2026-11-20 editorial amendment (#32) renumbers the second row 15 (Plans/pins/grants) and every later row by one; live citations are updated and the amendment banner maps old numbers to new.",
       "source": "docs/spec/open-items.md",
-      "nonBlocking": "Rows are referenced by name, so the numbering collision does not block implementation.",
-      "evidence": [{ "label": "ops catalogue", "path": "docs/spec/ops-catalogue.md" }]
+      "evidence": [
+        { "label": "operations contract", "path": "docs/adr/ops-spec.md" },
+        { "label": "#32 handoff", "path": "docs/handoff/32-ops-spec-row-numbering.md" }
+      ]
     },
     {
       "id": "OBL-ACCEPTED-RESIDUALS",
