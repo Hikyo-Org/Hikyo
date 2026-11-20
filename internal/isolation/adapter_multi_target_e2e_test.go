@@ -241,7 +241,7 @@ func runMultiTargetSync(t *testing.T, db *store.DB) {
 	drain := func() {
 		t.Helper()
 		for range 8 {
-			clock = clock.Add(time.Second)
+			clock = stepWorkerClock(clock, time.Second)
 			worked, err := worker.RunOnce(ctx)
 			if err != nil {
 				t.Fatalf("worker: %v", err)

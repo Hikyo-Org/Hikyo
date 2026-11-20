@@ -242,7 +242,7 @@ func runAWSSecretsManagerLifecycle(t *testing.T, db *store.DB) {
 	drain := func() {
 		t.Helper()
 		for range 16 {
-			clock = clock.Add(time.Second)
+			clock = stepWorkerClock(clock, time.Second)
 			worked, err := worker.RunOnce(ctx)
 			if err != nil {
 				t.Fatalf("worker: %v", err)
@@ -616,7 +616,7 @@ func runAWSSecretsManagerLifecycle(t *testing.T, db *store.DB) {
 			}
 			defer func() { afterStage = nil }()
 			for attempt := 0; attempt < 8 && !interrupted; attempt++ {
-				clock = clock.Add(time.Second)
+				clock = stepWorkerClock(clock, time.Second)
 				if worked, err := worker.RunOnce(ctx); err != nil || !worked {
 					t.Fatalf("adoption worker before injected interruption: worked=%v err=%v", worked, err)
 				}
