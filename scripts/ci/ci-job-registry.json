@@ -5,6 +5,7 @@
     "full": [
       "client",
       "compose-demo",
+      "desktop",
       "docs",
       "floor-bench",
       "freeze-guard",
@@ -58,6 +59,7 @@
       "release-snapshot",
       "supply-chain-checks"
     ],
+    "desktop": ["desktop"],
     "floor-bench": ["floor-bench"],
     "docs": ["docs"],
     "docs-ci": ["docs", "lint"],
@@ -106,6 +108,7 @@
       "plan_jobs": ["release-snapshot"]
     },
     "client": {"required_gate": "planned", "plan_jobs": ["client"]},
+    "desktop": {"required_gate": "planned", "plan_jobs": ["desktop"]},
     "docs": {"required_gate": "planned", "plan_jobs": ["docs"]},
     "compose-demo": {
       "required_gate": "planned",

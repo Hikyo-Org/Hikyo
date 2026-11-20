@@ -46,6 +46,15 @@ for file in "$@"; do
 	fi
 	expected_runner=ubuntu-latest
 	case $(basename "$file") in
+		ci-golangci-desktop.yml)
+			# The advisory desktop lint (#1215) builds cgo and darwin-only files: one
+			# pinned macOS runner, no shared caches, and no cache action at all.
+			expected_runner=macos-15
+			if grep -E 'actions/cache(@|/)|cache: true' "$file" >/dev/null; then
+				fail 'desktop lint must not use shared caches'
+			fi
+			require_line "$file" '          cache: false'
+			;;
 		ops-floor.yml)
 			# The secret-free operations lane measures both native CPU floors.
 			# Keep its matrix closed to these two GitHub-hosted architectures.
@@ -216,6 +225,25 @@ for file in "$@"; do
 			skip && $0 ~ /^  [A-Za-z0-9_-]+:/ { skip = 0 }
 			!skip { print }
 		' "$file" >"$runner_source"
+		# The desktop shell (#1215) is the one native macOS job: one pinned runner,
+		# no shared caches. Everything else in ci.yml stays on ubuntu-latest.
+		desktop=$(workflow_job_block "$file" desktop)
+		[ -n "$desktop" ] || fail 'ci.yml has no desktop job'
+		printf '%s\n' "$desktop" | grep -Fx "    runs-on: \${{ needs.changes.outputs.desktop_module == 'true' && 'macos-15' || 'ubuntu-latest' }}" >/dev/null ||
+			fail 'desktop must run on the pinned macos-15 runner where the module exists and on ubuntu-latest elsewhere'
+		[ "$(printf '%s\n' "$desktop" | grep -c 'runs-on:')" = 1 ] ||
+			fail 'desktop must declare exactly one runner'
+		if printf '%s\n' "$desktop" | grep -E 'actions/cache(@|/)|cache: true|cache-dependency-path' >/dev/null; then
+			fail 'desktop must not use shared caches'
+		fi
+		without_desktop=$(mktemp)
+		awk '
+			$0 == "  desktop:" { skip = 1; next }
+			skip && $0 ~ /^  [A-Za-z0-9_-]+:/ { skip = 0 }
+			!skip { print }
+		' "$runner_source" >"$without_desktop"
+		rm -f "$runner_source"
+		runner_source=$without_desktop
 	fi
 	if grep -E '^[[:space:]]+runs-on:' "$runner_source" |
 		sed 's/^[[:space:]]*runs-on:[[:space:]]*//' |
