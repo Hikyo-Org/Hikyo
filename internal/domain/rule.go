@@ -131,6 +131,11 @@ func (w Where) KeyNarrowed() bool {
 	return false
 }
 
+// KeyNarrowedIn reports whether the Where narrows keys in one project.
+func (w Where) KeyNarrowedIn(p ProjectID) bool {
+	return w.KeyMode != AxisAll || len(w.Keys[p]) > 0
+}
+
 // Validate is the shape authority for a rule, applied on every write AND on
 // every read: a stored row that does not validate reaches nothing.
 func (r Rule) Validate() error {

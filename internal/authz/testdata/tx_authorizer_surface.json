@@ -278,6 +278,7 @@
   "ReplacePasswordCredential": "func(ctx context.Context, c PasswordCredential, at time.Time) (bool, error)",
   "ReplaceRecoveryCodes": "func(ctx context.Context, b RecoveryBatch, at time.Time) (bool, error)",
   "ReplaceRegistrationPolicy": "func(ctx context.Context, p RegistrationPolicy, expected int64) (bool, error)",
+  "ResolveAccess": "func(ctx context.Context, p Proof, capability domain.Capability, key *KeyTarget) ([]AccessAnswer, error)",
   "ResolveChain": "func(ctx context.Context, scope domain.Scope) (domain.Scope, error)",
   "RestoreState": "func(ctx context.Context) (RestoreState, error)",
   "RestrictPrivacyPrincipal": "func(ctx context.Context, p, state string) error",
