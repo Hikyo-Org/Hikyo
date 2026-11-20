@@ -248,10 +248,18 @@ void hikyoShowCode(long id, const char *url, const char *code) {
 }
 
 void hikyoDismissCode(long id) {
-	dispatch_async(dispatch_get_main_queue(), ^{
-		if (codeAlerts[@(id)] != nil) {
+	// Same queue as hikyoShowCode, so a dismiss never runs before its show.
+	asyncMainRL(^{
+		NSAlert *alert = codeAlerts[@(id)];
+		if (alert != nil) {
 			[codeAlerts removeObjectForKey:@(id)];
-			[NSApp abortModal];
+			// Only end the modal session if this alert is the one on top;
+			// otherwise a dialog opened over it would be aborted.
+			if (NSApp.modalWindow == alert.window) {
+				[NSApp abortModal];
+			} else {
+				[alert.window orderOut:nil];
+			}
 		}
 	});
 }

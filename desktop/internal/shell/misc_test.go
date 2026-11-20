@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -232,5 +233,52 @@ func TestCanonicalOriginHasOneSpelling(t *testing.T) {
 		if got, err := canonicalOrigin(in); err != nil || got != want {
 			t.Errorf("%q = %q, %v; want %q", in, got, err, want)
 		}
+	}
+}
+
+func TestCanonicalOriginKeepsIPv6ZoneAndNormalizesPortSpellings(t *testing.T) {
+	got, err := canonicalOrigin("http://[fe80::1%25en0]:8080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again, err := canonicalOrigin(got); err != nil || again != got {
+		t.Errorf("not idempotent: %q then %q, %v", got, again, err)
+	}
+	u, _ := url.Parse("https://x:0443/")
+	if sitePort(u) != 443 {
+		t.Errorf("0443 = %d", sitePort(u))
+	}
+}
+
+func TestAddSeesLegacyOriginSpellingsAsDuplicates(t *testing.T) {
+	h := newHarness(t)
+	host, _ := h.store.NewHost()
+	// A spelling an older build could have stored.
+	if err := h.store.Put(Connection{Host: host, Origin: "https://x.example:443", Name: "x", Trust: Trust{Mode: clienttrust.ModeSystemCA}}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := h.m.Add(context.Background(), AddRequest{Origin: "https://x.example", Mode: clienttrust.ModeSystemCA})
+	var e *shellErr
+	if !errors.As(err, &e) || e.code != codeInvalid || !strings.Contains(e.message, "already") {
+		t.Fatalf("a second connection to the same instance was not refused as a duplicate: %v", err)
+	}
+}
+
+func TestFailedRemovalLeavesAWorkingConnection(t *testing.T) {
+	h := newHarness(t)
+	c, _ := h.connect()
+	h.m.secrets = failingDelete{h.secrets}
+	if _, err := h.m.Remove(context.Background(), c.host); err == nil {
+		t.Fatal("expected an error")
+	}
+	// The connection must work again, including new ceremonies.
+	if c.life().Err() != nil {
+		t.Error("the connection's context stayed cancelled")
+	}
+	c.rotMu.Lock()
+	removed := c.removed
+	c.rotMu.Unlock()
+	if removed {
+		t.Error("the connection still refuses sessions")
 	}
 }

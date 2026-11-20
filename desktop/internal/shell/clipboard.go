@@ -65,7 +65,9 @@ func (g *clipboardGuard) arm() {
 	if count == g.lastCount && (g.lastChange.IsZero() || g.now().Sub(g.lastChange) > clipboardRecentWithin) {
 		return
 	}
-	g.lastCount, g.lastChange = count, g.now()
+	// lastChange is not refreshed here: a page that arms repeatedly must not
+	// keep the "recent" window open for a copy made elsewhere.
+	g.lastCount = count
 	if g.stopArmed != nil {
 		g.stopArmed()
 	}

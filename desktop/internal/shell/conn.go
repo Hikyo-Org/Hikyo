@@ -21,7 +21,8 @@ type Conn struct {
 	inst *Instance
 	url  *url.URL
 
-	// ctx ends when the connection is removed, which ends its ceremonies.
+	// ctx ends when the connection is removed, which ends its ceremonies. It
+	// is replaced if a removal fails part way. Guarded by mu; use life().
 	ctx    context.Context
 	cancel context.CancelFunc
 
@@ -72,6 +73,32 @@ func (m *Manager) newConn(info Connection) (*Conn, error) {
 	}
 	c.proxy = c.newProxy()
 	return c, nil
+}
+
+// life is the context that ends when the connection is removed.
+func (c *Conn) life() context.Context {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.ctx
+}
+
+// beginRemoval stops ceremonies and refuses new sessions; undo reverses it
+// when the removal fails and the connection stays in the list.
+func (c *Conn) beginRemoval() (undo func()) {
+	c.rotMu.Lock()
+	c.removed = true
+	c.rotMu.Unlock()
+	c.mu.Lock()
+	c.cancel()
+	c.mu.Unlock()
+	return func() {
+		c.rotMu.Lock()
+		c.removed = false
+		c.rotMu.Unlock()
+		c.mu.Lock()
+		c.ctx, c.cancel = context.WithCancel(context.Background())
+		c.mu.Unlock()
+	}
 }
 
 // errRemoved means the connection was removed while a ceremony was running.

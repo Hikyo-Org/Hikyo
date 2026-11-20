@@ -153,7 +153,7 @@ func (m *Manager) acceptLogin(ctx context.Context, c *Conn, result apigen.LoginR
 		if !m.native.Confirm("Sign in as a different account?",
 			fmt.Sprintf("%s was signed in as %s. This sign-in is for %s. Use the new account on this connection?", before.Name, labelOf(before), name),
 			"Use new account") {
-			_ = c.revoke(ctx, token)
+			c.revokeAsync(token)
 			return context.Canceled
 		}
 	}

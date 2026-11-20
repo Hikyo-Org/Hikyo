@@ -35,29 +35,32 @@ type Instance struct {
 // spelling per instance keeps the duplicate check and every origin comparison
 // honest (ADR D8, D9).
 func canonicalOrigin(raw string) (string, error) {
-	origin, err := clienttrust.CanonicalOrigin(raw)
+	// Validation only: its output re-escapes nothing, so an IPv6 zone id
+	// comes back in a form url.Parse refuses.
+	if _, err := clienttrust.CanonicalOrigin(raw); err != nil {
+		return "", err
+	}
+	u, err := url.Parse(raw)
 	if err != nil {
 		return "", err
 	}
-	u, err := url.Parse(origin)
-	if err != nil {
-		return "", err
-	}
-	host := strings.TrimSuffix(u.Hostname(), ".")
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
 	if host == "" {
 		return "", errors.New("instance URL has no host")
 	}
 	if strings.Contains(host, ":") {
-		host = "[" + host + "]"
+		// An IPv6 literal; a zone id's % must be escaped again in a URL.
+		host = "[" + strings.ReplaceAll(host, "%", "%25") + "]"
 	}
+	scheme := strings.ToLower(u.Scheme)
 	port := u.Port()
-	if (u.Scheme == "https" && port == "443") || (u.Scheme == "http" && port == "80") {
+	if (scheme == "https" && port == "443") || (scheme == "http" && port == "80") {
 		port = ""
 	}
 	if port != "" {
 		host += ":" + port
 	}
-	return u.Scheme + "://" + host, nil
+	return scheme + "://" + host, nil
 }
 
 // newInstance builds the channel for a canonical origin. It refuses plain

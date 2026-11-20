@@ -78,7 +78,7 @@ func (m *Manager) Add(ctx context.Context, req AddRequest) (string, error) {
 		return "", &shellErr{codeInvalid, "choose a trust mode first"}
 	}
 	for _, c := range m.store.List() {
-		if c.Origin == origin {
+		if existing, err := canonicalOrigin(c.Origin); err == nil && existing == origin {
 			return "", &shellErr{codeInvalid, "this instance is already connected"}
 		}
 	}
@@ -155,10 +155,7 @@ func (m *Manager) Remove(ctx context.Context, host string) (RemoveResult, error)
 		return RemoveResult{}, &shellErr{codeInvalid, "unknown connection"}
 	}
 	// No ceremony may store a session after this point (ADR D2).
-	c.rotMu.Lock()
-	c.removed = true
-	c.rotMu.Unlock()
-	c.cancel()
+	undo := c.beginRemoval()
 	result := RemoveResult{Revoked: true}
 	if token := c.bearer(); token != "" {
 		if err := c.revoke(ctx, token); err != nil {
@@ -177,9 +174,11 @@ func (m *Manager) Remove(ctx context.Context, host string) (RemoveResult, error)
 	if err := m.secrets.Delete(host); err != nil {
 		// Keep the record so the user can retry: an orphaned keychain item
 		// would be unreachable from the list.
+		undo()
 		return result, &shellErr{codeFailed, "the keychain item could not be deleted: " + err.Error()}
 	}
 	if err := m.store.Remove(host); err != nil {
+		undo()
 		return result, &shellErr{codeFailed, "the connection record could not be deleted: " + err.Error()}
 	}
 	m.mu.Lock()
@@ -202,7 +201,7 @@ func (m *Manager) SignIn(ctx context.Context, host, method string) error {
 	// Removing the connection ends its sign-in.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	defer context.AfterFunc(c.ctx, cancel)()
+	defer context.AfterFunc(c.life(), cancel)()
 	result, err := m.login(ctx, c.inst, method)
 	if err != nil {
 		return failureOf(err)

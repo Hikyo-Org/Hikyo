@@ -259,11 +259,19 @@ func hikyoDownloadFinished(key C.uintptr_t) {
 	if err := shell.Quarantine(d.temp); err != nil {
 		log.Printf("download: could not mark the file as downloaded: %v", err)
 		_ = os.Remove(d.temp)
+		failDownload("The file could not be marked as downloaded.")
 		return
 	}
 	if err := os.Rename(d.temp, d.final); err != nil {
 		log.Printf("download: could not save %s: %v", d.final, err)
 		_ = os.Remove(d.temp)
+		failDownload("The file could not be saved there.")
+	}
+}
+
+func failDownload(message string) {
+	if n := theNative.Load(); n != nil {
+		n.Alert("Download failed", message)
 	}
 }
 

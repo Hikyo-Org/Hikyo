@@ -234,7 +234,7 @@ func (c *Conn) routeReauth(w http.ResponseWriter, r *http.Request) *shellErr {
 	done := make(chan *shellErr, 1)
 	c.m.background(func() {
 		defer release()
-		ctx, cancel := context.WithTimeout(c.ctx, 6*time.Minute)
+		ctx, cancel := context.WithTimeout(c.life(), 6*time.Minute)
 		defer cancel()
 		done <- c.runReauth(ctx, in)
 	})
@@ -264,7 +264,7 @@ func (c *Conn) routeSignIn(w http.ResponseWriter, r *http.Request) *shellErr {
 	done := make(chan *shellErr, 1)
 	c.m.background(func() {
 		defer release()
-		ctx, cancel := context.WithTimeout(c.ctx, 11*time.Minute)
+		ctx, cancel := context.WithTimeout(c.life(), 11*time.Minute)
 		defer cancel()
 		done <- c.runSignIn(ctx)
 	})

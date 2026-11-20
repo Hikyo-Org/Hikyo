@@ -70,6 +70,9 @@ func TestClassifyRefusesWhatTheADRNames(t *testing.T) {
 	}{
 		{"GET", "/api/v1/orgs", Allowed},
 		{"GET", "/assets/app.js", Allowed},
+		{"GET", "/search/100%", Allowed},
+		{"GET", "/search/100%zz", Allowed},
+		{"POST", "/%61pi/v1/auth/local/login%", Malformed},
 		{"POST", "/api/v1/auth/local/login", Refused},
 		{"POST", "/api/v1/auth/LOCAL/login", Refused},
 		{"POST", "/api/V1/auth/local/login", Refused},
@@ -100,6 +103,9 @@ func TestClassifyRefusesWhatTheADRNames(t *testing.T) {
 		{"POST", "/x/%2e%2e/api/v1/auth/local/login", Malformed},
 		{"POST", "/\\api/v1/auth/local/login", Malformed},
 		{"GET", "/assets/app.js", Allowed},
+		{"GET", "/search/100%", Allowed},
+		{"GET", "/search/100%zz", Allowed},
+		{"POST", "/%61pi/v1/auth/local/login%", Malformed},
 		{"GET", "/orgs/a/", Allowed},
 	}
 	for _, tc := range cases {

@@ -1,7 +1,6 @@
 package shell
 
 import (
-	"context"
 	"log"
 	"net/url"
 	"strings"
@@ -102,7 +101,7 @@ func (c *Conn) saveProxiedURL(u *url.URL) {
 	if !ok {
 		return
 	}
-	if e := c.writeDownload(context.Background(), dest, p, nil); e != nil {
+	if e := c.writeDownload(c.life(), dest, p, nil); e != nil {
 		c.m.native.Alert("Download failed", e.message)
 	}
 }

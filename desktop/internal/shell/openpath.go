@@ -3,6 +3,7 @@ package shell
 import (
 	"errors"
 	"net/url"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -128,12 +129,14 @@ func (c *Conn) sameSite(u *url.URL) bool {
 
 func siteHost(u *url.URL) string { return strings.TrimSuffix(strings.ToLower(u.Hostname()), ".") }
 
-func sitePort(u *url.URL) string {
-	if p := u.Port(); p != "" {
+// sitePort is the effective port as a number, so 0443 and 443 agree as they
+// do in a browser.
+func sitePort(u *url.URL) int {
+	if p, err := strconv.Atoi(u.Port()); err == nil && u.Port() != "" {
 		return p
 	}
 	if u.Scheme == "https" {
-		return "443"
+		return 443
 	}
-	return "80"
+	return 80
 }

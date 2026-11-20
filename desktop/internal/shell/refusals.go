@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -280,12 +281,26 @@ func (p *Policy) Classify(method, rawPath string) Verdict {
 // reachesAPI reports whether a non-API-looking path resolves to the API after
 // percent-decoding, backslash folding and dot-segment removal.
 func reachesAPI(rawPath string) bool {
-	decoded, err := url.PathUnescape(rawPath)
-	if err != nil {
-		return true // the instance may decode it differently; fail closed
-	}
+	decoded := lenientUnescape(rawPath)
 	decoded = strings.ReplaceAll(decoded, "\\", "/")
 	return IsAPIPath(path.Clean("/" + decoded))
+}
+
+// lenientUnescape decodes every valid %XX and leaves a stray % alone, as a
+// router that tolerates bad escapes would, so a path like /search/100% is
+// judged on what it says rather than refused for its escape.
+func lenientUnescape(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '%' && i+2 < len(s) && isHex(s[i+1]) && isHex(s[i+2]) {
+			v, _ := strconv.ParseUint(s[i+1:i+3], 16, 8)
+			b.WriteByte(byte(v))
+			i += 2
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
 }
 
 func (p *Policy) rotationOf(method string, segs []string) Rotation {
