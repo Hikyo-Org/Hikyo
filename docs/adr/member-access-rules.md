@@ -225,7 +225,8 @@ this slice is narrower than D1 to D11:
   else learns the count and cannot confirm, even with the exact set. A machine plan therefore cannot
   commit a widening move; a member manager has to.
 - **Resolver (D10)** answers in the web client over the org's grants, rules and key catalogue; a
-  server-side resolver operation is owed.
+  server-side resolver operation is owed. (2026-11-20: `rule.resolve` adds it to `/api/v1`, see the
+  api-cli-surface amendment of that date; the CLI verb follows in #1474.)
 
 ## Rejected alternatives
 

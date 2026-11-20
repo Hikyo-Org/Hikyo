@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
@@ -21,6 +22,7 @@ type RuleService interface {
 	Create(ctx context.Context, actor service.Actor, spec service.RuleSpec) (service.RuleView, error)
 	Revoke(ctx context.Context, actor service.Actor, org domain.OrgID, id string) error
 	List(ctx context.Context, actor service.Actor, scope domain.Scope) ([]service.RuleView, error)
+	Resolve(ctx context.Context, actor service.Actor, scope domain.Scope, capability domain.Capability, keyID string) ([]service.AccessView, error)
 }
 
 // errRuleKeyItem refuses a key item that names neither or both of a folder
@@ -66,18 +68,22 @@ func wireRuleWhere(w domain.Where) apigen.RuleWhere {
 			out.Environments.Items = append(out.Environments.Items, apigen.RuleEnvironmentItem{Project: string(p), Environment: string(e)})
 		}
 		for _, k := range w.Keys[p] {
-			item := apigen.RuleKeyItem{Project: string(p)}
-			if k.IsFolder {
-				folder := k.Folder
-				item.Folder = &folder
-			} else {
-				key := k.KeyID
-				item.Key = &key
-			}
-			out.Keys.Items = append(out.Keys.Items, item)
+			out.Keys.Items = append(out.Keys.Items, wireRuleKeyItem(p, k))
 		}
 	}
 	return out
+}
+
+func wireRuleKeyItem(project domain.ProjectID, k domain.RuleKeyItem) apigen.RuleKeyItem {
+	item := apigen.RuleKeyItem{Project: string(project)}
+	if k.IsFolder {
+		folder := k.Folder
+		item.Folder = &folder
+	} else {
+		key := k.KeyID
+		item.Key = &key
+	}
+	return item
 }
 
 func wireAccessRule(v service.RuleView) apigen.Rule {
@@ -110,6 +116,63 @@ func (a *API) ListProjectRules(ctx context.Context, req apigen.ListProjectRulesR
 		return nil, err
 	}
 	return apigen.ListProjectRules200JSONResponse(wireAccessRules(views)), nil
+}
+
+func (a *API) ResolveAccess(ctx context.Context, req apigen.ResolveAccessRequestObject) (apigen.ResolveAccessResponseObject, error) {
+	var keyID string
+	if req.Params.Key != nil {
+		keyID = *req.Params.Key
+	}
+	views, err := a.Rules.Resolve(ctx, service.Bearer(bearer(ctx)), envScope(req.Org, req.Project, req.Environment),
+		domain.Capability(req.Params.Permission), keyID)
+	if err != nil {
+		return nil, err
+	}
+	out := apigen.AccessResolution{
+		Permission: req.Params.Permission, Environment: req.Environment, Key: req.Params.Key,
+		Can: []apigen.AccessPrincipal{}, Excepted: []apigen.AccessPrincipal{},
+		NeedsSee: []apigen.AccessPrincipal{}, None: []apigen.AccessPrincipal{},
+	}
+	for _, v := range views {
+		p := wireAccessPrincipal(domain.ProjectID(req.Project), v)
+		switch v.State {
+		case authz.AccessCan:
+			out.Can = append(out.Can, p)
+		case authz.AccessExcepted:
+			out.Excepted = append(out.Excepted, p)
+		case authz.AccessNeedsSee:
+			out.NeedsSee = append(out.NeedsSee, p)
+		default:
+			out.None = append(out.None, p)
+		}
+	}
+	return apigen.ResolveAccess200JSONResponse(out), nil
+}
+
+func wireAccessPrincipal(project domain.ProjectID, v service.AccessView) apigen.AccessPrincipal {
+	kind := apigen.Machine
+	if v.Class == domain.ClassHuman {
+		kind = apigen.Human
+	}
+	out := apigen.AccessPrincipal{
+		PrincipalId: string(v.Principal), PrincipalName: optStr(v.Name), Kind: kind,
+		Grants: []apigen.GrantScope{}, Rules: []apigen.ID{}, Excepts: []apigen.AccessExcept{},
+	}
+	for _, g := range v.Grants {
+		out.Grants = append(out.Grants, wireGrantScope(g))
+	}
+	out.Rules = append(out.Rules, v.Rules...)
+	for _, e := range v.Excepts {
+		except := apigen.AccessExcept{Rule: e.RuleID, Environments: []apigen.ID{}, Keys: []apigen.RuleKeyItem{}, KeyLimited: e.KeyLimited}
+		for _, env := range e.Envs {
+			except.Environments = append(except.Environments, string(env))
+		}
+		for _, k := range e.Keys {
+			except.Keys = append(except.Keys, wireRuleKeyItem(project, k))
+		}
+		out.Excepts = append(out.Excepts, except)
+	}
+	return out
 }
 
 func (a *API) CreateRule(ctx context.Context, req apigen.CreateRuleRequestObject) (apigen.CreateRuleResponseObject, error) {
