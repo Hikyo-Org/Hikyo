@@ -1,6 +1,6 @@
 # Lint vet driver PR 2: declared inputs and the non-Go-input analyzers
 
-Work: PR 2 of `docs/adr/lint-analysis-driver.md` (branch `dunky13/lint-vettool-inputs`, stacked on `dunky13/lint-vettool-driver`, PR #1464). The step 2 amendment is recorded in the ADR as Proposed, pending owner acceptance.
+Work: PR 2 of `docs/adr/lint-analysis-driver.md` (branch `dunky13/lint-vettool-inputs`, stacked on `dunky13/lint-vettool-driver`, PR #1464). The step 2 amendment is recorded in the ADR as Accepted (owner decision, 2026-11-20), including the `jsonv1` hybrid's deviation from decision 3.
 
 ## Result
 

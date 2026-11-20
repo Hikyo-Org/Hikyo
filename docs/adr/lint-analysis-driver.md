@@ -111,10 +111,13 @@ The spike also established that:
 
 ## Amendment: step 2 (input hashing)
 
-**Status: Proposed (pending owner acceptance).** Decided while implementing
-step 2. Decision 3 is deviated from by the `jsonv1` hybrid below; the owner has
-not accepted this amendment, so nothing here is accepted by the decision that
-accepted the ADR.
+**Status: Accepted.** Decided while implementing step 2. The `jsonv1` hybrid
+below deviates from decision 3's pure-summary shape; the owner accepted that
+deviation.
+
+Owner decision (2026-11-20): the `jsonv1` hybrid is accepted as written below,
+with its known limits (the unanalyzed-file check runs only when every context
+ran, and it runs in the test process, not as a vet result).
 
 - **Helper.** `internal/lint/inputs.go`. An analyzer declares `InputSpec`s
   (a file, or a directory with extensions, optionally recursive) relative to a
