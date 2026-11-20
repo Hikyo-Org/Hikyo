@@ -44,11 +44,16 @@ retryable), `invalid` (malformed request).
   is `refused` by the SPA before it calls the shell. `adapter` sends the whole
   environment set in one call and no `key_ids`. The key-bound purposes (`reveal`,
   `copy`, `publish`, `approve`, `reject`, `bypass`) send exactly one environment
-  and `key_ids` naming exactly the unit the decision covers; a ceremony over a
-  different or empty key set does not authorize the decision. `self-config` carries
+  and non-empty `key_ids` naming exactly the unit the decision covers; a ceremony
+  over a different or empty key set does not authorize the decision. `self-config` carries
   `self_config` and an empty `environment_ids`, because the handoff refuses a
   self-config request that names an environment (`internal/server/cli_reauth.go`);
   every other purpose names at least one environment and carries no `self_config`.
+  Per purpose: `self-config` has empty `environment_ids` and no `key_ids`; a key-bound
+  purpose has exactly one environment and non-empty `key_ids`; `adapter` has a
+  non-empty environment set and no `key_ids`. `environment_ids` holds at most 1000
+  entries; the SPA refuses a larger set ("Continue in browser") before it calls the
+  shell, and the shell answers `invalid` to any request outside these shapes.
   The shell forwards `self_config` to the handoff unchanged. Its `revision` and
   `expected_generation` are JSON numbers, as in the handoff.
 - `reauth` operations by purpose, as the SPA sends them: `reveal` is
@@ -65,7 +70,9 @@ retryable), `invalid` (malformed request).
   URL. The shell refuses `/login/cli`, `/reauth/cli`, `/workspace/approve`, any
   `returnTo` parameter and non-canonical input, as ADR D9 lists.
 - `download`: `path` must start with `/api/v1/` and obeys the proxy's refusals.
-  `bytes_base64` carries a body the SPA built itself. `filename` is advisory; the
+  `bytes_base64` carries a body the SPA built itself and decodes to at most 64 MiB
+  (the audit export's cap); the SPA refuses a larger body with "Continue in browser"
+  before it calls the shell, and the shell answers `invalid` to one. `filename` is advisory; the
   shell sanitizes it and always shows a save panel.
 - `clipboard`: called right after the SPA writes a secret to the clipboard. The
   shell arms clearing only if it observed a pasteboard change. The SPA shows its
@@ -75,6 +82,14 @@ retryable), `invalid` (malformed request).
   host, no path), or the SPA treats the reply as `failed`.
 
 ## Session signals
+
+The SPA has no session cookie to watch in app mode, so the shell's session can
+change behind the page only through a call the SPA made. After `reauth` resolves
+`204`, the SPA runs `whoami` and compares the session and principal with the ones it
+held before it uses the result; a change, or a failed check, discards the result and
+the page re-reads its identity. Anything else the shell does to the session is seen by the
+SPA's ordinary `whoami` on window focus. The shell must therefore never swap the
+session behind a `204` it did not report, and needs no extra route for this.
 
 When the SPA sees a dead session (`401` from `/api/v1`, confirmed by `whoami`), it
 calls `POST /__shell/sign-in` instead of routing to `/login`, then reloads the
